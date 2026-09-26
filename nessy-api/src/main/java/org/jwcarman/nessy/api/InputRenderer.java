@@ -36,9 +36,15 @@ import org.jwcarman.nessy.api.block.Block;
  * no turn ever ends, so anything waiting on that turn waits forever. Dropping, merging and
  * superseding are the backlog's business, and they happen before this.
  *
- * <p><b>It runs inside the fold, under the agent's row lock.</b> A renderer that formats is
- * invisible; one that fetches holds that lock across a network call. When rendering stops being
- * formatting it stops belonging here and becomes an effect with a state to wait in.
+ * <p><b>Treat it as formatting, not fetching.</b> A renderer that formats is invisible; one that
+ * fetches is a network call on the caller's critical path, and on the queued door it is a network
+ * call made while the agent's row lock is held. When rendering stops being formatting it stops
+ * belonging here and becomes an effect with a state to wait in.
+ *
+ * <p>Where it runs differs by door, so neither door's answer can be stated as the rule: the queued
+ * door renders inside the fold, under the agent's row lock. The direct door renders before it takes
+ * any lock at all -- rendering is pure, and only the payload write it feeds has to happen inside a
+ * locked step -- so a caller that turns out to be declined has rendered but written nothing.
  *
  * @param <I> the input type
  */

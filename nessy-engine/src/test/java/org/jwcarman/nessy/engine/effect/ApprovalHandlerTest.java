@@ -160,7 +160,9 @@ class ApprovalHandlerTest {
   private Awaited<EffectOutcome> asked(Tools tools, ToolCalls calls) {
     return handler(tools, calls)
         .handle(
-            AGENT, new AgentEffect.Approve(new Seq(2), new CallId("c1"), new ToolName("lookup")));
+            AGENT,
+            new AgentEffect.Approve(
+                new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
   }
 
   /** The answer, for the tests that expect one now. */
@@ -360,7 +362,8 @@ class ApprovalHandlerTest {
                     Duration.ofHours(1),
                     new RetryPolicy.FixedDelay(3, Duration.ofSeconds(1), Duration.ZERO)))
             .termsFor(
-                new AgentEffect.Approve(new Seq(2), new CallId("c1"), new ToolName("lookup")));
+                new AgentEffect.Approve(
+                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
 
     assertThat(terms.timeout())
         .as("an hour to answer, though the tool itself gets thirty seconds to run")
@@ -380,7 +383,8 @@ class ApprovalHandlerTest {
     EffectTerms terms =
         handler(bound(Approver.allow()))
             .termsFor(
-                new AgentEffect.Approve(new Seq(2), new CallId("c1"), new ToolName("lookup")));
+                new AgentEffect.Approve(
+                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
 
     assertThat(terms.undispatchable())
         .asInstanceOf(type(EffectOutcome.ToolFailed.class))

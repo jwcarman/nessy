@@ -130,9 +130,10 @@ public sealed interface AgentState {
       return switch (command) {
         case AgentCommand.StartTurn start -> {
           Seq at = seq.next();
+          TurnId opened = at.opensTurn();
           yield Decision.of(
-              List.of(new AgentEvent.TurnStarted(at, at.opensTurn(), start.input())),
-              List.of(new AgentEffect.Infer()));
+              List.of(new AgentEvent.TurnStarted(at, opened, start.input())),
+              List.of(new AgentEffect.Infer(opened)));
         }
         case AgentCommand.Terminate _ ->
             Decision.of(List.of(new AgentEvent.Terminated(seq.next())), List.of());
@@ -161,6 +162,13 @@ public sealed interface AgentState {
     @Override
     public Decision execute(AgentCommand command) {
       return switch (command) {
+        // An answer to a turn that is not the one open here. At-least-once delivery and a door
+        // that lets go of its lock between steps mean a completion can arrive after the turn it
+        // belonged to was closed by somebody else -- by recovery, or by a redelivery that got
+        // there first. Stamping it with this turn would write down an answer to a question this
+        // turn never asked and hand it to the caller driving this turn.
+        case AgentCommand.CompleteInference done when !done.turn().equals(turn) ->
+            Decision.ignore();
         case AgentCommand.CompleteInference done -> completed(done);
         // Busy. Both external commands are held by the harness and presented when this turn
         // closes -- work already in flight is owed its outcome, and abandoning it here would
@@ -171,9 +179,10 @@ public sealed interface AgentState {
     }
 
     /** The permission an action needs before anything is done in the world on its behalf. */
-    private static AgentEffect approving(Seq at, ActionRequest action) {
+    private static AgentEffect approving(TurnId turn, Seq at, ActionRequest action) {
       return switch (action) {
-        case ActionRequest.ToolCall call -> new AgentEffect.Approve(at, call.id(), call.name());
+        case ActionRequest.ToolCall call ->
+            new AgentEffect.Approve(turn, at, call.id(), call.name());
       };
     }
 
@@ -193,7 +202,7 @@ public sealed interface AgentState {
             Decision.of(
                 List.of(
                     new AgentEvent.ActionsRequested(at, turn, asked.request(), asked.actions())),
-                asked.actions().stream().map(action -> approving(at, action)).toList());
+                asked.actions().stream().map(action -> approving(turn, at, action)).toList());
       };
     }
   }
@@ -259,6 +268,10 @@ public sealed interface AgentState {
     @Override
     public Decision execute(AgentCommand command) {
       return switch (command) {
+        // As in Inferring: an outcome that names another turn settles nothing here. The call id
+        // alone is not enough -- ids come from the model and a later turn can reuse one.
+        case AgentCommand.CompleteApproval done when !done.turn().equals(turn) -> Decision.ignore();
+        case AgentCommand.CompleteToolCall done when !done.turn().equals(turn) -> Decision.ignore();
         case AgentCommand.CompleteApproval done -> approved(done);
         case AgentCommand.CompleteToolCall done -> ran(done);
         // As in Inferring: held by the harness until the turn closes.
@@ -278,7 +291,7 @@ public sealed interface AgentState {
         case AgentCommand.ApprovalOutcome.Approved ok ->
             Decision.of(
                 List.of(new AgentEvent.ToolApproved(at, turn, done.callId(), ok.reference())),
-                List.of(performing(requestSeq, call.action())));
+                List.of(performing(turn, requestSeq, call.action())));
         case AgentCommand.ApprovalOutcome.Denied no ->
             Decision.of(
                 List.of(
@@ -320,16 +333,16 @@ public sealed interface AgentState {
     }
 
     /** The work that performs an action, whatever kind of action it is. */
-    private static AgentEffect performing(Seq requestSeq, ActionRequest action) {
+    private static AgentEffect performing(TurnId turn, Seq requestSeq, ActionRequest action) {
       return switch (action) {
         case ActionRequest.ToolCall call ->
-            new AgentEffect.CallTool(requestSeq, call.id(), call.name());
+            new AgentEffect.CallTool(turn, requestSeq, call.id(), call.name());
       };
     }
 
     /** Ask the model again once this discharge leaves nothing outstanding. */
     private List<AgentEffect> nextInference(int discharging) {
-      return outstanding.size() == discharging ? List.of(new AgentEffect.Infer()) : List.of();
+      return outstanding.size() == discharging ? List.of(new AgentEffect.Infer(turn)) : List.of();
     }
   }
 

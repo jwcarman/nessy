@@ -19,6 +19,7 @@ package org.jwcarman.nessy.engine.harness.queued;
 import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.BacklogItem;
@@ -28,6 +29,7 @@ import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
@@ -211,7 +213,8 @@ final class DefaultQueuedHarness<I>
 
   /** What an effect came to, folded under a lock of its own. */
   @Override
-  public void deliverOutcome(AgentId agentId, EffectOutcome outcome, String traceContext) {
+  public void deliverOutcome(
+      AgentId agentId, Optional<TurnId> turn, EffectOutcome outcome, String traceContext) {
     log.debug(
         "[{}] delivering {} to agent {}",
         agentType.value(),
@@ -224,7 +227,7 @@ final class DefaultQueuedHarness<I>
             agentId,
             () -> {
               agents.ensure(agentType, agentId);
-              boolean wrote = apply(agentId, EffectOutcomes.command(outcome), traceContext);
+              boolean wrote = fold(agentId, turn, outcome, traceContext);
               // A turn that ended leaves the agent idle, and the next thing waiting becomes
               // the next turn -- here, before this transaction commits.
               return wrote
@@ -233,6 +236,37 @@ final class DefaultQueuedHarness<I>
     if (nudge) {
       dispatch();
     }
+  }
+
+  /**
+   * Folds one outcome into the turn it answers.
+   *
+   * <p>An outcome whose row could not be decoded names no turn, and the only turn it can be
+   * attributed to is the one the agent is on -- which is what the fold used to assume of every
+   * outcome, and the reason a late answer could be written down as somebody else's. An idle or
+   * ended agent has no turn at all, so there is nothing such an outcome could settle.
+   */
+  private boolean fold(
+      AgentId agentId, Optional<TurnId> turn, EffectOutcome outcome, String trace) {
+    Optional<TurnId> answered = turn.or(() -> turnOf(reconstitute(agentId)));
+    if (answered.isEmpty()) {
+      log.debug(
+          "[{}] agent {} is not on a turn; {} settles nothing",
+          agentType.value(),
+          agentId.value(),
+          outcome.getClass().getSimpleName());
+      return false;
+    }
+    return apply(agentId, EffectOutcomes.command(answered.get(), outcome), trace);
+  }
+
+  /** The turn an agent is on, if it is on one. */
+  private static Optional<TurnId> turnOf(AgentState state) {
+    return switch (state) {
+      case AgentState.Inferring inferring -> Optional.of(inferring.turn());
+      case AgentState.AwaitingActions awaiting -> Optional.of(awaiting.turn());
+      case AgentState.Idle _, AgentState.Terminal _ -> Optional.empty();
+    };
   }
 
   /**

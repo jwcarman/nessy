@@ -17,7 +17,9 @@ package org.jwcarman.nessy.engine.agent;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import java.util.Objects;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
 
@@ -27,6 +29,13 @@ import org.jwcarman.nessy.api.tool.ToolName;
  *
  * <p>An effect says what to do and nothing about how to run it: no retry policy, no timeout. Those
  * are terms of the binding it came from and travel in an {@link EffectRequest} alongside it.
+ *
+ * <p><b>Every effect names the turn that emitted it</b>, and it is the first thing each one says.
+ * The fold always knows its own turn when it decides an effect is owed, and an outcome delivered
+ * back has to be able to say which turn it answers -- otherwise a late answer for a turn that has
+ * already closed is written down as the current turn's, and the caller driving that current turn is
+ * handed somebody else's answer. The turn rides inside the serialized effect, so the queued door's
+ * round trip through the outbox brings it back with no column of its own.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonSubTypes({
@@ -36,6 +45,29 @@ import org.jwcarman.nessy.api.tool.ToolName;
 })
 public sealed interface AgentEffect {
 
+  /** The turn this effect was emitted in, and the only turn an answer to it may settle. */
+  TurnId turn();
+
+  /**
+   * Every arm rejects a missing turn, and the reason is a deploy rather than a bug.
+   *
+   * <p>An effect row is bytes written by whichever build was running when the fold emitted it, so a
+   * row queued before the turn existed decodes with a null one. Letting that through would carry
+   * the null to the fold's own guard, where {@code done.turn().equals(turn)} throws -- inside the
+   * lock, inside the transaction, on a path with nothing to catch it, leaving the agent waiting
+   * forever on an effect nobody will retire.
+   *
+   * <p>Failing here instead makes such a row fail to DECODE, which is a case the dispatcher already
+   * handles: it delivers the failure blob stored beside the payload and retires the row, so the
+   * agent is told the effect is undispatchable rather than stranded. {@code nessy_agent_effect}'s
+   * own schema anticipates exactly this -- "a rolled-back deploy leaves rows naming an effect type
+   * the running build has never heard of" -- and a row missing its turn is the same situation
+   * arriving by a different route.
+   */
+  private static TurnId required(TurnId turn) {
+    return Objects.requireNonNull(turn, "turn must not be null");
+  }
+
   /**
    * Ask the model to answer, given the conversation so far.
    *
@@ -43,7 +75,11 @@ public sealed interface AgentEffect {
    * executes this needs nothing but the row: the request is exactly what the fold decided it should
    * be, even if the agent has moved on since.
    */
-  record Infer() implements AgentEffect {}
+  record Infer(TurnId turn) implements AgentEffect {
+    public Infer {
+      turn = required(turn);
+    }
+  }
 
   /**
    * Run one tool the model asked for.
@@ -64,11 +100,17 @@ public sealed interface AgentEffect {
    * read the story to find out what it is worth, which is a query inside the one transaction that
    * must not grow. Everything else about the call stays where it was written once.
    *
+   * @param turn the turn that asked for this call
    * @param requestSeq the seq of the {@code InferenceRequestedActions} entry holding the call
    * @param callId which call within it, by the id the model gave it
    * @param toolName what the model asked for, which may no longer be bound to anything
    */
-  record CallTool(Seq requestSeq, CallId callId, ToolName toolName) implements AgentEffect {}
+  record CallTool(TurnId turn, Seq requestSeq, CallId callId, ToolName toolName)
+      implements AgentEffect {
+    public CallTool {
+      turn = required(turn);
+    }
+  }
 
   /**
    * Find out whether one call may run.
@@ -89,5 +131,10 @@ public sealed interface AgentEffect {
    * the conversation, and the model has no use for it; permission refused is, and that is what
    * {@code ToolDenied} is for.
    */
-  record Approve(Seq requestSeq, CallId callId, ToolName toolName) implements AgentEffect {}
+  record Approve(TurnId turn, Seq requestSeq, CallId callId, ToolName toolName)
+      implements AgentEffect {
+    public Approve {
+      turn = required(turn);
+    }
+  }
 }

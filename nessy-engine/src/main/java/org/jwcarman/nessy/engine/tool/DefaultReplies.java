@@ -141,7 +141,7 @@ public final class DefaultReplies implements Replies {
     }
 
     AgentId agentId = new AgentId(where.agentId());
-    Optional<Attempt> found = find(bound, agentId, where, expected);
+    Optional<Awaiting> found = find(bound, agentId, where, expected);
     if (found.isEmpty()) {
       // Answered already, expired at its deadline, or settled a moment sooner by something
       // else. One answer for a caller, because the three are the same news.
@@ -153,11 +153,14 @@ public final class DefaultReplies implements Replies {
       return new ReplyOutcome.NotAwaiting();
     }
 
-    Attempt attempt = found.get();
+    Attempt attempt = found.get().attempt();
     bound
         .callback()
         .deliverOutcome(
             agentId,
+            // The turn the row itself named when it was written, so an answer that arrives after
+            // its turn has closed settles nothing rather than settling the current one.
+            Optional.of(found.get().effect().turn()),
             outcome.of(where.callId(), attempt, bound.payloads().forAgent(agentId)),
             attempt.traceContext());
     if (!bound.effects().complete(attempt.effectId(), attempt.attemptsMade())) {
@@ -180,7 +183,7 @@ public final class DefaultReplies implements Replies {
    * very most -- and an unreadable payload is simply not a match: a row nobody can decode is one
    * its own deadline will deal with.
    */
-  private Optional<Attempt> find(
+  private Optional<Awaiting> find(
       Bound bound,
       AgentId agentId,
       ReplyTokens.Coordinates where,
@@ -194,18 +197,26 @@ public final class DefaultReplies implements Replies {
         continue;
       }
       if (expected.isInstance(effect) && names(effect, where)) {
-        return Optional.of(attempt);
+        return Optional.of(new Awaiting(attempt, effect));
       }
     }
     return Optional.empty();
   }
 
+  /**
+   * The row this answer settles, and what it was decoded to say.
+   *
+   * <p>Both, because the row carries the trace and the fence while only the decoded effect carries
+   * the turn -- and decoding it twice to get the second would be a second chance to disagree.
+   */
+  private record Awaiting(Attempt attempt, AgentEffect effect) {}
+
   /** Whether an effect is for the call these coordinates name. */
   private static boolean names(AgentEffect effect, ReplyTokens.Coordinates where) {
     return switch (effect) {
-      case AgentEffect.Approve(Seq requestSeq, CallId callId, _) ->
+      case AgentEffect.Approve(_, Seq requestSeq, CallId callId, _) ->
           requestSeq.equals(where.requestSeq()) && callId.equals(where.callId());
-      case AgentEffect.CallTool(Seq requestSeq, CallId callId, _) ->
+      case AgentEffect.CallTool(_, Seq requestSeq, CallId callId, _) ->
           requestSeq.equals(where.requestSeq()) && callId.equals(where.callId());
       // Nothing else can be deferred, so nothing else can be answered late.
       case AgentEffect.Infer _ -> false;

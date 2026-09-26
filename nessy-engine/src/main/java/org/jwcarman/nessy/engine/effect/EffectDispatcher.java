@@ -19,6 +19,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledFuture;
@@ -29,6 +30,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.RetryDecision;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
@@ -268,9 +270,9 @@ public class EffectDispatcher {
   private static String spanNameOf(AgentEffect effect) {
     return switch (effect) {
       case AgentEffect.Infer _ -> "nessy.effect infer";
-      case AgentEffect.Approve(_, _, ToolName toolName) ->
+      case AgentEffect.Approve(_, _, _, ToolName toolName) ->
           "nessy.effect approve " + toolName.value();
-      case AgentEffect.CallTool(_, _, ToolName toolName) ->
+      case AgentEffect.CallTool(_, _, _, ToolName toolName) ->
           "nessy.effect call_tool " + toolName.value();
     };
   }
@@ -295,14 +297,10 @@ public class EffectDispatcher {
   }
 
   private void performInTrace(Attempt attempt) {
-    // Before the payload is even read. A row is claimed at its deadline rather than filtered
-    // out of the claim, because a row nobody claims is a row nobody retires -- and its agent
-    // waits forever. Coming due at the deadline means coming due to be given up on.
-    if (!clock.instant().isBefore(attempt.deadline())) {
-      expired(attempt);
-      return;
-    }
-
+    // Decoded before the deadline is even looked at, because the turn to deliver an outcome to is
+    // inside the effect and an expired row owes its agent that outcome just as much as a performed
+    // one does. A row that cannot be decoded is undispatchable whether its deadline has passed or
+    // not, so nothing is lost by asking in this order.
     AgentEffect effect;
     try {
       effect = effects.effectOf(attempt);
@@ -322,6 +320,14 @@ public class EffectDispatcher {
       return;
     }
 
+    // A row is claimed at its deadline rather than filtered out of the claim, because a row
+    // nobody claims is a row nobody retires -- and its agent waits forever. Coming due at the
+    // deadline means coming due to be given up on.
+    if (!clock.instant().isBefore(attempt.deadline())) {
+      expired(attempt, effect.turn());
+      return;
+    }
+
     traces.nameCurrent(spanNameOf(effect));
     try {
       log.debug(
@@ -335,7 +341,8 @@ public class EffectDispatcher {
           // The outcome is folded first: if that commits and this crashes, the row comes
           // due again, is performed again, and the fold recognises the redelivery and
           // ignores it.
-          callback.deliverOutcome(attempt.agentId(), outcome, attempt.traceContext());
+          callback.deliverOutcome(
+              attempt.agentId(), Optional.of(effect.turn()), outcome, attempt.traceContext());
           retire(attempt, "performed");
         }
         // Neither delivered nor retired nor rescheduled -- the row is left exactly as it
@@ -378,7 +385,7 @@ public class EffectDispatcher {
    * row stays and comes back, on the same principle as giving up: ending the attempts while the
    * agent is still waiting is the one outcome worse than trying again.
    */
-  private void expired(Attempt attempt) {
+  private void expired(Attempt attempt, TurnId turn) {
     EffectOutcome outcome;
     try {
       outcome = effects.failureOf(attempt);
@@ -393,7 +400,8 @@ public class EffectDispatcher {
       return;
     }
     try {
-      callback.deliverOutcome(attempt.agentId(), outcome, attempt.traceContext());
+      callback.deliverOutcome(
+          attempt.agentId(), Optional.of(turn), outcome, attempt.traceContext());
     } catch (RuntimeException e) {
       log.error(
           "[{}] could not tell agent {} that effect {} passed its deadline; keeping"
@@ -419,11 +427,16 @@ public class EffectDispatcher {
    * understood first, because "understanding the payload" is the thing that just failed. If even
    * this will not decode there is nothing left to try: two independent blobs have gone, and the row
    * is retired with an error rather than left to be picked up forever.
+   *
+   * <p>The one delivery that cannot name the turn it answers: the turn lives in the effect, and the
+   * effect is exactly what would not decode. So the fold is left to attribute it to whatever turn
+   * the agent is on, which is the best a corrupt row can do and no worse than what every delivery
+   * did before the turn rode along.
    */
   private void undispatchable(Attempt attempt) {
     try {
       callback.deliverOutcome(
-          attempt.agentId(), effects.failureOf(attempt), attempt.traceContext());
+          attempt.agentId(), Optional.empty(), effects.failureOf(attempt), attempt.traceContext());
     } catch (RuntimeException e) {
       log.error(
           "[{}] effect {} has no readable failure response either; its agent will"
@@ -498,7 +511,8 @@ public class EffectDispatcher {
     // it, which is the whole of what an attempt that ran and threw knows.
     EffectOutcome outcome = handlers.termsFor(effect).failed(cause);
     try {
-      callback.deliverOutcome(attempt.agentId(), outcome, attempt.traceContext());
+      callback.deliverOutcome(
+          attempt.agentId(), Optional.of(effect.turn()), outcome, attempt.traceContext());
     } catch (RuntimeException e) {
       // Giving up and failing to say so are not the same thing. Retiring the row here would
       // end the attempts and leave the agent waiting forever, so the obligation stays and

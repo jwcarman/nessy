@@ -176,9 +176,14 @@ public final class EffectTermsSource {
   /**
    * One inference's terms. Uniform for the agent type, so one instance answers every call.
    *
-   * <p>{@code undispatchable()}'s category is left exactly as {@link InferenceHandler} stated it
-   * before this moved -- {@code Failure.Permanent}, not {@code Failure.Unknown} -- because whether
-   * that should change is an open question (design record §14 Q7) still awaiting an answer.
+   * <p>{@code undispatchable()} reports {@link Failure.Unknown}, which is the whole point of the
+   * category: a deadline passing says only that no answer arrived in time, never that the model
+   * declined to answer or that the call never reached it. The provider may have served the request
+   * and the tokens may already be spent. {@code Failure.Permanent} would assert something nobody
+   * here is in a position to know.
+   *
+   * <p>This is the category a recovering caller writes down for an abandoned turn, so it is also
+   * what anyone reading the stream later sees for a turn whose process died mid-inference.
    */
   private record InferenceTerms(Duration timeout, RetryPolicy retryPolicy) implements EffectTerms {
 

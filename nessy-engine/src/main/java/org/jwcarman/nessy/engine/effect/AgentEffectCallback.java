@@ -15,7 +15,9 @@
  */
 package org.jwcarman.nessy.engine.effect;
 
+import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
 
 /**
@@ -38,8 +40,14 @@ public interface AgentEffectCallback {
    * two leaves a row that comes due again -- and the fold, seeing no call outstanding, ignores the
    * second delivery rather than answering twice.
    *
+   * @param turn the turn whose effect this answers, read off the effect row itself -- the fold
+   *     ignores an outcome that names a turn it is not on, which is what stops a late answer being
+   *     written down as the current turn's. Empty only when the effect row could not be decoded at
+   *     all, and there is therefore nothing to read the turn from; the fold then settles for
+   *     whatever turn the agent is on, which is all a corrupt row can support.
    * @param traceContext the trace of the effect this answers, so whatever the outcome causes stays
    *     in the same turn's trace; null when that effect had none
    */
-  void deliverOutcome(AgentId agentId, EffectOutcome outcome, String traceContext);
+  void deliverOutcome(
+      AgentId agentId, Optional<TurnId> turn, EffectOutcome outcome, String traceContext);
 }

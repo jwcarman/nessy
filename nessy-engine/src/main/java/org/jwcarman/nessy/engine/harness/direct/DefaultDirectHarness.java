@@ -15,11 +15,13 @@
  */
 package org.jwcarman.nessy.engine.harness.direct;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -37,6 +39,7 @@ import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
@@ -45,6 +48,7 @@ import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
+import org.jwcarman.nessy.engine.agent.Outstanding;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
@@ -56,15 +60,37 @@ import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * A turn, run on the calling thread.
+ * A turn, run as a sequence of short locked steps with the slow work performed between them.
  *
- * <p>The whole harness is the loop in {@link #ask}: hand the state a command, keep the facts it
- * produced, run whatever work came back, and turn each outcome into the next command. What a queued
- * harness spreads across a transaction, an outbox and a poller happens here between two statements,
- * and {@link AgentState} cannot tell the difference.
+ * <p><b>N short locked transactions, never one held across a turn.</b> Each step -- reconstitute
+ * the agent from {@link AgentEvents#sinceLastTurnStarted}, decide, append -- happens under {@link
+ * Locks#withLock}, which {@link org.jwcarman.nessy.engine.jdbc.JdbcRowLocks} turns into one short
+ * database transaction. The effect a step decided on -- an inference, an approval, a tool call --
+ * is then performed with the lock released and no transaction open, and its outcome becomes the
+ * next step's command. No state is carried across a release: every step re-reads the agent under
+ * its own lock (design record {@code 2026-09-25-locks-as-plumbing}, §3).
  *
- * <p>Note what is absent: no backlog, no coalescing, no claims, no leases, no deferral. Not
- * forbidden -- nothing in this world can produce them.
+ * <p><b>The phase check is the guard, not the lock.</b> A hold is now a read, an append and a
+ * commit -- a few milliseconds -- against a turn that runs for seconds, so a lock refusal would
+ * catch a vanishing fraction of collisions. This door therefore never uses {@link
+ * Locks#tryWithLock}: it waits (§3a), and what decides whether a caller may proceed is what the
+ * reconstituted state says once the wait is over. An agent that reconstitutes {@link
+ * AgentState.Terminal} is refused; one reconstituted to anything but {@link AgentState.Idle} --
+ * unless {@link #recoverToIdle} finds the thing it is waiting on overdue -- is told {@link
+ * Outcome.Busy}.
+ *
+ * <p><b>Lazy recovery, by deadline, never by phase age.</b> A dead process leaves an agent on a
+ * busy phase forever; the next caller to arrive reads not just the phase but when it started
+ * ({@link AgentEvents#writtenAt}), compares that against the deadline {@link EffectHandlers} would
+ * enforce for the thing being waited on, and -- if it has passed -- discharges it with {@link
+ * EffectTerms#undispatchable()} in the same locked step before going on with its own turn (§4d).
+ * Recovery performs nothing itself: discharging the last outstanding call can hand back an {@code
+ * Infer} effect ({@link AgentState.AwaitingActions#discharge}), which is overdue by construction
+ * the moment it appears, so {@link #recoverToIdle} discharges that too, in the same step, until the
+ * agent is {@link AgentState.Idle}.
+ *
+ * <p>Note what is absent: no backlog, no coalescing, no claims, no leases, no deferral, and now no
+ * outer lock either. Not forbidden -- nothing in this world can produce them.
  *
  * <p><b>What performs an effect is {@link EffectHandlers}, the same one the queued door dispatches
  * through.</b> This door does not know how to call a model, ask an approver or run a tool -- it
@@ -91,6 +117,13 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   private final AgentEvents events;
   private final Payloads payloads;
   private final InputRenderer<I> renderer;
+
+  /**
+   * What a deadline recovery enforces is measured from -- the same clock {@link EffectHandlers}'
+   * own collaborators use, so the number recovery compares against {@link AgentEvents#writtenAt} is
+   * the same number a live effect's own timeout would have used.
+   */
+  private final Clock clock;
 
   /**
    * How an answered event becomes {@code O}, bound once rather than per call: for an unstructured
@@ -137,6 +170,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       AgentType agentType,
       AgentEvents events,
       Payloads payloads,
+      Clock clock,
       InputRenderer<I> renderer,
       BiFunction<AgentId, AgentEvent.InferenceAnswered, Outcome<O>> reading,
       Narrator narrator,
@@ -146,6 +180,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     this.agentType = agentType;
     this.events = events;
     this.payloads = payloads;
+    this.clock = Objects.requireNonNull(clock, "clock must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
     this.reading = Objects.requireNonNull(reading, "reading must not be null");
     this.narrator = Objects.requireNonNull(narrator, "narrator must not be null");
@@ -155,87 +190,272 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   @Override
   public Outcome<O> ask(AgentId agent, I input) {
-    return under(agent, () -> runTurn(agent, input));
-  }
-
-  /** One turn at a time per agent. */
-  private Outcome<O> under(AgentId agent, Supplier<Outcome<O>> turn) {
-    // Two callers asking at once used to race on that agent's stream and find out at the append;
-    // now the second is told the agent is busy and nothing it did has to be undone. expectedLast
-    // still guards the append, because a lease can expire under a holder that is merely slow --
-    // this stops two callers, that stops two writers.
-    return locks.tryWithLock(Locks.TURN, agentType, agent, turn).orElse(new Outcome.Busy<>());
-  }
-
-  private Outcome<O> runTurn(AgentId agent, I input) {
-    // TWO READS, and they are not the same read.
-    //
-    // The state is rebuilt from the watermark alone -- the latest turn, and nothing before it.
-    // That is what the watermark is for: reconstitution costs one turn's events however long this
-    // agent has lived, so a conversation of a thousand turns rebuilds as fast as its first.
-    //
-    // The transcript is a different question. What the model is shown is the conversation, which
-    // is every turn before this one as well, so it takes its own read. Using the last turn for
-    // both is what made a second ask forget the first.
-    // Content is kept per agent, so everything this turn puts away or reads back goes through a
-    // view of the store that knows whose it is.
-    Payloads content = payloads.forAgent(agent);
-
-    List<AgentEvent> lastTurn = events.sinceLastTurnStarted(agent);
-    Seq from = lastTurn.isEmpty() ? Seq.NONE : previous(lastTurn.getFirst().seq());
-    AgentState state = AgentState.idle(from).applyAll(lastTurn);
-
-    // Asked of an agent that has ended. The core refuses this loudly, and rightly -- silently
-    // swallowing it is what costs somebody an afternoon -- but loudly is for a programming error
-    // reaching the fold, not for a caller who is owed an answer. This door always has one waiting,
-    // so the refusal is the answer rather than an exception out of a request thread.
-    if (state instanceof AgentState.Terminal) {
-      LOG.debug("[{}] agent {} has ended; the question is refused", agentType.value(), agent);
-      return new Outcome.Refused<>("terminated");
-    }
-
-    // TODO: unwindowed. ContextConfig.maxTail is the knob this should hang off; until it does, a
-    // long conversation sends the model all of it.
-    List<AgentEvent> history = new ArrayList<>(events.readFrom(agent, Seq.NONE));
-
-    // Claim-checked before it reaches the core, which never sees I and never sees blocks.
-    Deque<AgentCommand> pending = new ArrayDeque<>();
-    pending.add(new AgentCommand.StartTurn(content.put(renderer.render(input))));
-
-    while (!pending.isEmpty()) {
-      Decision decision = state.execute(pending.poll());
-
-      // expectedLast is vacuous here -- nothing else writes this agent -- and load-bearing for a
-      // queued harness using the same seam. One signature rather than two.
-      events.append(agent, decision.events(), state.seq());
-      decision.events().forEach(event -> narrate(agent, event));
-      history.addAll(decision.events());
-      state = state.applyAll(decision.events());
-
-      for (AgentEffect effect : decision.effects()) {
-        pending.add(perform(agent, effect));
-      }
-    }
-
-    return outcome(agent, history);
+    // renderer.render is pure and can run outside the lock; only the payload write it feeds has to
+    // happen inside the first locked step, after the phase check, so a declined caller writes no
+    // payload at all (§3, §4d).
+    List<Block.InputContent> rendered = renderer.render(input);
+    StepResult<O> first =
+        locks.withLock(Locks.TURN, agentType, agent, () -> beginTurn(agent, rendered));
+    return switch (first) {
+      case StepResult.Declined<O> declined -> declined.outcome();
+      case StepResult.Advanced<O> advanced -> drive(agent, advanced.turn(), advanced.effects());
+    };
   }
 
   @Override
   public void terminate(AgentId agent) {
-    // Under the same lock as a turn, because the core only takes Terminate from Idle: asking
-    // while a turn is running would be declined silently, and waiting for the turn is not this
-    // door's habit. A caller that was refused the lock asks again once the turn it saw has ended.
-    locks.tryWithLock(
+    // The core only takes Terminate from Idle: asking while a turn is running is declined by the
+    // fold itself (Decision.ignore()), and waiting for the turn is not this door's habit.
+    locks.withLock(
         Locks.TURN,
         agentType,
         agent,
         () -> {
-          List<AgentEvent> lastTurn = events.sinceLastTurnStarted(agent);
-          Seq from = lastTurn.isEmpty() ? Seq.NONE : previous(lastTurn.getFirst().seq());
-          AgentState state = AgentState.idle(from).applyAll(lastTurn);
+          AgentState state = reconstitute(agent);
           Decision decision = state.execute(new AgentCommand.Terminate());
           events.append(agent, decision.events(), state.seq());
         });
+  }
+
+  /**
+   * The first locked step of a turn: the phase check, lazy recovery, and -- only once the agent is
+   * genuinely {@link AgentState.Idle} -- the payload write and {@code TurnStarted}.
+   *
+   * <p>A {@link AgentState.Terminal} agent is refused outright, never told {@link Outcome.Busy};
+   * that refusal is what the door already gave before this step existed. Anything else that is not
+   * {@link AgentState.Idle} goes through {@link #recoverToIdle}, which either proves the agent idle
+   * -- because whatever it was waiting on had already passed its own deadline -- or reports that it
+   * is genuinely busy.
+   */
+  private StepResult<O> beginTurn(AgentId agent, List<Block.InputContent> rendered) {
+    AgentState state = reconstitute(agent);
+    if (state instanceof AgentState.Terminal) {
+      LOG.debug("[{}] agent {} has ended; the question is refused", agentType.value(), agent);
+      return StepResult.declined(new Outcome.Refused<>("terminated"));
+    }
+    return switch (recoverToIdle(agent, state)) {
+      case RecoveryOutcome.Busy() -> StepResult.declined(new Outcome.Busy<>());
+      case RecoveryOutcome.Recovered(AgentState.Idle idle) -> {
+        Payloads content = payloads.forAgent(agent);
+        Decision decision = idle.execute(new AgentCommand.StartTurn(content.put(rendered)));
+        events.append(agent, decision.events(), idle.seq());
+        decision.events().forEach(event -> narrate(agent, event));
+        TurnId turn = ((AgentEvent.TurnStarted) decision.events().getFirst()).turn();
+        yield StepResult.advanced(turn, decision.effects());
+      }
+    };
+  }
+
+  /**
+   * A single locked step for a command that continues a turn this caller is already driving -- the
+   * completion of an inference, an approval or a tool call.
+   *
+   * <p>Reconstitutes independently of whatever this caller last saw, exactly as every other step
+   * does. A {@link AgentState.Terminal} read here is not this door's problem to solve: nothing this
+   * caller does next can matter to an agent nobody else can reach any more, so the step is a no-op
+   * rather than the loud refusal {@link AgentState.Terminal#execute} would otherwise throw.
+   */
+  private Decision executeStep(AgentId agent, AgentCommand command) {
+    AgentState state = reconstitute(agent);
+    if (state instanceof AgentState.Terminal) {
+      return Decision.ignore();
+    }
+    Decision decision = state.execute(command);
+    events.append(agent, decision.events(), state.seq());
+    decision.events().forEach(event -> narrate(agent, event));
+    return decision;
+  }
+
+  /**
+   * Performs each effect the first step produced, and every effect each following step produces in
+   * turn, with a fresh short locked step -- and no lock -- between one and the next.
+   *
+   * <p><b>The final read is by turn, not by "whatever this caller last saw".</b> {@link #outcome}
+   * re-reads the whole stream and looks for {@code turn}'s own terminal event rather than trusting
+   * the last {@link Decision} this loop produced: a step near the end of a turn can be genuinely
+   * {@link Decision#ignore()} -- a slow-but-alive original whose own completion lost a race with a
+   * recovery that already discharged the same phase (§4d) -- and that caller still owes its caller
+   * an answer, which is whatever the stream says {@code turn} itself came to, not an exception.
+   */
+  private Outcome<O> drive(AgentId agent, TurnId turn, List<AgentEffect> firstEffects) {
+    Deque<AgentEffect> pending = new ArrayDeque<>(firstEffects);
+    while (!pending.isEmpty()) {
+      AgentCommand command = perform(agent, pending.poll());
+      Decision decision =
+          locks.withLock(Locks.TURN, agentType, agent, () -> executeStep(agent, command));
+      pending.addAll(decision.effects());
+    }
+    return outcome(agent, turn);
+  }
+
+  /**
+   * Discharges whatever an out-of-phase agent is waiting on, for as long as each thing it finds is
+   * overdue, and reports whether that leaves the agent {@link AgentState.Idle}.
+   *
+   * <p><b>Recovery performs nothing.</b> Every step here is fold and append, exactly like any other
+   * step this door takes -- no model is called, no tool runs, no person is asked, on this caller's
+   * behalf or anyone else's. {@link AgentState.AwaitingActions#discharge} can hand back an {@code
+   * Infer} effect once its last call is gone; nobody is going to perform that inference, so the
+   * loop below reaches it on its next pass and discharges it too (design record §4d).
+   *
+   * <p><b>Which is why the deadline check applies only to the phase this pass FIRST found.</b> That
+   * phase is the one that distinguishes an abandoned agent from a live one, and a caller who finds
+   * it inside its deadline is told {@link Outcome.Busy}. A phase recovery itself produced is a
+   * different thing entirely: it was written a moment ago, so a deadline would call it live, and
+   * nothing holds it -- the effect it implies was decided here and this method performs nothing.
+   * Checked, it would leave the agent {@code Inferring} with nobody to answer for it until the
+   * whole inference timeout had run, and the turn without the terminal event its original caller is
+   * waiting to read.
+   */
+  private RecoveryOutcome recoverToIdle(AgentId agent, AgentState state) {
+    AgentState current = state;
+    boolean dischargedSomething = false;
+    while (!(current instanceof AgentState.Idle)) {
+      Optional<AgentCommand> discharge = discharging(agent, current, dischargedSomething);
+      if (discharge.isEmpty()) {
+        return new RecoveryOutcome.Busy();
+      }
+      dischargedSomething = true;
+      Decision decision = current.execute(discharge.get());
+      events.append(agent, decision.events(), current.seq());
+      decision.events().forEach(event -> narrate(agent, event));
+      current = current.applyAll(decision.events());
+    }
+    return new RecoveryOutcome.Recovered((AgentState.Idle) current);
+  }
+
+  /**
+   * The same question, and the one exception to it: a phase this pass produced itself is not
+   * checked against a clock at all.
+   */
+  private Optional<AgentCommand> discharging(
+      AgentId agent, AgentState state, boolean alreadyDischarged) {
+    // An inference reached after this pass has already discharged something can only have come
+    // from AwaitingActions giving up its last call, because discharging an inference leaves the
+    // agent idle. So this inference is recovery's own: nothing holds it, and it is overdue by
+    // construction rather than by the clock.
+    if (alreadyDischarged && state instanceof AgentState.Inferring reopened) {
+      return Optional.of(undispatchable(reopened.turn(), handlers.termsFor(infer(reopened))));
+    }
+    return overdueDischarge(agent, state);
+  }
+
+  /**
+   * What {@code state} is waiting on, discharged with {@link EffectTerms#undispatchable()} if --
+   * and only if -- it has already passed its own deadline; empty if it has not, which is what makes
+   * the caller's answer {@link Outcome.Busy} rather than a recovery.
+   */
+  private Optional<AgentCommand> overdueDischarge(AgentId agent, AgentState state) {
+    return switch (state) {
+      case AgentState.Inferring inferring -> overdueInference(agent, inferring);
+      case AgentState.AwaitingActions awaiting -> overdueCall(agent, awaiting);
+      // Neither is reachable: the loop in recoverToIdle stops on Idle, and beginTurn refuses a
+      // Terminal agent before recovery is consulted. Stated as arms rather than a default so that
+      // a new phase on AgentState stops this compiling instead of reaching the throw.
+      case AgentState.Idle _, AgentState.Terminal _ ->
+          throw new IllegalStateException("recovery reached an unexpected phase: " + state);
+    };
+  }
+
+  private Optional<AgentCommand> overdueInference(AgentId agent, AgentState.Inferring inferring) {
+    EffectTerms terms = handlers.termsFor(infer(inferring));
+    Instant started = events.writtenAt(agent, inferring.seq());
+    return isOverdue(started, terms)
+        ? Optional.of(undispatchable(inferring.turn(), terms))
+        : Optional.empty();
+  }
+
+  /**
+   * The inference an {@link AgentState.Inferring} agent is waiting on, so its terms can be read.
+   */
+  private static AgentEffect.Infer infer(AgentState.Inferring inferring) {
+    return new AgentEffect.Infer(inferring.turn());
+  }
+
+  /** Work nobody performed, as the completion of the turn that is owed it. */
+  private static AgentCommand undispatchable(TurnId turn, EffectTerms terms) {
+    return EffectOutcomes.command(turn, terms.undispatchable());
+  }
+
+  /** The first outstanding call whose own deadline has passed, if there is one. */
+  private Optional<AgentCommand> overdueCall(AgentId agent, AgentState.AwaitingActions awaiting) {
+    for (Outstanding outstanding : awaiting.outstanding().values()) {
+      AgentEffect effect = effectFor(awaiting.turn(), awaiting.requestSeq(), outstanding);
+      EffectTerms terms = handlers.termsFor(effect);
+      Instant started = events.writtenAt(agent, outstanding.since());
+      if (isOverdue(started, terms)) {
+        return Optional.of(undispatchable(awaiting.turn(), terms));
+      }
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * The effect one outstanding call implies, so its terms can be looked up the way §4c does.
+   *
+   * <p>A pattern switch rather than a cast, because {@link ActionRequest} is deliberately a grammar
+   * with room for an arm beside {@code ToolCall}: on the day one arrives, this has to stop
+   * compiling. A cast would instead have kept compiling and thrown here at recovery time, which is
+   * the least observable moment in this class to learn about it.
+   */
+  private static AgentEffect effectFor(TurnId turn, Seq requestSeq, Outstanding outstanding) {
+    return switch (outstanding.action()) {
+      case ActionRequest.ToolCall(var id, var name) ->
+          switch (outstanding.phase()) {
+            case AWAITING_APPROVAL -> new AgentEffect.Approve(turn, requestSeq, id, name);
+            case RUNNING -> new AgentEffect.CallTool(turn, requestSeq, id, name);
+          };
+    };
+  }
+
+  private boolean isOverdue(Instant started, EffectTerms terms) {
+    return started.plus(terms.timeout()).isBefore(clock.instant());
+  }
+
+  /**
+   * Where an idle state has to sit for the first replayed event to be accepted.
+   *
+   * <p>The fold refuses an event at or before its own position, so replay starts one short of the
+   * turn it is about to apply. Nothing is stored to say where that is -- the events carry it.
+   */
+  private static Seq previous(Seq seq) {
+    return seq.value() <= 1 ? Seq.NONE : new Seq(seq.value() - 1);
+  }
+
+  /** The agent, rebuilt from its last turn alone -- one read every locked step starts with. */
+  private AgentState reconstitute(AgentId agent) {
+    List<AgentEvent> lastTurn = events.sinceLastTurnStarted(agent);
+    Seq from = lastTurn.isEmpty() ? Seq.NONE : previous(lastTurn.getFirst().seq());
+    return AgentState.idle(from).applyAll(lastTurn);
+  }
+
+  /**
+   * What one locked step of a turn's opening command came to: either a caller who was told no --
+   * {@link Outcome.Refused} or {@link Outcome.Busy} -- or a turn genuinely under way.
+   */
+  private sealed interface StepResult<O> {
+
+    record Declined<O>(Outcome<O> outcome) implements StepResult<O> {}
+
+    record Advanced<O>(TurnId turn, List<AgentEffect> effects) implements StepResult<O> {}
+
+    static <O> StepResult<O> declined(Outcome<O> outcome) {
+      return new Declined<>(outcome);
+    }
+
+    static <O> StepResult<O> advanced(TurnId turn, List<AgentEffect> effects) {
+      return new Advanced<>(turn, effects);
+    }
+  }
+
+  /**
+   * What {@link #recoverToIdle} came to: still busy, or an {@link AgentState.Idle} to proceed on.
+   */
+  private sealed interface RecoveryOutcome {
+
+    record Busy() implements RecoveryOutcome {}
+
+    record Recovered(AgentState.Idle state) implements RecoveryOutcome {}
   }
 
   /**
@@ -250,14 +470,20 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    */
   private AgentCommand perform(AgentId agent, AgentEffect effect) {
     EffectTerms terms = handlers.termsFor(effect);
+    // The turn comes off the effect, which is the only thing that knows it: this loop's own turn
+    // is the same one, but an outcome has to name the turn that ASKED for the work rather than
+    // whichever turn the agent happens to be in by the time the answer lands.
+    TurnId turn = effect.turn();
     return within(
+        turn,
         terms,
         () ->
             switch (handlers.perform(agent, effect)) {
               case Awaited.Ready<EffectOutcome>(EffectOutcome outcome) ->
-                  EffectOutcomes.command(outcome);
+                  EffectOutcomes.command(turn, outcome);
               case Awaited.Deferred<EffectOutcome> _ ->
                   EffectOutcomes.command(
+                      turn,
                       terms.failed(
                           new IllegalStateException(
                               "the effect was deferred, and nothing here can wait for it")));
@@ -284,20 +510,20 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * undispatchable()} is for work nobody performed at all, which belongs to recovery, not to this
    * door.
    */
-  private AgentCommand within(EffectTerms terms, Supplier<AgentCommand> work) {
+  private AgentCommand within(TurnId turn, EffectTerms terms, Supplier<AgentCommand> work) {
     Future<AgentCommand> future = effects.submit(work::get);
     try {
       return future.get(terms.timeout().toMillis(), TimeUnit.MILLISECONDS);
     } catch (TimeoutException expired) {
       future.cancel(true);
       return EffectOutcomes.command(
-          terms.failed(new IllegalStateException("no answer within " + terms.timeout())));
+          turn, terms.failed(new IllegalStateException("no answer within " + terms.timeout())));
     } catch (ExecutionException broken) {
       // A provider that throws rather than returning a Fault -- infer() hands provider.infer(...)
       // to a switch with no try around it -- surfaces here instead of escaping runTurn with the
       // agent stuck Inferring. Delivered the same way an expiry is: attempted, and nobody found out
       // how it went.
-      return EffectOutcomes.command(terms.failed(asRuntimeException(broken.getCause())));
+      return EffectOutcomes.command(turn, terms.failed(asRuntimeException(broken.getCause())));
     } catch (InterruptedException interrupted) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException("interrupted while waiting on " + terms, interrupted);
@@ -306,16 +532,6 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   private static RuntimeException asRuntimeException(Throwable cause) {
     return cause instanceof RuntimeException runtime ? runtime : new RuntimeException(cause);
-  }
-
-  /**
-   * Where an idle state has to sit for the first replayed event to be accepted.
-   *
-   * <p>The fold refuses an event at or before its own position, so replay starts one short of the
-   * turn it is about to apply. Nothing is stored to say where that is -- the events carry it.
-   */
-  private static Seq previous(Seq seq) {
-    return seq.value() <= 1 ? Seq.NONE : new Seq(seq.value() - 1);
   }
 
   /**
@@ -379,19 +595,33 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     narrator.narrate(agentType, agent, event);
   }
 
-  private Outcome<O> outcome(AgentId agent, List<AgentEvent> history) {
-    return history.reversed().stream()
-        .map(event -> asOutcome(agent, event))
+  /**
+   * What {@code turn} itself came to, read fresh from the whole stream rather than trusted from
+   * whatever the last step in this call happened to produce.
+   *
+   * <p>Scoped by {@code turn} on purpose: with the whole-turn lock gone, the most recent terminal
+   * event in the stream is not necessarily this caller's own -- a caller stuck behind a busy phase
+   * proceeds on its own turn once recovered, and a slow-but-alive original can lose the race for
+   * its own completion to that same recovery (§4d). Picking "the latest terminal event" rather than
+   * "this turn's terminal event" is exactly how a caller would end up reading someone else's
+   * answer, which this scoping is what rules out.
+   */
+  private Outcome<O> outcome(AgentId agent, TurnId turn) {
+    return events.readFrom(agent, Seq.NONE).reversed().stream()
+        .map(event -> asOutcome(agent, turn, event))
         .filter(Objects::nonNull)
         .findFirst()
         .orElseThrow(() -> new IllegalStateException("a turn that ended without ending"));
   }
 
-  private Outcome<O> asOutcome(AgentId agent, AgentEvent event) {
+  private Outcome<O> asOutcome(AgentId agent, TurnId turn, AgentEvent event) {
     return switch (event) {
-      case AgentEvent.InferenceAnswered answered -> reading.apply(agent, answered);
-      case AgentEvent.InferenceRefused refused -> new Outcome.Refused<>(refused.category());
-      case AgentEvent.InferenceFailed failed -> new Outcome.Failed<>(failed.failure().reason());
+      case AgentEvent.InferenceAnswered answered when answered.turn().equals(turn) ->
+          reading.apply(agent, answered);
+      case AgentEvent.InferenceRefused refused when refused.turn().equals(turn) ->
+          new Outcome.Refused<>(refused.category());
+      case AgentEvent.InferenceFailed failed when failed.turn().equals(turn) ->
+          new Outcome.Failed<>(failed.failure().reason());
       default -> null;
     };
   }

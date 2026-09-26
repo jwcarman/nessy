@@ -26,6 +26,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledFuture;
@@ -36,6 +37,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
 import org.jwcarman.nessy.engine.store.Attempt;
@@ -342,6 +344,9 @@ class DispatcherFailureTest {
   /** A store that can be asked to fail, one operation at a time. */
   private static final class Effects extends Outbox {
 
+    /** Whatever turn; nothing here folds, so only that the effect names one matters. */
+    private static final TurnId TURN = new TurnId(1);
+
     private EffectHandlers handlers;
     private List<Attempt> due = List.of();
     private RuntimeException claimFails;
@@ -370,7 +375,7 @@ class DispatcherFailureTest {
       if (effectFails != null) {
         throw effectFails;
       }
-      return new AgentEffect.Infer();
+      return new AgentEffect.Infer(TURN);
     }
 
     @Override
@@ -378,7 +383,7 @@ class DispatcherFailureTest {
       if (failureFails != null) {
         throw failureFails;
       }
-      return handlers.termsFor(new AgentEffect.Infer()).undispatchable();
+      return handlers.termsFor(new AgentEffect.Infer(TURN)).undispatchable();
     }
 
     @Override
@@ -400,7 +405,8 @@ class DispatcherFailureTest {
     private final List<EffectOutcome> outcomes = new CopyOnWriteArrayList<>();
 
     @Override
-    public void deliverOutcome(AgentId agentId, EffectOutcome outcome, String traceContext) {
+    public void deliverOutcome(
+        AgentId agentId, Optional<TurnId> turn, EffectOutcome outcome, String traceContext) {
       outcomes.add(outcome);
     }
   }

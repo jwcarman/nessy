@@ -19,12 +19,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -59,6 +61,7 @@ class MisroutedReplyTest {
   private static final AgentType TYPE = new AgentType("replying");
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
   private static final Seq REQUEST = new Seq(42);
+  private static final TurnId TURN = new TurnId(7);
   private static final CallId CALL = new CallId("c1");
   private static final ToolName TOOL = new ToolName("lookup");
 
@@ -93,7 +96,7 @@ class MisroutedReplyTest {
   void anAnswerDeliveredAsItsRowWasTakenOverIsStillSettled() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.Approve(REQUEST, CALL, TOOL);
+    rows.effect = new AgentEffect.Approve(TURN, REQUEST, CALL, TOOL);
     rows.completeWins = false;
 
     assertThat(replies.approve(token(), ApprovalResult.approved()))
@@ -106,7 +109,7 @@ class MisroutedReplyTest {
   void anAnswerForAnotherCallOfTheSameRequestMatchesNothing() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.Approve(REQUEST, new CallId("c2"), TOOL);
+    rows.effect = new AgentEffect.Approve(TURN, REQUEST, new CallId("c2"), TOOL);
 
     assertThat(replies.approve(token(), ApprovalResult.approved()))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);
@@ -118,7 +121,7 @@ class MisroutedReplyTest {
   void anAnswerForTheSameCallOfAnEarlierRequestMatchesNothing() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.Approve(new Seq(7), CALL, TOOL);
+    rows.effect = new AgentEffect.Approve(TURN, new Seq(7), CALL, TOOL);
 
     assertThat(replies.approve(token(), ApprovalResult.approved()))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);
@@ -130,7 +133,7 @@ class MisroutedReplyTest {
   void aResultForAnotherCallOfTheSameRequestMatchesNothing() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.CallTool(REQUEST, new CallId("c2"), TOOL);
+    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, new CallId("c2"), TOOL);
 
     assertThat(replies.complete(token(), ToolResult.ok(new Block.Text("done"))))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);
@@ -140,7 +143,7 @@ class MisroutedReplyTest {
   void aResultForTheSameCallOfAnEarlierRequestMatchesNothing() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.CallTool(new Seq(7), CALL, TOOL);
+    rows.effect = new AgentEffect.CallTool(TURN, new Seq(7), CALL, TOOL);
 
     assertThat(replies.complete(token(), ToolResult.ok(new Block.Text("done"))))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);
@@ -154,7 +157,7 @@ class MisroutedReplyTest {
   void aVerdictCannotSettleACallThatIsAlreadyRunning() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.CallTool(REQUEST, CALL, TOOL);
+    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL);
 
     assertThat(replies.approve(token(), ApprovalResult.approved()))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);
@@ -191,7 +194,7 @@ class MisroutedReplyTest {
   private static final class Rows extends Outbox {
 
     private List<Attempt> running = List.of();
-    private AgentEffect effect = new AgentEffect.Infer();
+    private AgentEffect effect = new AgentEffect.Infer(TURN);
     private RuntimeException effectFails;
     private boolean completeWins = true;
 
@@ -223,7 +226,8 @@ class MisroutedReplyTest {
     private final List<EffectOutcome> outcomes = new CopyOnWriteArrayList<>();
 
     @Override
-    public void deliverOutcome(AgentId agentId, EffectOutcome outcome, String traceContext) {
+    public void deliverOutcome(
+        AgentId agentId, Optional<TurnId> turn, EffectOutcome outcome, String traceContext) {
       outcomes.add(outcome);
     }
   }

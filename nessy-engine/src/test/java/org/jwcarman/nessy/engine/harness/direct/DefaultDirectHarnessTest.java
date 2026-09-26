@@ -18,7 +18,11 @@ package org.jwcarman.nessy.engine.harness.direct;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.micrometer.observation.ObservationRegistry;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -28,7 +32,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.DisplayName;
@@ -45,6 +48,7 @@ import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -54,11 +58,14 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
-import org.jwcarman.nessy.backend.lock.LockKind;
+import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lock.Locks;
-import org.jwcarman.nessy.backend.lock.Locks.Attempt;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.jwcarman.nessy.engine.core.AgentCommand;
+import org.jwcarman.nessy.engine.core.AgentState;
+import org.jwcarman.nessy.engine.core.Decision;
 import org.jwcarman.nessy.engine.inmemory.InMemoryAgentEvents;
 import org.jwcarman.nessy.engine.inmemory.InMemoryLocks;
 import org.jwcarman.nessy.engine.inmemory.InMemoryPayloads;
@@ -88,8 +95,47 @@ class DefaultDirectHarnessTest {
   private static final InputSchemaGenerator SCHEMAS = new VictoolsInputSchemaGenerator();
   private static final ObjectMapper MAPPER = JsonMapper.builder().build();
 
-  private final InMemoryAgentEvents events = new InMemoryAgentEvents();
+  /**
+   * One clock for the store and for every harness built here.
+   *
+   * <p>The two were once different clocks -- the store on the system clock, a recovery test's
+   * harness fixed a day into the future -- and that skew made every row in the store read as
+   * overdue, including the rows recovery writes inside the step it is running. A test has to fail
+   * because the deadline logic is wrong, not because two clocks disagree, so there is one clock and
+   * a test advances it deliberately.
+   */
+  private final AdvanceableClock clock = new AdvanceableClock(Instant.now());
+
+  private final InMemoryAgentEvents events = new InMemoryAgentEvents(clock);
   private final InMemoryPayloads payloads = new InMemoryPayloads();
+
+  /** A clock that stands still until a test moves it, so "overdue" is something a test states. */
+  private static final class AdvanceableClock extends Clock {
+    private Instant now;
+
+    AdvanceableClock(Instant now) {
+      this.now = now;
+    }
+
+    void advance(Duration by) {
+      now = now.plus(by);
+    }
+
+    @Override
+    public Instant instant() {
+      return now;
+    }
+
+    @Override
+    public ZoneId getZone() {
+      return ZoneOffset.UTC;
+    }
+
+    @Override
+    public Clock withZone(ZoneId zone) {
+      throw new UnsupportedOperationException("the test's clock has one zone");
+    }
+  }
 
   /** Answers with whatever it is handed, in order, one per call. */
   private static final class Scripted implements InferenceProvider {
@@ -117,7 +163,8 @@ class DefaultDirectHarnessTest {
                 .payloads(payloads)
                 .provider(model)
                 .schemas(SCHEMAS)
-                .mapper(MAPPER));
+                .mapper(MAPPER)
+                .clock(clock));
   }
 
   private DirectHarness<String, String> harness(InferenceProvider model) {
@@ -383,36 +430,50 @@ class DefaultDirectHarnessTest {
         .isEqualTo(array);
   }
 
+  // Rewritten for design record 2026-09-25-locks-as-plumbing §3/§4: the door no longer refuses a
+  // second caller by failing to acquire the lock -- it waits a few milliseconds for it and then
+  // the phase decides. A Locks stub that always answers Ignored no longer describes anything this
+  // door does (its own withLock would poll that stub forever), so this drives a genuine second
+  // caller into a genuinely busy phase instead: the first caller's inference is left hanging on a
+  // latch, and the second caller reconstitutes that in-flight turn and is told Busy by the phase
+  // check, not by a lock refusal.
   @Test
-  @DisplayName("a second caller on a busy agent is told so, and the agent is untouched")
-  void a_busy_scope_is_refused() {
-    // Refusing every lock is what a held agent looks like from the outside, without needing a
-    // second thread to hold one.
-    Locks held =
-        new Locks() {
-          @Override
-          public <T> Attempt<T> tryWithLock(
-              LockKind kind, AgentType type, AgentId agent, Supplier<T> work) {
-            return new Attempt.Ignored<>();
-          }
-        };
-    DirectHarness<String, String> harness =
-        harness(
-            new Scripted().then(answering("never asked")),
-            List.of(),
-            Approver.allow(),
-            held,
-            MAX_TAIL,
-            List.of());
-
+  @DisplayName(
+      "a second caller on a busy agent is told so, and the first caller's own turn is untouched")
+  void a_busy_scope_is_refused() throws Exception {
     AgentId agent = AgentId.random();
+    CountDownLatch inTurn = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    InferenceProvider slow =
+        (request, narrator) -> {
+          inTurn.countDown();
+          try {
+            release.await();
+          } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+          }
+          return answering("hi");
+        };
+    DirectHarness<String, String> harness = harness(slow);
 
-    Outcome<String> outcome = harness.ask(agent, "anyone home?");
+    try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
+      Future<Outcome<String>> holder = callers.submit(() -> harness.ask(agent, "hello"));
+      inTurn.await();
 
-    assertThat(outcome).isEqualTo(new Outcome.Busy<>());
-    assertThat(events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE))
-        .as("nothing was appended, so nothing has to be undone")
-        .isEmpty();
+      Outcome<String> outcome = harness.ask(agent, "anyone home?");
+
+      assertThat(outcome).isEqualTo(new Outcome.Busy<>());
+      assertThat(events.readFrom(agent, Seq.NONE))
+          .as(
+              "the second, busy caller appended nothing; only the first caller's own turn is on"
+                  + " the stream")
+          .hasSize(1)
+          .first()
+          .isInstanceOf(AgentEvent.TurnStarted.class);
+
+      release.countDown();
+      assertThat(holder.get()).isEqualTo(new Outcome.Answered<>("hi"));
+    }
   }
 
   @Test
@@ -491,7 +552,8 @@ class DefaultDirectHarnessTest {
                         .payloads(payloads)
                         .provider(model)
                         .schemas(SCHEMAS)
-                        .mapper(MAPPER))
+                        .mapper(MAPPER)
+                        .clock(clock))
             .<String>create(
                 TYPE,
                 c ->
@@ -561,7 +623,8 @@ class DefaultDirectHarnessTest {
                         .payloads(payloads)
                         .provider(model)
                         .schemas(SCHEMAS)
-                        .mapper(MAPPER))
+                        .mapper(MAPPER)
+                        .clock(clock))
             .<String>create(
                 TYPE,
                 c -> {
@@ -606,7 +669,8 @@ class DefaultDirectHarnessTest {
                         .payloads(payloads)
                         .provider(model)
                         .schemas(SCHEMAS)
-                        .mapper(MAPPER))
+                        .mapper(MAPPER)
+                        .clock(clock))
             .<String>create(
                 TYPE,
                 c -> {
@@ -627,6 +691,367 @@ class DefaultDirectHarnessTest {
         .extracting(e -> e.getClass().getSimpleName())
         .as("nobody said no, but the call is still discharged as failed")
         .contains("ToolFailed");
+  }
+
+  // ---- lazy recovery, by deadline (design record 2026-09-25-locks-as-plumbing, §4d) -------------
+  // A caller that reconstitutes a busy phase reads not just the phase but when it started, and if
+  // the deadline that applies to it has already passed, discharges it and carries on rather than
+  // waiting behind it forever. Every scenario below fabricates the abandoned phase directly on the
+  // event store -- exactly what a dead process leaves behind, since nothing here ever ran the
+  // harness's own in-process compensation (§4c) for it -- and then moves the one clock the store
+  // and the door share past the fabricated rows, so "overdue" is a thing the test did rather than
+  // an accident of two clocks, and nothing here waits a real second either.
+
+  /** Long enough past anything fabricated below to be overdue, short enough to read as a wait. */
+  private static final Duration AN_HOUR = Duration.ofHours(1);
+
+  @Test
+  @DisplayName(
+      "an inference past its deadline is recovered by a second caller, and the first turn's own"
+          + " belated completion is discarded by phase rather than handed to anyone")
+  void an_overdue_inference_is_recovered_by_a_second_caller() {
+    AgentId agent = AgentId.random();
+    PayloadRef abandonedInput = payloads.forAgent(agent).put(List.of(new Block.Text("first")));
+    events.append(
+        agent,
+        List.of(new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput)),
+        Seq.NONE);
+
+    Scripted model = new Scripted().then(answering("second turn's answer"));
+    DirectHarness<String, String> harness =
+        DefaultDirectHarnessFactory.of(
+                f ->
+                    f.locks(new InMemoryLocks())
+                        .events(events)
+                        .payloads(payloads)
+                        .provider(model)
+                        .schemas(SCHEMAS)
+                        .mapper(MAPPER)
+                        .clock(clock))
+            .<String>create(
+                TYPE,
+                c ->
+                    c.systemPrompt("You are terse.")
+                        .inputRenderer(said -> List.of(new Block.Text(said)))
+                        .inference(in -> in.model("a-model").timeout(Duration.ofMillis(50))));
+
+    clock.advance(AN_HOUR);
+
+    Outcome<String> outcome = harness.ask(agent, "second turn, please");
+
+    assertThat(outcome).isEqualTo(new Outcome.Answered<>("second turn's answer"));
+
+    List<AgentEvent> stream = events.readFrom(agent, Seq.NONE);
+    assertThat(stream)
+        .extracting(e -> e.getClass().getSimpleName())
+        .as("the abandoned first turn is failed by recovery before the second turn even starts")
+        .containsExactly("TurnStarted", "InferenceFailed", "TurnStarted", "InferenceAnswered");
+
+    // The dangerous moment, reconstructed: the first turn's own completion arriving while the
+    // agent is busy on the SECOND turn -- a slow-but-alive original losing the race to the
+    // recovery that closed it out (§4d). Folding the whole stream would leave the agent idle,
+    // which ignores everything and proves nothing, so the state is rebuilt as far as the second
+    // turn's opening event and no further.
+    List<AgentEvent> upToTheSecondTurnOpening = stream.subList(0, 3);
+    AgentState midSecondTurn = AgentState.idle(Seq.NONE).applyAll(upToTheSecondTurnOpening);
+    assertThat(midSecondTurn)
+        .as("busy on the second turn, which is the state a late answer would be written into")
+        .isInstanceOf(AgentState.Inferring.class);
+
+    Decision belated =
+        midSecondTurn.execute(
+            new AgentCommand.CompleteInference(
+                new TurnId(1),
+                new AgentCommand.InferenceOutcome.Answered(
+                    payloads.forAgent(agent).put(List.of(new Block.Text("too late"))))));
+
+    assertThat(belated.events())
+        .as(
+            "a completion for a turn already closed is ignored rather than written down as the"
+                + " turn now open, which is what would hand it to that turn's caller")
+        .isEmpty();
+  }
+
+  @Test
+  @DisplayName(
+      "an approval past its own deadline is discharged, the inference its discharge reopens is"
+          + " discharged too, and the agent is idle before the recovering caller's own turn"
+          + " starts")
+  void an_overdue_approval_discharges_its_call_and_the_inference_it_reopens() {
+    AgentId agent = AgentId.random();
+    PayloadRef abandonedInput = payloads.forAgent(agent).put(List.of(new Block.Text("first")));
+    PayloadRef abandonedRequest = payloads.forAgent(agent).put(List.of(new Block.Text("asked")));
+    events.append(
+        agent,
+        List.of(
+            new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput),
+            new AgentEvent.ActionsRequested(
+                new Seq(2),
+                new TurnId(1),
+                abandonedRequest,
+                List.of(new ActionRequest.ToolCall(CALL, LOOKUP)))),
+        Seq.NONE);
+
+    Scripted model = new Scripted().then(answering("second turn's answer"));
+    DirectHarness<String, String> harness =
+        DefaultDirectHarnessFactory.of(
+                f ->
+                    f.locks(new InMemoryLocks())
+                        .events(events)
+                        .payloads(payloads)
+                        .provider(model)
+                        .schemas(SCHEMAS)
+                        .mapper(MAPPER)
+                        .clock(clock))
+            .<String>create(
+                TYPE,
+                c -> {
+                  c.systemPrompt("You are terse.")
+                      .inputRenderer(said -> List.of(new Block.Text(said)))
+                      .inference(in -> in.model("a-model").timeout(Duration.ofMillis(50)));
+                  c.tool(
+                      tool("should never run"),
+                      t -> t.approver(Approver.allow(), a -> a.timeout(Duration.ofMillis(50))));
+                });
+    // Only the fabricated approval is made overdue by this: the inference its discharge reopens
+    // is written an instant later, on this same clock, and is inside its own deadline the moment
+    // it appears. Recovery discharges it anyway, because nothing holds it.
+    clock.advance(AN_HOUR);
+
+    Outcome<String> outcome = harness.ask(agent, "second turn, please");
+
+    assertThat(outcome).isEqualTo(new Outcome.Answered<>("second turn's answer"));
+    // "The provider stub records zero calls" (design record, this step's brief) is true of
+    // recovery itself: discharging the expired approval and the inference its discharge reopened
+    // is pure fold and append, with no call to the provider. The one call recorded below is the
+    // recovering caller's own live turn, not either discharge.
+    assertThat(model.seen)
+        .as("recovery made no calls; this is the recovering caller's own turn")
+        .hasSize(1);
+
+    List<AgentEvent> stream = events.readFrom(agent, Seq.NONE);
+    assertThat(stream)
+        .extracting(e -> e.getClass().getSimpleName())
+        .as(
+            "both the expired approval and the inference its discharge reopened are failed, and"
+                + " the agent is idle, before the recovering caller's own turn starts")
+        .containsExactly(
+            "TurnStarted",
+            "ActionsRequested",
+            "ToolFailed",
+            "InferenceFailed",
+            "TurnStarted",
+            "InferenceAnswered");
+  }
+
+  @Test
+  @DisplayName(
+      "its twin: a call inside its own deadline is left alone, and the caller is told" + " Busy")
+  void a_call_within_its_deadline_is_left_alone() {
+    AgentId agent = AgentId.random();
+    PayloadRef abandonedInput = payloads.forAgent(agent).put(List.of(new Block.Text("first")));
+    PayloadRef abandonedRequest = payloads.forAgent(agent).put(List.of(new Block.Text("asked")));
+    events.append(
+        agent,
+        List.of(
+            new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput),
+            new AgentEvent.ActionsRequested(
+                new Seq(2),
+                new TurnId(1),
+                abandonedRequest,
+                List.of(new ActionRequest.ToolCall(CALL, LOOKUP)))),
+        Seq.NONE);
+
+    DirectHarness<String, String> harness =
+        DefaultDirectHarnessFactory.of(
+                f ->
+                    f.locks(new InMemoryLocks())
+                        .events(events)
+                        .payloads(payloads)
+                        .provider(new Scripted())
+                        .schemas(SCHEMAS)
+                        .mapper(MAPPER)
+                        .clock(clock))
+            .<String>create(
+                TYPE,
+                c -> {
+                  c.systemPrompt("You are terse.")
+                      .inputRenderer(said -> List.of(new Block.Text(said)))
+                      .inference(in -> in.model("a-model").timeout(Duration.ofHours(1)));
+                  c.tool(
+                      tool("should never run"),
+                      t -> t.approver(Approver.allow(), a -> a.timeout(Duration.ofHours(1))));
+                });
+
+    Outcome<String> outcome = harness.ask(agent, "anyone home?");
+
+    assertThat(outcome).isEqualTo(new Outcome.Busy<>());
+    assertThat(events.readFrom(agent, Seq.NONE))
+        .as("nothing was discharged, and the busy caller appended nothing")
+        .hasSize(2);
+  }
+
+  /**
+   * The decline happens in {@code beginTurn}, before a turn is opened: this caller never reaches
+   * the final read at all, which is why it is not a test of the turn filter. What it does prove is
+   * that a busy agent is the phase check's answer even when an answer is sitting on the stream --
+   * {@link #a_caller_is_handed_its_own_turns_answer_though_a_later_turn_has_ended_since} is the one
+   * that pins the filter.
+   */
+  @Test
+  @DisplayName("a caller arriving mid-turn is told Busy rather than shown the last answer")
+  void a_mid_turn_caller_is_told_busy() {
+    AgentId agent = AgentId.random();
+    Scripted model = new Scripted().then(answering("first turn's answer"));
+    DirectHarness<String, String> harness =
+        DefaultDirectHarnessFactory.of(
+                f ->
+                    f.locks(new InMemoryLocks())
+                        .events(events)
+                        .payloads(payloads)
+                        .provider(model)
+                        .schemas(SCHEMAS)
+                        .mapper(MAPPER)
+                        .clock(clock))
+            .<String>create(
+                TYPE,
+                c ->
+                    c.systemPrompt("You are terse.")
+                        .inputRenderer(said -> List.of(new Block.Text(said)))
+                        .inference(in -> in.model("a-model").timeout(Duration.ofHours(1))));
+
+    Outcome<String> first = harness.ask(agent, "first turn");
+    assertThat(first).isEqualTo(new Outcome.Answered<>("first turn's answer"));
+
+    // A second turn that a process started and never came back to finish -- well inside its own
+    // deadline, so the caller below must be told Busy rather than shown whatever the fold has on
+    // hand, which is the first turn's own answer.
+    List<AgentEvent> afterFirstTurn = events.readFrom(agent, Seq.NONE);
+    Seq lastSeq = afterFirstTurn.getLast().seq();
+    Seq secondTurnSeq = lastSeq.next();
+    events.append(
+        agent,
+        List.of(
+            new AgentEvent.TurnStarted(
+                secondTurnSeq,
+                secondTurnSeq.opensTurn(),
+                payloads.forAgent(agent).put(List.of(new Block.Text("second"))))),
+        lastSeq);
+
+    Outcome<String> midTurn = harness.ask(agent, "are you still there?");
+
+    assertThat(midTurn)
+        .as("busy, not the first turn's answer handed back as though it were this caller's own")
+        .isEqualTo(new Outcome.Busy<>())
+        .isNotEqualTo(first);
+  }
+
+  /**
+   * The door's final read is by turn, and this is what makes that scoping load-bearing.
+   *
+   * <p>No lock is held between a caller's last step and its read of what the turn came to, so
+   * another caller's whole turn can start and finish in that window -- and its answer is then the
+   * LAST terminal event on the stream. A read that took the latest one would hand this caller
+   * somebody else's answer; the store below makes exactly that window happen, at the moment the
+   * caller's own turn has ended and the door is about to look.
+   */
+  @Test
+  @DisplayName("a caller is handed its own turn's answer, though a later turn has ended since")
+  void a_caller_is_handed_its_own_turns_answer_though_a_later_turn_has_ended_since() {
+    AgentId agent = AgentId.random();
+    Scripted model = new Scripted().then(answering("this caller's own answer"));
+    IntrudingEvents racing = new IntrudingEvents(events, payloads);
+    DirectHarness<String, String> harness =
+        DefaultDirectHarnessFactory.of(
+                f ->
+                    f.locks(new InMemoryLocks())
+                        .events(racing)
+                        .payloads(payloads)
+                        .provider(model)
+                        .schemas(SCHEMAS)
+                        .mapper(MAPPER)
+                        .clock(clock))
+            .<String>create(
+                TYPE,
+                c ->
+                    c.systemPrompt("You are terse.")
+                        .inputRenderer(said -> List.of(new Block.Text(said)))
+                        .inference(in -> in.model("a-model")));
+
+    Outcome<String> outcome = harness.ask(agent, "mine, please");
+
+    List<AgentEvent> stream = events.readFrom(agent, Seq.NONE);
+    assertThat(stream)
+        .extracting(e -> e.getClass().getSimpleName())
+        .as("a whole later turn landed after this caller's own answer")
+        .containsExactly("TurnStarted", "InferenceAnswered", "TurnStarted", "InferenceAnswered");
+    assertThat(outcome)
+        .as("its own turn's answer, not the latest one on the stream")
+        .isEqualTo(new Outcome.Answered<>("this caller's own answer"));
+  }
+
+  /**
+   * A store that slips somebody else's finished turn onto the stream the moment this caller's own
+   * turn has ended -- the window between a caller's last locked step and its final read, which no
+   * lock covers.
+   */
+  private static final class IntrudingEvents implements AgentEvents {
+
+    private final AgentEvents delegate;
+    private final Payloads payloads;
+    private boolean intruded;
+
+    IntrudingEvents(AgentEvents delegate, Payloads payloads) {
+      this.delegate = delegate;
+      this.payloads = payloads;
+    }
+
+    @Override
+    public void append(AgentId agent, List<AgentEvent> events, Seq expectedLast) {
+      delegate.append(agent, events, expectedLast);
+    }
+
+    @Override
+    public List<AgentEvent> readFrom(AgentId agent, Seq watermark) {
+      intrude(agent);
+      return delegate.readFrom(agent, watermark);
+    }
+
+    @Override
+    public List<AgentEvent> sinceLastTurnStarted(AgentId agent) {
+      return delegate.sinceLastTurnStarted(agent);
+    }
+
+    @Override
+    public Instant writtenAt(AgentId agent, Seq seq) {
+      return delegate.writtenAt(agent, seq);
+    }
+
+    /**
+     * Once, and only once this agent has an answered turn behind it: before that the reads are the
+     * projection assembling the model's context, which is not the moment being described.
+     */
+    private void intrude(AgentId agent) {
+      List<AgentEvent> stream = delegate.readFrom(agent, Seq.NONE);
+      if (intruded || stream.stream().noneMatch(AgentEvent.InferenceAnswered.class::isInstance)) {
+        return;
+      }
+      intruded = true;
+      Seq last = stream.getLast().seq();
+      Seq opening = last.next();
+      delegate.append(
+          agent,
+          List.of(
+              new AgentEvent.TurnStarted(
+                  opening,
+                  opening.opensTurn(),
+                  payloads.forAgent(agent).put(List.of(new Block.Text("somebody else's input")))),
+              new AgentEvent.InferenceAnswered(
+                  opening.next(),
+                  opening.opensTurn(),
+                  payloads.forAgent(agent).put(List.of(new Block.Text("somebody else's answer"))))),
+          last);
+    }
   }
 
   @Test
@@ -846,7 +1271,8 @@ class DefaultDirectHarnessTest {
                         .payloads(counting)
                         .provider(model)
                         .schemas(SCHEMAS)
-                        .mapper(MAPPER))
+                        .mapper(MAPPER)
+                        .clock(clock))
             .<String>create(
                 TYPE,
                 c ->

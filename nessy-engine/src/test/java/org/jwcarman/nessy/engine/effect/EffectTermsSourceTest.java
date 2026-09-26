@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -128,7 +129,8 @@ class EffectTermsSourceTest {
       EffectTerms terms =
           source(tools)
               .termsFor(
-                  new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("lookup")));
+                  new AgentEffect.CallTool(
+                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
 
       assertThat(terms.timeout()).isEqualTo(Duration.ofSeconds(90));
       assertThat(terms.retryPolicy()).isInstanceOf(RetryPolicy.FixedDelay.class);
@@ -139,7 +141,8 @@ class EffectTermsSourceTest {
       EffectTerms terms =
           source(Tools.none())
               .termsFor(
-                  new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("gone")));
+                  new AgentEffect.CallTool(
+                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone")));
 
       assertThat(terms.timeout()).isEqualTo(TOOL_TIMEOUT);
       assertThat(terms.retryPolicy()).isEqualTo(TOOL_RETRY);
@@ -163,7 +166,8 @@ class EffectTermsSourceTest {
       EffectTerms terms =
           source(tools)
               .termsFor(
-                  new AgentEffect.Approve(new Seq(2), new CallId("c1"), new ToolName("lookup")));
+                  new AgentEffect.Approve(
+                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
 
       assertThat(terms.timeout()).isEqualTo(Duration.ofHours(2));
       assertThat(terms.retryPolicy()).isInstanceOf(RetryPolicy.FixedDelay.class);
@@ -174,7 +178,8 @@ class EffectTermsSourceTest {
       EffectTerms terms =
           source(Tools.none())
               .termsFor(
-                  new AgentEffect.Approve(new Seq(2), new CallId("c1"), new ToolName("gone")));
+                  new AgentEffect.Approve(
+                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone")));
 
       assertThat(terms.timeout()).isEqualTo(APPROVAL_TIMEOUT);
       assertThat(terms.retryPolicy()).isEqualTo(APPROVAL_RETRY);
@@ -186,7 +191,7 @@ class EffectTermsSourceTest {
 
     @Test
     void oneAgentTypeCallsOneModelOnOneSetOfTerms() {
-      EffectTerms terms = source(Tools.none()).termsFor(new AgentEffect.Infer());
+      EffectTerms terms = source(Tools.none()).termsFor(new AgentEffect.Infer(new TurnId(1)));
 
       assertThat(terms.timeout()).isEqualTo(INFERENCE_TIMEOUT);
       assertThat(terms.retryPolicy()).isEqualTo(INFERENCE_RETRY);
@@ -201,7 +206,7 @@ class EffectTermsSourceTest {
     @Test
     void undispatchableSaysNobodyKnowsWhetherTheInferenceRan() {
       EffectOutcome outcome =
-          source(Tools.none()).termsFor(new AgentEffect.Infer()).undispatchable();
+          source(Tools.none()).termsFor(new AgentEffect.Infer(new TurnId(1))).undispatchable();
 
       assertThat(outcome).isInstanceOf(EffectOutcome.InferenceFailed.class);
       assertThat(((EffectOutcome.InferenceFailed) outcome).failure())
@@ -212,7 +217,7 @@ class EffectTermsSourceTest {
     void aThrowThatEscapedIsAnUnknownFailureRatherThanAPermanentOne() {
       EffectOutcome outcome =
           source(Tools.none())
-              .termsFor(new AgentEffect.Infer())
+              .termsFor(new AgentEffect.Infer(new TurnId(1)))
               .failed(new IllegalStateException("boom"));
 
       assertThat(outcome).isInstanceOf(EffectOutcome.InferenceFailed.class);

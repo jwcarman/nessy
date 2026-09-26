@@ -144,7 +144,9 @@ class ToolCallHandlerTest {
     return new ToolCallHandler(
             TYPE, tools, calls, TOKENS, Narrator.silent(), terms(tools), CLOCK, PAYLOADS)
         .handle(
-            AGENT, new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("lookup")));
+            AGENT,
+            new AgentEffect.CallTool(
+                new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
   }
 
   private EffectOutcome handle(Tools tools, ToolCalls calls) {
@@ -267,7 +269,8 @@ class ToolCallHandlerTest {
         new ToolCallHandler(
                 TYPE, tools, nothing(), TOKENS, Narrator.silent(), terms(tools), CLOCK, PAYLOADS)
             .termsFor(
-                new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("lookup")));
+                new AgentEffect.CallTool(
+                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
 
     assertThat(resolved.timeout()).isEqualTo(Duration.ofSeconds(90));
     assertThat(resolved.retryPolicy()).isInstanceOf(RetryPolicy.FixedDelay.class);
@@ -289,7 +292,9 @@ class ToolCallHandlerTest {
                 terms(Tools.none()),
                 CLOCK,
                 PAYLOADS)
-            .termsFor(new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("gone")));
+            .termsFor(
+                new AgentEffect.CallTool(
+                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone")));
 
     assertThat(resolved.timeout()).isEqualTo(Duration.ofSeconds(30));
   }
@@ -312,7 +317,8 @@ class ToolCallHandlerTest {
                 CLOCK,
                 PAYLOADS)
             .termsFor(
-                new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("lookup")));
+                new AgentEffect.CallTool(
+                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
 
     assertThat(resolved.undispatchable())
         .asInstanceOf(type(EffectOutcome.ToolFailed.class))

@@ -175,7 +175,8 @@ class ValueTypeCodecTest {
     String written =
         new String(
             effects.encode(
-                new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("lookup"))),
+                new AgentEffect.CallTool(
+                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"))),
             StandardCharsets.UTF_8);
 
     assertThat(written)
@@ -183,7 +184,9 @@ class ValueTypeCodecTest {
         .contains("\"toolName\":\"lookup\"")
         .doesNotContain("\"value\"");
     assertThat(effects.decode(written.getBytes(StandardCharsets.UTF_8)))
-        .isEqualTo(new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("lookup")));
+        .isEqualTo(
+            new AgentEffect.CallTool(
+                new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
   }
 
   // ---- positions -------------------------------------------------------------------------
@@ -243,7 +246,8 @@ class ValueTypeCodecTest {
     String written =
         new String(
             effects.encode(
-                new AgentEffect.Approve(new Seq(2), new CallId("c1"), new ToolName("lookup"))),
+                new AgentEffect.Approve(
+                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"))),
             StandardCharsets.UTF_8);
 
     assertThat(written).contains("\"requestSeq\":2").doesNotContain("\"value\"");

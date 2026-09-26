@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine.core;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
@@ -37,6 +38,14 @@ import org.jwcarman.nessy.inference.Failure;
  * rather than routing.
  *
  * <p><b>No payloads.</b> Content is claim-checked by the harness before it gets here.
+ *
+ * <p><b>A completion names the turn it answers.</b> Delivery is at-least-once and a door releases
+ * its lock between steps, so an answer for a turn that has since closed can arrive while the agent
+ * is busy on the next one. Without the turn on the command, the fold stamps that answer with
+ * whatever turn it happens to be in -- and the caller driving that turn is handed an answer to a
+ * question it never asked. Each accepting arm checks the turn is its own and ignores it otherwise.
+ * {@code StartTurn} and {@code Terminate} carry none: they open a turn or end an agent rather than
+ * answering anything.
  */
 public sealed interface AgentCommand {
 
@@ -54,13 +63,15 @@ public sealed interface AgentCommand {
   record Terminate() implements AgentCommand {}
 
   /** An inference came back. */
-  record CompleteInference(InferenceOutcome outcome) implements AgentCommand {}
+  record CompleteInference(TurnId turn, InferenceOutcome outcome) implements AgentCommand {}
 
   /** An approval decision came back for one call. */
-  record CompleteApproval(CallId callId, ApprovalOutcome outcome) implements AgentCommand {}
+  record CompleteApproval(TurnId turn, CallId callId, ApprovalOutcome outcome)
+      implements AgentCommand {}
 
   /** A tool call came back. */
-  record CompleteToolCall(CallId callId, ToolOutcome outcome) implements AgentCommand {}
+  record CompleteToolCall(TurnId turn, CallId callId, ToolOutcome outcome)
+      implements AgentCommand {}
 
   /** What an inference produced. */
   sealed interface InferenceOutcome {
