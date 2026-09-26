@@ -24,8 +24,8 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.backend.agent.Agents;
-import org.jwcarman.nessy.engine.backlog.Backlog;
-import org.jwcarman.nessy.engine.backlog.Pull;
+import org.jwcarman.nessy.backend.backlog.Backlog;
+import org.jwcarman.nessy.backend.backlog.Pull;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**

@@ -20,8 +20,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.BacklogItem;
-import org.jwcarman.nessy.engine.backlog.Backlog;
-import org.jwcarman.nessy.engine.backlog.Pull;
+import org.jwcarman.nessy.backend.backlog.Backlog;
+import org.jwcarman.nessy.backend.backlog.Pull;
 
 /**
  * A backlog held in a list, for anywhere there is no database to hold one.

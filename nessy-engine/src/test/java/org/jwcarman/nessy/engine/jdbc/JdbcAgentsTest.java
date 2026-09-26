@@ -28,7 +28,7 @@ import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.BacklogItem;
-import org.jwcarman.nessy.engine.backlog.Backlog;
+import org.jwcarman.nessy.backend.backlog.Backlog;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
