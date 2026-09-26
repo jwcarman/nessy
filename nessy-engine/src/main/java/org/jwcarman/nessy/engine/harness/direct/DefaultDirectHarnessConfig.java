@@ -65,6 +65,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
   private final List<NarrationListener> listeners = new ArrayList<>();
   private final List<ToolRequest<?>> tools = new ArrayList<>();
   private final Inference inference = new Inference();
+  private int maxInFlight = DEFAULT_MAX_IN_FLIGHT;
 
   /** One tool and everything said about it, kept until there is a mapper to bind it with. */
   private record ToolRequest<T>(Tool<T> tool, Customizer<ToolConfig<T>> customizer) {}
@@ -117,6 +118,12 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
   }
 
   @Override
+  public DirectHarnessConfig<I> maxInFlight(int maxInFlight) {
+    this.maxInFlight = maxInFlight;
+    return this;
+  }
+
+  @Override
   public <T> DirectHarnessConfig<I> tool(Tool<T> tool, Customizer<ToolConfig<T>> customizer) {
     tools.add(new ToolRequest<>(tool, customizer));
     return this;
@@ -141,6 +148,10 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
 
   Inference inference() {
     return inference;
+  }
+
+  int maxInFlight() {
+    return maxInFlight;
   }
 
   List<ToolBinding<?>> bindings(
@@ -248,6 +259,10 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
   static final Duration DEFAULT_APPROVAL_TIMEOUT = Duration.ofMinutes(10);
   static final RetryPolicy DEFAULT_RETRY_POLICY = new RetryPolicy.Never();
   private static final Duration DEFAULT_INFERENCE_TIMEOUT = Duration.ofMinutes(5);
+  // Sixteen times the queued door's EffectsConfig.maxInFlight default, and deliberately not the
+  // same number -- see DirectHarnessConfig.maxInFlight for why a harness-wide bound on synchronous
+  // callers needs a much higher ceiling than a bound on a poller draining a durable queue.
+  static final int DEFAULT_MAX_IN_FLIGHT = 64;
 
   /** The model, the budget, and what it is shown. */
   static final class Inference implements InferenceConfig, ContextConfig {

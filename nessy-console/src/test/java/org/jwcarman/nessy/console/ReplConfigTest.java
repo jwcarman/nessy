@@ -236,6 +236,11 @@ class ReplConfigTest {
       }
 
       @Override
+      public DirectHarnessConfig<String> maxInFlight(int maxInFlight) {
+        return this;
+      }
+
+      @Override
       public <I> DirectHarnessConfig<String> tool(Tool<I> tool) {
         ungated.add(tool);
         return this;

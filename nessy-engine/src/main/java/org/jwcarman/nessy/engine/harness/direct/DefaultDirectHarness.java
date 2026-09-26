@@ -16,15 +16,18 @@
 package org.jwcarman.nessy.engine.harness.direct;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayDeque;
-import java.util.Deque;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BiFunction;
@@ -107,6 +110,30 @@ import tools.jackson.databind.ObjectMapper;
  * {@link #within} is what makes them true. Cancelling the {@link Future} rather than the work
  * itself: the deadline this door enforces is what recovery can rely on, and it is not the same
  * thing as the work actually stopping -- see the caveat on {@link #within}.
+ *
+ * <p><b>A batch's effects are performed concurrently, never one at a time.</b> {@link
+ * AgentState.AwaitingActions#opening} stamps every call in a phase with the same {@code since} --
+ * the {@code ActionsRequested} seq -- so the lazy deadline {@link #recoverToIdle} would compare
+ * against assumes every call in the batch started at roughly the same moment. Performing a batch
+ * serially breaks that assumption: the third of three calls would not even begin until the first
+ * two had finished, while its deadline was measured from when the batch opened. {@link #drive} fans
+ * a batch's effects out onto {@link #effects} instead, bounded by {@link #inFlight}, so {@code
+ * since} and the actual attempt coincide for a batch that fits inside the bound.
+ *
+ * <p><b>{@link #inFlight} does not make that coincidence exact by itself.</b> Bounded to {@link
+ * org.jwcarman.nessy.api.DirectHarnessConfig#maxInFlight} permits and shared by every {@code ask}
+ * this harness ever serves, it can make an effect queue for a permit behind work belonging to a
+ * different agent's turn entirely -- a gap that can be far larger than one turn's own batch. {@link
+ * #perform} is what closes that gap for good: rather than handing a freshly-permitted effect a full
+ * fresh timeout, it measures what is left of the budget {@code since} started and waits only for
+ * that -- and discharges the effect as {@link EffectTerms#undispatchable()}, never even calling
+ * {@link EffectHandlers#perform}, when that budget is already spent by the time a permit frees.
+ * That is what keeps {@link EffectTerms#undispatchable()}'s wording ("so it was not run") true
+ * regardless of how long an effect waited for a permit.
+ *
+ * <p>Folding stays serialized regardless of any of this: each completion is folded, one at a time,
+ * in its own short {@link Locks#withLock} step, as soon as it arrives -- never waiting for the rest
+ * of the batch.
  */
 public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
@@ -169,6 +196,31 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    */
   private final ExecutorService effects;
 
+  /**
+   * How many effects this harness may have running at once, across every {@link #ask} call it is
+   * serving -- not scoped per turn, and deliberately so.
+   *
+   * <p><b>Harness-wide rather than per turn.</b> A per-turn semaphore was tried first and reverted:
+   * twenty concurrent turns would each mint their own full set of permits, so it bounded nothing
+   * that mattered and protected nothing -- the one thing worth bounding here is how much load this
+   * harness, as a whole, puts on a provider or a downstream service. A single caller's runaway
+   * batch is the narrower problem, and a harness-wide bound still catches it; the reverse is not
+   * true.
+   *
+   * <p><b>Sized differently than the queued door's {@link
+   * org.jwcarman.nessy.api.EffectsConfig#maxInFlight}, despite the shared name.</b> That one bounds
+   * a poller draining a durable queue, where nothing blocks and work simply waits its turn a little
+   * longer -- four is plenty. This one bounds callers who are synchronously blocked on {@link #ask}
+   * waiting for their own answer, and {@link AgentEffect.Infer} is admitted through it too, so the
+   * very first batch of every turn takes a permit before that turn can even begin. A harness-wide
+   * cap of four would therefore cap this whole harness at four concurrent turns and make a fifth
+   * caller wait before its own turn could start -- a surprising thing to discover behind a web
+   * endpoint. {@link org.jwcarman.nessy.api.DirectHarnessConfig#maxInFlight}'s default of 64 is a
+   * real ceiling against a harness gone runaway while staying far above ordinary concurrency, and
+   * on virtual threads an unused permit costs nothing.
+   */
+  private final Semaphore inFlight;
+
   public DefaultDirectHarness(
       DirectBackend backend,
       AgentType agentType,
@@ -177,7 +229,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       BiFunction<AgentId, AgentEvent.InferenceAnswered, Outcome<O>> reading,
       Narrator narrator,
       EffectHandlers handlers,
-      ExecutorService effects) {
+      ExecutorService effects,
+      int maxInFlight) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
     this.agentType = agentType;
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
@@ -186,6 +239,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     this.narrator = Objects.requireNonNull(narrator, "narrator must not be null");
     this.handlers = Objects.requireNonNull(handlers, "handlers must not be null");
     this.effects = Objects.requireNonNull(effects, "effects must not be null");
+    this.inFlight = new Semaphore(maxInFlight);
   }
 
   @Override
@@ -243,7 +297,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         backend.events().append(agent, decision.events(), idle.seq());
         decision.events().forEach(event -> narrate(agent, event));
         TurnId turn = ((AgentEvent.TurnStarted) decision.events().getFirst()).turn();
-        yield StepResult.advanced(turn, decision.effects());
+        yield StepResult.advanced(turn, timedEffectsOf(decision));
       }
     };
   }
@@ -269,8 +323,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   }
 
   /**
-   * Performs each effect the first step produced, and every effect each following step produces in
-   * turn, with a fresh short locked step -- and no lock -- between one and the next.
+   * Performs every effect of the first batch, and every effect each following batch produces in
+   * turn, until a batch produces nothing more to do.
    *
    * <p><b>The final read is by turn, not by "whatever this caller last saw".</b> {@link #outcome}
    * re-reads the whole stream and looks for {@code turn}'s own terminal event rather than trusting
@@ -278,16 +332,127 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * {@link Decision#ignore()} -- a slow-but-alive original whose own completion lost a race with a
    * recovery that already discharged the same phase (§4d) -- and that caller still owes its caller
    * an answer, which is whatever the stream says {@code turn} itself came to, not an exception.
+   *
+   * <p>Every batch this one {@code ask} call performs draws its permits from {@link #inFlight}, the
+   * one semaphore this whole harness shares -- see its own javadoc for why the scope is
+   * harness-wide rather than per call.
    */
-  private Outcome<O> drive(AgentId agent, TurnId turn, List<AgentEffect> firstEffects) {
-    Deque<AgentEffect> pending = new ArrayDeque<>(firstEffects);
-    while (!pending.isEmpty()) {
-      AgentCommand command = perform(agent, pending.poll());
-      Decision decision =
-          backend.locks().withLock(Locks.TURN, agentType, agent, () -> executeStep(agent, command));
-      pending.addAll(decision.effects());
+  private Outcome<O> drive(AgentId agent, TurnId turn, List<TimedEffect> firstBatch) {
+    List<TimedEffect> batch = firstBatch;
+    while (!batch.isEmpty()) {
+      batch = performBatch(agent, batch);
     }
     return outcome(agent, turn);
+  }
+
+  /**
+   * Performs one batch's effects concurrently -- bounded by {@link #inFlight} -- and folds each
+   * completion into its own short locked step as soon as it arrives, rather than waiting for the
+   * whole batch: a fast tool's result is written down promptly instead of sitting behind whatever
+   * in the same batch is slowest.
+   *
+   * <p><b>Folding itself stays serialized.</b> Completions are drained and folded one at a time, on
+   * this one thread, so two folds never run at once even though the effects that produced them ran
+   * concurrently -- {@link #executeStep}'s own {@link Locks#withLock} is the transaction boundary,
+   * and nothing here calls it from more than one thread.
+   */
+  private List<TimedEffect> performBatch(AgentId agent, List<TimedEffect> batch) {
+    CompletionService<AgentCommand> completions = new ExecutorCompletionService<>(effects);
+    for (TimedEffect timed : batch) {
+      submit(completions, agent, timed);
+    }
+    List<TimedEffect> next = new ArrayList<>();
+    for (int i = 0; i < batch.size(); i++) {
+      AgentCommand command = take(completions);
+      Decision decision =
+          backend.locks().withLock(Locks.TURN, agentType, agent, () -> executeStep(agent, command));
+      next.addAll(timedEffectsOf(decision));
+    }
+    return next;
+  }
+
+  /**
+   * Admits one effect to {@link #inFlight} and hands it to {@code completions}, releasing the
+   * permit the moment the effect itself is done -- not when its completion is taken, which can be
+   * later still.
+   *
+   * <p>Acquiring here, on the thread driving the turn, rather than inside the submitted task:
+   * blocking a caller who is already blocked in {@link #ask} costs nothing, and acquiring inside
+   * the task would mean every effect is already "started" -- {@link #perform}'s clock included --
+   * before it ever gets a permit. {@link #perform} does not rely on that not happening any more --
+   * it measures the remaining budget itself -- but starting the clock before the permit is taken
+   * would still be the wrong fact to report if this ever changes back.
+   */
+  private void submit(
+      CompletionService<AgentCommand> completions, AgentId agent, TimedEffect timed) {
+    acquire(inFlight);
+    completions.submit(
+        () -> {
+          try {
+            return perform(agent, timed.effect(), timed.since());
+          } finally {
+            inFlight.release();
+          }
+        });
+  }
+
+  private static void acquire(Semaphore inFlight) {
+    try {
+      inFlight.acquire();
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException(
+          "interrupted while waiting for in-flight capacity", interrupted);
+    }
+  }
+
+  /**
+   * One effect, tagged with the seq of the single event whose fold produced it -- the same "since"
+   * {@link Outstanding} and {@link AgentState.Inferring} themselves carry, and the one {@link
+   * #recoverToIdle} would replay its way back to for this exact call. Tracked here, locally, rather
+   * than trusted from a field on {@link AgentEffect} itself: {@link
+   * AgentEffect.CallTool#requestSeq} names the {@code ActionsRequested} entry holding the call's
+   * arguments, which is NOT the seq {@link Outstanding#since} moves to once the call is {@code
+   * RUNNING} -- that is the {@code ToolApproved} seq instead. Reusing {@code requestSeq} here would
+   * silently reintroduce the disagreement this whole fix exists to remove; computing {@code since}
+   * from the decision that just produced the effect cannot disagree with replay, because it is
+   * exactly what replay does.
+   *
+   * @param since the seq of the event {@code effect} was born alongside
+   */
+  private record TimedEffect(AgentEffect effect, Seq since) {}
+
+  /**
+   * Tags every effect one {@link Decision} produced with that decision's own event -- there is
+   * always exactly one event behind any effects this engine emits, {@link Decision#of} and every
+   * call site that builds one agree on that, so there is no ambiguity about which seq an effect was
+   * born at.
+   */
+  private static List<TimedEffect> timedEffectsOf(Decision decision) {
+    if (decision.effects().isEmpty()) {
+      return List.of();
+    }
+    Seq since = decision.events().getFirst().seq();
+    return decision.effects().stream().map(effect -> new TimedEffect(effect, since)).toList();
+  }
+
+  /**
+   * The next finished effect of the current batch, in completion order rather than submission order
+   * -- which is the whole point: a fast one is folded without waiting on a slow sibling.
+   *
+   * <p>{@link #perform} never lets an exception escape -- {@link #within} turns everything it
+   * catches into a failed {@link AgentCommand} -- so {@link ExecutionException} here can only mean
+   * a defect in this class rather than anything a provider, a tool or an approver did.
+   */
+  private static AgentCommand take(CompletionService<AgentCommand> completions) {
+    try {
+      return completions.take().get();
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("interrupted while waiting for an effect", interrupted);
+    } catch (ExecutionException broken) {
+      throw new IllegalStateException("an effect task failed unexpectedly", broken.getCause());
+    }
   }
 
   /**
@@ -439,13 +604,13 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
     record Declined<O>(Outcome<O> outcome) implements StepResult<O> {}
 
-    record Advanced<O>(TurnId turn, List<AgentEffect> effects) implements StepResult<O> {}
+    record Advanced<O>(TurnId turn, List<TimedEffect> effects) implements StepResult<O> {}
 
     static <O> StepResult<O> declined(Outcome<O> outcome) {
       return new Declined<>(outcome);
     }
 
-    static <O> StepResult<O> advanced(TurnId turn, List<AgentEffect> effects) {
+    static <O> StepResult<O> advanced(TurnId turn, List<TimedEffect> effects) {
       return new Advanced<>(turn, effects);
     }
   }
@@ -462,22 +627,44 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   /**
    * Where the outside world happens: everything slow, everything non-deterministic -- and now,
-   * everything bounded by the deadline the effect's own terms name.
+   * everything bounded by what is left of the deadline the effect's own terms name, measured from
+   * {@code since} rather than from the moment this call happens to run.
    *
-   * <p>What performs the effect is {@link EffectHandlers#perform}, the same call the queued door's
-   * dispatcher makes. The only thing this door adds is {@link #within}'s deadline and the one arm
-   * {@link EffectHandlers#perform} can return that a queued row can park and this door cannot:
-   * {@link Awaited.Deferred}. Nothing here is coming back for that answer, so it is a failure by
-   * the effect's own terms rather than a denial this door has no standing to hand out.
+   * <p><b>The remaining budget, never a fresh one.</b> {@link #inFlight} is harness-wide, so an
+   * effect can sit behind work belonging to an entirely different agent's turn before it ever gets
+   * a permit -- by the time it does, part or all of its own timeout may already be spent. Handing
+   * it a fresh {@link EffectTerms#timeout()} here would let the in-process deadline and the one
+   * {@link #recoverToIdle} enforces disagree again, which is the exact defect this class exists to
+   * remove. So this asks the same question recovery would ask first -- {@link #isOverdue} against
+   * {@code since} -- and if the budget is already gone, discharges the effect as {@link
+   * EffectTerms#undispatchable()} without ever calling {@link EffectHandlers#perform}: nothing here
+   * is about to run it, so {@code undispatchable()}'s wording ("so it was not run") stays true.
+   * Otherwise it waits for exactly what remains, never more.
+   *
+   * <p>What performs the effect, once there is budget left to spend, is {@link
+   * EffectHandlers#perform}, the same call the queued door's dispatcher makes. The only things this
+   * door adds are {@link #within}'s deadline and the one arm {@link EffectHandlers#perform} can
+   * return that a queued row can park and this door cannot: {@link Awaited.Deferred}. Nothing here
+   * is coming back for that answer, so it is a failure by the effect's own terms rather than a
+   * denial this door has no standing to hand out.
+   *
+   * @param since the seq {@link #isOverdue} measures this effect's budget from -- see {@link
+   *     TimedEffect} for why it travels beside the effect rather than being read off it
    */
-  private AgentCommand perform(AgentId agent, AgentEffect effect) {
+  private AgentCommand perform(AgentId agent, AgentEffect effect, Seq since) {
     EffectTerms terms = handlers.termsFor(effect);
     // The turn comes off the effect, which is the only thing that knows it: this loop's own turn
     // is the same one, but an outcome has to name the turn that ASKED for the work rather than
     // whichever turn the agent happens to be in by the time the answer lands.
     TurnId turn = effect.turn();
+    Instant started = backend.events().writtenAt(agent, since);
+    if (isOverdue(started, terms)) {
+      return undispatchable(turn, terms);
+    }
+    Duration remaining = Duration.between(clock.instant(), started.plus(terms.timeout()));
     return within(
         turn,
+        remaining,
         terms,
         () ->
             switch (handlers.perform(agent, effect)) {
@@ -493,8 +680,9 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   }
 
   /**
-   * Performs {@code work} on its own virtual thread and waits for it no longer than {@code terms}
-   * allows.
+   * Performs {@code work} on its own virtual thread and waits for it no longer than {@code budget}
+   * -- what {@link #perform} measured as left of the effect's own deadline, not a fresh {@link
+   * EffectTerms#timeout()}.
    *
    * <p><b>The deadline this enforces is correctness; it is not cleanup.</b> {@link
    * Future#cancel(boolean)} interrupts the thread -- unlike {@link
@@ -509,13 +697,14 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * <p>An expiry is delivered as {@link EffectTerms#failed}, never {@link
    * EffectTerms#undispatchable()}: the work was attempted on this thread in this process, and
    * nobody observed how it came out -- exactly what {@code failed} is documented for. {@code
-   * undispatchable()} is for work nobody performed at all, which belongs to recovery, not to this
-   * door.
+   * undispatchable()} is for work nobody performed at all, which is what {@link #perform} itself
+   * now decides before this method is ever called.
    */
-  private AgentCommand within(TurnId turn, EffectTerms terms, Supplier<AgentCommand> work) {
+  private AgentCommand within(
+      TurnId turn, Duration budget, EffectTerms terms, Supplier<AgentCommand> work) {
     Future<AgentCommand> future = effects.submit(work::get);
     try {
-      return future.get(terms.timeout().toMillis(), TimeUnit.MILLISECONDS);
+      return future.get(budget.toMillis(), TimeUnit.MILLISECONDS);
     } catch (TimeoutException expired) {
       future.cancel(true);
       return EffectOutcomes.command(

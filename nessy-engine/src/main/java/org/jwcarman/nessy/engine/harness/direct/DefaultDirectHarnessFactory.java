@@ -311,7 +311,8 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
         reading,
         narrator,
         handlers,
-        effects);
+        effects,
+        config.maxInFlight());
   }
 
   /**
