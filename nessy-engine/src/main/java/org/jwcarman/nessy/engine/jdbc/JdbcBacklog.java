@@ -24,7 +24,8 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Backlog;
 import org.jwcarman.nessy.api.BacklogItem;
-import org.jwcarman.nessy.api.Pull;
+import org.jwcarman.nessy.engine.backlog.BacklogManagement;
+import org.jwcarman.nessy.engine.backlog.Pull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -41,7 +42,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  *
  * @param <I> the application's input type
  */
-public final class JdbcBacklog<I> implements Backlog<I> {
+public final class JdbcBacklog<I> implements BacklogManagement<I> {
 
   private static final Logger LOG = LoggerFactory.getLogger(JdbcBacklog.class);
 
@@ -126,7 +127,7 @@ public final class JdbcBacklog<I> implements Backlog<I> {
     this.agent = Objects.requireNonNull(agent, "agent must not be null");
   }
 
-  @Override
+  /** Not on {@link org.jwcarman.nessy.api.Backlog}: a coalescing policy has no business taking. */
   public Pull<I> take() {
     // Removed and returned in one statement, so nothing can see it waiting after it has been
     // taken. The caller is holding the agent's row, so nothing else is looking anyway.

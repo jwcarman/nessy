@@ -28,9 +28,9 @@ import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Backlog;
 import org.jwcarman.nessy.api.BacklogItem;
-import org.jwcarman.nessy.api.Pull;
+import org.jwcarman.nessy.engine.backlog.BacklogManagement;
+import org.jwcarman.nessy.engine.backlog.Pull;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -61,7 +61,8 @@ class JdbcBacklogTest {
   private final JdbcClient jdbc = JdbcClient.create(database());
   private final Codec<String> codec =
       new JacksonCodecFactory(JsonMapper.builder().build()).create(String.class);
-  private final Backlog<String> backlog = new JdbcBacklog<>(jdbc, codec, TYPE, AgentId.random());
+  private final BacklogManagement<String> backlog =
+      new JdbcBacklog<>(jdbc, codec, TYPE, AgentId.random());
 
   private static BacklogItem<String> said(String what) {
     return new BacklogItem<>(what, Instant.parse("2026-09-25T12:00:00Z"));
@@ -166,7 +167,7 @@ class JdbcBacklogTest {
   @Test
   @DisplayName("agents do not see each other's backlogs")
   void agents_are_separate() {
-    Backlog<String> theirs = new JdbcBacklog<>(jdbc, codec, TYPE, AgentId.random());
+    BacklogManagement<String> theirs = new JdbcBacklog<>(jdbc, codec, TYPE, AgentId.random());
     backlog.append(said("mine"));
 
     assertThat(theirs.all()).isEmpty();
@@ -177,7 +178,7 @@ class JdbcBacklogTest {
   @DisplayName("forgetting an agent takes its backlog with it")
   void forgetting_clears_it() {
     AgentId doomed = AgentId.random();
-    Backlog<String> its = new JdbcBacklog<>(jdbc, codec, TYPE, doomed);
+    BacklogManagement<String> its = new JdbcBacklog<>(jdbc, codec, TYPE, doomed);
     its.append(said("remember me"));
 
     JdbcBacklog.forget(jdbc, TYPE, doomed);

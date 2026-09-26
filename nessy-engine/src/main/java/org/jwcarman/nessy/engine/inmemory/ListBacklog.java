@@ -19,9 +19,9 @@ package org.jwcarman.nessy.engine.inmemory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.api.Backlog;
 import org.jwcarman.nessy.api.BacklogItem;
-import org.jwcarman.nessy.api.Pull;
+import org.jwcarman.nessy.engine.backlog.BacklogManagement;
+import org.jwcarman.nessy.engine.backlog.Pull;
 
 /**
  * A backlog held in a list, for anywhere there is no database to hold one.
@@ -32,7 +32,7 @@ import org.jwcarman.nessy.api.Pull;
  *
  * @param <I> the application's input type
  */
-public final class ListBacklog<I> implements Backlog<I> {
+public final class ListBacklog<I> implements BacklogManagement<I> {
 
   private final List<BacklogItem<I>> items;
   private boolean ended;
@@ -58,7 +58,7 @@ public final class ListBacklog<I> implements Backlog<I> {
     return abandoned;
   }
 
-  @Override
+  /** Not on {@link org.jwcarman.nessy.api.Backlog}: a coalescing policy has no business taking. */
   public Pull<I> take() {
     if (!items.isEmpty()) {
       return new Pull.Item<>(items.removeFirst());

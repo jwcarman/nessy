@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-package org.jwcarman.nessy.api;
+package org.jwcarman.nessy.engine.backlog;
+
+import org.jwcarman.nessy.api.BacklogItem;
 
 /**
  * What a backlog offers when asked for the next thing to work on.

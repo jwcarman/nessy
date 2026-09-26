@@ -48,19 +48,6 @@ import java.util.List;
  */
 public interface Backlog<I> {
 
-  /**
-   * Take the one that has waited longest, and remove it.
-   *
-   * <p>How work leaves a backlog: a turn ends, the agent is idle, and the next thing waiting
-   * becomes the next turn. Three answers rather than two, because an agent that has been ended has
-   * to say so here -- see {@link Pull.Pill}.
-   *
-   * <p>Taken under the same lock an arrival is written under, so a turn ending and an input
-   * arriving cannot both decide what is at the head. Taking is undone by the transaction, not by
-   * putting anything back: a caller that decides against the work rolls back.
-   */
-  Pull<I> take();
-
   /** Keep it, behind everything already waiting. Every input matters. */
   void append(BacklogItem<I> item);
 

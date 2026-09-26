@@ -21,13 +21,11 @@ import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Backlog;
 import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
-import org.jwcarman.nessy.api.Pull;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.backend.event.ActionRequest;
@@ -36,6 +34,8 @@ import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
+import org.jwcarman.nessy.engine.backlog.BacklogManagement;
+import org.jwcarman.nessy.engine.backlog.Pull;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
@@ -43,7 +43,6 @@ import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
 import org.jwcarman.nessy.engine.effect.EffectDispatcher;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
 import org.jwcarman.nessy.engine.jdbc.JdbcAgents;
-import org.jwcarman.nessy.engine.jdbc.JdbcBacklog;
 import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
@@ -93,7 +92,7 @@ final class DefaultQueuedHarness<I>
   /** Makes this agent type's backlog for one agent, inside the transaction that holds its row. */
   @FunctionalInterface
   interface Backlogs<I> {
-    JdbcBacklog<I> forAgent(AgentType agentType, AgentId agent);
+    BacklogManagement<I> forAgent(AgentType agentType, AgentId agent);
   }
 
   DefaultQueuedHarness(
@@ -166,7 +165,7 @@ final class DefaultQueuedHarness<I>
                               agentId.value());
                           return false;
                         }
-                        Backlog<I> backlog = backlogs.forAgent(agentType, agentId);
+                        BacklogManagement<I> backlog = backlogs.forAgent(agentType, agentId);
                         policy.coalesce(backlog, arrival);
                         return driveIfIdle(agentId, backlog, trace);
                       }));
@@ -193,7 +192,7 @@ final class DefaultQueuedHarness<I>
             transactions.execute(
                 _ -> {
                   agents.lock(agentType, agentId);
-                  JdbcBacklog<I> backlog = backlogs.forAgent(agentType, agentId);
+                  BacklogManagement<I> backlog = backlogs.forAgent(agentType, agentId);
                   int abandoned = backlog.seal();
                   if (abandoned > 0) {
                     log.info(
@@ -242,7 +241,7 @@ final class DefaultQueuedHarness<I>
    *
    * @return whether anything was written that an effect dispatcher should be told about
    */
-  private boolean driveIfIdle(AgentId agentId, Backlog<I> backlog, String trace) {
+  private boolean driveIfIdle(AgentId agentId, BacklogManagement<I> backlog, String trace) {
     if (!(reconstitute(agentId) instanceof AgentState.Idle)) {
       return false;
     }
