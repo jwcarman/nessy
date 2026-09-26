@@ -32,6 +32,16 @@
   <name>Nessy Prompt</name>
   <description>Prompts as templates: the framework, and an engine per module.</description>
 
+  <properties>
+    <!-- An AGGREGATOR, not a parent: its children still inherit from nessy-parent, so their
+         published coordinates and inherited configuration are exactly what they were before the
+         move. Nothing consumes this pom, so it is not published. -->
+    <maven.deploy.skip>true</maven.deploy.skip>
+    <maven.source.skip>true</maven.source.skip>
+    <maven.javadoc.skip>true</maven.javadoc.skip>
+    <gpg.skip>true</gpg.skip>
+  </properties>
+
   <modules>
     <module>api</module>
     <module>spring</module>

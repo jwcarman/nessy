@@ -68,7 +68,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p><b>N short locked transactions, never one held across a turn.</b> Each step -- reconstitute
  * the agent from {@link AgentEvents#sinceLastTurnStarted}, decide, append -- happens under {@link
- * Locks#withLock}, which {@link org.jwcarman.nessy.engine.jdbc.JdbcRowLocks} turns into one short
+ * Locks#withLock}, which {@link org.jwcarman.nessy.backend.jdbc.JdbcRowLocks} turns into one short
  * database transaction. The effect a step decided on -- an inference, an approval, a tool call --
  * is then performed with the lock released and no transaction open, and its outcome becomes the
  * next step's command. No state is carried across a release: every step re-reads the agent under

@@ -23,9 +23,10 @@
 
   <parent>
     <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-prompt-parent</artifactId>
+    <artifactId>nessy-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
-    <relativePath>../pom.xml</relativePath>
+    <!-- Two levels: this module sits under an aggregator, but still inherits from the root. -->
+    <relativePath>../../pom.xml</relativePath>
   </parent>
 
   <artifactId>nessy-prompt</artifactId>

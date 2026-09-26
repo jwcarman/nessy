@@ -29,7 +29,7 @@
 
   <artifactId>nessy-backend</artifactId>
   <packaging>pom</packaging>
-  <name>Nessy Backends</name>
+  <name>Nessy Backend</name>
   <description>What implementing a Backend means, and the backends themselves</description>
 
   <properties>
@@ -43,7 +43,9 @@
   </properties>
 
   <modules>
-    <module>nessy-backend-spi</module>
+    <module>spi</module>
+    <module>inmemory</module>
+    <module>jdbc</module>
   </modules>
 
 </project>

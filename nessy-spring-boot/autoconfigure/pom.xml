@@ -123,6 +123,11 @@
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-engine</artifactId>
     </dependency>
+    <!-- The JDBC backend the direct- and queued-harness auto-configurations build beans of. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-backend-jdbc</artifactId>
+    </dependency>
     <!-- TEST, because the only H2 left is the wiring tests' own DataSource. There used to be an
          in-memory fallback for an application that supplied none, and this was RUNTIME to make it
          work; the fallback is gone (the engine's queries are PostgreSQL's, so it ran a Nessy that

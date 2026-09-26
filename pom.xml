@@ -410,6 +410,16 @@
       </dependency>
       <dependency>
         <groupId>org.jwcarman.nessy</groupId>
+        <artifactId>nessy-backend-jdbc</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.nessy</groupId>
+        <artifactId>nessy-backend-inmemory</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.nessy</groupId>
         <artifactId>nessy-testing</artifactId>
         <version>${project.version}</version>
       </dependency>

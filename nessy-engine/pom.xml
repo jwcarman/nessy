@@ -95,6 +95,23 @@
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
+    <!-- The default direct-harness factory's fallback backend, for a caller with no database:
+         DefaultDirectHarnessFactory builds one itself when the caller supplies no DirectBackend. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-backend-inmemory</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- Tests only: EngineFixture and the harness tests build a real JDBC backend against
+         PostgreSQL, and StorageCodecTest exercises the codec that lives beside it. Nothing in this
+         module's main code constructs one; that lives in nessy-spring-boot's autoconfiguration
+         and in applications that build their own harness. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-backend-jdbc</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-api</artifactId>

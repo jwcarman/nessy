@@ -51,6 +51,13 @@
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
+    <!-- Test only: the summarizer is exercised against a real JDBC queued backend. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-backend-jdbc</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
     <!-- The story to summarise, and the lease that says whose turn it is to: both the engine's. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>

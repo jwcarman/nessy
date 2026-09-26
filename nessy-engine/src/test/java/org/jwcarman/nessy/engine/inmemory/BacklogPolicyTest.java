@@ -24,6 +24,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.api.BacklogPolicy;
+import org.jwcarman.nessy.backend.inmemory.InMemoryBacklog;
 
 @DisplayName("A policy")
 class BacklogPolicyTest {
@@ -45,7 +46,7 @@ class BacklogPolicyTest {
       BacklogPolicy<Reading> policy,
       List<BacklogItem<Reading>> waiting,
       BacklogItem<Reading> incoming) {
-    ListBacklog<Reading> backlog = new ListBacklog<>(waiting);
+    InMemoryBacklog<Reading> backlog = new InMemoryBacklog<>(waiting);
     policy.coalesce(backlog, incoming);
     return backlog.items();
   }
