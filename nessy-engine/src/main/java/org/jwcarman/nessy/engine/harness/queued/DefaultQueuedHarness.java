@@ -39,6 +39,7 @@ import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.backlog.Backlog;
+import org.jwcarman.nessy.engine.backlog.Backlogs;
 import org.jwcarman.nessy.engine.backlog.Pull;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentState;
@@ -86,12 +87,6 @@ final class DefaultQueuedHarness<I>
   private final Traces traces;
 
   private EffectDispatcher dispatcher;
-
-  /** Makes this agent type's backlog for one agent, inside the transaction that holds its row. */
-  @FunctionalInterface
-  interface Backlogs<I> {
-    Backlog<I> forAgent(AgentType agentType, AgentId agent);
-  }
 
   DefaultQueuedHarness(
       AgentType agentType,
