@@ -22,6 +22,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
@@ -86,7 +87,9 @@ class HeadSummarizerFoldTest {
                 c.agentType(CHAT)
                     .summaries(summaries)
                     .histories(factory.histories())
-                    .locks(new JdbcLeases(dataSource, "summary", Duration.ofSeconds(30)))
+                    .locks(
+                        new JdbcLeases(
+                            dataSource, Map.of(HeadSummarizer.LOCK_KIND, Duration.ofSeconds(30))))
                     .inference(model, InferenceOptions.of("m"))
                     .tail(MAX_TAIL, MIN_TAIL));
     return factory.create(

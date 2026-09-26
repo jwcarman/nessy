@@ -26,22 +26,33 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.backend.lock.LockKind;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.lock.Locks.Attempt;
 
 @DisplayName("Locks held in this process")
 class InMemoryLocksTest {
 
+  private static final LockKind KIND = new LockKind("turn");
+  private static final AgentType TYPE = new AgentType("chat");
+
   private final Locks locks = new InMemoryLocks();
   private final ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor();
 
   private static boolean ran(Attempt<?> attempt) {
     return attempt instanceof Attempt.Ran<?>;
+  }
+
+  private static AgentId agent() {
+    return AgentId.random();
   }
 
   @AfterEach
@@ -53,8 +64,10 @@ class InMemoryLocksTest {
   @DisplayName("run the work and hand back what it produced")
   void the_first_caller_runs() {
     AtomicInteger counted = new AtomicInteger();
+    AgentId agent = agent();
 
-    assertThat(locks.tryWithLock("a", counted::incrementAndGet)).isEqualTo(new Attempt.Ran<>(1));
+    assertThat(locks.tryWithLock(KIND, TYPE, agent, counted::incrementAndGet))
+        .isEqualTo(new Attempt.Ran<>(1));
     assertThat(counted).hasValue(1);
   }
 
@@ -63,12 +76,15 @@ class InMemoryLocksTest {
   @DisplayName("say a null result ran, rather than saying nothing ran")
   void nothing_produced_is_not_nothing_run() {
     AtomicInteger counted = new AtomicInteger();
+    AgentId agent = agent();
 
     // A block lambda that returns nothing is a Runnable and only a Runnable, which is how the
     // overload is picked: a method reference that happens to return a value picks the other one.
     Attempt<Void> attempt =
         locks.tryWithLock(
-            "a",
+            KIND,
+            TYPE,
+            agent,
             () -> {
               counted.incrementAndGet();
             });
@@ -80,13 +96,16 @@ class InMemoryLocksTest {
   @Test
   @DisplayName("refuse anyone else while held, at once and without waiting")
   void a_held_lock_is_refused() throws Exception {
+    AgentId agent = agent();
     CountDownLatch holding = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
     Future<Attempt<Void>> holder =
         callers.submit(
             () ->
                 locks.tryWithLock(
-                    "a",
+                    KIND,
+                    TYPE,
+                    agent,
                     () -> {
                       holding.countDown();
                       await().atMost(Duration.ofSeconds(10)).until(() -> release.getCount() == 0);
@@ -94,7 +113,7 @@ class InMemoryLocksTest {
     holding.await();
     AtomicInteger counted = new AtomicInteger();
 
-    Attempt<Integer> refused = locks.tryWithLock("a", counted::incrementAndGet);
+    Attempt<Integer> refused = locks.tryWithLock(KIND, TYPE, agent, counted::incrementAndGet);
 
     assertThat(refused).isEqualTo(new Attempt.Ignored<Integer>());
     assertThat(counted).hasValue(0);
@@ -105,24 +124,28 @@ class InMemoryLocksTest {
   @Test
   @DisplayName("are free again once the work returns, however it returns")
   void released_after_the_work() {
+    AgentId agent = agent();
     AtomicInteger counted = new AtomicInteger();
 
     assertThatThrownBy(
             () ->
                 locks.tryWithLock(
-                    "a",
+                    KIND,
+                    TYPE,
+                    agent,
                     () -> {
                       throw new IllegalStateException("the work failed");
                     }))
         .isInstanceOf(IllegalStateException.class);
 
-    assertThat(ran(locks.tryWithLock("a", counted::incrementAndGet))).isTrue();
+    assertThat(ran(locks.tryWithLock(KIND, TYPE, agent, counted::incrementAndGet))).isTrue();
     assertThat(counted).hasValue(1);
   }
 
   @Test
   @DisplayName("of many asking at once, exactly one runs")
   void a_race_has_one_winner() throws Exception {
+    AgentId agent = agent();
     CountDownLatch go = new CountDownLatch(1);
     AtomicInteger counted = new AtomicInteger();
     List<Future<Attempt<Void>>> outcomes =
@@ -133,7 +156,9 @@ class InMemoryLocksTest {
                         () -> {
                           go.await();
                           return locks.tryWithLock(
-                              "a",
+                              KIND,
+                              TYPE,
+                              agent,
                               () -> {
                                 counted.incrementAndGet();
                                 await().pollDelay(Duration.ofMillis(300)).until(() -> true);
@@ -154,18 +179,22 @@ class InMemoryLocksTest {
   }
 
   /**
-   * Distinct keys do not block each other -- which striping makes a statement about likelihood
-   * rather than certainty, so this asks for one held key not to stop a sweep of many others.
+   * A lock per {@code (kind, type, agent)}, not a fixed set of stripes shared by every agent: two
+   * unrelated agents can no longer collide and refuse each other. Every one of them runs, which
+   * would be impossible under the old striping (64 stripes, 200 callers) without a false refusal.
    */
   @Test
-  @DisplayName("hold different keys independently")
-  void different_keys_do_not_block_each_other() throws Exception {
+  @DisplayName("hold different agents independently, never colliding")
+  void different_agents_never_collide() throws Exception {
+    AgentId held = agent();
     CountDownLatch holding = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
     callers.submit(
         () ->
             locks.tryWithLock(
-                "held",
+                KIND,
+                TYPE,
+                held,
                 () -> {
                   holding.countDown();
                   await().atMost(Duration.ofSeconds(10)).until(() -> release.getCount() == 0);
@@ -173,16 +202,64 @@ class InMemoryLocksTest {
     holding.await();
 
     long ran =
-        IntStream.range(0, 200).filter(i -> ran(locks.tryWithLock("other-" + i, () -> i))).count();
+        IntStream.range(0, 200)
+            .filter(i -> ran(locks.tryWithLock(KIND, TYPE, agent(), () -> i)))
+            .count();
 
-    assertThat(ran).as("at most one stripe is taken").isGreaterThanOrEqualTo(190L);
+    assertThat(ran).as("every unrelated agent runs").isEqualTo(200L);
+    release.countDown();
+  }
+
+  /** The same agent under two different kinds is two locks, not one. */
+  @Test
+  @DisplayName("hold different kinds of the same agent independently")
+  void different_kinds_of_the_same_agent_do_not_collide() throws Exception {
+    AgentId agent = agent();
+    LockKind other = new LockKind("summary");
+    CountDownLatch holding = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    callers.submit(
+        () ->
+            locks.tryWithLock(
+                KIND,
+                TYPE,
+                agent,
+                () -> {
+                  holding.countDown();
+                  await().atMost(Duration.ofSeconds(10)).until(() -> release.getCount() == 0);
+                }));
+    holding.await();
+    AtomicInteger counted = new AtomicInteger();
+
+    assertThat(ran(locks.tryWithLock(other, TYPE, agent, counted::incrementAndGet))).isTrue();
+    assertThat(counted).hasValue(1);
     release.countDown();
   }
 
   @Test
-  @DisplayName("refuse a size with no locks in it, and work with only one")
-  void the_stripe_count_is_checked_where_it_is_given() {
-    assertThatThrownBy(() -> new InMemoryLocks(0)).isInstanceOf(IllegalArgumentException.class);
-    assertThat(ran(new InMemoryLocks(1).tryWithLock("a", () -> "ran"))).isTrue();
+  @DisplayName("wait for a held lock rather than being refused")
+  void with_lock_waits_rather_than_giving_up() throws Exception {
+    AgentId agent = agent();
+    CountDownLatch holding = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    callers.submit(
+        () ->
+            locks.tryWithLock(
+                KIND,
+                TYPE,
+                agent,
+                () -> {
+                  holding.countDown();
+                  await().atMost(Duration.ofSeconds(10)).until(() -> release.getCount() == 0);
+                }));
+    holding.await();
+
+    Future<String> waiter = callers.submit(() -> locks.withLock(KIND, TYPE, agent, () -> "ran"));
+    // Long enough that a caller refused once, rather than waiting, would already have returned.
+    await().pollDelay(Duration.ofMillis(100)).until(() -> true);
+    assertThat(waiter.isDone()).as("still waiting, not refused").isFalse();
+
+    release.countDown();
+    assertThat(waiter.get(10, TimeUnit.SECONDS)).isEqualTo("ran");
   }
 }

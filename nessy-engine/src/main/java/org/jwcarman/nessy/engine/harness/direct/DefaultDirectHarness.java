@@ -41,6 +41,7 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
+import org.jwcarman.nessy.backend.lock.LockKind;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
@@ -85,6 +86,14 @@ import tools.jackson.databind.ObjectMapper;
 public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   private static final Logger LOG = LoggerFactory.getLogger(DefaultDirectHarness.class);
+
+  /**
+   * What every turn and every termination of this door locks under, until the per-step relocking of
+   * {@code docs/superpowers/specs/2026-09-25-locks-as-plumbing-design.md} §3 lands. Public so an
+   * application supplying its own {@link Locks} -- a lease, say -- knows what kind to give a
+   * time-to-live for.
+   */
+  public static final LockKind TURN = new LockKind("nessy.direct-harness.turn");
 
   private final Locks locks;
   private final AgentType agentType;
@@ -164,7 +173,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     // now the second is told the agent is busy and nothing it did has to be undone. expectedLast
     // still guards the append, because a lease can expire under a holder that is merely slow --
     // this stops two callers, that stops two writers.
-    return locks.tryWithLock(agent.value().toString(), turn).orElse(new Outcome.Busy<>());
+    return locks.tryWithLock(TURN, agentType, agent, turn).orElse(new Outcome.Busy<>());
   }
 
   private Outcome<O> runTurn(AgentId agent, I input) {
@@ -226,7 +235,9 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     // while a turn is running would be declined silently, and waiting for the turn is not this
     // door's habit. A caller that was refused the lock asks again once the turn it saw has ended.
     locks.tryWithLock(
-        agent.value().toString(),
+        TURN,
+        agentType,
+        agent,
         () -> {
           List<AgentEvent> lastTurn = events.sinceLastTurnStarted(agent);
           Seq from = lastTurn.isEmpty() ? Seq.NONE : previous(lastTurn.getFirst().seq());

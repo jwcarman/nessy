@@ -18,6 +18,7 @@ package org.jwcarman.nessy.examples.chatweb;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -28,6 +29,7 @@ import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.backend.lock.Locks;
+import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarness;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -72,18 +74,24 @@ public class ChatConfiguration {
   /**
    * One turn at a time per agent, and the row is what says so.
    *
-   * <p>Without this the direct door falls back to locks held in this process, which are STRIPED --
-   * 64 of them shared by every agent -- so an unrelated conversation landing on the same stripe is
-   * told the agent is busy when it is not. A lease is keyed by the agent itself, and it holds
-   * across instances rather than within one process.
+   * <p>Without this the direct door falls back to locks held in this process, which are scoped to
+   * this one JVM, so a second instance would not see them at all. A lease is keyed by the agent
+   * itself and holds across instances.
    *
-   * <p>Ten minutes because a turn here can be waiting on a person: the desk holds a call for five
-   * before giving up, and a lease that expired under a holder still working would let a second turn
-   * start on the same agent, which is the thing it exists to prevent.
+   * <p>One instance, two kinds: the direct door's own turn lock and the episode summariser's, each
+   * with its own time-to-live rather than a shared default. Both are generous, because a turn here
+   * can be waiting on a person -- the desk holds a call for five minutes before giving up -- and a
+   * local thinking model can take minutes over a long episode; a lease that expired under a holder
+   * still working would let a second run start on the same agent, which is the thing it exists to
+   * prevent.
    */
   @Bean
   public Locks agentLocks(DataSource dataSource) {
-    return new JdbcLeases(dataSource, "agent", Duration.ofMinutes(10));
+    return new JdbcLeases(
+        dataSource,
+        Map.of(
+            DefaultDirectHarness.TURN, Duration.ofMinutes(10),
+            EpisodeSummarizer.LOCK_KIND, Duration.ofMinutes(10)));
   }
 
   @Bean
@@ -116,7 +124,7 @@ public class ChatConfiguration {
   public EpisodeSummarizer episodeSummarizer(
       TurnHistories histories,
       JdbcEpisodes episodes,
-      DataSource dataSource,
+      Locks agentLocks,
       InferenceProvider provider,
       NessyProperties properties,
       ObjectProvider<ObservationRegistry> observations) {
@@ -125,10 +133,11 @@ public class ChatConfiguration {
             c.agentType(TYPE)
                 .episodes(episodes)
                 .histories(histories)
-                // Its own kind and its own generous lease: a local thinking model can
-                // take minutes over a long episode, and erring long only delays the
-                // next attempt, where erring short lets two summarise at once.
-                .locks(new JdbcLeases(dataSource, "episode", Duration.ofMinutes(10)))
+                // The same lease instance as the direct door's turn lock, under its own kind and
+                // its own generous ttl (agentLocks above): a local thinking model can take minutes
+                // over a long episode, and erring long only delays the next attempt, where erring
+                // short lets two summarise at once.
+                .locks(agentLocks)
                 .inference(
                     provider, new InferenceOptions(properties.model(), properties.maxTokens()))
                 // Each summary is a nessy.summary span with its model call inside, when the

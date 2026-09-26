@@ -20,9 +20,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.time.Duration;
 import java.util.List;
-import java.util.UUID;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -31,11 +35,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.backend.lock.LockKind;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.lock.Locks.Attempt;
 import org.jwcarman.nessy.spi.store.Schemas;
+import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
@@ -48,6 +58,10 @@ class JdbcLeasesTest {
     POSTGRES.start();
   }
 
+  private static final LockKind SUMMARY = new LockKind("summary");
+  private static final LockKind ENRICHMENT = new LockKind("enrichment");
+  private static final AgentType TYPE = new AgentType("chat");
+
   private static DataSource database() {
     DataSource database =
         new DriverManagerDataSource(
@@ -57,14 +71,15 @@ class JdbcLeasesTest {
   }
 
   private final DataSource database = database();
-  private final Locks leases = leases("summary", Duration.ofSeconds(30));
+  private final JdbcClient jdbc = JdbcClient.create(database);
+  private final Locks leases = leases(Map.of(SUMMARY, Duration.ofSeconds(30)));
   private final ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor();
 
-  /** A key nobody else in the shared database is using. */
-  private final String key = UUID.randomUUID().toString();
+  /** An agent nobody else in the shared database is using. */
+  private final AgentId agent = AgentId.random();
 
-  private Locks leases(String kind, Duration ttl) {
-    return new JdbcLeases(database, kind, ttl);
+  private Locks leases(Map<LockKind, Duration> ttls) {
+    return new JdbcLeases(database, ttls);
   }
 
   /** Whether the work ran, which is the whole of what a caller needs from an attempt. */
@@ -74,16 +89,38 @@ class JdbcLeasesTest {
 
   private Attempt<Void> held(CountDownLatch holding, CountDownLatch release) {
     return leases.tryWithLock(
-        key,
+        SUMMARY,
+        TYPE,
+        agent,
         () -> {
           holding.countDown();
           await().atMost(Duration.ofSeconds(10)).until(() -> release.getCount() == 0);
         });
   }
 
+  private static final String SELECT_TAKEOVERS =
+      "SELECT takeovers FROM nessy_lease WHERE kind = ? AND agent_type = ? AND agent_id = ?";
+
+  private int takeoversInDb(LockKind kind, AgentId agent) {
+    return jdbc.sql(SELECT_TAKEOVERS)
+        .params(kind.value(), TYPE.value(), agent.value())
+        .query(Integer.class)
+        .single();
+  }
+
+  private ListAppender<ILoggingEvent> logs;
+
+  @BeforeEach
+  void watchLogs() {
+    logs = new ListAppender<>();
+    logs.start();
+    ((Logger) LoggerFactory.getLogger(JdbcLeases.class)).addAppender(logs);
+  }
+
   @AfterEach
   void stop() {
     callers.shutdownNow();
+    ((Logger) LoggerFactory.getLogger(JdbcLeases.class)).detachAppender(logs);
   }
 
   @Test
@@ -91,7 +128,7 @@ class JdbcLeasesTest {
   void the_first_caller_runs() {
     AtomicInteger counted = new AtomicInteger();
 
-    Attempt<Integer> attempt = leases.tryWithLock(key, counted::incrementAndGet);
+    Attempt<Integer> attempt = leases.tryWithLock(SUMMARY, TYPE, agent, counted::incrementAndGet);
 
     assertThat(attempt).isEqualTo(new Attempt.Ran<>(1));
     assertThat(counted).hasValue(1);
@@ -100,10 +137,11 @@ class JdbcLeasesTest {
   @Test
   @DisplayName("hands back what the work produced, null included")
   void the_work_answers_through_the_attempt() {
-    assertThat(leases.tryWithLock(key, () -> "summarised"))
+    assertThat(leases.tryWithLock(SUMMARY, TYPE, agent, () -> "summarised"))
         .isEqualTo(new Attempt.Ran<>("summarised"));
     // The reason this is not an Optional: work that produces nothing still ran.
-    assertThat(leases.tryWithLock(key, () -> null)).isEqualTo(new Attempt.Ran<>(null));
+    assertThat(leases.tryWithLock(SUMMARY, TYPE, agent, () -> null))
+        .isEqualTo(new Attempt.Ran<>(null));
   }
 
   @Test
@@ -115,7 +153,7 @@ class JdbcLeasesTest {
     holding.await();
     AtomicInteger counted = new AtomicInteger();
 
-    Attempt<Integer> refused = leases.tryWithLock(key, counted::incrementAndGet);
+    Attempt<Integer> refused = leases.tryWithLock(SUMMARY, TYPE, agent, counted::incrementAndGet);
 
     assertThat(refused).as("refused, at once").isEqualTo(new Attempt.Ignored<Integer>());
     assertThat(counted).hasValue(0);
@@ -124,58 +162,157 @@ class JdbcLeasesTest {
   }
 
   @Test
-  @DisplayName("is free again once the holder\'s work returns, however it returns")
+  @DisplayName("is free again once the holder's work returns, however it returns")
   void released_after_the_work() {
     AtomicInteger counted = new AtomicInteger();
 
     assertThatThrownBy(
             () ->
                 leases.tryWithLock(
-                    key,
+                    SUMMARY,
+                    TYPE,
+                    agent,
                     () -> {
                       throw new IllegalStateException("the work failed");
                     }))
         .isInstanceOf(IllegalStateException.class);
 
-    assertThat(ran(leases.tryWithLock(key, counted::incrementAndGet))).isTrue();
+    assertThat(ran(leases.tryWithLock(SUMMARY, TYPE, agent, counted::incrementAndGet))).isTrue();
     assertThat(counted).hasValue(1);
   }
 
   @Test
-  @DisplayName("is taken over once a holder that never released it has expired")
+  @DisplayName("a fresh take is not a takeover")
+  void a_fresh_take_is_not_a_takeover() {
+    AtomicInteger seen = new AtomicInteger(-1);
+
+    leases.tryWithLock(SUMMARY, TYPE, agent, () -> seen.set(takeoversInDb(SUMMARY, agent)));
+
+    assertThat(seen).as("takeovers, read while the lease was still held").hasValue(0);
+  }
+
+  @Test
+  @DisplayName("is taken over once a holder that never released it has expired, and says so")
   void an_expired_lease_is_taken_over() throws Exception {
     // A holder that is still running when its lease runs out: a slow one, or a dead one.
     CountDownLatch holding = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
-    Locks brief = leases("summary", Duration.ofMillis(500));
+    Locks brief = leases(Map.of(SUMMARY, Duration.ofMillis(500)));
     callers.submit(
         () ->
             brief.tryWithLock(
-                key,
+                SUMMARY,
+                TYPE,
+                agent,
                 () -> {
                   holding.countDown();
                   await().atMost(Duration.ofSeconds(10)).until(() -> release.getCount() == 0);
                 }));
     holding.await();
     AtomicInteger counted = new AtomicInteger();
+    AtomicInteger takeovers = new AtomicInteger(-1);
 
     await()
         .atMost(Duration.ofSeconds(5))
         .untilAsserted(
-            () -> assertThat(ran(leases.tryWithLock(key, counted::incrementAndGet))).isTrue());
+            () ->
+                assertThat(
+                        ran(
+                            leases.tryWithLock(
+                                SUMMARY,
+                                TYPE,
+                                agent,
+                                () -> {
+                                  counted.incrementAndGet();
+                                  takeovers.set(takeoversInDb(SUMMARY, agent));
+                                })))
+                    .isTrue());
 
     assertThat(counted).hasValue(1);
+    assertThat(takeovers).as("takeovers, read while the new holder held it").hasValue(1);
     release.countDown();
   }
 
   @Test
-  @DisplayName("keys are scoped by kind: the same key under another kind is another lease")
+  @DisplayName(
+      "a release once the lease has been taken over warns, naming the kind and the agent, and"
+          + " changes nothing")
+  void a_release_after_a_takeover_warns_and_changes_nothing() throws Exception {
+    Locks brief = leases(Map.of(SUMMARY, Duration.ofMillis(500)));
+    CountDownLatch originalHolding = new CountDownLatch(1);
+    CountDownLatch letOriginalFinish = new CountDownLatch(1);
+    Future<Attempt<Void>> original =
+        callers.submit(
+            () ->
+                brief.tryWithLock(
+                    SUMMARY,
+                    TYPE,
+                    agent,
+                    () -> {
+                      originalHolding.countDown();
+                      await()
+                          .atMost(Duration.ofSeconds(10))
+                          .until(() -> letOriginalFinish.getCount() == 0);
+                    }));
+    originalHolding.await();
+    // Past the original holder's 500ms ttl, so the row below is eligible to be taken over.
+    await().pollDelay(Duration.ofMillis(600)).until(() -> true);
+
+    // The new holder keeps holding it, so the original's later release has something live to
+    // threaten.
+    CountDownLatch newHolding = new CountDownLatch(1);
+    CountDownLatch letNewFinish = new CountDownLatch(1);
+    Future<Attempt<Void>> takeover =
+        callers.submit(
+            () ->
+                leases.tryWithLock(
+                    SUMMARY,
+                    TYPE,
+                    agent,
+                    () -> {
+                      newHolding.countDown();
+                      await()
+                          .atMost(Duration.ofSeconds(10))
+                          .until(() -> letNewFinish.getCount() == 0);
+                    }));
+    newHolding.await();
+    assertThat(takeoversInDb(SUMMARY, agent)).as("this row has been taken over once").isEqualTo(1);
+
+    // The original holder now finishes and tries to release a lease it no longer holds.
+    letOriginalFinish.countDown();
+    Attempt<Void> outcome = original.get();
+
+    assertThat(ran(outcome)).as("the original holder's own work still ran and returned").isTrue();
+    assertThat(logs.list)
+        .as("a release that affected nothing is a WARN naming the kind and the agent")
+        .anySatisfy(
+            event -> {
+              assertThat(event.getLevel()).isEqualTo(Level.WARN);
+              assertThat(event.getFormattedMessage())
+                  .contains(SUMMARY.value())
+                  .contains(agent.value().toString());
+            });
+    // The new holder is still holding: the lost holder's release did not touch its row.
+    assertThat(ran(leases.tryWithLock(SUMMARY, TYPE, agent, () -> "refused, still held")))
+        .as("the current holder's lease survived the other holder's release")
+        .isFalse();
+
+    letNewFinish.countDown();
+    assertThat(ran(takeover.get())).isTrue();
+  }
+
+  @Test
+  @DisplayName("keys are scoped by kind: the same agent under another kind is another lease")
   void kinds_do_not_collide() {
-    Locks enrichment = leases("enrichment", Duration.ofSeconds(30));
+    Locks enrichment = leases(Map.of(ENRICHMENT, Duration.ofSeconds(30)));
     AtomicInteger counted = new AtomicInteger();
 
     Attempt<Boolean> outer =
-        leases.tryWithLock(key, () -> ran(enrichment.tryWithLock(key, counted::incrementAndGet)));
+        leases.tryWithLock(
+            SUMMARY,
+            TYPE,
+            agent,
+            () -> ran(enrichment.tryWithLock(ENRICHMENT, TYPE, agent, counted::incrementAndGet)));
 
     assertThat(outer).isEqualTo(new Attempt.Ran<>(true));
     assertThat(counted).hasValue(1);
@@ -195,7 +332,9 @@ class JdbcLeasesTest {
                         () -> {
                           go.await();
                           return leases.tryWithLock(
-                              key,
+                              SUMMARY,
+                              TYPE,
+                              agent,
                               () -> {
                                 counted.incrementAndGet();
                                 // Hold it long enough for the others to be refused.
@@ -217,9 +356,17 @@ class JdbcLeasesTest {
   }
 
   @Test
-  @DisplayName("a lease with no life in it is refused where it is configured")
+  @DisplayName("a ttl with no life in it is refused where it is configured")
   void a_ttl_that_is_not_positive_is_refused() {
-    assertThatThrownBy(() -> leases("summary", Duration.ZERO))
+    assertThatThrownBy(() -> leases(Map.of(SUMMARY, Duration.ZERO)))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  @DisplayName("a kind with no ttl configured for it is refused at the call, naming the kind")
+  void an_unregistered_kind_is_refused_at_the_call() {
+    assertThatThrownBy(() -> leases.tryWithLock(ENRICHMENT, TYPE, agent, () -> "never runs"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining(ENRICHMENT.value());
   }
 }

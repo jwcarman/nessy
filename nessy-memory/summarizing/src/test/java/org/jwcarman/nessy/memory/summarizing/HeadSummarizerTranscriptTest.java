@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -32,6 +34,7 @@ import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
+import org.jwcarman.nessy.backend.lock.LockKind;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.lock.Locks.Attempt;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -95,7 +98,7 @@ class HeadSummarizerTranscriptTest {
 
   @Test
   void the_tail_kept_verbatim_must_fit_inside_the_threshold() {
-    org.jwcarman.nessy.api.AgentType type = new org.jwcarman.nessy.api.AgentType("chat");
+    AgentType type = new AgentType("chat");
     Customizer<HeadSummarizer.Config> complete =
         c ->
             c.agentType(type)
@@ -104,7 +107,8 @@ class HeadSummarizerTranscriptTest {
                 .locks(
                     new Locks() {
                       @Override
-                      public <T> Attempt<T> tryWithLock(String key, Supplier<T> work) {
+                      public <T> Attempt<T> tryWithLock(
+                          LockKind kind, AgentType type, AgentId agent, Supplier<T> work) {
                         return new Attempt.Ignored<>();
                       }
                     })

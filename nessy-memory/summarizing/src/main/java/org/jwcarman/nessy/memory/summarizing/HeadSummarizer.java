@@ -28,6 +28,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.backend.lock.LockKind;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.engine.store.TurnHistories;
@@ -60,6 +61,13 @@ import org.slf4j.LoggerFactory;
 public class HeadSummarizer {
 
   private static final Logger LOG = LoggerFactory.getLogger(HeadSummarizer.class);
+
+  /**
+   * What this summariser's lease is taken under -- distinct from the episode summariser's own kind
+   * so the two never exclude each other: a head summary and an episode summary of the same agent
+   * are unrelated work.
+   */
+  public static final LockKind LOCK_KIND = new LockKind("nessy.memory.head-summary");
 
   public static final String PROMPT =
       """
@@ -213,7 +221,7 @@ public class HeadSummarizer {
           agentId,
           () -> {
             return locks
-                .tryWithLock(agentId.value().toString(), () -> summarize(agentId))
+                .tryWithLock(LOCK_KIND, agentType, agentId, () -> summarize(agentId))
                 .orElse("lease-refused");
           });
     }

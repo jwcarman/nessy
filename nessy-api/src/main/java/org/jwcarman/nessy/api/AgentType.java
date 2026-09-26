@@ -15,8 +15,6 @@
  */
 package org.jwcarman.nessy.api;
 
-import java.util.Objects;
-
 /**
  * What kind of agent this is.
  *
@@ -25,14 +23,15 @@ import java.util.Objects;
  * around.
  *
  * <p>Blank is rejected because it is not a name and would still key rows: an agent type of {@code
- * ""} would quietly share a namespace with every other one somebody forgot to name.
+ * ""} would quietly share a namespace with every other one somebody forgot to name. Bounded at
+ * {@value #MAX_LENGTH} because {@code agent_type VARCHAR(64)} is the column behind it, in {@code
+ * nessy_agent}, {@code nessy_agent_effect} and {@code nessy_agent_backlog} alike.
  */
 public record AgentType(String value) {
 
+  private static final int MAX_LENGTH = 64;
+
   public AgentType {
-    Objects.requireNonNull(value, "value must not be null");
-    if (value.isBlank()) {
-      throw new IllegalArgumentException("value must not be blank");
-    }
+    value = Identifiers.require(value, "agent type", MAX_LENGTH);
   }
 }

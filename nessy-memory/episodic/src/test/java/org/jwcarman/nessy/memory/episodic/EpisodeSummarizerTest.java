@@ -27,6 +27,7 @@ import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterEach;
@@ -121,7 +122,10 @@ class EpisodeSummarizerTest {
                 c.agentType(Calls.TYPE)
                     .episodes(episodes)
                     .histories(factory.histories())
-                    .locks(new JdbcLeases(dataSource, "episode", Duration.ofSeconds(30)))
+                    .locks(
+                        new JdbcLeases(
+                            dataSource,
+                            Map.of(EpisodeSummarizer.LOCK_KIND, Duration.ofSeconds(30))))
                     .inference(model, InferenceOptions.of("m"))
                     .observations(observations));
     harness =

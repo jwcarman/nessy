@@ -55,6 +55,7 @@ import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.backend.lock.LockKind;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.lock.Locks.Attempt;
 import org.jwcarman.nessy.backend.payload.Payloads;
@@ -390,7 +391,8 @@ class DefaultDirectHarnessTest {
     Locks held =
         new Locks() {
           @Override
-          public <T> Attempt<T> tryWithLock(String key, Supplier<T> work) {
+          public <T> Attempt<T> tryWithLock(
+              LockKind kind, AgentType type, AgentId agent, Supplier<T> work) {
             return new Attempt.Ignored<>();
           }
         };
