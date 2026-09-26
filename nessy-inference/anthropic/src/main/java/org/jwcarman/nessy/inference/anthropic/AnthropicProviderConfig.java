@@ -17,6 +17,8 @@ package org.jwcarman.nessy.inference.anthropic;
 
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
+import com.anthropic.core.Timeout;
+import java.time.Duration;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Customizer;
 import tools.jackson.databind.json.JsonMapper;
@@ -44,6 +46,7 @@ public final class AnthropicProviderConfig {
   private PromptCaching promptCaching = PromptCaching.OFF;
   private AnthropicClient client;
   private boolean useEnv;
+  private Duration timeout;
 
   /**
    * Reads the JSON text that schemas, arguments and provider payloads travel as.
@@ -132,6 +135,33 @@ public final class AnthropicProviderConfig {
   }
 
   /**
+   * The maximum time to wait on the SDK's underlying HTTP call, applied as {@link
+   * Timeout#request()} — connect stays at the SDK's own one-minute default; only the request bound
+   * moves. Unset by default, so an application that never calls this keeps the SDK's own ten-minute
+   * request timeout (anthropic-java 2.62.0) — a hung call costing ten minutes is the bug this
+   * setter exists to fix, and the starter that builds this provider by default sets it to a margin
+   * above the engine's own {@code InferenceConfig.timeout}.
+   *
+   * <p>Ignored when a preconfigured {@link #client(AnthropicClient)} is supplied: that client is
+   * used exactly as given, and whatever timeout it already carries is the caller's own business,
+   * not this config's to override.
+   *
+   * @throws IllegalArgumentException if {@code timeout} is zero or negative
+   */
+  public AnthropicProviderConfig timeout(Duration timeout) {
+    this.timeout = requirePositive(timeout);
+    return this;
+  }
+
+  private static Duration requirePositive(Duration timeout) {
+    Objects.requireNonNull(timeout, "timeout must not be null");
+    if (timeout.isZero() || timeout.isNegative()) {
+      throw new IllegalArgumentException("timeout must be positive, was " + timeout);
+    }
+    return timeout;
+  }
+
+  /**
    * Turns this config into the {@link AnthropicInferenceProvider} it describes — the factory's own
    * step, never a public {@code build()} (design of record 2026-08-16 §1). Reached only from {@link
    * AnthropicInferenceProvider#create(Customizer<AnthropicProviderConfig>)}, once {@code customize}
@@ -152,6 +182,9 @@ public final class AnthropicProviderConfig {
     var clientBuilder = AnthropicOkHttpClient.builder().apiKey(apiKey);
     if (baseUrl != null) {
       clientBuilder.baseUrl(baseUrl);
+    }
+    if (timeout != null) {
+      clientBuilder.timeout(Timeout.builder().request(timeout).build());
     }
     return new AnthropicInferenceProvider(clientBuilder.build(), features(), true, mapper);
   }
@@ -183,6 +216,9 @@ public final class AnthropicProviderConfig {
       }
       if (baseUrl != null) {
         sdkBuilder.baseUrl(baseUrl);
+      }
+      if (timeout != null) {
+        sdkBuilder.timeout(Timeout.builder().request(timeout).build());
       }
       return sdkBuilder.build();
     } catch (RuntimeException e) {

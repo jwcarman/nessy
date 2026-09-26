@@ -17,6 +17,8 @@ package org.jwcarman.nessy.inference.openai;
 
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
+import com.openai.core.Timeout;
+import java.time.Duration;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Customizer;
 import tools.jackson.databind.json.JsonMapper;
@@ -36,6 +38,7 @@ public final class OpenAiProviderConfig {
   private OpenAIClient client;
   private boolean useEnv;
   private String provider = OpenAiInferenceProvider.PROVIDER_NAME;
+  private Duration timeout;
 
   /**
    * Reads a tool's schema back from the JSON text an {@code InputSchema} carries.
@@ -110,6 +113,33 @@ public final class OpenAiProviderConfig {
   }
 
   /**
+   * The maximum time to wait on the SDK's underlying HTTP call, applied as {@link
+   * Timeout#request()} — connect stays at the SDK's own one-minute default; only the request bound
+   * moves. Unset by default, so an application that never calls this keeps the SDK's own ten-minute
+   * request timeout (openai-java 4.50.0) — a hung call costing ten minutes is the bug this setter
+   * exists to fix, and the starter that builds this provider by default sets it to a margin above
+   * the engine's own {@code InferenceConfig.timeout}.
+   *
+   * <p>Ignored when a preconfigured {@link #client(OpenAIClient)} is supplied: that client is used
+   * exactly as given, and whatever timeout it already carries is the caller's own business, not
+   * this config's to override.
+   *
+   * @throws IllegalArgumentException if {@code timeout} is zero or negative
+   */
+  public OpenAiProviderConfig timeout(Duration timeout) {
+    this.timeout = requirePositive(timeout);
+    return this;
+  }
+
+  private static Duration requirePositive(Duration timeout) {
+    Objects.requireNonNull(timeout, "timeout must not be null");
+    if (timeout.isZero() || timeout.isNegative()) {
+      throw new IllegalArgumentException("timeout must be positive, was " + timeout);
+    }
+    return timeout;
+  }
+
+  /**
    * The vendor name this provider reports in spans ({@code gen_ai.provider.name}): {@code openai}
    * unless the same wire is being spoken to somebody else, as it is for xAI.
    */
@@ -142,6 +172,9 @@ public final class OpenAiProviderConfig {
     }
     if (organization != null) {
       clientBuilder.organization(organization);
+    }
+    if (timeout != null) {
+      clientBuilder.timeout(Timeout.builder().request(timeout).build());
     }
     return new OpenAiInferenceProvider(clientBuilder.build(), provider, true, mapper);
   }
@@ -177,6 +210,9 @@ public final class OpenAiProviderConfig {
       }
       if (organization != null) {
         sdkBuilder.organization(organization);
+      }
+      if (timeout != null) {
+        sdkBuilder.timeout(Timeout.builder().request(timeout).build());
       }
       return sdkBuilder.build();
     } catch (RuntimeException e) {

@@ -20,8 +20,11 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.lang.reflect.Proxy;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -54,7 +57,7 @@ class BedrockProviderConfigTest {
     AtomicBoolean closed = new AtomicBoolean();
     BedrockRuntimeAsyncClient theirs =
         (BedrockRuntimeAsyncClient)
-            java.lang.reflect.Proxy.newProxyInstance(
+            Proxy.newProxyInstance(
                 BedrockRuntimeAsyncClient.class.getClassLoader(),
                 new Class<?>[] {BedrockRuntimeAsyncClient.class},
                 (proxy, method, args) -> {
@@ -96,5 +99,89 @@ class BedrockProviderConfigTest {
   void a_null_mapper_is_refused() {
     assertThatThrownBy(() -> BedrockInferenceProvider.of(c -> c.mapper(null)))
         .isInstanceOf(NullPointerException.class);
+  }
+
+  /**
+   * The transport timeout setter (design record 2026-09-25-locks-as-plumbing-design.md §5). Unlike
+   * OpenAI, Anthropic and Gemini, AWS's own {@code ClientOverrideConfiguration.apiCallTimeout()} is
+   * publicly readable back off a real {@code BedrockRuntimeAsyncClient} -- but this module's {@link
+   * BedrockClient} seam intentionally never hands that raw client back out (it exists precisely so
+   * the provider need not depend on it directly), so reaching it from here would mean reflection or
+   * widening internal visibility beyond what this setter needs. Per the same "not observable
+   * without reflection or a network call" rule as the other three providers, these tests assert on
+   * the setter's own validation and that building still succeeds.
+   */
+  @Nested
+  @DisplayName("its transport timeout")
+  class Its_transport_timeout {
+
+    @Test
+    void a_null_timeout_is_rejected() {
+      assertThatThrownBy(
+              () ->
+                  BedrockInferenceProvider.of(
+                      c ->
+                          c.region(Region.US_EAST_1)
+                              .credentialsProvider(CREDENTIALS)
+                              .timeout(null)))
+          .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void a_zero_timeout_is_rejected() {
+      assertThatThrownBy(
+              () ->
+                  BedrockInferenceProvider.of(
+                      c ->
+                          c.region(Region.US_EAST_1)
+                              .credentialsProvider(CREDENTIALS)
+                              .timeout(Duration.ZERO)))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void a_negative_timeout_is_rejected() {
+      assertThatThrownBy(
+              () ->
+                  BedrockInferenceProvider.of(
+                      c ->
+                          c.region(Region.US_EAST_1)
+                              .credentialsProvider(CREDENTIALS)
+                              .timeout(Duration.ofSeconds(-1))))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void a_positive_timeout_builds_a_provider_that_closes_its_own_client() {
+      BedrockInferenceProvider provider =
+          BedrockInferenceProvider.of(
+              c ->
+                  c.region(Region.US_EAST_1)
+                      .credentialsProvider(CREDENTIALS)
+                      .timeout(Duration.ofMinutes(6)));
+
+      assertThat(provider.name()).isEqualTo("Bedrock");
+      assertThatCode(provider::close).doesNotThrowAnyException();
+    }
+
+    @Test
+    void a_timeout_alongside_a_supplied_client_leaves_that_client_unclosed_here() {
+      AtomicBoolean closed = new AtomicBoolean();
+      BedrockRuntimeAsyncClient theirs =
+          (BedrockRuntimeAsyncClient)
+              Proxy.newProxyInstance(
+                  BedrockRuntimeAsyncClient.class.getClassLoader(),
+                  new Class<?>[] {BedrockRuntimeAsyncClient.class},
+                  (proxy, method, args) -> {
+                    if ("close".equals(method.getName())) {
+                      closed.set(true);
+                    }
+                    return null;
+                  });
+
+      BedrockInferenceProvider.of(c -> c.client(theirs).timeout(Duration.ofMinutes(6))).close();
+
+      assertThat(closed).isFalse();
+    }
   }
 }

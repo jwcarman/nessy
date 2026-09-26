@@ -15,10 +15,12 @@
  */
 package org.jwcarman.nessy.inference.bedrock;
 
+import java.time.Duration;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Customizer;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClientBuilder;
@@ -37,10 +39,17 @@ public final class BedrockProviderConfig {
   private static final String AWS_REGION_ENV_VAR = "AWS_REGION";
   private static final String AWS_DEFAULT_REGION_ENV_VAR = "AWS_DEFAULT_REGION";
 
+  // Fixed, not configurable (per this setter's own javadoc): we are already building the Netty
+  // HTTP client to carry the read timeout below, so a sensible connect bound comes for free -- but
+  // it is not the thing this setter is for, and exposing it would widen the surface for a knob
+  // nobody has asked to tune.
+  private static final Duration CONNECTION_TIMEOUT = Duration.ofSeconds(5);
+
   private Region region;
   private AwsCredentialsProvider credentialsProvider;
   private BedrockRuntimeAsyncClient client;
   private boolean useEnv;
+  private Duration timeout;
   private JsonMapper mapper = JsonMapper.builder().build();
 
   BedrockProviderConfig() {}
@@ -83,6 +92,39 @@ public final class BedrockProviderConfig {
     return this;
   }
 
+  /**
+   * The maximum time to wait on one Bedrock call, applied as BOTH {@code apiCallTimeout} (the
+   * SDK-level bound) and the Netty HTTP client's own {@code readTimeout} -- both are required,
+   * because {@code apiCallTimeout} alone leaves the transport's own 30-second socket read timeout
+   * and its retries underneath it in charge, so the socket fires first and the API-level bound
+   * never gets a chance to. Unset by default, so an application that never calls this keeps the AWS
+   * SDK's own defaults (2 s connect, 30 s read, three to four retries). The starter that builds
+   * this provider by default sets it to a margin above the engine's own {@code
+   * InferenceConfig.timeout}.
+   *
+   * <p>Also fixes the connect timeout at a sensible five seconds on the Netty client this builds --
+   * not exposed as a setting of its own, since nobody has asked to tune it and the read/API-call
+   * bound above is the one that matters here.
+   *
+   * <p>Ignored when a preconfigured {@link #client(BedrockRuntimeAsyncClient)} is supplied: that
+   * client is used exactly as given, and whatever timeout it already carries is the caller's own
+   * business, not this config's to override.
+   *
+   * @throws IllegalArgumentException if {@code timeout} is zero or negative
+   */
+  public BedrockProviderConfig timeout(Duration timeout) {
+    this.timeout = requirePositive(timeout);
+    return this;
+  }
+
+  private static Duration requirePositive(Duration timeout) {
+    Objects.requireNonNull(timeout, "timeout must not be null");
+    if (timeout.isZero() || timeout.isNegative()) {
+      throw new IllegalArgumentException("timeout must be positive, was " + timeout);
+    }
+    return timeout;
+  }
+
   BedrockInferenceProvider build() {
     return new BedrockInferenceProvider(resolveClient(), mapper);
   }
@@ -98,6 +140,14 @@ public final class BedrockProviderConfig {
                 credentialsProvider != null
                     ? credentialsProvider
                     : DefaultCredentialsProvider.builder().build());
+    if (timeout != null) {
+      builder
+          .overrideConfiguration(o -> o.apiCallTimeout(timeout))
+          .httpClientBuilder(
+              NettyNioAsyncHttpClient.builder()
+                  .readTimeout(timeout)
+                  .connectionTimeout(CONNECTION_TIMEOUT));
+    }
     return BedrockClient.over(builder.build(), true);
   }
 

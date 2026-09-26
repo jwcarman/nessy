@@ -17,6 +17,7 @@ package org.jwcarman.nessy.inference.gemini;
 
 import com.google.genai.Client;
 import com.google.genai.types.HttpOptions;
+import java.time.Duration;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Customizer;
 import tools.jackson.databind.json.JsonMapper;
@@ -34,6 +35,7 @@ public final class GeminiProviderConfig {
   private String baseUrl;
   private Client client;
   private boolean useEnv;
+  private Duration timeout;
   private JsonMapper mapper = JsonMapper.builder().build();
 
   GeminiProviderConfig() {}
@@ -75,6 +77,34 @@ public final class GeminiProviderConfig {
     return this;
   }
 
+  /**
+   * The maximum time to wait on the underlying HTTP call, applied as {@link HttpOptions#timeout()}
+   * -- which the SDK uses as OkHttp's {@code callTimeout}. Unset by default: an unconfigured Gemini
+   * client has {@code connectTimeout}/{@code readTimeout}/{@code writeTimeout} all zeroed by the
+   * SDK itself ({@code ApiClient}'s "Remove timeouts by default") and no {@code callTimeout}
+   * either, so a hung call hangs forever -- the bug this setter exists to fix. The starter that
+   * builds this provider by default sets it to a margin above the engine's own {@code
+   * InferenceConfig.timeout}.
+   *
+   * <p>Ignored when a preconfigured {@link #client(Client)} is supplied: that client is used
+   * exactly as given, and whatever timeout it already carries is the caller's own business, not
+   * this config's to override.
+   *
+   * @throws IllegalArgumentException if {@code timeout} is zero or negative
+   */
+  public GeminiProviderConfig timeout(Duration timeout) {
+    this.timeout = requirePositive(timeout);
+    return this;
+  }
+
+  private static Duration requirePositive(Duration timeout) {
+    Objects.requireNonNull(timeout, "timeout must not be null");
+    if (timeout.isZero() || timeout.isNegative()) {
+      throw new IllegalArgumentException("timeout must be positive, was " + timeout);
+    }
+    return timeout;
+  }
+
   GeminiInferenceProvider build() {
     return new GeminiInferenceProvider(resolveClient(), mapper);
   }
@@ -103,8 +133,15 @@ public final class GeminiProviderConfig {
               + " client via client(...)");
     }
     Client.Builder builder = Client.builder().apiKey(key);
-    if (baseUrl != null) {
-      builder.httpOptions(HttpOptions.builder().baseUrl(baseUrl).build());
+    if (baseUrl != null || timeout != null) {
+      HttpOptions.Builder httpOptions = HttpOptions.builder();
+      if (baseUrl != null) {
+        httpOptions.baseUrl(baseUrl);
+      }
+      if (timeout != null) {
+        httpOptions.timeout((int) timeout.toMillis());
+      }
+      builder.httpOptions(httpOptions.build());
     }
     return GeminiClient.over(builder.build(), true);
   }

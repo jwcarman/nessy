@@ -68,6 +68,7 @@ public class GeminiAutoConfiguration {
         GeminiInferenceProvider.of(
             c -> {
               c.apiKey(apiKey);
+              c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
               mappers.ifAvailable(c::mapper);
             });
     return ObservedInferenceProvider.wrap(provider, observations);

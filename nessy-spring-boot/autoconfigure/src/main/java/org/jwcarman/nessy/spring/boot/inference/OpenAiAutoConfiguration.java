@@ -84,6 +84,7 @@ public class OpenAiAutoConfiguration {
               if (baseUrl != null) {
                 c.baseUrl(baseUrl);
               }
+              c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
               mappers.ifAvailable(c::mapper);
             });
     return ObservedInferenceProvider.wrap(provider, observations);
@@ -100,6 +101,7 @@ public class OpenAiAutoConfiguration {
         OpenAiInferenceProvider.of(
             c -> {
               c.apiKey(apiKey).baseUrl(XAI_BASE_URL).provider(XAI_PROVIDER_NAME);
+              c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
               mappers.ifAvailable(c::mapper);
             });
     return ObservedInferenceProvider.wrap(provider, observations);

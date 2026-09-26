@@ -21,7 +21,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.google.genai.Client;
+import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -77,5 +79,75 @@ class GeminiProviderConfigTest {
         .isInstanceOf(IllegalStateException.class);
     assertThatThrownBy(() -> GeminiInferenceProvider.of(c -> c.mapper(null)))
         .isInstanceOf(NullPointerException.class);
+  }
+
+  /**
+   * The transport timeout setter (design record 2026-09-25-locks-as-plumbing-design.md §5). The
+   * SDK's {@link Client} exposes no public accessor for the {@code HttpOptions} it was built with
+   * (verified against google-genai 1.66.0: {@code Client}'s only package-visible {@code baseUrl()}
+   * reads it, and there is no public counterpart for {@code timeout}), so — same as OpenAI and
+   * Anthropic — these tests assert on the setter's own validation and that building still succeeds,
+   * rather than on a value read back from the built client.
+   */
+  @Nested
+  @DisplayName("its transport timeout")
+  class Its_transport_timeout {
+
+    @Test
+    void a_null_timeout_is_rejected() {
+      assertThatThrownBy(() -> GeminiInferenceProvider.of(c -> c.apiKey("test-key").timeout(null)))
+          .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void a_zero_timeout_is_rejected() {
+      assertThatThrownBy(
+              () -> GeminiInferenceProvider.of(c -> c.apiKey("test-key").timeout(Duration.ZERO)))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void a_negative_timeout_is_rejected() {
+      assertThatThrownBy(
+              () ->
+                  GeminiInferenceProvider.of(
+                      c -> c.apiKey("test-key").timeout(Duration.ofSeconds(-1))))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void a_positive_timeout_builds_a_provider_that_closes_its_own_client() {
+      GeminiInferenceProvider provider =
+          GeminiInferenceProvider.of(c -> c.apiKey("test-key").timeout(Duration.ofMinutes(6)));
+
+      assertThatCode(provider::close).doesNotThrowAnyException();
+    }
+
+    /** Exercises the branch that must not lose the base URL when both are configured together. */
+    @Test
+    void a_base_url_and_a_timeout_together_build_without_losing_either() {
+      assertThatCode(
+              () ->
+                  GeminiInferenceProvider.of(
+                          c ->
+                              c.apiKey("test-key")
+                                  .baseUrl("http://127.0.0.1:1")
+                                  .timeout(Duration.ofMinutes(6)))
+                      .close())
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    void a_timeout_alongside_a_supplied_client_leaves_that_client_usable_and_unclosed_here() {
+      Client theirs = Client.builder().apiKey("theirs").build();
+
+      GeminiInferenceProvider provider =
+          GeminiInferenceProvider.of(c -> c.client(theirs).timeout(Duration.ofMinutes(6)));
+      provider.close();
+
+      // Still usable afterwards: the provider did not close it, and the timeout was never applied
+      // to it -- the client is used exactly as supplied.
+      assertThat(theirs.models).isNotNull();
+    }
   }
 }
