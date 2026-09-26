@@ -22,12 +22,10 @@ import java.util.Optional;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Backlog;
 import org.jwcarman.nessy.api.BacklogItem;
-import org.jwcarman.nessy.engine.backlog.BacklogManagement;
+import org.jwcarman.nessy.backend.agent.Agents;
+import org.jwcarman.nessy.engine.backlog.Backlog;
 import org.jwcarman.nessy.engine.backlog.Pull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
@@ -42,9 +40,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  *
  * @param <I> the application's input type
  */
-public final class JdbcBacklog<I> implements BacklogManagement<I> {
-
-  private static final Logger LOG = LoggerFactory.getLogger(JdbcBacklog.class);
+public final class JdbcBacklog<I> implements Backlog<I> {
 
   private static final String ALL =
       """
@@ -92,16 +88,6 @@ public final class JdbcBacklog<I> implements BacklogManagement<I> {
       RETURNING arrived_at, payload
       """;
 
-  private static final String TERMINATED =
-      "SELECT terminated_at IS NOT NULL FROM nessy_agent WHERE agent_type = ? AND agent_id = ?";
-
-  private static final String SEAL =
-      """
-      UPDATE nessy_agent
-         SET terminated_at = COALESCE(terminated_at, now())
-       WHERE agent_type = ? AND agent_id = ?
-      """;
-
   private static final String COUNT =
       "SELECT COUNT(*) FROM nessy_agent_backlog WHERE agent_type = ? AND agent_id = ?";
 
@@ -117,17 +103,23 @@ public final class JdbcBacklog<I> implements BacklogManagement<I> {
 
   private final JdbcClient jdbc;
   private final Codec<I> codec;
+  private final Agents agents;
   private final AgentType agentType;
   private final AgentId agent;
 
-  public JdbcBacklog(JdbcClient jdbc, Codec<I> codec, AgentType agentType, AgentId agent) {
+  public JdbcBacklog(
+      JdbcClient jdbc, Codec<I> codec, Agents agents, AgentType agentType, AgentId agent) {
     this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
     this.codec = Objects.requireNonNull(codec, "codec must not be null");
+    this.agents = Objects.requireNonNull(agents, "agents must not be null");
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.agent = Objects.requireNonNull(agent, "agent must not be null");
   }
 
-  /** Not on {@link org.jwcarman.nessy.api.Backlog}: a coalescing policy has no business taking. */
+  /**
+   * Not on {@link org.jwcarman.nessy.api.Coalescing}: a coalescing policy has no business taking.
+   */
+  @Override
   public Pull<I> take() {
     // Removed and returned in one statement, so nothing can see it waiting after it has been
     // taken. The caller is holding the agent's row, so nothing else is looking anyway.
@@ -141,44 +133,8 @@ public final class JdbcBacklog<I> implements BacklogManagement<I> {
     }
     // Empty and ended look the same in this table, which is the whole reason the agent row carries
     // the mark: an agent told to end while it was busy has nothing waiting, and must not be read
-    // as merely idle.
-    return terminated() ? new Pull.Pill<>() : new Pull.Empty<>();
-  }
-
-  /**
-   * End this agent, and abandon whatever it was going to do.
-   *
-   * <p>Not on {@link Backlog}: a policy decides what waits, not whether the agent lives. The mark
-   * and the emptying belong to the same transaction, so an agent cannot be left ended with work
-   * still queued behind it.
-   *
-   * <p><b>Nothing may be coalesced into a sealed agent afterwards.</b> An arrival that got past
-   * this would put something back into an emptied backlog, and the next read would answer with an
-   * item rather than the pill -- undoing a termination that had already happened. The check belongs
-   * before the policy is consulted, not after.
-   *
-   * @return how many were abandoned, so that work thrown away is counted rather than vanishing
-   */
-  public int seal() {
-    int abandoned = clear();
-    jdbc.sql(SEAL).params(agentType.value(), agent.value()).update();
-    if (abandoned > 0) {
-      LOG.info(
-          "[backlog] agent {}/{} ended with {} input(s) still waiting; abandoned",
-          agentType.value(),
-          agent.value(),
-          abandoned);
-    }
-    return abandoned;
-  }
-
-  /** Whether this agent has been told to end, whether or not it has noticed yet. */
-  public boolean terminated() {
-    return jdbc.sql(TERMINATED)
-        .params(agentType.value(), agent.value())
-        .query(Boolean.class)
-        .optional()
-        .orElse(false);
+    // as merely idle. Whether it carries that mark is Agents's question, not this table's.
+    return agents.terminated(agentType, agent) ? new Pull.Pill<>() : new Pull.Empty<>();
   }
 
   @Override

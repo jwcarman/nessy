@@ -33,12 +33,12 @@ import java.util.function.Function;
  *
  * <p><b>It says what to do rather than handing back a list.</b> The cases that account for nearly
  * everything -- keep them all, keep only the latest, keep at most N -- are one or two calls on
- * {@link Backlog} and never read a row or decode an input. Only {@link Backlog#all()} pays for the
- * backlog, and the strategies that need it say so at the call site.
+ * {@link Coalescing} and never read a row or decode an input. Only {@link Coalescing#all()} pays
+ * for the backlog, and the strategies that need it say so at the call site.
  *
  * <p><b>It runs with the agent to itself.</b> The transaction that calls it holds the agent's row,
  * so nothing else can add to or take from this backlog while it runs. Its side effects are exactly
- * the operations on {@link Backlog} and nothing else: no I/O, no clock, no randomness. Anything
+ * the operations on {@link Coalescing} and nothing else: no I/O, no clock, no randomness. Anything
  * time-dependent uses {@code incoming.arrivedAt()} as now, which is why that field is the arriving
  * item's own time rather than a clock read while queuing.
  *
@@ -55,7 +55,7 @@ public interface BacklogPolicy<I> {
    * @param backlog what is already waiting, and what may be done about it
    * @param incoming what just arrived
    */
-  void coalesce(Backlog<I> backlog, BacklogItem<I> incoming);
+  void coalesce(Coalescing<I> backlog, BacklogItem<I> incoming);
 
   /** Every input matters. The right answer for anything a person said. */
   static <I> BacklogPolicy<I> keepAll() {
@@ -178,7 +178,7 @@ public interface BacklogPolicy<I> {
 
   /** Find by key and replace in place, or append when nothing matches. */
   private static <I, K> void inPlace(
-      Backlog<I> backlog,
+      Coalescing<I> backlog,
       BacklogItem<I> incoming,
       Function<? super I, K> key,
       BinaryOperator<BacklogItem<I>> combine) {

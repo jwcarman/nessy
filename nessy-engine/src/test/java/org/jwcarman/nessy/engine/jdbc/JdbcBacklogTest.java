@@ -29,7 +29,8 @@ import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.BacklogItem;
-import org.jwcarman.nessy.engine.backlog.BacklogManagement;
+import org.jwcarman.nessy.backend.agent.Agents;
+import org.jwcarman.nessy.engine.backlog.Backlog;
 import org.jwcarman.nessy.engine.backlog.Pull;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -61,8 +62,9 @@ class JdbcBacklogTest {
   private final JdbcClient jdbc = JdbcClient.create(database());
   private final Codec<String> codec =
       new JacksonCodecFactory(JsonMapper.builder().build()).create(String.class);
-  private final BacklogManagement<String> backlog =
-      new JdbcBacklog<>(jdbc, codec, TYPE, AgentId.random());
+  private final Agents agents = new JdbcAgents(jdbc);
+  private final Backlog<String> backlog =
+      new JdbcBacklog<>(jdbc, codec, agents, TYPE, AgentId.random());
 
   private static BacklogItem<String> said(String what) {
     return new BacklogItem<>(what, Instant.parse("2026-09-25T12:00:00Z"));
@@ -167,7 +169,7 @@ class JdbcBacklogTest {
   @Test
   @DisplayName("agents do not see each other's backlogs")
   void agents_are_separate() {
-    BacklogManagement<String> theirs = new JdbcBacklog<>(jdbc, codec, TYPE, AgentId.random());
+    Backlog<String> theirs = new JdbcBacklog<>(jdbc, codec, agents, TYPE, AgentId.random());
     backlog.append(said("mine"));
 
     assertThat(theirs.all()).isEmpty();
@@ -178,7 +180,7 @@ class JdbcBacklogTest {
   @DisplayName("forgetting an agent takes its backlog with it")
   void forgetting_clears_it() {
     AgentId doomed = AgentId.random();
-    BacklogManagement<String> its = new JdbcBacklog<>(jdbc, codec, TYPE, doomed);
+    Backlog<String> its = new JdbcBacklog<>(jdbc, codec, agents, TYPE, doomed);
     its.append(said("remember me"));
 
     JdbcBacklog.forget(jdbc, TYPE, doomed);
@@ -238,27 +240,27 @@ class JdbcBacklogTest {
   }
 
   /**
-   * Termination cannot reach an agent mid-turn, so it waits here. The backlog is emptied and the
-   * agent is marked; the next read says end, and says it forever.
+   * Termination cannot reach an agent mid-turn, so it waits here. Sealing (an {@link Agents}
+   * statement, not a backlog one) empties the backlog and marks the agent; the next read here says
+   * end, and says it forever.
    */
   @Test
   @DisplayName("sealing empties the backlog and every read afterwards says end")
   void sealing_abandons_what_was_waiting() {
     AgentId ending = AgentId.random();
-    JdbcBacklog<String> its = new JdbcBacklog<>(jdbc, codec, TYPE, ending);
-    jdbc.sql("INSERT INTO nessy_agent (agent_type, agent_id) VALUES (?, ?)")
-        .params(TYPE.value(), ending.value())
-        .update();
+    Backlog<String> its = new JdbcBacklog<>(jdbc, codec, agents, TYPE, ending);
+    agents.ensure(TYPE, ending);
     its.append(said("never going to happen"));
 
-    assertThat(its.seal()).as("work thrown away is counted, not vanished").isEqualTo(1);
+    assertThat(agents.seal(TYPE, ending))
+        .as("work thrown away is counted, not vanished")
+        .isEqualTo(1);
 
-    assertThat(its.size()).as("whatever was waiting is abandoned").isZero();
+    assertThat(its.all()).as("whatever was waiting is abandoned").isEmpty();
     assertThat(its.take()).isEqualTo(new Pull.Pill<String>());
     assertThat(its.take())
         .as("forever, so a late arrival cannot undo it")
         .isEqualTo(new Pull.Pill<String>());
-    assertThat(its.terminated()).isTrue();
   }
 
   /**
@@ -268,13 +270,10 @@ class JdbcBacklogTest {
   @DisplayName("empty is not the same answer as ended")
   void empty_is_not_ended() {
     AgentId living = AgentId.random();
-    JdbcBacklog<String> its = new JdbcBacklog<>(jdbc, codec, TYPE, living);
-    jdbc.sql("INSERT INTO nessy_agent (agent_type, agent_id) VALUES (?, ?)")
-        .params(TYPE.value(), living.value())
-        .update();
+    Backlog<String> its = new JdbcBacklog<>(jdbc, codec, agents, TYPE, living);
+    agents.ensure(TYPE, living);
 
     assertThat(its.take()).isEqualTo(new Pull.Empty<String>());
-    assertThat(its.terminated()).isFalse();
   }
 
   /** The arrival that should not wait its turn: an interrupt, a correction, a cancellation. */
@@ -322,39 +321,5 @@ class JdbcBacklogTest {
 
     assertThat(waiting()).containsExactly("fresh start");
     assertThat(backlog.size()).isEqualTo(1);
-  }
-
-  @Test
-  @DisplayName("sealing an agent with nothing waiting abandons nothing")
-  void sealing_an_idle_agent_abandons_nothing() {
-    AgentId ending = AgentId.random();
-    JdbcBacklog<String> its = new JdbcBacklog<>(jdbc, codec, TYPE, ending);
-    jdbc.sql("INSERT INTO nessy_agent (agent_type, agent_id) VALUES (?, ?)")
-        .params(TYPE.value(), ending.value())
-        .update();
-
-    assertThat(its.seal()).isZero();
-    assertThat(its.take()).isEqualTo(new Pull.Pill<String>());
-  }
-
-  /**
-   * The invariant the pill depends on. Nothing may be coalesced into a sealed agent -- an arrival
-   * that got through would be read as work next time and undo a termination that had happened.
-   */
-  @Test
-  @DisplayName("sealing twice is still sealed, and still says end")
-  void sealing_is_not_undone() {
-    AgentId ending = AgentId.random();
-    JdbcBacklog<String> its = new JdbcBacklog<>(jdbc, codec, TYPE, ending);
-    jdbc.sql("INSERT INTO nessy_agent (agent_type, agent_id) VALUES (?, ?)")
-        .params(TYPE.value(), ending.value())
-        .update();
-    its.append(said("in flight when it ended"));
-
-    its.seal();
-    assertThat(its.seal()).as("nothing left to abandon the second time").isZero();
-
-    assertThat(its.take()).isEqualTo(new Pull.Pill<String>());
-    assertThat(its.terminated()).isTrue();
   }
 }

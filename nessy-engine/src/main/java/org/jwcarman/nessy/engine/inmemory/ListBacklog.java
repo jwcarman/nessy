@@ -20,7 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.BacklogItem;
-import org.jwcarman.nessy.engine.backlog.BacklogManagement;
+import org.jwcarman.nessy.engine.backlog.Backlog;
 import org.jwcarman.nessy.engine.backlog.Pull;
 
 /**
@@ -32,7 +32,7 @@ import org.jwcarman.nessy.engine.backlog.Pull;
  *
  * @param <I> the application's input type
  */
-public final class ListBacklog<I> implements BacklogManagement<I> {
+public final class ListBacklog<I> implements Backlog<I> {
 
   private final List<BacklogItem<I>> items;
   private boolean ended;
@@ -58,7 +58,10 @@ public final class ListBacklog<I> implements BacklogManagement<I> {
     return abandoned;
   }
 
-  /** Not on {@link org.jwcarman.nessy.api.Backlog}: a coalescing policy has no business taking. */
+  /**
+   * Not on {@link org.jwcarman.nessy.api.Coalescing}: a coalescing policy has no business taking.
+   */
+  @Override
   public Pull<I> take() {
     if (!items.isEmpty()) {
       return new Pull.Item<>(items.removeFirst());
@@ -66,7 +69,7 @@ public final class ListBacklog<I> implements BacklogManagement<I> {
     return ended ? new Pull.Pill<>() : new Pull.Empty<>();
   }
 
-  @Override
+  /** Whether this agent has been told to end, whether or not it has noticed yet. */
   public boolean terminated() {
     return ended;
   }

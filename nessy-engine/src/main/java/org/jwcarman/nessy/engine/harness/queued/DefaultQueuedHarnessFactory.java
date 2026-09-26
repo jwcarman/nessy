@@ -242,16 +242,17 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
             createApprovalHandler(agentType, tools, narrator, terms),
             createToolCallHandler(agentType, tools, narrator, payloads, terms));
     Outbox effects = new Outbox(agentType, handlers, effectRows);
+    JdbcAgents agents = new JdbcAgents(jdbc);
     DefaultQueuedHarness<I> harness =
         new DefaultQueuedHarness<>(
             agentType,
             config.policy(),
             config.renderer(),
-            new JdbcAgents(jdbc),
+            agents,
             events,
             payloads,
             (type, agent) ->
-                new JdbcBacklog<>(jdbc, codecs.create(config.inputType()), type, agent),
+                new JdbcBacklog<>(jdbc, codecs.create(config.inputType()), agents, type, agent),
             effects,
             locks,
             narrator,

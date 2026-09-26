@@ -30,6 +30,7 @@ import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.backend.agent.Agents;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
@@ -37,7 +38,7 @@ import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
-import org.jwcarman.nessy.engine.backlog.BacklogManagement;
+import org.jwcarman.nessy.engine.backlog.Backlog;
 import org.jwcarman.nessy.engine.backlog.Pull;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentState;
@@ -45,7 +46,6 @@ import org.jwcarman.nessy.engine.core.Decision;
 import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
 import org.jwcarman.nessy.engine.effect.EffectDispatcher;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
-import org.jwcarman.nessy.engine.jdbc.JdbcAgents;
 import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
@@ -75,7 +75,7 @@ final class DefaultQueuedHarness<I>
   private final AgentType agentType;
   private final BacklogPolicy<I> policy;
   private final InputRenderer<I> renderer;
-  private final JdbcAgents agents;
+  private final Agents agents;
   private final AgentEvents events;
   private final Payloads payloads;
   private final Backlogs<I> backlogs;
@@ -90,14 +90,14 @@ final class DefaultQueuedHarness<I>
   /** Makes this agent type's backlog for one agent, inside the transaction that holds its row. */
   @FunctionalInterface
   interface Backlogs<I> {
-    BacklogManagement<I> forAgent(AgentType agentType, AgentId agent);
+    Backlog<I> forAgent(AgentType agentType, AgentId agent);
   }
 
   DefaultQueuedHarness(
       AgentType agentType,
       BacklogPolicy<I> policy,
       InputRenderer<I> renderer,
-      JdbcAgents agents,
+      Agents agents,
       AgentEvents events,
       Payloads payloads,
       Backlogs<I> backlogs,
@@ -157,8 +157,8 @@ final class DefaultQueuedHarness<I>
                   agentId,
                   () -> {
                     agents.ensure(agentType, agentId);
-                    BacklogManagement<I> backlog = backlogs.forAgent(agentType, agentId);
-                    if (backlog.terminated()) {
+                    Backlog<I> backlog = backlogs.forAgent(agentType, agentId);
+                    if (agents.terminated(agentType, agentId)) {
                       // Ended. Coalescing now would put something into an emptied backlog and be
                       // read as work next time, undoing a termination that has happened.
                       log.debug(
@@ -195,8 +195,8 @@ final class DefaultQueuedHarness<I>
             agentId,
             () -> {
               agents.ensure(agentType, agentId);
-              BacklogManagement<I> backlog = backlogs.forAgent(agentType, agentId);
-              int abandoned = backlog.seal();
+              Backlog<I> backlog = backlogs.forAgent(agentType, agentId);
+              int abandoned = agents.seal(agentType, agentId);
               if (abandoned > 0) {
                 log.info(
                     "[{}] agent {} ended with {} input(s) waiting; abandoned",
@@ -278,7 +278,7 @@ final class DefaultQueuedHarness<I>
    *
    * @return whether anything was written that an effect dispatcher should be told about
    */
-  private boolean driveIfIdle(AgentId agentId, BacklogManagement<I> backlog, String trace) {
+  private boolean driveIfIdle(AgentId agentId, Backlog<I> backlog, String trace) {
     if (!(reconstitute(agentId) instanceof AgentState.Idle)) {
       return false;
     }

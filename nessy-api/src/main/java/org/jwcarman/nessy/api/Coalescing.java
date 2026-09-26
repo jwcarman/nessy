@@ -44,9 +44,14 @@ import java.util.List;
  * nearly everything -- keep everything, keep only the latest, keep at most N -- are one or two
  * calls each and read nothing. Adding an operation later is easy; taking one away is not.
  *
+ * <p>TODO: James does not like the name {@code Coalescing}. It is a placeholder, chosen only to
+ * stop it from blocking the split of what used to be a single {@code Backlog} type into this
+ * policy-facing half and the engine's own {@code Backlog}, which adds taking. Expect it to be
+ * renamed.
+ *
  * @param <I> the application's input type
  */
-public interface Backlog<I> {
+public interface Coalescing<I> {
 
   /** Keep it, behind everything already waiting. Every input matters. */
   void append(BacklogItem<I> item);
