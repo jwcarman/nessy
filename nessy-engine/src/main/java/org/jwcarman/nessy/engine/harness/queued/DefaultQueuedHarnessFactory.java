@@ -34,6 +34,7 @@ import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Replies;
+import org.jwcarman.nessy.backend.effect.Effects;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
@@ -101,7 +102,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   private final JdbcClient jdbc;
   private final AgentEvents events;
   private final Payloads payloads;
-  private final JdbcEffects effectRows;
+  private final Effects effectRows;
   private final Locks locks;
   private final List<NarrationListener> listeners = new CopyOnWriteArrayList<>();
   private final ReplyTokens replyTokens;

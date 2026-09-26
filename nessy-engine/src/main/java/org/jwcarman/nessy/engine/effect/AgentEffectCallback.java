@@ -18,7 +18,7 @@ package org.jwcarman.nessy.engine.effect;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.engine.agent.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.EffectOutcome;
 
 /**
  * How a performed effect gets back into the agent it was performed for.

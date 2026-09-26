@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.engine.store;
+package org.jwcarman.nessy.backend.effect;
 
 import java.time.Instant;
 import java.util.Arrays;
@@ -24,7 +24,7 @@ import org.jwcarman.nessy.api.AgentId;
 /**
  * One claimed effect row, as handed to whoever is about to perform it.
  *
- * <p>Carries both blobs unread. Decoding is {@link Outbox#effectOf} and {@link Outbox#failureOf},
+ * <p>Carries both blobs unread. Decoding is {@link Effects#effectOf} and {@link Effects#failureOf},
  * called separately and only when wanted, because the two are independent: a row whose effect
  * cannot be read can still say what to tell the waiting agent.
  *

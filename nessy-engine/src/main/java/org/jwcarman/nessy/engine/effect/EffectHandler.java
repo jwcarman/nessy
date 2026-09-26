@@ -17,8 +17,8 @@ package org.jwcarman.nessy.engine.effect;
 
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.engine.agent.AgentEffect;
-import org.jwcarman.nessy.engine.agent.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.AgentEffect;
+import org.jwcarman.nessy.backend.effect.EffectOutcome;
 
 /**
  * Does one kind of effect, and says what that kind is worth.

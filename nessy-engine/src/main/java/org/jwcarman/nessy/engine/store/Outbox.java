@@ -20,17 +20,18 @@ import java.util.List;
 import java.util.UUID;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.engine.agent.AgentEffect;
-import org.jwcarman.nessy.engine.agent.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.AgentEffect;
+import org.jwcarman.nessy.backend.effect.Attempt;
+import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.Effects;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
-import org.jwcarman.nessy.engine.jdbc.JdbcEffects;
 
 /**
  * One agent type's view of the outbox: what this agent type owes the outside world.
  *
- * <p>Holds the two things {@link JdbcEffects} deliberately does not: which agent type these rows
- * belong to, and what this agent type's effects are worth. So a caller says "store this effect" and
+ * <p>Holds the two things {@link Effects} deliberately does not: which agent type these rows belong
+ * to, and what this agent type's effects are worth. So a caller says "store this effect" and
  * nothing else -- the timeout, the budget and the outcome to fall back on are looked up here, from
  * the binding, at the moment the row is written.
  *
@@ -38,16 +39,16 @@ import org.jwcarman.nessy.engine.jdbc.JdbcEffects;
  * it may run is configuration, and making the state machine carry configuration down to the table
  * is how a switch over effect kinds ends up living on the harness.
  *
- * <p>Not the row store -- {@link JdbcEffects} is that, shared by every agent type. One instance of
- * this class sits in front of it per harness.
+ * <p>Not the row store -- {@link Effects} is that, shared by every agent type. One instance of this
+ * class sits in front of it per harness.
  */
 public class Outbox {
 
   private final AgentType agentType;
   private final EffectHandlers handlers;
-  private final JdbcEffects rows;
+  private final Effects rows;
 
-  public Outbox(AgentType agentType, EffectHandlers handlers, JdbcEffects rows) {
+  public Outbox(AgentType agentType, EffectHandlers handlers, Effects rows) {
     this.agentType = agentType;
     this.handlers = handlers;
     this.rows = rows;

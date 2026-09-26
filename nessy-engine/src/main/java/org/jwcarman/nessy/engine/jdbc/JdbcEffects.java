@@ -25,11 +25,11 @@ import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.engine.agent.AgentEffect;
-import org.jwcarman.nessy.engine.agent.EffectOutcome;
-import org.jwcarman.nessy.engine.store.Attempt;
+import org.jwcarman.nessy.backend.effect.AgentEffect;
+import org.jwcarman.nessy.backend.effect.Attempt;
+import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.Effects;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Component;
 
 /**
  * The effect table, row by row.
@@ -58,8 +58,7 @@ import org.springframework.stereotype.Component;
  * transaction rolls back. Keeping a COMPLETED status instead would need an explicit fence to do the
  * same job.
  */
-@Component
-public class JdbcEffects {
+public class JdbcEffects implements Effects {
 
   public static final String PENDING = "PENDING";
   public static final String RUNNING = "RUNNING";
@@ -152,6 +151,7 @@ public class JdbcEffects {
    * store's business, and a caller holding a codec for something only this table stores is a caller
    * that has been handed the wrong thing.
    */
+  @Override
   public void insert(
       AgentType agentType,
       AgentId agentId,
@@ -185,11 +185,13 @@ public class JdbcEffects {
    * waiting agent. Decoding both up front would lose that -- one unreadable blob would take the
    * other down with it -- so each is read only when it is wanted, and throws only for itself.
    */
+  @Override
   public AgentEffect effectOf(Attempt attempt) {
     return effectCodec.decode(attempt.payload());
   }
 
   /** Reads the outcome to deliver when {@link #effectOf} cannot be read. */
+  @Override
   public EffectOutcome failureOf(Attempt attempt) {
     return outcomeCodec.decode(attempt.failurePayload());
   }
@@ -203,6 +205,7 @@ public class JdbcEffects {
    * but never after, because coming due then means being given up on rather than tried again.
    * Nothing here writes the deadline -- it was settled when the effect was.
    */
+  @Override
   public List<Attempt> markRunning(AgentType agentType, Instant now, int batchSize) {
     return jdbc.sql(MARK_RUNNING)
         .params(
@@ -232,6 +235,7 @@ public class JdbcEffects {
    * records that anything was deferred, so there is nothing to tell the two apart and nothing that
    * needs to.
    */
+  @Override
   public List<Attempt> runningFor(AgentType agentType, AgentId agentId) {
     return jdbc.sql(RUNNING_FOR)
         .params(agentType.value(), agentId.value(), RUNNING)
@@ -248,6 +252,7 @@ public class JdbcEffects {
         .list();
   }
 
+  @Override
   public boolean complete(UUID effectId, int attemptsMade) {
     return jdbc.sql(DELETE).params(effectId, RUNNING, attemptsMade).update() == 1;
   }
@@ -260,6 +265,7 @@ public class JdbcEffects {
    * backoff rather than a watchdog, which is the same column answering the question its status
    * decides.
    */
+  @Override
   public boolean reschedule(UUID effectId, int attemptsMade, Instant at) {
     return jdbc.sql(RESCHEDULE)
             .params(PENDING, utc(at), utc(at), effectId, RUNNING, attemptsMade)

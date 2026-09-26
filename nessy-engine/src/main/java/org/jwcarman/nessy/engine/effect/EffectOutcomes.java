@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.engine.effect;
 
 import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.engine.agent.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 
 /**

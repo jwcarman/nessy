@@ -28,8 +28,8 @@ import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.event.AgentEvent;
-import org.jwcarman.nessy.engine.agent.AgentEffect;
 
 /**
  * A proof of concept: the whole of a turn, driven on one thread, with nothing written down.

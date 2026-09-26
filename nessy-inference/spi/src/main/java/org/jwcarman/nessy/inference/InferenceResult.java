@@ -25,7 +25,7 @@ import org.jwcarman.nessy.api.block.Block;
  * What an inference came to.
  *
  * <p>Nouns, not events: each arm names the thing that came back, which is why this reads {@code
- * Answer} and {@code Refusal} where {@link org.jwcarman.nessy.engine.agent.EffectOutcome} reads
+ * Answer} and {@code Refusal} where {@code org.jwcarman.nessy.backend.effect.EffectOutcome} reads
  * {@code InferenceAnswered} and {@code InferenceRefused}. That one is the fold's story and is told
  * in the past tense on purpose. Two vocabularies, deliberately.
  *

@@ -18,8 +18,8 @@ package org.jwcarman.nessy.engine.effect;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.engine.agent.AgentEffect;
-import org.jwcarman.nessy.engine.agent.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.AgentEffect;
+import org.jwcarman.nessy.backend.effect.EffectOutcome;
 
 /**
  * One agent type's handlers, one per kind of effect.

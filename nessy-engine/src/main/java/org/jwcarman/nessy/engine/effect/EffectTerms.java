@@ -17,7 +17,7 @@ package org.jwcarman.nessy.engine.effect;
 
 import java.time.Duration;
 import org.jwcarman.nessy.api.RetryPolicy;
-import org.jwcarman.nessy.engine.agent.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.EffectOutcome;
 
 /**
  * What one kind of effect is worth, for one agent type.
