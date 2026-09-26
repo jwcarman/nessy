@@ -22,6 +22,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
@@ -30,7 +31,6 @@ import org.jwcarman.nessy.engine.inference.InferenceInvocation;
 import org.jwcarman.nessy.engine.inference.InferenceService;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.inference.block.Block;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

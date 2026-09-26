@@ -18,7 +18,7 @@ package org.jwcarman.nessy.inference;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.Objects;
-import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.api.tool.ToolName;
 
 /**
  * Whether the model may reach for a tool this turn, and which.

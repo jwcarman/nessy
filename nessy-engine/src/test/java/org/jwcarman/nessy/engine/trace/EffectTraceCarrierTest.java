@@ -36,16 +36,16 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.InputSchema;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.tool.InputSchema;
-import org.jwcarman.nessy.inference.tool.ToolName;
 
 /**
  * The carrier actually riding an effect out to the database and back.

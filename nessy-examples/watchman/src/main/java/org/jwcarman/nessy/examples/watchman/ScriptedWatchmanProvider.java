@@ -17,12 +17,12 @@ package org.jwcarman.nessy.examples.watchman;
 
 import java.time.Duration;
 import java.util.List;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.turn.Turn;
 
 /**
  * A watchman with no model behind it, for soaks and tests: every round checks the disks, proposes a

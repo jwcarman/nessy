@@ -15,8 +15,6 @@
  */
 package org.jwcarman.nessy.api.tool;
 
-import org.jwcarman.nessy.inference.tool.InputSchema;
-
 /**
  * How an input type becomes the JSON Schema a model is offered.
  *

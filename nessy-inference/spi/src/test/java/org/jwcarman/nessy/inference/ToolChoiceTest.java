@@ -20,8 +20,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.inference.tool.InputSchema;
-import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.api.SystemPrompt;
+import org.jwcarman.nessy.api.tool.InputSchema;
+import org.jwcarman.nessy.api.tool.ToolName;
 
 /**
  * What a request means when it says nothing about choosing a tool.

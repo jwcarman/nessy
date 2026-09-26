@@ -30,10 +30,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
-import org.jwcarman.nessy.inference.Seq;
-import org.jwcarman.nessy.inference.TurnId;
 
 @DisplayName("An agent's events, held only for as long as the process lives")
 class InMemoryAgentEventsTest {

@@ -20,9 +20,9 @@ import java.util.Objects;
 /**
  * The shape an answer must come back in: JSON Schema, as a string.
  *
- * <p>Deliberately the same shape as {@link org.jwcarman.nessy.inference.tool.InputSchema}, which is
- * how a tool says what it takes. One is what goes in, the other is what must come out, and neither
- * has any business parsing the other's schema.
+ * <p>Deliberately the same shape as {@link org.jwcarman.nessy.api.tool.InputSchema}, which is how a
+ * tool says what it takes. One is what goes in, the other is what must come out, and neither has
+ * any business parsing the other's schema.
  *
  * <p><b>How it is satisfied is the adapter's business and nobody else's.</b> A provider with a
  * native facility -- OpenAI's {@code response_format}, Gemini's response schema, Anthropic's output

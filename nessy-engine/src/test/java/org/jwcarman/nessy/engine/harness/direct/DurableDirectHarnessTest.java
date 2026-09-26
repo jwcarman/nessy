@@ -28,6 +28,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.inmemory.InMemoryLocks;
@@ -38,7 +39,6 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Usage;
-import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -121,7 +121,7 @@ class DurableDirectHarnessTest {
     Outcome<String> answered = harness(second).ask(agent, "and Japan?");
 
     assertThat(answered).isEqualTo(new Outcome.Answered<>("and Japan's is Tokyo"));
-    assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
+    assertThat(events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE))
         .as("both turns, in one story")
         .hasSize(4);
   }

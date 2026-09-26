@@ -17,7 +17,6 @@ package org.jwcarman.nessy.api.embedding;
 
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.embedding.Embedding;
 
 /**
  * Text into a vector, so that texts can be compared by meaning rather than by words.

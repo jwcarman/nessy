@@ -17,14 +17,14 @@ package org.jwcarman.nessy.memory.summarizing;
 
 import java.util.List;
 import java.util.stream.Collectors;
-import org.jwcarman.nessy.inference.Seq;
-import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.turn.Exchange;
-import org.jwcarman.nessy.inference.turn.Input;
-import org.jwcarman.nessy.inference.turn.ToolOutcome;
-import org.jwcarman.nessy.inference.turn.Turn;
-import org.jwcarman.nessy.inference.turn.TurnResult;
+import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.turn.Exchange;
+import org.jwcarman.nessy.api.turn.Input;
+import org.jwcarman.nessy.api.turn.ToolOutcome;
+import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.api.turn.TurnResult;
 
 /**
  * How a run of turns is shown to a summarising model, shared by every summariser: one line per

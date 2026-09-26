@@ -19,11 +19,11 @@ import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.tool.ToolName;
 
 /**
  * One tool, so the REPL shows a tool call and not just an echo.

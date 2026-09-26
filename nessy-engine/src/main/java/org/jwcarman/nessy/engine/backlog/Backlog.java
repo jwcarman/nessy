@@ -20,7 +20,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.api.BacklogPolicy;
-import org.jwcarman.nessy.api.ListBacklog;
+import org.jwcarman.nessy.engine.inmemory.ListBacklog;
 
 /**
  * Inputs waiting for an agent that is busy, and the agent's own ending.

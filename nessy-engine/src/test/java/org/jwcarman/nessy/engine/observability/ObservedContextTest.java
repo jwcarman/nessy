@@ -28,13 +28,13 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
+import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.Summarizer;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
-import org.jwcarman.nessy.inference.Seq;
-import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.turn.Summary;
 
 /**
  * What building a request costs, said in spans by the pieces themselves.
@@ -174,27 +174,27 @@ class ObservedContextTest {
   /** One turn, so that "how many came back" has an answer worth asserting. */
   private static final class StoryOfOne implements org.jwcarman.nessy.engine.store.TurnHistory {
 
-    private static final org.jwcarman.nessy.inference.turn.Turn TURN =
-        new org.jwcarman.nessy.inference.turn.Turn(
+    private static final org.jwcarman.nessy.api.turn.Turn TURN =
+        new org.jwcarman.nessy.api.turn.Turn(
             new TurnId(1),
-            new org.jwcarman.nessy.inference.turn.Input(
+            new org.jwcarman.nessy.api.turn.Input(
                 new Seq(1), List.<Block.InputContent>of(new Block.Text("hello"))),
             List.of(),
             null,
             0);
 
     @Override
-    public List<org.jwcarman.nessy.inference.turn.Turn> lastTurns(int turns) {
+    public List<org.jwcarman.nessy.api.turn.Turn> lastTurns(int turns) {
       return List.of(TURN);
     }
 
     @Override
-    public List<org.jwcarman.nessy.inference.turn.Turn> turnsFrom(long fromTurn) {
+    public List<org.jwcarman.nessy.api.turn.Turn> turnsFrom(long fromTurn) {
       return List.of(TURN);
     }
 
     @Override
-    public List<org.jwcarman.nessy.inference.turn.Turn> lastTurnsAfter(TurnId through, int turns) {
+    public List<org.jwcarman.nessy.api.turn.Turn> lastTurnsAfter(TurnId through, int turns) {
       return List.of(TURN);
     }
 

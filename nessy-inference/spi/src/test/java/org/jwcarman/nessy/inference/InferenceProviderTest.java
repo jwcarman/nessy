@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.api.block.Block;
 
 /**
  * What a provider says it is, when it has not said.

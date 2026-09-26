@@ -23,9 +23,8 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.ToolName;
 
 @DisplayName("The listener builder")
 class NarrationListenerConfigTest {

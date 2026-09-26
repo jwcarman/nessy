@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.embedding;
 
 import java.util.List;
+import org.jwcarman.nessy.api.embedding.Embedding;
 
 /**
  * One vendor's embeddings, over one connection.

@@ -23,18 +23,18 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.turn.Exchange;
+import org.jwcarman.nessy.api.turn.Input;
+import org.jwcarman.nessy.api.turn.ToolOutcome;
+import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.lock.Locks.Attempt;
 import org.jwcarman.nessy.inference.InferenceOptions;
-import org.jwcarman.nessy.inference.Seq;
-import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.inference.turn.Exchange;
-import org.jwcarman.nessy.inference.turn.Input;
-import org.jwcarman.nessy.inference.turn.ToolOutcome;
-import org.jwcarman.nessy.inference.turn.Turn;
-import org.jwcarman.nessy.inference.turn.TurnResult;
 
 /** The head as the summarising model reads it: one line per thing that happened. */
 @DisplayName("The transcript a summary is written from")

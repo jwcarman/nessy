@@ -31,8 +31,8 @@ import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.payload.Payloads;
-import org.jwcarman.nessy.inference.block.Block;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**

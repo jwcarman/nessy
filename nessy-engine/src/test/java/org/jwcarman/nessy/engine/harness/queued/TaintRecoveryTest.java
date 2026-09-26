@@ -28,14 +28,14 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.turn.TurnResult;
 
 /**
  * An agent recovers from a message the model will never answer.

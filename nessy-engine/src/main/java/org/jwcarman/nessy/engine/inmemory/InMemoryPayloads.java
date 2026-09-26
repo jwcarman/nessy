@@ -20,8 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.payload.Payloads;
-import org.jwcarman.nessy.inference.block.Block;
 
 /**
  * A claim check that is a map, for work that outlives nothing.

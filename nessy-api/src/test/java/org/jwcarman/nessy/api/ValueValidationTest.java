@@ -25,17 +25,13 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
-import org.jwcarman.nessy.inference.Ambient;
-import org.jwcarman.nessy.inference.Seq;
-import org.jwcarman.nessy.inference.SystemPrompt;
-import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.inference.turn.Input;
-import org.jwcarman.nessy.inference.turn.Summary;
-import org.jwcarman.nessy.inference.turn.ToolOutcome;
-import org.jwcarman.nessy.inference.turn.TurnResult;
+import org.jwcarman.nessy.api.turn.Input;
+import org.jwcarman.nessy.api.turn.Summary;
+import org.jwcarman.nessy.api.turn.ToolOutcome;
+import org.jwcarman.nessy.api.turn.TurnResult;
 
 /** The value types refuse what would fail later and further from its cause. */
 @DisplayName("A value that is checked where it is written")

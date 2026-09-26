@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.inference.turn;
+package org.jwcarman.nessy.api.turn;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.api.block.Block;
 
 /**
  * How a turn ended.

@@ -17,8 +17,9 @@ package org.jwcarman.nessy.inference;
 
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.inference.turn.Summary;
-import org.jwcarman.nessy.inference.turn.Turn;
+import org.jwcarman.nessy.api.Ambient;
+import org.jwcarman.nessy.api.turn.Summary;
+import org.jwcarman.nessy.api.turn.Turn;
 
 /**
  * What a provider is given to work from: the conversation, and whatever background stands behind

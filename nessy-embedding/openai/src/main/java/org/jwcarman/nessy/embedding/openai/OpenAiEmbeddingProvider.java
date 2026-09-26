@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
-import org.jwcarman.nessy.embedding.Embedding;
+import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.embedding.EmbeddingProvider;
 

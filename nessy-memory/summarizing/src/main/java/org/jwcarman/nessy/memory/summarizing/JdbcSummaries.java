@@ -26,9 +26,9 @@ import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Summarizer;
-import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.turn.Summary;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.turn.Summary;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**

@@ -35,6 +35,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
@@ -42,11 +43,15 @@ import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.lock.Locks;
@@ -56,16 +61,11 @@ import org.jwcarman.nessy.engine.inmemory.InMemoryAgentEvents;
 import org.jwcarman.nessy.engine.inmemory.InMemoryLocks;
 import org.jwcarman.nessy.engine.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
-import org.jwcarman.nessy.inference.Ambient;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.Usage;
-import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.inference.tool.ToolName;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -260,9 +260,9 @@ class DefaultDirectHarnessTest {
 
     Outcome outcome = harness(model, tool("found it")).ask(agent, "look up my charge");
 
-    System.out.println("EVENTS: " + events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE));
+    System.out.println("EVENTS: " + events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE));
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("charge 42.00"));
-    assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
+    assertThat(events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE))
         .extracting(e -> e.getClass().getSimpleName())
         .containsExactly(
             "TurnStarted",
@@ -280,7 +280,7 @@ class DefaultDirectHarnessTest {
 
     harness(model, tool("the tool's own words")).ask(agent, "a question with words");
 
-    assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE).toString())
+    assertThat(events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE).toString())
         .doesNotContain("a question with words")
         .doesNotContain("the tool's own words")
         .doesNotContain("the answer itself");
@@ -312,8 +312,7 @@ class DefaultDirectHarnessTest {
                             .isEqualTo(LOOKUP);
                         assertThat(exchange.outcomes())
                             .singleElement()
-                            .isInstanceOf(
-                                org.jwcarman.nessy.inference.turn.ToolOutcome.Succeeded.class);
+                            .isInstanceOf(org.jwcarman.nessy.api.turn.ToolOutcome.Succeeded.class);
                       });
             });
   }
@@ -359,7 +358,7 @@ class DefaultDirectHarnessTest {
     Outcome<String> outcome = harness(model, broken("the ledger is down")).ask(agent, "try");
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("sorry"));
-    assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
+    assertThat(events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE))
         .extracting(e -> e.getClass().getSimpleName())
         .contains("ToolFailed");
   }
@@ -408,7 +407,7 @@ class DefaultDirectHarnessTest {
     Outcome<String> outcome = harness.ask(agent, "anyone home?");
 
     assertThat(outcome).isEqualTo(new Outcome.Busy<>());
-    assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
+    assertThat(events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE))
         .as("nothing was appended, so nothing has to be undone")
         .isEmpty();
   }
@@ -778,7 +777,7 @@ class DefaultDirectHarnessTest {
 
     assertThat(ran).as("a denied call is not a call").isFalse();
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("understood"));
-    assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
+    assertThat(events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE))
         .extracting(e -> e.getClass().getSimpleName())
         .contains("ToolDenied");
   }
@@ -820,7 +819,7 @@ class DefaultDirectHarnessTest {
     harness(model, watched, _ -> Awaited.deferred()).ask(agent, "look it up");
 
     assertThat(ran).isFalse();
-    assertThat(events.readFrom(agent, org.jwcarman.nessy.inference.Seq.NONE))
+    assertThat(events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE))
         .extracting(e -> e.getClass().getSimpleName())
         .contains("ToolDenied");
   }

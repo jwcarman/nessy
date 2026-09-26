@@ -17,8 +17,8 @@ package org.jwcarman.nessy.backend.event;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.ToolName;
 
 /**
  * One thing the model asked to have done, named but not carried.

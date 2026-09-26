@@ -19,12 +19,12 @@ package org.jwcarman.nessy.engine.history;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.engine.store.TurnHistory;
-import org.jwcarman.nessy.inference.Seq;
-import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.turn.Turn;
 
 /**
  * One agent's event stream, read as the turns it amounts to.

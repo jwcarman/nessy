@@ -24,9 +24,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
@@ -35,10 +39,6 @@ import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
 import org.jwcarman.nessy.engine.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.engine.store.Attempt;
 import org.jwcarman.nessy.engine.store.Outbox;
-import org.jwcarman.nessy.inference.Seq;
-import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.inference.tool.ToolName;
 
 /**
  * An answer that is authentic but is not for anything still waiting.

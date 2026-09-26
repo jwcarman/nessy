@@ -16,8 +16,8 @@
 package org.jwcarman.nessy.engine.store;
 
 import java.util.List;
-import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.turn.Turn;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.turn.Turn;
 
 /**
  * The story of one agent, offered as turns.

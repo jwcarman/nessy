@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.inference;
+package org.jwcarman.nessy.api;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.regex.Pattern;
-import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.api.block.Block;
 
 /**
  * Background the model should have in mind, which nobody said.

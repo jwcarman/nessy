@@ -16,8 +16,8 @@
 package org.jwcarman.nessy.engine.agent;
 
 import java.util.Objects;
+import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.backend.event.ActionRequest;
-import org.jwcarman.nessy.inference.Seq;
 
 /**
  * One call the engine owes an outcome for, and how far along it is.

@@ -18,8 +18,8 @@ package org.jwcarman.nessy.prompt;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.SystemPromptSource;
-import org.jwcarman.nessy.inference.SystemPrompt;
 
 /**
  * A system prompt that is a template, rendered for the agent about to be asked, from sources of

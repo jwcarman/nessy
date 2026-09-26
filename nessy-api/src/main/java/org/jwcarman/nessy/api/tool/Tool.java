@@ -16,8 +16,6 @@
 package org.jwcarman.nessy.api.tool;
 
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.inference.tool.InputSchema;
-import org.jwcarman.nessy.inference.tool.ToolName;
 
 public interface Tool<I> {
 

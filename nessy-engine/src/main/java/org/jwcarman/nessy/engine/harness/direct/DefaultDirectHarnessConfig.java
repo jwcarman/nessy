@@ -30,6 +30,7 @@ import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Summarizer;
+import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalEnricher;
@@ -38,7 +39,6 @@ import org.jwcarman.nessy.api.tool.ApproverConfig;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
-import org.jwcarman.nessy.inference.SystemPrompt;
 
 /**
  * What a caller said it wanted, collected before anything is built.

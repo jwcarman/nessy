@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.api;
 
 import java.util.List;
-import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.api.block.Block;
 
 /**
  * How an input becomes something a model can read.

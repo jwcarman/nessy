@@ -29,10 +29,10 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
+import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
-import org.jwcarman.nessy.inference.SystemPrompt;
 
 /** What a terminal agent can be told about itself before the first prompt. */
 public final class ReplConfig {

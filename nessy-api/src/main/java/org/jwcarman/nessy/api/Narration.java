@@ -19,9 +19,8 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.time.Instant;
 import java.util.List;
-import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.ToolName;
 
 /**
  * Something an agent did, announced to whoever is watching.
@@ -48,8 +47,8 @@ import org.jwcarman.nessy.inference.tool.ToolName;
  *
  * <p><b>Typed on the wire.</b> An event is announced and forgotten by the engine, but a narrator
  * may journal it and a page may read it back later -- so, like {@link
- * org.jwcarman.nessy.inference.block.Block}, an event names its kind in JSON. The names are the
- * kinds in kebab-case, and they are the event names such a narrator uses on the wire too.
+ * org.jwcarman.nessy.api.block.Block}, an event names its kind in JSON. The names are the kinds in
+ * kebab-case, and they are the event names such a narrator uses on the wire too.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({

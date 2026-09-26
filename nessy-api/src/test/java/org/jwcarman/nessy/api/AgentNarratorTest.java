@@ -22,7 +22,6 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.inference.InferenceNarrator;
 
 @DisplayName("Binding a narrator to an agent")
 class AgentNarratorTest {
@@ -40,21 +39,5 @@ class AgentNarratorTest {
     assertThat(heard).hasValue("chat/Thinking");
     assertThatCode(() -> AgentNarrator.silent().narrate(new Narration.Thinking()))
         .doesNotThrowAnyException();
-  }
-
-  /** A provider is handed text and thinking, and the engine is what turns them into events. */
-  @Test
-  void the_wire_view_of_a_narrator_mints_the_delta_events() {
-    AtomicReference<Narration> heard = new AtomicReference<>();
-    InferenceNarrator wire = ((AgentNarrator) heard::set).forInference();
-
-    wire.text("hel");
-    assertThat(heard).hasValue(new Narration.ContentDelta("hel"));
-
-    wire.thinking("hmm");
-    assertThat(heard).hasValue(new Narration.ThinkingDelta("hmm"));
-
-    assertThatCode(() -> InferenceNarrator.silent().text("x")).doesNotThrowAnyException();
-    assertThatCode(() -> InferenceNarrator.silent().thinking("x")).doesNotThrowAnyException();
   }
 }

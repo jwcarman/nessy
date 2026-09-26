@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Map;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.PayloadRef;
-import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.api.block.Block;
 
 /**
  * Where content lives, for the content the core never sees.

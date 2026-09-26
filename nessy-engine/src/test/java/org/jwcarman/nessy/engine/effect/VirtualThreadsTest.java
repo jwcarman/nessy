@@ -26,9 +26,9 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.inference.block.Block;
 
 /**
  * An effect never holds a platform thread.

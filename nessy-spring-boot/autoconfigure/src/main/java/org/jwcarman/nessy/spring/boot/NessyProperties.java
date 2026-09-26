@@ -78,7 +78,7 @@ public record NessyProperties(
    *
    * <p>Required rather than defaulted to nothing. An agent with no system prompt is a chat box, and
    * the empty string used to be allowed here only because nothing downstream objected -- {@link
-   * org.jwcarman.nessy.inference.SystemPrompt} now refuses one, so saying so here is what turns a
+   * org.jwcarman.nessy.api.SystemPrompt} now refuses one, so saying so here is what turns a
    * confusing constructor failure into a sentence naming the property to set.
    */
   public String resolveSystemPrompt() {

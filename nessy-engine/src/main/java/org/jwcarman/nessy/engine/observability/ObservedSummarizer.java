@@ -24,9 +24,9 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.Summarizer;
-import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.turn.Summary;
-import org.jwcarman.nessy.inference.turn.Turn;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.turn.Summary;
+import org.jwcarman.nessy.api.turn.Turn;
 
 /**
  * A summary source read as semconv's {@code search_memory}: an in-process memory store asked what

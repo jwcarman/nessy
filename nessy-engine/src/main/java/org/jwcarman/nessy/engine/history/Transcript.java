@@ -19,14 +19,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.turn.Exchange;
+import org.jwcarman.nessy.api.turn.Input;
+import org.jwcarman.nessy.api.turn.ToolOutcome;
+import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.payload.Payloads;
-import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.turn.Exchange;
-import org.jwcarman.nessy.inference.turn.Input;
-import org.jwcarman.nessy.inference.turn.ToolOutcome;
-import org.jwcarman.nessy.inference.turn.Turn;
-import org.jwcarman.nessy.inference.turn.TurnResult;
 
 /**
  * The event stream, read back as the conversation a model is shown.
@@ -155,7 +156,7 @@ public final class Transcript {
     private final Input input;
     private final List<Exchange> exchanges = new ArrayList<>();
 
-    private org.jwcarman.nessy.inference.Seq askedAt;
+    private Seq askedAt;
     private List<Block.ActionRequestContent> request;
     private List<ToolOutcome> outcomes;
 
@@ -168,7 +169,7 @@ public final class Transcript {
       return new Open(started, new Input(started.seq(), cast(content)));
     }
 
-    void ask(org.jwcarman.nessy.inference.Seq at, List<Block.ActionRequestContent> blocks) {
+    void ask(Seq at, List<Block.ActionRequestContent> blocks) {
       flush();
       askedAt = at;
       request = blocks;

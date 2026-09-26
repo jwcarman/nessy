@@ -17,6 +17,7 @@ package org.jwcarman.nessy.inference;
 
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.SystemPrompt;
 
 /**
  * Everything a provider needs for one call.

@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.memory.episodic;
 
 import java.util.Objects;
-import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.api.TurnId;
 
 /**
  * One stretch of an agent's story, named by the model when it began.

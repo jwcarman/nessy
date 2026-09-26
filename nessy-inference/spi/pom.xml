@@ -32,13 +32,12 @@
   <name>Nessy Inference SPI</name>
   <description>The vendor-neutral model of a conversation with a tool-calling model, and the adapters' contract</description>
 
-  <!--
-    Physical split only: the types keep their org.jwcarman.nessy.api.* packages, so nothing had to
-    have its imports rewritten. If this ever ships on its own, the packages want a name of their
-    own too, and that is the expensive half.
-  -->
-
   <dependencies>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <dependency>
       <groupId>tools.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>

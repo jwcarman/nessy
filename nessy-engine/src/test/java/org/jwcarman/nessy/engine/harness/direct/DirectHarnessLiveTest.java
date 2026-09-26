@@ -36,8 +36,8 @@ import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
-import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.openai.OpenAiInferenceProvider;
 import tools.jackson.databind.json.JsonMapper;
 

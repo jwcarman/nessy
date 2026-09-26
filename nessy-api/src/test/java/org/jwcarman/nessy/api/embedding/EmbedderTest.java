@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.embedding.Embedding;
 
 /**
  * What an embedder says it is, when it has not said.

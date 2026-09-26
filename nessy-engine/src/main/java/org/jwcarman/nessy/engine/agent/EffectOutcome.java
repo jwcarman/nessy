@@ -20,9 +20,9 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.inference.Failure;
-import org.jwcarman.nessy.inference.tool.CallId;
 
 /**
  * What performing an effect came to.

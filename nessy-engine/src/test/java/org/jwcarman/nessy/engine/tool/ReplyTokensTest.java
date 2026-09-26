@@ -24,9 +24,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
-import org.jwcarman.nessy.inference.Seq;
-import org.jwcarman.nessy.inference.tool.CallId;
 
 /**
  * A bearer credential, so what matters is not that it round-trips but what it refuses.

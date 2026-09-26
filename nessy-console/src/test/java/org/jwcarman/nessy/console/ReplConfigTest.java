@@ -45,8 +45,8 @@ import org.jwcarman.nessy.api.tool.ApproverConfig;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolConfig;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.jwcarman.nessy.inference.tool.ToolName;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 @DisplayName("A REPL's configuration")

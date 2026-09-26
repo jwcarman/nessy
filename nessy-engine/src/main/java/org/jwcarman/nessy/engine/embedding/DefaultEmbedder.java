@@ -18,7 +18,7 @@ package org.jwcarman.nessy.engine.embedding;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.embedding.Embedder;
-import org.jwcarman.nessy.embedding.Embedding;
+import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.embedding.EmbeddingProvider;
 

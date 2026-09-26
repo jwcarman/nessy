@@ -39,10 +39,14 @@ import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPromptSource;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.event.ActionRequest;
@@ -62,6 +66,7 @@ import org.jwcarman.nessy.engine.history.Transcript;
 import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
 import org.jwcarman.nessy.engine.inference.InferenceInvocation;
+import org.jwcarman.nessy.engine.inference.InferenceNarrators;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceNarrator;
@@ -70,11 +75,7 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.OutputSchema;
-import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.Toolset;
-import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.tool.CallId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
@@ -558,7 +559,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * waiting on, and a watcher that misses every fragment still gets the answer.
    */
   private InferenceNarrator narratorFor(AgentId agent) {
-    return narrator.forAgent(agentType, agent).forInference();
+    return InferenceNarrators.of(narrator.forAgent(agentType, agent));
   }
 
   /**

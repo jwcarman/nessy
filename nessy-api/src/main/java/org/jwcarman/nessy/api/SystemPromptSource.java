@@ -15,8 +15,6 @@
  */
 package org.jwcarman.nessy.api;
 
-import org.jwcarman.nessy.inference.SystemPrompt;
-
 /**
  * What an agent is told about itself, worked out per agent.
  *

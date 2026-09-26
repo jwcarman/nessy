@@ -18,7 +18,7 @@ package org.jwcarman.nessy.backend.event;
 import java.time.Instant;
 import java.util.List;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.inference.Seq;
+import org.jwcarman.nessy.api.Seq;
 
 /**
  * Where an agent's facts live, in order, append-only.

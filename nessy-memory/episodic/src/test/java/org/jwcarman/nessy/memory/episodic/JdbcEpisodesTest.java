@@ -25,13 +25,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.embedding.Embedder;
-import org.jwcarman.nessy.inference.Seq;
-import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.turn.Input;
-import org.jwcarman.nessy.inference.turn.Summary;
-import org.jwcarman.nessy.inference.turn.Turn;
+import org.jwcarman.nessy.api.turn.Input;
+import org.jwcarman.nessy.api.turn.Summary;
+import org.jwcarman.nessy.api.turn.Turn;
 
 @DisplayName("The episode store")
 class JdbcEpisodesTest {

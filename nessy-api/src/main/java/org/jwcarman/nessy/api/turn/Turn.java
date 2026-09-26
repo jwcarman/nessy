@@ -13,11 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.inference.turn;
+package org.jwcarman.nessy.api.turn;
 
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.inference.TurnId;
+import org.jwcarman.nessy.api.TurnId;
 
 /**
  * One exchange between an agent and a model, as a conversation rather than as rows.

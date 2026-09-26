@@ -100,6 +100,19 @@
       <artifactId>nessy-api</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- The provider contracts: InferenceProvider/InferenceRequest/InferenceResult and their
+         options, which nessy-api no longer brings in transitively now that the dependency runs
+         the other way. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-inference-spi</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-embedding-spi</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-lease</artifactId>

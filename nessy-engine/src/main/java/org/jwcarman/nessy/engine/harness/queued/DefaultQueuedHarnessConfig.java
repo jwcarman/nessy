@@ -24,6 +24,7 @@ import java.util.Objects;
 import java.util.Set;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.api.ContextConfig;
@@ -35,6 +36,7 @@ import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Summarizer;
+import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalEnricher;
@@ -47,10 +49,8 @@ import org.jwcarman.nessy.engine.observability.ObservedApprover;
 import org.jwcarman.nessy.engine.observability.ObservedTool;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
-import org.jwcarman.nessy.inference.Ambient;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
-import org.jwcarman.nessy.inference.SystemPrompt;
 import tools.jackson.databind.ObjectMapper;
 
 /**

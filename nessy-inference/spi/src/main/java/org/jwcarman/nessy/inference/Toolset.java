@@ -17,7 +17,7 @@ package org.jwcarman.nessy.inference;
 
 import java.util.List;
 import java.util.Objects;
-import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.api.tool.ToolName;
 
 /**
  * What the model may do, and how freely it may choose.

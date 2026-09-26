@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.api.tool;
 
 import java.util.List;
-import org.jwcarman.nessy.inference.block.Block;
+import org.jwcarman.nessy.api.block.Block;
 
 public sealed interface ToolResult {
 

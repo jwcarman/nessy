@@ -16,8 +16,8 @@
 package org.jwcarman.nessy.inference;
 
 import java.util.Objects;
-import org.jwcarman.nessy.inference.tool.InputSchema;
-import org.jwcarman.nessy.inference.tool.ToolName;
+import org.jwcarman.nessy.api.tool.InputSchema;
+import org.jwcarman.nessy.api.tool.ToolName;
 
 /**
  * One tool as a provider is told about it.

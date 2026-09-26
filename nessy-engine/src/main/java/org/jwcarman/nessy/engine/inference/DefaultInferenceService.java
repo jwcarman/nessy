@@ -67,6 +67,7 @@ public class DefaultInferenceService implements InferenceService {
     // narration goes. The provider is handed something that can say what is arriving -- text, or
     // thinking -- and cannot say whose it is, or that an agent is involved at all.
     return provider.infer(
-        request, narrator.forAgent(invocation.agentType(), invocation.agentId()).forInference());
+        request,
+        InferenceNarrators.of(narrator.forAgent(invocation.agentType(), invocation.agentId())));
   }
 }

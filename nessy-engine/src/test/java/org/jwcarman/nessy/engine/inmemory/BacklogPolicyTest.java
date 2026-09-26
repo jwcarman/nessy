@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api;
+package org.jwcarman.nessy.engine.inmemory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -22,6 +22,8 @@ import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.BacklogItem;
+import org.jwcarman.nessy.api.BacklogPolicy;
 
 @DisplayName("A policy")
 class BacklogPolicyTest {

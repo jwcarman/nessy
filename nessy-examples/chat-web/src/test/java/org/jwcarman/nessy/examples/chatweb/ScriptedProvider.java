@@ -17,11 +17,11 @@ package org.jwcarman.nessy.examples.chatweb;
 
 import java.util.List;
 import java.util.function.Function;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.inference.block.Block;
 
 /**
  * A model that answers by looking at where the conversation stands, so it needs no memory of its

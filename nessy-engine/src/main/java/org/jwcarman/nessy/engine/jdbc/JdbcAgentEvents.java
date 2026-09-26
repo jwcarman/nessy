@@ -23,9 +23,9 @@ import java.util.Objects;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
-import org.jwcarman.nessy.inference.Seq;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 

@@ -34,12 +34,18 @@
   <description>What an embedding provider implements, and the vector it returns</description>
 
   <!--
-    The sibling of nessy-inference-spi, and deliberately the same shape: the contract, its options
-    and the value that comes back, with nothing an application calls. Embedder and its config stay
-    in nessy-api, which is the door.
+    The sibling of nessy-inference-spi, and deliberately the same shape: the contract and its
+    options, with nothing an application calls. Embedder, its config, and the Embedding value
+    itself all live in nessy-api, which is the door; this module depends on nessy-api for
+    Embedding rather than the other way around.
   -->
 
   <dependencies>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

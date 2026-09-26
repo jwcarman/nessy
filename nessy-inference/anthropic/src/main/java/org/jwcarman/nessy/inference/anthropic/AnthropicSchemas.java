@@ -20,7 +20,7 @@ import com.anthropic.models.messages.Tool;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import org.jwcarman.nessy.inference.tool.InputSchema;
+import org.jwcarman.nessy.api.tool.InputSchema;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 

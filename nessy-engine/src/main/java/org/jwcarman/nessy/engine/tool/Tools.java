@@ -19,8 +19,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.inference.ToolOffer;
-import org.jwcarman.nessy.inference.tool.ToolName;
 
 /**
  * The tools one harness offers, by the name the model calls them.

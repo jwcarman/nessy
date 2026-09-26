@@ -32,7 +32,7 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.inference.tool.InputSchema;
+import org.jwcarman.nessy.api.tool.InputSchema;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;

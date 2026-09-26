@@ -64,8 +64,8 @@ class ReplRunsTest {
     }
 
     @Override
-    public org.jwcarman.nessy.inference.tool.ToolName name() {
-      return new org.jwcarman.nessy.inference.tool.ToolName("ping");
+    public org.jwcarman.nessy.api.tool.ToolName name() {
+      return new org.jwcarman.nessy.api.tool.ToolName("ping");
     }
 
     @Override
@@ -78,7 +78,7 @@ class ReplRunsTest {
         org.jwcarman.nessy.api.tool.ToolCallRequest<Ping> request) {
       return org.jwcarman.nessy.api.Awaited.ready(
           org.jwcarman.nessy.api.tool.ToolResult.ok(
-              new org.jwcarman.nessy.inference.block.Block.Text("pong")));
+              new org.jwcarman.nessy.api.block.Block.Text("pong")));
     }
   }
 

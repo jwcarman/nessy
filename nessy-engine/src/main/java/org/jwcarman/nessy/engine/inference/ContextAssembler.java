@@ -19,15 +19,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Summarizer;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.turn.Summary;
+import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.store.TurnHistory;
-import org.jwcarman.nessy.inference.Ambient;
 import org.jwcarman.nessy.inference.InferenceContext;
-import org.jwcarman.nessy.inference.TurnId;
-import org.jwcarman.nessy.inference.turn.Summary;
-import org.jwcarman.nessy.inference.turn.Turn;
 
 /**
  * Builds what the model is sent: summaries, then the tail, then background.

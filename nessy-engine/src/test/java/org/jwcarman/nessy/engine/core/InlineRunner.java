@@ -25,11 +25,11 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.UnaryOperator;
 import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
-import org.jwcarman.nessy.inference.Seq;
-import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.inference.tool.ToolName;
 
 /**
  * A proof of concept: the whole of a turn, driven on one thread, with nothing written down.

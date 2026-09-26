@@ -37,6 +37,18 @@
       <artifactId>nessy-api</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!--
+      For Failure alone: AgentEvent.InferenceFailed carries it, and it also lives in
+      InferenceResult.Fault on the provider side. It stayed in nessy-inference-spi rather than
+      moving to nessy-api (2026-09-26 closure review, James unresolved) because no user ever
+      touches it; that leaves this module depending on the SPI beside it until James rules on
+      where a type both SPIs need and no user does belongs.
+    -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-inference-spi</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
