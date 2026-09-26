@@ -33,6 +33,15 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
  * <p>Classifying is the job of whatever caught the failure, because only an adapter knows what a
  * 404 means on its wire. Deciding how many chances that is worth is the retry policy's job, and it
  * needs none of this vocabulary -- which is what lets a policy stay plain serializable data.
+ *
+ * <p><b>TODO -- this is parked here, and the placement wants revisiting.</b> No user names a {@code
+ * Failure}: {@link RetryPolicy} is sealed and decides on an attempt count rather than on what went
+ * wrong, so nothing a user writes ever sees one. It is here because two SPIs need it -- {@code
+ * InferenceResult.Fault} on the provider side and {@code AgentEvent.InferenceFailed} on the backend
+ * side -- and the alternatives were worse: one SPI depending on the other would have the build
+ * assert that storage depends on model providers, which is false. A module beneath both is the
+ * correct shape and was rejected as too much ceremony for one type. If a second type ever ends up
+ * in the same position, that judgement changes and this should move with it.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonSubTypes({
