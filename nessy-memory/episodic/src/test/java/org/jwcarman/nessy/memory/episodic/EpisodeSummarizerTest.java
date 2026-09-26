@@ -106,7 +106,7 @@ class EpisodeSummarizerTest {
     Schemas.initialize(dataSource);
     observations.observationConfig().observationHandler(recorded);
     factory =
-        new DefaultQueuedHarnessFactory(
+        DefaultQueuedHarnessFactory.of(
             engine ->
                 engine
                     .dataSource(dataSource)

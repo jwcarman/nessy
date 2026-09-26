@@ -27,6 +27,7 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.jwcarman.nessy.spring.boot.NessyAutoConfiguration;
+import org.jwcarman.nessy.spring.boot.QueuedHarnessAutoConfiguration;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -145,8 +146,14 @@ public final class Repl {
    * Enough Boot to find a provider, and no more. The engine's own auto-configuration is excluded --
    * it would want a DataSource bean, a model and a system prompt to build a factory this class
    * builds by hand -- and so is what depends on it.
+   *
+   * <p><b>The queued door is excluded by name, and that is the point of its being separate.</b> A
+   * console reads a line and waits for the answer, so it uses the direct door and has no database
+   * at all. Nothing about the classpath can tell those two doors apart -- both factories live in
+   * the engine -- so an application that wants one says which.
    */
   @Configuration(proxyBeanMethods = false)
-  @EnableAutoConfiguration(exclude = NessyAutoConfiguration.class)
+  @EnableAutoConfiguration(
+      exclude = {NessyAutoConfiguration.class, QueuedHarnessAutoConfiguration.class})
   static class ReplBootstrap {}
 }

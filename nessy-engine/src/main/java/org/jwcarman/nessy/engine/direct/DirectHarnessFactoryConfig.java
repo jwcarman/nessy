@@ -39,9 +39,9 @@ import tools.jackson.databind.json.JsonMapper;
  * an individual agent is -- its type, its prompt, its tools -- is the harness's own config and not
  * here.
  *
- * <p><b>The counterpart of the queued door's {@code EngineConfig}.</b> The direct factory used to
- * take six constructor arguments, which left nothing for anything to customize and meant every
- * caller assembling a factory had to know how to assemble its stores too.
+ * <p><b>The counterpart of the queued door's {@code QueuedHarnessFactoryConfig}.</b> The direct
+ * factory used to take six constructor arguments, which left nothing for anything to customize and
+ * meant every caller assembling a factory had to know how to assemble its stores too.
  */
 public final class DirectHarnessFactoryConfig {
 

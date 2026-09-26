@@ -136,7 +136,7 @@ public final class EngineFixture implements AutoCloseable {
         (type, id) -> new EventStreamHistory(events, new Transcript(payloads.forAgent(id)), id);
 
     this.harnesses =
-        new DefaultQueuedHarnessFactory(
+        DefaultQueuedHarnessFactory.of(
             engine -> {
               engine
                   .dataSource(dataSource)

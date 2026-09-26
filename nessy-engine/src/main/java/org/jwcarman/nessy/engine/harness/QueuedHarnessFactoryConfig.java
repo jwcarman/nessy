@@ -46,7 +46,7 @@ import org.jwcarman.nessy.inference.InferenceProvider;
  * <p>Customizer-shaped, like {@link org.jwcarman.nessy.api.QueuedHarnessConfig} and the configs
  * beneath it: an application says what it wants and stays silent about the rest.
  */
-public final class EngineConfig {
+public final class QueuedHarnessFactoryConfig {
 
   private DataSource dataSource;
   private InferenceProvider provider;
@@ -57,10 +57,10 @@ public final class EngineConfig {
   private ReplyTokens replyTokens;
   private Codec<byte[]> storage;
 
-  EngineConfig() {}
+  QueuedHarnessFactoryConfig() {}
 
   /** Where agents, their stories and their outstanding work are kept. Required. */
-  public EngineConfig dataSource(DataSource dataSource) {
+  public QueuedHarnessFactoryConfig dataSource(DataSource dataSource) {
     this.dataSource = dataSource;
     return this;
   }
@@ -71,7 +71,8 @@ public final class EngineConfig {
    * <p>One provider for the engine because a provider is a connection; which model to call travels
    * per request, so an agent type wanting a different one overrides it on its harness.
    */
-  public EngineConfig inference(InferenceProvider provider, InferenceOptions options) {
+  public QueuedHarnessFactoryConfig inference(
+      InferenceProvider provider, InferenceOptions options) {
     this.provider = provider;
     this.options = options;
     return this;
@@ -82,7 +83,7 @@ public final class EngineConfig {
    * because narration costs a line per event and nobody asked. A harness adds its own with {@code
    * QueuedHarnessConfig.listener(...)}.
    */
-  public EngineConfig listener(NarrationListener listener) {
+  public QueuedHarnessFactoryConfig listener(NarrationListener listener) {
     listeners.add(Objects.requireNonNull(listener, "listener must not be null"));
     return this;
   }
@@ -91,7 +92,7 @@ public final class EngineConfig {
    * Where spans go. Defaults to {@link ObservationRegistry#NOOP}, which is the whole of switching
    * tracing off: no carrier is captured, no column is written, no span is opened.
    */
-  public EngineConfig observations(ObservationRegistry observations) {
+  public QueuedHarnessFactoryConfig observations(ObservationRegistry observations) {
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
     return this;
   }
@@ -102,7 +103,7 @@ public final class EngineConfig {
    * have headers written for it; a tracing library can do it directly, and the Boot starter hands
    * one in.
    */
-  public EngineConfig traceCarrier(TraceCarrier traceCarrier) {
+  public QueuedHarnessFactoryConfig traceCarrier(TraceCarrier traceCarrier) {
     this.traceCarrier = Objects.requireNonNull(traceCarrier, "traceCarrier must not be null");
     return this;
   }
@@ -112,7 +113,7 @@ public final class EngineConfig {
    * approval parked on a person becomes unanswerable after a restart -- fine for a test, and the
    * reason an application configures one.
    */
-  public EngineConfig replyTokens(ReplyTokens replyTokens) {
+  public QueuedHarnessFactoryConfig replyTokens(ReplyTokens replyTokens) {
     this.replyTokens = replyTokens;
     return this;
   }
@@ -123,7 +124,7 @@ public final class EngineConfig {
    * nothing. Fixed for the life of the data: rows written under one transform are unreadable under
    * another, which is the same fact as an encryption key.
    */
-  public EngineConfig storage(Codec<byte[]> transform) {
+  public QueuedHarnessFactoryConfig storage(Codec<byte[]> transform) {
     this.storage = Objects.requireNonNull(transform, "transform must not be null");
     return this;
   }

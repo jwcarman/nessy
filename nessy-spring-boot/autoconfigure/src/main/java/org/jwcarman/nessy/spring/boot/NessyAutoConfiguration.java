@@ -15,26 +15,14 @@
  */
 package org.jwcarman.nessy.spring.boot;
 
-import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.observation.ObservationRegistry;
-import io.micrometer.tracing.Tracer;
-import io.micrometer.tracing.propagation.Propagator;
 import java.util.Base64;
 import java.util.List;
 import javax.sql.DataSource;
-import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
-import org.jwcarman.nessy.api.QueuedHarnessFactory;
-import org.jwcarman.nessy.api.tool.Replies;
-import org.jwcarman.nessy.engine.harness.DefaultQueuedHarnessFactory;
-import org.jwcarman.nessy.engine.store.StorageCodec;
-import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
-import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -108,82 +96,6 @@ public class NessyAutoConfiguration {
     }
     return ReplyTokens.withKeys(
         keys.stream().map(key -> Base64.getDecoder().decode(key)).toArray(byte[][]::new));
-  }
-
-  @Bean
-  // Against the INTERFACE, as the direct door's is: an application declaring its own factory
-  // declares the interface, and a condition naming the concrete class never sees it.
-  @ConditionalOnMissingBean(QueuedHarnessFactory.class)
-  public DefaultQueuedHarnessFactory nessyHarnessFactory(
-      DataSource dataSource,
-      ReplyTokens replyTokens,
-      InferenceProvider models,
-      NessyProperties properties,
-      NessySchema schema,
-      ObservationRegistry observations,
-      ObjectProvider<MeterRegistry> meters,
-      ObjectProvider<StorageCodec> storage,
-      ObjectProvider<Tracer> tracers,
-      ObjectProvider<Propagator> propagators) {
-
-    // Token counts become semconv's histogram when there is a meter registry to hold it.
-    meters.ifAvailable(
-        registry ->
-            observations.observationConfig().observationHandler(new TokenUsageHandler(registry)));
-    return new DefaultQueuedHarnessFactory(
-        engine -> {
-          engine
-              .dataSource(dataSource)
-              .inference(
-                  models, new InferenceOptions(requireModel(properties), properties.maxTokens()))
-              .observations(observations)
-              .replyTokens(replyTokens);
-          // What is done to every stored byte after Jackson, when the application declared it:
-          // compression, encryption. Declared as a StorageCodec bean, because a bean of a plain
-          // Codec<byte[]> names nothing in particular.
-          storage.ifAvailable(engine::storage);
-          // With a tracer and its propagator the context is written straight into the effect
-          // row; without them the engine opens a momentary span to have it written.
-          Tracer tracer = tracers.getIfAvailable();
-          Propagator propagator = propagators.getIfAvailable();
-          if (tracer != null && propagator != null) {
-            engine.traceCarrier(new PropagatingTraceCarrier(tracer, propagator));
-          }
-        });
-  }
-
-  /**
-   * Every {@link NarrationListener} bean, attached engine-wide once every bean exists -- after
-   * rather than at the factory's making, so a listener that reads the story (through the factory)
-   * is not a circle.
-   */
-  @Bean
-  public SmartInitializingSingleton nessyListeners(
-      DefaultQueuedHarnessFactory factory, ObjectProvider<NarrationListener> listeners) {
-    return () -> listeners.orderedStream().forEach(factory::listener);
-  }
-
-  /** The story, for an application that shows what its agents said. */
-  @Bean
-  @ConditionalOnMissingBean
-  public TurnHistories nessyHistories(DefaultQueuedHarnessFactory factory) {
-    return factory.histories();
-  }
-
-  @Bean
-  @ConditionalOnMissingBean
-  public Replies nessyReplies(DefaultQueuedHarnessFactory factory) {
-    return factory.replies();
-  }
-
-  private static String requireModel(NessyProperties properties) {
-    String model = properties.model();
-    if (model == null || model.isBlank()) {
-      throw new IllegalStateException(
-          "nessy.model must name the model these agents talk to; it is sent to your"
-              + " InferenceProvider bean with every call");
-    }
-    return model;
   }
 
   /** Says what will actually answer, before a single turn runs. */

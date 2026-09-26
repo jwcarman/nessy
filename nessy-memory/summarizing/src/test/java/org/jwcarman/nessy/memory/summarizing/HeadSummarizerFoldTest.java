@@ -77,7 +77,7 @@ class HeadSummarizerFoldTest {
     dataSource = new HikariDataSource(config);
     Schemas.initialize(dataSource);
     factory =
-        new DefaultQueuedHarnessFactory(
+        DefaultQueuedHarnessFactory.of(
             engine -> engine.dataSource(dataSource).inference(model, InferenceOptions.of("m")));
     summaries = new JdbcSummaries(dataSource, CHAT);
     HeadSummarizer summarizer =

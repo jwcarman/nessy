@@ -118,22 +118,31 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
    * -- the stores, the transaction manager, the one client they share -- so there is nothing for a
    * caller to assemble and nothing for two callers to assemble differently.
    */
-  public DefaultQueuedHarnessFactory(Customizer<EngineConfig> customizer) {
-    this(configured(customizer));
+  /**
+   * One factory, from every customizer that has something to say about the engine.
+   *
+   * <p>A list because this is what a container hands over: every {@code
+   * Customizer<QueuedHarnessFactoryConfig>} bean an application declared, in order, each adding to
+   * the same config before anything is built from it.
+   */
+  public static DefaultQueuedHarnessFactory of(
+      List<Customizer<QueuedHarnessFactoryConfig>> customizers) {
+    Objects.requireNonNull(customizers, "customizers must not be null");
+    QueuedHarnessFactoryConfig config = new QueuedHarnessFactoryConfig();
+    customizers.forEach(customizer -> customizer.customize(config));
+    return new DefaultQueuedHarnessFactory(config);
   }
 
-  private static EngineConfig configured(Customizer<EngineConfig> customizer) {
-    Objects.requireNonNull(customizer, "customizer must not be null");
-    EngineConfig config = new EngineConfig();
-    customizer.customize(config);
-    return config;
+  /** One customizer, for a caller that is not a container. */
+  public static DefaultQueuedHarnessFactory of(Customizer<QueuedHarnessFactoryConfig> customizer) {
+    return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
   /**
    * For a caller that already holds the settings, which {@link DefaultNessy} does: it takes the
    * model at its own door and hands the engine a config it has already written on.
    */
-  DefaultQueuedHarnessFactory(EngineConfig config) {
+  DefaultQueuedHarnessFactory(QueuedHarnessFactoryConfig config) {
     DataSource dataSource = config.requiredDataSource();
     CodecFactory jackson = new JacksonCodecFactory(JsonMapper.builder().build());
     this.codecs = config.storage().map(t -> StorageCodec.of(t).after(jackson)).orElse(jackson);

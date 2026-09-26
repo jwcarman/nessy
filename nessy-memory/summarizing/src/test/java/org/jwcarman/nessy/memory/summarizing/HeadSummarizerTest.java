@@ -115,7 +115,7 @@ class HeadSummarizerTest {
     Schemas.initialize(dataSource);
     observations.observationConfig().observationHandler(recorded);
     factory =
-        new DefaultQueuedHarnessFactory(
+        DefaultQueuedHarnessFactory.of(
             engine -> engine.dataSource(dataSource).inference(model, InferenceOptions.of("m")));
     summaries = new JdbcSummaries(dataSource, CHAT);
     summarizer =
