@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
+import org.jwcarman.nessy.engine.agent.Outstanding;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.tool.CallId;
@@ -219,6 +220,36 @@ class AgentStateTest {
                   CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT)));
 
       assertThat(again).isInstanceOf(Decision.Ignore.class);
+    }
+
+    @Test
+    @DisplayName(
+        "before approval, an outstanding call's since is the seq of the actions being requested")
+    void since_before_approval_is_the_actions_requested_seq() {
+      AgentState inferring = idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL)).events());
+      Decision requested =
+          inferring.execute(
+              new AgentCommand.CompleteInference(
+                  new AgentCommand.InferenceOutcome.RequestedActions(
+                      MAIL, List.of(new ActionRequest.ToolCall(CALL, TOOL)))));
+      AgentState awaiting = inferring.applyAll(requested.events());
+
+      AgentEvent.ActionsRequested actionsRequested =
+          (AgentEvent.ActionsRequested) requested.events().getFirst();
+      AgentState.AwaitingActions state = (AgentState.AwaitingActions) awaiting;
+      assertThat(state.outstanding()).isNotEmpty();
+      assertThat(state.outstanding().get(CALL).since()).isEqualTo(actionsRequested.seq());
+    }
+
+    @Test
+    @DisplayName("once approved, the outstanding call's since moves to the approval's seq")
+    void since_after_approval_is_the_tool_approved_seq() {
+      AgentState running = awaitingOneRunningCall();
+
+      AgentState.AwaitingActions state = (AgentState.AwaitingActions) running;
+      assertThat(state.outstanding()).isNotEmpty();
+      assertThat(state.outstanding().get(CALL).since()).isEqualTo(state.seq());
+      assertThat(state.outstanding().get(CALL).phase()).isEqualTo(Outstanding.Phase.RUNNING);
     }
   }
 

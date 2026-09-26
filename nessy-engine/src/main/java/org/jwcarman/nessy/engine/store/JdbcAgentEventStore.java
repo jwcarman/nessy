@@ -16,6 +16,8 @@
 
 package org.jwcarman.nessy.engine.store;
 
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.codec.Codec;
@@ -51,6 +53,9 @@ public final class JdbcAgentEventStore implements AgentEventStore {
 
   private static final String READ_FROM =
       "SELECT payload FROM nessy_agent_event WHERE agent_id = ? AND seq > ? ORDER BY seq";
+
+  private static final String WRITTEN_AT =
+      "SELECT written_at FROM nessy_agent_event WHERE agent_id = ? AND seq = ?";
 
   /**
    * The last turn, and nothing before it.
@@ -123,5 +128,18 @@ public final class JdbcAgentEventStore implements AgentEventStore {
         .params(agent.value(), agent.value())
         .query((rs, _) -> codec.decode(rs.getBytes("payload")))
         .list();
+  }
+
+  @Override
+  public Instant writtenAt(AgentId agent, Seq seq) {
+    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(seq, "seq must not be null");
+    return jdbc.sql(WRITTEN_AT)
+        .params(agent.value(), seq.value())
+        .query((rs, _) -> rs.getObject("written_at", OffsetDateTime.class).toInstant())
+        .optional()
+        .orElseThrow(
+            () ->
+                new IllegalArgumentException("no event at " + seq + " for agent " + agent.value()));
   }
 }

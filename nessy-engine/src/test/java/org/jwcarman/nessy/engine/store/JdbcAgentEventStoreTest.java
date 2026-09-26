@@ -18,7 +18,10 @@ package org.jwcarman.nessy.engine.store;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
@@ -143,5 +146,25 @@ class JdbcAgentEventStoreTest {
 
     assertThat(events.readFrom(other, Seq.NONE)).isEmpty();
     assertThat(events.readFrom(agent, Seq.NONE)).hasSize(1);
+  }
+
+  @Test
+  @DisplayName("an appended event's writtenAt is readable, and close to now")
+  void writtenAt_is_readable_and_close_to_now() {
+    events.append(agent, List.of(started(1, 1)), Seq.NONE);
+
+    assertThat(events.writtenAt(agent, new Seq(1)))
+        .isCloseTo(Instant.now(), within(Duration.ofMinutes(1)));
+  }
+
+  @Test
+  @DisplayName("an unknown seq names the agent and the seq rather than staying quiet about it")
+  void writtenAt_of_an_unknown_seq_throws() {
+    events.append(agent, List.of(started(1, 1)), Seq.NONE);
+
+    assertThatThrownBy(() -> events.writtenAt(agent, new Seq(99)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("99")
+        .hasMessageContaining(agent.value().toString());
   }
 }

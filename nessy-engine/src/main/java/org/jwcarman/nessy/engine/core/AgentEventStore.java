@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.engine.core;
 
+import java.time.Instant;
 import java.util.List;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.inference.Seq;
@@ -66,6 +67,26 @@ public interface AgentEventStore {
    * <p>Empty for an agent nothing has happened to.
    */
   List<AgentEvent> sinceLastTurnStarted(AgentId agent);
+
+  /**
+   * When the event at {@code seq} was written -- the database's clock, not the event's.
+   *
+   * <p>This is the one thing an {@link AgentEvent} does not carry: putting a timestamp on the
+   * record itself would make replay depend on wall-clock time and would change the stored payload,
+   * so the fold never sees a clock. The row that filed the event knows when that happened; the
+   * event is only the fact.
+   *
+   * <p>What this is for: lazy recovery measures a deadline from when a phase actually started, not
+   * from now, and the seq it started at is already in hand -- {@code Inferring.seq()}, or an {@code
+   * Outstanding.since()} -- so this is the lookup that turns that seq into a clock start.
+   *
+   * <p>The caller only ever asks about a seq that came from an event it already replayed, so a
+   * missing row is a programming error, not a condition to signal through the return type -- hence
+   * a thrown exception rather than an {@code Optional}.
+   *
+   * @throws IllegalArgumentException if {@code agent} has no event at {@code seq}
+   */
+  Instant writtenAt(AgentId agent, Seq seq);
 
   /** Raised when {@code expectedLast} did not hold. */
   final class Conflict extends RuntimeException {

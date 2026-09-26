@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine.agent;
 
 import java.util.Objects;
 import org.jwcarman.nessy.engine.core.ActionRequest;
+import org.jwcarman.nessy.inference.Seq;
 
 /**
  * One call the engine owes an outcome for, and how far along it is.
@@ -29,12 +30,20 @@ import org.jwcarman.nessy.engine.core.ActionRequest;
  *
  * <p>The tool's name is carried because the call effect needs it and the fold has no registry to
  * look it up in. It is the same name the model wrote, which may no longer be bound to anything.
+ *
+ * <p>{@code since} is the seq of the event that put this call into its current phase -- {@code
+ * ActionsRequested} for {@link Phase#AWAITING_APPROVAL}, {@code ToolApproved} for {@link
+ * Phase#RUNNING} -- the same move as {@code AwaitingActions.requestSeq} and for the same reason: a
+ * deadline has to be measured from when the phase actually started, not from whenever somebody gets
+ * around to asking. It costs no migration, because this state is never stored -- it is rebuilt by
+ * replay every time.
  */
-public record Outstanding(ActionRequest action, Phase phase) {
+public record Outstanding(ActionRequest action, Phase phase, Seq since) {
 
   public Outstanding {
     Objects.requireNonNull(action, "action must not be null");
     Objects.requireNonNull(phase, "phase must not be null");
+    Objects.requireNonNull(since, "since must not be null");
   }
 
   /** Where a call is in its lifecycle. Every call starts at the first and passes through both. */
@@ -47,11 +56,11 @@ public record Outstanding(ActionRequest action, Phase phase) {
     RUNNING
   }
 
-  public static Outstanding awaitingApproval(ActionRequest action) {
-    return new Outstanding(action, Phase.AWAITING_APPROVAL);
+  public static Outstanding awaitingApproval(ActionRequest action, Seq since) {
+    return new Outstanding(action, Phase.AWAITING_APPROVAL, since);
   }
 
-  public Outstanding running() {
-    return new Outstanding(action, Phase.RUNNING);
+  public Outstanding running(Seq since) {
+    return new Outstanding(action, Phase.RUNNING, since);
   }
 }

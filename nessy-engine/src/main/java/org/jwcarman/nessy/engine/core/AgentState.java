@@ -219,7 +219,7 @@ public sealed interface AgentState {
     static AwaitingActions opening(AgentEvent.ActionsRequested requested) {
       Map<CallId, Outstanding> calls = new LinkedHashMap<>();
       for (ActionRequest action : requested.actions()) {
-        calls.put(action.id(), Outstanding.awaitingApproval(action));
+        calls.put(action.id(), Outstanding.awaitingApproval(action, requested.seq()));
       }
       return new AwaitingActions(requested.seq(), requested.turn(), requested.seq(), calls);
     }
@@ -241,7 +241,7 @@ public sealed interface AgentState {
         throw new IllegalArgumentException("no outstanding call " + callId);
       }
       Map<CallId, Outstanding> next = new LinkedHashMap<>(outstanding);
-      next.put(callId, call.running());
+      next.put(callId, call.running(at));
       return new AwaitingActions(at, turn, requestSeq, next);
     }
 

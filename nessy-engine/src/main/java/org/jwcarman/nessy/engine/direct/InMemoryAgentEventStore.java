@@ -15,9 +15,12 @@
  */
 package org.jwcarman.nessy.engine.direct;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.engine.core.AgentEvent;
@@ -29,10 +32,24 @@ import org.jwcarman.nessy.inference.Seq;
  *
  * <p>Enough for a turn nobody will resume, and enough to prove the seam: the same harness runs
  * against this and against a durable one without knowing which it has.
+ *
+ * <p>There is no {@code written_at} column here, so each append stamps its own row with {@link
+ * Clock#instant()} -- the JDBC store's database clock and this one's harness clock are the same
+ * kind of thing, read at the same moment: when the fact was filed.
  */
 public final class InMemoryAgentEventStore implements AgentEventStore {
 
   private final Map<AgentId, List<AgentEvent>> streams = new ConcurrentHashMap<>();
+  private final Map<AgentId, Map<Seq, Instant>> writtenAt = new ConcurrentHashMap<>();
+  private final Clock clock;
+
+  public InMemoryAgentEventStore() {
+    this(Clock.systemUTC());
+  }
+
+  public InMemoryAgentEventStore(Clock clock) {
+    this.clock = Objects.requireNonNull(clock, "clock must not be null");
+  }
 
   @Override
   public synchronized void append(AgentId agent, List<AgentEvent> events, Seq expectedLast) {
@@ -42,6 +59,11 @@ public final class InMemoryAgentEventStore implements AgentEventStore {
       throw new Conflict("expected " + expectedLast + " but the stream is at " + last);
     }
     stream.addAll(events);
+    Map<Seq, Instant> stamps = writtenAt.computeIfAbsent(agent, _ -> new ConcurrentHashMap<>());
+    Instant now = clock.instant();
+    for (AgentEvent event : events) {
+      stamps.put(event.seq(), now);
+    }
   }
 
   @Override
@@ -60,5 +82,14 @@ public final class InMemoryAgentEventStore implements AgentEventStore {
       }
     }
     return List.of();
+  }
+
+  @Override
+  public Instant writtenAt(AgentId agent, Seq seq) {
+    Instant stamp = writtenAt.getOrDefault(agent, Map.of()).get(seq);
+    if (stamp == null) {
+      throw new IllegalArgumentException("no event at " + seq + " for agent " + agent.value());
+    }
+    return stamp;
   }
 }
