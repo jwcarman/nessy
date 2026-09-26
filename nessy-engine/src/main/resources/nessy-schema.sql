@@ -137,6 +137,23 @@ CREATE TABLE IF NOT EXISTS nessy_agent_event
 CREATE INDEX IF NOT EXISTS nessy_agent_event_turn_starts
     ON nessy_agent_event (agent_id, seq DESC) WHERE starts_turn;
 
+-- A row to hold, for exclusion that is exact rather than approximate.
+--
+-- Taken with SELECT ... FOR UPDATE, exactly like nessy_agent above, and for the same reason: a row
+-- lock is held by a transaction and released by the database the instant that transaction ends,
+-- including when its connection simply drops, so there is no stale holder to fence against and
+-- nothing for an expiry to time. That is why this table has neither a holder column nor an
+-- expires_at -- the transaction holding the row IS the holder, for as long as it is one. A lease
+-- needs both columns precisely because it is the mechanism that cannot know whether its holder is
+-- still alive; a row lock never has to ask.
+CREATE TABLE IF NOT EXISTS nessy_lock
+(
+    kind       VARCHAR(64) NOT NULL,
+    agent_type VARCHAR(64) NOT NULL,
+    agent_id   UUID        NOT NULL,
+    PRIMARY KEY (kind, agent_type, agent_id)
+);
+
 -- Work offered to an agent that is busy, waiting its turn.
 --
 -- One row per item, which is what lets a coalescer say "append" or "keep only this" in a statement

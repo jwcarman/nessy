@@ -172,9 +172,8 @@ class DurableDirectHarnessTest {
 
     harness(saying("never")).terminate(agent);
 
-    org.assertj.core.api.Assertions.assertThatThrownBy(
-            () -> harness(saying("never")).ask(agent, "still there?"))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("accepts nothing further");
+    assertThat(harness(saying("never")).ask(agent, "still there?"))
+        .as("a caller who is owed an answer gets one, even when the answer is no")
+        .isEqualTo(new Outcome.Refused<String>("terminated"));
   }
 }
