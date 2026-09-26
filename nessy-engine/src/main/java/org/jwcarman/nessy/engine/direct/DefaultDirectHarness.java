@@ -15,13 +15,18 @@
  */
 package org.jwcarman.nessy.engine.direct;
 
-import java.time.Instant;
+import java.time.Clock;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jwcarman.codec.TypeRef;
@@ -46,6 +51,9 @@ import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
+import org.jwcarman.nessy.engine.effect.EffectOutcomes;
+import org.jwcarman.nessy.engine.effect.EffectTerms;
+import org.jwcarman.nessy.engine.effect.EffectTermsSource;
 import org.jwcarman.nessy.engine.history.EventStreamHistory;
 import org.jwcarman.nessy.engine.history.Transcript;
 import org.jwcarman.nessy.engine.inference.ContextAssembler;
@@ -81,6 +89,15 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Note what is absent: no backlog, no coalescing, no claims, no leases, no deferral. Not
  * forbidden -- nothing in this world can produce them.
+ *
+ * <p><b>Every effect runs on a virtual thread and is waited for with its own deadline.</b> An
+ * inference, a tool call and a blocking approver each advertise a timeout ({@link
+ * org.jwcarman.nessy.api.InferenceConfig#timeout}, {@link
+ * org.jwcarman.nessy.api.tool.ToolConfig#timeout}, {@link
+ * org.jwcarman.nessy.api.tool.ApproverConfig#timeout}) that this door used to accept and ignore;
+ * {@link #within} is what makes them true. Cancelling the {@link Future} rather than the work
+ * itself: the deadline this door enforces is what recovery can rely on, and it is not the same
+ * thing as the work actually stopping -- see the caveat on {@link #within}.
  */
 public final class DefaultDirectHarness<I> implements DirectHarness<I> {
 
@@ -118,6 +135,25 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   /** Built once: a tool's shape cannot change between calls, so neither can what is on offer. */
   private final Toolset toolset;
 
+  /** What a deadline is measured from -- stepped in a test, wall-clock everywhere else. */
+  private final Clock clock;
+
+  /**
+   * What each effect this harness performs is worth, resolved the same way the queued door does.
+   */
+  private final EffectTermsSource terms;
+
+  /**
+   * One virtual thread per effect, so {@link #within} can wait for one with a deadline and cancel
+   * it -- interrupting the thread -- when that deadline passes.
+   *
+   * <p>The factory's, not this harness's. A thread-per-task executor over virtual threads holds
+   * nothing while idle, so there is nothing for a harness to own here and nothing for it to release
+   * -- and a harness that owned one would have to be closeable, which would mean the factory
+   * keeping a list of every harness it ever made in order to close them.
+   */
+  private final ExecutorService effects;
+
   public DefaultDirectHarness(
       Locks locks,
       AgentType agentType,
@@ -133,7 +169,10 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       List<Summarizer> summaries,
       int maxTail,
       List<AmbientSource> ambient,
-      Narrator narrator) {
+      Narrator narrator,
+      Clock clock,
+      EffectTermsSource terms,
+      ExecutorService effects) {
     this.locks = locks;
     this.agentType = agentType;
     this.events = events;
@@ -146,6 +185,9 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     this.tools = tools;
     this.schemas = schemas;
     this.mapper = mapper;
+    this.clock = Objects.requireNonNull(clock, "clock must not be null");
+    this.terms = Objects.requireNonNull(terms, "terms must not be null");
+    this.effects = Objects.requireNonNull(effects, "effects must not be null");
     // The queued door's assembler, unchanged. Ambient, the tail window and summaries are one job
     // however the turn was started, and a second implementation of it would drift.
     this.narrator = Objects.requireNonNull(narrator, "narrator must not be null");
@@ -260,20 +302,80 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
         });
   }
 
-  /** Where the outside world happens: everything slow, everything non-deterministic. */
+  /**
+   * Where the outside world happens: everything slow, everything non-deterministic -- and now,
+   * everything bounded by the deadline the effect's own terms name.
+   */
   private AgentCommand perform(
       AgentId agent,
       PayloadStore content,
       AgentEffect effect,
       List<AgentEvent> history,
       Optional<OutputSchema> shape) {
+    return within(
+        termsFor(effect),
+        () ->
+            switch (effect) {
+              case AgentEffect.Infer _ ->
+                  new AgentCommand.CompleteInference(infer(agent, content, shape));
+
+              case AgentEffect.Approve approve -> approve(agent, content, approve, history);
+
+              case AgentEffect.CallTool call -> callTool(agent, content, call, history);
+            });
+  }
+
+  /** What this effect is worth, asked of the same resolver the queued door writes a row from. */
+  private EffectTerms termsFor(AgentEffect effect) {
     return switch (effect) {
-      case AgentEffect.Infer _ -> new AgentCommand.CompleteInference(infer(agent, content, shape));
-
-      case AgentEffect.Approve approve -> approve(agent, content, approve, history);
-
-      case AgentEffect.CallTool call -> callTool(agent, content, call, history);
+      case AgentEffect.Infer infer -> terms.termsFor(infer);
+      case AgentEffect.Approve approve -> terms.termsFor(approve);
+      case AgentEffect.CallTool call -> terms.termsFor(call);
     };
+  }
+
+  /**
+   * Performs {@code work} on its own virtual thread and waits for it no longer than {@code terms}
+   * allows.
+   *
+   * <p><b>The deadline this enforces is correctness; it is not cleanup.</b> {@link
+   * Future#cancel(boolean)} interrupts the thread -- unlike {@link
+   * java.util.concurrent.CompletableFuture#cancel}, whose javadoc says {@code
+   * mayInterruptIfRunning} "has no effect in this implementation," which is exactly why this waits
+   * on a plain {@link Future} from an {@link ExecutorService} rather than a {@code
+   * CompletableFuture}. But an interrupted virtual thread blocked in a provider's own transport
+   * does not necessarily abandon its socket read the moment it is asked to: the transport's own
+   * timeout is what actually releases the connection. So this method's deadline is what the caller
+   * and the agent's phase can rely on; the transport's is what releases the resource.
+   *
+   * <p>An expiry is delivered as {@link EffectTerms#failed}, never {@link
+   * EffectTerms#undispatchable()}: the work was attempted on this thread in this process, and
+   * nobody observed how it came out -- exactly what {@code failed} is documented for. {@code
+   * undispatchable()} is for work nobody performed at all, which belongs to recovery, not to this
+   * door.
+   */
+  private AgentCommand within(EffectTerms terms, Supplier<AgentCommand> work) {
+    Future<AgentCommand> future = effects.submit(work::get);
+    try {
+      return future.get(terms.timeout().toMillis(), TimeUnit.MILLISECONDS);
+    } catch (TimeoutException expired) {
+      future.cancel(true);
+      return EffectOutcomes.command(
+          terms.failed(new IllegalStateException("no answer within " + terms.timeout())));
+    } catch (ExecutionException broken) {
+      // A provider that throws rather than returning a Fault -- infer() hands provider.infer(...)
+      // to a switch with no try around it -- surfaces here instead of escaping runTurn with the
+      // agent stuck Inferring. Delivered the same way an expiry is: attempted, and nobody found out
+      // how it went.
+      return EffectOutcomes.command(terms.failed(asRuntimeException(broken.getCause())));
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("interrupted while waiting on " + terms, interrupted);
+    }
+  }
+
+  private static RuntimeException asRuntimeException(Throwable cause) {
+    return cause instanceof RuntimeException runtime ? runtime : new RuntimeException(cause);
   }
 
   /**
@@ -301,7 +403,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
               turnOf(history),
               approve.callId(),
               argumentsOf(content, approve.callId(), history),
-              Instant.now(),
+              clock.instant(),
               new ReplyToken(approve.callId().value()));
     } catch (RuntimeException unreadable) {
       // The sentence a person consents to is rendered from the tool's own input type, so a call
@@ -362,7 +464,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
           call.callId(),
           call.toolName(),
           argumentsOf(content, call.callId(), history),
-          Instant.now().plus(binding.timeout()),
+          clock.instant().plus(binding.timeout()),
           new ReplyToken(call.callId().value()))) {
         case Awaited.Ready(ToolResult result) -> completed(content, call, result);
         // A tool that wants to answer later has nowhere to put the answer on this door.

@@ -23,9 +23,12 @@ package org.jwcarman.nessy.api;
  * callers off one agent are settled here; a harness adds what is its own -- a type, a prompt, its
  * tools, what it is shown.
  *
- * <p><b>Nothing here is closeable</b>, which is the difference from {@link QueuedHarnessFactory}
- * worth noticing. That one owns a timer and every harness it made, because work outlives the call
- * that submitted it. Here a turn ends when {@code ask} returns and there is nothing left running.
+ * <p><b>An implementation may be closeable</b>, which is a narrower difference from {@link
+ * QueuedHarnessFactory} than it once was. That one owns a timer and a poller because work is meant
+ * to outlive the call that submitted it. Here a turn still ends when {@code ask} returns -- but a
+ * deadline is enforced by waiting for each effect on a thread of its own, so what can outlive the
+ * call is an abandoned effect whose caller has already been told it failed. A caller that never
+ * closes loses nothing; a container that manages the lifecycle should.
  */
 public interface DirectHarnessFactory {
 

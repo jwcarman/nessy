@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.engine.direct;
 
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -51,6 +52,7 @@ public final class DirectHarnessFactoryConfig {
   private InferenceProvider provider;
   private InputSchemaGenerator schemas = new VictoolsInputSchemaGenerator();
   private ObjectMapper mapper = JsonMapper.builder().build();
+  private Clock clock = Clock.systemUTC();
   private final List<NarrationListener> listeners = new ArrayList<>();
   private final List<Customizer<HarnessConfig<?>>> features = new ArrayList<>();
   private final List<Customizer<DirectHarnessConfig<?>>> harnesses = new ArrayList<>();
@@ -94,6 +96,19 @@ public final class DirectHarnessFactoryConfig {
   /** The mapper that reads a tool's arguments and a constrained answer back into types. */
   public DirectHarnessFactoryConfig mapper(ObjectMapper mapper) {
     this.mapper = mapper;
+    return this;
+  }
+
+  /**
+   * What a deadline is measured from.
+   *
+   * <p>Defaults to {@link Clock#systemUTC()}, which is right for every harness this factory makes
+   * except a test: the three deadlines this door now enforces -- an inference's, a tool call's, a
+   * blocking approver's -- are computed from this clock rather than from {@code Instant.now()}, so
+   * a test can step it instead of waiting out a real timeout.
+   */
+  public DirectHarnessFactoryConfig clock(Clock clock) {
+    this.clock = Objects.requireNonNull(clock, "clock must not be null");
     return this;
   }
 
@@ -164,6 +179,10 @@ public final class DirectHarnessFactoryConfig {
 
   ObjectMapper mapper() {
     return mapper;
+  }
+
+  Clock clock() {
+    return clock;
   }
 
   List<NarrationListener> listeners() {

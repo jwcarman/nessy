@@ -37,6 +37,11 @@ import org.jwcarman.nessy.inference.tool.CallId;
  * <p>Held by each handler and delegated to for {@link EffectHandler#termsFor}, so the handlers stay
  * the one place {@link EffectTerms} is asked for while keeping the collaborators the work itself
  * needs.
+ *
+ * <p>The three {@code termsFor} overloads are public rather than package-private: the direct door
+ * lives in {@code engine.direct} and asks this same question of the same code, so the
+ * phase-to-timeout mapping stays out of both doors rather than being duplicated into a second
+ * resolver.
  */
 public final class EffectTermsSource {
 
@@ -78,7 +83,7 @@ public final class EffectTermsSource {
    * is about to be discharged with a failure, and that discharge has to be written somewhere -- so
    * the defaults answer for it.
    */
-  EffectTerms termsFor(AgentEffect.CallTool effect) {
+  public EffectTerms termsFor(AgentEffect.CallTool effect) {
     return tools
         .find(effect.toolName())
         .<EffectTerms>map(
@@ -93,7 +98,7 @@ public final class EffectTermsSource {
    * is worth waiting for: a build that takes five minutes may be waved through in milliseconds, and
    * a one-second lookup may wait an hour for somebody to read the question.
    */
-  EffectTerms termsFor(AgentEffect.Approve effect) {
+  public EffectTerms termsFor(AgentEffect.Approve effect) {
     return tools
         .find(effect.toolName())
         .<EffectTerms>map(
@@ -104,7 +109,7 @@ public final class EffectTermsSource {
   }
 
   /** Uniform: one agent type calls one model on one set of terms. */
-  EffectTerms termsFor(AgentEffect.Infer effect) {
+  public EffectTerms termsFor(AgentEffect.Infer effect) {
     return inferenceTerms;
   }
 

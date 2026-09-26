@@ -165,8 +165,8 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
 
   /** What was said about one tool. */
   private static final class Binding<T> implements ToolConfig<T> {
-    private Duration timeout = Duration.ofSeconds(30);
-    private RetryPolicy retryPolicy = new RetryPolicy.Never();
+    private Duration timeout = DEFAULT_TOOL_TIMEOUT;
+    private RetryPolicy retryPolicy = DEFAULT_RETRY_POLICY;
     private ActionRenderer<T> action = ActionRenderer.byToString();
     private final List<ApprovalEnricher> enrichers = new ArrayList<>();
     private Approver approver = Approver.allow();
@@ -211,8 +211,8 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
    * different things -- how long the work may take, and how long the asking may.
    */
   private static final class Approval implements ApproverConfig {
-    private Duration timeout = Duration.ofMinutes(10);
-    private RetryPolicy retryPolicy = new RetryPolicy.Never();
+    private Duration timeout = DEFAULT_APPROVAL_TIMEOUT;
+    private RetryPolicy retryPolicy = DEFAULT_RETRY_POLICY;
 
     @Override
     public ApproverConfig timeout(Duration timeout) {
@@ -227,6 +227,13 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     }
   }
 
+  // What an application gets unless it says otherwise, matching the queued door's defaults --
+  // the same setting means the same thing on both doors.
+  static final Duration DEFAULT_TOOL_TIMEOUT = Duration.ofSeconds(30);
+  static final Duration DEFAULT_APPROVAL_TIMEOUT = Duration.ofMinutes(10);
+  static final RetryPolicy DEFAULT_RETRY_POLICY = new RetryPolicy.Never();
+  private static final Duration DEFAULT_INFERENCE_TIMEOUT = Duration.ofMinutes(5);
+
   /** The model, the budget, and what it is shown. */
   static final class Inference implements InferenceConfig, ContextConfig {
     private String modelName;
@@ -234,6 +241,8 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     private int maxTail = 50;
     private final List<Summarizer> summaries = new ArrayList<>();
     private final List<AmbientSource> ambient = new ArrayList<>();
+    private Duration timeout = DEFAULT_INFERENCE_TIMEOUT;
+    private RetryPolicy retryPolicy = DEFAULT_RETRY_POLICY;
 
     @Override
     public InferenceConfig model(String modelName) {
@@ -255,13 +264,18 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
 
     @Override
     public InferenceConfig timeout(Duration timeout) {
-      // Nothing to time out against: the call is the caller's own thread, and a caller that
-      // wants to stop waiting interrupts it.
+      this.timeout = timeout;
       return this;
     }
 
+    /**
+     * Stored, and read back by {@link #retryPolicy()} -- but not honoured. This door does not retry
+     * a failed or expired inference; a caller that wants one retried asks again. The value is kept
+     * so a reader can see what was configured, not to promise that anything happens because of it.
+     */
     @Override
     public InferenceConfig retryPolicy(RetryPolicy retryPolicy) {
+      this.retryPolicy = retryPolicy;
       return this;
     }
 
@@ -301,6 +315,14 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
 
     List<AmbientSource> ambient() {
       return List.copyOf(ambient);
+    }
+
+    Duration timeout() {
+      return timeout;
+    }
+
+    RetryPolicy retryPolicy() {
+      return retryPolicy;
     }
   }
 }

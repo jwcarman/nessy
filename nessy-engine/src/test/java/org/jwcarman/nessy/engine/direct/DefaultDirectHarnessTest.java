@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine.direct;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -25,8 +26,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.TypeRef;
@@ -38,17 +41,21 @@ import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.Ambient;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.Usage;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
@@ -411,6 +418,198 @@ class DefaultDirectHarnessTest {
       release.countDown();
       assertThat(holder.get()).isEqualTo(new Outcome.Answered<>("hi"));
     }
+  }
+
+  // ---- deadlines the direct door now enforces in-process (design record ---------------------
+  // 2026-09-25-locks-as-plumbing, §4b-4c): each timeout is tens of milliseconds, never seconds,
+  // because the timed wait is Future.get(timeout), which is real time no stepped Clock can shorten.
+
+  /** A provider that hangs on its first call and answers plainly on any call after that. */
+  private static final class HangsOnce implements InferenceProvider {
+    private final AtomicInteger calls = new AtomicInteger();
+
+    @Override
+    public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
+      if (calls.getAndIncrement() == 0) {
+        awaitForever();
+        throw new IllegalStateException("unreachable: interrupted before returning");
+      }
+      return answering("the second call was never made to wait");
+    }
+  }
+
+  /** Blocks until interrupted, the way a hung socket read or a hung human both do. */
+  private static void awaitForever() {
+    try {
+      new CountDownLatch(1).await();
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  @Test
+  @DisplayName(
+      "a provider that never answers fails the turn at InferenceConfig.timeout, and the agent is"
+          + " idle afterwards")
+  void a_provider_that_never_answers_fails_at_its_own_timeout() {
+    AgentId agent = AgentId.random();
+    HangsOnce model = new HangsOnce();
+    DirectHarness<String> harness =
+        DefaultDirectHarnessFactory.of(
+                f ->
+                    f.locks(new InMemoryLocks())
+                        .events(events)
+                        .payloads(payloads)
+                        .provider(model)
+                        .schemas(SCHEMAS)
+                        .mapper(MAPPER))
+            .<String>create(
+                TYPE,
+                c ->
+                    c.systemPrompt("You are terse.")
+                        .inputRenderer(said -> List.of(new Block.Text(said)))
+                        .inference(
+                            in ->
+                                in.model("a-model")
+                                    .timeout(Duration.ofMillis(50))
+                                    // A generous policy, to prove the door does not consult it:
+                                    // one call is made regardless of how many are allowed.
+                                    .retryPolicy(
+                                        new RetryPolicy.FixedDelay(
+                                            5, Duration.ofMillis(1), Duration.ZERO))));
+
+    Outcome<String> timedOut = harness.ask(agent, "are you there?");
+
+    assertThat(timedOut)
+        .asInstanceOf(InstanceOfAssertFactories.type(Outcome.Failed.class))
+        .extracting(Outcome.Failed::reason)
+        .asString()
+        .contains("no answer within");
+    assertThat(model.calls).as("no retry was attempted").hasValue(1);
+
+    // Idle, not stuck: a second turn on the same agent starts and finishes normally.
+    Outcome<String> next = harness.ask(agent, "still there?");
+    assertThat(next).isEqualTo(new Outcome.Answered<>("the second call was never made to wait"));
+  }
+
+  /** A tool that hangs until interrupted, the way a hung downstream call does. */
+  private static Tool<Lookup> hangingTool() {
+    return new Tool<Lookup>() {
+      @Override
+      public Class<Lookup> inputType() {
+        return Lookup.class;
+      }
+
+      @Override
+      public ToolName name() {
+        return LOOKUP;
+      }
+
+      @Override
+      public String description() {
+        return "never returns";
+      }
+
+      @Override
+      public Awaited<ToolResult> call(ToolCallRequest<Lookup> request) {
+        awaitForever();
+        throw new IllegalStateException("unreachable: interrupted before returning");
+      }
+    };
+  }
+
+  @Test
+  @DisplayName(
+      "a tool that never returns fails at its own ToolConfig.timeout, and the turn carries on")
+  void a_tool_that_never_returns_fails_at_its_own_timeout() {
+    AgentId agent = AgentId.random();
+    Scripted model = new Scripted().then(asking("lookup")).then(answering("noted, moving on"));
+    DirectHarness<String> harness =
+        DefaultDirectHarnessFactory.of(
+                f ->
+                    f.locks(new InMemoryLocks())
+                        .events(events)
+                        .payloads(payloads)
+                        .provider(model)
+                        .schemas(SCHEMAS)
+                        .mapper(MAPPER))
+            .<String>create(
+                TYPE,
+                c -> {
+                  c.systemPrompt("You are terse.")
+                      .inputRenderer(said -> List.of(new Block.Text(said)))
+                      .inference(in -> in.model("a-model"));
+                  c.tool(
+                      hangingTool(),
+                      t -> t.timeout(Duration.ofMillis(50)).approver(Approver.allow()));
+                });
+
+    Outcome<String> outcome = harness.ask(agent, "look it up");
+
+    assertThat(outcome).isEqualTo(new Outcome.Answered<>("noted, moving on"));
+    List<AgentEvent> history = events.readFrom(agent, Seq.NONE);
+    assertThat(history).isNotEmpty();
+    assertThat(history)
+        .extracting(e -> e.getClass().getSimpleName())
+        .as("the call was discharged as failed rather than left outstanding")
+        .contains("ToolFailed");
+  }
+
+  /** An approver that hangs until interrupted, the way a person who never answers does. */
+  private static Approver hangingApprover() {
+    return request -> {
+      awaitForever();
+      throw new IllegalStateException("unreachable: interrupted before returning");
+    };
+  }
+
+  @Test
+  @DisplayName(
+      "a blocking approver that never answers fails the call at its own ApproverConfig.timeout")
+  void a_blocking_approver_that_never_answers_fails_at_its_own_timeout() {
+    AgentId agent = AgentId.random();
+    Scripted model = new Scripted().then(asking("lookup")).then(answering("noted, moving on"));
+    DirectHarness<String> harness =
+        DefaultDirectHarnessFactory.of(
+                f ->
+                    f.locks(new InMemoryLocks())
+                        .events(events)
+                        .payloads(payloads)
+                        .provider(model)
+                        .schemas(SCHEMAS)
+                        .mapper(MAPPER))
+            .<String>create(
+                TYPE,
+                c -> {
+                  c.systemPrompt("You are terse.")
+                      .inputRenderer(said -> List.of(new Block.Text(said)))
+                      .inference(in -> in.model("a-model"));
+                  c.tool(
+                      tool("should never run"),
+                      t -> t.approver(hangingApprover(), a -> a.timeout(Duration.ofMillis(50))));
+                });
+
+    Outcome<String> outcome = harness.ask(agent, "look it up");
+
+    assertThat(outcome).isEqualTo(new Outcome.Answered<>("noted, moving on"));
+    List<AgentEvent> history = events.readFrom(agent, Seq.NONE);
+    assertThat(history).isNotEmpty();
+    assertThat(history)
+        .extracting(e -> e.getClass().getSimpleName())
+        .as("nobody said no, but the call is still discharged as failed")
+        .contains("ToolFailed");
+  }
+
+  @Test
+  @DisplayName(
+      "the inference retry policy is stored and read back, though this door does not" + " retry")
+  void inference_retry_policy_is_stored_but_not_honoured() {
+    DefaultDirectHarnessConfig<String> config = new DefaultDirectHarnessConfig<>(TYPE);
+    RetryPolicy policy = new RetryPolicy.FixedDelay(3, Duration.ofSeconds(1), Duration.ZERO);
+
+    config.inference(in -> in.retryPolicy(policy));
+
+    assertThat(config.inference().retryPolicy()).isEqualTo(policy);
   }
 
   /** What a caller asks for when it wants data back rather than prose. */

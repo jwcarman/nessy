@@ -16,9 +16,12 @@
 
 package org.jwcarman.nessy.engine.direct;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
@@ -28,6 +31,7 @@ import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
+import org.jwcarman.nessy.engine.effect.EffectTermsSource;
 import org.jwcarman.nessy.engine.narration.Listeners;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
@@ -44,11 +48,22 @@ import tools.jackson.databind.ObjectMapper;
  * written, where payloads are kept, who provides inference, and what keeps two callers off one
  * agent. A harness adds what is its own -- a type, a prompt, its tools, what it is shown.
  *
- * <p>Nothing here is closeable, which is the difference worth noticing. The queued factory owns the
- * engine's timer and every harness it made, because work outlives the call that submitted it. Here
- * the turn ends when {@code ask} returns and there is nothing left running to shut down.
+ * <p><b>Closeable, which the door's interface used to say nothing here was.</b> Enforcing the three
+ * deadlines this door now enforces (design record {@code 2026-09-25-locks-as-plumbing}, {@code 4c})
+ * means every effect runs on a virtual thread rather than the caller's, so there is one executor --
+ * this one, shared by every harness this factory makes. A turn still ends when {@code ask} returns;
+ * what outlives the call is an abandoned effect whose caller has already been told it failed.
+ *
+ * <p>One executor here rather than one per harness, because a thread-per-task executor over virtual
+ * threads holds nothing while idle: a harness has nothing to own and nothing to release. The
+ * alternative was a harness that owned one, which would have to be closeable, which would mean this
+ * factory keeping a list of every harness it ever made in order to close them -- an unbounded
+ * registry to release resources that are not held.
+ *
+ * <p>Closing is optional: a caller that never does loses nothing, since virtual threads that finish
+ * need no shutdown. A container managing this factory's lifecycle should let it.
  */
-public final class DefaultDirectHarnessFactory implements DirectHarnessFactory {
+public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, AutoCloseable {
 
   /**
    * Everyone who hears every agent of every harness this factory makes.
@@ -72,8 +87,17 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory {
   private final InferenceProvider provider;
   private final InputSchemaGenerator schemas;
   private final ObjectMapper mapper;
+  private final Clock clock;
   private final List<Customizer<HarnessConfig<?>>> features;
   private final List<Customizer<DirectHarnessConfig<?>>> harnesses;
+
+  /**
+   * One virtual thread per effect, for every harness this factory makes -- see the class javadoc
+   * for why it is not one each.
+   */
+  private final ExecutorService effects =
+      Executors.newThreadPerTaskExecutor(
+          Thread.ofVirtual().name("nessy-direct-effect-", 0).factory());
 
   /**
    * Reads the config rather than holding it, so a caller that keeps a reference and changes it
@@ -86,6 +110,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory {
     this.provider = config.requiredProvider();
     this.schemas = config.schemas();
     this.mapper = config.mapper();
+    this.clock = config.clock();
     this.listeners.addAll(config.listeners());
     this.features = config.features();
     this.harnesses = config.harnesses();
@@ -152,21 +177,51 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory {
     if (inference.modelName() == null) {
       throw new IllegalStateException("a model is required: inference(in -> in.model(...))");
     }
-    return new DefaultDirectHarness<>(
-        locks,
-        config.agentType(),
-        events,
-        payloads,
-        provider,
-        config.systemPromptSource(),
-        new InferenceOptions(inference.modelName(), inference.maxTokens()),
-        config.renderer()::render,
-        new Tools(bindings),
-        schemas,
-        mapper,
-        inference.summaries(),
-        inference.maxTail(),
-        inference.ambient(),
-        new Listeners(listeners, config.listeners()));
+    Tools tools = new Tools(bindings);
+    // What each kind of effect is worth, from the tools this harness bound and the harness-wide
+    // defaults alone -- exactly what the queued factory builds, so the phase-to-timeout mapping
+    // lives in one place and neither door repeats it.
+    EffectTermsSource terms =
+        new EffectTermsSource(
+            tools,
+            DefaultDirectHarnessConfig.DEFAULT_TOOL_TIMEOUT,
+            DefaultDirectHarnessConfig.DEFAULT_RETRY_POLICY,
+            DefaultDirectHarnessConfig.DEFAULT_APPROVAL_TIMEOUT,
+            DefaultDirectHarnessConfig.DEFAULT_RETRY_POLICY,
+            inference.timeout(),
+            inference.retryPolicy());
+    DefaultDirectHarness<I> harness =
+        new DefaultDirectHarness<>(
+            locks,
+            config.agentType(),
+            events,
+            payloads,
+            provider,
+            config.systemPromptSource(),
+            new InferenceOptions(inference.modelName(), inference.maxTokens()),
+            config.renderer()::render,
+            tools,
+            schemas,
+            mapper,
+            inference.summaries(),
+            inference.maxTail(),
+            inference.ambient(),
+            new Listeners(listeners, config.listeners()),
+            clock,
+            terms,
+            effects);
+    return harness;
+  }
+
+  /**
+   * Shuts down the executor every harness's deadline enforcement runs on.
+   *
+   * <p>Nothing already running is interrupted -- only a deadline of its own does that -- so a
+   * factory closed mid-turn lets each turn's own timeout be what ends it. Inferred by Spring as the
+   * bean's destroy method, and there for anyone who built a factory without Spring.
+   */
+  @Override
+  public void close() {
+    effects.close();
   }
 }
