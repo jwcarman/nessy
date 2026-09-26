@@ -63,9 +63,9 @@ public interface EffectTerms {
    * What to tell the agent when the work was attempted, threw, and will not be attempted again.
    *
    * <p>Distinct from {@link #undispatchable()} because something is actually known here: an attempt
-   * ran and there is an exception describing how it went wrong. Falling back to the stored blob
-   * would throw that away and tell the agent the effect could not be dispatched, which is false --
-   * it was dispatched, and it failed.
+   * ran and there is an exception describing how it went wrong. Both say nobody found out whether
+   * the work happened -- that much they share -- but falling back to the stored blob would throw
+   * the exception away, and it is the only thing anybody learned.
    *
    * <p>Nobody found out whether the work happened, though. A call that failed on its own terms
    * never reaches here; the handler classifies those and returns them as outcomes. What lands here

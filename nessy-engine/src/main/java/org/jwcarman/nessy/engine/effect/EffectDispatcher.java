@@ -493,8 +493,9 @@ public class EffectDispatcher {
    * they owe the agent the same thing, so they say it the same way.
    */
   private void giveUp(Attempt attempt, AgentEffect effect, RuntimeException cause) {
-    // The handler's own answer, and one that keeps the cause: this attempt ran and threw, so
-    // the stored blob -- which says the effect could not be dispatched -- would be false.
+    // The handler's own answer, and one that keeps the cause. The stored blob says only that
+    // nobody found out how the work went; this says that too AND names the exception that ended
+    // it, which is the whole of what an attempt that ran and threw knows.
     EffectOutcome outcome = handlers.termsFor(effect).failed(cause);
     try {
       callback.deliverOutcome(attempt.agentId(), outcome, attempt.traceContext());

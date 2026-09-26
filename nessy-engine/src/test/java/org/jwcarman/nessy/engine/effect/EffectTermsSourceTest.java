@@ -193,18 +193,19 @@ class EffectTermsSourceTest {
     }
 
     /**
-     * Left exactly as {@link InferenceHandler} stated it before this moved: {@code Permanent}, not
-     * {@code Unknown}. Whether that should change is design record §14 Q7, unanswered, and out of
-     * scope for this move.
+     * {@code Unknown}, not {@code Permanent}. A row reaches this blob by passing its deadline, and
+     * the dispatcher does not ask whether anything was attempted first -- a crash mid-call leaves
+     * exactly such a row, with the attempt already counted and a provider that may well have
+     * answered. Permanent would assert the work did not happen; nobody knows that.
      */
     @Test
-    void undispatchableIsAPermanentFailureUntoldFromTheUnknownCase() {
+    void undispatchableSaysNobodyKnowsWhetherTheInferenceRan() {
       EffectOutcome outcome =
           source(Tools.none()).termsFor(new AgentEffect.Infer()).undispatchable();
 
       assertThat(outcome).isInstanceOf(EffectOutcome.InferenceFailed.class);
       assertThat(((EffectOutcome.InferenceFailed) outcome).failure())
-          .isInstanceOf(Failure.Permanent.class);
+          .isInstanceOf(Failure.Unknown.class);
     }
 
     @Test

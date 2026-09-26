@@ -191,7 +191,8 @@ public final class EffectTermsSource {
     @Override
     public EffectOutcome undispatchable() {
       return new EffectOutcome.InferenceFailed(
-          new Failure.Permanent("the inference could not be dispatched"));
+          new Failure.Unknown(
+              "the inference did not complete before its deadline; whether it ran is not known"));
     }
   }
 }
