@@ -20,18 +20,14 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import javax.sql.DataSource;
-import org.jwcarman.codec.CodecFactory;
-import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
-import org.jwcarman.nessy.backend.lock.Locks;
+import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
 import org.jwcarman.nessy.engine.harness.direct.DirectHarnessFactoryConfig;
-import org.jwcarman.nessy.engine.inmemory.InMemoryLocks;
-import org.jwcarman.nessy.engine.jdbc.JdbcAgentEvents;
-import org.jwcarman.nessy.engine.jdbc.JdbcPayloads;
+import org.jwcarman.nessy.engine.jdbc.JdbcDirectBackend;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
@@ -41,7 +37,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.support.JdbcTransactionManager;
+import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -81,13 +78,24 @@ public class DirectHarnessAutoConfiguration {
       org.jwcarman.nessy.inference.InferenceProvider models,
       NessyAutoConfiguration.NessySchema schema,
       ObservationRegistry observations,
-      ObjectProvider<Locks> locks,
+      ObjectProvider<DirectBackend> backends,
+      ObjectProvider<PlatformTransactionManager> transactions,
       ObjectProvider<InputSchemaGenerator> schemas,
       ObjectProvider<JsonMapper> mappers,
       ObjectProvider<Customizer<DirectHarnessFactoryConfig>> customizers) {
     JsonMapper mapper = mappers.getIfAvailable(() -> JsonMapper.builder().build());
-    CodecFactory codecs = new JacksonCodecFactory(mapper);
-    JdbcClient jdbc = JdbcClient.create(dataSource);
+    // A backend chooses its own lock together with its own stores; honouring a stray Locks bean
+    // here would reintroduce exactly the mismatch a backend exists to rule out (an in-memory lock
+    // guarding JDBC stores, with no exclusion between two instances and no transaction around the
+    // direct door's steps). So an application says which backend it wants as a whole, or gets the
+    // JDBC one built from the DataSource and whatever PlatformTransactionManager it has.
+    DirectBackend backend =
+        backends.getIfAvailable(
+            () ->
+                new JdbcDirectBackend(
+                    dataSource,
+                    transactions.getIfAvailable(() -> new JdbcTransactionManager(dataSource)),
+                    null));
 
     // The starter says what it knows, then every customizer bean has its turn. An application
     // adds a lease, a listener or a store of its own without declaring the whole factory.
@@ -95,9 +103,7 @@ public class DirectHarnessAutoConfiguration {
     all.add(
         config ->
             config
-                .locks(locks.getIfAvailable(InMemoryLocks::new))
-                .events(new JdbcAgentEvents(jdbc, codecs))
-                .payloads(new JdbcPayloads(jdbc, codecs))
+                .backend(backend)
                 .provider(models)
                 .schemas(schemas.getIfAvailable(VictoolsInputSchemaGenerator::new))
                 .mapper(mapper)

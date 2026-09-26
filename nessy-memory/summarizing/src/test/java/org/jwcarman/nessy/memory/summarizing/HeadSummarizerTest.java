@@ -42,6 +42,7 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
+import org.jwcarman.nessy.engine.jdbc.JdbcQueuedBackend;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -117,7 +118,10 @@ class HeadSummarizerTest {
     observations.observationConfig().observationHandler(recorded);
     factory =
         DefaultQueuedHarnessFactory.of(
-            engine -> engine.dataSource(dataSource).inference(model, InferenceOptions.of("m")));
+            engine ->
+                engine
+                    .backend(new JdbcQueuedBackend(dataSource))
+                    .inference(model, InferenceOptions.of("m")));
     summaries = new JdbcSummaries(dataSource, CHAT);
     summarizer =
         HeadSummarizer.of(

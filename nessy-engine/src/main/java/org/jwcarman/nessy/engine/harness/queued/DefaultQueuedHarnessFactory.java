@@ -21,11 +21,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
-import javax.sql.DataSource;
 import org.jspecify.annotations.NonNull;
-import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.TypeRef;
-import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.NarrationListener;
@@ -34,9 +31,8 @@ import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Replies;
-import org.jwcarman.nessy.backend.effect.Effects;
-import org.jwcarman.nessy.backend.event.AgentEvents;
-import org.jwcarman.nessy.backend.lock.Locks;
+import org.jwcarman.nessy.backend.QueuedBackend;
+import org.jwcarman.nessy.backend.backlog.Backlogs;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.effect.ApprovalHandler;
 import org.jwcarman.nessy.engine.effect.EffectDispatcher;
@@ -50,12 +46,6 @@ import org.jwcarman.nessy.engine.history.Transcript;
 import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.DefaultInferenceService;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
-import org.jwcarman.nessy.engine.jdbc.JdbcAgentEvents;
-import org.jwcarman.nessy.engine.jdbc.JdbcAgents;
-import org.jwcarman.nessy.engine.jdbc.JdbcBacklog;
-import org.jwcarman.nessy.engine.jdbc.JdbcEffects;
-import org.jwcarman.nessy.engine.jdbc.JdbcPayloads;
-import org.jwcarman.nessy.engine.jdbc.JdbcRowLocks;
 import org.jwcarman.nessy.engine.narration.Listeners;
 import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
@@ -64,13 +54,11 @@ import org.jwcarman.nessy.engine.observability.ObservedSummarizer;
 import org.jwcarman.nessy.engine.observability.ObservedTurnHistories;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.engine.store.Outbox;
-import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.DefaultReplies;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.engine.trace.Traces;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -90,20 +78,21 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCloseable {
 
-  // The engine's own decisions, made once. A row is encoded by Jackson, a tool's arguments are
-  // described by victools, a message costs about its characters, and time is UTC: none of that
-  // is an application's to change, so none of it is asked for. What is done to the bytes AFTER
-  // Jackson -- compressed, encrypted -- is the application's, and comes from the config.
-  private final CodecFactory codecs;
+  // The engine's own decisions, made once. A tool's arguments are described by victools, a
+  // message costs about its characters, and time is UTC: none of that is an application's to
+  // change, so none of it is asked for. What is done to a stored byte after Jackson -- compressed,
+  // encrypted -- is the backend's, chosen together with the stores it is applied to.
   private final ObjectMapper mapper = JsonMapper.builder().build();
   private final InputSchemaGenerator schemas = new VictoolsInputSchemaGenerator();
   private final Clock clock = Clock.systemUTC();
 
-  private final JdbcClient jdbc;
-  private final AgentEvents events;
-  private final Payloads payloads;
-  private final Effects effectRows;
-  private final Locks locks;
+  /**
+   * Where agents, events, content, outstanding effects and the lock all come from -- held whole
+   * rather than torn into fields of its own, because those stores are one decision chosen together,
+   * and a factory holding five of its own fields would be exactly what let them drift apart.
+   */
+  private final QueuedBackend backend;
+
   private final List<NarrationListener> listeners = new CopyOnWriteArrayList<>();
   private final ReplyTokens replyTokens;
   private final DefaultReplies replies;
@@ -116,10 +105,10 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   private final List<Listeners> tellers = new CopyOnWriteArrayList<>();
 
   /**
-   * Builds an engine from what an application says it wants, which is a {@code DataSource} and a
-   * provider. Everything that touches the database is built here from that one {@code DataSource}
-   * -- the stores, the transaction manager, the one client they share -- so there is nothing for a
-   * caller to assemble and nothing for two callers to assemble differently.
+   * Builds an engine from what an application says it wants, which is a {@link QueuedBackend} and a
+   * provider. The backend is where the stores, the transaction manager and the codec they share
+   * come from, chosen together, so there is nothing for a caller to assemble and nothing for two
+   * callers to assemble differently.
    */
   /**
    * One factory, from every customizer that has something to say about the engine.
@@ -146,17 +135,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
    * model at its own door and hands the engine a config it has already written on.
    */
   DefaultQueuedHarnessFactory(QueuedHarnessFactoryConfig config) {
-    DataSource dataSource = config.requiredDataSource();
-    CodecFactory jackson = new JacksonCodecFactory(JsonMapper.builder().build());
-    this.codecs = config.storage().map(t -> StorageCodec.of(t).after(jackson)).orElse(jackson);
-    this.jdbc = JdbcClient.create(dataSource);
-    this.events = new JdbcAgentEvents(jdbc, codecs);
-    this.payloads = new JdbcPayloads(jdbc, codecs);
-    this.effectRows = new JdbcEffects(jdbc, codecs);
-    // No PlatformTransactionManager to take from the config -- it is DataSource-only today (a
-    // later step makes it store-shaped) -- so this mints its own, exactly as the transaction
-    // template it replaces used to.
-    this.locks = new JdbcRowLocks(dataSource);
+    this.backend = config.requiredBackend();
     listeners.addAll(config.listeners());
     this.replyTokens = config.replyTokens();
     this.replies = new DefaultReplies(replyTokens);
@@ -218,12 +197,14 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
             inference.retryPolicy());
     // Observed as they are handed over, the way a tool is wrapped as it is bound: what the
     // engine is given reports its own work, and the assembler knows nothing about spans.
+    Payloads payloads = backend.payloads();
     InferenceContextAssembler assembler =
         ObservedInferenceContextAssembler.wrap(
             new ContextAssembler(
                 ObservedTurnHistories.wrap(
                     (type, id) ->
-                        new EventStreamHistory(events, new Transcript(payloads.forAgent(id)), id),
+                        new EventStreamHistory(
+                            backend.events(), new Transcript(payloads.forAgent(id)), id),
                     observations),
                 context.summaries().stream()
                     .map(source -> ObservedSummarizer.wrap(source, observations))
@@ -240,22 +221,18 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
         new EffectHandlers(
             createInferenceHandler(
                 agentType, assembler, inference, config, tools, narrator, payloads, terms),
-            createApprovalHandler(agentType, tools, narrator, terms),
+            createApprovalHandler(agentType, tools, narrator, terms, payloads),
             createToolCallHandler(agentType, tools, narrator, payloads, terms));
-    Outbox effects = new Outbox(agentType, handlers, effectRows);
-    JdbcAgents agents = new JdbcAgents(jdbc);
+    Outbox effects = new Outbox(agentType, handlers, backend.effects());
+    Backlogs<I> backlogs = backend.backlogs(config.inputType());
     DefaultQueuedHarness<I> harness =
         new DefaultQueuedHarness<>(
             agentType,
             config.policy(),
             config.renderer(),
-            agents,
-            events,
-            payloads,
-            (type, agent) ->
-                new JdbcBacklog<>(jdbc, codecs.create(config.inputType()), agents, type, agent),
+            backend,
+            backlogs::forAgent,
             effects,
-            locks,
             narrator,
             clock,
             traces);
@@ -267,7 +244,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     // Registered before the dispatcher polls, so an answer can never arrive for an agent type
     // this process is serving but has not admitted to. The reverse -- a token for a type
     // nobody configured -- is answered as nothing awaiting, which is what it is.
-    replies.register(agentType, effects, harness, payloads);
+    replies.register(agentType, effects, harness, backend.payloads());
 
     EffectDispatcher dispatcher =
         new EffectDispatcher(
@@ -298,7 +275,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     return new ToolCallHandler(
         agentType,
         tools,
-        new EventStreamToolCalls(events, payloads),
+        new EventStreamToolCalls(backend.events(), payloads),
         replyTokens,
         narrator,
         terms,
@@ -307,11 +284,15 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   }
 
   private @NonNull ApprovalHandler createApprovalHandler(
-      AgentType agentType, Tools tools, Listeners narrator, EffectTermsSource terms) {
+      AgentType agentType,
+      Tools tools,
+      Listeners narrator,
+      EffectTermsSource terms,
+      Payloads payloads) {
     return new ApprovalHandler(
         agentType,
         tools,
-        new EventStreamToolCalls(events, payloads),
+        new EventStreamToolCalls(backend.events(), payloads),
         replyTokens,
         narrator,
         terms,
@@ -361,7 +342,9 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   public TurnHistories histories() {
     // Projected from the events rather than read from a table of its own: the story IS the events,
     // and a second shape of it would be a second thing to keep in step.
-    return (type, id) -> new EventStreamHistory(events, new Transcript(payloads.forAgent(id)), id);
+    return (type, id) ->
+        new EventStreamHistory(
+            backend.events(), new Transcript(backend.payloads().forAgent(id)), id);
   }
 
   /**

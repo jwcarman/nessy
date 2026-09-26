@@ -41,6 +41,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
+import org.jwcarman.nessy.engine.jdbc.JdbcQueuedBackend;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -110,7 +111,7 @@ class EpisodeSummarizerTest {
         DefaultQueuedHarnessFactory.of(
             engine ->
                 engine
-                    .dataSource(dataSource)
+                    .backend(new JdbcQueuedBackend(dataSource))
                     .inference(model, InferenceOptions.of("m"))
                     .observations(observations));
     episodes =

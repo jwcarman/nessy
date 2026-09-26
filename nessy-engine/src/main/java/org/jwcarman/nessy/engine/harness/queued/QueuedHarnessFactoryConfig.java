@@ -20,9 +20,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import javax.sql.DataSource;
-import org.jwcarman.codec.Codec;
 import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.trace.TraceCarrier;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -33,35 +32,39 @@ import org.jwcarman.nessy.inference.InferenceProvider;
  *
  * <p><b>Two required things: somewhere to keep agents and something to ask.</b> The rest are
  * application facts with defaults: who hears what agents do, where spans go, which keys seal a
- * reply token, what is done to the bytes it stores. Anything an agent type might tune -- timeouts,
- * retries, the context it is shown -- has its default in the engine and is overridden on the
- * harness that wants otherwise.
+ * reply token. Anything an agent type might tune -- timeouts, retries, the context it is shown --
+ * has its default in the engine and is overridden on the harness that wants otherwise.
  *
  * <p><b>Nothing here is the engine's own plumbing.</b> How rows are encoded, how tool arguments are
- * described to a model, how tokens are estimated, which transaction manager wraps a fold and which
- * thread looks for due work are all decided by the engine from the {@code DataSource} -- they used
- * to be knobs, and every caller set them to the same thing, which is what a knob that should not
- * exist looks like.
+ * described to a model, how tokens are estimated and which thread looks for due work are all
+ * decided by the engine from the backend -- they used to be knobs, and every caller set them to the
+ * same thing, which is what a knob that should not exist looks like.
  *
  * <p>Customizer-shaped, like {@link org.jwcarman.nessy.api.QueuedHarnessConfig} and the configs
  * beneath it: an application says what it wants and stays silent about the rest.
  */
 public final class QueuedHarnessFactoryConfig {
 
-  private DataSource dataSource;
+  private QueuedBackend backend;
   private InferenceProvider provider;
   private InferenceOptions options;
   private final List<NarrationListener> listeners = new ArrayList<>();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
   private TraceCarrier traceCarrier;
   private ReplyTokens replyTokens;
-  private Codec<byte[]> storage;
 
   QueuedHarnessFactoryConfig() {}
 
-  /** Where agents, their stories and their outstanding work are kept. Required. */
-  public QueuedHarnessFactoryConfig dataSource(DataSource dataSource) {
-    this.dataSource = dataSource;
+  /**
+   * Where agents, their stories and their outstanding work are kept, chosen together. Required.
+   *
+   * <p>A backend rather than a {@code DataSource} plus a storage transform: only the backend can
+   * build the codec that applies the application's storage transform to every store it makes,
+   * including a backlog's -- the one table the schema flags as holding raw user text. A caller
+   * supplying stores piecemeal could bypass that transform for exactly that table.
+   */
+  public QueuedHarnessFactoryConfig backend(QueuedBackend backend) {
+    this.backend = backend;
     return this;
   }
 
@@ -118,24 +121,13 @@ public final class QueuedHarnessFactoryConfig {
     return this;
   }
 
-  /**
-   * What happens to every byte the engine stores, after Jackson has written it and before Jackson
-   * reads it back: compression, encryption, both, composed with {@link Codec#andThen}. Defaults to
-   * nothing. Fixed for the life of the data: rows written under one transform are unreadable under
-   * another, which is the same fact as an encryption key.
-   */
-  public QueuedHarnessFactoryConfig storage(Codec<byte[]> transform) {
-    this.storage = Objects.requireNonNull(transform, "transform must not be null");
-    return this;
-  }
-
   // ---- what the factory reads ------------------------------------------------------------
 
-  DataSource requiredDataSource() {
+  QueuedBackend requiredBackend() {
     return Objects.requireNonNull(
-        dataSource,
-        "an engine needs a DataSource: agents, their stories and their outstanding work are all"
-            + " rows, and there is nowhere to keep them");
+        backend,
+        "an engine needs a backend: agents, their stories and their outstanding work are all"
+            + " rows, and there is nowhere to keep them (engine(e -> e.backend(...)))");
   }
 
   InferenceProvider requiredProvider() {
@@ -159,10 +151,6 @@ public final class QueuedHarnessFactoryConfig {
 
   Optional<TraceCarrier> traceCarrier() {
     return Optional.ofNullable(traceCarrier);
-  }
-
-  Optional<Codec<byte[]>> storage() {
-    return Optional.ofNullable(storage);
   }
 
   ReplyTokens replyTokens() {

@@ -37,9 +37,8 @@ import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
+import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.event.AgentEvent;
-import org.jwcarman.nessy.backend.event.AgentEvents;
-import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.effect.ApprovalHandler;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
@@ -52,9 +51,7 @@ import org.jwcarman.nessy.engine.history.Transcript;
 import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.DefaultInferenceService;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
-import org.jwcarman.nessy.engine.inmemory.InMemoryAgentEvents;
-import org.jwcarman.nessy.engine.inmemory.InMemoryLocks;
-import org.jwcarman.nessy.engine.inmemory.InMemoryPayloads;
+import org.jwcarman.nessy.engine.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.engine.narration.Listeners;
 import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
@@ -109,9 +106,13 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
     listeners.add(Objects.requireNonNull(listener, "listener must not be null"));
   }
 
-  private final Locks locks;
-  private final AgentEvents events;
-  private final Payloads payloads;
+  /**
+   * Where events, content and the lock all come from -- held whole rather than torn into fields of
+   * its own, because those stores are one decision chosen together, and a factory holding three of
+   * its own fields would be exactly what let them drift apart.
+   */
+  private final DirectBackend backend;
+
   private final InferenceProvider provider;
   private final InputSchemaGenerator schemas;
   private final ObjectMapper mapper;
@@ -143,9 +144,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
    * afterwards does not change a factory that already exists.
    */
   private DefaultDirectHarnessFactory(DirectHarnessFactoryConfig config) {
-    this.locks = config.requiredLocks();
-    this.events = config.requiredEvents();
-    this.payloads = config.requiredPayloads();
+    this.backend = config.requiredBackend();
     this.provider = config.requiredProvider();
     this.schemas = config.schemas();
     this.mapper = config.mapper();
@@ -182,9 +181,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
     return of(
         config ->
             config
-                .locks(new InMemoryLocks())
-                .events(new InMemoryAgentEvents())
-                .payloads(new InMemoryPayloads())
+                .backend(new InMemoryDirectBackend())
                 .provider(provider)
                 .schemas(schemas)
                 .mapper(mapper));
@@ -215,7 +212,8 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
         agentType,
         customizer,
         Optional.of(shape),
-        (agent, answered) -> DefaultDirectHarness.read(payloads, mapper, agent, answered, answers));
+        (agent, answered) ->
+            DefaultDirectHarness.read(backend.payloads(), mapper, agent, answered, answers));
   }
 
   @Override
@@ -227,7 +225,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
         agentType,
         customizer,
         Optional.empty(),
-        (agent, answered) -> DefaultDirectHarness.saidText(payloads, agent, answered));
+        (agent, answered) -> DefaultDirectHarness.saidText(backend.payloads(), agent, answered));
   }
 
   private <I, O> DefaultDirectHarness<I, O> build(
@@ -262,6 +260,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
             inference.timeout(),
             inference.retryPolicy());
     Listeners narrator = new Listeners(listeners, config.listeners());
+    Payloads payloads = backend.payloads();
     // Observed as they are handed over, the way a tool is wrapped as it is bound (§4g): what the
     // engine is given reports its own work, and the assembler knows nothing about spans. The same
     // recipe the queued factory uses, so a second implementation of it does not drift.
@@ -270,7 +269,8 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
             new ContextAssembler(
                 ObservedTurnHistories.wrap(
                     (type, id) ->
-                        new EventStreamHistory(events, new Transcript(payloads.forAgent(id)), id),
+                        new EventStreamHistory(
+                            backend.events(), new Transcript(payloads.forAgent(id)), id),
                     observations),
                 inference.summaries().stream()
                     .map(source -> ObservedSummarizer.wrap(source, observations))
@@ -280,7 +280,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
                     .map(source -> ObservedAmbientSource.wrap(source, observations))
                     .toList()),
             observations);
-    EventStreamToolCalls calls = new EventStreamToolCalls(events, payloads);
+    EventStreamToolCalls calls = new EventStreamToolCalls(backend.events(), payloads);
     // What performs an effect once the fold has decided one is owed -- built exactly as the
     // queued factory builds its own, so the two doors cannot describe a call, an approval or an
     // inference differently.
@@ -304,10 +304,8 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
             new ToolCallHandler(
                 config.agentType(), tools, calls, replyTokens, narrator, terms, clock, payloads));
     return new DefaultDirectHarness<>(
-        locks,
+        backend,
         config.agentType(),
-        events,
-        payloads,
         clock,
         config.renderer(),
         reading,

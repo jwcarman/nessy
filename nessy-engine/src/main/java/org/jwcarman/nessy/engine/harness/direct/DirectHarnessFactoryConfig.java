@@ -25,10 +25,7 @@ import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
-import org.jwcarman.nessy.backend.event.AgentEvents;
-import org.jwcarman.nessy.backend.lock.Locks;
-import org.jwcarman.nessy.backend.payload.Payloads;
-import org.jwcarman.nessy.engine.inmemory.InMemoryLocks;
+import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import tools.jackson.databind.ObjectMapper;
@@ -48,9 +45,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class DirectHarnessFactoryConfig {
 
-  private Locks locks;
-  private AgentEvents events;
-  private Payloads payloads;
+  private DirectBackend backend;
   private InferenceProvider provider;
   private InputSchemaGenerator schemas = new VictoolsInputSchemaGenerator();
   private ObjectMapper mapper = JsonMapper.builder().build();
@@ -61,26 +56,17 @@ public final class DirectHarnessFactoryConfig {
   private final List<Customizer<DirectHarnessConfig<?>>> harnesses = new ArrayList<>();
 
   /**
-   * What holds one turn at a time per agent.
+   * Where events, content and the lock that holds one turn at a time per agent all come from,
+   * chosen together.
    *
-   * <p>Required, and deliberately so: in a process serving several conversations the wrong answer
-   * here is silent, and a caller that genuinely wants locks held in this process alone says so with
-   * {@link InMemoryLocks}.
+   * <p>Required, and deliberately so: a config that instead took a {@code Locks}, an {@code
+   * AgentEvents} and a {@code Payloads} separately could combine a durable store with an in-memory
+   * lock -- no exclusion between two instances of the same agent, and no transaction around the
+   * direct door's steps, since {@code withLock} IS that transaction now. A caller that genuinely
+   * wants everything held in this process alone says so with {@code InMemoryDirectBackend}.
    */
-  public DirectHarnessFactoryConfig locks(Locks locks) {
-    this.locks = locks;
-    return this;
-  }
-
-  /** Where the story is kept. */
-  public DirectHarnessFactoryConfig events(AgentEvents events) {
-    this.events = events;
-    return this;
-  }
-
-  /** Where content is kept, which is everything the events only name. */
-  public DirectHarnessFactoryConfig payloads(Payloads payloads) {
-    this.payloads = payloads;
+  public DirectHarnessFactoryConfig backend(DirectBackend backend) {
+    this.backend = backend;
     return this;
   }
 
@@ -171,16 +157,8 @@ public final class DirectHarnessFactoryConfig {
     return List.copyOf(harnesses);
   }
 
-  Locks requiredLocks() {
-    return require(locks, "locks");
-  }
-
-  AgentEvents requiredEvents() {
-    return require(events, "events");
-  }
-
-  Payloads requiredPayloads() {
-    return require(payloads, "payloads");
+  DirectBackend requiredBackend() {
+    return require(backend, "backend");
   }
 
   InferenceProvider requiredProvider() {

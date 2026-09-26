@@ -40,6 +40,7 @@ import org.jwcarman.nessy.engine.history.EventStreamHistory;
 import org.jwcarman.nessy.engine.history.Transcript;
 import org.jwcarman.nessy.engine.jdbc.JdbcAgentEvents;
 import org.jwcarman.nessy.engine.jdbc.JdbcPayloads;
+import org.jwcarman.nessy.engine.jdbc.JdbcQueuedBackend;
 import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.trace.TraceCarrier;
@@ -47,6 +48,7 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -139,11 +141,12 @@ public final class EngineFixture implements AutoCloseable {
         DefaultQueuedHarnessFactory.of(
             engine -> {
               engine
-                  .dataSource(dataSource)
+                  .backend(
+                      new JdbcQueuedBackend(
+                          dataSource, new JdbcTransactionManager(dataSource), storage.orElse(null)))
                   .inference(provider, InferenceOptions.of("a-model"))
                   .listener(listener)
                   .observations(observations);
-              storage.ifPresent(engine::storage);
               carrier.ifPresent(engine::traceCarrier);
             });
   }

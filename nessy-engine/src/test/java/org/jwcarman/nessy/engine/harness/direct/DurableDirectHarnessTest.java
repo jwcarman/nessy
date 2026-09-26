@@ -92,9 +92,7 @@ class DurableDirectHarnessTest {
   private DirectHarness<String, String> harness(InferenceProvider model) {
     return DefaultDirectHarnessFactory.of(
             f ->
-                f.locks(new InMemoryLocks())
-                    .events(events)
-                    .payloads(payloads)
+                f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
                     .provider(model)
                     .schemas(new VictoolsInputSchemaGenerator())
                     .mapper(JsonMapper.builder().build()))

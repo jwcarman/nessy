@@ -139,9 +139,11 @@ class DirectHarnessObservabilityTest {
     DirectHarness<String, String> harness =
         DefaultDirectHarnessFactory.of(
                 f ->
-                    f.locks(new InMemoryLocks())
-                        .events(new InMemoryAgentEvents())
-                        .payloads(new InMemoryPayloads())
+                    f.backend(
+                            new FixedDirectBackend(
+                                new InMemoryLocks(),
+                                new InMemoryAgentEvents(),
+                                new InMemoryPayloads()))
                         .provider(model)
                         .schemas(new VictoolsInputSchemaGenerator())
                         .mapper(JsonMapper.builder().build())

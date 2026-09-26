@@ -30,7 +30,7 @@ import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.backend.agent.Agents;
+import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.backlog.Backlog;
 import org.jwcarman.nessy.backend.backlog.Backlogs;
 import org.jwcarman.nessy.backend.backlog.Pull;
@@ -38,9 +38,7 @@ import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
-import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lock.Locks;
-import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
@@ -76,12 +74,23 @@ final class DefaultQueuedHarness<I>
   private final AgentType agentType;
   private final BacklogPolicy<I> policy;
   private final InputRenderer<I> renderer;
-  private final Agents agents;
-  private final AgentEvents events;
-  private final Payloads payloads;
+
+  /**
+   * Where agents, events, content and the lock all come from -- held whole rather than torn into
+   * separate fields, because {@code events()}, {@code payloads()}, {@code agents()} and {@code
+   * locks()} are one decision chosen together, and a harness holding four of its own fields would
+   * be exactly what let them drift apart.
+   */
+  private final QueuedBackend backend;
+
+  /**
+   * Resolved once, at construction, rather than asked of the backend on every call: which type
+   * {@code I} is is a per-harness fact settled the moment this harness is made, not something to
+   * rediscover on every {@link #tell}.
+   */
   private final Backlogs<I> backlogs;
+
   private final Outbox effects;
-  private final Locks locks;
   private final Narrator narrator;
   private final Clock clock;
   private final Traces traces;
@@ -92,24 +101,18 @@ final class DefaultQueuedHarness<I>
       AgentType agentType,
       BacklogPolicy<I> policy,
       InputRenderer<I> renderer,
-      Agents agents,
-      AgentEvents events,
-      Payloads payloads,
+      QueuedBackend backend,
       Backlogs<I> backlogs,
       Outbox effects,
-      Locks locks,
       Narrator narrator,
       Clock clock,
       Traces traces) {
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.policy = Objects.requireNonNull(policy, "policy must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
-    this.agents = Objects.requireNonNull(agents, "agents must not be null");
-    this.events = Objects.requireNonNull(events, "events must not be null");
-    this.payloads = Objects.requireNonNull(payloads, "payloads must not be null");
+    this.backend = Objects.requireNonNull(backend, "backend must not be null");
     this.backlogs = Objects.requireNonNull(backlogs, "backlogs must not be null");
     this.effects = Objects.requireNonNull(effects, "effects must not be null");
-    this.locks = Objects.requireNonNull(locks, "locks must not be null");
     this.narrator = Objects.requireNonNull(narrator, "narrator must not be null");
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
     this.traces = Objects.requireNonNull(traces, "traces must not be null");
@@ -146,25 +149,28 @@ final class DefaultQueuedHarness<I>
         () -> {
           String trace = traces.capture();
           boolean nudge =
-              locks.withLock(
-                  Locks.TURN,
-                  agentType,
-                  agentId,
-                  () -> {
-                    agents.ensure(agentType, agentId);
-                    Backlog<I> backlog = backlogs.forAgent(agentType, agentId);
-                    if (agents.terminated(agentType, agentId)) {
-                      // Ended. Coalescing now would put something into an emptied backlog and be
-                      // read as work next time, undoing a termination that has happened.
-                      log.debug(
-                          "[{}] agent {} has ended; the input is refused",
-                          agentType.value(),
-                          agentId.value());
-                      return false;
-                    }
-                    policy.coalesce(backlog, arrival);
-                    return driveIfIdle(agentId, backlog, trace);
-                  });
+              backend
+                  .locks()
+                  .withLock(
+                      Locks.TURN,
+                      agentType,
+                      agentId,
+                      () -> {
+                        backend.agents().ensure(agentType, agentId);
+                        Backlog<I> backlog = backlogs.forAgent(agentType, agentId);
+                        if (backend.agents().terminated(agentType, agentId)) {
+                          // Ended. Coalescing now would put something into an emptied backlog and
+                          // be
+                          // read as work next time, undoing a termination that has happened.
+                          log.debug(
+                              "[{}] agent {} has ended; the input is refused",
+                              agentType.value(),
+                              agentId.value());
+                          return false;
+                        }
+                        policy.coalesce(backlog, arrival);
+                        return driveIfIdle(agentId, backlog, trace);
+                      });
           if (nudge) {
             dispatch();
           }
@@ -184,23 +190,25 @@ final class DefaultQueuedHarness<I>
     log.info("[{}] terminating agent {}", agentType.value(), agentId.value());
     String trace = traces.capture();
     boolean nudge =
-        locks.withLock(
-            Locks.TURN,
-            agentType,
-            agentId,
-            () -> {
-              agents.ensure(agentType, agentId);
-              Backlog<I> backlog = backlogs.forAgent(agentType, agentId);
-              int abandoned = agents.seal(agentType, agentId);
-              if (abandoned > 0) {
-                log.info(
-                    "[{}] agent {} ended with {} input(s) waiting; abandoned",
-                    agentType.value(),
-                    agentId.value(),
-                    abandoned);
-              }
-              return driveIfIdle(agentId, backlog, trace);
-            });
+        backend
+            .locks()
+            .withLock(
+                Locks.TURN,
+                agentType,
+                agentId,
+                () -> {
+                  backend.agents().ensure(agentType, agentId);
+                  Backlog<I> backlog = backlogs.forAgent(agentType, agentId);
+                  int abandoned = backend.agents().seal(agentType, agentId);
+                  if (abandoned > 0) {
+                    log.info(
+                        "[{}] agent {} ended with {} input(s) waiting; abandoned",
+                        agentType.value(),
+                        agentId.value(),
+                        abandoned);
+                  }
+                  return driveIfIdle(agentId, backlog, trace);
+                });
     if (nudge) {
       dispatch();
     }
@@ -216,18 +224,20 @@ final class DefaultQueuedHarness<I>
         outcome.getClass().getSimpleName(),
         agentId.value());
     boolean nudge =
-        locks.withLock(
-            Locks.TURN,
-            agentType,
-            agentId,
-            () -> {
-              agents.ensure(agentType, agentId);
-              boolean wrote = fold(agentId, turn, outcome, traceContext);
-              // A turn that ended leaves the agent idle, and the next thing waiting becomes
-              // the next turn -- here, before this transaction commits.
-              return wrote
-                  | driveIfIdle(agentId, backlogs.forAgent(agentType, agentId), traceContext);
-            });
+        backend
+            .locks()
+            .withLock(
+                Locks.TURN,
+                agentType,
+                agentId,
+                () -> {
+                  backend.agents().ensure(agentType, agentId);
+                  boolean wrote = fold(agentId, turn, outcome, traceContext);
+                  // A turn that ended leaves the agent idle, and the next thing waiting becomes
+                  // the next turn -- here, before this transaction commits.
+                  return wrote
+                      | driveIfIdle(agentId, backlogs.forAgent(agentType, agentId), traceContext);
+                });
     if (nudge) {
       dispatch();
     }
@@ -284,7 +294,7 @@ final class DefaultQueuedHarness<I>
           apply(
               agentId,
               new AgentCommand.StartTurn(
-                  payloads.forAgent(agentId).put(renderer.render(next.input()))),
+                  backend.payloads().forAgent(agentId).put(renderer.render(next.input()))),
               trace);
       case Pull.Pill<I> _ -> apply(agentId, new AgentCommand.Terminate(), trace);
       case Pull.Empty<I> _ -> false;
@@ -304,7 +314,7 @@ final class DefaultQueuedHarness<I>
           command.getClass().getSimpleName());
       return false;
     }
-    events.append(agentId, advance.events(), state.seq());
+    backend.events().append(agentId, advance.events(), state.seq());
     for (AgentEffect effect : advance.effects()) {
       effects.insert(agentId, effect, clock.instant(), trace);
     }
@@ -321,7 +331,7 @@ final class DefaultQueuedHarness<I>
 
   /** The agent as it stands: the last turn that started, replayed onto idle. */
   private AgentState reconstitute(AgentId agentId) {
-    List<AgentEvent> lastTurn = events.sinceLastTurnStarted(agentId);
+    List<AgentEvent> lastTurn = backend.events().sinceLastTurnStarted(agentId);
     Seq from =
         lastTurn.isEmpty() ? Seq.NONE : new Seq(Math.max(0, lastTurn.getFirst().seq().value() - 1));
     return AgentState.idle(from).applyAll(lastTurn);

@@ -33,6 +33,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
+import org.jwcarman.nessy.engine.jdbc.JdbcQueuedBackend;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -79,7 +80,10 @@ class HeadSummarizerFoldTest {
     Schemas.initialize(dataSource);
     factory =
         DefaultQueuedHarnessFactory.of(
-            engine -> engine.dataSource(dataSource).inference(model, InferenceOptions.of("m")));
+            engine ->
+                engine
+                    .backend(new JdbcQueuedBackend(dataSource))
+                    .inference(model, InferenceOptions.of("m")));
     summaries = new JdbcSummaries(dataSource, CHAT);
     HeadSummarizer summarizer =
         HeadSummarizer.of(

@@ -158,9 +158,7 @@ class DefaultDirectHarnessTest {
   private DirectHarnessFactory factoryFor(InferenceProvider model, Locks locks) {
     return DefaultDirectHarnessFactory.of(
         c ->
-            c.locks(locks)
-                .events(events)
-                .payloads(payloads)
+            c.backend(new FixedDirectBackend(locks, events, payloads))
                 .provider(model)
                 .schemas(SCHEMAS)
                 .mapper(MAPPER)
@@ -547,9 +545,7 @@ class DefaultDirectHarnessTest {
     DirectHarness<String, String> harness =
         DefaultDirectHarnessFactory.of(
                 f ->
-                    f.locks(new InMemoryLocks())
-                        .events(events)
-                        .payloads(payloads)
+                    f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
                         .provider(model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
@@ -618,9 +614,7 @@ class DefaultDirectHarnessTest {
     DirectHarness<String, String> harness =
         DefaultDirectHarnessFactory.of(
                 f ->
-                    f.locks(new InMemoryLocks())
-                        .events(events)
-                        .payloads(payloads)
+                    f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
                         .provider(model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
@@ -664,9 +658,7 @@ class DefaultDirectHarnessTest {
     DirectHarness<String, String> harness =
         DefaultDirectHarnessFactory.of(
                 f ->
-                    f.locks(new InMemoryLocks())
-                        .events(events)
-                        .payloads(payloads)
+                    f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
                         .provider(model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
@@ -721,9 +713,7 @@ class DefaultDirectHarnessTest {
     DirectHarness<String, String> harness =
         DefaultDirectHarnessFactory.of(
                 f ->
-                    f.locks(new InMemoryLocks())
-                        .events(events)
-                        .payloads(payloads)
+                    f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
                         .provider(model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
@@ -796,9 +786,7 @@ class DefaultDirectHarnessTest {
     DirectHarness<String, String> harness =
         DefaultDirectHarnessFactory.of(
                 f ->
-                    f.locks(new InMemoryLocks())
-                        .events(events)
-                        .payloads(payloads)
+                    f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
                         .provider(model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
@@ -865,9 +853,7 @@ class DefaultDirectHarnessTest {
     DirectHarness<String, String> harness =
         DefaultDirectHarnessFactory.of(
                 f ->
-                    f.locks(new InMemoryLocks())
-                        .events(events)
-                        .payloads(payloads)
+                    f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
                         .provider(new Scripted())
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
@@ -906,9 +892,7 @@ class DefaultDirectHarnessTest {
     DirectHarness<String, String> harness =
         DefaultDirectHarnessFactory.of(
                 f ->
-                    f.locks(new InMemoryLocks())
-                        .events(events)
-                        .payloads(payloads)
+                    f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
                         .provider(model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
@@ -964,9 +948,7 @@ class DefaultDirectHarnessTest {
     DirectHarness<String, String> harness =
         DefaultDirectHarnessFactory.of(
                 f ->
-                    f.locks(new InMemoryLocks())
-                        .events(racing)
-                        .payloads(payloads)
+                    f.backend(new FixedDirectBackend(new InMemoryLocks(), racing, payloads))
                         .provider(model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
@@ -1266,9 +1248,7 @@ class DefaultDirectHarnessTest {
     DirectHarness<String, String> harness =
         DefaultDirectHarnessFactory.of(
                 f ->
-                    f.locks(new InMemoryLocks())
-                        .events(events)
-                        .payloads(counting)
+                    f.backend(new FixedDirectBackend(new InMemoryLocks(), events, counting))
                         .provider(model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)

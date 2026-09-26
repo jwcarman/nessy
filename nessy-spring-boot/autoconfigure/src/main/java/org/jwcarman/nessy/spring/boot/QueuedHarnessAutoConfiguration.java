@@ -26,8 +26,10 @@ import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.tool.Replies;
+import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.harness.queued.QueuedHarnessFactoryConfig;
+import org.jwcarman.nessy.engine.jdbc.JdbcQueuedBackend;
 import org.jwcarman.nessy.engine.store.StorageCodec;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
@@ -39,6 +41,8 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
+import org.springframework.jdbc.support.JdbcTransactionManager;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * The queued door, for work nobody is waiting on.
@@ -72,6 +76,8 @@ public class QueuedHarnessAutoConfiguration {
       NessyAutoConfiguration.NessySchema schema,
       ObservationRegistry observations,
       ObjectProvider<MeterRegistry> meters,
+      ObjectProvider<QueuedBackend> backends,
+      ObjectProvider<PlatformTransactionManager> transactions,
       ObjectProvider<StorageCodec> storage,
       ObjectProvider<Tracer> tracers,
       ObjectProvider<Propagator> propagators,
@@ -81,19 +87,27 @@ public class QueuedHarnessAutoConfiguration {
     meters.ifAvailable(
         registry ->
             observations.observationConfig().observationHandler(new TokenUsageHandler(registry)));
+    // A backend chooses its own codec together with its own stores, applying the application's
+    // storage transform to every one of them -- including a backlog's, the one table the schema
+    // flags as holding raw user text. An application says which backend it wants as a whole, or
+    // gets the JDBC one built from the DataSource, whatever PlatformTransactionManager it has, and
+    // whatever storage transform it declared.
+    QueuedBackend backend =
+        backends.getIfAvailable(
+            () ->
+                new JdbcQueuedBackend(
+                    dataSource,
+                    transactions.getIfAvailable(() -> new JdbcTransactionManager(dataSource)),
+                    storage.getIfAvailable()));
     List<Customizer<QueuedHarnessFactoryConfig>> all = new ArrayList<>();
     all.add(
         engine -> {
           engine
-              .dataSource(dataSource)
+              .backend(backend)
               .inference(
                   models, new InferenceOptions(requireModel(properties), properties.maxTokens()))
               .observations(observations)
               .replyTokens(replyTokens);
-          // What is done to every stored byte after Jackson, when the application declared it:
-          // compression, encryption. Declared as a StorageCodec bean, because a bean of a plain
-          // Codec<byte[]> names nothing in particular.
-          storage.ifAvailable(engine::storage);
           // With a tracer and its propagator the context is written straight into the effect
           // row; without them the engine opens a momentary span to have it written.
           Tracer tracer = tracers.getIfAvailable();

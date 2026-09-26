@@ -41,6 +41,7 @@ import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.event.ActionRequest;
@@ -111,10 +112,14 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   private static final Logger LOG = LoggerFactory.getLogger(DefaultDirectHarness.class);
 
-  private final Locks locks;
+  /**
+   * Where events, content and the lock all come from -- held whole rather than torn into fields of
+   * its own, because those stores are one decision chosen together, and a harness holding three of
+   * its own fields would be exactly what let them drift apart.
+   */
+  private final DirectBackend backend;
+
   private final AgentType agentType;
-  private final AgentEvents events;
-  private final Payloads payloads;
   private final InputRenderer<I> renderer;
 
   /**
@@ -165,20 +170,16 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   private final ExecutorService effects;
 
   public DefaultDirectHarness(
-      Locks locks,
+      DirectBackend backend,
       AgentType agentType,
-      AgentEvents events,
-      Payloads payloads,
       Clock clock,
       InputRenderer<I> renderer,
       BiFunction<AgentId, AgentEvent.InferenceAnswered, Outcome<O>> reading,
       Narrator narrator,
       EffectHandlers handlers,
       ExecutorService effects) {
-    this.locks = locks;
+    this.backend = Objects.requireNonNull(backend, "backend must not be null");
     this.agentType = agentType;
-    this.events = events;
-    this.payloads = payloads;
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
     this.reading = Objects.requireNonNull(reading, "reading must not be null");
@@ -194,7 +195,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     // payload at all (§3, §4d).
     List<Block.InputContent> rendered = renderer.render(input);
     StepResult<O> first =
-        locks.withLock(Locks.TURN, agentType, agent, () -> beginTurn(agent, rendered));
+        backend.locks().withLock(Locks.TURN, agentType, agent, () -> beginTurn(agent, rendered));
     return switch (first) {
       case StepResult.Declined<O> declined -> declined.outcome();
       case StepResult.Advanced<O> advanced -> drive(agent, advanced.turn(), advanced.effects());
@@ -205,15 +206,17 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   public void terminate(AgentId agent) {
     // The core only takes Terminate from Idle: asking while a turn is running is declined by the
     // fold itself (Decision.ignore()), and waiting for the turn is not this door's habit.
-    locks.withLock(
-        Locks.TURN,
-        agentType,
-        agent,
-        () -> {
-          AgentState state = reconstitute(agent);
-          Decision decision = state.execute(new AgentCommand.Terminate());
-          events.append(agent, decision.events(), state.seq());
-        });
+    backend
+        .locks()
+        .withLock(
+            Locks.TURN,
+            agentType,
+            agent,
+            () -> {
+              AgentState state = reconstitute(agent);
+              Decision decision = state.execute(new AgentCommand.Terminate());
+              backend.events().append(agent, decision.events(), state.seq());
+            });
   }
 
   /**
@@ -235,9 +238,9 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     return switch (recoverToIdle(agent, state)) {
       case RecoveryOutcome.Busy() -> StepResult.declined(new Outcome.Busy<>());
       case RecoveryOutcome.Recovered(AgentState.Idle idle) -> {
-        Payloads content = payloads.forAgent(agent);
+        Payloads content = backend.payloads().forAgent(agent);
         Decision decision = idle.execute(new AgentCommand.StartTurn(content.put(rendered)));
-        events.append(agent, decision.events(), idle.seq());
+        backend.events().append(agent, decision.events(), idle.seq());
         decision.events().forEach(event -> narrate(agent, event));
         TurnId turn = ((AgentEvent.TurnStarted) decision.events().getFirst()).turn();
         yield StepResult.advanced(turn, decision.effects());
@@ -260,7 +263,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       return Decision.ignore();
     }
     Decision decision = state.execute(command);
-    events.append(agent, decision.events(), state.seq());
+    backend.events().append(agent, decision.events(), state.seq());
     decision.events().forEach(event -> narrate(agent, event));
     return decision;
   }
@@ -281,7 +284,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     while (!pending.isEmpty()) {
       AgentCommand command = perform(agent, pending.poll());
       Decision decision =
-          locks.withLock(Locks.TURN, agentType, agent, () -> executeStep(agent, command));
+          backend.locks().withLock(Locks.TURN, agentType, agent, () -> executeStep(agent, command));
       pending.addAll(decision.effects());
     }
     return outcome(agent, turn);
@@ -316,7 +319,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       }
       dischargedSomething = true;
       Decision decision = current.execute(discharge.get());
-      events.append(agent, decision.events(), current.seq());
+      backend.events().append(agent, decision.events(), current.seq());
       decision.events().forEach(event -> narrate(agent, event));
       current = current.applyAll(decision.events());
     }
@@ -358,7 +361,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   private Optional<AgentCommand> overdueInference(AgentId agent, AgentState.Inferring inferring) {
     EffectTerms terms = handlers.termsFor(infer(inferring));
-    Instant started = events.writtenAt(agent, inferring.seq());
+    Instant started = backend.events().writtenAt(agent, inferring.seq());
     return isOverdue(started, terms)
         ? Optional.of(undispatchable(inferring.turn(), terms))
         : Optional.empty();
@@ -381,7 +384,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     for (Outstanding outstanding : awaiting.outstanding().values()) {
       AgentEffect effect = effectFor(awaiting.turn(), awaiting.requestSeq(), outstanding);
       EffectTerms terms = handlers.termsFor(effect);
-      Instant started = events.writtenAt(agent, outstanding.since());
+      Instant started = backend.events().writtenAt(agent, outstanding.since());
       if (isOverdue(started, terms)) {
         return Optional.of(undispatchable(awaiting.turn(), terms));
       }
@@ -423,7 +426,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   /** The agent, rebuilt from its last turn alone -- one read every locked step starts with. */
   private AgentState reconstitute(AgentId agent) {
-    List<AgentEvent> lastTurn = events.sinceLastTurnStarted(agent);
+    List<AgentEvent> lastTurn = backend.events().sinceLastTurnStarted(agent);
     Seq from = lastTurn.isEmpty() ? Seq.NONE : previous(lastTurn.getFirst().seq());
     return AgentState.idle(from).applyAll(lastTurn);
   }
@@ -606,7 +609,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * answer, which this scoping is what rules out.
    */
   private Outcome<O> outcome(AgentId agent, TurnId turn) {
-    return events.readFrom(agent, Seq.NONE).reversed().stream()
+    return backend.events().readFrom(agent, Seq.NONE).reversed().stream()
         .map(event -> asOutcome(agent, turn, event))
         .filter(Objects::nonNull)
         .findFirst()
