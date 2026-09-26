@@ -17,21 +17,27 @@ package org.jwcarman.nessy.spring.boot;
 
 import java.util.Base64;
 import java.util.List;
+import java.util.Objects;
 import javax.sql.DataSource;
+import org.jspecify.annotations.Nullable;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.codec.TypeRef;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.QueuedHarness;
-import org.jwcarman.nessy.backend.jdbc.JdbcLeases;
-import org.jwcarman.nessy.backend.lease.Leases;
+import org.jwcarman.nessy.api.StorageConfig;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration;
 import org.springframework.context.annotation.Bean;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Nessy as a Boot citizen: a {@code DataSource} and an {@link InferenceProvider} in, a {@link
@@ -46,19 +52,69 @@ import org.springframework.context.annotation.Bean;
  * <p>Every bean is {@code @ConditionalOnMissingBean}: an application that declares its own is
  * choosing it explicitly, and this backs off rather than competing.
  *
- * <p><b>{@code nessy.enabled=false} turns the whole thing off.</b> Backing off bean by bean is not
- * enough for an application that shares a classpath with one that uses Nessy -- several Boot apps
- * in one JVM, say, as an acceptance test does -- because this refuses to start without {@code
- * nessy.model}, which is right for an application that wants Nessy and wrong for one that only has
- * it on the classpath. Excluding the class by name works and reads like a workaround.
+ * <p><b>Turning it off is Spring's job, not ours.</b> This refuses to start without {@code
+ * nessy.model}, which is right for an application that wants Nessy and wrong for one that merely
+ * shares a classpath with it -- several Boot apps in one JVM, as an acceptance test has. That case
+ * is real, and the answer is the mechanism Boot already has: {@code
+ * spring.autoconfigure.exclude=org.jwcarman.nessy.spring.boot.NessyAutoConfiguration}. A {@code
+ * nessy.enabled} property of our own was a second way to say the same thing, and every
+ * auto-configuration added afterwards was a fresh chance to forget to honour it -- which is exactly
+ * what happened when the backend auto-configurations arrived and left the disabled path asking for
+ * a codec factory that was never going to exist.
  */
-@AutoConfiguration(after = {DataSourceAutoConfiguration.class, JdbcTemplateAutoConfiguration.class})
-@ConditionalOnProperty(name = "nessy.enabled", havingValue = "true", matchIfMissing = true)
+@AutoConfiguration(
+    after = {DataSourceAutoConfiguration.class, JdbcTemplateAutoConfiguration.class},
+    afterName = "org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration",
+    // Named rather than imported: Substrate is optional, and an application without it never
+    // pulls this class in. Ordered ahead so the CodecFactory bean below exists by the time
+    // Substrate's own journal factory asks its @ConditionalOnBean(CodecFactory.class) whether one
+    // is there.
+    beforeName = "org.jwcarman.substrate.core.autoconfigure.SubstrateAutoConfiguration")
 @EnableConfigurationProperties(NessyProperties.class)
 public class NessyAutoConfiguration {
 
   private static final org.slf4j.Logger log =
       org.slf4j.LoggerFactory.getLogger(NessyAutoConfiguration.class);
+
+  /**
+   * The one way to build a {@link Codec} in this engine: Jackson, over the context's {@link
+   * ObjectMapper}, with every {@code Customizer<StorageConfig>} bean's transform composed on after
+   * it in {@link ObjectProvider#orderedStream() orderedStream} order.
+   *
+   * <p>No customizers means the plain Jackson factory is handed back directly -- the noop default,
+   * with no noop object wrapping it.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public CodecFactory codecFactory(
+      ObjectMapper mapper, ObjectProvider<Customizer<StorageConfig>> customizers) {
+    CodecFactory jackson = new JacksonCodecFactory(mapper);
+    ComposingStorageConfig config = new ComposingStorageConfig();
+    customizers.orderedStream().forEach(customizer -> customizer.customize(config));
+    Codec<byte[]> transform = config.transform;
+    if (transform == null) {
+      return jackson;
+    }
+    return new CodecFactory() {
+      @Override
+      public <T> Codec<T> create(TypeRef<T> type) {
+        return jackson.create(type).andThen(transform);
+      }
+    };
+  }
+
+  /** Collects every appended transform into one, composed outward in append order. */
+  private static final class ComposingStorageConfig implements StorageConfig {
+
+    private @Nullable Codec<byte[]> transform;
+
+    @Override
+    public StorageConfig append(Codec<byte[]> next) {
+      Objects.requireNonNull(next, "transform must not be null");
+      transform = transform == null ? next : transform.andThen(next);
+      return this;
+    }
+  }
 
   /**
    * The schema, created where the application says so.
@@ -98,17 +154,6 @@ public class NessyAutoConfiguration {
     }
     return ReplyTokens.withKeys(
         keys.stream().map(key -> Base64.getDecoder().decode(key)).toArray(byte[][]::new));
-  }
-
-  /**
-   * Whose turn it is to do a piece of opportunistic work -- a summariser's, typically. Trivial once
-   * the time-to-live moved off the constructor and onto the call: nothing here needs to know what
-   * kinds of lease exist or how long any of them take.
-   */
-  @Bean
-  @ConditionalOnMissingBean
-  public Leases nessyLeases(DataSource dataSource) {
-    return new JdbcLeases(dataSource);
   }
 
   /** Says what will actually answer, before a single turn runs. */

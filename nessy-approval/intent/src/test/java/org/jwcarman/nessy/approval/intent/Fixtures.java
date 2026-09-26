@@ -17,6 +17,8 @@ package org.jwcarman.nessy.approval.intent;
 
 import java.time.Instant;
 import java.util.UUID;
+import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
@@ -43,6 +45,7 @@ final class Fixtures {
   static final AgentType TYPE = new AgentType("chat");
   static final AgentId AGENT = new AgentId(UUID.randomUUID());
   static final JsonMapper MAPPER = JsonMapper.builder().build();
+  static final CodecFactory CODECS = new JacksonCodecFactory(MAPPER);
 
   private Fixtures() {}
 
@@ -57,7 +60,7 @@ final class Fixtures {
   }
 
   static JdbcIntents<Intent> freshIntents() {
-    return new JdbcIntents<>(freshDatabase(), TYPE, Intent.class, MAPPER);
+    return new JdbcIntents<>(freshDatabase(), TYPE, Intent.class, CODECS);
   }
 
   /** The question an approver is asked, for {@link #AGENT}. */

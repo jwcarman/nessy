@@ -51,7 +51,6 @@ import org.springframework.util.FileCopyUtils;
  */
 @ConfigurationProperties("nessy")
 public record NessyProperties(
-    Boolean enabled,
     String type,
     String systemPrompt,
     Resource systemPromptFile,
@@ -61,7 +60,6 @@ public record NessyProperties(
     Boolean initializeSchema) {
 
   public NessyProperties {
-    enabled = enabled == null || enabled;
     type = type == null || type.isBlank() ? "agent" : type;
     maxTokens = maxTokens == null ? 4096 : maxTokens;
     replyTokenEncryptionKeys =

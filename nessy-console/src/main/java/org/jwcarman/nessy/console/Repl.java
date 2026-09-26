@@ -28,6 +28,7 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.jwcarman.nessy.spring.boot.NessyAutoConfiguration;
 import org.jwcarman.nessy.spring.boot.QueuedHarnessAutoConfiguration;
+import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -101,9 +102,32 @@ public final class Repl {
    * InferenceProvider} bean (and, unless one was configured here, a {@code DataSource}), not to
    * serve anything. Closed in the same try that closes everything else this call built.
    */
+  /**
+   * The context, or {@code null} when it refused to start.
+   *
+   * <p>The starter's harness factory takes an {@link InferenceProvider} as an ordinary parameter,
+   * so a missing one is a STARTUP failure rather than a lookup that comes back empty. That is the
+   * right behaviour for an application -- it fails before serving anything -- and the wrong thing
+   * to hand a person at a terminal, who gets a stack trace out of {@code main} instead of a
+   * sentence saying what to set.
+   */
+  private static ConfigurableApplicationContext start() {
+    try {
+      return new SpringApplicationBuilder(ReplBootstrap.class).web(WebApplicationType.NONE).run();
+    } catch (BeansException refused) {
+      return null;
+    }
+  }
+
   static void run(ReplConfig config, ConsoleIo io) {
-    try (ConfigurableApplicationContext context =
-        new SpringApplicationBuilder(ReplBootstrap.class).web(WebApplicationType.NONE).run()) {
+    try (ConfigurableApplicationContext context = start()) {
+      if (context == null) {
+        say(
+            io,
+            "nessy could not start: no inference provider is configured. Set an API key --"
+                + " OPENAI_API_KEY, ANTHROPIC_API_KEY or GEMINI_API_KEY -- and try again.");
+        return;
+      }
       InferenceProvider provider;
       try {
         provider = context.getBean(InferenceProvider.class);

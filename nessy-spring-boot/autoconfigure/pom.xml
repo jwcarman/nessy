@@ -123,10 +123,14 @@
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-engine</artifactId>
     </dependency>
-    <!-- The JDBC backend the direct- and queued-harness auto-configurations build beans of. -->
+    <!-- OPTIONAL: an application on the classpath with a DataSource gets the durable backend from
+         JdbcBackendAutoConfiguration; an application without it gets the in-memory direct backend
+         instead. Both examples that want durability (chat-web, watchman) declare this themselves,
+         exactly as they declare their DataSource. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-backend-jdbc</artifactId>
+      <optional>true</optional>
     </dependency>
     <!-- TEST, because the only H2 left is the wiring tests' own DataSource. There used to be an
          in-memory fallback for an application that supplied none, and this was RUNTIME to make it
@@ -258,6 +262,15 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-jdbc</artifactId>
       <optional>true</optional>
+    </dependency>
+    <!-- Boot 4 splits auto-configuration per technology: this is the Jackson 3 (tools.jackson)
+         one, and it publishes the JsonMapper bean our CodecFactory reads. Nessy does NOT define an
+         ObjectMapper of its own, so that an application's spring.jackson.* properties and its
+         JsonMapperBuilderCustomizer beans reach every codec the engine builds. spring-boot-jackson2
+         is the Jackson 2 module and is deliberately not used. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-jackson</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework</groupId>

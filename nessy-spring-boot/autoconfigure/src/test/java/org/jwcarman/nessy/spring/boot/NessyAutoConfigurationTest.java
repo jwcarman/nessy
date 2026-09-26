@@ -23,7 +23,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.NarrationListener;
-import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
@@ -34,6 +33,8 @@ import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration;
 import org.springframework.boot.micrometer.observation.autoconfigure.ObservationAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
@@ -70,8 +71,12 @@ class NessyAutoConfigurationTest {
       new ApplicationContextRunner()
           .withConfiguration(
               AutoConfigurations.of(
+                  JacksonAutoConfiguration.class,
+                  DataSourceTransactionManagerAutoConfiguration.class,
                   ObservationAutoConfiguration.class,
                   NessyAutoConfiguration.class,
+                  JdbcBackendAutoConfiguration.class,
+                  InMemoryBackendAutoConfiguration.class,
                   QueuedHarnessAutoConfiguration.class))
           .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
           .withPropertyValues(MODEL, PROMPT, NO_SCHEMA);
@@ -101,32 +106,17 @@ class NessyAutoConfigurationTest {
    * it, which is what happens when several Boot applications run in one JVM.
    */
   @Test
-  @DisplayName("switched off, it configures nothing and does not mind the missing model")
-  void it_configures_nothing_when_disabled() {
-    new ApplicationContextRunner()
-        .withConfiguration(
-            AutoConfigurations.of(
-                ObservationAutoConfiguration.class,
-                NessyAutoConfiguration.class,
-                QueuedHarnessAutoConfiguration.class))
-        .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
-        .withPropertyValues("nessy.enabled=false")
-        .run(
-            context -> {
-              assertThat(context).hasNotFailed();
-              assertThat(context).doesNotHaveBean(QueuedHarness.class);
-              assertThat(context).doesNotHaveBean(DefaultQueuedHarnessFactory.class);
-            });
-  }
-
-  @Test
   @DisplayName("with no DataSource, it refuses to start rather than pretending")
   void it_refuses_to_start_without_a_data_source() {
     new ApplicationContextRunner()
         .withConfiguration(
             AutoConfigurations.of(
+                JacksonAutoConfiguration.class,
+                DataSourceTransactionManagerAutoConfiguration.class,
                 ObservationAutoConfiguration.class,
                 NessyAutoConfiguration.class,
+                JdbcBackendAutoConfiguration.class,
+                InMemoryBackendAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class)
         .withPropertyValues(MODEL, PROMPT, NO_SCHEMA)
@@ -138,8 +128,12 @@ class NessyAutoConfigurationTest {
     new ApplicationContextRunner()
         .withConfiguration(
             AutoConfigurations.of(
+                JacksonAutoConfiguration.class,
+                DataSourceTransactionManagerAutoConfiguration.class,
                 ObservationAutoConfiguration.class,
                 NessyAutoConfiguration.class,
+                JdbcBackendAutoConfiguration.class,
+                InMemoryBackendAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
         .withPropertyValues(PROMPT, NO_SCHEMA)
@@ -156,8 +150,12 @@ class NessyAutoConfigurationTest {
     new ApplicationContextRunner()
         .withConfiguration(
             AutoConfigurations.of(
+                JacksonAutoConfiguration.class,
+                DataSourceTransactionManagerAutoConfiguration.class,
                 ObservationAutoConfiguration.class,
                 NessyAutoConfiguration.class,
+                JdbcBackendAutoConfiguration.class,
+                InMemoryBackendAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
         .withPropertyValues("nessy.model=   ", PROMPT, NO_SCHEMA)
@@ -173,8 +171,12 @@ class NessyAutoConfigurationTest {
     new ApplicationContextRunner()
         .withConfiguration(
             AutoConfigurations.of(
+                JacksonAutoConfiguration.class,
+                DataSourceTransactionManagerAutoConfiguration.class,
                 ObservationAutoConfiguration.class,
                 NessyAutoConfiguration.class,
+                JdbcBackendAutoConfiguration.class,
+                InMemoryBackendAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(ADatabase.class)
         .withPropertyValues(MODEL, PROMPT, NO_SCHEMA)

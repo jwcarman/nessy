@@ -21,14 +21,11 @@ import io.micrometer.tracing.Tracer;
 import io.micrometer.tracing.propagation.Propagator;
 import java.util.ArrayList;
 import java.util.List;
-import javax.sql.DataSource;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.backend.QueuedBackend;
-import org.jwcarman.nessy.backend.StorageCodec;
-import org.jwcarman.nessy.backend.jdbc.JdbcQueuedBackend;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.harness.queued.QueuedHarnessFactoryConfig;
 import org.jwcarman.nessy.engine.store.TurnHistories;
@@ -38,11 +35,9 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
-import org.springframework.jdbc.support.JdbcTransactionManager;
-import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * The queued door, for work nobody is waiting on.
@@ -52,16 +47,17 @@ import org.springframework.transaction.PlatformTransactionManager;
  * out, an application wanting only the direct door had to EXCLUDE the whole of Nessy to avoid being
  * asked for them -- which two of this project's own examples did.
  *
+ * <p><b>Conditional on a {@link QueuedBackend} bean, not on a database.</b> {@link
+ * JdbcBackendAutoConfiguration} is the only source of one today -- there is no in-memory queue --
+ * so an application without a {@code DataSource} simply does not see this door, rather than this
+ * class failing to start over a {@code DataSource} it could not get.
+ *
  * <p>The engine reads every {@code Customizer<QueuedHarnessFactoryConfig>} bean after the starter
- * has said what it knows, so an application changes how the engine is put together -- its storage
- * codec, its dispatcher, its trace carrier -- without declaring the factory itself.
+ * has said what it knows, so an application changes how the engine is put together -- its
+ * dispatcher, its trace carrier -- without declaring the factory itself.
  */
-@AutoConfiguration(after = NessyAutoConfiguration.class)
-@ConditionalOnProperty(name = "nessy.enabled", havingValue = "true", matchIfMissing = true)
-// No @ConditionalOnClass here, deliberately. Both doors' factories live in nessy-engine, which
-// this module depends on outright, so a condition naming either class can never be false -- and a
-// reader who found one would reasonably conclude the classpath tells the two doors apart. It does
-// not. An application that wants one door excludes the other by name.
+@AutoConfiguration(after = JdbcBackendAutoConfiguration.class)
+@ConditionalOnBean(QueuedBackend.class)
 public class QueuedHarnessAutoConfiguration {
 
   @Bean
@@ -69,16 +65,13 @@ public class QueuedHarnessAutoConfiguration {
   // declares the interface, and a condition naming the concrete class never sees it.
   @ConditionalOnMissingBean(QueuedHarnessFactory.class)
   public DefaultQueuedHarnessFactory nessyHarnessFactory(
-      DataSource dataSource,
+      QueuedBackend backend,
       ReplyTokens replyTokens,
       InferenceProvider models,
       NessyProperties properties,
       NessyAutoConfiguration.NessySchema schema,
       ObservationRegistry observations,
       ObjectProvider<MeterRegistry> meters,
-      ObjectProvider<QueuedBackend> backends,
-      ObjectProvider<PlatformTransactionManager> transactions,
-      ObjectProvider<StorageCodec> storage,
       ObjectProvider<Tracer> tracers,
       ObjectProvider<Propagator> propagators,
       ObjectProvider<Customizer<QueuedHarnessFactoryConfig>> customizers) {
@@ -87,18 +80,6 @@ public class QueuedHarnessAutoConfiguration {
     meters.ifAvailable(
         registry ->
             observations.observationConfig().observationHandler(new TokenUsageHandler(registry)));
-    // A backend chooses its own codec together with its own stores, applying the application's
-    // storage transform to every one of them -- including a backlog's, the one table the schema
-    // flags as holding raw user text. An application says which backend it wants as a whole, or
-    // gets the JDBC one built from the DataSource, whatever PlatformTransactionManager it has, and
-    // whatever storage transform it declared.
-    QueuedBackend backend =
-        backends.getIfAvailable(
-            () ->
-                new JdbcQueuedBackend(
-                    dataSource,
-                    transactions.getIfAvailable(() -> new JdbcTransactionManager(dataSource)),
-                    storage.getIfAvailable()));
     List<Customizer<QueuedHarnessFactoryConfig>> all = new ArrayList<>();
     all.add(
         engine -> {

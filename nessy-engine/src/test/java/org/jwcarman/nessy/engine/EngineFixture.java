@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.NarrationListener;
@@ -31,7 +32,6 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Replies;
-import org.jwcarman.nessy.backend.StorageCodec;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.jdbc.JdbcAgentEvents;
@@ -129,7 +129,7 @@ public final class EngineFixture implements AutoCloseable {
     // asserting on its internals rather than on what it wrote down.
     this.jdbc = JdbcClient.create(dataSource);
     CodecFactory jackson = new JacksonCodecFactory(JsonMapper.builder().build());
-    CodecFactory codecs = storage.map(t -> StorageCodec.of(t).after(jackson)).orElse(jackson);
+    CodecFactory codecs = storage.map(t -> andThen(jackson, t)).orElse(jackson);
     // Readers over the same tables the engine writes, so a test asserts on what was written down
     // rather than on the engine's own objects.
     this.events = new JdbcAgentEvents(jdbc, codecs);
@@ -143,7 +143,7 @@ public final class EngineFixture implements AutoCloseable {
               engine
                   .backend(
                       new JdbcQueuedBackend(
-                          dataSource, new JdbcTransactionManager(dataSource), storage.orElse(null)))
+                          dataSource, new JdbcTransactionManager(dataSource), codecs))
                   .inference(provider, InferenceOptions.of("a-model"))
                   .listener(listener)
                   .observations(observations);
@@ -261,5 +261,19 @@ public final class EngineFixture implements AutoCloseable {
   public void close() {
     harnesses.close();
     dataSource.close();
+  }
+
+  /**
+   * {@code base}, with {@code transform} applied after it on the way in and before it on the way
+   * out -- what {@code StorageConfig.append} does in the starter, done by hand here since this
+   * fixture builds no Spring context.
+   */
+  private static CodecFactory andThen(CodecFactory base, Codec<byte[]> transform) {
+    return new CodecFactory() {
+      @Override
+      public <T> Codec<T> create(TypeRef<T> type) {
+        return base.create(type).andThen(transform);
+      }
+    };
   }
 }

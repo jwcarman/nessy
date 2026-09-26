@@ -15,16 +15,15 @@
  */
 package org.jwcarman.nessy.approval.intent;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
 import org.jwcarman.codec.Codec;
-import org.jwcarman.codec.jackson.JacksonCodecFactory;
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import tools.jackson.databind.ObjectMapper;
 
 /**
  * What an agent has declared it is trying to do, in a table of its own.
@@ -55,13 +54,17 @@ public final class JdbcIntents<T> implements Intents<T> {
   private final String agentType;
   private final Codec<T> codec;
 
-  /** Defaults the stored shape to one {@link Jackson2CodecFactory} over {@code mapper}. */
+  /**
+   * Defaults the stored shape to whatever {@code codecs} builds for {@code vocabulary} -- a Spring
+   * application hands in the context's one {@link CodecFactory} bean, so this table is written and
+   * read exactly the way every other store is, storage transform included.
+   */
   public JdbcIntents(
-      DataSource dataSource, AgentType agentType, Class<T> vocabulary, ObjectMapper mapper) {
+      DataSource dataSource, AgentType agentType, Class<T> vocabulary, CodecFactory codecs) {
     this(
         dataSource,
         agentType,
-        new JacksonCodecFactory(Objects.requireNonNull(mapper, "mapper must not be null"))
+        Objects.requireNonNull(codecs, "codecs must not be null")
             .create(Objects.requireNonNull(vocabulary, "vocabulary must not be null")));
   }
 
@@ -72,7 +75,10 @@ public final class JdbcIntents<T> implements Intents<T> {
     this.codec = Objects.requireNonNull(codec, "codec must not be null");
   }
 
-  /** The column is text; an id crosses into SQL as its canonical string, as everywhere else. */
+  /**
+   * The type and id columns are text; an id crosses into SQL as its canonical string, as everywhere
+   * else. The declaration column is bytes -- the codec's, not a string's.
+   */
   private static String key(AgentId agentId) {
     return Objects.requireNonNull(agentId, "agentId must not be null").value().toString();
   }
@@ -81,14 +87,14 @@ public final class JdbcIntents<T> implements Intents<T> {
   public void declare(AgentId agent, T declaration) {
     Objects.requireNonNull(declaration, "declaration must not be null");
     String agentId = key(agent);
-    String encoded = new String(codec.encode(declaration), StandardCharsets.UTF_8);
+    byte[] encoded = codec.encode(declaration);
     while (true) {
       Optional<Long> version = currentVersion(agentId);
       if (version.isEmpty()) {
         try {
           jdbc.sql(INSERT).params(agentType, agentId, encoded).update();
           return;
-        } catch (org.springframework.dao.DuplicateKeyException _) {
+        } catch (DuplicateKeyException _) {
           // Another caller declared first. Fall through and update its row instead.
           continue;
         }
@@ -104,15 +110,11 @@ public final class JdbcIntents<T> implements Intents<T> {
   public Optional<T> latest(AgentId agent) {
     return jdbc.sql(SELECT)
         .params(agentType, key(agent))
-        .query((row, number) -> decode(row.getString("declaration")))
+        .query((row, number) -> codec.decode(row.getBytes("declaration")))
         .optional();
   }
 
   private Optional<Long> currentVersion(String agentId) {
     return jdbc.sql(SELECT_VERSION).params(agentType, agentId).query(Long.class).optional();
-  }
-
-  private T decode(String declaration) {
-    return codec.decode(declaration.getBytes(StandardCharsets.UTF_8));
   }
 }

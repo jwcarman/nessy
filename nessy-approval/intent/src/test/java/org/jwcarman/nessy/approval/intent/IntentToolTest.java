@@ -17,7 +17,7 @@ package org.jwcarman.nessy.approval.intent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.jwcarman.nessy.approval.intent.Fixtures.AGENT;
-import static org.jwcarman.nessy.approval.intent.Fixtures.MAPPER;
+import static org.jwcarman.nessy.approval.intent.Fixtures.CODECS;
 import static org.jwcarman.nessy.approval.intent.Fixtures.TYPE;
 import static org.jwcarman.nessy.approval.intent.Fixtures.declaring;
 import static org.jwcarman.nessy.approval.intent.Fixtures.freshDatabase;
@@ -102,7 +102,7 @@ class IntentToolTest {
     record Shutdown(String reason) implements Vocabulary {}
 
     private JdbcIntents<Vocabulary> store() {
-      return new JdbcIntents<>(freshDatabase(), TYPE, Vocabulary.class, MAPPER);
+      return new JdbcIntents<>(freshDatabase(), TYPE, Vocabulary.class, CODECS);
     }
 
     @Test

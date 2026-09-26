@@ -17,12 +17,9 @@ package org.jwcarman.nessy.backend.jdbc;
 
 import java.util.Objects;
 import javax.sql.DataSource;
-import org.jspecify.annotations.Nullable;
-import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.backend.DirectBackend;
-import org.jwcarman.nessy.backend.StorageCodec;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
@@ -51,29 +48,27 @@ public final class JdbcDirectBackend implements DirectBackend {
 
   /**
    * For a plain, non-Spring caller with no {@link PlatformTransactionManager} of its own and no
-   * storage transform -- mints a {@link JdbcTransactionManager} over {@code dataSource} the same
-   * way {@link JdbcRowLocks#JdbcRowLocks(DataSource)} does, and writes plain Jackson bytes.
+   * {@link CodecFactory} of its own -- mints a {@link JdbcTransactionManager} over {@code
+   * dataSource} the same way {@link JdbcRowLocks#JdbcRowLocks(DataSource)} does, and writes plain
+   * Jackson bytes.
    */
   public JdbcDirectBackend(DataSource dataSource) {
-    this(dataSource, new JdbcTransactionManager(dataSource), null);
+    this(
+        dataSource,
+        new JdbcTransactionManager(dataSource),
+        new JacksonCodecFactory(JsonMapper.builder().build()));
   }
 
   /**
-   * For a caller that already coordinates its own transactions and may encrypt or compress what it
-   * stores.
-   *
-   * @param storage what happens to a row's bytes after Jackson has written them and before Jackson
-   *     reads them back -- compression, encryption, both. {@code null} means no transform beyond
-   *     Jackson.
+   * For a caller that already coordinates its own transactions and builds its own codecs -- a
+   * Spring application hands in the context's {@link CodecFactory} bean, which is Jackson with
+   * whatever storage transform the application declared already applied.
    */
   public JdbcDirectBackend(
-      DataSource dataSource,
-      PlatformTransactionManager transactions,
-      @Nullable Codec<byte[]> storage) {
+      DataSource dataSource, PlatformTransactionManager transactions, CodecFactory codecs) {
     Objects.requireNonNull(dataSource, "dataSource must not be null");
     Objects.requireNonNull(transactions, "transactions must not be null");
-    CodecFactory jackson = new JacksonCodecFactory(JsonMapper.builder().build());
-    CodecFactory codecs = storage == null ? jackson : StorageCodec.of(storage).after(jackson);
+    Objects.requireNonNull(codecs, "codecs must not be null");
     JdbcClient jdbc = JdbcClient.create(dataSource);
     this.events = new JdbcAgentEvents(jdbc, codecs);
     this.payloads = new JdbcPayloads(jdbc, codecs);

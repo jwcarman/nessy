@@ -118,6 +118,15 @@
       <artifactId>nessy-engine</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- The storage this application chose. The starter wires whatever backend is on the
+         classpath and does not pick one for you, the way a data starter does not pick your driver:
+         nessy-backend-jdbc here means a DataSource is turned into the agent stores, and its absence
+         would leave the harness auto-configurations with no backend to fire on. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-backend-jdbc</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <!-- The real model client: streaming, capability declaration, prompt caching, and a Usage
          that reports cache reads. LM Studio speaks the OpenAI protocol, so this is the provider
          that talks to it, pointed at a different base URL, exactly as this module's own xAI

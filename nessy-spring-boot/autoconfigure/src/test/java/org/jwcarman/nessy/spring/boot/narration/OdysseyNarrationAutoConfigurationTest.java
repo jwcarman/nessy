@@ -22,11 +22,14 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
-import org.jwcarman.nessy.backend.StorageCodec;
+import org.jwcarman.nessy.api.StorageConfig;
 import org.jwcarman.nessy.narration.odyssey.AgentStreams;
 import org.jwcarman.nessy.narration.odyssey.OdysseyNarrator;
 import org.jwcarman.odyssey.autoconfigure.OdysseyAutoConfiguration;
@@ -49,6 +52,17 @@ class OdysseyNarrationAutoConfigurationTest {
     @Bean
     ObjectMapper mapper() {
       return JsonMapper.builder().build();
+    }
+
+    /**
+     * Substrate's own journal factory is {@code @ConditionalOnBean(CodecFactory.class)}, and in a
+     * running application that bean is the engine's one -- the single factory every store shares.
+     * Declared here rather than pulled in with the whole engine auto-configuration so this test
+     * stays about narration wiring.
+     */
+    @Bean
+    CodecFactory codecs(ObjectMapper mapper) {
+      return new JacksonCodecFactory(mapper);
     }
   }
 
@@ -126,29 +140,30 @@ class OdysseyNarrationAutoConfigurationTest {
   @Configuration(proxyBeanMethods = false)
   static class AnApplicationThatEncrypts {
     @Bean
-    StorageCodec storage() {
-      return StorageCodec.of(
-          new Codec<>() {
-            @Override
-            public byte[] encode(byte[] bytes) {
-              byte[] out = bytes.clone();
-              for (int i = 0; i < out.length; i++) {
-                out[i] ^= 0x5A;
-              }
-              return out;
-            }
+    Customizer<StorageConfig> storage() {
+      return config ->
+          config.append(
+              new Codec<>() {
+                @Override
+                public byte[] encode(byte[] bytes) {
+                  byte[] out = bytes.clone();
+                  for (int i = 0; i < out.length; i++) {
+                    out[i] ^= 0x5A;
+                  }
+                  return out;
+                }
 
-            @Override
-            public byte[] decode(byte[] bytes) {
-              return encode(bytes);
-            }
-          });
+                @Override
+                public byte[] decode(byte[] bytes) {
+                  return encode(bytes);
+                }
+              });
     }
   }
 
   @Test
-  @DisplayName("the engine's storage codec is the journal's payload transformer too")
-  void a_storage_codec_reaches_the_journal() {
+  @DisplayName("the engine's storage transform is the journal's payload transformer too")
+  void a_storage_transform_reaches_the_journal() {
     runner
         .withUserConfiguration(AnApplicationThatEncrypts.class)
         .run(
@@ -161,8 +176,8 @@ class OdysseyNarrationAutoConfigurationTest {
   }
 
   @Test
-  @DisplayName("without one, Substrate's own identity transformer stands")
-  void without_a_storage_codec_the_journal_is_left_alone() {
+  @DisplayName("without one declared, the journal is left alone")
+  void without_a_storage_transform_the_journal_is_left_alone() {
     runner.run(
         context -> {
           PayloadTransformer transformer = context.getBean(PayloadTransformer.class);

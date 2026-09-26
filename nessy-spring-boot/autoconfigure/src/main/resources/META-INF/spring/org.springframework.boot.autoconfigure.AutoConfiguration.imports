@@ -9,5 +9,7 @@ org.jwcarman.nessy.spring.boot.embedding.OpenAiEmbeddingAutoConfiguration
 org.jwcarman.nessy.spring.boot.embedding.GeminiEmbeddingAutoConfiguration
 org.jwcarman.nessy.spring.boot.prompt.PromptEngineAutoConfiguration
 org.jwcarman.nessy.spring.boot.prompt.PromptAutoConfiguration
+org.jwcarman.nessy.spring.boot.JdbcBackendAutoConfiguration
+org.jwcarman.nessy.spring.boot.InMemoryBackendAutoConfiguration
 org.jwcarman.nessy.spring.boot.DirectHarnessAutoConfiguration
 org.jwcarman.nessy.spring.boot.QueuedHarnessAutoConfiguration

@@ -9,7 +9,7 @@
 CREATE TABLE IF NOT EXISTS nessy_intent (
   agent_type  TEXT   NOT NULL,
   agent_id    TEXT   NOT NULL,
-  declaration TEXT   NOT NULL,
+  declaration BYTEA  NOT NULL,
   -- Bumped on every write. The store retries on a losing write rather than clobbering, so two
   -- callers declaring at once settle one after the other instead of one silently disappearing.
   version     BIGINT NOT NULL,
