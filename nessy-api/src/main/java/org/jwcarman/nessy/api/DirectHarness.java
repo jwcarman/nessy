@@ -15,8 +15,6 @@
  */
 package org.jwcarman.nessy.api;
 
-import org.jwcarman.codec.TypeRef;
-
 /**
  * Runs a turn on the calling thread and hands back what it came to.
  *
@@ -27,6 +25,11 @@ import org.jwcarman.codec.TypeRef;
  * is forbidden but because nothing in this world can produce it: the caller is the only thing that
  * can start a turn, and it is standing right there holding the answer.
  *
+ * <p><b>The answer's shape is a property of the harness, not of the call.</b> A {@link
+ * DirectHarnessFactory} settles it when the harness is made, the same way {@link
+ * QueuedHarnessFactory} settles what an agent takes: two harnesses of the same agent type may
+ * answer in different shapes, but one harness always answers in one.
+ *
  * <p><b>Whether it remembers is the store's business.</b> The same harness backed by memory forgets
  * and backed by a durable store resumes; neither changes a line of this interface.
  *
@@ -36,8 +39,11 @@ import org.jwcarman.codec.TypeRef;
  * kind of lock decides whether that holds across machines or only inside this one.
  *
  * <p><b>TODO -- James:</b> the name.
+ *
+ * @param <I> what a caller hands in
+ * @param <O> what a caller gets back
  */
-public interface DirectHarness<I> {
+public interface DirectHarness<I, O> {
 
   /**
    * One turn, start to finish, before this returns.
@@ -45,37 +51,20 @@ public interface DirectHarness<I> {
    * <p>Answers rather than throws for anything it understands: a model declining, a turn running
    * out of budget, a provider being unreachable and the agent already being busy are outcomes to
    * branch on, not faults.
-   */
-  /**
-   * Unconstrained rather than untyped, which is the distinction that matters. Nothing is asked of
-   * the answer's shape, so what comes back off the wire is prose and arrives in pieces a watcher
-   * can print as they land. Asking for a shape -- even one as bland as a record holding a string --
-   * makes those pieces fragments of JSON instead, which is why this is not a convenience over the
-   * typed form but the only form that streams.
    *
-   * <p>What it hands back is the TEXT of the answer: the text blocks, joined. Anything else the
-   * model produced -- thinking, a vendor's own opaque blocks -- is in the story and not in this
-   * string.
-   */
-  Outcome<String> ask(AgentId agent, I input);
-
-  /**
-   * One turn, answered in the shape of {@code type}.
+   * <p><b>Unconstrained rather than untyped is a distinction that lives on the factory now, not
+   * here.</b> A harness made with no output shape asks nothing of the answer's form, so what comes
+   * back off the wire is prose, and {@code O} is {@link String}. Asking for a shape -- even one as
+   * bland as a record holding a string -- makes {@code O} that shape instead, and the schema goes
+   * to the provider, which constrains the answer on its own wire -- natively on every vendor that
+   * has it -- and what comes back is parsed into {@code O} before the caller sees it. A caller
+   * never learns which mechanism the vendor used, which is the point.
    *
-   * <p>The schema goes to the provider, which constrains the answer on its own wire -- natively on
-   * every vendor that has it -- and what comes back is parsed into {@code type} before the caller
-   * sees it. A caller never learns which mechanism the vendor used, which is the point.
-   *
-   * <p>Support is not universal and is sometimes per model: a vendor that will not constrain an
-   * answer, or a model that answers around the shape, ends the turn {@link Outcome.Failed} rather
-   * than handing back something that does not fit.
+   * <p>Support for a shape is not universal and is sometimes per model: a vendor that will not
+   * constrain an answer, or a model that answers around the shape, ends the turn {@link
+   * Outcome.Failed} rather than handing back something that does not fit.
    */
-  <T> Outcome<T> ask(AgentId agent, I input, TypeRef<T> type);
-
-  /** The common case: a shape with no type arguments to capture. */
-  default <T> Outcome<T> ask(AgentId agent, I input, Class<T> type) {
-    return ask(agent, input, TypeRef.of(type));
-  }
+  Outcome<O> ask(AgentId agent, I input);
 
   /**
    * This agent is finished.

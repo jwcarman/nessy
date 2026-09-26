@@ -16,12 +16,14 @@
 
 package org.jwcarman.nessy.api;
 
+import org.jwcarman.codec.TypeRef;
+
 /**
  * Makes direct harnesses that share what an application owns once.
  *
  * <p>Where events are written, where content is kept, who provides inference, and what keeps two
  * callers off one agent are settled here; a harness adds what is its own -- a type, a prompt, its
- * tools, what it is shown.
+ * tools, what it is shown, and now the shape it answers in.
  *
  * <p><b>An implementation may be closeable</b>, which is a narrower difference from {@link
  * QueuedHarnessFactory} than it once was. That one owns a timer and a poller because work is meant
@@ -33,13 +35,42 @@ package org.jwcarman.nessy.api;
 public interface DirectHarnessFactory {
 
   /**
-   * A harness for one kind of agent.
+   * A harness that answers in the shape {@code answers} names.
    *
-   * @param <I> what a caller hands in. Unlike the queued door there is no type token: nothing here
-   *     is written down as {@code I}, so nothing needs a codec for it. What is stored is what the
-   *     renderer made of it.
+   * <p>The schema is generated once, here, from {@code answers} -- not per call -- because the
+   * shape a harness answers in is a fact about the harness, settled when it is made, the same way
+   * {@link QueuedHarnessFactory} settles what an agent takes. Every turn this harness runs asks the
+   * provider to constrain its answer to that shape and parses what comes back into {@code O} before
+   * handing it over.
+   *
+   * @param <I> what a caller hands in. There is no type token for it: nothing here is written down
+   *     as {@code I}, so nothing needs a codec for it. What is stored is what the renderer made of
+   *     it.
+   * @param <O> what a caller gets back. Unlike {@code I} this needs a token -- {@link TypeRef}
+   *     rather than {@link Class} because a shape may itself be generic, such as a list of records
+   *     -- because the shape crosses into a schema a provider is asked to honour.
    */
-  <I> DirectHarness<I> create(AgentType agentType, Customizer<DirectHarnessConfig<I>> customizer);
+  <I, O> DirectHarness<I, O> create(
+      AgentType agentType, TypeRef<O> answers, Customizer<DirectHarnessConfig<I>> customizer);
+
+  /** The common case: a shape with no type arguments to capture. */
+  default <I, O> DirectHarness<I, O> create(
+      AgentType agentType, Class<O> answers, Customizer<DirectHarnessConfig<I>> customizer) {
+    return create(agentType, TypeRef.of(answers), customizer);
+  }
+
+  /**
+   * A harness that asks nothing of the answer's shape.
+   *
+   * <p>Not a shorthand for {@link #create(AgentType, Class, Customizer)} with some magic type: no
+   * schema reaches the provider, and what comes back is the prose of the answer -- the text blocks,
+   * joined -- rather than something parsed. Anything else the model produced -- thinking, a
+   * vendor's own opaque blocks -- is in the story and not in this string.
+   *
+   * @param <I> what a caller hands in
+   */
+  <I> DirectHarness<I, String> create(
+      AgentType agentType, Customizer<DirectHarnessConfig<I>> customizer);
 
   /** The vendor behind this, as the OpenTelemetry GenAI conventions name it. */
   String providerName();

@@ -115,21 +115,21 @@ class DefaultDirectHarnessTest {
                 .mapper(MAPPER));
   }
 
-  private DirectHarness<String> harness(InferenceProvider model) {
+  private DirectHarness<String, String> harness(InferenceProvider model) {
     return harness(model, List.of(), Approver.allow(), new InMemoryLocks(), MAX_TAIL, List.of());
   }
 
-  private DirectHarness<String> harness(InferenceProvider model, Tool<Lookup> tool) {
+  private DirectHarness<String, String> harness(InferenceProvider model, Tool<Lookup> tool) {
     return harness(
         model, List.of(tool), Approver.allow(), new InMemoryLocks(), MAX_TAIL, List.of());
   }
 
-  private DirectHarness<String> harness(
+  private DirectHarness<String, String> harness(
       InferenceProvider model, Tool<Lookup> tool, Approver approver) {
     return harness(model, List.of(tool), approver, new InMemoryLocks(), MAX_TAIL, List.of());
   }
 
-  private DirectHarness<String> harness(
+  private DirectHarness<String, String> harness(
       InferenceProvider model,
       List<Tool<Lookup>> tools,
       Approver approver,
@@ -152,6 +152,30 @@ class DefaultDirectHarnessTest {
                                   }));
               tools.forEach(tool -> c.tool(tool, t -> t.approver(approver)));
             });
+  }
+
+  /** A harness bound to a shape at creation -- what asking for a shape means now. */
+  private <T> DirectHarness<String, T> shapedHarness(InferenceProvider model, Class<T> type) {
+    return factoryFor(model, new InMemoryLocks())
+        .<String, T>create(
+            TYPE,
+            type,
+            c ->
+                c.systemPrompt("You are terse.")
+                    .inputRenderer(said -> List.of(new Block.Text(said)))
+                    .inference(in -> in.model("a-model").context(ctx -> ctx.maxTail(MAX_TAIL))));
+  }
+
+  /** The general form, for a shape a {@code Class} cannot carry -- a generic collection. */
+  private <T> DirectHarness<String, T> shapedHarness(InferenceProvider model, TypeRef<T> type) {
+    return factoryFor(model, new InMemoryLocks())
+        .<String, T>create(
+            TYPE,
+            type,
+            c ->
+                c.systemPrompt("You are terse.")
+                    .inputRenderer(said -> List.of(new Block.Text(said)))
+                    .inference(in -> in.model("a-model").context(ctx -> ctx.maxTail(MAX_TAIL))));
   }
 
   private static InferenceResult answering(String text) {
@@ -296,7 +320,7 @@ class DefaultDirectHarnessTest {
   void a_scope_remembers() {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(answering("first")).then(answering("second"));
-    DirectHarness<String> harness = harness(model);
+    DirectHarness<String, String> harness = harness(model);
 
     harness.ask(agent, "one");
     harness.ask(agent, "two");
@@ -316,7 +340,7 @@ class DefaultDirectHarnessTest {
   @DisplayName("a terminated agent refuses further work, as an answer rather than an exception")
   void terminate_ends_it() {
     AgentId agent = AgentId.random();
-    DirectHarness<String> harness = harness(new Scripted().then(answering("ok")));
+    DirectHarness<String, String> harness = harness(new Scripted().then(answering("ok")));
     harness.ask(agent, "hello");
 
     harness.terminate(agent);
@@ -367,7 +391,7 @@ class DefaultDirectHarnessTest {
             return new Attempt.Ignored<>();
           }
         };
-    DirectHarness<String> harness =
+    DirectHarness<String, String> harness =
         harness(
             new Scripted().then(answering("never asked")),
             List.of(),
@@ -405,7 +429,7 @@ class DefaultDirectHarnessTest {
           }
           return answering("hi");
         };
-    DirectHarness<String> harness = harness(slow);
+    DirectHarness<String, String> harness = harness(slow);
 
     try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
       Future<Outcome<String>> holder = callers.submit(() -> harness.ask(agent, "hello"));
@@ -454,7 +478,7 @@ class DefaultDirectHarnessTest {
   void a_provider_that_never_answers_fails_at_its_own_timeout() {
     AgentId agent = AgentId.random();
     HangsOnce model = new HangsOnce();
-    DirectHarness<String> harness =
+    DirectHarness<String, String> harness =
         DefaultDirectHarnessFactory.of(
                 f ->
                     f.locks(new InMemoryLocks())
@@ -524,7 +548,7 @@ class DefaultDirectHarnessTest {
   void a_tool_that_never_returns_fails_at_its_own_timeout() {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("noted, moving on"));
-    DirectHarness<String> harness =
+    DirectHarness<String, String> harness =
         DefaultDirectHarnessFactory.of(
                 f ->
                     f.locks(new InMemoryLocks())
@@ -569,7 +593,7 @@ class DefaultDirectHarnessTest {
   void a_blocking_approver_that_never_answers_fails_at_its_own_timeout() {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("noted, moving on"));
-    DirectHarness<String> harness =
+    DirectHarness<String, String> harness =
         DefaultDirectHarnessFactory.of(
                 f ->
                     f.locks(new InMemoryLocks())
@@ -621,7 +645,7 @@ class DefaultDirectHarnessTest {
     Scripted model = new Scripted().then(answering("{\"city\":\"Paris\",\"country\":\"France\"}"));
 
     Outcome<Capital> outcome =
-        harness(model).ask(AgentId.random(), "capital of France?", Capital.class);
+        shapedHarness(model, Capital.class).ask(AgentId.random(), "capital of France?");
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>(new Capital("Paris", "France")));
     assertThat(model.seen).hasSize(1);
@@ -650,7 +674,7 @@ class DefaultDirectHarnessTest {
     Scripted model = new Scripted().then(answering("Paris, obviously."));
 
     Outcome<Capital> outcome =
-        harness(model).ask(AgentId.random(), "capital of France?", Capital.class);
+        shapedHarness(model, Capital.class).ask(AgentId.random(), "capital of France?");
 
     assertThat(outcome)
         .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.type(Outcome.Failed.class))
@@ -666,7 +690,7 @@ class DefaultDirectHarnessTest {
         new Scripted().then(answering("[{\"city\":\"Paris\",\"country\":\"France\"}]"));
 
     Outcome<List<Capital>> outcome =
-        harness(model).ask(AgentId.random(), "capitals?", new TypeRef<List<Capital>>() {});
+        shapedHarness(model, new TypeRef<List<Capital>>() {}).ask(AgentId.random(), "capitals?");
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>(List.of(new Capital("Paris", "France"))));
   }
@@ -675,7 +699,7 @@ class DefaultDirectHarnessTest {
   @DisplayName("ambient background reaches the model, assembled the way the queued door does it")
   void ambient_is_shown_to_the_model() {
     Scripted model = new Scripted().then(answering("noted"));
-    DirectHarness<String> harness =
+    DirectHarness<String, String> harness =
         harness(
             model,
             List.of(),
@@ -700,7 +724,7 @@ class DefaultDirectHarnessTest {
     for (int i = 0; i < 5; i++) {
       model.then(answering("ok " + i));
     }
-    DirectHarness<String> harness = harnessKeeping(model, 2);
+    DirectHarness<String, String> harness = harnessKeeping(model, 2);
 
     for (int i = 0; i < 5; i++) {
       harness.ask(agent, "question " + i);
@@ -711,7 +735,7 @@ class DefaultDirectHarnessTest {
     assertThat(model.seen.getLast().context().turns()).hasSizeLessThanOrEqualTo(2);
   }
 
-  private DirectHarness<String> harnessKeeping(Scripted model, int maxTail) {
+  private DirectHarness<String, String> harnessKeeping(Scripted model, int maxTail) {
     return harness(model, List.of(), Approver.allow(), new InMemoryLocks(), maxTail, List.of());
   }
 
@@ -807,7 +831,7 @@ class DefaultDirectHarnessTest {
       model.then(answering("ok " + i));
     }
     CountingPayloads counting = new CountingPayloads(payloads);
-    DirectHarness<String> harness =
+    DirectHarness<String, String> harness =
         DefaultDirectHarnessFactory.of(
                 f ->
                     f.locks(new InMemoryLocks())

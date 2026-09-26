@@ -88,7 +88,7 @@ class DurableDirectHarnessTest {
   }
 
   /** A harness that shares nothing with another but the database -- which is what a restart is. */
-  private DirectHarness<String> harness(InferenceProvider model) {
+  private DirectHarness<String, String> harness(InferenceProvider model) {
     return DefaultDirectHarnessFactory.of(
             f ->
                 f.locks(new InMemoryLocks())

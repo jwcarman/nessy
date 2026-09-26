@@ -55,14 +55,14 @@ public class ChatController {
 
   public record Line(String role, String text) {}
 
-  private final DirectHarness<String> harness;
+  private final DirectHarness<String, String> harness;
   private final TurnHistories histories;
   private final AgentStreams streams;
   private final ApprovalStreams approvals;
   private final ApprovalDesk desk;
 
   ChatController(
-      DirectHarness<String> harness,
+      DirectHarness<String, String> harness,
       TurnHistories histories,
       AgentStreams streams,
       ApprovalStreams approvals,

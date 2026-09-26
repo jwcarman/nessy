@@ -32,7 +32,9 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
+import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.block.Block;
@@ -72,18 +74,33 @@ class DirectHarnessLiveTest {
 
   record Answer(String answer, boolean confident) {}
 
-  private static DirectHarness<String> harness() {
+  private static DefaultDirectHarnessFactory factory() {
     assumeTrue(serving(), "no OpenAI-compatible endpoint at " + BASE_URL);
     return DefaultDirectHarnessFactory.inMemory(
-            OpenAiInferenceProvider.of(c -> c.apiKey(key()).baseUrl(BASE_URL)),
-            new VictoolsInputSchemaGenerator(),
-            JsonMapper.builder().build())
-        .<String>create(
-            TYPE,
-            c ->
-                c.systemPrompt("You are a terse assistant.")
-                    .inputRenderer(said -> List.of(new Block.Text(said)))
-                    .inference(in -> in.model(MODEL).maxTokens(4096)));
+        OpenAiInferenceProvider.of(c -> c.apiKey(key()).baseUrl(BASE_URL)),
+        new VictoolsInputSchemaGenerator(),
+        JsonMapper.builder().build());
+  }
+
+  private static Customizer<DirectHarnessConfig<String>> config() {
+    return c ->
+        c.systemPrompt("You are a terse assistant.")
+            .inputRenderer(said -> List.of(new Block.Text(said)))
+            .inference(in -> in.model(MODEL).maxTokens(4096));
+  }
+
+  /** Asks nothing of the answer's shape: no schema, prose back. */
+  private static DirectHarness<String, String> harness() {
+    return factory().<String>create(TYPE, config());
+  }
+
+  /** Bound to a shape at creation, the way every harness now is. */
+  private static <O> DirectHarness<String, O> harness(Class<O> answers) {
+    return factory().create(TYPE, answers, config());
+  }
+
+  private static <O> DirectHarness<String, O> harness(TypeRef<O> answers) {
+    return factory().create(TYPE, answers, config());
   }
 
   private static String key() {
@@ -94,7 +111,7 @@ class DirectHarnessLiveTest {
   @DisplayName("a model answers in the shape it was asked for, and the harness hands back the type")
   void an_answer_comes_back_as_the_type_that_was_asked_for() {
     Outcome<Capital> outcome =
-        harness().ask(AgentId.random(), "What is the capital of France?", Capital.class);
+        harness(Capital.class).ask(AgentId.random(), "What is the capital of France?");
 
     assertThat(outcome).isInstanceOf(Outcome.Answered.class);
     Capital capital = ((Outcome.Answered<Capital>) outcome).value();
@@ -106,7 +123,7 @@ class DirectHarnessLiveTest {
   @Test
   @DisplayName("the shape is honoured even when the question fits it badly")
   void the_shape_survives_a_question_that_does_not_suit_it() {
-    Outcome<Answer> outcome = harness().ask(AgentId.random(), "Tell me a joke.", Answer.class);
+    Outcome<Answer> outcome = harness(Answer.class).ask(AgentId.random(), "Tell me a joke.");
 
     assertThat(outcome).isInstanceOf(Outcome.Answered.class);
     assertThat(((Outcome.Answered<Answer>) outcome).value().answer()).isNotBlank();
@@ -117,12 +134,11 @@ class DirectHarnessLiveTest {
   @DisplayName("a collection asked for through a TypeRef comes back parsed")
   void a_collection_comes_back_parsed() {
     Outcome<List<Capital>> outcome =
-        harness()
+        harness(new TypeRef<List<Capital>>() {})
             .ask(
                 AgentId.random(),
                 "Give me the capitals of France and Japan as a JSON array of "
-                    + "objects with city and country.",
-                new TypeRef<List<Capital>>() {});
+                    + "objects with city and country.");
 
     assertThat(outcome).isInstanceOf(Outcome.Answered.class);
     assertThat(((Outcome.Answered<List<Capital>>) outcome).value()).hasSizeGreaterThanOrEqualTo(1);

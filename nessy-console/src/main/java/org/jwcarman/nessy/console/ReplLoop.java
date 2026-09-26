@@ -33,7 +33,7 @@ final class ReplLoop {
   /** What a person types to be told what they are actually talking to. */
   private static final String DIAGNOSTIC = "/config";
 
-  private final DirectHarness<String> harness;
+  private final DirectHarness<String, String> harness;
   private final AgentId agentId;
   private final ReplConfig config;
   private final ConsoleIo io;
@@ -45,7 +45,7 @@ final class ReplLoop {
   record Diagnostics(String provider, String model, int maxTokens) {}
 
   ReplLoop(
-      DirectHarness<String> harness,
+      DirectHarness<String, String> harness,
       AgentId agentId,
       ReplConfig config,
       ConsoleIo io,

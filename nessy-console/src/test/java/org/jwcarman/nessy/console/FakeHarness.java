@@ -18,7 +18,6 @@ package org.jwcarman.nessy.console;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.DirectHarness;
@@ -32,7 +31,7 @@ import org.jwcarman.nessy.api.Outcome;
  * <p>Narrated on THIS thread, which is now also what the real one does: the caller is waiting, so
  * there is no other thread for a fragment to arrive on.
  */
-final class FakeHarness implements DirectHarness<String> {
+final class FakeHarness implements DirectHarness<String, String> {
 
   private static final AgentType TYPE = new AgentType("chat");
 
@@ -65,11 +64,6 @@ final class FakeHarness implements DirectHarness<String> {
       answers.get(next++).forEach(event -> narrator.on(TYPE, agent, event));
     }
     return outcome;
-  }
-
-  @Override
-  public <T> Outcome<T> ask(AgentId agent, String input, TypeRef<T> type) {
-    throw new UnsupportedOperationException("a terminal asks for prose");
   }
 
   @Override

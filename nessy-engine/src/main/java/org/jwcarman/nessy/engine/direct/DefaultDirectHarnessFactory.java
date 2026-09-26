@@ -19,9 +19,13 @@ package org.jwcarman.nessy.engine.direct;
 import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.BiFunction;
+import org.jwcarman.codec.TypeRef;
+import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
@@ -29,7 +33,9 @@ import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
+import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.engine.core.AgentEventStore;
 import org.jwcarman.nessy.engine.effect.EffectTermsSource;
 import org.jwcarman.nessy.engine.narration.Listeners;
@@ -37,6 +43,7 @@ import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.OutputSchema;
 import org.jwcarman.nessy.spi.lock.Locks;
 import org.jwcarman.nessy.spi.store.PayloadStore;
 import tools.jackson.databind.ObjectMapper;
@@ -163,8 +170,38 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
   }
 
   @Override
-  public <I> DirectHarness<I> create(
+  public <I, O> DirectHarness<I, O> create(
+      AgentType agentType, TypeRef<O> answers, Customizer<DirectHarnessConfig<I>> customizer) {
+    Objects.requireNonNull(answers, "answers must not be null");
+    // The same generator the tools use: turning a Java type into a JSON schema is one job, and a
+    // provider constrains an answer with the same kind of document it constrains an argument with.
+    OutputSchema shape = new OutputSchema(schemas.generate(answers.rawClass()).json());
+    // Only this method knows O is what answers itself carries -- inside DefaultDirectHarness O is
+    // an abstract type variable, so the parse a harness will use is decided here and handed over.
+    return build(
+        agentType,
+        customizer,
+        Optional.of(shape),
+        (agent, answered) -> DefaultDirectHarness.read(payloads, mapper, agent, answered, answers));
+  }
+
+  @Override
+  public <I> DirectHarness<I, String> create(
       AgentType agentType, Customizer<DirectHarnessConfig<I>> customizer) {
+    // Only this method knows O is String here -- the same reason the bound overload above decides
+    // its own reading rather than build() doing it for both.
+    return build(
+        agentType,
+        customizer,
+        Optional.empty(),
+        (agent, answered) -> DefaultDirectHarness.saidText(payloads, agent, answered));
+  }
+
+  private <I, O> DefaultDirectHarness<I, O> build(
+      AgentType agentType,
+      Customizer<DirectHarnessConfig<I>> customizer,
+      Optional<OutputSchema> outputSchema,
+      BiFunction<AgentId, AgentEvent.InferenceAnswered, Outcome<O>> reading) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     DefaultDirectHarnessConfig<I> config = new DefaultDirectHarnessConfig<>(agentType);
     // What jars installed, then what this application says about every harness, then what this
@@ -190,27 +227,25 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
             DefaultDirectHarnessConfig.DEFAULT_RETRY_POLICY,
             inference.timeout(),
             inference.retryPolicy());
-    DefaultDirectHarness<I> harness =
-        new DefaultDirectHarness<>(
-            locks,
-            config.agentType(),
-            events,
-            payloads,
-            provider,
-            config.systemPromptSource(),
-            new InferenceOptions(inference.modelName(), inference.maxTokens()),
-            config.renderer()::render,
-            tools,
-            schemas,
-            mapper,
-            inference.summaries(),
-            inference.maxTail(),
-            inference.ambient(),
-            new Listeners(listeners, config.listeners()),
-            clock,
-            terms,
-            effects);
-    return harness;
+    return new DefaultDirectHarness<>(
+        locks,
+        config.agentType(),
+        events,
+        payloads,
+        provider,
+        config.systemPromptSource(),
+        new InferenceOptions(inference.modelName(), inference.maxTokens()),
+        config.renderer(),
+        tools,
+        reading,
+        outputSchema,
+        inference.summaries(),
+        inference.maxTail(),
+        inference.ambient(),
+        new Listeners(listeners, config.listeners()),
+        clock,
+        terms,
+        effects);
   }
 
   /**

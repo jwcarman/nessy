@@ -76,7 +76,7 @@ public final class Repl {
 
   static void run(DirectHarnessFactory factory, String model, ReplConfig config, ConsoleIo io) {
     ConsoleNarration narration = new ConsoleNarration(config.agentId(), io);
-    DirectHarness<String> harness =
+    DirectHarness<String, String> harness =
         factory.<String>create(
             config.type(),
             h -> {

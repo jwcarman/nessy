@@ -144,7 +144,7 @@ public class ChatConfiguration {
    * while it runs, which is narration rather than delivery.
    */
   @Bean
-  public DirectHarness<String> harness(
+  public DirectHarness<String, String> harness(
       DirectHarnessFactory factory,
       NessyProperties properties,
       SendEmailTool email,

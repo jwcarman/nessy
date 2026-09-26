@@ -27,7 +27,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
@@ -35,13 +35,13 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
+import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
-import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
@@ -99,7 +99,7 @@ import tools.jackson.databind.ObjectMapper;
  * itself: the deadline this door enforces is what recovery can rely on, and it is not the same
  * thing as the work actually stopping -- see the caveat on {@link #within}.
  */
-public final class DefaultDirectHarness<I> implements DirectHarness<I> {
+public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   private static final Logger LOG = LoggerFactory.getLogger(DefaultDirectHarness.class);
 
@@ -108,16 +108,28 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   private final AgentEventStore events;
   private final PayloadStore payloads;
   private final InferenceProvider provider;
-  private final Transcript transcript;
   private final SystemPromptSource systemPrompt;
   private final InferenceOptions options;
-  private final Function<I, List<Block.InputContent>> renderer;
+  private final InputRenderer<I> renderer;
   private final Tools tools;
 
-  /** How a Java type becomes a schema, and how an answer in that shape becomes the type back. */
-  private final InputSchemaGenerator schemas;
+  /**
+   * What is sent to the provider so it constrains the shape of every answer this harness gets --
+   * empty for a harness that asked for none, which is what keeps that path free of a schema.
+   */
+  private final Optional<OutputSchema> outputSchema;
 
-  private final ObjectMapper mapper;
+  /**
+   * How an answered event becomes {@code O}, bound once rather than per call: for an unstructured
+   * harness this reads the text of the answer, for a bound one it parses the text into the shape
+   * the harness was made with.
+   *
+   * <p>Handed in rather than chosen here: which one applies is a fact only the factory's two {@code
+   * create} methods can state, since only they know whether {@code O} is {@link String} or a bound
+   * shape -- inside this generic class {@code O} is neither. It arrives final, because a harness
+   * whose reader could be set afterwards would answer its first question with a null.
+   */
+  private final BiFunction<AgentId, AgentEvent.InferenceAnswered, Outcome<O>> reading;
 
   /** What the model is shown, assembled the same way the queued door assembles it. */
   private final InferenceContextAssembler assembler;
@@ -162,10 +174,10 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       InferenceProvider provider,
       SystemPromptSource systemPrompt,
       InferenceOptions options,
-      Function<I, List<Block.InputContent>> renderer,
+      InputRenderer<I> renderer,
       Tools tools,
-      InputSchemaGenerator schemas,
-      ObjectMapper mapper,
+      BiFunction<AgentId, AgentEvent.InferenceAnswered, Outcome<O>> reading,
+      Optional<OutputSchema> outputSchema,
       List<Summarizer> summaries,
       int maxTail,
       List<AmbientSource> ambient,
@@ -178,13 +190,12 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     this.events = events;
     this.payloads = payloads;
     this.provider = provider;
-    this.transcript = new Transcript(payloads);
     this.systemPrompt = systemPrompt;
     this.options = options;
-    this.renderer = renderer;
+    this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
     this.tools = tools;
-    this.schemas = schemas;
-    this.mapper = mapper;
+    this.reading = Objects.requireNonNull(reading, "reading must not be null");
+    this.outputSchema = Objects.requireNonNull(outputSchema, "outputSchema must not be null");
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
     this.terms = Objects.requireNonNull(terms, "terms must not be null");
     this.effects = Objects.requireNonNull(effects, "effects must not be null");
@@ -203,25 +214,12 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   }
 
   @Override
-  public Outcome<String> ask(AgentId agent, I input) {
-    return under(
-        agent,
-        () -> runTurn(agent, input, Optional.empty(), answered -> saidText(agent, answered)));
+  public Outcome<O> ask(AgentId agent, I input) {
+    return under(agent, () -> runTurn(agent, input));
   }
 
-  @Override
-  public <T> Outcome<T> ask(AgentId agent, I input, TypeRef<T> type) {
-    Objects.requireNonNull(type, "type must not be null");
-    // The same generator the tools use: turning a Java type into a JSON schema is one job, and a
-    // provider constrains an answer with the same kind of document it constrains an argument with.
-    OutputSchema shape = new OutputSchema(schemas.generate(type.rawClass()).json());
-    return under(
-        agent,
-        () -> runTurn(agent, input, Optional.of(shape), answered -> read(agent, answered, type)));
-  }
-
-  /** One turn at a time per agent, whatever shape was asked for. */
-  private <T> Outcome<T> under(AgentId agent, Supplier<Outcome<T>> turn) {
+  /** One turn at a time per agent. */
+  private Outcome<O> under(AgentId agent, Supplier<Outcome<O>> turn) {
     // Two callers asking at once used to race on that agent's stream and find out at the append;
     // now the second is told the agent is busy and nothing it did has to be undone. expectedLast
     // still guards the append, because a lease can expire under a holder that is merely slow --
@@ -229,11 +227,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     return locks.tryWithLock(agent.value().toString(), turn).orElse(new Outcome.Busy<>());
   }
 
-  private <T> Outcome<T> runTurn(
-      AgentId agent,
-      I input,
-      Optional<OutputSchema> shape,
-      Function<AgentEvent.InferenceAnswered, Outcome<T>> reading) {
+  private Outcome<O> runTurn(AgentId agent, I input) {
     // TWO READS, and they are not the same read.
     //
     // The state is rebuilt from the watermark alone -- the latest turn, and nothing before it.
@@ -266,7 +260,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
 
     // Claim-checked before it reaches the core, which never sees I and never sees blocks.
     Deque<AgentCommand> pending = new ArrayDeque<>();
-    pending.add(new AgentCommand.StartTurn(content.put(renderer.apply(input))));
+    pending.add(new AgentCommand.StartTurn(content.put(renderer.render(input))));
 
     while (!pending.isEmpty()) {
       Decision decision = state.execute(pending.poll());
@@ -279,11 +273,11 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       state = state.applyAll(decision.events());
 
       for (AgentEffect effect : decision.effects()) {
-        pending.add(perform(agent, content, effect, history, shape));
+        pending.add(perform(agent, content, effect, history));
       }
     }
 
-    return outcome(history, reading);
+    return outcome(agent, history);
   }
 
   @Override
@@ -307,17 +301,12 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
    * everything bounded by the deadline the effect's own terms name.
    */
   private AgentCommand perform(
-      AgentId agent,
-      PayloadStore content,
-      AgentEffect effect,
-      List<AgentEvent> history,
-      Optional<OutputSchema> shape) {
+      AgentId agent, PayloadStore content, AgentEffect effect, List<AgentEvent> history) {
     return within(
         termsFor(effect),
         () ->
             switch (effect) {
-              case AgentEffect.Infer _ ->
-                  new AgentCommand.CompleteInference(infer(agent, content, shape));
+              case AgentEffect.Infer _ -> new AgentCommand.CompleteInference(infer(agent, content));
 
               case AgentEffect.Approve approve -> approve(agent, content, approve, history);
 
@@ -516,15 +505,14 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
         .orElseThrow(() -> new IllegalStateException("a call outside any turn"));
   }
 
-  private AgentCommand.InferenceOutcome infer(
-      AgentId agent, PayloadStore content, Optional<OutputSchema> shape) {
+  private AgentCommand.InferenceOutcome infer(AgentId agent, PayloadStore content) {
     InferenceRequest request =
         new InferenceRequest(
             systemPrompt.forAgent(agent),
             assembler.assemble(new InferenceInvocation(agentType, agent, options)),
             toolset,
             options,
-            shape);
+            outputSchema);
 
     tell(agent, new Narration.Thinking());
     return switch (provider.infer(request, narratorFor(agent))) {
@@ -660,19 +648,17 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     };
   }
 
-  private <T> Outcome<T> outcome(
-      List<AgentEvent> history, Function<AgentEvent.InferenceAnswered, Outcome<T>> reading) {
+  private Outcome<O> outcome(AgentId agent, List<AgentEvent> history) {
     return history.reversed().stream()
-        .map(event -> asOutcome(event, reading))
+        .map(event -> asOutcome(agent, event))
         .filter(Objects::nonNull)
         .findFirst()
         .orElseThrow(() -> new IllegalStateException("a turn that ended without ending"));
   }
 
-  private <T> Outcome<T> asOutcome(
-      AgentEvent event, Function<AgentEvent.InferenceAnswered, Outcome<T>> reading) {
+  private Outcome<O> asOutcome(AgentId agent, AgentEvent event) {
     return switch (event) {
-      case AgentEvent.InferenceAnswered answered -> reading.apply(answered);
+      case AgentEvent.InferenceAnswered answered -> reading.apply(agent, answered);
       case AgentEvent.InferenceRefused refused -> new Outcome.Refused<>(refused.category());
       case AgentEvent.InferenceFailed failed -> new Outcome.Failed<>(failed.failure().reason());
       default -> null;
@@ -685,7 +671,8 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
    * <p>Nothing to do with narration, which no longer reads content at all: this is the answer the
    * caller asked for, and the only place the reference has to be resolved.
    */
-  private String textOf(AgentId agent, AgentEvent.InferenceAnswered answered) {
+  private static String textOf(
+      PayloadStore payloads, AgentId agent, AgentEvent.InferenceAnswered answered) {
     return switch (payloads.forAgent(agent).get(answered.answer())) {
       case PayloadStore.Resolved.Found(List<Block> blocks) ->
           blocks.stream()
@@ -697,9 +684,17 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
     };
   }
 
-  /** What a caller who asked for no particular shape gets: whatever the model said. */
-  private Outcome<String> saidText(AgentId agent, AgentEvent.InferenceAnswered answered) {
-    return new Outcome.Answered<>(textOf(agent, answered));
+  /**
+   * What a caller who asked for no particular shape gets: whatever the model said.
+   *
+   * <p>Package-private rather than {@code private}: called through a method reference the factory
+   * builds for a harness whose {@code O} is {@link String} -- the one fact only the factory's
+   * unstructured {@code create} method can state, since that method is where {@code O} is String
+   * rather than merely this class's abstract type variable.
+   */
+  static Outcome<String> saidText(
+      PayloadStore payloads, AgentId agent, AgentEvent.InferenceAnswered answered) {
+    return new Outcome.Answered<>(textOf(payloads, agent, answered));
   }
 
   /**
@@ -707,10 +702,18 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
    *
    * <p>A model that answered around the schema fails the turn rather than handing back something
    * that does not fit -- which is the whole reason a caller asked for a shape instead of prose.
+   *
+   * <p>Package-private for the same reason as {@link #saidText}: the factory's bound {@code create}
+   * method calls this on the harness it just built, where {@code type} and this instance's {@code
+   * O} are the same type parameter.
    */
-  private <T> Outcome<T> read(
-      AgentId agent, AgentEvent.InferenceAnswered answered, TypeRef<T> type) {
-    String json = textOf(agent, answered);
+  static <T> Outcome<T> read(
+      PayloadStore payloads,
+      ObjectMapper mapper,
+      AgentId agent,
+      AgentEvent.InferenceAnswered answered,
+      TypeRef<T> type) {
+    String json = textOf(payloads, agent, answered);
     try {
       return new Outcome.Answered<>(mapper.readValue(json, mapper.constructType(type.getType())));
     } catch (RuntimeException notTheShape) {
