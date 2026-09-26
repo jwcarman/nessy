@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.engine.jdbc;
 
-import java.sql.SQLException;
 import java.util.Objects;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
@@ -23,7 +22,6 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.backend.lock.LockKind;
 import org.jwcarman.nessy.backend.lock.Locks;
-import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -71,34 +69,20 @@ import org.springframework.transaction.support.TransactionTemplate;
  * {@code @Transactional} method therefore holds the agent lock until THAT method's commit, which
  * can be far longer than the step this class means to guard, and breaks the invariant that nothing
  * holds an agent lock across anything slow. That is the calling application's transaction and its
- * choice to make; this class cannot forbid it without {@code REQUIRES_NEW}, which is the
- * propagation ruled out above for a worse reason. Anyone who finds a queue of waiters behind a slow
- * request handler should look here first.
+ * choice to make; this class cannot forbid it without {@code REQUIRES_NEW}, which would separate
+ * the lock from the work it guards -- the very thing {@link #withLock} exists to prevent. Anyone
+ * who finds a queue of waiters behind a slow request handler should look here first.
  *
- * <p><b>Ensuring the row cannot be allowed to wait.</b> {@code INSERT ... ON CONFLICT DO NOTHING}
- * has no {@code NOWAIT} form: when a rival transaction has already inserted the same key and not
- * yet committed, Postgres makes a second insert of that key wait for the rival to commit or roll
- * back before it can even decide whether there is a conflict -- measured against Postgres 18. Doing
- * the ensure inside the same transaction as {@code FOR UPDATE [NOWAIT]}, as the row lock and the
- * work it guards must be, would therefore make {@link #tryWithLock} wait on a brand-new key exactly
- * when a caller is relying on it never waiting: the first contention on an agent's first lock of a
- * kind. So the ensure runs in a transaction of its own, with {@code REQUIRES_NEW} rather than the
- * {@code REQUIRED} used everywhere else in this class -- deliberately, and only here: {@code
- * REQUIRES_NEW} on the LOCK-AND-WORK transaction would separate the lock from the work it guards,
- * which is the mistake this class exists to prevent; on the ensure it does the opposite, because
- * the ensure is idempotent bookkeeping with nothing of the caller's in it and nothing to keep
- * atomic with anything else -- a row with no columns but the key. Committing it immediately, on its
- * own, before the lock-and-work transaction opens means the row is never left uncommitted for the
- * length of a turn: a rival's insert can still be made to wait, but only for as long as this
- * one-statement transaction takes to commit, never for as long as the work being guarded takes to
- * run. This holds regardless of whether the caller already has an ambient transaction open --
- * {@code REQUIRES_NEW} suspends it for the ensure and resumes it afterward, so a caller nested
- * inside its own {@code @Transactional} method gets the same guarantee as one with no ambient
- * transaction at all.
+ * <p><b>The row is ensured to exist in a transaction of its own.</b> {@code REQUIRES_NEW} rather
+ * than the {@code REQUIRED} used everywhere else in this class: the ensure is idempotent
+ * bookkeeping with nothing of the caller's in it and nothing to keep atomic with anything else -- a
+ * row with no columns but the key. Committing it immediately, on its own, before the lock-and-work
+ * transaction opens means the row is never left uncommitted for the length of a turn. This holds
+ * regardless of whether the caller already has an ambient transaction open -- {@code REQUIRES_NEW}
+ * suspends it for the ensure and resumes it afterward, so a caller nested inside its own
+ * {@code @Transactional} method gets the same guarantee as one with no ambient transaction at all.
  */
 public final class JdbcRowLocks implements Locks {
-
-  private static final String LOCK_NOT_AVAILABLE_SQLSTATE = "55P03";
 
   private static final String ENSURE =
       """
@@ -113,14 +97,6 @@ public final class JdbcRowLocks implements Locks {
         FROM nessy_lock
        WHERE kind = ? AND agent_type = ? AND agent_id = ?
          FOR UPDATE
-      """;
-
-  private static final String TRY_LOCK =
-      """
-      SELECT 1
-        FROM nessy_lock
-       WHERE kind = ? AND agent_type = ? AND agent_id = ?
-         FOR UPDATE NOWAIT
       """;
 
   private final JdbcClient jdbc;
@@ -152,30 +128,6 @@ public final class JdbcRowLocks implements Locks {
   }
 
   @Override
-  public <T> Attempt<T> tryWithLock(
-      LockKind kind, AgentType type, AgentId agent, Supplier<T> work) {
-    Objects.requireNonNull(kind, "kind must not be null");
-    Objects.requireNonNull(type, "type must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
-    Objects.requireNonNull(work, "work must not be null");
-    ensureTransaction.executeWithoutResult(_ -> ensure(kind, type, agent));
-    try {
-      T result =
-          transactions.execute(
-              _ -> {
-                take(TRY_LOCK, kind, type, agent);
-                return work.get();
-              });
-      return new Attempt.Ran<>(result);
-    } catch (DataAccessException e) {
-      if (isLockNotAvailable(e)) {
-        return new Attempt.Ignored<>();
-      }
-      throw e;
-    }
-  }
-
-  @Override
   public <T> T withLock(LockKind kind, AgentType type, AgentId agent, Supplier<T> work) {
     Objects.requireNonNull(kind, "kind must not be null");
     Objects.requireNonNull(type, "type must not be null");
@@ -195,21 +147,5 @@ public final class JdbcRowLocks implements Locks {
 
   private void take(String sql, LockKind kind, AgentType type, AgentId agent) {
     jdbc.sql(sql).params(kind.value(), type.value(), agent.value()).query(Integer.class).single();
-  }
-
-  /**
-   * Whether {@code e} is a refused {@code FOR UPDATE NOWAIT} rather than a real failure. SQLSTATE
-   * {@value #LOCK_NOT_AVAILABLE_SQLSTATE} ({@code lock_not_available}) is exactly what Postgres
-   * raises for that refusal and nothing else, so it is the discriminator -- everything else
-   * propagates, deliberately uncaught.
-   */
-  private static boolean isLockNotAvailable(Throwable e) {
-    for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-      if (cause instanceof SQLException sqlException
-          && LOCK_NOT_AVAILABLE_SQLSTATE.equals(sqlException.getSQLState())) {
-        return true;
-      }
-    }
-    return false;
   }
 }

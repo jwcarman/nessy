@@ -15,14 +15,13 @@
  */
 package org.jwcarman.nessy.backend.lock;
 
-import java.time.Duration;
 import java.util.Objects;
 import java.util.function.Supplier;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 
 /**
- * "Only one of us should do this right now."
+ * "Only one of us should do this right now, and I would rather wait than be told no."
  *
  * <p>A family of locks, one per {@code (kind, agent type, agent id)}, held by whoever asks first.
  * The key is the agent -- James has said twice that the lock is "around an agent type/agent id/kind
@@ -30,26 +29,20 @@ import org.jwcarman.nessy.api.AgentType;
  * write {@code agent.value().toString()} was silently sharing a namespace with every other kind of
  * work over that same agent id.
  *
- * <p><b>Two verbs, for two different callers.</b> Summarising an agent is opportunistic: somebody
- * will do it eventually, it does not matter who, and it matters that it is not two of us at once --
- * that caller wants {@link #tryWithLock}, which never waits and is refused at once if somebody else
- * holds it. A harness asking to run a turn is the other way -- nothing else will pick it up, and
- * its caller is right there and would rather wait a short while than be told no -- so that caller
- * wants {@link #withLock}, which asks until it gets the lock.
+ * <p><b>For a caller with nothing else to do but wait.</b> A harness asking to run a turn has
+ * nobody else who could run it, and its caller is right there and would rather wait a short while
+ * than be told no -- that is {@link #withLock}, the only verb here: it either runs the work or
+ * throws, and never reports a refusal a caller has to branch on. Opportunistic work, where somebody
+ * else running it instead is a fine outcome, belongs to {@link
+ * org.jwcarman.nessy.backend.lease.Leases} instead, which is exactly why that family exists apart
+ * from this one.
  *
- * <p><b>What the kind is bound to, and how long a holder may hold, are not here.</b> The kind is a
- * parameter of every call, but what a kind means -- how it is stored, whether a holder can die
- * without releasing -- belongs to whatever is doing the excluding: a lease has a time-to-live
- * because a holder on another machine can die without releasing, and a lock inside one process has
- * none because the process exiting releases everything. A caller states what it wants -- this kind
- * of work, over this agent, at most one of us, now or eventually -- and is handed something that
- * knows how to arrange it.
- *
- * <p><b>The work must be idempotent, or at least harmless to redo.</b> This holds whichever
- * implementation a caller was given, and it is not the same promise as the exclusion itself: where
- * a holder can die, a holder that is merely slow is indistinguishable from one that died, so its
- * work can be taken over while it is still running. A caller cannot tell which implementation it
- * has, so it must assume the weaker one.
+ * <p><b>Exclusion here is exact, not believed.</b> What a kind is bound to and how it is stored
+ * belongs to whatever is doing the excluding, but every implementation of this interface ties a
+ * lock to something that cannot lie about being alive -- a database transaction, or a process that
+ * releases everything it held the moment it exits -- so there is nothing approximate about who
+ * holds one. That is also why a lock must stay short: nothing may hold one across anything slow,
+ * such as a model call.
  */
 public interface Locks {
 
@@ -64,65 +57,15 @@ public interface Locks {
   LockKind TURN = new LockKind("nessy.agent.turn");
 
   /**
-   * How often the default {@link #withLock} asks again after being refused.
-   *
-   * <p>Short enough that a caller waiting for a step -- a database round trip, not an inference --
-   * is not made to feel it, long enough that polling is not itself a source of load. An
-   * implementation that can wait natively, such as a row lock's {@code FOR UPDATE}, overrides this
-   * default rather than living with the poll.
-   */
-  Duration POLL_INTERVAL = Duration.ofMillis(20);
-
-  /**
-   * Runs {@code work} if the lock for {@code (kind, type, agent)} can be taken, and says what came
-   * of it.
-   *
-   * <p>The lock is released when the work returns, however it returns; an exception from the work
-   * is the caller's, after the release.
-   *
-   * <p><b>Re-entering is undefined.</b> Work that asks for a lock from this same instance may be
-   * let through, refused or wedged depending on what is underneath, so do not.
-   *
-   * @return what the work produced, or {@link Attempt.Ignored} if somebody else held the lock
-   */
-  <T> Attempt<T> tryWithLock(LockKind kind, AgentType type, AgentId agent, Supplier<T> work);
-
-  /**
    * Runs {@code work} once the lock for {@code (kind, type, agent)} is held, waiting for it if it
    * must.
    *
-   * <p>The default polls {@link #tryWithLock} every {@link #POLL_INTERVAL} until it succeeds, which
-   * lets any {@link Locks} satisfy this signature honestly, a lease included: slow, unfair -- a
-   * late arrival can win a poll a longer-waiting caller loses -- and a round trip per attempt. An
-   * implementation that can wait natively, such as a database row lock, overrides this with
-   * something that actually blocks and queues waiters in arrival order.
+   * <p><b>Waiting is the implementation's to do, and there is deliberately no default.</b> Every
+   * substrate that belongs here can block properly -- a row lock has {@code FOR UPDATE}, which
+   * queues waiters in the database; an in-memory one has a {@link java.util.concurrent.locks.Lock}
+   * -- so there is no honest default that would not be a poll dressed up as a wait.
    */
-  default <T> T withLock(LockKind kind, AgentType type, AgentId agent, Supplier<T> work) {
-    while (true) {
-      if (tryWithLock(kind, type, agent, work) instanceof Attempt.Ran<T>(T result)) {
-        return result;
-      }
-      try {
-        Thread.sleep(POLL_INTERVAL);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new IllegalStateException("interrupted while waiting for " + kind, e);
-      }
-    }
-  }
-
-  /** For a caller whose work produces nothing worth having. */
-  default Attempt<Void> tryWithLock(LockKind kind, AgentType type, AgentId agent, Runnable work) {
-    Objects.requireNonNull(work, "work must not be null");
-    return tryWithLock(
-        kind,
-        type,
-        agent,
-        () -> {
-          work.run();
-          return null;
-        });
-  }
+  <T> T withLock(LockKind kind, AgentType type, AgentId agent, Supplier<T> work);
 
   /** For a caller whose work produces nothing worth having, and would rather wait than be told. */
   default void withLock(LockKind kind, AgentType type, AgentId agent, Runnable work) {
@@ -135,31 +78,5 @@ public interface Locks {
           work.run();
           return null;
         });
-  }
-
-  /**
-   * Whether the work ran, and what it produced.
-   *
-   * <p>Two arms rather than an empty optional, because "nobody ran it" and "it ran and produced
-   * nothing" are different answers and a caller acts differently on each. An optional would report
-   * side-effecting work -- the kind this most often guards -- as though it had been refused.
-   */
-  sealed interface Attempt<T> {
-
-    /** It ran, and this is what it returned -- which may be null, if that is what the work says. */
-    record Ran<T>(T result) implements Attempt<T> {}
-
-    /**
-     * Somebody else held the lock, so nothing happened.
-     *
-     * <p>Deliberately says nothing about who holds it or for how long. A lock inside one process
-     * knows neither, and a lease knows only what a row said a moment ago.
-     */
-    record Ignored<T>() implements Attempt<T> {}
-
-    /** What the work produced, or {@code other} if it never ran. */
-    default T orElse(T other) {
-      return this instanceof Ran<T>(T result) ? result : other;
-    }
   }
 }

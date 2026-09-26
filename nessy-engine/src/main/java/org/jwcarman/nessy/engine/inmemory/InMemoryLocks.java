@@ -57,22 +57,26 @@ public final class InMemoryLocks implements Locks {
 
   private record Key(LockKind kind, AgentType type, AgentId agent) {}
 
+  /**
+   * Blocks on the entry's own lock rather than asking for it over and over.
+   *
+   * <p>The claim is taken first, so the entry cannot be evicted by a releasing holder while this
+   * caller is still waiting on it -- {@code holders} is what keeps it in the map, and a waiter is a
+   * holder of the entry even before it holds the lock.
+   */
   @Override
-  public <T> Attempt<T> tryWithLock(
-      LockKind kind, AgentType type, AgentId agent, Supplier<T> work) {
+  public <T> T withLock(LockKind kind, AgentType type, AgentId agent, Supplier<T> work) {
     Objects.requireNonNull(kind, "kind must not be null");
     Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(agent, "agent must not be null");
     Objects.requireNonNull(work, "work must not be null");
     Key key = new Key(kind, type, agent);
     Entry entry = locks.compute(key, (_, existing) -> claim(existing));
-    // tryLock rather than lock: refusing is the contract, and waiting is not.
-    if (!entry.lock.tryLock()) {
-      release(key);
-      return new Attempt.Ignored<>();
-    }
+    // lock rather than tryLock: waiting is the contract here, and ReentrantLock queues waiters
+    // instead of leaving them to race.
+    entry.lock.lock();
     try {
-      return new Attempt.Ran<>(work.get());
+      return work.get();
     } finally {
       entry.lock.unlock();
       release(key);

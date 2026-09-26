@@ -26,8 +26,8 @@ import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.backend.lock.LockKind;
-import org.jwcarman.nessy.backend.lock.Locks;
+import org.jwcarman.nessy.backend.lease.LeaseKind;
+import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.inference.InferenceContext;
@@ -61,7 +61,7 @@ public class EpisodeSummarizer {
    * the two never exclude each other: a head summary and an episode summary of the same agent are
    * unrelated work.
    */
-  public static final LockKind LOCK_KIND = new LockKind("nessy.memory.episode-summary");
+  public static final LeaseKind LEASE_KIND = new LeaseKind("nessy.memory.episode-summary");
 
   public static final String PROMPT =
       """
@@ -88,7 +88,7 @@ public class EpisodeSummarizer {
     private AgentType agentType;
     private JdbcEpisodes episodes;
     private TurnHistories histories;
-    private Locks locks;
+    private Leases leases;
     private InferenceProvider provider;
     private InferenceOptions options;
     private ObservationRegistry observations = ObservationRegistry.NOOP;
@@ -113,9 +113,9 @@ public class EpisodeSummarizer {
       return this;
     }
 
-    /** Whose turn it is. */
-    public Config locks(Locks locks) {
-      this.locks = locks;
+    /** Whose turn it is to summarise -- opportunistic, so a lease and not a lock. */
+    public Config leases(Leases leases) {
+      this.leases = leases;
       return this;
     }
 
@@ -152,7 +152,7 @@ public class EpisodeSummarizer {
   private final AgentType agentType;
   private final JdbcEpisodes episodes;
   private final TurnHistories histories;
-  private final Locks locks;
+  private final Leases leases;
   private final InferenceProvider provider;
   private final InferenceOptions options;
   private final SummaryObservation observation;
@@ -161,7 +161,7 @@ public class EpisodeSummarizer {
     this.agentType = Objects.requireNonNull(config.agentType, "agentType is required");
     this.episodes = Objects.requireNonNull(config.episodes, "episodes are required");
     this.histories = Objects.requireNonNull(config.histories, "histories are required");
-    this.locks = Objects.requireNonNull(config.locks, "locks are required");
+    this.leases = Objects.requireNonNull(config.leases, "leases are required");
     Objects.requireNonNull(config.provider, "inference(provider, options) is required");
     this.options =
         Objects.requireNonNull(config.options, "inference(provider, options) is required");
@@ -185,8 +185,8 @@ public class EpisodeSummarizer {
       observation.observe(
           agentId,
           () -> {
-            return locks
-                .tryWithLock(LOCK_KIND, agentType, agentId, () -> summarizeAll(agentId))
+            return leases
+                .tryWithLease(LEASE_KIND, agentType, agentId, () -> summarizeAll(agentId))
                 .orElse("lease-refused");
           });
     }

@@ -87,9 +87,9 @@ class HeadSummarizerFoldTest {
                 c.agentType(CHAT)
                     .summaries(summaries)
                     .histories(factory.histories())
-                    .locks(
+                    .leases(
                         new JdbcLeases(
-                            dataSource, Map.of(HeadSummarizer.LOCK_KIND, Duration.ofSeconds(30))))
+                            dataSource, Map.of(HeadSummarizer.LEASE_KIND, Duration.ofSeconds(30))))
                     .inference(model, InferenceOptions.of("m"))
                     .tail(MAX_TAIL, MIN_TAIL));
     return factory.create(

@@ -55,7 +55,7 @@
       <artifactId>awaitility</artifactId>
       <scope>test</scope>
     </dependency>
-    <!-- The Locks contract this satisfies. -->
+    <!-- The Leases contract this satisfies. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-backend-spi</artifactId>

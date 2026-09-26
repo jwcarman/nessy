@@ -36,7 +36,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-/** Exclusion that is exact: a caller waits for it, or is refused at once, and never guesses. */
+/** Exclusion that is exact: a caller waits for it, and never guesses whether it was granted. */
 @Tag("container")
 @DisplayName("A row lock in a database")
 class JdbcRowLocksTest {
@@ -92,60 +92,9 @@ class JdbcRowLocksTest {
   @Test
   @DisplayName("a lock nobody holds can be taken at once")
   void an_unheld_lock_can_be_taken() {
-    Locks.Attempt<String> attempt = locks.tryWithLock(KIND, TYPE, AgentId.random(), () -> "ran");
+    String result = locks.withLock(KIND, TYPE, AgentId.random(), () -> "ran");
 
-    assertThat(attempt).isEqualTo(new Locks.Attempt.Ran<>("ran"));
-  }
-
-  @Test
-  @DisplayName(
-      "a second attempt on the same kind and agent is ignored while the first holds it, and can run once it returns")
-  void a_held_lock_refuses_a_second_attempt_and_frees_it_on_return() throws InterruptedException {
-    AgentId agent = AgentId.random();
-    CountDownLatch holding = new CountDownLatch(1);
-    CountDownLatch release = new CountDownLatch(1);
-    Thread holder = holderOf(KIND, agent, holding, release);
-    holding.await();
-
-    Locks.Attempt<String> whileHeld = locks.tryWithLock(KIND, TYPE, agent, () -> "should not run");
-
-    release.countDown();
-    holder.join();
-    Locks.Attempt<String> afterReturn = locks.tryWithLock(KIND, TYPE, agent, () -> "ran");
-
-    assertThat(whileHeld).isEqualTo(new Locks.Attempt.Ignored<>());
-    assertThat(afterReturn).isEqualTo(new Locks.Attempt.Ran<>("ran"));
-  }
-
-  /**
-   * Measured against Postgres 18: {@code INSERT ... ON CONFLICT DO NOTHING} has no {@code NOWAIT}
-   * form, so ensuring the row must not share a transaction with the {@code FOR UPDATE NOWAIT} that
-   * follows it, or a contender's ensure blocks on the holder's still-open transaction and {@link
-   * Locks#tryWithLock} waits despite its contract. Run on a future so a regression fails the
-   * assertion instead of hanging the build.
-   */
-  @Test
-  @DisplayName(
-      "a key contended for the first time refuses rather than waiting on the row's own creation")
-  void a_brand_new_key_refuses_promptly_rather_than_waiting_on_the_ensure() throws Exception {
-    AgentId agent = AgentId.random();
-    CountDownLatch holding = new CountDownLatch(1);
-    CountDownLatch release = new CountDownLatch(1);
-    Thread holder = holderOf(KIND, agent, holding, release);
-    holding.await();
-
-    CompletableFuture<Locks.Attempt<String>> attempt =
-        CompletableFuture.supplyAsync(
-            () -> locks.tryWithLock(KIND, TYPE, agent, () -> "should not run"));
-
-    try {
-      assertThat(attempt.get(2, TimeUnit.SECONDS))
-          .as("refused promptly, not made to wait for the holder's own release")
-          .isEqualTo(new Locks.Attempt.Ignored<>());
-    } finally {
-      release.countDown();
-      holder.join();
-    }
+    assertThat(result).isEqualTo("ran");
   }
 
   @Test
@@ -158,12 +107,12 @@ class JdbcRowLocksTest {
     Thread holder = holderOf(KIND, agent, holding, release);
     holding.await();
 
-    Locks.Attempt<String> attempt = locks.tryWithLock(otherKind, TYPE, agent, () -> "ran");
+    String result = locks.withLock(otherKind, TYPE, agent, () -> "ran");
 
     release.countDown();
     holder.join();
 
-    assertThat(attempt).isEqualTo(new Locks.Attempt.Ran<>("ran"));
+    assertThat(result).isEqualTo("ran");
   }
 
   @Test
@@ -176,12 +125,12 @@ class JdbcRowLocksTest {
     Thread holder = holderOf(KIND, held, holding, release);
     holding.await();
 
-    Locks.Attempt<String> attempt = locks.tryWithLock(KIND, TYPE, other, () -> "ran");
+    String result = locks.withLock(KIND, TYPE, other, () -> "ran");
 
     release.countDown();
     holder.join();
 
-    assertThat(attempt).isEqualTo(new Locks.Attempt.Ran<>("ran"));
+    assertThat(result).isEqualTo("ran");
   }
 
   @Test
@@ -255,10 +204,8 @@ class JdbcRowLocksTest {
             .single();
     assertThat(rows).as("the insert rolled back with the transaction that opened it").isZero();
 
-    Locks.Attempt<String> afterThrow = locks.tryWithLock(KIND, TYPE, agent, () -> "ran");
-    assertThat(afterThrow)
-        .as("the exception did not leave the lock held")
-        .isEqualTo(new Locks.Attempt.Ran<>("ran"));
+    String afterThrow = locks.withLock(KIND, TYPE, agent, () -> "ran");
+    assertThat(afterThrow).as("the exception did not leave the lock held").isEqualTo("ran");
   }
 
   @Nested
@@ -270,10 +217,9 @@ class JdbcRowLocksTest {
     void takes_the_lock_the_same_way() {
       Locks explicit = new JdbcRowLocks(dataSource, new JdbcTransactionManager(dataSource));
 
-      Locks.Attempt<String> attempt =
-          explicit.tryWithLock(KIND, TYPE, AgentId.random(), () -> "ran");
+      String result = explicit.withLock(KIND, TYPE, AgentId.random(), () -> "ran");
 
-      assertThat(attempt).isEqualTo(new Locks.Attempt.Ran<>("ran"));
+      assertThat(result).isEqualTo("ran");
     }
   }
 }

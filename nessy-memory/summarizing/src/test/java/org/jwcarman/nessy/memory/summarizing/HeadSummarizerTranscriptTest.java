@@ -34,9 +34,9 @@ import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
-import org.jwcarman.nessy.backend.lock.LockKind;
-import org.jwcarman.nessy.backend.lock.Locks;
-import org.jwcarman.nessy.backend.lock.Locks.Attempt;
+import org.jwcarman.nessy.backend.lease.Attempt;
+import org.jwcarman.nessy.backend.lease.LeaseKind;
+import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.inference.InferenceOptions;
 
 /** The head as the summarising model reads it: one line per thing that happened. */
@@ -104,11 +104,13 @@ class HeadSummarizerTranscriptTest {
             c.agentType(type)
                 .summaries(new JdbcSummaries(new org.postgresql.ds.PGSimpleDataSource(), type))
                 .histories((agentType, agentId) -> null)
-                .locks(
-                    new Locks() {
+                .leases(
+                    // Enough of a Leases to build a config with, and no more: this test only asks
+                    // what the constructor rejects, so nothing here is ever asked to run work.
+                    new Leases() {
                       @Override
-                      public <T> Attempt<T> tryWithLock(
-                          LockKind kind, AgentType type, AgentId agent, Supplier<T> work) {
+                      public <T> Attempt<T> tryWithLease(
+                          LeaseKind kind, AgentType type, AgentId agent, Supplier<T> work) {
                         return new Attempt.Ignored<>();
                       }
                     })

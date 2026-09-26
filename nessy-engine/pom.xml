@@ -113,11 +113,6 @@
       <artifactId>nessy-embedding-spi</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-lease</artifactId>
-      <version>${project.version}</version>
-    </dependency>
     <!-- The event grammar, AgentEvents/Locks/Payloads: what a backend implements, and what the
          harnesses are typed on. -->
     <dependency>

@@ -24,14 +24,15 @@ import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.backend.lock.LockKind;
-import org.jwcarman.nessy.backend.lock.Locks;
+import org.jwcarman.nessy.backend.lease.Attempt;
+import org.jwcarman.nessy.backend.lease.LeaseKind;
+import org.jwcarman.nessy.backend.lease.Leases;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
- * Locks as leases: rows in {@code nessy_lease}, held for a time and taken over once it passes.
+ * {@link Leases} over rows in {@code nessy_lease}, held for a time and taken over once it passes.
  *
  * <p>The expiry is what makes this work across machines. A holder that finishes releases; a holder
  * that dies leaves its row to expire, after which the next caller takes it over -- which is also
@@ -54,7 +55,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * working lets two run at once, which is the failure this exists to prevent, whereas one that
  * outlives a crash only delays the next attempt.
  */
-public class JdbcLeases implements Locks {
+public class JdbcLeases implements Leases {
 
   private static final Logger LOG = LoggerFactory.getLogger(JdbcLeases.class);
 
@@ -78,9 +79,9 @@ public class JdbcLeases implements Locks {
   private record Taken(UUID holder, int takeovers) {}
 
   private final JdbcClient jdbc;
-  private final Map<LockKind, Duration> ttls;
+  private final Map<LeaseKind, Duration> ttls;
 
-  public JdbcLeases(JdbcClient jdbc, Map<LockKind, Duration> ttls) {
+  public JdbcLeases(JdbcClient jdbc, Map<LeaseKind, Duration> ttls) {
     this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
     Objects.requireNonNull(ttls, "ttls must not be null");
     ttls.forEach(
@@ -93,22 +94,22 @@ public class JdbcLeases implements Locks {
     this.ttls = Map.copyOf(ttls);
   }
 
-  public JdbcLeases(DataSource dataSource, Map<LockKind, Duration> ttls) {
+  public JdbcLeases(DataSource dataSource, Map<LeaseKind, Duration> ttls) {
     this(
         JdbcClient.create(Objects.requireNonNull(dataSource, "dataSource must not be null")), ttls);
   }
 
-  private Duration ttl(LockKind kind) {
+  private Duration ttl(LeaseKind kind) {
     Duration ttl = ttls.get(kind);
     if (ttl == null) {
-      throw new IllegalArgumentException("no ttl configured for lock kind " + kind.value());
+      throw new IllegalArgumentException("no ttl configured for lease kind " + kind.value());
     }
     return ttl;
   }
 
   @Override
-  public <T> Attempt<T> tryWithLock(
-      LockKind kind, AgentType type, AgentId agent, Supplier<T> work) {
+  public <T> Attempt<T> tryWithLease(
+      LeaseKind kind, AgentType type, AgentId agent, Supplier<T> work) {
     Objects.requireNonNull(kind, "kind must not be null");
     Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(agent, "agent must not be null");

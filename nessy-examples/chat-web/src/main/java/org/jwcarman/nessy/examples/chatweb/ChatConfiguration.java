@@ -28,7 +28,9 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.api.tool.Approver;
+import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
+import org.jwcarman.nessy.engine.jdbc.JdbcRowLocks;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -46,6 +48,7 @@ import org.jwcarman.nessy.spring.boot.NessyProperties;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * The chat agent: a notebook, a plan, episodes, a date tool, and an email tool a person has to
@@ -71,26 +74,30 @@ public class ChatConfiguration {
   }
 
   /**
-   * One turn at a time per agent, and the row is what says so.
+   * One turn at a time per agent, and a database transaction is what says so.
    *
    * <p>Without this the direct door falls back to locks held in this process, which are scoped to
-   * this one JVM, so a second instance would not see them at all. A lease is keyed by the agent
-   * itself and holds across instances.
-   *
-   * <p>One instance, two kinds: {@link Locks#TURN}, shared by every door that runs a turn, and the
-   * episode summariser's, each with its own time-to-live rather than a shared default. Both are
-   * generous, because a turn here can be waiting on a person -- the desk holds a call for five
-   * minutes before giving up -- and a local thinking model can take minutes over a long episode; a
-   * lease that expired under a holder still working would let a second run start on the same agent,
-   * which is the thing it exists to prevent.
+   * this one JVM, so a second instance would not see them at all. {@link Locks#TURN} is the
+   * transaction boundary the direct door builds each step around ({@code JdbcRowLocks.withLock} IS
+   * the transaction), so it must be exact rather than believed -- a lease would leave that boundary
+   * with no transaction at all, and the several appends {@code recoverToIdle} makes would stop
+   * being atomic. That is a lock, not a lease.
    */
   @Bean
-  public Locks agentLocks(DataSource dataSource) {
-    return new JdbcLeases(
-        dataSource,
-        Map.of(
-            Locks.TURN, Duration.ofMinutes(10),
-            EpisodeSummarizer.LOCK_KIND, Duration.ofMinutes(10)));
+  public Locks agentLocks(DataSource dataSource, PlatformTransactionManager transactions) {
+    return new JdbcRowLocks(dataSource, transactions);
+  }
+
+  /**
+   * The episode summariser's exclusion, kept apart from {@link #agentLocks}: opportunistic work
+   * over a model call, where somebody else running it instead is a fine outcome and nobody must be
+   * held open across the call. Generous because a local thinking model can take minutes over a long
+   * episode; a lease that expired under a holder still working would let a second run start on the
+   * same agent, which is the thing it exists to prevent.
+   */
+  @Bean
+  public Leases agentLeases(DataSource dataSource) {
+    return new JdbcLeases(dataSource, Map.of(EpisodeSummarizer.LEASE_KIND, Duration.ofMinutes(10)));
   }
 
   @Bean
@@ -123,7 +130,7 @@ public class ChatConfiguration {
   public EpisodeSummarizer episodeSummarizer(
       TurnHistories histories,
       JdbcEpisodes episodes,
-      Locks agentLocks,
+      Leases agentLeases,
       InferenceProvider provider,
       NessyProperties properties,
       ObjectProvider<ObservationRegistry> observations) {
@@ -132,11 +139,7 @@ public class ChatConfiguration {
             c.agentType(TYPE)
                 .episodes(episodes)
                 .histories(histories)
-                // The same lease instance as the direct door's turn lock, under its own kind and
-                // its own generous ttl (agentLocks above): a local thinking model can take minutes
-                // over a long episode, and erring long only delays the next attempt, where erring
-                // short lets two summarise at once.
-                .locks(agentLocks)
+                .leases(agentLeases)
                 .inference(
                     provider, new InferenceOptions(properties.model(), properties.maxTokens()))
                 // Each summary is a nessy.summary span with its model call inside, when the
