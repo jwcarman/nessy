@@ -3,11 +3,16 @@
 **Status: APPROVED IN SHAPE, LANDING IN STEPS — the shape is James's; the sizing is this record's.**
 The preparatory steps have landed (the plural rename `4ea77f9e`, the package restructure
 `a0fa98a2`, `nessy-backend-spi` `07c275e3`, the dependency inversion `1a9ee75b`, `Failure` staying
-put `dde22239`, the backlog interfaces' first cut `e0eb76cd`, and the lock SPI with both
-implementations `0e25584f`/`d678e8dd`/`391d536d`). The backend interfaces, the three JDBC/in-memory
-backends, the factory cutover, the TCK, the backend modules and the module/DDL split have not. Every
-fact about the working tree was re-verified on 2026-09-26 after `391d536d`, with the direct door's
-per-step locking in flight (the direct-door files are read for structure and never cited by line).
+put `dde22239`, the backlog interfaces' first cut `e0eb76cd`, the lock SPI with both
+implementations `0e25584f`/`d678e8dd`/`391d536d`, and its split into `Locks` and `Leases`
+`bdd0906a`). So have this record's first five steps: the three backlog interfaces `d2944a51`, the
+`Effects` extraction `fd5393ae`, the `Backlogs<I>` lift `4a4a0f5c`, and the two backend interfaces
+with `JdbcDirectBackend`/`JdbcQueuedBackend` `3cc341c0` — built over the existing stores and not
+yet wired to either factory. The factory cutover, the in-memory backend, the TCK, the backend
+modules and the module/DDL split have not. The direct door's per-step locking landed in `221e447c`.
+The lock vocabulary here was re-verified on 2026-09-26 after `bdd0906a`; the rest of the record's
+"today" statements were last re-verified after `391d536d` and the sections describing steps that
+have since landed are kept as the reasoning, with the signatures in §4 being what landed.
 Every signature under "the design" is a proposal unless it says otherwise.
 
 **Before trusting a green build.** `nessy.excludedGroups` defaults to `live,container`, and every
@@ -236,8 +241,9 @@ public interface QueuedBackend {
 Four corrections to the sketch, each measured:
 
 1. **`Effects`, not `EffectRows`, and it is the plural ruling that decides it** (§3). The rows
-   are the store; `Attempt` — already a public record in `engine.store` — is what a claim hands
-   back.
+   are the store; `Attempt` — then a public record in `engine.store`, now `backend.effect.Attempt`
+   (`fd5393ae`), and not the lease's `backend.lease.Attempt`, which is a different type with the
+   same name — is what a claim hands back.
 2. **The backlog seam takes a `TypeRef<I>`, not a `Codec<I>`, and the reason is encryption.**
    `DefaultQueuedHarnessFactory.create` builds the backlog as
    `new JdbcBacklog<>(jdbc, codecs.create(config.inputType()), type, agent)`, where `codecs` is
@@ -586,7 +592,8 @@ factories are already careful about it.
 
 Landed in `07c275e3` (`nessy-backend/nessy-backend-spi` created: `backend.event.AgentEvent`,
 `ActionRequest`, `AgentEvents`; `backend.payload.Payloads`; `backend.lock.Locks`, later joined by
-`LockKind`; narration to `nessy-api`; `Schemas` left in `nessy-spi`), `1a9ee75b` (`nessy-api`
+`LockKind` and, in `bdd0906a`, by a separate `backend.lease` package holding `Leases`, `LeaseKind`
+and the lease's `Attempt`; narration to `nessy-api`; `Schemas` left in `nessy-spi`), `1a9ee75b` (`nessy-api`
 depends on nothing of ours; `nessy-backend-spi` depends on `nessy-api` and `nessy-inference-spi`)
 and `dde22239` (`Failure` stays in `nessy-inference-spi`, and its javadoc says so). The
 `AgentEventStore` TODO this section once quoted — "it cannot go there yet: it is typed on
@@ -609,7 +616,8 @@ something a backend in another module can read and write.
 holds `spi.store.Schemas` and nothing else; `nessy-engine` keeps it at compile scope only because
 its tests and several downstream modules reach `Schemas` through it (the pom comment says so), and
 it retires when `Schemas` moves to `nessy-backend-jdbc` (§5). `nessy-lease` depends on
-`nessy-backend-spi` for `Locks` and on `nessy-spi` for `Schemas`.
+`nessy-backend-spi` for `Leases` — no longer `Locks`; `JdbcLeases` stopped implementing that in
+`bdd0906a`, the locks record §7 — and on `nessy-spi` for `Schemas`.
 
 ### 8b. Extracting `Effects` from `JdbcEffects` — the honest reading
 
@@ -714,16 +722,19 @@ duplicate readers if it reads them off the backend instead); the three `inMemory
 with a `DataSource` (`EpisodeSummarizerTest`, `HeadSummarizerFoldTest`, `HeadSummarizerTest`);
 `DefaultDirectHarnessTest` and `DurableDirectHarnessTest`, which set the three stores on the
 direct config (the durable one still wires `InMemoryLocks`, which the cutover corrects to the
-backend's `JdbcRowLocks`); chat-web's `agentLocks` bean, whose `Locks.TURN` entry goes. The
-largest single step, and the one whose diff is mostly wiring.
+backend's `JdbcRowLocks`); chat-web's `agentLocks` bean — since `bdd0906a` a `JdbcRowLocks`, no
+longer a `JdbcLeases` with a `Locks.TURN` entry — which stops being consulted (its `agentLeases`
+bean is the summariser's and stays). The largest single step, and the one whose diff is mostly
+wiring.
 
 ### 8e. The TCK, and what it is for
 
 **It is extracted from the JDBC tests, not the in-memory ones — ruled.** The invariants that matter
 are the ones where JDBC is hard: the claim under concurrency, the fence on `attempts_made`, a lock
-that waits, an ensure that does not (`JdbcRowLocksTest`'s
-`a_brand_new_key_refuses_promptly_rather_than_waiting_on_the_ensure` is exactly the kind of
-sentence a TCK is for). A TCK grown from the in-memory tests would be one JDBC passes trivially,
+that waits for the holder and runs once it commits (`JdbcRowLocksTest`'s
+`with_lock_waits_for_the_holder` is exactly the kind of sentence a TCK is for; its earlier
+sibling about the ensure refusing promptly went with `tryWithLock` in `bdd0906a`). A TCK grown
+from the in-memory tests would be one JDBC passes trivially,
 which is the `EngineFixture` trap in another form: "A test on H2 would pass against exactly the
 bugs that matter." So the suite is lifted out of `JdbcRowLocksTest`, `JdbcAgentEventsTest`,
 `JdbcPayloadsTest`, `JdbcBacklogTest` and the dispatcher tests that exercise `JdbcEffects`, made
@@ -735,9 +746,12 @@ the in-memory run is not, so a plain build still runs the contract against somet
 raises `AgentEvents.Conflict` and writes nothing; `writtenAt` is monotone non-decreasing along a
 stream and throws `IllegalArgumentException` for a seq that was never written; a payload put
 through the claim check comes back `Found` with equal blocks, twice-put content is one reference,
-and `forAgent` scopes so that another agent's reference resolves `Missing`; `tryWithLock` from a
-second thread while the first holds is `Ignored`, and `withLock` from a second thread actually
-waits and runs after the first releases rather than being refused. For any `QueuedBackend`, all of
+and `forAgent` scopes so that another agent's reference resolves `Missing`; `withLock` from a
+second thread while the first holds actually waits and runs after the first releases rather than
+being refused, a lock held through one instance excludes a second instance over the same agent
+(`JdbcDirectBackendTest.locks_exclude_across_instances`, `bdd0906a`), and work that throws releases
+the lock. There is no try verb to assert: since `bdd0906a` a `Locks` has only `withLock`, and
+refusal is a `Leases` concept that no backend carries. For any `QueuedBackend`, all of
 that plus: `markRunning` from k concurrent claimers over n due rows hands out each row exactly once;
 a claimed row's `actionable_at` is `min(now + timeout, deadline)` — measured by claiming a row
 whose deadline is nearer than its timeout and finding it due again at the deadline, not after; each
@@ -788,8 +802,10 @@ steps are, in that order: the three backlog interfaces (`Coalescing` / `Backlog`
 `nessy-backend-spi`; `JdbcDirectBackend` / `JdbcQueuedBackend`; the cutover (§6); the in-memory
 backend and then the TCK (§8e); `nessy-backend-jdbc` + `nessy-backend-inmemory` with the `Schemas`
 move and `nessy-spi`'s retirement; the DDL split, which is the module split (§5); and the door
-modules with their two starters. The direct door's per-step locking, in flight as this is written,
-precedes all of it; the docs come last.
+modules with their two starters. The direct door's per-step locking (`221e447c`) preceded all of
+it; the first five of this record's steps have landed (`d2944a51`, `fd5393ae`, `4a4a0f5c`,
+`3cc341c0`), the lock/lease split (`bdd0906a`) landed between them and the cutover, and the
+cutover is next; the docs come last.
 
 What this record needed from the locks record has landed: the restructure put the `InMemory*`
 classes and the JDBC classes where the backends want them (`a0fa98a2`); `JdbcRowLocks` exists for
