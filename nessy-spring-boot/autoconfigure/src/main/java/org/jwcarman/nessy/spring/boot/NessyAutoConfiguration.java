@@ -19,6 +19,8 @@ import java.util.Base64;
 import java.util.List;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.backend.jdbc.JdbcLeases;
+import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.store.Schemas;
@@ -96,6 +98,17 @@ public class NessyAutoConfiguration {
     }
     return ReplyTokens.withKeys(
         keys.stream().map(key -> Base64.getDecoder().decode(key)).toArray(byte[][]::new));
+  }
+
+  /**
+   * Whose turn it is to do a piece of opportunistic work -- a summariser's, typically. Trivial once
+   * the time-to-live moved off the constructor and onto the call: nothing here needs to know what
+   * kinds of lease exist or how long any of them take.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public Leases nessyLeases(DataSource dataSource) {
+    return new JdbcLeases(dataSource);
   }
 
   /** Says what will actually answer, before a single turn runs. */

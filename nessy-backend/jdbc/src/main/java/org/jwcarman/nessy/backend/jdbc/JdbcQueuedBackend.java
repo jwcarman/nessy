@@ -23,6 +23,7 @@ import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.backend.QueuedBackend;
+import org.jwcarman.nessy.backend.StorageCodec;
 import org.jwcarman.nessy.backend.agent.Agents;
 import org.jwcarman.nessy.backend.backlog.Backlogs;
 import org.jwcarman.nessy.backend.effect.Effects;

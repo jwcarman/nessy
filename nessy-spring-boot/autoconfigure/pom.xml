@@ -173,12 +173,6 @@
       <version>${project.version}</version>
       <optional>true</optional>
     </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-lease</artifactId>
-      <version>${project.version}</version>
-      <optional>true</optional>
-    </dependency>
     <!-- Embeddings, the same way: the module an application adds decides which vendor it gets. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>

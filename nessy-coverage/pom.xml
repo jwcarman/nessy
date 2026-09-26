@@ -71,11 +71,6 @@
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-lease</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-prompt</artifactId>
       <version>${project.version}</version>
     </dependency>

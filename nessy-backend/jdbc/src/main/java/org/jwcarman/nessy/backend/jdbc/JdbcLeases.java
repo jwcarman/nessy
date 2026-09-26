@@ -14,10 +14,9 @@
  * limitations under the License.
  */
 
-package org.jwcarman.nessy.lease;
+package org.jwcarman.nessy.backend.jdbc;
 
 import java.time.Duration;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -48,12 +47,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * <p><b>The database's clock.</b> Expiry is compared against {@code now()} in the statement, so
  * holders on different machines need not agree on the time.
  *
- * <p><b>The time-to-live is settled here, at construction, one per kind.</b> James: "forcing folks
- * to think about their TTL is smarter than having a global default." A kind absent from the map is
- * refused at the call rather than silently defaulted -- whoever wires this up is the one who knows
- * how long that kind of work takes. Err long: a lease that expires while its holder is still
- * working lets two run at once, which is the failure this exists to prevent, whereas one that
- * outlives a crash only delays the next attempt.
+ * <p><b>The time-to-live is supplied by the caller, at the call.</b> This class stores nothing
+ * about how long any kind of work takes; see {@link Leases#tryWithLease} for why.
  */
 public class JdbcLeases implements Leases {
 
@@ -79,42 +74,26 @@ public class JdbcLeases implements Leases {
   private record Taken(UUID holder, int takeovers) {}
 
   private final JdbcClient jdbc;
-  private final Map<LeaseKind, Duration> ttls;
 
-  public JdbcLeases(JdbcClient jdbc, Map<LeaseKind, Duration> ttls) {
+  public JdbcLeases(JdbcClient jdbc) {
     this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
-    Objects.requireNonNull(ttls, "ttls must not be null");
-    ttls.forEach(
-        (kind, ttl) -> {
-          Objects.requireNonNull(ttl, "the ttl for " + kind + " must not be null");
-          if (ttl.isNegative() || ttl.isZero()) {
-            throw new IllegalArgumentException("the ttl for " + kind + " must be positive");
-          }
-        });
-    this.ttls = Map.copyOf(ttls);
   }
 
-  public JdbcLeases(DataSource dataSource, Map<LeaseKind, Duration> ttls) {
-    this(
-        JdbcClient.create(Objects.requireNonNull(dataSource, "dataSource must not be null")), ttls);
-  }
-
-  private Duration ttl(LeaseKind kind) {
-    Duration ttl = ttls.get(kind);
-    if (ttl == null) {
-      throw new IllegalArgumentException("no ttl configured for lease kind " + kind.value());
-    }
-    return ttl;
+  public JdbcLeases(DataSource dataSource) {
+    this(JdbcClient.create(Objects.requireNonNull(dataSource, "dataSource must not be null")));
   }
 
   @Override
   public <T> Attempt<T> tryWithLease(
-      LeaseKind kind, AgentType type, AgentId agent, Supplier<T> work) {
+      LeaseKind kind, AgentType type, AgentId agent, Duration ttl, Supplier<T> work) {
     Objects.requireNonNull(kind, "kind must not be null");
     Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(ttl, "ttl must not be null");
+    if (ttl.isNegative() || ttl.isZero()) {
+      throw new IllegalArgumentException("ttl must be positive, got " + ttl);
+    }
     Objects.requireNonNull(work, "work must not be null");
-    Duration ttl = ttl(kind);
     UUID holder = UUID.randomUUID();
     Taken taken =
         jdbc.sql(TAKE)

@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.memory.summarizing;
 
 import io.micrometer.observation.ObservationRegistry;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -69,6 +70,19 @@ public class HeadSummarizer {
    */
   public static final LeaseKind LEASE_KIND = new LeaseKind("nessy.memory.head-summary");
 
+  /**
+   * How long a head-summary lease is believed held for, absent {@link Config#leaseTtl}.
+   *
+   * <p>What this protects: two processes folding the same head at once, which is the failure a
+   * lease exists to prevent. The lease only needs to outlast one model call over at most {@code
+   * maxTail} turns -- a single summary, never a loop of them the way an episode summariser's lease
+   * has to. Two minutes is generous for that against a hosted model; erring long only delays the
+   * next attempt on a holder that died, while erring short lets two folds run at once. A caller
+   * whose model is slower than this -- a local model doing the summarising, say -- raises it with
+   * {@link Config#leaseTtl}.
+   */
+  public static final Duration DEFAULT_LEASE_TTL = Duration.ofMinutes(2);
+
   public static final String PROMPT =
       """
       You are compressing the earlier part of a conversation so it can be carried forward. \
@@ -104,6 +118,7 @@ public class HeadSummarizer {
     private InferenceOptions options;
     private int maxTail = 20;
     private int minTail = 8;
+    private Duration leaseTtl = DEFAULT_LEASE_TTL;
     private ObservationRegistry observations = ObservationRegistry.NOOP;
 
     private Config() {}
@@ -151,6 +166,16 @@ public class HeadSummarizer {
     }
 
     /**
+     * How long the head-summary lease is believed held for -- see {@link #DEFAULT_LEASE_TTL} for
+     * what it is protecting and why that default was chosen. Override it if a slower model is doing
+     * the summarising than the default assumes.
+     */
+    public Config leaseTtl(Duration leaseTtl) {
+      this.leaseTtl = leaseTtl;
+      return this;
+    }
+
+    /**
      * Where to report: each summary becomes a {@code nessy.summary} span with the model call inside
      * it as a {@code chat} span. The summariser observes the provider it is given, and one already
      * observed is used as it is.
@@ -181,6 +206,7 @@ public class HeadSummarizer {
   private final InferenceOptions options;
   private final int maxTail;
   private final int minTail;
+  private final Duration leaseTtl;
   private final SummaryObservation observation;
 
   private HeadSummarizer(Config config) {
@@ -200,6 +226,10 @@ public class HeadSummarizer {
     }
     this.maxTail = config.maxTail;
     this.minTail = config.minTail;
+    this.leaseTtl = Objects.requireNonNull(config.leaseTtl, "leaseTtl must not be null");
+    if (leaseTtl.isNegative() || leaseTtl.isZero()) {
+      throw new IllegalArgumentException("leaseTtl must be positive, got " + leaseTtl);
+    }
   }
 
   /**
@@ -221,7 +251,7 @@ public class HeadSummarizer {
           agentId,
           () -> {
             return leases
-                .tryWithLease(LEASE_KIND, agentType, agentId, () -> summarize(agentId))
+                .tryWithLease(LEASE_KIND, agentType, agentId, leaseTtl, () -> summarize(agentId))
                 .orElse("lease-refused");
           });
     }

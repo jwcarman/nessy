@@ -64,12 +64,6 @@
       <artifactId>nessy-engine</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- Whose turn it is to summarise: a lease, which knows nothing about agents. -->
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-lease</artifactId>
-      <version>${project.version}</version>
-    </dependency>
     <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-jdbc</artifactId>

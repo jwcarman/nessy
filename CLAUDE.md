@@ -50,7 +50,12 @@ context-pipeline reform.)
   (`nessy-inference/`, `nessy-backend/`, `nessy-memory/`, `nessy-spring-boot/`,
   `nessy-examples/`). Pass `-am` whenever the change touches a module the selected
   one depends on: without it a stale jar in `~/.m2` shadows the source and you get
-  "cannot find symbol" for a type you are looking at.
+  "cannot find symbol" for a type you are looking at. Worse, when the signature
+  merely CHANGED rather than appeared, the stale jar links and the run HANGS
+  instead of failing — test classes compiled against the new shape, calling the
+  old one. If a scoped run hangs after an interface change, suspect this before
+  suspecting the code, and prime the repo with
+  `./mvnw -pl :<changed>,:<dependent> -am install -DskipTests` first.
   Never run two Maven processes concurrently in one worktree (they collide on
   `target/`, and the resulting errors name modules you never touched). Parallel
   reactor builds (`-T 1C`) are permitted once verified green in a worktree.

@@ -26,7 +26,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
-import org.jwcarman.nessy.backend.jdbc.StorageCodec;
+import org.jwcarman.nessy.backend.StorageCodec;
 import org.jwcarman.nessy.narration.odyssey.AgentStreams;
 import org.jwcarman.nessy.narration.odyssey.OdysseyNarrator;
 import org.jwcarman.odyssey.autoconfigure.OdysseyAutoConfiguration;

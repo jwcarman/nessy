@@ -22,6 +22,7 @@ import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.backend.DirectBackend;
+import org.jwcarman.nessy.backend.StorageCodec;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;

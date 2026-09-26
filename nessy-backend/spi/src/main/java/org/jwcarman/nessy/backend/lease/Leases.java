@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.backend.lease;
 
+import java.time.Duration;
 import java.util.Objects;
 import java.util.function.Supplier;
 import org.jwcarman.nessy.api.AgentId;
@@ -52,6 +53,13 @@ public interface Leases {
    * Runs {@code work} if the lease for {@code (kind, type, agent)} can be taken, and says what came
    * of it.
    *
+   * <p>{@code ttl} is supplied here, by the caller, rather than settled once for every kind at
+   * construction: whoever is asking for the lease is the one who knows how long the work they are
+   * about to do takes, and a caller assembling a {@link Leases} has no better information than a
+   * guess. Err long -- a lease that expires while its holder is still working lets two run at once,
+   * which is the failure this exists to prevent, whereas one that outlives a crash only delays the
+   * next attempt.
+   *
    * <p>The lease is released when the work returns, however it returns; an exception from the work
    * is the caller's, after the release. Never waits: a lease already believed held by somebody else
    * is an immediate refusal, not a delay.
@@ -59,17 +67,21 @@ public interface Leases {
    * <p><b>Re-entering is undefined.</b> Work that asks for a lease from this same instance may be
    * let through, refused or wedged depending on what is underneath, so do not.
    *
+   * @param ttl how long the lease is believed held for; must be positive
    * @return what the work produced, or {@link Attempt.Ignored} if somebody else held the lease
    */
-  <T> Attempt<T> tryWithLease(LeaseKind kind, AgentType type, AgentId agent, Supplier<T> work);
+  <T> Attempt<T> tryWithLease(
+      LeaseKind kind, AgentType type, AgentId agent, Duration ttl, Supplier<T> work);
 
   /** For a caller whose work produces nothing worth having. */
-  default Attempt<Void> tryWithLease(LeaseKind kind, AgentType type, AgentId agent, Runnable work) {
+  default Attempt<Void> tryWithLease(
+      LeaseKind kind, AgentType type, AgentId agent, Duration ttl, Runnable work) {
     Objects.requireNonNull(work, "work must not be null");
     return tryWithLease(
         kind,
         type,
         agent,
+        ttl,
         () -> {
           work.run();
           return null;

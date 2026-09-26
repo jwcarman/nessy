@@ -27,7 +27,6 @@ import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterEach;
@@ -40,6 +39,7 @@ import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.backend.jdbc.JdbcLeases;
 import org.jwcarman.nessy.backend.jdbc.JdbcQueuedBackend;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
@@ -47,7 +47,6 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.lease.JdbcLeases;
 import org.jwcarman.nessy.memory.summarizing.SummaryObservation;
 import org.jwcarman.nessy.spi.store.Schemas;
 
@@ -123,10 +122,7 @@ class EpisodeSummarizerTest {
                 c.agentType(Calls.TYPE)
                     .episodes(episodes)
                     .histories(factory.histories())
-                    .leases(
-                        new JdbcLeases(
-                            dataSource,
-                            Map.of(EpisodeSummarizer.LEASE_KIND, Duration.ofSeconds(30))))
+                    .leases(new JdbcLeases(dataSource))
                     .inference(model, InferenceOptions.of("m"))
                     .observations(observations));
     harness =

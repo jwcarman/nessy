@@ -18,6 +18,7 @@ package org.jwcarman.nessy.memory.summarizing;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.DisplayName;
@@ -110,7 +111,11 @@ class HeadSummarizerTranscriptTest {
                     new Leases() {
                       @Override
                       public <T> Attempt<T> tryWithLease(
-                          LeaseKind kind, AgentType type, AgentId agent, Supplier<T> work) {
+                          LeaseKind kind,
+                          AgentType type,
+                          AgentId agent,
+                          Duration ttl,
+                          Supplier<T> work) {
                         return new Attempt.Ignored<>();
                       }
                     })

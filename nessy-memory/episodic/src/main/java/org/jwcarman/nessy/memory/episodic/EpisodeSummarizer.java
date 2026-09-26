@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.memory.episodic;
 
 import io.micrometer.observation.ObservationRegistry;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -63,6 +64,20 @@ public class EpisodeSummarizer {
    */
   public static final LeaseKind LEASE_KIND = new LeaseKind("nessy.memory.episode-summary");
 
+  /**
+   * How long an episode-summary lease is believed held for, absent {@link Config#leaseTtl}.
+   *
+   * <p>What this protects: two processes summarising the same agent's closed episodes at once,
+   * which is the failure a lease exists to prevent. Held longer than a head summary's, because
+   * {@link #summarizeIfDue} walks every unsummarised episode under the one lease, oldest first,
+   * rather than making one model call: a backlog of several closed episodes is one holding, not one
+   * per episode. Five minutes is generous for that against a hosted model; erring long only delays
+   * the next attempt on a holder that died, while erring short lets two runs overlap. A caller
+   * whose model is slower than this -- a local thinking model can take minutes over a single long
+   * episode -- raises it with {@link Config#leaseTtl}.
+   */
+  public static final Duration DEFAULT_LEASE_TTL = Duration.ofMinutes(5);
+
   public static final String PROMPT =
       """
       You are writing the summary of one episode of a longer conversation, so that it can stand \
@@ -91,6 +106,7 @@ public class EpisodeSummarizer {
     private Leases leases;
     private InferenceProvider provider;
     private InferenceOptions options;
+    private Duration leaseTtl = DEFAULT_LEASE_TTL;
     private ObservationRegistry observations = ObservationRegistry.NOOP;
 
     private Config() {}
@@ -127,6 +143,16 @@ public class EpisodeSummarizer {
     }
 
     /**
+     * How long the episode-summary lease is believed held for -- see {@link #DEFAULT_LEASE_TTL} for
+     * what it is protecting and why that default was chosen. Override it if a slower model is doing
+     * the summarising than the default assumes.
+     */
+    public Config leaseTtl(Duration leaseTtl) {
+      this.leaseTtl = leaseTtl;
+      return this;
+    }
+
+    /**
      * Where to report: each summary becomes a {@code nessy.summary} span with the model call inside
      * it as a {@code chat} span. The summariser observes the provider it is given, and one already
      * observed is used as it is.
@@ -155,6 +181,7 @@ public class EpisodeSummarizer {
   private final Leases leases;
   private final InferenceProvider provider;
   private final InferenceOptions options;
+  private final Duration leaseTtl;
   private final SummaryObservation observation;
 
   private EpisodeSummarizer(Config config) {
@@ -166,6 +193,10 @@ public class EpisodeSummarizer {
     this.options =
         Objects.requireNonNull(config.options, "inference(provider, options) is required");
     this.provider = ObservedInferenceProvider.wrap(config.provider, config.observations);
+    this.leaseTtl = Objects.requireNonNull(config.leaseTtl, "leaseTtl must not be null");
+    if (leaseTtl.isNegative() || leaseTtl.isZero()) {
+      throw new IllegalArgumentException("leaseTtl must be positive, got " + leaseTtl);
+    }
     this.observation = new SummaryObservation(config.observations, "episode", agentType);
   }
 
@@ -186,7 +217,7 @@ public class EpisodeSummarizer {
           agentId,
           () -> {
             return leases
-                .tryWithLease(LEASE_KIND, agentType, agentId, () -> summarizeAll(agentId))
+                .tryWithLease(LEASE_KIND, agentType, agentId, leaseTtl, () -> summarizeAll(agentId))
                 .orElse("lease-refused");
           });
     }

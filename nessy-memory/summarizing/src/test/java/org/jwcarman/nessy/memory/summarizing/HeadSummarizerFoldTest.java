@@ -22,7 +22,6 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
@@ -32,13 +31,13 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.backend.jdbc.JdbcLeases;
 import org.jwcarman.nessy.backend.jdbc.JdbcQueuedBackend;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.lease.JdbcLeases;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
@@ -91,9 +90,7 @@ class HeadSummarizerFoldTest {
                 c.agentType(CHAT)
                     .summaries(summaries)
                     .histories(factory.histories())
-                    .leases(
-                        new JdbcLeases(
-                            dataSource, Map.of(HeadSummarizer.LEASE_KIND, Duration.ofSeconds(30))))
+                    .leases(new JdbcLeases(dataSource))
                     .inference(model, InferenceOptions.of("m"))
                     .tail(MAX_TAIL, MIN_TAIL));
     return factory.create(

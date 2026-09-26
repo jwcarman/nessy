@@ -18,7 +18,6 @@ package org.jwcarman.nessy.examples.chatweb;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -28,13 +27,13 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.api.tool.Approver;
+import org.jwcarman.nessy.backend.jdbc.JdbcLeases;
 import org.jwcarman.nessy.backend.jdbc.JdbcRowLocks;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
-import org.jwcarman.nessy.lease.JdbcLeases;
 import org.jwcarman.nessy.memory.episodic.EpisodeSummarizer;
 import org.jwcarman.nessy.memory.episodic.EpisodeTools;
 import org.jwcarman.nessy.memory.episodic.JdbcEpisodes;
@@ -91,13 +90,13 @@ public class ChatConfiguration {
   /**
    * The episode summariser's exclusion, kept apart from {@link #agentLocks}: opportunistic work
    * over a model call, where somebody else running it instead is a fine outcome and nobody must be
-   * held open across the call. Generous because a local thinking model can take minutes over a long
-   * episode; a lease that expired under a holder still working would let a second run start on the
-   * same agent, which is the thing it exists to prevent.
+   * held open across the call. How long a lease taken under it is believed held for is the
+   * summariser's own call -- see {@link #episodeSummarizer} -- since only it knows how long its
+   * work takes.
    */
   @Bean
   public Leases agentLeases(DataSource dataSource) {
-    return new JdbcLeases(dataSource, Map.of(EpisodeSummarizer.LEASE_KIND, Duration.ofMinutes(10)));
+    return new JdbcLeases(dataSource);
   }
 
   @Bean
@@ -140,6 +139,7 @@ public class ChatConfiguration {
                 .episodes(episodes)
                 .histories(histories)
                 .leases(agentLeases)
+                .leaseTtl(Duration.ofMinutes(10))
                 .inference(
                     provider, new InferenceOptions(properties.model(), properties.maxTokens()))
                 // Each summary is a nessy.summary span with its model call inside, when the

@@ -26,7 +26,6 @@ import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -41,6 +40,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.backend.jdbc.JdbcLeases;
 import org.jwcarman.nessy.backend.jdbc.JdbcQueuedBackend;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
@@ -48,7 +48,6 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.lease.JdbcLeases;
 import org.jwcarman.nessy.spi.store.Schemas;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
@@ -129,9 +128,7 @@ class HeadSummarizerTest {
                 c.agentType(CHAT)
                     .summaries(summaries)
                     .histories(factory.histories())
-                    .leases(
-                        new JdbcLeases(
-                            dataSource, Map.of(HeadSummarizer.LEASE_KIND, Duration.ofSeconds(30))))
+                    .leases(new JdbcLeases(dataSource))
                     .inference(model, InferenceOptions.of("m"))
                     .tail(MAX_TAIL, MIN_TAIL)
                     .observations(observations));
