@@ -19,6 +19,7 @@ import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import javax.sql.DataSource;
 import org.jspecify.annotations.NonNull;
@@ -328,7 +329,10 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
             ObservedInferenceProvider.wrap(inference.provider(), observations),
             config.requiredSystemPrompt(),
             tools.offers(),
-            narrator),
+            narrator,
+            // No shape: what a queued agent answers is not constrained, because nobody is waiting
+            // to read it back as a type.
+            Optional.empty()),
         inference.options(),
         terms,
         payloads,

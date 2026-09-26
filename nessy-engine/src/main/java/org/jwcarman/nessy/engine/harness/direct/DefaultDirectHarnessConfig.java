@@ -16,6 +16,7 @@
 
 package org.jwcarman.nessy.engine.harness.direct;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,6 +39,8 @@ import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.ApproverConfig;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
+import org.jwcarman.nessy.engine.observability.ObservedApprover;
+import org.jwcarman.nessy.engine.observability.ObservedTool;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 
 /**
@@ -49,11 +52,13 @@ import org.jwcarman.nessy.engine.tool.ToolBinding;
  */
 public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<I> {
 
-  DefaultDirectHarnessConfig(AgentType agentType) {
+  DefaultDirectHarnessConfig(AgentType agentType, ObservationRegistry observations) {
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
+    this.observations = Objects.requireNonNull(observations, "observations must not be null");
   }
 
   private final AgentType agentType;
+  private final ObservationRegistry observations;
   private SystemPromptSource systemPrompt =
       SystemPromptSource.constant(new SystemPrompt("You are a helpful assistant."));
   private InputRenderer<I> renderer = InputRenderer.asString();
@@ -144,21 +149,29 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     return tools.stream().<ToolBinding<?>>map(request -> bind(request, schemas, mapper)).toList();
   }
 
+  /**
+   * Observed here, whoever registered it -- exactly as the queued door does it. The tool and its
+   * approver are wrapped with the engine's own observations, so a tool bound to this door makes the
+   * same {@code execute_tool} span a queued one does.
+   */
   private <T> ToolBinding<T> bind(
       ToolRequest<T> request,
       org.jwcarman.nessy.api.tool.InputSchemaGenerator schemas,
       tools.jackson.databind.ObjectMapper mapper) {
     Binding<T> said = new Binding<>();
     request.customizer().customize(said);
+    Tool<T> observed = ObservedTool.wrap(request.tool(), observations);
     return new ToolBinding<>(
-        request.tool(),
+        observed,
         mapper,
-        request.tool().inputSchema(schemas),
+        observed.inputSchema(schemas),
         said.timeout,
         said.retryPolicy,
         said.action,
         List.copyOf(said.enrichers),
-        said.approver,
+        // Only an approver the application chose is worth a span: the default lets every call
+        // through, and an "approval" nobody was asked for would mislead a dashboard.
+        said.approverChosen ? ObservedApprover.wrap(said.approver, observations) : said.approver,
         said.approval.timeout,
         said.approval.retryPolicy);
   }
@@ -170,6 +183,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     private ActionRenderer<T> action = ActionRenderer.byToString();
     private final List<ApprovalEnricher> enrichers = new ArrayList<>();
     private Approver approver = Approver.allow();
+    private boolean approverChosen;
     private final Approval approval = new Approval();
 
     @Override
@@ -199,6 +213,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     @Override
     public ToolConfig<T> approver(Approver approver, Customizer<ApproverConfig> customizer) {
       this.approver = approver;
+      this.approverChosen = true;
       customizer.customize(approval);
       return this;
     }

@@ -16,11 +16,14 @@
 package org.jwcarman.nessy.engine.inference;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.OutputSchema;
 import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.Toolset;
 
@@ -40,17 +43,27 @@ public class DefaultInferenceService implements InferenceService {
 
   private final Narrator narrator;
 
+  /**
+   * What every call of this agent type constrains its answer with -- empty for an agent that never
+   * asks for a particular shape, which is every queued agent today and an unstructured direct one.
+   * Uniform per service rather than per call: a caller that wants a shape says so when the harness
+   * is made, the same moment the model and the tools are settled.
+   */
+  private final Optional<OutputSchema> outputSchema;
+
   public DefaultInferenceService(
       InferenceContextAssembler assembler,
       InferenceProvider provider,
       SystemPromptSource systemPrompt,
       List<ToolOffer> tools,
-      Narrator narrator) {
+      Narrator narrator,
+      Optional<OutputSchema> outputSchema) {
     this.assembler = assembler;
     this.provider = provider;
     this.systemPrompt = systemPrompt;
     this.toolset = Toolset.of(tools);
     this.narrator = narrator;
+    this.outputSchema = Objects.requireNonNull(outputSchema, "outputSchema must not be null");
   }
 
   @Override
@@ -62,7 +75,8 @@ public class DefaultInferenceService implements InferenceService {
             systemPrompt.forAgent(invocation.agentId()),
             assembler.assemble(invocation),
             toolset,
-            invocation.options());
+            invocation.options(),
+            outputSchema);
     // Bound here, which is the only place that knows both who is being served and where the
     // narration goes. The provider is handed something that can say what is arriving -- text, or
     // thinking -- and cannot say whose it is, or that an agent is involved at all.

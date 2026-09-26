@@ -16,6 +16,7 @@
 
 package org.jwcarman.nessy.spring.boot;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import javax.sql.DataSource;
@@ -79,6 +80,7 @@ public class DirectHarnessAutoConfiguration {
       DataSource dataSource,
       org.jwcarman.nessy.inference.InferenceProvider models,
       NessyAutoConfiguration.NessySchema schema,
+      ObservationRegistry observations,
       ObjectProvider<Locks> locks,
       ObjectProvider<InputSchemaGenerator> schemas,
       ObjectProvider<JsonMapper> mappers,
@@ -98,7 +100,8 @@ public class DirectHarnessAutoConfiguration {
                 .payloads(new JdbcPayloads(jdbc, codecs))
                 .provider(models)
                 .schemas(schemas.getIfAvailable(VictoolsInputSchemaGenerator::new))
-                .mapper(mapper));
+                .mapper(mapper)
+                .observations(observations));
     customizers.orderedStream().forEach(all::add);
     return DefaultDirectHarnessFactory.of(all);
   }

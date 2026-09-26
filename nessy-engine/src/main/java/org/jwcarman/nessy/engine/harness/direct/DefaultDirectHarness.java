@@ -15,13 +15,11 @@
  */
 package org.jwcarman.nessy.engine.harness.direct;
 
-import java.time.Clock;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -32,7 +30,6 @@ import java.util.function.Supplier;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.InputRenderer;
@@ -40,42 +37,20 @@ import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.Summarizer;
-import org.jwcarman.nessy.api.SystemPromptSource;
-import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.ApprovalRequest;
-import org.jwcarman.nessy.api.tool.ApprovalResult;
-import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.ReplyToken;
-import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
+import org.jwcarman.nessy.engine.agent.EffectOutcome;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
+import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
-import org.jwcarman.nessy.engine.effect.EffectTermsSource;
-import org.jwcarman.nessy.engine.history.EventStreamHistory;
-import org.jwcarman.nessy.engine.history.Transcript;
-import org.jwcarman.nessy.engine.inference.ContextAssembler;
-import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
-import org.jwcarman.nessy.engine.inference.InferenceInvocation;
-import org.jwcarman.nessy.engine.inference.InferenceNarrators;
-import org.jwcarman.nessy.engine.tool.ToolBinding;
-import org.jwcarman.nessy.engine.tool.Tools;
-import org.jwcarman.nessy.inference.InferenceNarrator;
-import org.jwcarman.nessy.inference.InferenceOptions;
-import org.jwcarman.nessy.inference.InferenceProvider;
-import org.jwcarman.nessy.inference.InferenceRequest;
-import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.inference.OutputSchema;
-import org.jwcarman.nessy.inference.Toolset;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
@@ -90,6 +65,13 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Note what is absent: no backlog, no coalescing, no claims, no leases, no deferral. Not
  * forbidden -- nothing in this world can produce them.
+ *
+ * <p><b>What performs an effect is {@link EffectHandlers}, the same one the queued door dispatches
+ * through.</b> This door does not know how to call a model, ask an approver or run a tool -- it
+ * knows how to wait for an answer with a deadline and what to do with {@link Awaited}. Everything
+ * else -- assembling context, minting a reply address, resolving a call back out of the story -- is
+ * the handlers' job, and doing it once means a span the queued door produces, this door produces
+ * too.
  *
  * <p><b>Every effect runs on a virtual thread and is waited for with its own deadline.</b> An
  * inference, a tool call and a blocking approver each advertise a timeout ({@link
@@ -108,17 +90,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   private final AgentType agentType;
   private final AgentEvents events;
   private final Payloads payloads;
-  private final InferenceProvider provider;
-  private final SystemPromptSource systemPrompt;
-  private final InferenceOptions options;
   private final InputRenderer<I> renderer;
-  private final Tools tools;
-
-  /**
-   * What is sent to the provider so it constrains the shape of every answer this harness gets --
-   * empty for a harness that asked for none, which is what keeps that path free of a schema.
-   */
-  private final Optional<OutputSchema> outputSchema;
 
   /**
    * How an answered event becomes {@code O}, bound once rather than per call: for an unstructured
@@ -132,9 +104,6 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    */
   private final BiFunction<AgentId, AgentEvent.InferenceAnswered, Outcome<O>> reading;
 
-  /** What the model is shown, assembled the same way the queued door assembles it. */
-  private final InferenceContextAssembler assembler;
-
   /**
    * The handle everything watching this agent is reached through.
    *
@@ -145,16 +114,12 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    */
   private final Narrator narrator;
 
-  /** Built once: a tool's shape cannot change between calls, so neither can what is on offer. */
-  private final Toolset toolset;
-
-  /** What a deadline is measured from -- stepped in a test, wall-clock everywhere else. */
-  private final Clock clock;
-
   /**
-   * What each effect this harness performs is worth, resolved the same way the queued door does.
+   * What performs an effect once the fold has decided one is owed -- the model call, the approval
+   * question, the tool call -- and what each is worth. Built by the factory exactly as the queued
+   * door's is, so the two doors cannot describe a call, an approval or an inference differently.
    */
-  private final EffectTermsSource terms;
+  private final EffectHandlers handlers;
 
   /**
    * One virtual thread per effect, so {@link #within} can wait for one with a deadline and cancel
@@ -172,46 +137,20 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       AgentType agentType,
       AgentEvents events,
       Payloads payloads,
-      InferenceProvider provider,
-      SystemPromptSource systemPrompt,
-      InferenceOptions options,
       InputRenderer<I> renderer,
-      Tools tools,
       BiFunction<AgentId, AgentEvent.InferenceAnswered, Outcome<O>> reading,
-      Optional<OutputSchema> outputSchema,
-      List<Summarizer> summaries,
-      int maxTail,
-      List<AmbientSource> ambient,
       Narrator narrator,
-      Clock clock,
-      EffectTermsSource terms,
+      EffectHandlers handlers,
       ExecutorService effects) {
     this.locks = locks;
     this.agentType = agentType;
     this.events = events;
     this.payloads = payloads;
-    this.provider = provider;
-    this.systemPrompt = systemPrompt;
-    this.options = options;
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
-    this.tools = tools;
     this.reading = Objects.requireNonNull(reading, "reading must not be null");
-    this.outputSchema = Objects.requireNonNull(outputSchema, "outputSchema must not be null");
-    this.clock = Objects.requireNonNull(clock, "clock must not be null");
-    this.terms = Objects.requireNonNull(terms, "terms must not be null");
-    this.effects = Objects.requireNonNull(effects, "effects must not be null");
-    // The queued door's assembler, unchanged. Ambient, the tail window and summaries are one job
-    // however the turn was started, and a second implementation of it would drift.
     this.narrator = Objects.requireNonNull(narrator, "narrator must not be null");
-    this.assembler =
-        new ContextAssembler(
-            // Scoped as it reads: content belongs to an agent, so the projection of one agent's
-            // turns resolves only that agent's payloads.
-            (type, id) -> new EventStreamHistory(events, new Transcript(payloads.forAgent(id)), id),
-            summaries,
-            maxTail,
-            ambient);
-    this.toolset = Toolset.of(tools.offers());
+    this.handlers = Objects.requireNonNull(handlers, "handlers must not be null");
+    this.effects = Objects.requireNonNull(effects, "effects must not be null");
   }
 
   @Override
@@ -274,7 +213,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       state = state.applyAll(decision.events());
 
       for (AgentEffect effect : decision.effects()) {
-        pending.add(perform(agent, content, effect, history));
+        pending.add(perform(agent, effect));
       }
     }
 
@@ -300,28 +239,27 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   /**
    * Where the outside world happens: everything slow, everything non-deterministic -- and now,
    * everything bounded by the deadline the effect's own terms name.
+   *
+   * <p>What performs the effect is {@link EffectHandlers#perform}, the same call the queued door's
+   * dispatcher makes. The only thing this door adds is {@link #within}'s deadline and the one arm
+   * {@link EffectHandlers#perform} can return that a queued row can park and this door cannot:
+   * {@link Awaited.Deferred}. Nothing here is coming back for that answer, so it is a failure by
+   * the effect's own terms rather than a denial this door has no standing to hand out.
    */
-  private AgentCommand perform(
-      AgentId agent, Payloads content, AgentEffect effect, List<AgentEvent> history) {
+  private AgentCommand perform(AgentId agent, AgentEffect effect) {
+    EffectTerms terms = handlers.termsFor(effect);
     return within(
-        termsFor(effect),
+        terms,
         () ->
-            switch (effect) {
-              case AgentEffect.Infer _ -> new AgentCommand.CompleteInference(infer(agent, content));
-
-              case AgentEffect.Approve approve -> approve(agent, content, approve, history);
-
-              case AgentEffect.CallTool call -> callTool(agent, content, call, history);
+            switch (handlers.perform(agent, effect)) {
+              case Awaited.Ready<EffectOutcome>(EffectOutcome outcome) ->
+                  EffectOutcomes.command(outcome);
+              case Awaited.Deferred<EffectOutcome> _ ->
+                  EffectOutcomes.command(
+                      terms.failed(
+                          new IllegalStateException(
+                              "the effect was deferred, and nothing here can wait for it")));
             });
-  }
-
-  /** What this effect is worth, asked of the same resolver the queued door writes a row from. */
-  private EffectTerms termsFor(AgentEffect effect) {
-    return switch (effect) {
-      case AgentEffect.Infer infer -> terms.termsFor(infer);
-      case AgentEffect.Approve approve -> terms.termsFor(approve);
-      case AgentEffect.CallTool call -> terms.termsFor(call);
-    };
   }
 
   /**
@@ -369,123 +307,6 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   }
 
   /**
-   * Asks whoever guards this tool, now.
-   *
-   * <p>A person at a terminal is the case this door serves best: they are already waiting on the
-   * answer, so asking them costs nothing that was not already being spent. What cannot cross is an
-   * approver that parks -- a desk that replies tomorrow has nowhere to put the waiting here, so it
-   * is a denial with a reason rather than a turn that never ends.
-   */
-  private AgentCommand approve(
-      AgentId agent, Payloads content, AgentEffect.Approve approve, List<AgentEvent> history) {
-    ToolBinding<?> binding = tools.find(approve.toolName()).orElse(null);
-    if (binding == null) {
-      return new AgentCommand.CompleteApproval(
-          approve.callId(),
-          new AgentCommand.ApprovalOutcome.Denied("no such tool", Optional.empty()));
-    }
-    ApprovalRequest question;
-    try {
-      question =
-          binding.question(
-              agentType,
-              agent,
-              turnOf(history),
-              approve.callId(),
-              argumentsOf(content, approve.callId(), history),
-              clock.instant(),
-              new ReplyToken(approve.callId().value()));
-    } catch (RuntimeException unreadable) {
-      // The sentence a person consents to is rendered from the tool's own input type, so a call
-      // whose arguments will not read has no question to ask about it -- and could not run
-      // whatever anybody answered. The queued door discharges the CALL here; this door is
-      // answering an approval effect, and the core takes a tool outcome only for a call already
-      // running, so it is discharged as a denial whose reason is the parse error. The model reads
-      // it and can correct itself, which is the part that matters.
-      return new AgentCommand.CompleteApproval(
-          approve.callId(),
-          new AgentCommand.ApprovalOutcome.Denied(
-              "the arguments could not be read: " + unreadable.getMessage(), Optional.empty()));
-    }
-    // Before asking, not after: an approver that blocks on a person is exactly when a watcher
-    // needs to know one is being asked, and after the answer it is too late to be worth saying.
-    tell(agent, new Narration.ApprovalSought(approve.callId(), question.action()));
-    Awaited<ApprovalResult> answer;
-    try {
-      answer = binding.approve(question);
-    } catch (RuntimeException broken) {
-      // An approver that throws is a gate that failed, and a gate that failed is a no. Never a
-      // yes, and never an exception out of a turn the caller is blocked on.
-      return new AgentCommand.CompleteApproval(
-          approve.callId(),
-          new AgentCommand.ApprovalOutcome.Denied(
-              "the approver failed: " + broken.getMessage(), Optional.empty()));
-    }
-    return switch (answer) {
-      case Awaited.Ready(ApprovalResult result) ->
-          switch (result) {
-            case ApprovalResult.Approved(var reference) ->
-                new AgentCommand.CompleteApproval(
-                    approve.callId(), new AgentCommand.ApprovalOutcome.Approved(reference));
-            case ApprovalResult.Denied(String reason, var reference) ->
-                new AgentCommand.CompleteApproval(
-                    approve.callId(), new AgentCommand.ApprovalOutcome.Denied(reason, reference));
-          };
-      case Awaited.Deferred<ApprovalResult> _ ->
-          new AgentCommand.CompleteApproval(
-              approve.callId(),
-              new AgentCommand.ApprovalOutcome.Denied(
-                  "approval was deferred, and nothing here can wait for it", Optional.empty()));
-    };
-  }
-
-  private AgentCommand callTool(
-      AgentId agent, Payloads content, AgentEffect.CallTool call, List<AgentEvent> history) {
-    ToolBinding<?> binding = tools.find(call.toolName()).orElse(null);
-    if (binding == null) {
-      return new AgentCommand.CompleteToolCall(
-          call.callId(), new AgentCommand.ToolOutcome.Failed("no such tool"));
-    }
-    try {
-      return switch (binding.call(
-          agentType,
-          agent,
-          turnOf(history),
-          call.callId(),
-          call.toolName(),
-          argumentsOf(content, call.callId(), history),
-          clock.instant().plus(binding.timeout()),
-          new ReplyToken(call.callId().value()))) {
-        case Awaited.Ready(ToolResult result) -> completed(content, call, result);
-        // A tool that wants to answer later has nowhere to put the answer on this door.
-        case Awaited.Deferred<ToolResult> _ ->
-            new AgentCommand.CompleteToolCall(
-                call.callId(),
-                new AgentCommand.ToolOutcome.Failed(
-                    "the tool deferred, and nothing here can wait for it"));
-      };
-    } catch (RuntimeException broken) {
-      // A sentence, because the model is going to read it. Names what went wrong, never the
-      // values involved.
-      return new AgentCommand.CompleteToolCall(
-          call.callId(), new AgentCommand.ToolOutcome.Failed(broken.getMessage()));
-    }
-  }
-
-  private AgentCommand completed(Payloads content, AgentEffect.CallTool call, ToolResult result) {
-    return switch (result) {
-      // Claim-checked on the way back, so a result crosses into the core as a reference and never
-      // as content.
-      case ToolResult.Success(var blocks) ->
-          new AgentCommand.CompleteToolCall(
-              call.callId(), new AgentCommand.ToolOutcome.Succeeded(content.put(blocks)));
-      case ToolResult.Failure(String message) ->
-          new AgentCommand.CompleteToolCall(
-              call.callId(), new AgentCommand.ToolOutcome.Failed(message));
-    };
-  }
-
-  /**
    * Where an idle state has to sit for the first replayed event to be accepted.
    *
    * <p>The fold refuses an event at or before its own position, so replay starts one short of the
@@ -493,73 +314,6 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    */
   private static Seq previous(Seq seq) {
     return seq.value() <= 1 ? Seq.NONE : new Seq(seq.value() - 1);
-  }
-
-  /** The turn these events belong to: the last one started. */
-  private TurnId turnOf(List<AgentEvent> history) {
-    return history.reversed().stream()
-        .filter(AgentEvent.TurnStarted.class::isInstance)
-        .map(AgentEvent.TurnStarted.class::cast)
-        .findFirst()
-        .map(AgentEvent.TurnStarted::turn)
-        .orElseThrow(() -> new IllegalStateException("a call outside any turn"));
-  }
-
-  private AgentCommand.InferenceOutcome infer(AgentId agent, Payloads content) {
-    InferenceRequest request =
-        new InferenceRequest(
-            systemPrompt.forAgent(agent),
-            assembler.assemble(new InferenceInvocation(agentType, agent, options)),
-            toolset,
-            options,
-            outputSchema);
-
-    tell(agent, new Narration.Thinking());
-    return switch (provider.infer(request, narratorFor(agent))) {
-      case InferenceResult.Answer(List<Block.AnswerContent> blocks, var _) ->
-          new AgentCommand.InferenceOutcome.Answered(content.put(blocks));
-      case InferenceResult.Refusal(String category, var _) ->
-          new AgentCommand.InferenceOutcome.Refused(category);
-      case InferenceResult.Fault(var failure, var _) ->
-          new AgentCommand.InferenceOutcome.Failed(failure);
-      case InferenceResult.Actions(List<Block.ActionRequestContent> blocks, var _) -> {
-        commentary(agent, blocks);
-        yield new AgentCommand.InferenceOutcome.RequestedActions(
-            content.put(blocks), requested(blocks));
-      }
-    };
-  }
-
-  /**
-   * What the model said while deciding to act, announced where the words still are.
-   *
-   * <p>Not from the event afterwards: by then it holds a reference, and narrating from it would
-   * mean reading back content this method already has in its hand.
-   */
-  private void commentary(AgentId agent, List<Block.ActionRequestContent> blocks) {
-    blocks.stream()
-        .filter(Block.Commentary.class::isInstance)
-        .map(Block.Commentary.class::cast)
-        .forEach(said -> tell(agent, new Narration.Commentary(said.text())));
-  }
-
-  /** Which calls a request obliges an outcome for, in the order the model made them. */
-  private static List<ActionRequest> requested(List<Block.ActionRequestContent> blocks) {
-    return blocks.stream()
-        .filter(Block.ToolCall.class::isInstance)
-        .map(Block.ToolCall.class::cast)
-        .map(call -> (ActionRequest) new ActionRequest.ToolCall(call.id(), call.name()))
-        .toList();
-  }
-
-  /**
-   * What a provider says while it is still saying it, turned into events for whoever is watching.
-   *
-   * <p>Best-effort by contract: a listener that throws is not allowed to fail a turn the caller is
-   * waiting on, and a watcher that misses every fragment still gets the answer.
-   */
-  private InferenceNarrator narratorFor(AgentId agent) {
-    return InferenceNarrators.of(narrator.forAgent(agentType, agent));
   }
 
   /**
@@ -619,32 +373,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * order, isolated from each other -- and doing it inline would put a slow listener between the
    * caller and their answer, which is exactly what this door must not do.
    */
-  private void tell(AgentId agent, org.jwcarman.nessy.api.Narration event) {
+  private void tell(AgentId agent, Narration event) {
     narrator.narrate(agentType, agent, event);
-  }
-
-  private String argumentsOf(Payloads content, CallId callId, List<AgentEvent> history) {
-    return history.reversed().stream()
-        .filter(AgentEvent.ActionsRequested.class::isInstance)
-        .map(AgentEvent.ActionsRequested.class::cast)
-        .findFirst()
-        .map(asked -> resolveCall(content, asked, callId))
-        .orElseThrow(() -> new IllegalStateException("no request holds " + callId));
-  }
-
-  private String resolveCall(Payloads content, AgentEvent.ActionsRequested asked, CallId callId) {
-    return switch (content.get(asked.request())) {
-      case Payloads.Resolved.Found(List<Block> blocks) ->
-          blocks.stream()
-              .filter(Block.ToolCall.class::isInstance)
-              .map(Block.ToolCall.class::cast)
-              .filter(tc -> tc.id().equals(callId))
-              .findFirst()
-              .map(Block.ToolCall::arguments)
-              .orElseThrow(() -> new IllegalStateException("no call " + callId));
-      case Payloads.Resolved.Missing _ ->
-          throw new IllegalStateException("no payload behind " + asked.request());
-    };
   }
 
   private Outcome<O> outcome(AgentId agent, List<AgentEvent> history) {

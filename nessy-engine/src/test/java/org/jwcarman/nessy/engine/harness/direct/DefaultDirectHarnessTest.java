@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine.harness.direct;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -630,7 +631,8 @@ class DefaultDirectHarnessTest {
   @DisplayName(
       "the inference retry policy is stored and read back, though this door does not" + " retry")
   void inference_retry_policy_is_stored_but_not_honoured() {
-    DefaultDirectHarnessConfig<String> config = new DefaultDirectHarnessConfig<>(TYPE);
+    DefaultDirectHarnessConfig<String> config =
+        new DefaultDirectHarnessConfig<>(TYPE, ObservationRegistry.NOOP);
     RetryPolicy policy = new RetryPolicy.FixedDelay(3, Duration.ofSeconds(1), Duration.ZERO);
 
     config.inference(in -> in.retryPolicy(policy));
@@ -784,11 +786,12 @@ class DefaultDirectHarnessTest {
 
   /**
    * The one thing that genuinely cannot cross to this door: an approver that answers later. There
-   * is nowhere to put the waiting, so it is a denial with a reason rather than a turn that hangs.
+   * is nowhere to put the waiting, so it discharges as a failure -- nobody said no, which is what
+   * {@code ToolDenied} would claim -- rather than a turn that hangs.
    */
   @Test
-  @DisplayName("an approver that defers is a denial, because nothing here can wait")
-  void a_deferred_approval_is_denied() {
+  @DisplayName("an approver that defers is a failure, because nothing here can wait")
+  void a_deferred_approval_is_failed() {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("fine"));
     AtomicBoolean ran = new AtomicBoolean();
@@ -821,7 +824,7 @@ class DefaultDirectHarnessTest {
     assertThat(ran).isFalse();
     assertThat(events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE))
         .extracting(e -> e.getClass().getSimpleName())
-        .contains("ToolDenied");
+        .contains("ToolFailed");
   }
 
   @Test

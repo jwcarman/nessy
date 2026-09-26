@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.engine.harness.direct;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
@@ -54,6 +55,7 @@ public final class DirectHarnessFactoryConfig {
   private InputSchemaGenerator schemas = new VictoolsInputSchemaGenerator();
   private ObjectMapper mapper = JsonMapper.builder().build();
   private Clock clock = Clock.systemUTC();
+  private ObservationRegistry observations = ObservationRegistry.NOOP;
   private final List<NarrationListener> listeners = new ArrayList<>();
   private final List<Customizer<HarnessConfig<?>>> features = new ArrayList<>();
   private final List<Customizer<DirectHarnessConfig<?>>> harnesses = new ArrayList<>();
@@ -110,6 +112,17 @@ public final class DirectHarnessFactoryConfig {
    */
   public DirectHarnessFactoryConfig clock(Clock clock) {
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
+    return this;
+  }
+
+  /**
+   * Where every effect this door performs reports its own work -- the same registry the queued door
+   * takes. Defaults to {@link ObservationRegistry#NOOP}: nothing to report, nothing reported, and
+   * every span this door produces once a real registry is given is genuinely new -- this door
+   * observed nothing before.
+   */
+  public DirectHarnessFactoryConfig observations(ObservationRegistry observations) {
+    this.observations = Objects.requireNonNull(observations, "observations must not be null");
     return this;
   }
 
@@ -184,6 +197,10 @@ public final class DirectHarnessFactoryConfig {
 
   Clock clock() {
     return clock;
+  }
+
+  ObservationRegistry observations() {
+    return observations;
   }
 
   List<NarrationListener> listeners() {

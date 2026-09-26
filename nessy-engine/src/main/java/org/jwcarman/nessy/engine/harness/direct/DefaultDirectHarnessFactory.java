@@ -16,6 +16,7 @@
 
 package org.jwcarman.nessy.engine.harness.direct;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
@@ -27,6 +28,7 @@ import java.util.function.BiFunction;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
@@ -39,11 +41,27 @@ import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.jwcarman.nessy.engine.effect.ApprovalHandler;
+import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectTermsSource;
+import org.jwcarman.nessy.engine.effect.InferenceHandler;
+import org.jwcarman.nessy.engine.effect.ToolCallHandler;
+import org.jwcarman.nessy.engine.history.EventStreamHistory;
+import org.jwcarman.nessy.engine.history.EventStreamToolCalls;
+import org.jwcarman.nessy.engine.history.Transcript;
+import org.jwcarman.nessy.engine.inference.ContextAssembler;
+import org.jwcarman.nessy.engine.inference.DefaultInferenceService;
+import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
 import org.jwcarman.nessy.engine.inmemory.InMemoryAgentEvents;
 import org.jwcarman.nessy.engine.inmemory.InMemoryLocks;
 import org.jwcarman.nessy.engine.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.engine.narration.Listeners;
+import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
+import org.jwcarman.nessy.engine.observability.ObservedSummarizer;
+import org.jwcarman.nessy.engine.observability.ObservedTurnHistories;
+import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -98,8 +116,19 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
   private final InputSchemaGenerator schemas;
   private final ObjectMapper mapper;
   private final Clock clock;
+  private final ObservationRegistry observations;
   private final List<Customizer<HarnessConfig<?>>> features;
   private final List<Customizer<DirectHarnessConfig<?>>> harnesses;
+
+  /**
+   * Where a deferring approver or tool would leave a reply address, if this door had somewhere to
+   * put one waiting on it. It never does -- {@link EffectHandlers#perform} always sees {@link
+   * Awaited.Deferred} become an immediate failure here -- so a token minted for this door never
+   * outlives the call it was minted for, and one that does not survive a restart loses nothing. One
+   * per factory rather than per harness: an address is opaque, so nothing about it is tied to a
+   * particular agent type.
+   */
+  private final ReplyTokens replyTokens = ReplyTokens.ephemeral();
 
   /**
    * One virtual thread per effect, for every harness this factory makes -- see the class javadoc
@@ -121,6 +150,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
     this.schemas = config.schemas();
     this.mapper = config.mapper();
     this.clock = config.clock();
+    this.observations = config.observations();
     this.listeners.addAll(config.listeners());
     this.features = config.features();
     this.harnesses = config.harnesses();
@@ -206,7 +236,8 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
       Optional<OutputSchema> outputSchema,
       BiFunction<AgentId, AgentEvent.InferenceAnswered, Outcome<O>> reading) {
     Objects.requireNonNull(customizer, "customizer must not be null");
-    DefaultDirectHarnessConfig<I> config = new DefaultDirectHarnessConfig<>(agentType);
+    DefaultDirectHarnessConfig<I> config =
+        new DefaultDirectHarnessConfig<>(agentType, observations);
     // What jars installed, then what this application says about every harness, then what this
     // caller asked for -- each able to override the one before it.
     features.forEach(feature -> feature.customize(config));
@@ -230,24 +261,57 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
             DefaultDirectHarnessConfig.DEFAULT_RETRY_POLICY,
             inference.timeout(),
             inference.retryPolicy());
+    Listeners narrator = new Listeners(listeners, config.listeners());
+    // Observed as they are handed over, the way a tool is wrapped as it is bound (§4g): what the
+    // engine is given reports its own work, and the assembler knows nothing about spans. The same
+    // recipe the queued factory uses, so a second implementation of it does not drift.
+    InferenceContextAssembler assembler =
+        ObservedInferenceContextAssembler.wrap(
+            new ContextAssembler(
+                ObservedTurnHistories.wrap(
+                    (type, id) ->
+                        new EventStreamHistory(events, new Transcript(payloads.forAgent(id)), id),
+                    observations),
+                inference.summaries().stream()
+                    .map(source -> ObservedSummarizer.wrap(source, observations))
+                    .toList(),
+                inference.maxTail(),
+                inference.ambient().stream()
+                    .map(source -> ObservedAmbientSource.wrap(source, observations))
+                    .toList()),
+            observations);
+    EventStreamToolCalls calls = new EventStreamToolCalls(events, payloads);
+    // What performs an effect once the fold has decided one is owed -- built exactly as the
+    // queued factory builds its own, so the two doors cannot describe a call, an approval or an
+    // inference differently.
+    EffectHandlers handlers =
+        new EffectHandlers(
+            new InferenceHandler(
+                config.agentType(),
+                new DefaultInferenceService(
+                    assembler,
+                    ObservedInferenceProvider.wrap(provider, observations),
+                    config.systemPromptSource(),
+                    tools.offers(),
+                    narrator,
+                    outputSchema),
+                new InferenceOptions(inference.modelName(), inference.maxTokens()),
+                terms,
+                payloads,
+                narrator),
+            new ApprovalHandler(
+                config.agentType(), tools, calls, replyTokens, narrator, terms, clock),
+            new ToolCallHandler(
+                config.agentType(), tools, calls, replyTokens, narrator, terms, clock, payloads));
     return new DefaultDirectHarness<>(
         locks,
         config.agentType(),
         events,
         payloads,
-        provider,
-        config.systemPromptSource(),
-        new InferenceOptions(inference.modelName(), inference.maxTokens()),
         config.renderer(),
-        tools,
         reading,
-        outputSchema,
-        inference.summaries(),
-        inference.maxTail(),
-        inference.ambient(),
-        new Listeners(listeners, config.listeners()),
-        clock,
-        terms,
+        narrator,
+        handlers,
         effects);
   }
 
