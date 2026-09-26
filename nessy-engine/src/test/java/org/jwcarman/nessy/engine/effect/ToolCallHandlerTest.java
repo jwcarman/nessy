@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -65,7 +66,8 @@ class ToolCallHandlerTest {
 
   private static final AgentType TYPE = new AgentType("tools");
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
-  private static final Payloads PAYLOADS = new InMemoryPayloads();
+  private static final Payloads PAYLOADS =
+      new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
   private static final ReplyTokens TOKENS = ReplyTokens.ephemeral();
   private static final Clock CLOCK =
       Clock.fixed(Instant.parse("2026-09-08T12:00:00Z"), ZoneOffset.UTC);

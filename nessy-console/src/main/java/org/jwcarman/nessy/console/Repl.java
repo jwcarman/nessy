@@ -26,7 +26,6 @@ import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.spi.store.Schemas;
-import org.jwcarman.nessy.spring.boot.NessyAutoConfiguration;
 import org.jwcarman.nessy.spring.boot.QueuedHarnessAutoConfiguration;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
@@ -102,32 +101,20 @@ public final class Repl {
    * InferenceProvider} bean (and, unless one was configured here, a {@code DataSource}), not to
    * serve anything. Closed in the same try that closes everything else this call built.
    */
-  /**
-   * The context, or {@code null} when it refused to start.
-   *
-   * <p>The starter's harness factory takes an {@link InferenceProvider} as an ordinary parameter,
-   * so a missing one is a STARTUP failure rather than a lookup that comes back empty. That is the
-   * right behaviour for an application -- it fails before serving anything -- and the wrong thing
-   * to hand a person at a terminal, who gets a stack trace out of {@code main} instead of a
-   * sentence saying what to set.
-   */
-  private static ConfigurableApplicationContext start() {
-    try {
-      return new SpringApplicationBuilder(ReplBootstrap.class).web(WebApplicationType.NONE).run();
-    } catch (BeansException refused) {
-      return null;
-    }
-  }
-
   static void run(ReplConfig config, ConsoleIo io) {
-    try (ConfigurableApplicationContext context = start()) {
-      if (context == null) {
-        say(
-            io,
-            "nessy could not start: no inference provider is configured. Set an API key --"
-                + " OPENAI_API_KEY, ANTHROPIC_API_KEY or GEMINI_API_KEY -- and try again.");
-        return;
-      }
+    ConfigurableApplicationContext started;
+    try {
+      started =
+          new SpringApplicationBuilder(ReplBootstrap.class).web(WebApplicationType.NONE).run();
+    } catch (BeansException refused) {
+      // Whatever Spring said, verbatim. This catches EVERY startup failure, so naming one cause
+      // would misdiagnose all the others; Boot's own message already names the bean it could not
+      // build. Said rather than thrown only because a person at a terminal should not be handed a
+      // stack trace out of main.
+      say(io, String.valueOf(refused.getMessage()));
+      return;
+    }
+    try (ConfigurableApplicationContext context = started) {
       InferenceProvider provider;
       try {
         provider = context.getBean(InferenceProvider.class);
@@ -167,9 +154,13 @@ public final class Repl {
   }
 
   /**
-   * Enough Boot to find a provider, and no more. The engine's own auto-configuration is excluded --
-   * it would want a DataSource bean, a model and a system prompt to build a factory this class
-   * builds by hand -- and so is what depends on it.
+   * Enough Boot to find a provider, and no more.
+   *
+   * <p>The engine's own auto-configuration is NOT excluded any more. It used to want a DataSource
+   * to create the schema, which a console has no use for; the schema moved to the JDBC backend's
+   * auto-configuration, where it belongs, and what is left here -- the codec factory every store
+   * asks for -- is exactly what this needs. Excluding it now would orphan the in-memory backend,
+   * which asks for that same factory.
    *
    * <p><b>The queued door is excluded by name, and that is the point of its being separate.</b> A
    * console reads a line and waits for the answer, so it uses the direct door and has no database
@@ -177,7 +168,6 @@ public final class Repl {
    * the engine -- so an application that wants one says which.
    */
   @Configuration(proxyBeanMethods = false)
-  @EnableAutoConfiguration(
-      exclude = {NessyAutoConfiguration.class, QueuedHarnessAutoConfiguration.class})
+  @EnableAutoConfiguration(exclude = QueuedHarnessAutoConfiguration.class)
   static class ReplBootstrap {}
 }

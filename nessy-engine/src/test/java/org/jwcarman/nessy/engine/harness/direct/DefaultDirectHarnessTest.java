@@ -37,6 +37,7 @@ import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.TypeRef;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
@@ -106,8 +107,10 @@ class DefaultDirectHarnessTest {
    */
   private final AdvanceableClock clock = new AdvanceableClock(Instant.now());
 
-  private final InMemoryAgentEvents events = new InMemoryAgentEvents(clock);
-  private final InMemoryPayloads payloads = new InMemoryPayloads();
+  private final InMemoryAgentEvents events =
+      new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()), clock);
+  private final InMemoryPayloads payloads =
+      new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
 
   /** A clock that stands still until a test moves it, so "overdue" is something a test states. */
   private static final class AdvanceableClock extends Clock {

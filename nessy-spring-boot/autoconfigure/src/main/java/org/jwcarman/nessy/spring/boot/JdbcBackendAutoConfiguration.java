@@ -16,12 +16,7 @@
 package org.jwcarman.nessy.spring.boot;
 
 import javax.sql.DataSource;
-import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
-import org.jwcarman.codec.TypeRef;
-import org.jwcarman.codec.jackson.JacksonCodecFactory;
-import org.jwcarman.nessy.api.IdentityCodec;
-import org.jwcarman.nessy.api.StorageCodecConfigurer;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.jdbc.JdbcDirectBackend;
@@ -37,7 +32,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.transaction.PlatformTransactionManager;
-import tools.jackson.databind.ObjectMapper;
 
 /**
  * The JDBC backend, when there is something to build it from.
@@ -73,40 +67,6 @@ import tools.jackson.databind.ObjectMapper;
 @ConditionalOnBean(DataSource.class)
 @EnableConfigurationProperties(NessyProperties.class)
 public class JdbcBackendAutoConfiguration {
-
-  /**
-   * The one way to build a {@link Codec} in this engine: Jackson, over the context's {@link
-   * ObjectMapper}, with the transform the {@link StorageCodecConfigurer} bean returns appended.
-   *
-   * <p>Nothing appended means the plain Jackson factory is handed back directly -- the noop
-   * default, with no noop object wrapping it. Reference equality against {@link
-   * IdentityCodec#INSTANCE} is what tells the two cases apart: a configurer that composes nothing
-   * hands the same instance straight back.
-   */
-  @Bean
-  @ConditionalOnMissingBean
-  public CodecFactory codecFactory(ObjectMapper mapper, StorageCodecConfigurer configurer) {
-    CodecFactory jackson = new JacksonCodecFactory(mapper);
-    Codec<byte[]> transform = configurer.configure(IdentityCodec.INSTANCE);
-    if (transform == IdentityCodec.INSTANCE) {
-      return jackson;
-    }
-    return new CodecFactory() {
-      @Override
-      public <T> Codec<T> create(TypeRef<T> type) {
-        return jackson.create(type).andThen(transform);
-      }
-    };
-  }
-
-  /**
-   * Nothing appended, for an application that has not declared a {@link StorageCodecConfigurer}.
-   */
-  @Bean
-  @ConditionalOnMissingBean
-  public StorageCodecConfigurer storageCodecConfigurer() {
-    return original -> original;
-  }
 
   /**
    * The schema, created where the application says so.

@@ -71,17 +71,16 @@ public final class JdbcPayloads implements Payloads {
    * list handed over as a list is serialised by each element's runtime class, the ids are left out,
    * and it reads back as nothing at all. Declaring the field is what keeps them.
    */
-  record Content(List<Block> blocks) {}
-
   private final JdbcClient jdbc;
-  private final Codec<Content> codec;
+
+  private final Codec<Payloads.Content> codec;
   private final AgentId agent;
 
   public JdbcPayloads(JdbcClient jdbc, CodecFactory codecs) {
-    this(jdbc, codecs.create(Content.class), null);
+    this(jdbc, codecs.create(Payloads.Content.class), null);
   }
 
-  private JdbcPayloads(JdbcClient jdbc, Codec<Content> codec, AgentId agent) {
+  private JdbcPayloads(JdbcClient jdbc, Codec<Payloads.Content> codec, AgentId agent) {
     this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
     this.codec = Objects.requireNonNull(codec, "codec must not be null");
     this.agent = agent;
@@ -94,10 +93,10 @@ public final class JdbcPayloads implements Payloads {
 
   @Override
   public PayloadRef put(List<? extends Block> content) {
-    byte[] encoded = codec.encode(new Content(List.copyOf(content)));
-    byte[] hash = sha256(encoded);
-    jdbc.sql(PUT).params(scoped().value(), hash, encoded).update();
-    return new PayloadRef(HexFormat.of().formatHex(hash));
+    byte[] encoded = codec.encode(new Payloads.Content(List.copyOf(content)));
+    PayloadRef ref = Payloads.reference(encoded);
+    jdbc.sql(PUT).params(scoped().value(), HexFormat.of().parseHex(ref.value()), encoded).update();
+    return ref;
   }
 
   @Override

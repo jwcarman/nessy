@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.backend.inmemory;
 
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lock.Locks;
@@ -31,8 +32,18 @@ import org.jwcarman.nessy.backend.payload.Payloads;
 public final class InMemoryDirectBackend implements DirectBackend {
 
   private final Locks locks = new InMemoryLocks();
-  private final AgentEvents events = new InMemoryAgentEvents();
-  private final Payloads payloads = new InMemoryPayloads();
+  private final AgentEvents events;
+  private final Payloads payloads;
+
+  /**
+   * The same factory every other backend is handed, so a transform an application configures
+   * applies here too. Storing bytes rather than the caller's own objects is what lets this stand in
+   * for a durable backend in a test without standing in for a kinder one.
+   */
+  public InMemoryDirectBackend(CodecFactory codecs) {
+    this.events = new InMemoryAgentEvents(codecs);
+    this.payloads = new InMemoryPayloads(codecs);
+  }
 
   @Override
   public AgentEvents events() {

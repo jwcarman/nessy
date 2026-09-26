@@ -15,7 +15,10 @@
  */
 package org.jwcarman.nessy.backend.payload;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +43,6 @@ import org.jwcarman.nessy.api.block.Block;
  */
 public interface Payloads {
 
-  /** Puts content away and returns the reference that will fetch it. */
   /**
    * This store, for one agent's content.
    *
@@ -81,6 +83,33 @@ public interface Payloads {
       found.computeIfAbsent(ref, this::get);
     }
     return found;
+  }
+
+  /**
+   * The shape content takes once written down.
+   *
+   * <p>Here rather than in either store so both encode the SAME type: the reference is a hash of
+   * the encoded bytes, so a record declared twice -- once per backend -- would give the same
+   * content two different references the day somebody renamed a component in one of them, and
+   * nothing would fail until a reader compared the two.
+   */
+  record Content(List<Block> blocks) {}
+
+  /**
+   * The reference for content that encodes to {@code bytes}.
+   *
+   * <p>Derived rather than minted, which is what makes {@link #put} idempotent: the same content is
+   * the same reference, so an effect retried after a failure cannot leave a second copy. Shared for
+   * the same reason {@link Content} is -- two derivations would be two answers.
+   */
+  static PayloadRef reference(byte[] bytes) {
+    try {
+      return new PayloadRef(
+          HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)));
+    } catch (NoSuchAlgorithmException impossible) {
+      // Every JVM ships SHA-256; the checked exception is the API's age showing.
+      throw new IllegalStateException("SHA-256 is not available", impossible);
+    }
   }
 
   /** What came of asking. */

@@ -24,6 +24,7 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -142,8 +143,10 @@ class DirectHarnessObservabilityTest {
                     f.backend(
                             new FixedDirectBackend(
                                 new InMemoryLocks(),
-                                new InMemoryAgentEvents(),
-                                new InMemoryPayloads()))
+                                new InMemoryAgentEvents(
+                                    new JacksonCodecFactory(JsonMapper.builder().build())),
+                                new InMemoryPayloads(
+                                    new JacksonCodecFactory(JsonMapper.builder().build()))))
                         .provider(model)
                         .schemas(new VictoolsInputSchemaGenerator())
                         .mapper(JsonMapper.builder().build())

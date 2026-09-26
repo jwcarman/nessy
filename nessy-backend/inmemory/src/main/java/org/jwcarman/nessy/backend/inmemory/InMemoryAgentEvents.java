@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.backend.event.AgentEvent;
@@ -39,26 +41,43 @@ import org.jwcarman.nessy.backend.event.AgentEvents;
  */
 public final class InMemoryAgentEvents implements AgentEvents {
 
-  private final Map<AgentId, List<AgentEvent>> streams = new ConcurrentHashMap<>();
+  /**
+   * One event as it is kept: encoded, with the two facts a reader selects on left outside the
+   * bytes.
+   *
+   * <p>The durable table does exactly this -- a payload blob beside a {@code seq} column and a
+   * {@code starts_turn} flag it indexes -- because answering "everything after this point" or
+   * "since the last turn opened" by decoding every event to look at it would be absurd there. It is
+   * only wasteful here, but keeping the same shape means the two stores answer the same questions
+   * the same way rather than by coincidence.
+   */
+  private record Stored(Seq seq, boolean startsTurn, byte[] bytes) {}
+
+  private final Map<AgentId, List<Stored>> streams = new ConcurrentHashMap<>();
   private final Map<AgentId, Map<Seq, Instant>> writtenAt = new ConcurrentHashMap<>();
   private final Clock clock;
+  private final Codec<AgentEvent> codec;
 
-  public InMemoryAgentEvents() {
-    this(Clock.systemUTC());
+  public InMemoryAgentEvents(CodecFactory codecs) {
+    this(codecs, Clock.systemUTC());
   }
 
-  public InMemoryAgentEvents(Clock clock) {
+  public InMemoryAgentEvents(CodecFactory codecs, Clock clock) {
+    this.codec = Objects.requireNonNull(codecs, "codecs must not be null").create(AgentEvent.class);
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
   }
 
   @Override
   public synchronized void append(AgentId agent, List<AgentEvent> events, Seq expectedLast) {
-    List<AgentEvent> stream = streams.computeIfAbsent(agent, _ -> new ArrayList<>());
+    List<Stored> stream = streams.computeIfAbsent(agent, _ -> new ArrayList<>());
     Seq last = stream.isEmpty() ? Seq.NONE : stream.getLast().seq();
     if (!last.equals(expectedLast)) {
       throw new Conflict("expected " + expectedLast + " but the stream is at " + last);
     }
-    stream.addAll(events);
+    for (AgentEvent event : events) {
+      stream.add(
+          new Stored(event.seq(), event instanceof AgentEvent.TurnStarted, codec.encode(event)));
+    }
     Map<Seq, Instant> stamps = writtenAt.computeIfAbsent(agent, _ -> new ConcurrentHashMap<>());
     Instant now = clock.instant();
     for (AgentEvent event : events) {
@@ -69,16 +88,19 @@ public final class InMemoryAgentEvents implements AgentEvents {
   @Override
   public synchronized List<AgentEvent> readFrom(AgentId agent, Seq watermark) {
     return streams.getOrDefault(agent, List.of()).stream()
-        .filter(event -> event.seq().compareTo(watermark) > 0)
+        .filter(stored -> stored.seq().compareTo(watermark) > 0)
+        .map(stored -> codec.decode(stored.bytes()))
         .toList();
   }
 
   @Override
   public List<AgentEvent> sinceLastTurnStarted(AgentId agent) {
-    List<AgentEvent> stream = streams.getOrDefault(agent, List.of());
+    List<Stored> stream = streams.getOrDefault(agent, List.of());
     for (int i = stream.size() - 1; i >= 0; i--) {
-      if (stream.get(i) instanceof AgentEvent.TurnStarted) {
-        return List.copyOf(stream.subList(i, stream.size()));
+      if (stream.get(i).startsTurn()) {
+        return stream.subList(i, stream.size()).stream()
+            .map(stored -> codec.decode(stored.bytes()))
+            .toList();
       }
     }
     return List.of();

@@ -28,12 +28,14 @@ import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
+import tools.jackson.databind.json.JsonMapper;
 
 @DisplayName("An agent's events, held only for as long as the process lives")
 class InMemoryAgentEventsTest {
@@ -50,7 +52,8 @@ class InMemoryAgentEventsTest {
     Instant first = Instant.parse("2026-01-01T00:00:00Z");
     Instant second = Instant.parse("2026-01-01T00:05:00Z");
     Clock clock = new SteppedClock(first, second);
-    AgentEvents events = new InMemoryAgentEvents(clock);
+    AgentEvents events =
+        new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()), clock);
 
     events.append(agent, List.of(started(1, 1)), Seq.NONE);
     events.append(agent, List.of(started(2, 2)), new Seq(1));
@@ -62,7 +65,8 @@ class InMemoryAgentEventsTest {
   @Test
   @DisplayName("a default store stamps with the system clock, not with nothing")
   void the_no_arg_constructor_defaults_to_the_system_clock() {
-    AgentEvents events = new InMemoryAgentEvents();
+    AgentEvents events =
+        new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
 
     events.append(agent, List.of(started(1, 1)), Seq.NONE);
 
@@ -73,7 +77,8 @@ class InMemoryAgentEventsTest {
   @Test
   @DisplayName("an unknown seq names the agent and the seq rather than staying quiet about it")
   void an_unknown_seq_throws() {
-    AgentEvents events = new InMemoryAgentEvents();
+    AgentEvents events =
+        new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
     events.append(agent, List.of(started(1, 1)), Seq.NONE);
 
     assertThatThrownBy(() -> events.writtenAt(agent, new Seq(99)))

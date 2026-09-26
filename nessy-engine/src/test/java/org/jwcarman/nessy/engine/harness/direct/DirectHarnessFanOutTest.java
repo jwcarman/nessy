@@ -34,6 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -81,8 +82,10 @@ class DirectHarnessFanOutTest {
   private static final ObjectMapper MAPPER = JsonMapper.builder().build();
 
   private final Clock clock = Clock.systemUTC();
-  private final InMemoryAgentEvents events = new InMemoryAgentEvents(clock);
-  private final InMemoryPayloads payloads = new InMemoryPayloads();
+  private final InMemoryAgentEvents events =
+      new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()), clock);
+  private final InMemoryPayloads payloads =
+      new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
 
   record Lookup(String id) {}
 
@@ -442,8 +445,10 @@ class DirectHarnessFanOutTest {
   void an_effect_whose_budget_elapsed_while_queued_for_a_permit_is_not_performed()
       throws Exception {
     AdvanceableClock stepped = new AdvanceableClock(Instant.now());
-    InMemoryAgentEvents steppedEvents = new InMemoryAgentEvents(stepped);
-    InMemoryPayloads steppedPayloads = new InMemoryPayloads();
+    InMemoryAgentEvents steppedEvents =
+        new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()), stepped);
+    InMemoryPayloads steppedPayloads =
+        new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
     AgentId agent = AgentId.random();
 
     CountDownLatch firstStarted = new CountDownLatch(1);

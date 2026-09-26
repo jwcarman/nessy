@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.spring.boot;
 
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLeases;
@@ -35,14 +36,14 @@ import org.springframework.context.annotation.Bean;
  * in this module implements an in-memory {@code Agents} or {@code Effects}, so the queued door
  * stays undeclared until a durable backend supplies one.
  */
-@AutoConfiguration(after = JdbcBackendAutoConfiguration.class)
+@AutoConfiguration(after = {NessyAutoConfiguration.class, JdbcBackendAutoConfiguration.class})
 @ConditionalOnClass(InMemoryDirectBackend.class)
 public class InMemoryBackendAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  public DirectBackend directBackend() {
-    return new InMemoryDirectBackend();
+  public DirectBackend directBackend(CodecFactory codecs) {
+    return new InMemoryDirectBackend(codecs);
   }
 
   /**

@@ -15,10 +15,12 @@
  */
 package org.jwcarman.nessy.backend.inmemory;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.payload.Payloads;
@@ -30,30 +32,45 @@ import org.jwcarman.nessy.backend.payload.Payloads;
  * as the object holding it and not a moment longer. The core cannot tell the difference between
  * this and a table, which is the point -- the discipline of keeping content out of events costs the
  * cheapest door nothing.
+ *
+ * <p><b>It encodes, and that is deliberate work a map does not need.</b> Holding the caller's own
+ * list would make this store behave differently from a durable one in two ways that matter. What
+ * comes back would be the very object handed in, so a caller mutating its copy would change what is
+ * "stored" -- while a table always answers with a fresh decode. And a type that cannot round-trip,
+ * a record missing its {@code @JsonCreator}, would pass here and fail only against a database. That
+ * is the same trap as testing on a different engine than the one that runs in production, one layer
+ * up: the fast test would pass against exactly the bug worth catching. Encoding costs a little and
+ * buys a store that means what the durable one means, which is what makes a shared suite of tests
+ * worth writing.
  */
 public final class InMemoryPayloads implements Payloads {
 
-  private final Map<PayloadRef, List<Block>> content = new ConcurrentHashMap<>();
+  private final Codec<Payloads.Content> codec;
+  private final Map<PayloadRef, byte[]> content = new ConcurrentHashMap<>();
+
+  public InMemoryPayloads(CodecFactory codecs) {
+    this.codec =
+        Objects.requireNonNull(codecs, "codecs must not be null").create(Payloads.Content.class);
+  }
 
   /**
-   * Addressed by content, as the durable store is.
-   *
-   * <p>Minting a fresh reference each time would work here and diverge there: putting the same
-   * content twice would be two references in memory and one in a table, and the difference would be
-   * found by a test that passes against one and not the other. Equality of the blocks stands in for
-   * the hash -- there are no bytes to take one of, and nothing here outlives the process.
+   * Addressed by content, exactly as the durable store is: the same blocks encode to the same bytes
+   * and hash to the same reference, so the two stores agree on what a reference IS rather than each
+   * deriving one its own way.
    */
   @Override
   public PayloadRef put(List<? extends Block> blocks) {
-    List<Block> kept = List.copyOf(new ArrayList<Block>(blocks));
-    PayloadRef ref = PayloadRef.of("p" + Integer.toHexString(kept.hashCode()));
-    content.put(ref, kept);
+    byte[] encoded = codec.encode(new Payloads.Content(List.copyOf(blocks)));
+    PayloadRef ref = Payloads.reference(encoded);
+    content.put(ref, encoded);
     return ref;
   }
 
   @Override
   public Resolved get(PayloadRef ref) {
-    List<Block> found = content.get(ref);
-    return found == null ? new Resolved.Missing() : new Resolved.Found(found);
+    byte[] found = content.get(ref);
+    return found == null
+        ? new Resolved.Missing()
+        : new Resolved.Found(codec.decode(found).blocks());
   }
 }

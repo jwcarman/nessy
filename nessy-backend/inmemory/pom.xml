@@ -49,6 +49,13 @@
       <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- The Jackson binding, so a test can build the same CodecFactory an application's context
+         hands these stores. The stores themselves take a CodecFactory and do not care which. -->
+    <dependency>
+      <groupId>org.jwcarman.codec</groupId>
+      <artifactId>codec-jackson</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.assertj</groupId>
       <artifactId>assertj-core</artifactId>

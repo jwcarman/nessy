@@ -17,7 +17,13 @@ package org.jwcarman.nessy.spring.boot;
 
 import java.util.Base64;
 import java.util.List;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.codec.TypeRef;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
+import org.jwcarman.nessy.api.IdentityCodec;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.StorageCodecConfigurer;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.slf4j.Logger;
@@ -28,6 +34,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Nessy as a Boot citizen: an {@link InferenceProvider} in, a {@link QueuedHarness} out.
@@ -51,9 +58,11 @@ import org.springframework.core.env.Environment;
  * what happened when the backend auto-configurations arrived and left the disabled path asking for
  * a codec factory that was never going to exist.
  *
- * <p><b>The tables and the codec factory live with the JDBC backend, not here.</b> {@link
- * JdbcBackendAutoConfiguration} owns both, so excluding this class -- or running with no {@code
- * DataSource} at all -- never orphans the backend.
+ * <p><b>The tables live with the JDBC backend; the codec factory lives here.</b> {@link
+ * JdbcBackendAutoConfiguration} owns the schema, because tables are its own and an application with
+ * no {@code DataSource} must still start. The codec factory belongs to no backend in particular:
+ * every store that turns a value into bytes asks this one for it, so a transform an application
+ * configures reaches all of them rather than whichever substrate happened to ask.
  */
 @AutoConfiguration
 @EnableConfigurationProperties(NessyProperties.class)
@@ -75,6 +84,44 @@ public class NessyAutoConfiguration {
     }
     return ReplyTokens.withKeys(
         keys.stream().map(key -> Base64.getDecoder().decode(key)).toArray(byte[][]::new));
+  }
+
+  /**
+   * The one way to build a {@link Codec} in this engine: Jackson, over the context's {@link
+   * ObjectMapper}, with the transform the {@link StorageCodecConfigurer} bean returns appended.
+   *
+   * <p>Here rather than with a backend because it belongs to none of them in particular. Every
+   * store that turns a value into bytes reaches for this one factory, so an application that
+   * configures a transform gets it everywhere rather than on whichever substrate happened to ask.
+   *
+   * <p>Nothing appended means the plain Jackson factory is handed back directly -- the noop
+   * default, with no noop object wrapping it. Reference equality against {@link
+   * IdentityCodec#INSTANCE} is what tells the two cases apart: a configurer that composes nothing
+   * hands the same instance straight back.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public CodecFactory codecFactory(ObjectMapper mapper, StorageCodecConfigurer configurer) {
+    CodecFactory jackson = new JacksonCodecFactory(mapper);
+    Codec<byte[]> transform = configurer.configure(IdentityCodec.INSTANCE);
+    if (transform == IdentityCodec.INSTANCE) {
+      return jackson;
+    }
+    return new CodecFactory() {
+      @Override
+      public <T> Codec<T> create(TypeRef<T> type) {
+        return jackson.create(type).andThen(transform);
+      }
+    };
+  }
+
+  /**
+   * Nothing appended, for an application that has not declared a {@link StorageCodecConfigurer}.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public StorageCodecConfigurer storageCodecConfigurer() {
+    return original -> original;
   }
 
   /** Says what will actually answer, before a single turn runs. */

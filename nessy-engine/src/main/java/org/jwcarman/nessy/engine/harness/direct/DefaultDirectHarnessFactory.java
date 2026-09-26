@@ -26,6 +26,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.BiFunction;
 import org.jwcarman.codec.TypeRef;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -65,6 +66,7 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.OutputSchema;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Makes direct harnesses that share what should be shared.
@@ -181,7 +183,9 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
     return of(
         config ->
             config
-                .backend(new InMemoryDirectBackend())
+                .backend(
+                    new InMemoryDirectBackend(
+                        new JacksonCodecFactory(JsonMapper.builder().build())))
                 .provider(provider)
                 .schemas(schemas)
                 .mapper(mapper));

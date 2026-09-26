@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Seq;
@@ -41,6 +42,7 @@ import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
 import org.jwcarman.nessy.engine.store.Outbox;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * An answer that is authentic but is not for anything still waiting.
@@ -68,7 +70,8 @@ class MisroutedReplyTest {
   private final ReplyTokens tokens = ReplyTokens.withKeys(new byte[32]);
   private final Rows rows = new Rows();
   private final Deliveries delivered = new Deliveries();
-  private final Payloads payloads = new InMemoryPayloads();
+  private final Payloads payloads =
+      new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
   private final DefaultReplies replies = new DefaultReplies(tokens);
 
   private ReplyToken token() {
