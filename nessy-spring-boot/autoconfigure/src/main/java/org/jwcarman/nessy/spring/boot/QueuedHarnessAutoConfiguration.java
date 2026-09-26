@@ -36,7 +36,6 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -55,7 +54,10 @@ import org.springframework.context.annotation.Bean;
  */
 @AutoConfiguration(after = NessyAutoConfiguration.class)
 @ConditionalOnProperty(name = "nessy.enabled", havingValue = "true", matchIfMissing = true)
-@ConditionalOnClass(DefaultQueuedHarnessFactory.class)
+// No @ConditionalOnClass here, deliberately. Both doors' factories live in nessy-engine, which
+// this module depends on outright, so a condition naming either class can never be false -- and a
+// reader who found one would reasonably conclude the classpath tells the two doors apart. It does
+// not. An application that wants one door excludes the other by name.
 public class QueuedHarnessAutoConfiguration {
 
   @Bean
