@@ -1,9 +1,10 @@
 # Locks as plumbing: one SPI, two implementations, and a direct door that locks for milliseconds
 
-**Status: PROPOSED — awaiting sign-off on §14; steps 1–4 of §13a are built and committed.** Every
-fact about the working tree was measured on branch `fold-swap`, on 2026-09-25 for the first five
-revisions and re-verified on 2026-09-26 for the sixth; every signature under "the design" that is
-not marked as landed is a proposal.
+**Status: PROPOSED — awaiting sign-off on §14; the first five landed items of §13a are built and
+committed, and `DirectHarness<I, O>` is in flight.** Every fact about the working tree was measured
+on branch `fold-swap`, on 2026-09-25 for the first five revisions and re-verified on 2026-09-26 for
+the sixth and seventh; every signature under "the design" that is not marked as landed is a
+proposal.
 This version supersedes, in place, earlier drafts of the same date. The first unified the two
 doors' exclusion behind one SPI keyed by an opaque string. James's pushback ("Why do we fucking
 need JdbcLeases?"; "We don't need it to wrap the entire run turn do we? This is really annoying")
@@ -31,17 +32,30 @@ deadlines live: nowhere in the fold. "We have that get terms stuff on the queued
 rejected shapes and one retracted interface are recorded in §10 with their reasons. §13 gains an
 execution order, written so the plan stands without him.
 
-The sixth revision records that steps 1–4 of §13a have landed (each with its SHA, in §13a), and
-rewrites step 7 around a ruling James made while reviewing step 4: "it really feels like we have a
+The sixth revision records that the first four steps of §13a have landed (each with its SHA, in
+§13a), and rewrites the handlers step around a ruling James made while reviewing the deadline step: "it really feels like we have a
 need for 'a thing that can execute the effects emitted by the fold' and that would be a simple
 method call ... In the queued case, we have to manage the effects store properly based on what
 happens. In the direct case, we return the answer (or fail loudly if anything is deferred)." He is
 right, and the thing already exists — `EffectHandlers.perform`. §4f finds that
 `DefaultDirectHarness` is a hand-rolled reimplementation of it, and that this one fact is the root
-cause of five things the record had been treating as separate findings; §4g is the step 7 that
-follows. Two §14 questions stop being questions and become consequences. Three rulings made after
+cause of five things the record had been treating as separate findings; §4g is the handlers step
+that follows. Two §14 questions stop being questions and become consequences. Three rulings made after
 the fifth revision are folded in: the guard helper's name (§7), locks and leases as separate tables
 (§8a), and lease observability with its three rejected alternatives (§8d).
+
+The seventh revision is mostly §13a. It states the real order of what remains, with two steps that
+were not in any earlier revision: a package restructure of the engine ("right now, engine is kind
+of a mess") placed before the handlers step, and a module split — `nessy-engine`,
+`nessy-engine-direct`, `nessy-engine-queued` — placed last, with the reason it kept being deferred
+and the reason it is now tractable (§13b). Four rulings made since the sixth revision are folded in
+and leave §14: `JdbcRowLocks` takes a `PlatformTransactionManager` and chooses its own propagation
+(§8a); it lives in `nessy-engine`, so the engine does not depend on `nessy-lease` at all and that
+module stays optional (§8a, §12) — which reverses this record's earlier proposal to make it
+non-optional; `nessy-lease` keeps its name, module and package ("We have both constructs, leases
+and locks"), so the rename question is retired (§12); and the inference `undispatchable()` blob
+becomes `Failure.Unknown` (§4d), with the evidence for why recorded so the two comments that
+currently describe the bug can be rewritten when it is gone.
 
 Date: 2026-09-25. Continues `2026-09-25-one-core-two-doors-design.md`, whose §5 table records that
 the two doors exclude differently; this record makes them exclude the same way. It overturns one
@@ -274,10 +288,10 @@ and its javadoc says so in as many words: "A read timeout after the request was 
 fast version of this, and a deferral whose deadline lapsed is the slow one — both leave exactly the
 same question open" (`inference/Failure.java:83–85`).
 
-### 4b. The direct door enforced none of them (as measured before step 4; fixed by `8575a90a`)
+### 4b. The direct door enforced none of them (as measured before `8575a90a`, which fixed it)
 
-Everything in this subsection describes the tree as it was when the finding was made. Step 4 of
-§13a landed it: the inert setters store, every effect is waited for with its own deadline, and the
+Everything in this subsection describes the tree as it was when the finding was made. The deadline
+step of §13a (`8575a90a`) landed it: the inert setters store, every effect is waited for with its own deadline, and the
 line numbers below are those of the file before that commit. It is kept because the finding's root
 cause — §4f — is only visible against what it fixed.
 
@@ -353,7 +367,7 @@ private AgentCommand within(EffectTerms terms, Supplier<AgentCommand> work,
 (effect) { ... })` with the three arms — `infer`, `approve`, `callTool` — inside the one wait
 (`DefaultDirectHarness.java:309–326`), the `Future` is cancelled on expiry, and an
 `ExecutionException` from the work is delivered as `terms.failed(cause)` so a throwing provider no
-longer escapes the turn (§4d). Step 7 (§4g) keeps `within` exactly as committed and changes only
+longer escapes the turn (§4d). The handlers step (§4g; §13a step 3) keeps `within` exactly as committed and changes only
 what is inside it: the switch over three hand-written arms becomes one call to
 `EffectHandlers.perform`, so the wrapper has one call site and the door's private `termsFor` — a
 seven-line copy of `EffectHandlers.termsFor` at `:329–335` — goes with the arms. An expiry is
@@ -380,7 +394,7 @@ became `clock.instant()`. The three deadline tests in `DefaultDirectHarnessTest`
 in under half a second. The `Clock` is a public config method and was a §14 question; it landed with step
 4 and the question is closed.
 
-**One executor, on the factory.** Step 4's first cut gave each harness its own virtual-thread
+**One executor, on the factory.** The deadline step's first cut gave each harness its own virtual-thread
 executor and had the factory keep a list of every harness it ever made so it could close them. Both
 were removed before the commit: a thread-per-task executor over virtual threads holds nothing while
 idle, so a harness has nothing to own and nothing to release, and the registry was an unbounded
@@ -471,16 +485,40 @@ So the expired-approval arm is `ToolFailed`, not `CompleteApproval(Denied)`, and
 to choose: the fold ruled it, the queued door already delivers it, and the direct door delivers the
 identical blob. Two findings from the reconciliation, neither papered over:
 
-1. **The inference blob's category and wording are wrong for a hung inference, on both doors.**
-   `Permanent` is "refused on its merits; retrying spends a budget to receive the same answer"
-   (`Failure.java:49–58`), and "could not be dispatched" is false for a call that was dispatched
-   and never came back — which is what a queued row that was claimed, overran, and reached its
-   deadline is, and what a dead direct process leaves. `Failure.Unknown`'s javadoc names this case
-   exactly (§4a). The tool blob already gets it right ("whether it ran is not known", with a
-   comment explaining why it must not claim more). The recommendation is to change
-   `InferenceHandler.undispatchable()` to `Unknown` with wording of the tool blob's shape; the fold
-   accepts any `Failure`, so nothing else moves. §14 Q3. It is not a blocker: the agent is `Idle`
-   either way.
+1. **The inference blob's category and wording are wrong for a hung inference, on both doors —
+   ruled, and it changes.** `Permanent` is "refused on its merits; retrying spends a budget to
+   receive the same answer" (`Failure.java:49–58`), and "could not be dispatched" is false for a
+   call that was dispatched and never came back — which is what a queued row that was claimed,
+   overran, and reached its deadline is, and what a dead direct process leaves. `Failure.Unknown`'s
+   javadoc names this case exactly (§4a). The tool blob already gets it right ("whether it ran is
+   not known", with a comment explaining why it must not claim more). James approved the change
+   ("I'm not worried about current live databases. They don't exist. Let's make sure we do it
+   RIGHT."): `undispatchable()` for an inference becomes `InferenceFailed(Failure.Unknown("the
+   inference did not complete before its deadline; whether it ran is not known"))`, the tool blob's
+   wording. The fold accepts any `Failure`, so nothing else moves.
+
+   **Why it is false, as evidence rather than assertion**, because the queued dispatcher's own
+   code says so in four places. `EffectDispatcher.performInTrace` (`:301`) routes a claimed row to
+   `expired` whenever `clock.instant()` is not before its deadline, with no check on
+   `attempts_made`; the claim (`JdbcEffectStore.MARK_RUNNING`, `:93`) does `attempts_made =
+   attempts_made + 1` *before* the work is performed; the dispatcher's own log line (`:408`) prints
+   "effect {} passed its deadline after {} attempt(s)" — a number it knows can be greater than
+   zero; and its class javadoc (`:53–54`) documents that "a crash mid-call leaves a row whose
+   deadline has passed rather than one nothing will ever pick up". Put together: an inference that
+   was claimed, dispatched to the provider, and possibly completed there is, on its next claim,
+   told to the agent as "could not be dispatched" — `Permanent`, no less, which tells a retrying
+   agent that asking again would receive the same answer. Two comments in the tree already say the
+   stored blob is false on some path — `EffectDispatcher.giveUp` (`:496–497`: "the stored blob —
+   which says the effect could not be dispatched — would be false") and `EffectTerms.failed`'s
+   javadoc (`:65–67`: "Falling back to the stored blob would ... tell the agent the effect could
+   not be dispatched, which is false") — and both are written against the wrong blob. Once it is
+   honest, both comments describe a bug that no longer exists and are rewritten in the same commit;
+   `failed` stays distinct from `undispatchable` for the reason its javadoc gives *next* (an
+   attempt ran and there is an exception to carry), not for the reason it gives first.
+   `EffectTermsSourceTest.undispatchableIsAPermanentFailureUntoldFromTheUnknownCase` (`:201`) pins
+   the wrong behaviour by name and flips, name and assertion both. This is its own step (§13a),
+   small and before the handlers step, so that the direct door's recovery lands against the honest
+   blob and never delivers the false one.
 2. **The direct door's own `approve` answers a `Deferred` approval with a `Denied`** ("approval was
    deferred, and nothing here can wait for it", `DefaultDirectHarness.java:444–448`), where the
    fold's doctrine and both `AskingTerms` blobs say nobody said no. The fifth revision proposed
@@ -502,7 +540,8 @@ original alive enough to come back has already given up at the same moment recov
 
 Both halves of this subsection are in the tree: `AgentEventStore.writtenAt` with its JDBC and
 in-memory implementations, and `Outstanding(action, phase, since)` populated by `AgentState`. The
-design text is kept as the reasoning; nothing reads either yet, which is step 7's job.
+design text is kept as the reasoning; nothing reads either yet, which is the recovery step's job
+(§13a step 6).
 
 **The store read: `Instant writtenAt(AgentId agent, Seq seq)` on `AgentEventStore`.**
 `nessy_agent_event.written_at` is `TIMESTAMPTZ NOT NULL DEFAULT now()`, so every clock start is
@@ -542,7 +581,7 @@ so skew between hosts cannot recover a turn early or late; for the in-memory sto
 
 ### 4f. The root cause: the direct door is a hand-rolled `EffectHandlers`
 
-James, reviewing step 4: "it really feels like we have a need for 'a thing that can execute the
+James, reviewing the deadline step (`8575a90a`): "it really feels like we have a need for 'a thing that can execute the
 effects emitted by the fold' and that would be a simple method call. Am I right? It just depends on
 what we want to do with the answer. In the queued case, we have to manage the effects store
 properly based on what happens. In the direct case, we return the answer (or fail loudly if
@@ -598,8 +637,8 @@ separate findings:
    handlers, built without the collaborators the real ones are handed, looks like.
 2. **`ToolConfig.timeout` was advisory and `InferenceConfig.timeout` inert** (§4b). The real
    handlers have carried `termsFor` since they existed; the copies had no terms, so there was
-   nothing to enforce them with. Step 4 fixed the symptom by giving the copies terms.
-3. **`EffectTermsSource` had to be lifted out of the handlers at all** (§13a step 2, `90a0fde8`).
+   nothing to enforce them with. `8575a90a` fixed the symptom by giving the copies terms.
+3. **`EffectTermsSource` had to be lifted out of the handlers at all** (§13a, `90a0fde8`).
    Its own class javadoc says why: "A door that only ever asks — never performs — has no way to
    build the handlers, but it can build this." The direct door could not construct a handler to
    ask one because it had chosen not to hold handlers. Once it holds them, `EffectHandlers.termsFor`
@@ -619,7 +658,7 @@ separate findings:
 
 None of the five is fixed by fixing it. All five are fixed by deleting the copy.
 
-### 4g. Step 7, reshaped: the direct door calls `EffectHandlers`
+### 4g. The handlers step, reshaped: the direct door calls `EffectHandlers`
 
 The direct factory builds the same three handlers the queued factory builds — `ToolCallHandler`,
 `ApprovalHandler`, `InferenceHandler`, wrapped into one `EffectHandlers` — and hands them to the
@@ -690,7 +729,7 @@ followed at once by "failed", which is the truth.
   (`QueuedHarnessAutoConfiguration.java:73, 91`). So this design FORCES a new public config method,
   `DirectHarnessFactoryConfig.observations(ObservationRegistry)`, with the same default, and the
   starter passes its registry through. It is a public method on a public config, so it is asked
-  (§14 Q2) — but note that it is forced by the design rather than chosen: James's ruling is that a
+  (§14 Q3) — but note that it is forced by the design rather than chosen: James's ruling is that a
   registry is required and NOOP means nothing to report, and the direct door cannot obey that
   ruling without a way to be given one. Internally, `DefaultDirectHarnessConfig`'s constructor
   gains the registry the way `DefaultQueuedHarnessConfig`'s already has it (line 100).
@@ -706,7 +745,7 @@ followed at once by "failed", which is the truth.
   restart loses nothing, and there is no key to configure, rotate or leak. Ephemeral is the right
   answer here, not a compromise; the direct factory constructs one and no config surface is added.
 - **The `within` wrapper has one call site instead of three arms.** The committed code
-  (`DefaultDirectHarness.java:315–326`) wraps a three-arm switch; after step 7 it wraps one method
+  (`DefaultDirectHarness.java:315–326`) wraps a three-arm switch; after the handlers step it wraps one method
   call and the door's private `termsFor` switch (329–335) is deleted in favour of
   `handlers.termsFor`. `within` itself does not change.
 - **What else the handlers need, checked against the direct factory's constructor arguments.**
@@ -731,7 +770,7 @@ followed at once by "failed", which is the truth.
   door that never uses it. This is exactly what James's adjacent decision resolves: with
   `DirectHarness<I, O>` and the output type bound at creation, the schema is a property of the
   harness, and `DefaultInferenceService` takes it at construction as an internal field — no new
-  concept, no per-call slot. Step 7 therefore depends on that change landing first (§13a), and
+  concept, no per-call slot. The handlers step therefore depends on that change landing first (§13a), and
   the record says so rather than inventing a per-call slot to avoid the dependency.
 
 **What this retires rather than answers.** Two items leave §14 because they stop being decisions:
@@ -948,8 +987,8 @@ James asked that `AgentType` share the guard ("a helper method somewhere as the 
 `nessy_agent.agent_type` is also `VARCHAR(64)`. The helper must be reachable from `nessy-api` and
 `nessy-spi`, so it lives in `nessy-api`. **Ruled after the fifth revision: it is `Identifiers`, in
 `nessy-api`.** It does not exist in the tree yet (no `Identifiers.java` under `nessy-api`); it
-lands in step 5. Whether it restricts to ASCII as well as length was not part of the ruling and is
-left to the implementation to match the memory notes' 256/ASCII guard where that guard exists.
+lands in the lock step (§13a step 4). Whether it restricts to ASCII as well as length was not part
+of the ruling and is left to the implementation to match the memory notes' 256/ASCII guard where that guard exists.
 `JdbcLeases`' hand-rolled `if (kind.isBlank())` goes.
 
 **Four parameters is wide.** `org.jwcarman.nessy.engine.observability.Identity` is already exactly
@@ -996,15 +1035,46 @@ about the caller — exactly where an SPI implementation sits:
    caller can forget. Absorbed into the implementation, it is avoided by construction: the row
    lock always has a transaction because it made one.
 
-**The transaction manager it uses — an addition James has not ruled on.** Built over a
-`DataSource` alone, `JdbcRowLocks` would mint its own `JdbcTransactionManager`, which is the same
-thing this record faults `DefaultQueuedHarnessFactory` for. Measurement 1 says it works — it joins
-an application's already-open transaction on the same `DataSource` — but it breaks for JTA or a
-second `DataSource`. The recommendation is a second constructor,
-`JdbcRowLocks(DataSource, PlatformTransactionManager)`, with the one-argument form minting a
-`JdbcTransactionManager` for the case where there is nothing to hand in. §14 Q6.
+**The transaction manager it uses — ruled.** `JdbcRowLocks` takes a `PlatformTransactionManager`,
+with a `DataSource`-only constructor that mints a `JdbcTransactionManager` for a non-Spring caller
+who has nothing to hand in. Boot auto-configures a manager in every application that has a
+`DataSource`, so the starter passes the container's; measurement 1 above is why the minted one is
+correct for the plain case (it joins whatever is open on the same `DataSource`) and why it is not
+enough for JTA or a second `DataSource`.
+
+*Why the manager and not a `TransactionTemplate`.* A template carries propagation, isolation and
+timeout, and the lock's correctness depends on the propagation being `PROPAGATION_REQUIRED`: the
+row lock and the work it guards — the append, the payload `put`, the outbox insert — must be in
+*one* transaction, or the lock is released before the work commits and guards nothing. A caller
+handing us a template built with `REQUIRES_NEW` would silently put the lock in a different
+transaction from the work; nothing would fail, and nothing would be excluded. So `JdbcRowLocks`
+takes the manager and builds its own template with the propagation it needs, and no caller can
+misconfigure the one setting that matters.
+
+*The sharp edge, to be named in the class javadoc.* `REQUIRED` joins an outer transaction when one
+is open. An application that wraps a `tell` or an `ask` in its own long `@Transactional` method
+therefore holds the agent lock until *its* commit, which can be far longer than the step, and
+breaks §3b's invariant — nothing holds the lock across anything slow — from outside the engine.
+That is the application's transaction and the application's choice; the engine cannot forbid it
+without `REQUIRES_NEW`, which is the propagation ruled out above for a worse reason. The javadoc
+says so, so that the first person to see a queue of waiters behind a slow request handler knows
+where to look.
 
 The class javadoc's "Why a lock rather than a lease" paragraph moves here from `JdbcAgents`.
+
+**Where it lives — ruled: `nessy-engine`, not `nessy-lease`.** `JdbcRowLocks` is a row-locking
+transaction over the engine's own `DataSource`, both doors construct one, and the engine is where
+the JDBC stores already are. Putting it in `nessy-lease` would have made that module a compile
+dependency of the engine — the sixth revision proposed exactly that, by making the module
+non-optional in the autoconfigure pom — for the sake of one class. With `JdbcRowLocks` in the
+engine, `nessy-engine` does not depend on `nessy-lease` at all: the `nessy-lease` dependency at
+`nessy-engine/pom.xml:105` is already unused (no file under `nessy-engine/src` imports
+`org.jwcarman.nessy.lease`; measured) and is removed, the module's only consumers are the two
+summarisers and chat-web's episode summariser bean, and it stays `<optional>true</optional>` in
+`nessy-spring-boot-autoconfigure` (`pom.xml:171`) as it is today. That reverses the sixth
+revision's "`nessy-lease` stops being optional". **Open: which package** — `engine.store`, beside
+`JdbcAgentEventStore` and the in-memory stores the restructure (§13a) moves there, or an
+`engine.lock` of its own. §14 Q1.
 
 **Its table — ruled: separate from the lease's.** James: "they aren't really the same thing." So
 `JdbcRowLocks` gets `nessy_lock (kind, agent_type, agent_id)` of its own, and the unified-table
@@ -1030,8 +1100,10 @@ A map of `(kind, type, id)` to a `ReentrantLock`, pruned with `ConcurrentHashMap
 right about naive pruning and is answered by the per-key atomic operations. A refused
 `tryWithLock` then means a real holder. `InMemoryLocksTest.java:176` ("at most one stripe is
 taken") is deleted rather than fixed, with the stripe-count test at 183–187 and the
-`InMemoryLocks(int)` constructor. It moves out of `engine.direct` into the lock module beside the
-other two implementations (§12). Note that an in-memory `withLock` gives the direct door's steps
+`InMemoryLocks(int)` constructor. It moves out of `engine.direct` into `engine.store` with the
+other two in-memory stores, in the package restructure (§13a) rather than in the lock step: it
+serves either door, as James ruled the in-memory stores do, and it belongs beside its JDBC sibling
+`JdbcRowLocks` (§8a) rather than in `nessy-lease`. Note that an in-memory `withLock` gives the direct door's steps
 exclusion but no transaction; against the in-memory stores that is what "in memory" has always
 meant here — `InMemoryAgentEventStore` is a list — and the phase check works the same way.
 
@@ -1110,7 +1182,8 @@ terminated-check riding on the lock call (§11a); the direct door as a non-user 
 are one step, so the phase, not a conflict, is what declines a caller); the "must refuse to run
 outside a transaction" rule, avoided by construction (§8a); the one-table-with-nullable-columns
 lock table; and the "not fixed, on purpose" cross-door paragraph. Never designed and not to be: a
-`Transactions` SPI, or a `PlatformTransactionManager` on either config.
+`Transactions` SPI, or a `PlatformTransactionManager` on either config (the manager is a
+constructor argument of `JdbcRowLocks`, §8a, and the config takes a `Locks`).
 
 Retracted by the fourth revision (§4–§5), with the reason, so none is re-proposed:
 
@@ -1169,7 +1242,7 @@ three. The reasoning is the valuable part, so it is kept:
 Rejected or overtaken by the sixth revision:
 
 - **The direct door performing effects itself**, with `within` wrapping three hand-written arms
-  (the shape step 4 landed). Overtaken by §4f–§4g: the arms are a copy of `EffectHandlers.perform`
+  (the shape `8575a90a` landed). Overtaken by §4f–§4g: the arms are a copy of `EffectHandlers.perform`
   and the copy is deleted. The `within` wrapper survives with one call site.
 - **`terms.undispatchable()` for a deferred approval** (the fifth revision's fix for §4d finding 2).
   A deferral is performed work whose answer nobody here will see, which is `failed`'s case; and
@@ -1180,9 +1253,24 @@ Rejected or overtaken by the sixth revision:
 - **One table for locks and leases**, with nullable `holder`/`expires_at`, and its variant that
   performed the expiry check under the row lock. James: "they aren't really the same thing" (§8a).
 - **A per-harness virtual-thread executor and a factory registry of every harness ever made**
-  (step 4's first cut). Removed before commit; one executor on the factory (§4c).
+  (the deadline step's first cut). Removed before commit; one executor on the factory (§4c).
 - **`xmax <> 0`, `RETURNING OLD.holder`, and returning the previous holder's UUID** as lease
   takeover signals (§8d).
+
+Rejected or overtaken by the seventh revision:
+
+- **`JdbcRowLocks` in `nessy-lease`, and `nessy-lease` non-optional in the starter.** It lives in
+  the engine, the engine's unused dependency on the lease module goes, and the module stays
+  optional (§8a).
+- **`nessy-lease` → `nessy-lock`**, module and package. Retired by ruling: both constructs exist
+  and each module holds one of them (§12).
+- **A `TransactionTemplate` handed to `JdbcRowLocks`.** It would let a caller choose the
+  propagation, and the lock's correctness depends on it being `REQUIRED`; the manager is taken and
+  the propagation is the lock's own (§8a).
+- **`Permanent("could not be dispatched")` for an inference that reached its deadline.** Changed
+  to `Unknown` by ruling, with the dispatcher's own code as the evidence it was false (§4d).
+- **The lock step moving `InMemoryLocks` into the lease module.** It moves to `engine.store` in
+  the package restructure instead, with the other two in-memory stores (§8c, §13a).
 
 ---
 
@@ -1233,22 +1321,17 @@ own. Folding four store SPIs in would triple the diff. §14 Q7.
 
 ---
 
-## 12. Naming: "lease" and "lock"
+## 12. Naming: "lease" and "lock" — ruled, no rename
 
-James earlier said yes to renaming `nessy_lease` → `nessy_lock`, with the `nessy-lease` module and
-`org.jwcarman.nessy.lease` package following (eight `pom.xml` files name the module: root,
-`nessy-bom`, `nessy-coverage`, `nessy-lease`, `nessy-engine`, `nessy-spring-boot/autoconfigure`,
-`nessy-memory/summarizing`, `nessy-memory/episodic`). Between drafts the design briefly had the
-module holding nothing but a lease; it is flagged here because his yes should be re-confirmed
-against the design as it now stands.
-
-As it now stands the module holds three implementations of `Locks` — an in-process lock, a row
-lock and a lease — so the *module and package* become `nessy-lock` / `org.jwcarman.nessy.lock`,
-which is the yes he gave. The recommendation is that the *class* `JdbcLeases` and the *table*
-`nessy_lease` keep their names, because each is a lease and says so, and `JdbcRowLocks` sits beside
-them over `nessy_lock`. `nessy-engine` depends on the module today (`pom.xml:105`) without
-importing from it; after this record both factories construct a `JdbcRowLocks`, so the dependency
-stays and its direction — engine on lock module, never the reverse — holds.
+`nessy-lease` keeps its name, its module and its `org.jwcarman.nessy.lease` package. James: "We
+have both constructs, leases and locks." The sixth revision had the module holding three
+implementations of `Locks` and proposed renaming it `nessy-lock`; with `JdbcRowLocks` in the engine
+(§8a) and `InMemoryLocks` in `engine.store` (§8c), the module holds exactly one thing, a lease, and
+its name is right as it stands. The only new name is the table: `nessy_lock (kind, agent_type,
+agent_id)`, in the engine's `nessy-schema.sql` beside `nessy_agent`, because that is where its
+one user is. `nessy_lease` stays `nessy_lease`, reshaped per §8b. The eight `pom.xml` files that
+name the module are untouched except `nessy-engine/pom.xml`, which drops the dependency it never
+used. The rename question is retired.
 
 ---
 
@@ -1271,16 +1354,21 @@ mid-turn does nothing") are rewritten: one turn at a time per agent, decided by 
 under a lock held for a step. `Outcome.java:45–55` (`Busy`) stays true as written — nothing is
 appended, nothing spent, nothing changed. `Identity`, if §14 Q5 says yes.
 
-**`nessy-lease` → `nessy-lock`** (§12). `JdbcLeases.java` — both constructors take
-`Map<LockKind, Duration>`; `TAKE`/`RELEASE` take kind and agent from the call. `JdbcRowLocks.java`
-— new. `InMemoryLocks` and `InMemoryLocksTest` arrive from the engine, destriped.
+**`nessy-lease`** (§12, name unchanged). `JdbcLeases.java` — both constructors take
+`Map<LockKind, Duration>`; `TAKE`/`RELEASE` take kind and agent from the call; the §8d signals.
 `JdbcLeasesTest.java` — the `leases(kind, ttl)` helper at 67, `String key` at 64 and every
-`tryWithLock(key, ...)` (76, 94, 103, 106, 118 and on), the "enrichment" test at 174.
-`nessy-schema.sql` — `nessy_lease` reshaped to `(kind, agent_type, agent_id, holder, expires_at)`;
-`nessy_lock (kind, agent_type, agent_id)` added.
+`tryWithLock(key, ...)` (76, 94, 103, 106, 118 and on), the "enrichment" test at 174. Its
+`nessy-schema.sql` — `nessy_lease` reshaped to `(kind, agent_type, agent_id, holder, expires_at)`.
+Nothing arrives from the engine and nothing leaves for it.
 
 **`nessy-engine`.** (Line numbers for `direct/DefaultDirectHarness.java` are those of the tree at
-`8575a90a`, 721 lines.)
+`8575a90a`, 721 lines; the file is mid-change under `DirectHarness<I, O>` as this revision is
+written. Package paths below are today's; after the restructure of §13a, `direct/` reads
+`harness/direct/`, `harness/` reads `harness/queued/`, and the three `InMemory*` classes read
+`store/`.)
+- `store/JdbcRowLocks.java` (or `lock/`, §14 Q1) — new, with `nessy_lock` added to the engine's
+  `nessy-schema.sql`. Takes a `PlatformTransactionManager`; the `DataSource`-only constructor
+  mints one (§8a). `pom.xml:105` — the unused `nessy-lease` dependency goes.
 - `direct/DefaultDirectHarness.java` — the largest change in the record, in two parts. *The
   handlers (§4g):* the constructor takes an `EffectHandlers` instead of `provider`, `systemPrompt`,
   `options`, `tools`, `summaries`, `maxTail` and `ambient` (`schemas` and `mapper` stay for the
@@ -1297,32 +1385,34 @@ appended, nothing spent, nothing changed. `Identity`, if §14 Q5 says yes.
   `within` (357–375) is untouched.
 - `direct/DefaultDirectHarnessConfig.java` — DONE in `8575a90a`: `Inference.timeout` and
   `retryPolicy` (266–278) store, the default is five minutes (235), `retryPolicy`'s javadoc says
-  it is not honoured. Step 7 adds: the constructor takes the `ObservationRegistry` and `tool(...)`
+  it is not honoured. The handlers step adds: the constructor takes the `ObservationRegistry` and `tool(...)`
   (115) wraps with `ObservedTool`/`ObservedApprover` as `DefaultQueuedHarnessConfig.tool` does
   (197, 210); the `OutputSchema` for a harness whose `O` is bound (§4g) is read from here.
-- `direct/DirectHarnessFactoryConfig.java` — DONE: `clock(Clock)` (110). Step 7 adds
-  `observations(ObservationRegistry)` defaulting to `NOOP` (§14 Q2).
+- `direct/DirectHarnessFactoryConfig.java` — DONE: `clock(Clock)` (110). The handlers step adds
+  `observations(ObservationRegistry)` defaulting to `NOOP` (§14 Q3).
 - `direct/DefaultDirectHarnessFactory.java` — DONE: one virtual-thread executor (98), `close()`,
-  `EffectTermsSource` per harness (184–192). Step 7: builds `EventStreamToolCalls`, the wrapped
+  `EffectTermsSource` per harness (184–192). The handlers step: builds `EventStreamToolCalls`, the wrapped
   `ContextAssembler` and `DefaultInferenceService`, the three handlers and one `EffectHandlers`
   per harness, exactly as `DefaultQueuedHarnessFactory.create` and its three `create*Handler`
   helpers do (216–239, 284–333), with `ReplyTokens.ephemeral()` built once per factory. `inMemory`
-  (140) keeps `new InMemoryLocks()` from its new package after step 5.
+  (140) keeps `new InMemoryLocks()` from `engine.store` after the restructure.
 - `effect/EffectTermsSource.java`, `effect/EffectOutcomes.java` — DONE in `90a0fde8`: the
   resolvers moved out of the handlers into `EffectTermsSource`, the `EffectOutcome`-to-`AgentCommand`
   conversion into `EffectOutcomes.command`, and the three handlers take the source and delegate
   `termsFor`. `InferenceHandler.undispatchable()`'s category was left as `Permanent` with a comment
-  saying why (`EffectTermsSource.java:179–194`); §14 Q3 still stands.
+  saying why (`EffectTermsSource.java:179–194`); ruled since, it becomes `Unknown` in its own step
+  (§4d finding 1), which also rewrites the comment there, the one in `EffectDispatcher.giveUp`
+  (`:496–497`) and the one in `EffectTerms.failed`'s javadoc (`:65–67`), and flips
+  `EffectTermsSourceTest.undispatchableIsAPermanentFailureUntoldFromTheUnknownCase` (`:201`).
 - `agent/Outstanding.java`, `core/AgentState.java` — DONE in `62fe03a2`: `since`, populated by
   `opening` and `running`, with the two `AgentStateTest` assertions.
 - `core/AgentEventStore.java`, `store/JdbcAgentEventStore.java`, `direct/InMemoryAgentEventStore.java`
   — DONE in `62fe03a2`: `Instant writtenAt(AgentId, Seq)`, the JDBC `SELECT written_at` by primary
   key, the in-memory store's `Clock` stamp, each with its test.
-- `direct/DefaultDirectHarnessFactory.java` — `inMemory` (120) keeps `new InMemoryLocks()` from
-  its new package; nothing else changes shape.
 - `direct/DirectHarnessFactoryConfig.java` — `locks(Locks)` (62–66) stays; its javadoc names
-  `InMemoryLocks` by the old package.
-- `direct/InMemoryLocks.java`, `direct/InMemoryLocksTest.java` — move out.
+  `InMemoryLocks` by the old package and follows it to `engine.store`.
+- `direct/InMemoryLocks.java`, `direct/InMemoryLocksTest.java` — to `store/` in the restructure,
+  destriped in the lock step.
 - `harness/DefaultQueuedHarness.java` — the `JdbcAgents` field and parameter (80, 102) become a
   `Locks` plus whatever keeps `ensure`; the `TransactionTemplate` field and parameter (85, 107)
   go, and the "Transactions are explicit" javadoc (65–68) says the lock owns them; the three
@@ -1357,98 +1447,6 @@ OpenAI and Anthropic; from `HttpOptions` for Gemini; from the override configura
 `AnthropicAutoConfiguration`, `GeminiAutoConfiguration` — each customizer sets the transport
 timeout a margin above the engine's default. No property, no `NessyProperties` change.
 
-### 13a. Execution order
-
-Written so that every step leaves the reactor compiling and green, and no test asserts a behaviour
-that no longer exists without its replacement landing in the same commit. Each step is one
-`clean verify` and one commit; `spotless:apply license:format` before every push.
-
-**Execution state (2026-09-26).** Steps 1–4 are DONE and committed on `fold-swap`, each with a
-green full-reactor `clean verify`. Steps 5–8 are not started.
-
-1. **DONE `e5bde878` — Provider transport timeouts** (§5). `nessy-inference` only, plus the three
-   starter auto-configurations and `TransportTimeouts` (six minutes). Fixed the hung-provider bug
-   on its own.
-2. **DONE `90a0fde8` — Terms source lifted out of the handlers** (§13, `effect/`). Pure refactor:
-   `EffectTermsSource` built by `DefaultQueuedHarnessFactory` and handed to the three handlers,
-   `EffectOutcomes.command` lifted out of `DefaultQueuedHarness`, `EffectTermsSourceTest` added.
-   `InferenceHandler.undispatchable()`'s category was deliberately NOT changed (Q3 was not yet
-   answered) and the comment at `EffectTermsSource.java:179–184` says so.
-3. **DONE `62fe03a2` — `Outstanding.since` and `writtenAt`.** Additive, each with its test
-   (`AgentStateTest`; `JdbcAgentEventStoreTest` against Postgres; `InMemoryAgentEventStoreTest`
-   for the stamp).
-4. **DONE `8575a90a` — The direct door enforces deadlines in-process** (§4b–§4c). `Clock` on the
-   factory config, the inert setters store, `within` around `perform`, a throwing provider lands
-   as `terms.failed`. Landed with ONE factory-level virtual-thread executor rather than one per
-   harness; an earlier cut's registry of every harness the factory ever made was rejected and
-   removed; `DirectHarnessFactory`'s "Nothing here is closeable" javadoc was corrected rather than
-   left false. Three deadline tests with a stepped `Clock`, plus
-   `inference_retry_policy_is_stored_but_not_honoured`. Two things the fifth revision listed for
-   this step did NOT land in it and are carried to step 7 by design: the `Deferred` arm still
-   delivers a `Denied` (the arm is deleted in step 7 rather than fixed, §4f item 5), and the
-   `Thinking`/narration shape is untouched. Still under the whole-turn `tryWithLock`.
-5. **The lock SPI and its three implementations** (§7–§9, §12): `LockKind`, the widened verbs,
-   `Identifiers` in `nessy-api`, `JdbcRowLocks` and its own `nessy_lock` table (no `holder`, no
-   `expires_at`), `JdbcLeases` reshaped with the two lease-observability signals of §8d (the
-   `RELEASE` row count checked and warned on; `takeovers` incremented on the conflict path and
-   returned) and the dead `.filter(holder::equals)` removed, `InMemoryLocks` destriped and moved,
-   the module renamed. The engine and memory modules, the starter and chat-web re-import in the
-   same commit so the reactor compiles; the two summarisers change their call and nothing else.
-   `JdbcLeasesTest` and `InMemoryLocksTest` are rewritten here; the stripe tests go; a test that a
-   release after takeover warns, and one that a takeover is reported, are added.
-6. **The queued door onto the SPI** (§6, §11a): `JdbcRowLocks` replaces `agents.lock` and the
-   minted `TransactionTemplate`; `JdbcAgents.lock` becomes `ensure`; `tell` gains `terminated()`.
-   The queued tests should pass unchanged — that is the assertion that the shape is the same.
-7. **The direct door calls `EffectHandlers`, and locks per step with lazy recovery** (§3, §4d,
-   §4f–§4g). Two halves, and they may be two commits in this order, each green:
-   - **7a, the handlers.** The direct factory builds `EventStreamToolCalls`, the wrapped
-     `ContextAssembler`, the wrapped provider inside a `DefaultInferenceService`, the three
-     handlers and one `EffectHandlers` per harness, with `ReplyTokens.ephemeral()` once per
-     factory; `DirectHarnessFactoryConfig.observations(ObservationRegistry)` arrives (Q2) and the
-     starter passes its registry; `DefaultDirectHarnessConfig` wraps tools and approvers as it
-     binds them. `perform` becomes the §4g shape; `infer`, `approve`, `callTool` and their private
-     helpers are deleted. Still under the whole-turn `tryWithLock`, so every existing test except
-     the three named in §4g passes unchanged, which is the proof that the handlers do what the
-     copies did. `a_deferred_approval_is_denied` becomes `a_deferred_approval_is_failed` and asserts
-     `ToolFailed`; the unbound-tool and throwing-approver arms get a test each asserting the
-     handlers' wording. One new test: the direct door produces the same spans as the queued door
-     for one inference and one tool call against a `SimpleMeterRegistry`-backed
-     `ObservationRegistry` — the first GenAI telemetry the direct door has ever had.
-     **Prerequisite:** `DirectHarness<I, O>` (below), because the constrained answer's
-     `OutputSchema` has no per-call slot through the handlers (§4g); if that change is not yet
-     in, 7a lands with the schema read from the harness config for whatever shape the door then
-     has, and the record is amended.
-   - **7b, the lock.** `under` and the whole-turn lock go; the phase decides `Busy`; `put` moves
-     under the first lock; recovery is that step's preamble. `a_busy_scope_is_refused` is
-     rewritten in this commit (it asserts the lock-stub refusal that no longer exists);
-     `only_one_of_many_callers_runs` must pass unchanged. Tests added here, one per row of the §4a
-     table plus the three paths that matter most:
-     - **the stale answer**: a turn whose inference outlives its deadline is recovered by a second
-       caller, and when the first turn's `CompleteInference` arrives it is ignored by phase, the
-       stream shows `InferenceFailed` then the second turn, and the first caller reads `Failed`;
-     - **the expired approval**: an `AWAITING_APPROVAL` call past `ApproverConfig.timeout` is
-       discharged `ToolFailed` with the `AskingTerms` blob, the `Infer` the fold then emits is
-       discharged `InferenceFailed` without a model call (the provider stub counts zero), and the
-       agent is `Idle` before the recovering caller's own `TurnStarted`; and its twin, a call
-       *inside* its deadline is left alone and the caller told `Busy`;
-     - **cross-door exclusion** (§3): against Postgres, a direct turn in `Inferring` and a queued
-       `tell` over the same agent — the `tell` waits for the step and coalesces into the backlog
-       rather than starting a second turn, and a direct `ask` during a queued turn reads the phase
-       and is told `Busy`. This is the one test that needs both factories over one `DataSource`.
-8. **Docs and the two earlier records** (§13, "Docs"). Last, describing what is.
-
-Dependencies among what remains: 5 stands alone; 6 and 7b depend on 5; 7a depends on nothing in
-this record but on the adjacent `DirectHarness<I, O>` change for its constrained-answer path; 7b
-depends on 7a only in that it is simpler to lock per step around one `perform` call than around
-three arms.
-
-**Adjacent, approved, not started, and NOT part of this record's plan:** James wants
-`DirectHarness<I, O>` with a single `ask` — the output type bound at creation rather than chosen
-per call via `TypeRef`. It changes the door's signature (the three `ask` overloads at
-`DirectHarness.java` collapse to one), and §4g shows it is what gives the constrained answer's
-schema a per-harness home once the door performs effects through the handlers. A reader of step 7
-should expect the door's signature to have changed under it.
-
 **`nessy-memory`.** `HeadSummarizer.java:216` and `EpisodeSummarizer.java:181` — a `LockKind` and
 the `agentType` each already holds reach the call; `Config.locks(Locks)` keeps its shape.
 `HeadSummarizerTest.java:127`, `HeadSummarizerFoldTest.java:89`, `EpisodeSummarizerTest.java:124`
@@ -1458,13 +1456,17 @@ name the module (`:55`).
 **`nessy-spring-boot/autoconfigure`.** `DirectHarnessAutoConfiguration.java` — takes the
 `ObservationRegistry` bean the queued auto-configuration already takes
 (`QueuedHarnessAutoConfiguration.java:73`) and passes it as `.observations(observations)` (§14
-Q2; step 7a). Line 96 — `locks.getIfAvailable(InMemoryLocks::new)` becomes a `JdbcRowLocks` over the `DataSource` the
-factory is already conditional on (and the container's `PlatformTransactionManager` if §14 Q6
-says yes); an application's own `Locks` bean still wins. The autoconfiguration record's "Locks
-default to `JdbcLeases`" paragraph is overtaken: the default is a row lock, and no TTL is involved.
-The two empty `spring/boot/lease/` directories (main and test, created 2026-09-25 07:16) were
-presumably for that default. `QueuedHarnessAutoConfiguration.java` unchanged unless §11 lands.
-`pom.xml:169` — `nessy-lease` stops being optional, since both doors now need the row lock.
+Q3; the handlers step). Line 96 — `locks.getIfAvailable(InMemoryLocks::new)` becomes a
+`JdbcRowLocks` over the `DataSource` the factory is already conditional on and the container's
+`PlatformTransactionManager` (§8a, ruled); an application's own `Locks` bean still wins. The
+autoconfiguration record's "Locks default to `JdbcLeases`" paragraph is overtaken: the default is
+a row lock, and no TTL is involved. The two empty `spring/boot/lease/` directories (main and test,
+created 2026-09-25 07:16) were presumably for that default. `QueuedHarnessAutoConfiguration.java`
+takes the same manager for the same reason. `pom.xml:169–171` — `nessy-lease` STAYS optional:
+`JdbcRowLocks` is in the engine (§8a), so neither door needs the lease module, and only an
+application that summarises adds it. (The sixth revision said the opposite; it is reversed.) After
+the module split (§13b) this pom declares `nessy-engine-direct` and `nessy-engine-queued` optional
+too.
 
 **`nessy-examples/chat-web`.** `ChatConfiguration.java:70–86` — the `agentLocks` bean and its
 javadoc go entirely; `:131` — the episode summariser's construction takes the map form.
@@ -1486,40 +1488,300 @@ in its old shape keeps it and the new statements fail against it. `nessy_lock` i
 Postgres for development is disposable by standing rule; a lease row is transient, so nothing in
 `nessy_lease` is worth carrying across.
 
+### 13a. Execution order
+
+Written so that every step leaves the reactor compiling and green, and no test asserts a behaviour
+that no longer exists without its replacement landing in the same commit. Each step is one
+`clean verify` and one commit; `spotless:apply license:format` before every push.
+
+**Execution state (2026-09-26).** Five things have landed, each with a green full-reactor `clean
+verify`; one is in flight; eight remain. The order below is the real one, and each entry says why
+it sits where it does. Earlier revisions numbered the remaining work 5–8; those numbers are gone,
+because two steps were inserted and one was split, and a reader holding an old number would land
+on the wrong step.
+
+**Landed.**
+
+- **DONE `e5bde878` — Provider transport timeouts** (§5). `nessy-inference` only, plus the three
+  starter auto-configurations and `TransportTimeouts` (six minutes). Fixed the hung-provider bug on
+  its own. First because it stands entirely alone.
+- **DONE `90a0fde8` — `EffectTermsSource` and `EffectOutcomes` lifted out of the handlers** (§13,
+  `effect/`). Pure refactor: the source built by `DefaultQueuedHarnessFactory` and handed to the
+  three handlers, `EffectOutcomes.command` lifted out of `DefaultQueuedHarness`,
+  `EffectTermsSourceTest` added. `InferenceHandler.undispatchable()`'s category was deliberately
+  NOT changed (the question was not yet answered) and the comment at
+  `EffectTermsSource.java:179–184` says so.
+- **DONE `62fe03a2` — `Outstanding.since` and `AgentEventStore.writtenAt`.** Additive, each with
+  its test (`AgentStateTest`; `JdbcAgentEventStoreTest` against Postgres;
+  `InMemoryAgentEventStoreTest` for the stamp). Unread until the recovery step.
+- **DONE `8575a90a` — The direct door enforces its deadlines in-process** (§4b–§4c). `Clock` on
+  the factory config, the inert setters store, `within` around `perform`, a throwing provider lands
+  as `terms.failed`. Landed with ONE factory-level virtual-thread executor rather than one per
+  harness; an earlier cut's registry of every harness the factory ever made was rejected and
+  removed; `DirectHarnessFactory`'s "Nothing here is closeable" javadoc was corrected rather than
+  left false. Three deadline tests with a stepped `Clock`, plus
+  `inference_retry_policy_is_stored_but_not_honoured`. Two things the fifth revision listed for
+  this step did NOT land in it and are carried to the handlers step by design: the `Deferred` arm
+  still delivers a `Denied` (the arm is deleted rather than fixed, §4f item 5), and the
+  `Thinking`/narration shape is untouched. Still under the whole-turn `tryWithLock`.
+- **DONE `5be127c2` — Observation → input, and the queued door's `O` → `I`.** Adjacent to this
+  record's plan, not part of it, and noted because the record's own vocabulary changed under it:
+  "observation" was the engine's old word for what a caller hands an agent, and the type parameter
+  on `QueuedHarness`, `InputRenderer`, `Backlog`, `BacklogItem`, `BacklogPolicy`, `Pull` and
+  `JdbcBacklog` was still `O` — on `QueuedHarness` naming the *input*, which a reader arriving from
+  the direct door, whose `ask` returns an output, would read exactly backwards.
+  `Block.ObservationContent` is `Block.InputContent`, `inference.turn.Observation` is
+  `inference.turn.Input`, and the accessors that carried the word (`BacklogItem.input`,
+  `StartTurn.input`, `TurnStarted.input`, `Turn.input`) followed. Nothing stored or on the wire
+  changed shape. The Micrometer sense of "observation" — every `Observed*.wrap`, the registry, the
+  `nessy.observe` span name — is untouched and is the sense this record uses in §4f and §14.
+
+**In flight.**
+
+- **`DirectHarness<I, O>` — a single `ask`, the output type bound at creation.** James's decision;
+  the three `ask` overloads on `DirectHarness` collapse to one, `DirectHarnessFactory` binds `O`
+  when it creates a harness, and `Repl`, `ReplLoop`, `FakeHarness`, chat-web's configuration and
+  controller, and the three direct-door tests follow (twelve files in the working tree as this
+  revision is written). The sixth revision established that this is a **prerequisite** for the
+  handlers step, not an adjacent change: `AgentEffect.Infer` is empty and `InferenceInvocation` is
+  `(agentType, agentId, options)`, so a per-call `OutputSchema` cannot reach a handler, and putting
+  one on `Infer` would change the payload of every queued effect row for a door that never uses it
+  (§4g). With `O` bound at creation the schema is a property of the harness, and
+  `DefaultInferenceService` takes it at construction as an internal field. A reader of the handlers
+  step should expect the door's signature to have changed under it.
+
+**Remaining, in order.**
+
+1. **NEXT — the inference `undispatchable()` blob becomes `Failure.Unknown`** (§4d finding 1,
+   ruled). `EffectTermsSource`'s inference terms return
+   `InferenceFailed(Unknown("the inference did not complete before its deadline; whether it ran is
+   not known"))`; the deliberate-`Permanent` comment at `EffectTermsSource.java:179–184` goes; the
+   two comments that describe the false blob — `EffectDispatcher.giveUp` (`:496–497`) and
+   `EffectTerms.failed`'s javadoc (`:65–67`) — are rewritten, because after this commit they
+   describe a bug that no longer exists; and
+   `EffectTermsSourceTest.undispatchableIsAPermanentFailureUntoldFromTheUnknownCase` (`:201`) is
+   renamed and asserts `Unknown`. One small commit. It sits here, before anything that delivers the
+   blob from the direct door, so recovery (step 6) lands against the honest one and the false
+   `Permanent` is never appended to a direct-door stream. Changes what the queued door stores on
+   every inference row from now on; James: the live databases that would care do not exist.
+2. **The package restructure.** James: "right now, engine is kind of a mess. It has all the queued
+   stuff in the 'engine.harness' package. Perhaps we need engine.harness and engine.harness.queued
+   and engine.harness.direct." Measured, and the contents are what he said:
+
+   | today | files | after |
+   |---|---|---|
+   | `engine.harness` | `DefaultQueuedHarness`, `DefaultQueuedHarnessConfig`, `DefaultQueuedHarnessFactory`, `QueuedHarnessFactoryConfig` — four, ALL queued | `engine.harness.queued` |
+   | `engine.direct` | `DefaultDirectHarness`, `DefaultDirectHarnessConfig`, `DefaultDirectHarnessFactory`, `DirectHarnessFactoryConfig` — the four direct files | `engine.harness.direct` |
+   | `engine.direct` | `InMemoryAgentEventStore`, `InMemoryLocks`, `InMemoryPayloads` — three, none direct-specific | `engine.store` |
+
+   The ride-along is the three `InMemory*` classes. They implement `AgentEventStore`, `PayloadStore`
+   and `Locks` respectively (`InMemoryAgentEventStore.java:40`, `InMemoryPayloads.java:34`,
+   `InMemoryLocks.java:42`), nothing about them is the direct door's, and James has already ruled
+   that the in-memory stores serve either door; so they go beside their JDBC siblings in
+   `engine.store`, and `engine.harness.direct` is left holding just the door. The test tree moves
+   the same way (`harness/` holds seven queued tests, `direct/` holds three direct tests plus
+   `InMemoryAgentEventStoreTest` and `InMemoryLocksTest`, which follow their classes to `store/`).
+
+   **`engine.harness` itself starts EMPTY**, and the record says so rather than filling it.
+   `InputRenderer` and `HarnessConfig` — the two things a reader would expect there — are in
+   `nessy-api` (`nessy-api/.../InputRenderer.java`, `HarnessConfig.java`), and everything the two
+   doors share engine-side already has a well-named home: `core`, `store`, `effect`, `tool`,
+   `history`, `inference`, `narration`, `observability`, `trace`, `schema`. It is an honest
+   namespace with nothing in it yet, not a home for orphans; the first class to land there should
+   be one that both doors need and none of those packages fits.
+
+   **Blast radius: five modules outside the engine import these packages** (measured by
+   `grep -rl 'org\.jwcarman\.nessy\.engine\.(harness|direct)\.'`): `nessy-console` (`Repl`),
+   `nessy-examples/chat-cli` (`Chat`), `nessy-memory/summarizing` and `nessy-memory/episodic`
+   (tests only, constructing `QueuedHarnessFactoryConfig`), and `nessy-spring-boot/autoconfigure`
+   (both auto-configurations and `NessyAutoConfigurationTest`). chat-web and watchman import only
+   `engine.store.TurnHistories` and do not move. It is a breaking change for anyone naming
+   `DefaultQueuedHarnessFactory` or `DefaultDirectHarnessFactory` by package, which James accepts
+   ("Nobody except me is using this"). No behaviour changes and every test passes unchanged; that
+   is the commit's whole assertion.
+
+   **Why it sits before the handlers step.** That step deletes roughly 190 lines from
+   `DefaultDirectHarness` (§4g). Doing the move first makes that a deletion in a settled location
+   rather than a move and a rewrite at once, so the review diff of the handlers step is the
+   deletion and nothing else. It also sits after `DirectHarness<I, O>` for the same reason in the
+   other direction: that change is mid-flight in these exact files, and a package move under it
+   would make one of the two diffs unreadable.
+
+   **One question the measurement raises, not decided here** (§14 Q2): two queued-only classes
+   live in `effect/` — `EffectDispatcher` and `AgentEffectCallback` (used by `DefaultQueuedHarness`
+   and by `tool/DefaultReplies`, nothing else) — and `DefaultReplies` in `tool/` is bound to
+   `EffectStore` and that callback. James's sentence names `engine.harness`; it does not say
+   whether the outbox machinery follows the queued door into `engine.harness.queued` now, or
+   stays in `effect/` and `tool/` until the module split (§13b) forces the question. The
+   restructure is cheaper if it answers this at the same time; the record asks rather than
+   assumes.
+3. **The direct door calls `EffectHandlers`** (§4f–§4g; the sixth revision's 7a). The direct
+   factory builds `EventStreamToolCalls`, the wrapped `ContextAssembler`, the wrapped provider
+   inside a `DefaultInferenceService` that also takes the harness's `OutputSchema`, the three
+   handlers and one `EffectHandlers` per harness, with `ReplyTokens.ephemeral()` once per factory;
+   `DirectHarnessFactoryConfig.observations(ObservationRegistry)` arrives (§14 Q3) and the starter
+   passes its registry; `DefaultDirectHarnessConfig` wraps tools and approvers as it binds them.
+   `perform` becomes the §4g shape; `infer`, `approve`, `callTool` and their private helpers are
+   deleted. Still under the whole-turn `tryWithLock`, so every existing test except the three
+   named in §4g passes unchanged, which is the proof that the handlers do what the copies did.
+   `a_deferred_approval_is_denied` becomes `a_deferred_approval_is_failed` and asserts
+   `ToolFailed`; the unbound-tool and throwing-approver arms get a test each asserting the
+   handlers' wording. One new test: the direct door produces the same spans as the queued door for
+   one inference and one tool call against a `SimpleMeterRegistry`-backed `ObservationRegistry` —
+   the first GenAI telemetry the direct door has ever had. **Prerequisites:** `DirectHarness<I, O>`
+   (above) and the restructure (step 2). After this step `effect/` is shared by both doors, which
+   is the fact §13b turns on.
+4. **The lock SPI** (§7–§9; the sixth revision's step 5): `LockKind`, the widened verbs,
+   `Identifiers` in `nessy-api`, `JdbcRowLocks` in the engine (§8a; package per §14 Q1) with its
+   `nessy_lock` table (no `holder`, no `expires_at`) and its `PlatformTransactionManager`
+   constructor, `JdbcLeases` reshaped with the two lease-observability signals of §8d (the
+   `RELEASE` row count checked and warned on; `takeovers` incremented on the conflict path and
+   returned) and the dead `.filter(holder::equals)` removed, `InMemoryLocks` destriped where it
+   now lives, and the engine's unused `nessy-lease` dependency dropped. The memory modules, the
+   starter and chat-web re-import in the same commit so the reactor compiles; the two summarisers
+   change their call and nothing else. `JdbcLeasesTest` and `InMemoryLocksTest` are rewritten
+   here; the stripe tests go; a test that a release after takeover warns, and one that a takeover
+   is reported, are added. No module is renamed (§12). Sits after the handlers step only because
+   the handlers step is the bigger risk and wants the door in a settled shape before its exclusion
+   changes; the SPI itself depends on nothing above it.
+5. **The queued door onto the SPI** (§6, §11a; the sixth revision's step 6): `JdbcRowLocks`
+   replaces `agents.lock` and the minted `TransactionTemplate`; `JdbcAgents.lock` becomes
+   `ensure`; `tell` gains `terminated()`. The queued tests should pass unchanged — that is the
+   assertion that the shape is the same. Depends on step 4.
+6. **The direct door locks per step, with lazy recovery** (§3, §4d; the sixth revision's 7b).
+   `under` and the whole-turn lock go; the phase decides `Busy`; `put` moves under the first lock;
+   recovery is that step's preamble. `a_busy_scope_is_refused` is rewritten in this commit (it
+   asserts the lock-stub refusal that no longer exists); `only_one_of_many_callers_runs` must pass
+   unchanged. Tests added here, one per row of the §4a table plus the three paths that matter
+   most:
+   - **the stale answer**: a turn whose inference outlives its deadline is recovered by a second
+     caller, and when the first turn's `CompleteInference` arrives it is ignored by phase, the
+     stream shows `InferenceFailed` then the second turn, and the first caller reads `Failed`;
+   - **the expired approval**: an `AWAITING_APPROVAL` call past `ApproverConfig.timeout` is
+     discharged `ToolFailed` with the `AskingTerms` blob, the `Infer` the fold then emits is
+     discharged `InferenceFailed(Unknown)` without a model call (the provider stub counts zero), and
+     the agent is `Idle` before the recovering caller's own `TurnStarted`; and its twin, a call
+     *inside* its deadline is left alone and the caller told `Busy`;
+   - **cross-door exclusion** (§3): against Postgres, a direct turn in `Inferring` and a queued
+     `tell` over the same agent — the `tell` waits for the step and coalesces into the backlog
+     rather than starting a second turn, and a direct `ask` during a queued turn reads the phase
+     and is told `Busy`. This is the one test that needs both factories over one `DataSource`.
+
+   Depends on steps 3 and 4: it locks per step around one `perform` call rather than three arms,
+   and it takes the row lock through the SPI.
+7. **Docs and the two earlier records** (§13, "Docs"). Describing what is, once the behaviour is
+   settled and before the module split moves the artifact names the docs cite.
+8. **LAST — the module split** (§13b). `nessy-engine`, `nessy-engine-direct`,
+   `nessy-engine-queued`. A pom exercise, because step 2 already put every class in the package it
+   will keep; last, because it is only correct after step 3, for the reason §13b gives.
+
+Dependencies among what remains, in one line: 1 stands alone; 2 waits for `DirectHarness<I, O>`;
+3 needs 2 and `DirectHarness<I, O>`; 4 stands alone but is scheduled after 3; 5 and 6 need 4, and 6
+needs 3; 7 follows 6; 8 needs 2 and 3.
+
+### 13b. The module split, and why it is last
+
+James: "at some point, I thought we were going to split these two harness types out into their own
+modules and we'd have engine core, engine direct, and engine queued." The shape:
+
+| module | holds |
+|---|---|
+| `nessy-engine` | the core: the fold (`core`, `agent`), the stores (`store`, including the three in-memory ones and `JdbcRowLocks`), `tool`, `history`, `inference`, **the effect handlers** (`EffectHandler`, `EffectHandlers`, `EffectTerms`, `EffectTermsSource`, `EffectOutcomes`, the three handlers), `observability`, `trace`, `narration`, `schema`, `embedding` |
+| `nessy-engine-direct` | `engine.harness.direct` — the four classes of the door, and nothing else |
+| `nessy-engine-queued` | `engine.harness.queued` — the four harness classes — plus the outbox: `EffectDispatcher`, `AgentEffectCallback`, `EffectStore`, `JdbcEffectStore`, `Attempt`, `JdbcBacklog`, `JdbcAgents`, the `backlog` package, and `DefaultReplies` (which is bound to `EffectStore` and the callback, `DefaultReplies.java:58`) |
+
+**The key point, and the reason it is last.** The handlers step (§13a step 3) moves `effect/` from
+queued-only to shared. The first revision measured `effect/` as the queued door's — every class in
+it was constructed by `DefaultQueuedHarnessFactory` and by nothing else — and that was true. Once
+the direct door performs through `EffectHandlers.perform`, the handlers and their terms belong to
+neither door: they are the thing that executes what the fold emits, and both doors call it.
+Splitting modules before that step would put `effect/` in the queued module and immediately have
+to pull it back out, and every earlier attempt to schedule the split ran into exactly this — the
+line between "core" and "queued" ran through the middle of `effect/`, so the split was deferred
+until somebody moved the line. §4f is where the line moved. That is why the split kept being
+deferred, and why it is now tractable: after step 3 there is a package-level answer to "which
+module does this class belong to" for every class in the engine, and the only remaining seam is
+the outbox — `EffectDispatcher` and `AgentEffectCallback` in `effect/`, `DefaultReplies` in `tool/`
+— which is §14 Q2 and is answered by the restructure or by this step, whichever gets there first.
+
+**Why the restructure is the prerequisite, not wasted work on the way.** A package need not be
+renamed when it changes module. If the packages are right before the split — `engine.harness.direct`
+holds the direct door and only the direct door, `engine.harness.queued` the queued one, `engine.store`
+what both use — then the split is a pom exercise: three `<module>` entries, two new `pom.xml`
+files, a dependency each way on `nessy-engine`, and the autoconfigure and BOM poms. If the packages
+are wrong before the split, it is a pom exercise plus a rename across the same five modules the
+restructure touches (§13a step 2) done at the same time, and the two diffs would be one diff.
+
+**The payoff, which closes a thread from the very start of this work: `@ConditionalOnClass`
+becomes meaningful.** Both `@ConditionalOnClass` annotations were deleted in `a52f66e0` — "a
+condition that cannot be false is not a guard" — because `nessy-engine` is a non-optional compile
+dependency of `nessy-spring-boot-autoconfigure`, so a condition naming either factory could never
+evaluate false; a comment in each auto-configuration says so, so that nobody adds one back
+(`DirectHarnessAutoConfiguration.java:65–68`). With three modules the autoconfigure pom declares
+`nessy-engine-direct` and `nessy-engine-queued` `<optional>true</optional>` — as it already
+declares `nessy-lease` and the embedding modules — the two annotations return and this time they
+guard something, and there are two starters: add the jar for the door you want and get that door.
+The default becomes *right* instead of being "both, and exclude one by name", which is what `Repl`
+has to do today (`Repl.java:150–157`, from `93594541`: "Nothing about the classpath can tell those
+two doors apart — both factories live in the engine — so an application that wants one says
+which"). Honestly stated: name-exclusion already WORKS, and `93594541` split the auto-configurations
+precisely so that it would. What the module split buys is ergonomics and a correct default — a
+console that never sees a `DataSource` question because the queued door is not on its classpath —
+not a capability that is missing today.
+
+**The direct module is small, and that is acceptable rather than a thing to apologise for.** It
+ends up at roughly four classes against a queued module holding the outbox, the dispatcher, the
+backlog and the reply desk. The two doors are genuinely asymmetric — one is a method call on the
+caller's thread with in-memory stores as a legitimate configuration, the other is durable
+machinery with a watchdog and a table per concern — and the module sizes reflect that asymmetry
+rather than a failure to divide the engine evenly. A reader who expects two modules of similar
+weight has misread what a door is.
+
+**What is NOT decided by this section.** The outbox's package (§14 Q2); whether `DefaultReplies`
+and the reply-token machinery in `tool/` are queued-only in full or only in part; and the two
+starters' artifact names. None of it blocks steps 1–7.
+
 ---
 
 ## 14. Open questions for James
 
-Closed since the fifth revision, and no longer asked: the guard helper is `Identifiers` in
-`nessy-api` (§7); a `Clock` on `DirectHarnessFactoryConfig` landed in step 4; `writtenAt` and
-`Outstanding.since` landed in step 3; `retryPolicy` on the direct door is stored and documented as
-not honoured, per the recommendation; `nessy_lock` is its own table, and locks and leases are
-separate tables by ruling (§8a); sequencing — the transport timeouts landed first and the starter's
-margin is six minutes (§5). Retired rather than answered by §4f–§4g: the deferred-approval
-divergence and the direct door's observability gap.
+Closed since the sixth revision, and no longer asked: the inference `undispatchable()` blob
+becomes `Unknown` (§4d finding 1; now §13a step 1); `JdbcRowLocks` takes a
+`PlatformTransactionManager` and chooses `REQUIRED` itself, with a `DataSource`-only constructor
+for a non-Spring caller (§8a); `JdbcRowLocks` lives in `nessy-engine`, the engine's unused
+`nessy-lease` dependency goes, and the module stays optional (§8a, §12); and `nessy-lease` keeps
+its name, module and package — the rename is retired, not re-asked (§12). Closed earlier and still
+closed: the guard helper is `Identifiers` in `nessy-api` (§7); `Clock`, `writtenAt`,
+`Outstanding.since` and the stored-but-not-honoured `retryPolicy` all landed; `nessy_lock` is its
+own table (§8a); the transport timeouts and the six-minute margin (§5). Retired rather than
+answered by §4f–§4g: the deferred-approval divergence and the direct door's observability gap.
 
-1. **The direct door as designed in §3–§4, including §4g**: per-step `withLock`, phase decides
+Two are new in this revision (Q1, Q2), one was forced by the sixth (Q3), and four have stood since
+the fifth without an answer and are carried rather than dropped (Q4–Q7). None blocks §13a step 1.
+
+1. **Which package for `JdbcRowLocks`** (§8a). `engine.store`, beside `JdbcAgentEventStore` and
+   the three in-memory stores the restructure moves there — one package for "everything that
+   talks to the engine's database", with `InMemoryLocks` and `JdbcRowLocks` side by side as the
+   other store pairs are — or `engine.lock` of its own, on the ground that a lock is not a store.
+   The record leans `engine.store` for the pairing and asks.
+2. **Where the outbox goes in the restructure** (§13a step 2, §13b). `EffectDispatcher` and
+   `AgentEffectCallback` are queued-only and live in `effect/`; `DefaultReplies` is queued-only
+   and lives in `tool/`. Your sentence named `engine.harness`; it did not say whether these follow
+   the queued door into `engine.harness.queued` in the same commit, or wait for the module split
+   to force it. Moving them now makes the split a pure pom exercise; leaving them makes the
+   restructure smaller. Which?
+3. **`DirectHarnessFactoryConfig.observations(ObservationRegistry)`** — forced rather than chosen.
+   The direct door observes nothing today (§4f item 1); calling the real handlers makes it observe
+   everything, but only if the factory can be handed a registry, and its public config has no
+   method for one. Same shape and default as `QueuedHarnessFactoryConfig.observations` (`NOOP`,
+   "nothing to report"), and the starter passes its registry bean through as the queued
+   auto-configuration already does. Yes?
+4. **The direct door as designed in §3–§4, including §4g**: per-step `withLock`, phase decides
    `Busy`, effects performed through `EffectHandlers` with one `Deferred` arm that fails the call,
-   `put` under the first lock, no outer lease. Yes?
-2. **`DirectHarnessFactoryConfig.observations(ObservationRegistry)`** — the one question this
-   revision creates, and it is forced rather than chosen. The direct door observes nothing today
-   (§4f item 1); calling the real handlers makes it observe everything, but only if the factory
-   can be handed a registry, and its public config has no method for one. Same shape and default
-   as `QueuedHarnessFactoryConfig.observations` (`NOOP`, "nothing to report"), and the starter
-   passes its registry bean through as the queued auto-configuration already does. Yes?
-3. **`InferenceHandler.undispatchable()`'s category and wording** (§4d finding 1). Today
-   `Failure.Permanent("the inference could not be dispatched")` (`EffectTermsSource.java:192–194`),
-   which is false for a claimed call that overran on the queued door and for a dead direct
-   process, and which `Failure.Unknown`'s javadoc names as its own case. Change it to `Unknown`
-   with the tool blob's honesty ("did not complete before its deadline; whether it ran is not
-   known")? Recommended; it changes what the queued door stores on every inference row from then
-   on, so it is asked rather than done. Step 2 left it untouched pending this answer.
-4. **`withLock` on a lease** polls at a fixed interval in the SPI's default (§7), for the sake of
-   one total interface; nothing in the tree calls it. Acceptable?
+   `put` under the first lock, no outer lease. Every piece of it was shaped by a ruling and the
+   steps are ordered on that basis, but the whole has not had an explicit yes. Yes?
 5. **`Identity`.** Four parameters on both verbs, or promote `(AgentType, AgentId)` from
-   `engine.observability` into `nessy-api` and take three?
-6. **`JdbcRowLocks(DataSource, PlatformTransactionManager)`** as an optional second constructor
-   (§8a), so it never mints a manager where the application has one. Yes?
+   `engine.observability` into `nessy-api` and take three? A vocabulary decision, so it is asked.
+6. **`withLock` on a lease** polls at a fixed interval in the SPI's default (§7), for the sake of
+   one total interface; nothing in the tree calls it. Acceptable?
 7. **Scope** (§11). Lock and transaction now; the other four stores as a follow-on. Or widen?
-8. **The rename** (§12). Module and package to `lock`; `JdbcLeases` and `nessy_lease` keep their
-   names. Asked again because the design under your earlier yes has moved.
