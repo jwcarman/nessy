@@ -69,7 +69,7 @@ public class QueuedHarnessAutoConfiguration {
       ReplyTokens replyTokens,
       InferenceProvider models,
       NessyProperties properties,
-      NessyAutoConfiguration.NessySchema schema,
+      JdbcBackendAutoConfiguration.NessySchema schema,
       ObservationRegistry observations,
       ObjectProvider<MeterRegistry> meters,
       ObjectProvider<Tracer> tracers,

@@ -28,6 +28,9 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.backend.DirectBackend;
+import org.jwcarman.nessy.backend.QueuedBackend;
+import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -62,8 +65,8 @@ class NessyAutoConfigurationTest {
   /**
    * <b>No tables, and that is the point of these tests.</b> They assert which beans exist; nothing
    * here runs a turn. The engine's own schema does not even load on H2 -- {@code BYTEA} and {@code
-   * TIMESTAMPTZ} are PostgreSQL's -- which is the same fact that makes an in-memory fallback
-   * impossible, so opting out is what lets a wiring test stay a wiring test.
+   * TIMESTAMPTZ} are PostgreSQL's -- so opting out is what lets a wiring test with an H2 {@code
+   * DataSource} stay a wiring test.
    */
   private static final String NO_SCHEMA = "nessy.initialize-schema=false";
 
@@ -93,21 +96,19 @@ class NessyAutoConfigurationTest {
   }
 
   /**
-   * <b>No in-memory fallback, deliberately.</b> There used to be one: no {@code DataSource} meant
-   * an embedded H2 and a loud warning. The warning was the tell -- the queries this engine rests on
-   * are PostgreSQL's, so the fallback did not run a degraded Nessy, it ran one that fails on the
-   * first turn. Refusing to start names the missing thing at the only moment it is cheap to fix.
-   */
-  /**
-   * <b>Off means off, not "backs off".</b> Every bean here is {@code @ConditionalOnMissingBean}, so
-   * an application that declares its own wins -- but an application that declares nothing and wants
-   * nothing still fails, because this refuses to start without {@code nessy.model}. That is right
-   * for an application that wants a harness and wrong for one that merely shares a classpath with
-   * it, which is what happens when several Boot applications run in one JVM.
+   * <b>The in-memory backend is what "falls back" means.</b> No {@code DataSource} bean means
+   * {@link JdbcBackendAutoConfiguration} -- conditional on one -- never activates, tables and codec
+   * factory included, and {@link InMemoryBackendAutoConfiguration} takes the direct door instead.
+   * That is exactly what lets a CLI or a test run this starter with no database, and it is why
+   * {@code NessyAutoConfiguration} itself declares nothing that needs a {@code DataSource} any
+   * more.
+   *
+   * <p>There is no in-memory {@code QueuedBackend}, so the queued door simply does not appear --
+   * nothing here fails over it, because nothing asked for it.
    */
   @Test
-  @DisplayName("with no DataSource, it refuses to start rather than pretending")
-  void it_refuses_to_start_without_a_data_source() {
+  @DisplayName("with no DataSource, the in-memory backend takes over and the context starts")
+  void it_falls_back_to_the_in_memory_backend_without_a_data_source() {
     new ApplicationContextRunner()
         .withConfiguration(
             AutoConfigurations.of(
@@ -120,7 +121,14 @@ class NessyAutoConfigurationTest {
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class)
         .withPropertyValues(MODEL, PROMPT, NO_SCHEMA)
-        .run(context -> assertThat(context).hasFailed());
+        .run(
+            context -> {
+              assertThat(context).hasNotFailed();
+              assertThat(context).hasSingleBean(DirectBackend.class);
+              assertThat(context.getBean(DirectBackend.class))
+                  .isInstanceOf(InMemoryDirectBackend.class);
+              assertThat(context).doesNotHaveBean(QueuedBackend.class);
+            });
   }
 
   @Test

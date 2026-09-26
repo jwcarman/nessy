@@ -265,7 +265,7 @@ public final class EngineFixture implements AutoCloseable {
 
   /**
    * {@code base}, with {@code transform} applied after it on the way in and before it on the way
-   * out -- what {@code StorageConfig.append} does in the starter, done by hand here since this
+   * out -- what a {@code StorageCodecConfigurer} does in the starter, done by hand here since this
    * fixture builds no Spring context.
    */
   private static CodecFactory andThen(CodecFactory base, Codec<byte[]> transform) {

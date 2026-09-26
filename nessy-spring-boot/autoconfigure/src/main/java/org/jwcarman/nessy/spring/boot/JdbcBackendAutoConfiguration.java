@@ -16,20 +16,28 @@
 package org.jwcarman.nessy.spring.boot;
 
 import javax.sql.DataSource;
+import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.codec.TypeRef;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
+import org.jwcarman.nessy.api.IdentityCodec;
+import org.jwcarman.nessy.api.StorageCodecConfigurer;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.jdbc.JdbcDirectBackend;
 import org.jwcarman.nessy.backend.jdbc.JdbcLeases;
 import org.jwcarman.nessy.backend.jdbc.JdbcQueuedBackend;
 import org.jwcarman.nessy.backend.lease.Leases;
+import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.transaction.PlatformTransactionManager;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * The JDBC backend, when there is something to build it from.
@@ -46,11 +54,83 @@ import org.springframework.transaction.PlatformTransactionManager;
  * DataSourceTransactionManagerAutoConfiguration} auto-configures one whenever a single {@code
  * DataSource} is on the classpath and none of the application's own is declared, which is exactly
  * the condition this class already requires.
+ *
+ * <p><b>Self-sufficient on purpose.</b> The tables and the codec factory both belong here rather
+ * than in {@link NessyAutoConfiguration}: an application that excludes that class, or that runs
+ * with no {@code DataSource} at all, must not orphan this backend. {@link NessyProperties} is
+ * declared again here for the same reason -- {@code nessy.initialize-schema} has to be readable
+ * whether or not {@link NessyAutoConfiguration} is on the classpath.
  */
-@AutoConfiguration(after = DataSourceAutoConfiguration.class)
+@AutoConfiguration(
+    after = DataSourceAutoConfiguration.class,
+    afterName = "org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration",
+    // Named rather than imported: Substrate is optional, and an application without it never
+    // pulls this class in. Ordered ahead so the CodecFactory bean below exists by the time
+    // Substrate's own journal factory asks its @ConditionalOnBean(CodecFactory.class) whether one
+    // is there.
+    beforeName = "org.jwcarman.substrate.core.autoconfigure.SubstrateAutoConfiguration")
 @ConditionalOnClass(JdbcDirectBackend.class)
 @ConditionalOnBean(DataSource.class)
+@EnableConfigurationProperties(NessyProperties.class)
 public class JdbcBackendAutoConfiguration {
+
+  /**
+   * The one way to build a {@link Codec} in this engine: Jackson, over the context's {@link
+   * ObjectMapper}, with the transform the {@link StorageCodecConfigurer} bean returns appended.
+   *
+   * <p>Nothing appended means the plain Jackson factory is handed back directly -- the noop
+   * default, with no noop object wrapping it. Reference equality against {@link
+   * IdentityCodec#INSTANCE} is what tells the two cases apart: a configurer that composes nothing
+   * hands the same instance straight back.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public CodecFactory codecFactory(ObjectMapper mapper, StorageCodecConfigurer configurer) {
+    CodecFactory jackson = new JacksonCodecFactory(mapper);
+    Codec<byte[]> transform = configurer.configure(IdentityCodec.INSTANCE);
+    if (transform == IdentityCodec.INSTANCE) {
+      return jackson;
+    }
+    return new CodecFactory() {
+      @Override
+      public <T> Codec<T> create(TypeRef<T> type) {
+        return jackson.create(type).andThen(transform);
+      }
+    };
+  }
+
+  /**
+   * Nothing appended, for an application that has not declared a {@link StorageCodecConfigurer}.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public StorageCodecConfigurer storageCodecConfigurer() {
+    return original -> original;
+  }
+
+  /**
+   * The schema, created where the application says so.
+   *
+   * <p>Opt-in on purpose: {@code nessy.initialize-schema} defaults to true because an application
+   * that added the starter wants the tables, but an application that manages its own migrations
+   * turns it off and nothing runs a DDL file behind its back.
+   */
+  @Bean
+  @ConditionalOnMissingBean(name = "nessySchema")
+  public NessySchema nessySchema(DataSource dataSource, NessyProperties properties) {
+    boolean initialize = Boolean.TRUE.equals(properties.initializeSchema());
+    if (initialize) {
+      Schemas.initialize(dataSource);
+    }
+    return new NessySchema(initialize);
+  }
+
+  /**
+   * A marker, so every bean that needs tables can depend on the tables existing.
+   *
+   * @param initialized whether this starter ran the DDL, or left the tables to the application
+   */
+  public record NessySchema(boolean initialized) {}
 
   @Bean
   @ConditionalOnMissingBean

@@ -17,31 +17,20 @@ package org.jwcarman.nessy.spring.boot;
 
 import java.util.Base64;
 import java.util.List;
-import java.util.Objects;
-import javax.sql.DataSource;
-import org.jspecify.annotations.Nullable;
-import org.jwcarman.codec.Codec;
-import org.jwcarman.codec.CodecFactory;
-import org.jwcarman.codec.TypeRef;
-import org.jwcarman.codec.jackson.JacksonCodecFactory;
-import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.QueuedHarness;
-import org.jwcarman.nessy.api.StorageConfig;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.store.Schemas;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
-import org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration;
 import org.springframework.context.annotation.Bean;
-import tools.jackson.databind.ObjectMapper;
+import org.springframework.core.env.Environment;
 
 /**
- * Nessy as a Boot citizen: a {@code DataSource} and an {@link InferenceProvider} in, a {@link
- * QueuedHarness} out.
+ * Nessy as a Boot citizen: an {@link InferenceProvider} in, a {@link QueuedHarness} out.
  *
  * <p><b>The engine is a library, and this is the only thing that makes it a framework.</b>
  * Everything below assembles collaborators an application could assemble itself -- and one test in
@@ -61,84 +50,16 @@ import tools.jackson.databind.ObjectMapper;
  * auto-configuration added afterwards was a fresh chance to forget to honour it -- which is exactly
  * what happened when the backend auto-configurations arrived and left the disabled path asking for
  * a codec factory that was never going to exist.
+ *
+ * <p><b>The tables and the codec factory live with the JDBC backend, not here.</b> {@link
+ * JdbcBackendAutoConfiguration} owns both, so excluding this class -- or running with no {@code
+ * DataSource} at all -- never orphans the backend.
  */
-@AutoConfiguration(
-    after = {DataSourceAutoConfiguration.class, JdbcTemplateAutoConfiguration.class},
-    afterName = "org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration",
-    // Named rather than imported: Substrate is optional, and an application without it never
-    // pulls this class in. Ordered ahead so the CodecFactory bean below exists by the time
-    // Substrate's own journal factory asks its @ConditionalOnBean(CodecFactory.class) whether one
-    // is there.
-    beforeName = "org.jwcarman.substrate.core.autoconfigure.SubstrateAutoConfiguration")
+@AutoConfiguration
 @EnableConfigurationProperties(NessyProperties.class)
 public class NessyAutoConfiguration {
 
-  private static final org.slf4j.Logger log =
-      org.slf4j.LoggerFactory.getLogger(NessyAutoConfiguration.class);
-
-  /**
-   * The one way to build a {@link Codec} in this engine: Jackson, over the context's {@link
-   * ObjectMapper}, with every {@code Customizer<StorageConfig>} bean's transform composed on after
-   * it in {@link ObjectProvider#orderedStream() orderedStream} order.
-   *
-   * <p>No customizers means the plain Jackson factory is handed back directly -- the noop default,
-   * with no noop object wrapping it.
-   */
-  @Bean
-  @ConditionalOnMissingBean
-  public CodecFactory codecFactory(
-      ObjectMapper mapper, ObjectProvider<Customizer<StorageConfig>> customizers) {
-    CodecFactory jackson = new JacksonCodecFactory(mapper);
-    ComposingStorageConfig config = new ComposingStorageConfig();
-    customizers.orderedStream().forEach(customizer -> customizer.customize(config));
-    Codec<byte[]> transform = config.transform;
-    if (transform == null) {
-      return jackson;
-    }
-    return new CodecFactory() {
-      @Override
-      public <T> Codec<T> create(TypeRef<T> type) {
-        return jackson.create(type).andThen(transform);
-      }
-    };
-  }
-
-  /** Collects every appended transform into one, composed outward in append order. */
-  private static final class ComposingStorageConfig implements StorageConfig {
-
-    private @Nullable Codec<byte[]> transform;
-
-    @Override
-    public StorageConfig append(Codec<byte[]> next) {
-      Objects.requireNonNull(next, "transform must not be null");
-      transform = transform == null ? next : transform.andThen(next);
-      return this;
-    }
-  }
-
-  /**
-   * The schema, created where the application says so.
-   *
-   * <p>Opt-in on purpose: {@code nessy.initialize-schema} defaults to true because an application
-   * that added the starter wants the tables, but an application that manages its own migrations
-   * turns it off and nothing runs a DDL file behind its back.
-   */
-  @Bean
-  @ConditionalOnMissingBean(name = "nessySchema")
-  public NessySchema nessySchema(DataSource dataSource, NessyProperties properties) {
-    boolean initialize = Boolean.TRUE.equals(properties.initializeSchema());
-    if (initialize) {
-      Schemas.initialize(dataSource);
-    }
-    return new NessySchema(initialize);
-  }
-
-  /**
-   * A marker, so every bean that needs tables can depend on the tables existing.
-   *
-   * @param initialized whether this starter ran the DDL, or left the tables to the application
-   */
-  public record NessySchema(boolean initialized) {}
+  private static final Logger log = LoggerFactory.getLogger(NessyAutoConfiguration.class);
 
   @Bean
   @ConditionalOnMissingBean
@@ -160,9 +81,9 @@ public class NessyAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public InferenceReport nessyInferenceReport(
-      ObjectProvider<org.jwcarman.nessy.inference.InferenceProvider> providers,
+      ObjectProvider<InferenceProvider> providers,
       NessyProperties properties,
-      org.springframework.core.env.Environment environment) {
+      Environment environment) {
     return new InferenceReport(providers, properties, environment);
   }
 }

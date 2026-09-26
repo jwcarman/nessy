@@ -26,10 +26,9 @@ import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
-import org.jwcarman.nessy.api.StorageConfig;
+import org.jwcarman.nessy.api.StorageCodecConfigurer;
 import org.jwcarman.nessy.narration.odyssey.AgentStreams;
 import org.jwcarman.nessy.narration.odyssey.OdysseyNarrator;
 import org.jwcarman.odyssey.autoconfigure.OdysseyAutoConfiguration;
@@ -140,9 +139,9 @@ class OdysseyNarrationAutoConfigurationTest {
   @Configuration(proxyBeanMethods = false)
   static class AnApplicationThatEncrypts {
     @Bean
-    Customizer<StorageConfig> storage() {
-      return config ->
-          config.append(
+    StorageCodecConfigurer storage() {
+      return original ->
+          original.andThen(
               new Codec<>() {
                 @Override
                 public byte[] encode(byte[] bytes) {
