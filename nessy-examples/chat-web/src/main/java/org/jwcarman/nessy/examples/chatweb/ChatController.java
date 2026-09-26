@@ -178,7 +178,7 @@ public class ChatController {
   private static List<Line> lines(List<Turn> turns) {
     List<Line> lines = new ArrayList<>();
     for (Turn turn : turns) {
-      lines.add(new Line("user", text(turn.observation().blocks())));
+      lines.add(new Line("user", text(turn.input().blocks())));
       for (Exchange exchange : turn.exchanges()) {
         String commentary = text(exchange.request());
         if (!commentary.isBlank()) {

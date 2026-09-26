@@ -173,7 +173,7 @@ public final class OpenAiRequests {
    * nothing between them, and on this wire a mid-conversation {@code system} line is the natural
    * way to do that.
    *
-   * <p>A refused observation is dropped rather than re-sent: it is what caused the refusal, and
+   * <p>A refused input is dropped rather than re-sent: it is what caused the refusal, and
    * re-sending it keeps the conversation refused for as long as it is still in the request.
    */
   /**
@@ -196,7 +196,7 @@ public final class OpenAiRequests {
     Stream<ChatCompletionMessageParam> opening =
         turn.result() instanceof TurnResult.Refused
             ? Stream.empty()
-            : Stream.of(user(text(turn.observation().blocks())));
+            : Stream.of(user(text(turn.input().blocks())));
 
     // Every round, in order, between the question and whatever the model finally said. A call
     // and its result have to stay adjacent and in sequence: this wire rejects an assistant

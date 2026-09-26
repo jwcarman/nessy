@@ -27,11 +27,11 @@ import org.jwcarman.nessy.inference.tool.CallId;
 /**
  * What performing an effect came to.
  *
- * <p>Free of {@code <O>}, and that is the point. A dispatcher holds rows, not observation types; it
- * could not name {@code O} if it wanted to. When outcomes travelled as {@code AgentEvent<?>} the
- * wildcard was the design telling us the two had been conflated -- an observation carries the
- * caller's type into the fold, an outcome carries the engine's own vocabulary back out, and only
- * one of them can be generic.
+ * <p>Free of {@code <I>}, and that is the point. A dispatcher holds rows, not input types; it could
+ * not name {@code I} if it wanted to. When outcomes travelled as {@code AgentEvent<?>} the wildcard
+ * was the design telling us the two had been conflated -- an input carries the caller's type into
+ * the fold, an outcome carries the engine's own vocabulary back out, and only one of them can be
+ * generic.
  *
  * <p>Almost never stored. An outcome normally lives from the moment a handler returns it to the
  * moment the fold consumes it, inside one process; what survives a crash is the effect row, which

@@ -49,7 +49,7 @@ class BacklogTest {
   }
 
   @Test
-  void acceptingQueuesTheObservation() {
+  void acceptingQueuesTheInput() {
     Backlog<String> after = Backlog.<String>empty().accept(item("first"), KEEP_ALL);
 
     assertThat(after.size()).isEqualTo(1);
@@ -62,7 +62,7 @@ class BacklogTest {
 
     assertThat(pull).isInstanceOf(Pull.Item.class);
     Pull.Item<String> taken = (Pull.Item<String>) pull;
-    assertThat(taken.item().observation()).isEqualTo("first");
+    assertThat(taken.item().input()).isEqualTo("first");
     assertThat(taken.remainder().size()).isEqualTo(1);
   }
 
@@ -106,14 +106,14 @@ class BacklogTest {
   }
 
   @Test
-  void aSealedBacklogRefusesObservationsRatherThanSwallowingThem() {
+  void aSealedBacklogRefusesInputsRatherThanSwallowingThem() {
     Backlog<String> sealed = openWith("first").seal();
 
     Backlog<String> after = sealed.accept(item("too late"), KEEP_ALL);
 
     assertThat(after)
         .as(
-            "an observation queued here could never be taken, so it is not queued -- and "
+            "an input queued here could never be taken, so it is not queued -- and "
                 + "returning the same backlog is how the fold knows nothing happened")
         .isEqualTo(sealed);
   }

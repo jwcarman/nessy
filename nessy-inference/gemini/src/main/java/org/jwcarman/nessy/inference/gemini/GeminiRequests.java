@@ -202,7 +202,7 @@ public final class GeminiRequests {
     if (turn.result() instanceof TurnResult.Refused) {
       return Stream.of();
     }
-    Stream<Content> opening = content(USER, turn.observation().blocks(), mapper).stream();
+    Stream<Content> opening = content(USER, turn.input().blocks(), mapper).stream();
     Stream<Content> middle =
         turn.exchanges().stream().flatMap(exchange -> exchange(exchange, mapper));
     Stream<Content> ending =

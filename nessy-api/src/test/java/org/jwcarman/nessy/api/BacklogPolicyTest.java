@@ -53,7 +53,7 @@ class BacklogPolicyTest {
     List<BacklogItem<Reading>> next =
         after(BacklogPolicy.<Reading>keepAll(), waiting(), at(T0.plusSeconds(2), "porch", 3));
 
-    assertThat(next).extracting(item -> item.observation().value()).containsExactly(1, 2, 3);
+    assertThat(next).extracting(item -> item.input().value()).containsExactly(1, 2, 3);
   }
 
   @Test
@@ -61,7 +61,7 @@ class BacklogPolicyTest {
     List<BacklogItem<Reading>> next =
         after(BacklogPolicy.<Reading>keepLatest(), waiting(), at(T0.plusSeconds(2), "garage", 3));
 
-    assertThat(next).extracting(item -> item.observation().value()).containsExactly(3);
+    assertThat(next).extracting(item -> item.input().value()).containsExactly(3);
   }
 
   @Test
@@ -73,8 +73,8 @@ class BacklogPolicyTest {
     List<BacklogItem<Reading>> appended =
         after(policy, waiting(), at(T0.plusSeconds(2), "garage", 4));
 
-    assertThat(replaced).extracting(item -> item.observation().value()).containsExactly(3, 2);
-    assertThat(appended).extracting(item -> item.observation().value()).containsExactly(1, 2, 4);
+    assertThat(replaced).extracting(item -> item.input().value()).containsExactly(3, 2);
+    assertThat(appended).extracting(item -> item.input().value()).containsExactly(1, 2, 4);
   }
 
   @Test
@@ -85,7 +85,7 @@ class BacklogPolicyTest {
         after(policy, waiting(), at(T0.plusSeconds(2), "porch", 3));
     List<BacklogItem<Reading>> kept = after(policy, waiting(), at(T0.plusSeconds(2), "garage", 4));
 
-    assertThat(dropped).extracting(item -> item.observation().value()).containsExactly(1, 2);
+    assertThat(dropped).extracting(item -> item.input().value()).containsExactly(1, 2);
     assertThat(kept).hasSize(3);
   }
 
@@ -99,7 +99,7 @@ class BacklogPolicyTest {
     List<BacklogItem<Reading>> appended =
         after(policy, waiting(), at(T0.plusSeconds(2), "garage", 4));
 
-    assertThat(merged.getFirst().observation()).isEqualTo(new Reading("porch", 4));
+    assertThat(merged.getFirst().input()).isEqualTo(new Reading("porch", 4));
     assertThat(merged.getFirst().arrivedAt()).isEqualTo(T0);
     assertThat(appended).hasSize(3);
   }
@@ -111,7 +111,7 @@ class BacklogPolicyTest {
 
     List<BacklogItem<Reading>> next = after(policy, waiting(), at(T0.plusSeconds(2), "porch", 3));
 
-    assertThat(next).extracting(item -> item.observation().value()).containsExactly(2, 3);
+    assertThat(next).extracting(item -> item.input().value()).containsExactly(2, 3);
   }
 
   @Test
@@ -121,7 +121,7 @@ class BacklogPolicyTest {
     List<BacklogItem<Reading>> next = after(policy, waiting(), at(T0.plusSeconds(2), "porch", 3));
     List<BacklogItem<Reading>> roomy = after(policy, List.of(), at(T0, "porch", 3));
 
-    assertThat(next).extracting(item -> item.observation().value()).containsExactly(2, 3);
+    assertThat(next).extracting(item -> item.input().value()).containsExactly(2, 3);
     assertThat(roomy).hasSize(1);
   }
 }

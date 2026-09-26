@@ -41,9 +41,9 @@ import org.slf4j.LoggerFactory;
  * does can fail a turn.
  *
  * <p><b>In the trace.</b> Both hops -- onto this harness's telling thread, and from there onto the
- * thread of an {@link NarrationListener.Async} listener -- carry the observation that was current
- * when the event was narrated, which is the turn's or the effect's. What a listener does in
- * response, a summary say, is then a child of what it responded to, however long after.
+ * thread of an {@link NarrationListener.Async} listener -- carry the input that was current when
+ * the event was narrated, which is the turn's or the effect's. What a listener does in response, a
+ * summary say, is then a child of what it responded to, however long after.
  */
 public final class Listeners implements Narrator, AutoCloseable {
 

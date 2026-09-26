@@ -22,7 +22,7 @@ import java.util.Objects;
 /**
  * Where the content is, for content the core never sees.
  *
- * <p>Observations, model output and tool results are claim-checked by the harness before a command
+ * <p>Inputs, model output and tool results are claim-checked by the harness before a command
  * reaches the state, and what crosses is this. The core branches on identifiers, status, human
  * decisions and counts; everything else is behind one of these.
  *

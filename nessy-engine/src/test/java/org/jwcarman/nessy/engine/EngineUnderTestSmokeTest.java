@@ -64,7 +64,7 @@ class EngineUnderTestSmokeTest {
           .untilAsserted(
               () ->
                   assertThat(engine.story(agentId))
-                      .as("the observation and the answer, both written down")
+                      .as("the input and the answer, both written down")
                       .hasSize(2));
     }
   }

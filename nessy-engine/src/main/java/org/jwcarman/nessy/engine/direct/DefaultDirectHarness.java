@@ -111,7 +111,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
   private final Transcript transcript;
   private final SystemPromptSource systemPrompt;
   private final InferenceOptions options;
-  private final Function<I, List<Block.ObservationContent>> renderer;
+  private final Function<I, List<Block.InputContent>> renderer;
   private final Tools tools;
 
   /** How a Java type becomes a schema, and how an answer in that shape becomes the type back. */
@@ -162,7 +162,7 @@ public final class DefaultDirectHarness<I> implements DirectHarness<I> {
       InferenceProvider provider,
       SystemPromptSource systemPrompt,
       InferenceOptions options,
-      Function<I, List<Block.ObservationContent>> renderer,
+      Function<I, List<Block.InputContent>> renderer,
       Tools tools,
       InputSchemaGenerator schemas,
       ObjectMapper mapper,

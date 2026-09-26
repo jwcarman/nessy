@@ -37,7 +37,7 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.Summary;
 import org.jwcarman.nessy.inference.turn.Turn;
 import org.jwcarman.nessy.inference.turn.TurnResult;
@@ -58,7 +58,7 @@ class ContextAssemblerTest {
   private static Turn turn(long id) {
     return new Turn(
         new TurnId(id),
-        new Observation(new Seq(id), List.of(new Block.Text("q" + id))),
+        new Input(new Seq(id), List.of(new Block.Text("q" + id))),
         List.of(),
         new TurnResult.Answered(List.of(new Block.Text("a" + id))),
         10);

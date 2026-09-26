@@ -212,7 +212,7 @@ public final class AnthropicRequests {
     }
 
     Stream<Drafted> opening =
-        draftOf(MessageParam.Role.USER, turn.observation().blocks(), mapper).stream();
+        draftOf(MessageParam.Role.USER, turn.input().blocks(), mapper).stream();
 
     Stream<Drafted> middle =
         turn.exchanges().stream().flatMap(exchange -> draftExchange(exchange, mapper));

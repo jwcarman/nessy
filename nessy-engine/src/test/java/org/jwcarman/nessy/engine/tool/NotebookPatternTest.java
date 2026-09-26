@@ -198,10 +198,10 @@ class NotebookPatternTest {
   /**
    * Background never reaches the story.
    *
-   * <p>The invariant that makes it background rather than an observation. If it were written down
-   * it would be re-sent verbatim forever, and a note about a frozen deploy would still be in front
-   * of the model long after the deploy unfroze -- stated as a fact somebody said rather than as a
-   * view that has since moved.
+   * <p>The invariant that makes it background rather than an input. If it were written down it
+   * would be re-sent verbatim forever, and a note about a frozen deploy would still be in front of
+   * the model long after the deploy unfroze -- stated as a fact somebody said rather than as a view
+   * that has since moved.
    */
   @Test
   void backgroundIsNeverWrittenToTheStory() {

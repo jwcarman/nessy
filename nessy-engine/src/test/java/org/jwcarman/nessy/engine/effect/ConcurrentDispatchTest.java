@@ -47,7 +47,7 @@ import org.jwcarman.nessy.inference.block.Block;
  * happen at all unless the calls are genuinely concurrent.
  */
 // A long interval on purpose. Concurrency is a property of one batch, so this test needs all
-// three observations in the table before any pass looks -- and the first pass waits a full
+// three inputs in the table before any pass looks -- and the first pass waits a full
 // interval. At a short interval a pass can land mid-setup, take one row, and block the rest
 // behind it, which is correct behaviour and would fail this test for the wrong reason.
 class ConcurrentDispatchTest {

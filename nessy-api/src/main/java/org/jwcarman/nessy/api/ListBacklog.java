@@ -27,23 +27,23 @@ import java.util.Objects;
  * {@link ArrayList}, so a policy behaves the same either way -- which is the point: a strategy that
  * passed in a test and behaved differently against rows would be found late and be hard to explain.
  *
- * @param <O> the application's observation type
+ * @param <I> the application's input type
  */
-public final class ListBacklog<O> implements Backlog<O> {
+public final class ListBacklog<I> implements Backlog<I> {
 
-  private final List<BacklogItem<O>> items;
+  private final List<BacklogItem<I>> items;
   private boolean ended;
 
   public ListBacklog() {
     this(List.of());
   }
 
-  public ListBacklog(List<BacklogItem<O>> waiting) {
+  public ListBacklog(List<BacklogItem<I>> waiting) {
     this.items = new ArrayList<>(Objects.requireNonNull(waiting, "waiting must not be null"));
   }
 
   /** What is waiting now, oldest first. */
-  public List<BacklogItem<O>> items() {
+  public List<BacklogItem<I>> items() {
     return List.copyOf(items);
   }
 
@@ -56,7 +56,7 @@ public final class ListBacklog<O> implements Backlog<O> {
   }
 
   @Override
-  public Pull<O> take() {
+  public Pull<I> take() {
     if (!items.isEmpty()) {
       return new Pull.Item<>(items.removeFirst());
     }
@@ -64,17 +64,17 @@ public final class ListBacklog<O> implements Backlog<O> {
   }
 
   @Override
-  public void append(BacklogItem<O> item) {
+  public void append(BacklogItem<I> item) {
     items.add(Objects.requireNonNull(item, "item must not be null"));
   }
 
   @Override
-  public void prepend(BacklogItem<O> item) {
+  public void prepend(BacklogItem<I> item) {
     items.addFirst(Objects.requireNonNull(item, "item must not be null"));
   }
 
   @Override
-  public void replaceAll(BacklogItem<O> item) {
+  public void replaceAll(BacklogItem<I> item) {
     Objects.requireNonNull(item, "item must not be null");
     items.clear();
     items.add(item);
@@ -93,12 +93,12 @@ public final class ListBacklog<O> implements Backlog<O> {
   }
 
   @Override
-  public List<BacklogItem<O>> all() {
+  public List<BacklogItem<I>> all() {
     return List.copyOf(items);
   }
 
   @Override
-  public void rewrite(List<BacklogItem<O>> replacement) {
+  public void rewrite(List<BacklogItem<I>> replacement) {
     Objects.requireNonNull(replacement, "replacement must not be null");
     items.clear();
     items.addAll(replacement);

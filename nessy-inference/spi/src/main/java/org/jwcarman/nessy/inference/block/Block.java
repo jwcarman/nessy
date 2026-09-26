@@ -62,15 +62,15 @@ public sealed interface Block {
   // -------------------------------------------------------------------------------------
 
   /**
-   * What an observation may carry.
+   * What an input may carry.
    *
-   * <p>Named for the observation rather than for the wire role it lands on. A provider calls this
-   * slot {@code user}, but plenty of observations have no user behind them -- a sensor reading, a
-   * webhook, a scheduled tick -- and naming the domain after the format would make the engine
-   * describe a thermometer as a person. The adapter maps observation to {@code user} when it builds
-   * a request; that is the one place the word belongs.
+   * <p>Named for the input rather than for the wire role it lands on. A provider calls this slot
+   * {@code user}, but plenty of inputs have no user behind them -- a sensor reading, a webhook, a
+   * scheduled tick -- and naming the domain after the format would make the engine describe a
+   * thermometer as a person. The adapter maps input to {@code user} when it builds a request; that
+   * is the one place the word belongs.
    */
-  sealed interface ObservationContent extends Block {}
+  sealed interface InputContent extends Block {}
 
   /**
    * What an answer may carry.
@@ -105,9 +105,9 @@ public sealed interface Block {
    *
    * <p>Things nobody said. Saved notes, a standing plan, what time it is -- assembled when the
    * model is called, shown once, and thrown away. Its own position rather than a reuse of {@link
-   * ObservationContent}, because an observation is something that <em>happened</em> and is written
-   * down forever, while this is a view of the world as it stands right now. Letting one stand in
-   * for the other is how a note ends up in a transcript.
+   * InputContent}, because an input is something that <em>happened</em> and is written down
+   * forever, while this is a view of the world as it stands right now. Letting one stand in for the
+   * other is how a note ends up in a transcript.
    */
   sealed interface AmbientContent extends Block {}
 
@@ -147,11 +147,7 @@ public sealed interface Block {
    * stored so far begins with two newlines, which a blank check would have thrown away.
    */
   record Text(String text)
-      implements ObservationContent,
-          AnswerContent,
-          ToolResultContent,
-          AmbientContent,
-          SummaryContent {
+      implements InputContent, AnswerContent, ToolResultContent, AmbientContent, SummaryContent {
 
     public Text {
       Objects.requireNonNull(text, "text must not be null");

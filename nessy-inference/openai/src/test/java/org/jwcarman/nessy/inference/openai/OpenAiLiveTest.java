@@ -36,7 +36,7 @@ import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.InputSchema;
 import org.jwcarman.nessy.inference.tool.ToolName;
-import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.Turn;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -79,7 +79,7 @@ class OpenAiLiveTest {
             List.of(
                 new Turn(
                     new TurnId(1),
-                    new Observation(new Seq(1), List.of(new Block.Text(question))),
+                    new Input(new Seq(1), List.of(new Block.Text(question))),
                     List.of(),
                     null,
                     0))),
@@ -96,7 +96,7 @@ class OpenAiLiveTest {
             List.of(
                 new Turn(
                     new TurnId(1),
-                    new Observation(new Seq(1), List.of(new Block.Text(question))),
+                    new Input(new Seq(1), List.of(new Block.Text(question))),
                     List.of(),
                     null,
                     0))),

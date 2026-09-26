@@ -45,9 +45,9 @@ public interface Summarizer {
   List<Summary> forAgent(AgentId agentId);
 
   /**
-   * The same, told what is being answered: the turn under way, observation and all. A source that
-   * ranks its summaries by relevance ranks them against this; one that does not can ignore it,
-   * which is what this does by default. The engine calls this one.
+   * The same, told what is being answered: the turn under way, input and all. A source that ranks
+   * its summaries by relevance ranks them against this; one that does not can ignore it, which is
+   * what this does by default. The engine calls this one.
    */
   default List<Summary> forAgent(AgentId agentId, Turn current) {
     return forAgent(agentId);

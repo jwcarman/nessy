@@ -49,8 +49,8 @@ import tools.jackson.databind.ObjectMapper;
  * first, and it is created once per {@code .tool(...)} on one harness.
  *
  * <p><b>{@code <I>} ends here.</b> Everything on the far side -- effects, entries, outcomes --
- * speaks in blocks and strings, exactly as {@code <O>} ends at the observation renderer. That is
- * what lets one effect table hold calls to tools with unrelated input types.
+ * speaks in blocks and strings, exactly as {@code <I>} ends at the input renderer. That is what
+ * lets one effect table hold calls to tools with unrelated input types.
  *
  * <p>The schema is generated once, when the tool is bound, rather than per call. A tool's shape
  * cannot change between calls, and generating it per call would put a reflective walk of the input

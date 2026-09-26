@@ -76,10 +76,10 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Makes harnesses, holding the infrastructure every agent type is built from.
  *
- * <p>The split is deliberate: a caller supplies what is theirs -- the agent type's name, its
- * observation type, how to render one, which model it calls, how often it polls -- and this
- * supplies the stores, the transaction template, the scheduler and the codec factory. Nobody
- * assembles a harness by hand, so nobody can assemble one wrongly.
+ * <p>The split is deliberate: a caller supplies what is theirs -- the agent type's name, its input
+ * type, how to render one, which model it calls, how often it polls -- and this supplies the
+ * stores, the transaction template, the scheduler and the codec factory. Nobody assembles a harness
+ * by hand, so nobody can assemble one wrongly.
  *
  * <p><b>Shared infrastructure, not shared machinery.</b> Two harnesses use the same tables and the
  * same scheduler the way they use the same JVM. Nothing else crosses between them: each gets its
@@ -180,14 +180,14 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
    * The general form.
    *
    * <p>{@link TypeRef#parameterized} is why this works at all: a {@code TypeRef} cannot be captured
-   * for a type variable, so {@code new TypeRef<AgentState<O>>() {}} would throw here. Composing one
-   * from the caller's own {@code TypeRef<O>} is what lets the document's codec know a type this
+   * for a type variable, so {@code new TypeRef<AgentState<I>>() {}} would throw here. Composing one
+   * from the caller's own {@code TypeRef<I>} is what lets the document's codec know a type this
    * class never sees -- and it is why nothing above ever has to name {@code AgentState}.
    */
   @Override
-  public <O> QueuedHarness<O> create(
-      AgentType agentType, TypeRef<O> inputType, Customizer<QueuedHarnessConfig<O>> customizer) {
-    DefaultQueuedHarnessConfig<O> config =
+  public <I> QueuedHarness<I> create(
+      AgentType agentType, TypeRef<I> inputType, Customizer<QueuedHarnessConfig<I>> customizer) {
+    DefaultQueuedHarnessConfig<I> config =
         new DefaultQueuedHarnessConfig<>(
             agentType, inputType, defaults, mapper, schemas, observations);
     customizer.customize(config);
@@ -238,7 +238,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
             createApprovalHandler(agentType, tools, narrator, terms),
             createToolCallHandler(agentType, tools, narrator, payloads, terms));
     EffectStore effects = new EffectStore(agentType, handlers, effectRows);
-    DefaultQueuedHarness<O> harness =
+    DefaultQueuedHarness<I> harness =
         new DefaultQueuedHarness<>(
             agentType,
             config.policy(),
@@ -312,11 +312,11 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
         clock);
   }
 
-  private <O> @NonNull InferenceHandler createInferenceHandler(
+  private <I> @NonNull InferenceHandler createInferenceHandler(
       AgentType agentType,
       InferenceContextAssembler assembler,
       DefaultQueuedHarnessConfig.Inference inference,
-      DefaultQueuedHarnessConfig<O> config,
+      DefaultQueuedHarnessConfig<I> config,
       Tools tools,
       Listeners narrator,
       PayloadStore payloads,

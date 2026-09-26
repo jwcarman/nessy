@@ -26,12 +26,12 @@ import org.jwcarman.nessy.inference.block.Block;
  * <p>Turn-shaped rather than entry-shaped: a projection hands out conversations, and how one was
  * stored is nobody else's business.
  */
-public record Observation(Seq seq, List<Block.ObservationContent> blocks) {
+public record Input(Seq seq, List<Block.InputContent> blocks) {
 
-  public Observation {
+  public Input {
     Objects.requireNonNull(blocks, "blocks must not be null");
     if (blocks.isEmpty()) {
-      throw new IllegalArgumentException("an observation must have at least one block");
+      throw new IllegalArgumentException("an input must have at least one block");
     }
     blocks = List.copyOf(blocks);
   }

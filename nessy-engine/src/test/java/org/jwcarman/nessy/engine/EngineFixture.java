@@ -219,8 +219,8 @@ public final class EngineFixture implements AutoCloseable {
   /**
    * The event that opens a turn on {@code said}, as the fold would have written it.
    *
-   * <p>The turn is derived from the position rather than passed, because an observation's own seq
-   * is the turn it opens -- the same rule {@code AgentState} applies.
+   * <p>The turn is derived from the position rather than passed, because an input's own seq is the
+   * turn it opens -- the same rule {@code AgentState} applies.
    */
   public AgentEvent.TurnStarted turnStarted(AgentId agent, long seq, String said) {
     Seq at = new Seq(seq);

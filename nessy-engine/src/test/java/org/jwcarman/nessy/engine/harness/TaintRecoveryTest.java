@@ -54,7 +54,7 @@ import org.jwcarman.nessy.inference.turn.TurnResult;
  * <p>Four properties, and the test is the reason to believe them rather than the argument for them:
  *
  * <ol>
- *   <li>nothing is destroyed -- the observation stays in the story
+ *   <li>nothing is destroyed -- the input stays in the story
  *   <li>recovery is automatic for the first failure of a conversation that was working
  *   <li>the projection stops sending it, which is what makes the next turn possible
  *   <li>the record says what happened, so a reader can see why a question has no answer
@@ -144,12 +144,12 @@ class TaintRecoveryTest {
   }
 
   /**
-   * A second failure must NOT set aside a second observation. Once a conversation is already
-   * broken, a new failure is no longer evidence about the newest message -- that is how a cascade
-   * erodes a record one innocent question at a time.
+   * A second failure must NOT set aside a second input. Once a conversation is already broken, a
+   * new failure is no longer evidence about the newest message -- that is how a cascade erodes a
+   * record one innocent question at a time.
    */
   @Test
-  void aSecondFailureDoesNotSetAsideAnInnocentObservation() {
+  void aSecondFailureDoesNotSetAsideAnInnocentInput() {
     Refuser model = new Refuser();
     AgentId agentId = new AgentId(UUID.randomUUID());
     running(model);
@@ -169,7 +169,7 @@ class TaintRecoveryTest {
                                     .timeout(Duration.ofMinutes(5)))
                         .effects(e -> e.maxInFlight(2).pollInterval(Duration.ofMillis(100))));
 
-    // Two poisoned observations back to back: the second failure happens while the
+    // Two poisoned inputs back to back: the second failure happens while the
     // conversation is already broken.
     harness.tell(agentId, "help me with " + POISON);
     await()
@@ -195,7 +195,7 @@ class TaintRecoveryTest {
    */
   private String textOf(AgentId agentId, AgentEvent message) {
     return switch (message) {
-      case AgentEvent.TurnStarted started -> engine.text(agentId, started.observation());
+      case AgentEvent.TurnStarted started -> engine.text(agentId, started.input());
       case AgentEvent.InferenceAnswered answered -> engine.text(agentId, answered.answer());
       case AgentEvent.ActionsRequested asked -> engine.text(agentId, asked.request());
       case AgentEvent.ToolSucceeded ran -> engine.text(agentId, ran.result());
@@ -215,12 +215,12 @@ class TaintRecoveryTest {
     @Override
     public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
       // A provider decides for itself what it is willing to be sent, and this one mirrors
-      // the real adapter: an observation whose turn it refused is not sent again, because
+      // the real adapter: an input whose turn it refused is not sent again, because
       // it is what caused the refusal.
       List<String> sent =
           request.context().turns().stream()
               .filter(turn -> !(turn.result() instanceof TurnResult.Refused))
-              .map(turn -> turn.observation().blocks().toString())
+              .map(turn -> turn.input().blocks().toString())
               .toList();
       requests.add(List.copyOf(sent));
       boolean poisoned = sent.stream().anyMatch(text -> text.contains(POISON));

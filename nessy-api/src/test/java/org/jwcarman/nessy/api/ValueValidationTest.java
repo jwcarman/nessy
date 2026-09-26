@@ -32,7 +32,7 @@ import org.jwcarman.nessy.inference.SystemPrompt;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.Summary;
 import org.jwcarman.nessy.inference.turn.ToolOutcome;
 import org.jwcarman.nessy.inference.turn.TurnResult;
@@ -43,7 +43,7 @@ class ValueValidationTest {
 
   private static final List<Block.ToolResultContent> NO_RESULT = List.of();
   private static final List<Block.AnswerContent> NO_ANSWER = List.of();
-  private static final List<Block.ObservationContent> NO_OBSERVATION = List.of();
+  private static final List<Block.InputContent> NO_INPUT = List.of();
 
   @Test
   void identifiers_and_prompts_refuse_blanks_and_negatives() {
@@ -66,8 +66,7 @@ class ValueValidationTest {
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> new TurnResult.Answered(NO_ANSWER))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new Observation(seq, NO_OBSERVATION))
-        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new Input(seq, NO_INPUT)).isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test

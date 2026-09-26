@@ -171,9 +171,9 @@ class EffectTraceCarrierTest {
 
   /**
    * A turn is one flat trace. Every effect of it -- the inference, the approval, the tool call, the
-   * inference after -- is written with the context captured once, when the observation opened the
-   * turn, and none with the context of the effect whose outcome caused it. Nesting by emitter is
-   * what made the follow-up inference the child of whichever tool finished last.
+   * inference after -- is written with the context captured once, when the input opened the turn,
+   * and none with the context of the effect whose outcome caused it. Nesting by emitter is what
+   * made the follow-up inference the child of whichever tool finished last.
    */
   @Test
   void every_effect_of_a_turn_is_written_into_the_trace_the_turn_opened() {

@@ -55,9 +55,9 @@ public record Seq(@JsonValue long value) implements Comparable<Seq> {
   /**
    * The turn this seq opens.
    *
-   * <p>An observation's seq is also its turn's id, which is why a turn needs no identifier of its
-   * own. Named rather than implicit so the one place that crosses between the two number lines says
-   * it out loud.
+   * <p>An input's seq is also its turn's id, which is why a turn needs no identifier of its own.
+   * Named rather than implicit so the one place that crosses between the two number lines says it
+   * out loud.
    */
   public TurnId opensTurn() {
     return new TurnId(value);

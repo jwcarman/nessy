@@ -59,9 +59,9 @@ import tools.jackson.databind.ObjectMapper;
  * <p>Mutable while a customizer runs, read once afterwards. Defaults are seeded from the factory,
  * so anything an application configured once is already here before the customizer is called.
  *
- * @param <O> the observation type
+ * @param <I> the input type
  */
-public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<O> {
+public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<I> {
 
   private static final Duration DEFAULT_TOOL_TIMEOUT = Duration.ofSeconds(30);
   // Not at all, for a tool and for an inference alike. A harness that knows its provider flakes
@@ -76,14 +76,14 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
    */
   private static final Duration DEFAULT_APPROVAL_TIMEOUT = Duration.ofMinutes(10);
 
-  private final TypeRef<O> inputType;
+  private final TypeRef<I> inputType;
   private final ObjectMapper mapper;
   private final InputSchemaGenerator schemas;
 
   private final AgentType agentType;
   private SystemPromptSource systemPrompt;
-  private InputRenderer<O> renderer = InputRenderer.asString();
-  private BacklogPolicy<O> policy = BacklogPolicy.keepAll();
+  private InputRenderer<I> renderer = InputRenderer.asString();
+  private BacklogPolicy<I> policy = BacklogPolicy.keepAll();
 
   private final Inference inference;
   private final Effects effects = new Effects();
@@ -93,7 +93,7 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
 
   DefaultQueuedHarnessConfig(
       AgentType agentType,
-      TypeRef<O> inputType,
+      TypeRef<I> inputType,
       Defaults defaults,
       ObjectMapper mapper,
       InputSchemaGenerator schemas,
@@ -110,7 +110,7 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
   record Defaults(InferenceProvider provider, InferenceOptions options) {}
 
   @Override
-  public DefaultQueuedHarnessConfig<O> listener(NarrationListener listener) {
+  public DefaultQueuedHarnessConfig<I> listener(NarrationListener listener) {
     listeners.add(Objects.requireNonNull(listener, "listener must not be null"));
     return this;
   }
@@ -125,31 +125,31 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
   }
 
   @Override
-  public DefaultQueuedHarnessConfig<O> systemPrompt(String prompt) {
+  public DefaultQueuedHarnessConfig<I> systemPrompt(String prompt) {
     return systemPrompt(SystemPromptSource.constant(new SystemPrompt(prompt)));
   }
 
   @Override
-  public DefaultQueuedHarnessConfig<O> systemPrompt(SystemPromptSource source) {
+  public DefaultQueuedHarnessConfig<I> systemPrompt(SystemPromptSource source) {
     this.systemPrompt = source;
     return this;
   }
 
   @Override
-  public DefaultQueuedHarnessConfig<O> inputRenderer(InputRenderer<O> renderer) {
+  public DefaultQueuedHarnessConfig<I> inputRenderer(InputRenderer<I> renderer) {
     this.renderer = renderer;
     return this;
   }
 
   @Override
-  public DefaultQueuedHarnessConfig<O> backlogPolicy(BacklogPolicy<O> policy) {
+  public DefaultQueuedHarnessConfig<I> backlogPolicy(BacklogPolicy<I> policy) {
     this.policy = policy;
     return this;
   }
 
   /** A shortcut into the context, where sources of summaries actually live. */
   @Override
-  public DefaultQueuedHarnessConfig<O> summaries(Summarizer source) {
+  public DefaultQueuedHarnessConfig<I> summaries(Summarizer source) {
     return inference(in -> in.context(ctx -> ctx.summaries(source)));
   }
 
@@ -161,18 +161,18 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
    * configuration.
    */
   @Override
-  public DefaultQueuedHarnessConfig<O> ambient(AmbientSource source) {
+  public DefaultQueuedHarnessConfig<I> ambient(AmbientSource source) {
     return inference(in -> in.context(ctx -> ctx.ambient(source)));
   }
 
   @Override
-  public DefaultQueuedHarnessConfig<O> inference(Customizer<InferenceConfig> customizer) {
+  public DefaultQueuedHarnessConfig<I> inference(Customizer<InferenceConfig> customizer) {
     customizer.customize(inference);
     return this;
   }
 
   @Override
-  public DefaultQueuedHarnessConfig<O> effects(Customizer<EffectsConfig> customizer) {
+  public DefaultQueuedHarnessConfig<I> effects(Customizer<EffectsConfig> customizer) {
     customizer.customize(effects);
     return this;
   }
@@ -190,11 +190,11 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
    * same {@code execute_tool} span. An application that is not tracing pays for a check per call.
    */
   @Override
-  public <I> DefaultQueuedHarnessConfig<O> tool(
-      Tool<I> tool, Customizer<ToolConfig<I>> customizer) {
-    ToolTerms<I> terms = new ToolTerms<>(DEFAULT_TOOL_TIMEOUT, DEFAULT_TOOL_RETRY_POLICY);
+  public <T> DefaultQueuedHarnessConfig<I> tool(
+      Tool<T> tool, Customizer<ToolConfig<T>> customizer) {
+    ToolTerms<T> terms = new ToolTerms<>(DEFAULT_TOOL_TIMEOUT, DEFAULT_TOOL_RETRY_POLICY);
     customizer.customize(terms);
-    Tool<I> observed = ObservedTool.wrap(tool, observations);
+    Tool<T> observed = ObservedTool.wrap(tool, observations);
     tools.add(
         new ToolBinding<>(
             observed,
@@ -216,15 +216,15 @@ public final class DefaultQueuedHarnessConfig<O> implements QueuedHarnessConfig<
 
   // ---- what the factory reads back -------------------------------------------------------
 
-  TypeRef<O> inputType() {
+  TypeRef<I> inputType() {
     return inputType;
   }
 
-  InputRenderer<O> renderer() {
+  InputRenderer<I> renderer() {
     return renderer;
   }
 
-  BacklogPolicy<O> policy() {
+  BacklogPolicy<I> policy() {
     return policy;
   }
 

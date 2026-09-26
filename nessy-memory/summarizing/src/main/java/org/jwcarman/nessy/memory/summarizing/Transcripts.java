@@ -21,7 +21,7 @@ import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.turn.Exchange;
-import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.ToolOutcome;
 import org.jwcarman.nessy.inference.turn.Turn;
 import org.jwcarman.nessy.inference.turn.TurnResult;
@@ -38,7 +38,7 @@ public final class Transcripts {
   public static String render(List<Turn> turns) {
     StringBuilder out = new StringBuilder();
     for (Turn turn : turns) {
-      out.append("user: ").append(text(turn.observation().blocks())).append('\n');
+      out.append("user: ").append(text(turn.input().blocks())).append('\n');
       for (Exchange exchange : turn.exchanges()) {
         String said = text(exchange.request());
         if (!said.isBlank()) {
@@ -88,7 +88,7 @@ public final class Transcripts {
   public static Turn ask(Turn last, String instruction) {
     return new Turn(
         new TurnId(last.id().value() + 1),
-        new Observation(new Seq(last.id().value() + 1), List.of(new Block.Text(instruction))),
+        new Input(new Seq(last.id().value() + 1), List.of(new Block.Text(instruction))),
         List.of(),
         null,
         0);

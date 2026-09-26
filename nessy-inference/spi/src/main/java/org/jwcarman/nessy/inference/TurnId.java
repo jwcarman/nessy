@@ -21,8 +21,8 @@ import com.fasterxml.jackson.annotation.JsonValue;
 /**
  * Which turn something belongs to.
  *
- * <p>The {@link Seq} of the observation that opened it, which is why a turn needs no identifier of
- * its own: the first entry of a turn names it, and every entry after it points back.
+ * <p>The {@link Seq} of the input that opened it, which is why a turn needs no identifier of its
+ * own: the first entry of a turn names it, and every entry after it points back.
  *
  * <p><b>Its own type despite sharing a number line with {@code Seq}</b>, and that is the point
  * rather than an awkwardness. The two mean different things -- one is a position, the other is a
@@ -34,7 +34,7 @@ public record TurnId(@JsonValue long value) implements Comparable<TurnId> {
 
   public TurnId {
     if (value <= 0) {
-      // A turn is named by the seq of its opening observation, and seqs start at one. Zero
+      // A turn is named by the seq of its opening input, and seqs start at one. Zero
       // would mean a turn opened by an entry that was never written.
       throw new IllegalArgumentException("turn must be positive: " + value);
     }
@@ -45,7 +45,7 @@ public record TurnId(@JsonValue long value) implements Comparable<TurnId> {
     return new TurnId(value);
   }
 
-  /** Where this turn began. The observation that opened it sits at exactly this position. */
+  /** Where this turn began. The input that opened it sits at exactly this position. */
   public Seq openedAt() {
     return new Seq(value);
   }

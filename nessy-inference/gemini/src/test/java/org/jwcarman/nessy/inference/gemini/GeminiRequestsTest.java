@@ -46,7 +46,7 @@ import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.InputSchema;
 import org.jwcarman.nessy.inference.tool.ToolName;
 import org.jwcarman.nessy.inference.turn.Exchange;
-import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.Summary;
 import org.jwcarman.nessy.inference.turn.ToolOutcome;
 import org.jwcarman.nessy.inference.turn.Turn;
@@ -69,8 +69,8 @@ class GeminiRequestsTest {
         SYSTEM, context, Toolset.of(tools), new InferenceOptions("gemini-3.6-pro", 1024));
   }
 
-  private static Observation asked(long seq, String text) {
-    return new Observation(new Seq(seq), List.of(new Block.Text(text)));
+  private static Input asked(long seq, String text) {
+    return new Input(new Seq(seq), List.of(new Block.Text(text)));
   }
 
   private static Turn answered(long id, String question, String answer) {
@@ -96,7 +96,7 @@ class GeminiRequestsTest {
   class TheConversation {
 
     @Test
-    void an_observation_is_a_user_turn_and_an_answer_is_a_model_turn() {
+    void an_input_is_a_user_turn_and_an_answer_is_a_model_turn() {
       List<Content> contents =
           GeminiRequests.toContents(
               request(List.of(answered(1, "hi", "hello"), open(3, "bye"))), MAPPER);

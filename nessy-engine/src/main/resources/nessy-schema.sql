@@ -88,7 +88,7 @@ CREATE INDEX IF NOT EXISTS ix_nessy_agent_effect_actionable
     ON nessy_agent_effect (agent_type, status, actionable_at);
 -- Content, kept away from the record of what happened to it.
 --
--- Everything a model was shown or said -- observations, answers, tool results -- lives here and
+-- Everything a model was shown or said -- inputs, answers, tool results -- lives here and
 -- nowhere else. The tables that describe an agent's life hold references, so they are plain rows
 -- nobody has to reason about: no user text, no tool output, nothing anybody has to encrypt,
 -- redact, or hunt through to answer a question about what is retained.
@@ -143,7 +143,7 @@ CREATE INDEX IF NOT EXISTS nessy_agent_event_turn_starts
 -- rather than rewriting a list. A single row holding a serialized backlog would make every
 -- strategy a read-modify-write of the whole thing.
 --
--- The observation itself, NOT a claim check. This is the one place content sits in a control-plane
+-- The input itself, NOT a claim check. This is the one place content sits in a control-plane
 -- table, and it is deliberate: a backlog is a staging area rather than a record, and what is here
 -- is on its way into an event where it WILL be claim-checked. Forgetting an agent has to clear
 -- this table as well as its payloads.

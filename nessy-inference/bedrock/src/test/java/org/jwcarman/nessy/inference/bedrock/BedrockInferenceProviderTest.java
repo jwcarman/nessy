@@ -37,7 +37,7 @@ import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.Usage;
 import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.Turn;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.document.Document;
@@ -76,7 +76,7 @@ class BedrockInferenceProviderTest {
     Turn open =
         new Turn(
             new TurnId(1),
-            new Observation(new Seq(1), List.of(new Block.Text("hi"))),
+            new Input(new Seq(1), List.of(new Block.Text("hi"))),
             List.of(),
             null,
             0);

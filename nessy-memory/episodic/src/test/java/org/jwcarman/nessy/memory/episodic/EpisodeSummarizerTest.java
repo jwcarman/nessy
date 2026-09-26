@@ -78,7 +78,7 @@ class EpisodeSummarizerTest {
           String subject =
               request.context().turns().stream()
                   .filter(Turn::complete)
-                  .map(turn -> ((Block.Text) turn.observation().blocks().getFirst()).text())
+                  .map(turn -> ((Block.Text) turn.input().blocks().getFirst()).text())
                   .reduce("", (a, b) -> a + " " + b);
           return new InferenceResult.Answer(
               List.of(new Block.Text("Title: **About" + subject + "**\n\nSUMMARY:" + subject)));

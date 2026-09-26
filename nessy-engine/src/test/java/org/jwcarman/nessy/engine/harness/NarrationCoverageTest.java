@@ -31,7 +31,7 @@ import org.jwcarman.nessy.api.Narration;
  * engine, and nothing connects the two: a producer can be deleted and everything still compiles,
  * because an arm nobody constructs is not an error. That is not hypothetical -- the fold rewrite
  * silently dropped FIVE of them at once (thinking, commentary, the answer, the end of a turn, and
- * the words an observation arrived with), and the only symptom was watchers quietly hearing less.
+ * the words an input arrived with), and the only symptom was watchers quietly hearing less.
  *
  * <p>So this pins the roster rather than the behaviour. Adding an arm fails here until it is
  * written into one of the two lists, which is the moment to decide who says it; the end-to-end

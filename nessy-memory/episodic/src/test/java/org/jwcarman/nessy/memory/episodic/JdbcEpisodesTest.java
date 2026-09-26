@@ -29,7 +29,7 @@ import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
-import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.Summary;
 import org.jwcarman.nessy.inference.turn.Turn;
 
@@ -45,11 +45,7 @@ class JdbcEpisodesTest {
 
   private static Turn asking(String text) {
     return new Turn(
-        new TurnId(99),
-        new Observation(new Seq(99), List.of(new Block.Text(text))),
-        List.of(),
-        null,
-        0);
+        new TurnId(99), new Input(new Seq(99), List.of(new Block.Text(text))), List.of(), null, 0);
   }
 
   private static List<Integer> numbers(List<Summary> shown) {

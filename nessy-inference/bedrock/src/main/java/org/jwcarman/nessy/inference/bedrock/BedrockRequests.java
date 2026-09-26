@@ -64,10 +64,10 @@ import tools.jackson.databind.json.JsonMapper;
  * touches the network, which is what makes the whole projection testable without a credential.
  *
  * <p><b>This wire insists that roles alternate.</b> Converse rejects two consecutive messages with
- * the same role, and a summary followed by an observation is exactly that, so the drafted messages
- * are coalesced before they are sent: neighbours with one role become one message with both
- * contents. The same rule shapes the two awkward turns: a failed turn is answered for so that two
- * questions do not run together, and a refused turn is left out whole.
+ * the same role, and a summary followed by an input is exactly that, so the drafted messages are
+ * coalesced before they are sent: neighbours with one role become one message with both contents.
+ * The same rule shapes the two awkward turns: a failed turn is answered for so that two questions
+ * do not run together, and a refused turn is left out whole.
  */
 public final class BedrockRequests {
 
@@ -198,7 +198,7 @@ public final class BedrockRequests {
       return Stream.of();
     }
     Stream<Message> opening =
-        message(ConversationRole.USER, turn.observation().blocks(), mapper).stream();
+        message(ConversationRole.USER, turn.input().blocks(), mapper).stream();
     Stream<Message> middle =
         turn.exchanges().stream().flatMap(exchange -> exchange(exchange, mapper));
     Stream<Message> ending =

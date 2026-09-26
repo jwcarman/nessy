@@ -76,13 +76,13 @@ public sealed interface Narration {
 
   // ---- facts: from the engine, after the fold commits ---------------------------------
 
-  /** An observation was taken up and a turn opened on it. */
+  /** An input was taken up and a turn opened on it. */
   /**
    * A turn opened.
    *
-   * <p>The observation is not echoed here. Whoever sent it has it, and anybody else reads the
-   * story; narration says what is happening, and repeating content into it makes every watcher pay
-   * to be told what it already had.
+   * <p>The input is not echoed here. Whoever sent it has it, and anybody else reads the story;
+   * narration says what is happening, and repeating content into it makes every watcher pay to be
+   * told what it already had.
    */
   record TurnStarted(TurnId turn) implements Narration {}
 

@@ -68,20 +68,20 @@ import org.springframework.transaction.support.TransactionTemplate;
  * makes a harness a bean. The failure mode there is a successful write with no transaction, silent
  * until a crash lands between the events and the outbox.
  *
- * @param <O> the observation type
+ * @param <I> the input type
  */
-final class DefaultQueuedHarness<O>
-    implements QueuedHarness<O>, AgentEffectCallback, AutoCloseable {
+final class DefaultQueuedHarness<I>
+    implements QueuedHarness<I>, AgentEffectCallback, AutoCloseable {
 
   private static final Logger log = LoggerFactory.getLogger(DefaultQueuedHarness.class);
 
   private final AgentType agentType;
-  private final BacklogPolicy<O> policy;
-  private final InputRenderer<O> renderer;
+  private final BacklogPolicy<I> policy;
+  private final InputRenderer<I> renderer;
   private final JdbcAgents agents;
   private final AgentEventStore events;
   private final PayloadStore payloads;
-  private final Backlogs<O> backlogs;
+  private final Backlogs<I> backlogs;
   private final EffectStore effects;
   private final TransactionTemplate transactions;
   private final Narrator narrator;
@@ -92,18 +92,18 @@ final class DefaultQueuedHarness<O>
 
   /** Makes this agent type's backlog for one agent, inside the transaction that holds its row. */
   @FunctionalInterface
-  interface Backlogs<O> {
-    JdbcBacklog<O> forAgent(AgentType agentType, AgentId agent);
+  interface Backlogs<I> {
+    JdbcBacklog<I> forAgent(AgentType agentType, AgentId agent);
   }
 
   DefaultQueuedHarness(
       AgentType agentType,
-      BacklogPolicy<O> policy,
-      InputRenderer<O> renderer,
+      BacklogPolicy<I> policy,
+      InputRenderer<I> renderer,
       JdbcAgents agents,
       AgentEventStore events,
       PayloadStore payloads,
-      Backlogs<O> backlogs,
+      Backlogs<I> backlogs,
       EffectStore effects,
       TransactionTemplate transactions,
       Narrator narrator,
@@ -135,7 +135,7 @@ final class DefaultQueuedHarness<O>
   }
 
   /**
-   * Admits an observation.
+   * Admits an input.
    *
    * <p>Always accepts, which is the promise this door keeps -- unless the agent has ended, which is
    * the one thing that can refuse. What happens to the arrival is the policy's business: appended,
@@ -145,9 +145,9 @@ final class DefaultQueuedHarness<O>
    * never left idle with work waiting.
    */
   @Override
-  public void tell(AgentId agentId, O observation) {
-    BacklogItem<O> arrival = new BacklogItem<>(observation, clock.instant());
-    log.debug("[{}] observing for agent {}", agentType.value(), agentId.value());
+  public void tell(AgentId agentId, I input) {
+    BacklogItem<I> arrival = new BacklogItem<>(input, clock.instant());
+    log.debug("[{}] admitting input for agent {}", agentType.value(), agentId.value());
     traces.in(
         "nessy.observe",
         new Identity(agentType, agentId),
@@ -161,12 +161,12 @@ final class DefaultQueuedHarness<O>
                           // Ended. Coalescing now would put something into an emptied backlog and
                           // be read as work next time, undoing a termination that has happened.
                           log.debug(
-                              "[{}] agent {} has ended; the observation is refused",
+                              "[{}] agent {} has ended; the input is refused",
                               agentType.value(),
                               agentId.value());
                           return false;
                         }
-                        Backlog<O> backlog = backlogs.forAgent(agentType, agentId);
+                        Backlog<I> backlog = backlogs.forAgent(agentType, agentId);
                         policy.coalesce(backlog, arrival);
                         return driveIfIdle(agentId, backlog, trace);
                       }));
@@ -193,11 +193,11 @@ final class DefaultQueuedHarness<O>
             transactions.execute(
                 _ -> {
                   agents.lock(agentType, agentId);
-                  JdbcBacklog<O> backlog = backlogs.forAgent(agentType, agentId);
+                  JdbcBacklog<I> backlog = backlogs.forAgent(agentType, agentId);
                   int abandoned = backlog.seal();
                   if (abandoned > 0) {
                     log.info(
-                        "[{}] agent {} ended with {} observation(s) waiting; abandoned",
+                        "[{}] agent {} ended with {} input(s) waiting; abandoned",
                         agentType.value(),
                         agentId.value(),
                         abandoned);
@@ -242,21 +242,21 @@ final class DefaultQueuedHarness<O>
    *
    * @return whether anything was written that an effect dispatcher should be told about
    */
-  private boolean driveIfIdle(AgentId agentId, Backlog<O> backlog, String trace) {
+  private boolean driveIfIdle(AgentId agentId, Backlog<I> backlog, String trace) {
     if (!(reconstitute(agentId) instanceof AgentState.Idle)) {
       return false;
     }
     return switch (backlog.take()) {
       // Claim-checked here, and this is the only place a harness does it by hand: an arrival is
       // the application's own object, not an outcome, and no executor produced it.
-      case Pull.Item<O>(BacklogItem<O> next) ->
+      case Pull.Item<I>(BacklogItem<I> next) ->
           apply(
               agentId,
               new AgentCommand.StartTurn(
-                  payloads.forAgent(agentId).put(renderer.render(next.observation()))),
+                  payloads.forAgent(agentId).put(renderer.render(next.input()))),
               trace);
-      case Pull.Pill<O> _ -> apply(agentId, new AgentCommand.Terminate(), trace);
-      case Pull.Empty<O> _ -> false;
+      case Pull.Pill<I> _ -> apply(agentId, new AgentCommand.Terminate(), trace);
+      case Pull.Empty<I> _ -> false;
     };
   }
 
@@ -279,7 +279,7 @@ final class DefaultQueuedHarness<O>
     }
     advance.events().forEach(event -> narrate(agentId, event));
     // Read off the effect rather than the state. Inferring is where an agent sits for the whole
-    // of a call, so a fold that stays there without emitting anything -- an observation queued
+    // of a call, so a fold that stays there without emitting anything -- an input queued
     // mid-turn -- would announce a second "thinking" for a call already in flight. The effect is
     // emitted exactly once per call, which is what this means.
     if (advance.effects().stream().anyMatch(AgentEffect.Infer.class::isInstance)) {

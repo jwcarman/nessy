@@ -98,7 +98,7 @@ class TerminationAndConfigurationTest {
   }
 
   @Test
-  void a_terminated_agent_is_announced_and_takes_no_more_observations() {
+  void a_terminated_agent_is_announced_and_takes_no_more_inputs() {
     QueuedHarness<String> harness =
         engine
             .harnesses()

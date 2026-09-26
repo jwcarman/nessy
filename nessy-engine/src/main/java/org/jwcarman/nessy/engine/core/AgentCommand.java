@@ -39,14 +39,14 @@ import org.jwcarman.nessy.inference.tool.CallId;
 public sealed interface AgentCommand {
 
   /**
-   * Begin a turn on this observation.
+   * Begin a turn on this input.
    *
    * <p>Accepted only by {@link AgentState.Idle}. Queuing is the harness's business: it holds work
    * while the agent is busy and asks when the agent is not. The state refusing when busy is not
    * redundant with the harness not asking -- two harnesses can both read an idle state and both
    * ask, and this is what makes the loser harmless.
    */
-  record StartTurn(PayloadRef observation) implements AgentCommand {}
+  record StartTurn(PayloadRef input) implements AgentCommand {}
 
   /** Accept nothing further. Work already in flight is still owed its outcome. */
   record Terminate() implements AgentCommand {}

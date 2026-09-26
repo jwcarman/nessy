@@ -66,7 +66,7 @@ import org.jwcarman.nessy.inference.Usage;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.ToolName;
-import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.Turn;
 
 class OpenAiInferenceProviderTest {
@@ -285,7 +285,7 @@ class OpenAiInferenceProviderTest {
               List.of(
                   new Turn(
                       new TurnId(1),
-                      new Observation(new Seq(1), List.of(new Block.Text("hello"))),
+                      new Input(new Seq(1), List.of(new Block.Text("hello"))),
                       List.of(),
                       null,
                       0))),

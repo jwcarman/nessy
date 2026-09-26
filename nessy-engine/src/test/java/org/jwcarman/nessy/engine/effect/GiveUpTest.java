@@ -44,7 +44,7 @@ import org.jwcarman.nessy.inference.TurnId;
  * <p>The agent is sitting in {@code Inferring} waiting for something to arrive, and nothing else
  * will ever wake it. So giving up is not merely tidying the table -- it owes the agent an answer,
  * even when the answer is that there is none. Without it a single failure parks an agent forever,
- * accepting observations into a backlog it will never drain.
+ * accepting inputs into a backlog it will never drain.
  */
 class GiveUpTest {
 

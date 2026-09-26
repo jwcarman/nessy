@@ -21,10 +21,10 @@ import java.util.List;
 /**
  * What is waiting for an agent, and what a policy may do about it.
  *
- * <p>Handed to an {@link BacklogPolicy} when an observation arrives, so a strategy says what it
- * wants done rather than rewriting a list. That is what keeps the ordinary cases cheap: keeping
+ * <p>Handed to an {@link BacklogPolicy} when an input arrives, so a strategy says what it wants
+ * done rather than rewriting a list. That is what keeps the ordinary cases cheap: keeping
  * everything is an append, keeping only the latest is a replace, and neither reads a row or decodes
- * an observation. Only {@link #all()} pays for the backlog, and it is meant to look like it does.
+ * an input. Only {@link #all()} pays for the backlog, and it is meant to look like it does.
  *
  * <p><b>Operations apply as they are called.</b> A snapshot is of the moment it was asked for, so a
  * strategy that calls {@code all()}, drops something, and calls {@code all()} again sees its own
@@ -44,9 +44,9 @@ import java.util.List;
  * nearly everything -- keep everything, keep only the latest, keep at most N -- are one or two
  * calls each and read nothing. Adding an operation later is easy; taking one away is not.
  *
- * @param <O> the application's observation type
+ * @param <I> the application's input type
  */
-public interface Backlog<O> {
+public interface Backlog<I> {
 
   /**
    * Take the one that has waited longest, and remove it.
@@ -55,14 +55,14 @@ public interface Backlog<O> {
    * becomes the next turn. Three answers rather than two, because an agent that has been ended has
    * to say so here -- see {@link Pull.Pill}.
    *
-   * <p>Taken under the same lock an arrival is written under, so a turn ending and an observation
+   * <p>Taken under the same lock an arrival is written under, so a turn ending and an input
    * arriving cannot both decide what is at the head. Taking is undone by the transaction, not by
    * putting anything back: a caller that decides against the work rolls back.
    */
-  Pull<O> take();
+  Pull<I> take();
 
-  /** Keep it, behind everything already waiting. Every observation matters. */
-  void append(BacklogItem<O> item);
+  /** Keep it, behind everything already waiting. Every input matters. */
+  void append(BacklogItem<I> item);
 
   /**
    * Keep it, ahead of everything already waiting.
@@ -72,21 +72,21 @@ public interface Backlog<O> {
    * does: a backlog is ordered by a number, so both ends are a step away from what is already there
    * and nothing in between is renumbered.
    */
-  void prepend(BacklogItem<O> item);
+  void prepend(BacklogItem<I> item);
 
   /**
    * Keep only this one.
    *
-   * <p>For observations that are snapshots rather than increments, where an older reading is
-   * worthless the moment a newer one exists -- a clock tick, a sensor reading, a resync.
+   * <p>For inputs that are snapshots rather than increments, where an older reading is worthless
+   * the moment a newer one exists -- a clock tick, a sensor reading, a resync.
    */
-  void replaceAll(BacklogItem<O> item);
+  void replaceAll(BacklogItem<I> item);
 
   /**
    * How many are waiting, without decoding any of them.
    *
    * <p>What a bounded buffer asks. Counting is not reading: a cap of five is a count, a delete and
-   * an insert, and never has to look at an observation to enforce itself.
+   * an insert, and never has to look at an input to enforce itself.
    */
   int size();
 
@@ -105,7 +105,7 @@ public interface Backlog<O> {
    * Expiring by age or reordering by priority needs it; appending, keeping only the latest, and
    * holding a bounded buffer do not.
    */
-  List<BacklogItem<O>> all();
+  List<BacklogItem<I>> all();
 
   /**
    * Replace everything waiting with this, in this order.
@@ -113,5 +113,5 @@ public interface Backlog<O> {
    * <p>What {@link #all()} is for: look, decide, and say what the backlog should be instead. An
    * empty list drops everything.
    */
-  void rewrite(List<BacklogItem<O>> items);
+  void rewrite(List<BacklogItem<I>> items);
 }

@@ -54,8 +54,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * two of them is an episode the model was not shown.
  *
  * <p><b>Relevance is cosine similarity</b> between the summary's embedding, written when the
- * summary was, and the embedding of the observation being answered -- one embedding call per model
- * call, against a handful of vectors read with the rows. That is a scan in Java over one agent's
+ * summary was, and the embedding of the input being answered -- one embedding call per model call,
+ * against a handful of vectors read with the rows. That is a scan in Java over one agent's
  * episodes, which is tens of rows, not a vector index; the day an agent has thousands of episodes
  * is the day for pgvector, and the column is already there to index. A summary embedded by a
  * different model than the store's current embedder cannot be compared and is ranked last.
@@ -298,11 +298,11 @@ public class JdbcEpisodes implements Summarizer {
     return choose(candidates(agentId), null);
   }
 
-  /** Ranked against the observation being answered, when there is an embedder to rank with. */
+  /** Ranked against the input being answered, when there is an embedder to rank with. */
   @Override
   public List<Summary> forAgent(AgentId agentId, Turn current) {
     Objects.requireNonNull(current, "current must not be null");
-    return choose(candidates(agentId), Transcripts.text(current.observation().blocks()));
+    return choose(candidates(agentId), Transcripts.text(current.input().blocks()));
   }
 
   /** The end of the last candidate, shown or not: the tail begins after it. */

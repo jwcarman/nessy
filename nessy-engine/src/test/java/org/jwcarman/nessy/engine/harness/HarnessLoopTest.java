@@ -39,7 +39,7 @@ import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.turn.Turn;
 
 /**
- * The whole loop, closed: an observation goes in one door, and an answer the model gave comes back
+ * The whole loop, closed: an input goes in one door, and an answer the model gave comes back
  * through the other and lands in the story.
  *
  * <p>Nothing here drives a dispatcher by hand. The point is that the harness polls on its own -- so
@@ -92,12 +92,12 @@ class HarnessLoopTest {
   }
 
   @Test
-  void anObservationBecomesAModelCallAndTheAnswerLandsInTheStory() {
+  void anInputBecomesAModelCallAndTheAnswerLandsInTheStory() {
     AgentId agentId = new AgentId(UUID.randomUUID());
 
     harness.tell(agentId, "what is nessy?");
 
-    // The observation is recorded and the model call owed in the same transaction as the
+    // The input is recorded and the model call owed in the same transaction as the
     // state, so the story shows the question before anything has been asked.
     assertThat(story(CHAT, agentId)).containsExactly(observed(agentId, 1, "what is nessy?"));
 
@@ -123,18 +123,18 @@ class HarnessLoopTest {
                           assertThat(turn.complete())
                               .as("the turn being asked about has no result yet")
                               .isFalse();
-                          assertThat(turn.observation().blocks())
+                          assertThat(turn.input().blocks())
                               .containsExactly(new Block.Text("what is nessy?"));
                         }));
   }
 
   /**
-   * A second observation arriving while the first turn is still open waits in the backlog, and
-   * opens its own turn as that one closes -- so the story ends with both questions answered, in the
-   * order they were asked.
+   * A second input arriving while the first turn is still open waits in the backlog, and opens its
+   * own turn as that one closes -- so the story ends with both questions answered, in the order
+   * they were asked.
    */
   @Test
-  void twoObservationsAreAnsweredInOrder() {
+  void twoInputsAreAnsweredInOrder() {
     AgentId agentId = new AgentId(UUID.randomUUID());
 
     harness.tell(agentId, "first");

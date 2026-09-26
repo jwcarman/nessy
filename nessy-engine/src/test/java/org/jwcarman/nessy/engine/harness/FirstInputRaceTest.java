@@ -39,10 +39,10 @@ import org.jwcarman.nessy.inference.block.Block;
 
 /**
  * An agent that does not exist yet has no row to lock, so the first fold is the one place the row
- * lock cannot serialise anything. Two first observations arriving together used to both find no row
- * and both insert; the loser died on the primary key and its observation died with it.
+ * lock cannot serialise anything. Two first inputs arriving together used to both find no row and
+ * both insert; the loser died on the primary key and its input died with it.
  */
-class FirstObservationRaceTest {
+class FirstInputRaceTest {
 
   private static final AgentType CHAT = new AgentType("chat");
   private static final int CALLERS = 8;
@@ -76,7 +76,7 @@ class FirstObservationRaceTest {
   }
 
   @Test
-  void everyOneOfSeveralSimultaneousFirstObservationsIsKept() throws Exception {
+  void everyOneOfSeveralSimultaneousFirstInputsIsKept() throws Exception {
     AgentId agentId = new AgentId(UUID.randomUUID());
     CountDownLatch go = new CountDownLatch(1);
 
@@ -98,7 +98,7 @@ class FirstObservationRaceTest {
     }
 
     // One took the turn, the rest joined the backlog, and every one is answered in time. Waited
-    // for to the last answer, not the last observation: the engines in this suite share one
+    // for to the last answer, not the last input: the engines in this suite share one
     // database and one agent type, so work left in flight here would be picked up by the next
     // test's dispatcher and performed by ITS model.
     await()

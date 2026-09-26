@@ -28,7 +28,7 @@ import tools.jackson.databind.json.JsonMapper;
  * The grammar's two jobs, tested where they are actually kept: what a block refuses to be, and what
  * it looks like once it is written down.
  *
- * <p>The positions themselves need no test. {@code Text} being legal in an observation and {@code
+ * <p>The positions themselves need no test. {@code Text} being legal in an input and {@code
  * ToolCall} not being legal in an answer are compile-time facts, and a test that asserted them
  * could only assert what had already compiled.
  */

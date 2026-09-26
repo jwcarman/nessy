@@ -38,7 +38,7 @@ import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.InputSchema;
 import org.jwcarman.nessy.inference.tool.ToolName;
 import org.jwcarman.nessy.inference.turn.Exchange;
-import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.Summary;
 import org.jwcarman.nessy.inference.turn.ToolOutcome;
 import org.jwcarman.nessy.inference.turn.Turn;
@@ -70,8 +70,8 @@ class BedrockRequestsTest {
         new InferenceOptions("us.anthropic.claude-haiku", 1024));
   }
 
-  private static Observation asked(long seq, String text) {
-    return new Observation(new Seq(seq), List.of(new Block.Text(text)));
+  private static Input asked(long seq, String text) {
+    return new Input(new Seq(seq), List.of(new Block.Text(text)));
   }
 
   private static Turn answered(long id, String question, String answer) {
@@ -97,7 +97,7 @@ class BedrockRequestsTest {
   class TheConversation {
 
     @Test
-    void an_observation_is_a_user_message_and_an_answer_an_assistant_one() {
+    void an_input_is_a_user_message_and_an_answer_an_assistant_one() {
       ConverseStreamRequest converse =
           BedrockRequests.toRequest(
               request(List.of(answered(1, "hi", "hello"), open(3, "bye"))), MAPPER);
@@ -114,8 +114,7 @@ class BedrockRequestsTest {
     }
 
     @Test
-    void
-        a_summary_and_the_observation_after_it_share_one_user_message_because_roles_must_alternate() {
+    void a_summary_and_the_input_after_it_share_one_user_message_because_roles_must_alternate() {
       InferenceContext context =
           new InferenceContext(
               List.of(Summary.text(new TurnId(1), new TurnId(9), "they talked about lakes")),

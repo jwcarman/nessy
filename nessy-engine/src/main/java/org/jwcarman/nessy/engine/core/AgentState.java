@@ -35,7 +35,7 @@ import org.jwcarman.nessy.inference.tool.CallId;
  * workflow-engine driver stops being possible. The pressure to break it will arrive reasonably -- a
  * clock, a config lookup, a feature flag -- and the first one costs all four.
  *
- * <p><b>No generics.</b> The caller's own observation type stops at the harness, which renders and
+ * <p><b>No generics.</b> The caller's own input type stops at the harness, which renders and
  * claim-checks before a command gets here. That is what makes every type in the event stream one of
  * Nessy's own, which in turn is what makes versioning a persisted stream tractable.
  *
@@ -129,7 +129,7 @@ public sealed interface AgentState {
         case AgentCommand.StartTurn start -> {
           Seq at = seq.next();
           yield Decision.of(
-              List.of(new AgentEvent.TurnStarted(at, at.opensTurn(), start.observation())),
+              List.of(new AgentEvent.TurnStarted(at, at.opensTurn(), start.input())),
               List.of(new AgentEffect.Infer()));
         }
         case AgentCommand.Terminate _ ->

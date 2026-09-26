@@ -177,8 +177,8 @@ class ObservedContextTest {
     private static final org.jwcarman.nessy.inference.turn.Turn TURN =
         new org.jwcarman.nessy.inference.turn.Turn(
             new TurnId(1),
-            new org.jwcarman.nessy.inference.turn.Observation(
-                new Seq(1), List.<Block.ObservationContent>of(new Block.Text("hello"))),
+            new org.jwcarman.nessy.inference.turn.Input(
+                new Seq(1), List.<Block.InputContent>of(new Block.Text("hello"))),
             List.of(),
             null,
             0);

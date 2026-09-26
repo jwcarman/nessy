@@ -29,10 +29,10 @@ import org.jwcarman.nessy.inference.block.Block;
  * Letting one stand in for the other would let a summary be quietly dropped like a note, or a note
  * be treated as the record of a conversation.
  *
- * <p><b>The range is whole turns.</b> A turn id is the seq of the observation that opened it, so
- * {@code from} and {@code through} sit on the same number line as every entry -- and because they
- * are turn ids rather than arbitrary seqs, a summary can never split a turn, leaving a reply whose
- * question was compressed away.
+ * <p><b>The range is whole turns.</b> A turn id is the seq of the input that opened it, so {@code
+ * from} and {@code through} sit on the same number line as every entry -- and because they are turn
+ * ids rather than arbitrary seqs, a summary can never split a turn, leaving a reply whose question
+ * was compressed away.
  *
  * <p>Several of them may cover a long story in successive ranges. That is what makes folding cheap
  * and append-only: the next stretch of turns becomes the next summary, and nothing already written

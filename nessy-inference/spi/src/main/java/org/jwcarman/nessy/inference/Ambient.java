@@ -28,10 +28,10 @@ import org.jwcarman.nessy.inference.block.Block;
  * once, and thrown away. There is deliberately no door through which it could reach the story -- it
  * is a view of the world as it stands now, and a view recorded forever stops being one.
  *
- * <p>That is also why it is not an observation. An observation is something that <em>happened</em>
- * and is written down: the second time the model is called it is still there, in the same words,
- * because it is part of what was said. Background is re-derived every time and may say something
- * different, because the world moved.
+ * <p>That is also why it is not an input. An input is something that <em>happened</em> and is
+ * written down: the second time the model is called it is still there, in the same words, because
+ * it is part of what was said. Background is re-derived every time and may say something different,
+ * because the world moved.
  *
  * <p><b>Where it lands, and how it is labelled, is the provider's business.</b> Each vendor carries
  * background differently -- a top-level system field, a developer message, a system instruction --

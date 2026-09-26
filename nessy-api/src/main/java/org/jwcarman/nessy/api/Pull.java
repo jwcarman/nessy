@@ -23,12 +23,12 @@ package org.jwcarman.nessy.api;
  * work on, the end of the agent's life, or nothing right now. That is what keeps the code that
  * drives an agent free of any terminated-agent special case -- it acts on whatever it is handed.
  *
- * @param <O> the application's observation type
+ * @param <I> the application's input type
  */
-public sealed interface Pull<O> {
+public sealed interface Pull<I> {
 
-  /** An observation to work on. Taken: it is no longer waiting. */
-  record Item<O>(BacklogItem<O> item) implements Pull<O> {}
+  /** An input to work on. Taken: it is no longer waiting. */
+  record Item<I>(BacklogItem<I> item) implements Pull<I> {}
 
   /**
    * The agent has been ended and has nothing left to drain.
@@ -39,10 +39,10 @@ public sealed interface Pull<O> {
    * is marked, and this is what every read afterwards answers. The next time the agent is idle and
    * asks for work, this is the work: end.
    *
-   * <p>Offered forever, so a stray observation arriving late cannot undo a termination.
+   * <p>Offered forever, so a stray input arriving late cannot undo a termination.
    */
-  record Pill<O>() implements Pull<O> {}
+  record Pill<I>() implements Pull<I> {}
 
   /** Nothing waiting, and the agent is still accepting. How an agent goes quiet. */
-  record Empty<O>() implements Pull<O> {}
+  record Empty<I>() implements Pull<I> {}
 }

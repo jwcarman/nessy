@@ -26,9 +26,9 @@ import org.jwcarman.nessy.inference.block.Block;
 /**
  * Where content lives, for the content the core never sees.
  *
- * <p>Everything an event would otherwise carry -- an observation, a model's answer, a tool's result
- * -- is put here on the way in and fetched back on the way out. Events hold identifiers, status,
- * human decisions, counts and a {@link PayloadRef}; this holds the rest.
+ * <p>Everything an event would otherwise carry -- an input, a model's answer, a tool's result -- is
+ * put here on the way in and fetched back on the way out. Events hold identifiers, status, human
+ * decisions, counts and a {@link PayloadRef}; this holds the rest.
  *
  * <p>That split is what keeps a stream small enough to replay on every command, keeps every type in
  * it one of Nessy's own, and lets content expire on a different schedule from the record of what

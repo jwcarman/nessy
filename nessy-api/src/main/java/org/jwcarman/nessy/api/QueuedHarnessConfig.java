@@ -32,51 +32,51 @@ import org.jwcarman.nessy.api.tool.ToolConfig;
  * your agent type's name, working perfectly and doing the wrong job, with nothing in the logs to
  * say so.
  *
- * @param <O> the observation type this agent takes
+ * @param <I> the input type this agent takes
  */
-public interface QueuedHarnessConfig<O> extends HarnessConfig<QueuedHarnessConfig<O>> {
+public interface QueuedHarnessConfig<I> extends HarnessConfig<QueuedHarnessConfig<I>> {
 
   /** What this agent type is called. Names its rows and scopes its dispatcher's polling. */
 
   /** What this agent is, in the same words for every agent of the type. */
-  QueuedHarnessConfig<O> systemPrompt(String prompt);
+  QueuedHarnessConfig<I> systemPrompt(String prompt);
 
   /** What this agent is, worked out per agent. May do I/O; it runs off the row lock. */
-  QueuedHarnessConfig<O> systemPrompt(SystemPromptSource source);
+  QueuedHarnessConfig<I> systemPrompt(SystemPromptSource source);
 
   /**
-   * How an observation becomes something a model can read.
+   * How an input becomes something a model can read.
    *
    * <p>Defaults to {@link InputRenderer#asString()}, which is right for records and for anything
    * with a considered {@code toString}, and quietly wrong for a class without one -- that sends
    * {@code com.acme.Order@1a2b3c} to a model, and you pay for it.
    */
-  QueuedHarnessConfig<O> inputRenderer(InputRenderer<O> renderer);
+  QueuedHarnessConfig<I> inputRenderer(InputRenderer<I> renderer);
 
   /**
-   * What the backlog becomes when an observation arrives while the agent is busy.
+   * What the backlog becomes when an input arrives while the agent is busy.
    *
    * <p>Defaults to {@link BacklogPolicy#keepAll()} -- right for anything a person said, wrong for a
    * sensor, and only the application knows which it has.
    */
-  QueuedHarnessConfig<O> backlogPolicy(BacklogPolicy<O> policy);
+  QueuedHarnessConfig<I> backlogPolicy(BacklogPolicy<I> policy);
 
   /** Adjusts how this agent type infers, using the factory's provider. */
-  QueuedHarnessConfig<O> inference(Customizer<InferenceConfig> customizer);
+  QueuedHarnessConfig<I> inference(Customizer<InferenceConfig> customizer);
 
   /** Adjusts how this agent type performs the work it owes itself. */
-  QueuedHarnessConfig<O> effects(Customizer<EffectsConfig> customizer);
+  QueuedHarnessConfig<I> effects(Customizer<EffectsConfig> customizer);
 
   /**
    * Somebody who hears what this harness's agents do, in addition to whoever the engine already
    * tells. Repeatable; every listener hears every event.
    */
-  QueuedHarnessConfig<O> listener(NarrationListener listener);
+  QueuedHarnessConfig<I> listener(NarrationListener listener);
 
   /** Offers a tool, and says what a call of it is worth. */
-  <I> QueuedHarnessConfig<O> tool(Tool<I> tool, Customizer<ToolConfig<I>> customizer);
+  <T> QueuedHarnessConfig<I> tool(Tool<T> tool, Customizer<ToolConfig<T>> customizer);
 
-  default <I> QueuedHarnessConfig<O> tool(Tool<I> tool) {
+  default <T> QueuedHarnessConfig<I> tool(Tool<T> tool) {
     return tool(tool, Customizer.withDefaults());
   }
 }

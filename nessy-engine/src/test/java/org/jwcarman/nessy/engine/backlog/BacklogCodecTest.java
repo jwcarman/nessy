@@ -29,7 +29,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * A backlog is stored as one blob beside the agent's state, so it has to survive a round trip whole
- * -- including which arm of the state machine it was in, and the application's own observation type
+ * -- including which arm of the state machine it was in, and the application's own input type
  * inside it.
  */
 class BacklogCodecTest {
@@ -55,7 +55,7 @@ class BacklogCodecTest {
   }
 
   @Test
-  void anOpenBacklogSurvivesWithItsObservationsAndTheirArrivalTimes() {
+  void anOpenBacklogSurvivesWithItsInputsAndTheirArrivalTimes() {
     Backlog<UserSaid> backlog = new Backlog.Open<>(List.of(item("first"), item("second")));
 
     assertThat(roundTrip(backlog)).isEqualTo(backlog);

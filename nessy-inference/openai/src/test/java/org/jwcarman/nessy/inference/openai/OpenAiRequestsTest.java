@@ -38,7 +38,7 @@ import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.InputSchema;
 import org.jwcarman.nessy.inference.tool.ToolName;
 import org.jwcarman.nessy.inference.turn.Exchange;
-import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.ToolOutcome;
 import org.jwcarman.nessy.inference.turn.Turn;
 import org.jwcarman.nessy.inference.turn.TurnResult;
@@ -63,8 +63,8 @@ class OpenAiRequestsTest {
     return new InferenceRequest(SYSTEM, InferenceContext.of(turns), Toolset.none(), OPTIONS);
   }
 
-  private static Observation asked(long seq, String text) {
-    return new Observation(new Seq(seq), List.of(new Block.Text(text)));
+  private static Input asked(long seq, String text) {
+    return new Input(new Seq(seq), List.of(new Block.Text(text)));
   }
 
   /** A finished turn: a question and the answer it got. */
@@ -216,8 +216,8 @@ class OpenAiRequestsTest {
     }
 
     /**
-     * The refused observation is the thing that caused the refusal. Re-sending it keeps the
-     * conversation refused for as long as it is still in the request.
+     * The refused input is the thing that caused the refusal. Re-sending it keeps the conversation
+     * refused for as long as it is still in the request.
      */
     @Test
     void that_was_refused_drops_its_question_and_says_so_in_its_place() {

@@ -53,8 +53,8 @@ public sealed interface AgentEvent {
   /** Where this event sits. Strictly increasing, and what {@code apply} checks. */
   Seq seq();
 
-  /** A turn opened on an observation. Its {@link TurnId} is this event's own position. */
-  record TurnStarted(Seq seq, TurnId turn, PayloadRef observation) implements AgentEvent {}
+  /** A turn opened on an input. Its {@link TurnId} is this event's own position. */
+  record TurnStarted(Seq seq, TurnId turn, PayloadRef input) implements AgentEvent {}
 
   /** The model answered, and the turn is over. */
   record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer) implements AgentEvent {}

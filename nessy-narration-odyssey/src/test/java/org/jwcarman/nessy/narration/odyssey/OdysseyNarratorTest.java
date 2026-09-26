@@ -96,7 +96,7 @@ class OdysseyNarratorTest {
     JsonNode json = mapper.valueToTree(new Narration.TurnStarted(new TurnId(7)));
     assertThat(json.path("type").asString()).isEqualTo("turn-started");
     assertThat(json.path("turn").asLong()).isEqualTo(7);
-    assertThat(json.has("observation"))
+    assertThat(json.has("input"))
         .as("narration names what happened; it does not carry the words it happened to")
         .isFalse();
     JsonNode denied = mapper.valueToTree(new Narration.CallDenied(new CallId("c1"), "no"));

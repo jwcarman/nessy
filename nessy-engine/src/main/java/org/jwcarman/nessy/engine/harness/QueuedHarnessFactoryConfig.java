@@ -99,9 +99,9 @@ public final class QueuedHarnessFactoryConfig {
 
   /**
    * How the trace in force is written beside an effect without a span of its own. Defaults to
-   * opening a momentary {@code nessy.effect.emit} span, which is the only way an observation can
-   * have headers written for it; a tracing library can do it directly, and the Boot starter hands
-   * one in.
+   * opening a momentary {@code nessy.effect.emit} span, which is the only way an input can have
+   * headers written for it; a tracing library can do it directly, and the Boot starter hands one
+   * in.
    */
   public QueuedHarnessFactoryConfig traceCarrier(TraceCarrier traceCarrier) {
     this.traceCarrier = Objects.requireNonNull(traceCarrier, "traceCarrier must not be null");

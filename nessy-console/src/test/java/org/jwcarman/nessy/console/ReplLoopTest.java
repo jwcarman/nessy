@@ -202,7 +202,7 @@ class ReplLoopTest {
 
     @Test
     @DisplayName("a blank line prompts again rather than asking the model about nothing")
-    void a_blank_line_is_not_an_observation() {
+    void a_blank_line_is_not_an_input() {
       FakeHarness harness = new FakeHarness(List.of(said("hi"), ended()));
       FakeConsole console = new FakeConsole("", "   ", "something", "quit");
       run(harness, console, config());

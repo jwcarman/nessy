@@ -22,7 +22,7 @@ import org.jwcarman.nessy.api.tool.Replies;
  * Makes harnesses, holding the infrastructure every agent type is built from.
  *
  * <p>The split is deliberate: a caller supplies what is theirs -- the agent type's name, what it
- * is, how to read its observations -- and this supplies the stores, the transaction template, the
+ * is, how to read its inputs -- and this supplies the stores, the transaction template, the
  * scheduler, the codec factory, and the provider and model to use when an agent type does not care
  * to choose. Nobody assembles a harness by hand, so nobody can assemble one wrongly.
  *
@@ -32,27 +32,27 @@ import org.jwcarman.nessy.api.tool.Replies;
  */
 public interface QueuedHarnessFactory extends AutoCloseable {
 
-  /** For observations that are already what a model should read. */
+  /** For inputs that are already what a model should read. */
   default QueuedHarness<String> create(
       AgentType agentType, Customizer<QueuedHarnessConfig<String>> customizer) {
     return create(agentType, String.class, customizer);
   }
 
-  /** For an observation type that is not itself generic, which is nearly all of them. */
-  default <O> QueuedHarness<O> create(
-      AgentType agentType, Class<O> inputType, Customizer<QueuedHarnessConfig<O>> customizer) {
+  /** For an input type that is not itself generic, which is nearly all of them. */
+  default <I> QueuedHarness<I> create(
+      AgentType agentType, Class<I> inputType, Customizer<QueuedHarnessConfig<I>> customizer) {
     return create(agentType, TypeRef.of(inputType), customizer);
   }
 
   /**
-   * The general form, for an observation type that is itself generic.
+   * The general form, for an input type that is itself generic.
    *
    * <p>{@link TypeRef#parameterized} is why this exists: a {@code TypeRef} cannot be captured for a
    * type variable, so the agent's own codec has to be composed from the caller's, and only a {@code
    * TypeRef} can carry that through.
    */
-  <O> QueuedHarness<O> create(
-      AgentType agentType, TypeRef<O> inputType, Customizer<QueuedHarnessConfig<O>> customizer);
+  <I> QueuedHarness<I> create(
+      AgentType agentType, TypeRef<I> inputType, Customizer<QueuedHarnessConfig<I>> customizer);
 
   /**
    * Where a late answer comes back in. One for the whole factory rather than one per harness: a

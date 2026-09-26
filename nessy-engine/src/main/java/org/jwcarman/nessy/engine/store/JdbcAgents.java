@@ -25,7 +25,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * The row that says an agent exists, and the lock everything else about it is taken under.
  *
  * <p>An agent comes into being the first time anything is said to it -- there is nothing to record
- * about one before its first observation, and a create step would only be a way to get that wrong.
+ * about one before its first input, and a create step would only be a way to get that wrong.
  *
  * <p><b>Why a row rather than a lock over the work itself.</b> Locking the backlog rows would leave
  * two arrivals to an empty backlog with nothing to contend for: both would find nothing, both would

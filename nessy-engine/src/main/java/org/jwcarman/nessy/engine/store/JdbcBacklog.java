@@ -39,9 +39,9 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * <p>Ordinals are minted from the highest already there. They are the backlog's own numbering and
  * say nothing about events -- an item may never become one.
  *
- * @param <O> the application's observation type
+ * @param <I> the application's input type
  */
-public final class JdbcBacklog<O> implements Backlog<O> {
+public final class JdbcBacklog<I> implements Backlog<I> {
 
   private static final Logger LOG = LoggerFactory.getLogger(JdbcBacklog.class);
 
@@ -115,11 +115,11 @@ public final class JdbcBacklog<O> implements Backlog<O> {
       """;
 
   private final JdbcClient jdbc;
-  private final Codec<O> codec;
+  private final Codec<I> codec;
   private final AgentType agentType;
   private final AgentId agent;
 
-  public JdbcBacklog(JdbcClient jdbc, Codec<O> codec, AgentType agentType, AgentId agent) {
+  public JdbcBacklog(JdbcClient jdbc, Codec<I> codec, AgentType agentType, AgentId agent) {
     this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
     this.codec = Objects.requireNonNull(codec, "codec must not be null");
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
@@ -127,10 +127,10 @@ public final class JdbcBacklog<O> implements Backlog<O> {
   }
 
   @Override
-  public Pull<O> take() {
+  public Pull<I> take() {
     // Removed and returned in one statement, so nothing can see it waiting after it has been
     // taken. The caller is holding the agent's row, so nothing else is looking anyway.
-    Optional<BacklogItem<O>> next =
+    Optional<BacklogItem<I>> next =
         jdbc.sql(TAKE)
             .params(agentType.value(), agent.value())
             .query((rs, _) -> item(rs))
@@ -163,7 +163,7 @@ public final class JdbcBacklog<O> implements Backlog<O> {
     jdbc.sql(SEAL).params(agentType.value(), agent.value()).update();
     if (abandoned > 0) {
       LOG.info(
-          "[backlog] agent {}/{} ended with {} observation(s) still waiting; abandoned",
+          "[backlog] agent {}/{} ended with {} input(s) still waiting; abandoned",
           agentType.value(),
           agent.value(),
           abandoned);
@@ -181,19 +181,19 @@ public final class JdbcBacklog<O> implements Backlog<O> {
   }
 
   @Override
-  public void append(BacklogItem<O> item) {
+  public void append(BacklogItem<I> item) {
     Objects.requireNonNull(item, "item must not be null");
     insert(ordinalFrom(NEXT_ORDINAL), item);
   }
 
   @Override
-  public void prepend(BacklogItem<O> item) {
+  public void prepend(BacklogItem<I> item) {
     Objects.requireNonNull(item, "item must not be null");
     insert(ordinalFrom(FIRST_ORDINAL), item);
   }
 
   @Override
-  public void replaceAll(BacklogItem<O> item) {
+  public void replaceAll(BacklogItem<I> item) {
     Objects.requireNonNull(item, "item must not be null");
     clear();
     insert(1, item);
@@ -213,21 +213,21 @@ public final class JdbcBacklog<O> implements Backlog<O> {
   }
 
   @Override
-  public List<BacklogItem<O>> all() {
+  public List<BacklogItem<I>> all() {
     return jdbc.sql(ALL).params(agentType.value(), agent.value()).query((rs, _) -> item(rs)).list();
   }
 
   @Override
-  public void rewrite(List<BacklogItem<O>> items) {
+  public void rewrite(List<BacklogItem<I>> items) {
     Objects.requireNonNull(items, "items must not be null");
     clear();
     long ordinal = 1;
-    for (BacklogItem<O> item : items) {
+    for (BacklogItem<I> item : items) {
       insert(ordinal++, item);
     }
   }
 
-  private BacklogItem<O> item(java.sql.ResultSet rs) throws java.sql.SQLException {
+  private BacklogItem<I> item(java.sql.ResultSet rs) throws java.sql.SQLException {
     return new BacklogItem<>(
         codec.decode(rs.getBytes("payload")), rs.getTimestamp("arrived_at").toInstant());
   }
@@ -240,14 +240,14 @@ public final class JdbcBacklog<O> implements Backlog<O> {
     return jdbc.sql(sql).params(agentType.value(), agent.value()).query(Long.class).single();
   }
 
-  private void insert(long ordinal, BacklogItem<O> item) {
+  private void insert(long ordinal, BacklogItem<I> item) {
     jdbc.sql(INSERT)
         .params(
             agentType.value(),
             agent.value(),
             ordinal,
             java.sql.Timestamp.from(item.arrivedAt()),
-            codec.encode(item.observation()))
+            codec.encode(item.input()))
         .update();
   }
 

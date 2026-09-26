@@ -41,7 +41,7 @@ import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.InputSchema;
 import org.jwcarman.nessy.inference.tool.ToolName;
 import org.jwcarman.nessy.inference.turn.Exchange;
-import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.Summary;
 import org.jwcarman.nessy.inference.turn.ToolOutcome;
 import org.jwcarman.nessy.inference.turn.Turn;
@@ -81,8 +81,8 @@ class AnthropicRequestsTest {
     return AnthropicRequests.toParams(request(turns), caching(caching), MAPPER);
   }
 
-  private static Observation asked(long seq, String text) {
-    return new Observation(new Seq(seq), List.of(new Block.Text(text)));
+  private static Input asked(long seq, String text) {
+    return new Input(new Seq(seq), List.of(new Block.Text(text)));
   }
 
   private static Turn answered(long id, String question, String answer) {
@@ -661,7 +661,7 @@ class AnthropicRequestsTest {
       Turn blank =
           new Turn(
               new TurnId(3),
-              new Observation(new Seq(3), List.of(new Block.Text("hi"))),
+              new Input(new Seq(3), List.of(new Block.Text("hi"))),
               List.of(),
               null,
               0);

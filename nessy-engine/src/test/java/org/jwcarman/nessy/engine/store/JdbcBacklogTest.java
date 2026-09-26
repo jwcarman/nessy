@@ -68,7 +68,7 @@ class JdbcBacklogTest {
   }
 
   private List<String> waiting() {
-    return backlog.all().stream().map(BacklogItem::observation).toList();
+    return backlog.all().stream().map(BacklogItem::input).toList();
   }
 
   @Test

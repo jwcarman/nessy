@@ -64,7 +64,7 @@ public sealed interface TurnResult {
   /**
    * The turn was declined, and would be declined again.
    *
-   * <p>"Not ever." Whether the observation that provoked it should still be sent is a provider's
+   * <p>"Not ever." Whether the input that provoked it should still be sent is a provider's
    * decision, not this type's -- what one vendor refuses another answers.
    */
   record Refused() implements TurnResult {}

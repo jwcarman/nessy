@@ -26,9 +26,9 @@ import org.jwcarman.nessy.engine.trace.TraceCarrier;
 /**
  * Writes the trace in force straight into headers with the application's own propagator.
  *
- * <p>What the engine cannot do on its own: it speaks observations, and an observation only has
- * headers written for it by starting one. Boot already holds the {@link Tracer} and {@link
- * Propagator} that do the writing, so an effect row gets its parent with no span left behind.
+ * <p>What the engine cannot do on its own: it speaks inputs, and an input only has headers written
+ * for it by starting one. Boot already holds the {@link Tracer} and {@link Propagator} that do the
+ * writing, so an effect row gets its parent with no span left behind.
  */
 final class PropagatingTraceCarrier implements TraceCarrier {
 

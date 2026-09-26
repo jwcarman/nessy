@@ -29,7 +29,7 @@ import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.turn.Exchange;
-import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.ToolOutcome;
 import org.jwcarman.nessy.inference.turn.Turn;
 import org.jwcarman.nessy.inference.turn.TurnResult;
@@ -40,8 +40,8 @@ import org.jwcarman.nessy.spi.lock.Locks.Attempt;
 @DisplayName("The transcript a summary is written from")
 class HeadSummarizerTranscriptTest {
 
-  private static Observation asked(long seq, String text) {
-    return new Observation(new Seq(seq), List.of(new Block.Text(text)));
+  private static Input asked(long seq, String text) {
+    return new Input(new Seq(seq), List.of(new Block.Text(text)));
   }
 
   @Test

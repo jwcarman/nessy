@@ -22,7 +22,7 @@ import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.engine.core.AgentEvent;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.turn.Exchange;
-import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.ToolOutcome;
 import org.jwcarman.nessy.inference.turn.Turn;
 import org.jwcarman.nessy.inference.turn.TurnResult;
@@ -62,7 +62,7 @@ public final class Transcript {
     for (AgentEvent event : events) {
       switch (event) {
         case AgentEvent.TurnStarted started ->
-            open = Open.on(started, resolve(resolved, started.observation()));
+            open = Open.on(started, resolve(resolved, started.input()));
 
         case AgentEvent.ActionsRequested requested ->
             require(open, event).ask(requested.seq(), cast(resolve(resolved, requested.request())));
@@ -109,7 +109,7 @@ public final class Transcript {
     List<PayloadRef> refs = new ArrayList<>();
     for (AgentEvent event : events) {
       switch (event) {
-        case AgentEvent.TurnStarted started -> refs.add(started.observation());
+        case AgentEvent.TurnStarted started -> refs.add(started.input());
         case AgentEvent.ActionsRequested requested -> refs.add(requested.request());
         case AgentEvent.ToolSucceeded done -> refs.add(done.result());
         case AgentEvent.InferenceAnswered answered -> refs.add(answered.answer());
@@ -153,20 +153,20 @@ public final class Transcript {
   private static final class Open {
 
     private final AgentEvent.TurnStarted started;
-    private final Observation observation;
+    private final Input input;
     private final List<Exchange> exchanges = new ArrayList<>();
 
     private org.jwcarman.nessy.inference.Seq askedAt;
     private List<Block.ActionRequestContent> request;
     private List<ToolOutcome> outcomes;
 
-    private Open(AgentEvent.TurnStarted started, Observation observation) {
+    private Open(AgentEvent.TurnStarted started, Input input) {
       this.started = started;
-      this.observation = observation;
+      this.input = input;
     }
 
     static Open on(AgentEvent.TurnStarted started, List<Block> content) {
-      return new Open(started, new Observation(started.seq(), cast(content)));
+      return new Open(started, new Input(started.seq(), cast(content)));
     }
 
     void ask(org.jwcarman.nessy.inference.Seq at, List<Block.ActionRequestContent> blocks) {
@@ -186,12 +186,12 @@ public final class Transcript {
 
     Turn closed(TurnResult result) {
       flush();
-      return new Turn(started.turn(), observation, List.copyOf(exchanges), result, 0);
+      return new Turn(started.turn(), input, List.copyOf(exchanges), result, 0);
     }
 
     Turn stillOpen() {
       flush();
-      return new Turn(started.turn(), observation, List.copyOf(exchanges), null, 0);
+      return new Turn(started.turn(), input, List.copyOf(exchanges), null, 0);
     }
 
     private void flush() {

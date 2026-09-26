@@ -105,7 +105,7 @@ public class ApprovalsController {
   static List<Note> notes(List<Turn> turns) {
     List<Note> notes = new ArrayList<>();
     for (Turn turn : turns) {
-      notes.add(new Note("user", text(turn.observation().blocks())));
+      notes.add(new Note("user", text(turn.input().blocks())));
       for (Exchange exchange : turn.exchanges()) {
         String commentary = text(exchange.request());
         if (!commentary.isBlank()) {

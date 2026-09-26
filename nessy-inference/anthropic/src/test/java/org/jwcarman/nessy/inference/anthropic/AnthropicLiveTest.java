@@ -37,7 +37,7 @@ import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.InputSchema;
 import org.jwcarman.nessy.inference.tool.ToolName;
-import org.jwcarman.nessy.inference.turn.Observation;
+import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.Turn;
 import org.jwcarman.nessy.inference.turn.TurnResult;
 import tools.jackson.databind.JsonNode;
@@ -83,7 +83,7 @@ class AnthropicLiveTest {
   private static Turn open(long id, String question) {
     return new Turn(
         new TurnId(id),
-        new Observation(new Seq(id), List.of(new Block.Text(question))),
+        new Input(new Seq(id), List.of(new Block.Text(question))),
         List.of(),
         null,
         0);
@@ -212,7 +212,7 @@ class AnthropicLiveTest {
       Turn done =
           new Turn(
               new TurnId(1),
-              new Observation(
+              new Input(
                   new Seq(1),
                   List.of(
                       new Block.Text("Think about it, then say how many continents there are."))),

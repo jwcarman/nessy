@@ -36,18 +36,18 @@ package org.jwcarman.nessy.api;
  * it here, anyone could fabricate an answer the model never gave and have it folded into an agent's
  * story as though it had.
  *
- * @param <O> the observation type
+ * @param <I> the input type
  */
-public interface QueuedHarness<O> {
+public interface QueuedHarness<I> {
 
   /**
    * Tells an agent something happened.
    *
    * <p>An agent that has never been heard of comes into being here rather than through a separate
-   * call: there is nothing to say about an agent before its first observation, and a create step
-   * would only be a way to get that wrong.
+   * call: there is nothing to say about an agent before its first input, and a create step would
+   * only be a way to get that wrong.
    */
-  void tell(AgentId agentId, O input);
+  void tell(AgentId agentId, I input);
 
   /**
    * Ends an agent.
@@ -60,8 +60,7 @@ public interface QueuedHarness<O> {
    * <p>Nothing is written to the story. What ended is the agent, not its conversation, and the
    * model has no use for the fact.
    *
-   * <p>Idempotent, and irreversible: an observation arriving afterwards is refused, whenever it
-   * arrives.
+   * <p>Idempotent, and irreversible: an input arriving afterwards is refused, whenever it arrives.
    */
   void terminate(AgentId agentId);
 }

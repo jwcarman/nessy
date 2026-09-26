@@ -26,8 +26,8 @@ package org.jwcarman.nessy.api.tool;
  * <p><b>Not on a harness, and not because of tidiness.</b> A {@link ReplyToken} is opaque, so
  * whoever holds one cannot tell which kind of agent it belongs to -- which means they could never
  * choose a harness to call. The token names the agent type, and this resolves it. It is also
- * nothing to do with an application's observation type, and a webhook answering an approval should
- * not have to name one.
+ * nothing to do with an application's input type, and a webhook answering an approval should not
+ * have to name one.
  *
  * <p><b>The caller is rarely the approver or the tool.</b> It is a webhook controller, a queue
  * consumer, an admin page -- code somewhere else entirely that holds nothing but the token. That is

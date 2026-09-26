@@ -267,14 +267,14 @@ class DefaultDirectHarnessTest {
 
     harness(model, tool("found it")).ask(agent, "look it up");
 
-    // The second call saw a turn carrying the observation, the request and the tool's result --
+    // The second call saw a turn carrying the input, the request and the tool's result --
     // all of it resolved back out of the claim check.
     InferenceRequest second = model.seen.get(1);
     assertThat(second.context().turns())
         .singleElement()
         .satisfies(
             turn -> {
-              assertThat(turn.observation().blocks()).isNotEmpty();
+              assertThat(turn.input().blocks()).isNotEmpty();
               assertThat(turn.exchanges())
                   .singleElement()
                   .satisfies(
@@ -827,7 +827,7 @@ class DefaultDirectHarnessTest {
       harness.ask(agent, "question " + i);
     }
 
-    // Four turns behind the last call, each with an observation and an answer. One ask per
+    // Four turns behind the last call, each with an input and an answer. One ask per
     // projection is the point; one ask per block would grow with the conversation.
     assertThat(counting.batches).as("one batch per projection").isPositive();
     assertThat(counting.singles)
