@@ -176,7 +176,7 @@ class OpaPolicyEngineFailureTest {
                 opa.url("http://127.0.0.1:" + server.getAddress().getPort())
                     .decisionPath("nessy/tools/decision")
                     .renderer(
-                        InputRenderer.authzen(
+                        InputDocumentRenderer.authzen(
                             tools.jackson.databind.json.JsonMapper.builder().build()))
                     .interpreter(DecisionInterpreter.authzen()));
 

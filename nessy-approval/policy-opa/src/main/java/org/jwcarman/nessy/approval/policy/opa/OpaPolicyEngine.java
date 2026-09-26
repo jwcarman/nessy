@@ -73,7 +73,7 @@ public final class OpaPolicyEngine implements PolicyEngine {
 
   private final HttpClient http;
   private final ObjectMapper mapper;
-  private final InputRenderer renderer;
+  private final InputDocumentRenderer renderer;
   private final DecisionInterpreter interpreter;
   private final URI decision;
   private final Duration timeout;
@@ -83,7 +83,7 @@ public final class OpaPolicyEngine implements PolicyEngine {
     this.renderer =
         configured.renderer != null
             ? configured.renderer
-            : InputRenderer.standard(configured.mapper);
+            : InputDocumentRenderer.standard(configured.mapper);
     this.interpreter =
         configured.interpreter != null ? configured.interpreter : DecisionInterpreter.effectStyle();
     this.decision =
@@ -198,7 +198,7 @@ public final class OpaPolicyEngine implements PolicyEngine {
     private String url;
     private String decisionPath;
     private ObjectMapper mapper = tools.jackson.databind.json.JsonMapper.builder().build();
-    private InputRenderer renderer;
+    private InputDocumentRenderer renderer;
     private DecisionInterpreter interpreter;
     private Duration timeout = Duration.ofSeconds(5);
     private Duration connectTimeout = Duration.ofSeconds(2);
@@ -222,7 +222,7 @@ public final class OpaPolicyEngine implements PolicyEngine {
     }
 
     @Override
-    public OpaPolicyEngineConfig renderer(InputRenderer renderer) {
+    public OpaPolicyEngineConfig renderer(InputDocumentRenderer renderer) {
       this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
       return this;
     }

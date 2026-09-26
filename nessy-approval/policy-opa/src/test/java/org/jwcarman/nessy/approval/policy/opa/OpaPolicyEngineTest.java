@@ -179,7 +179,7 @@ class OpaPolicyEngineTest {
     @DisplayName("the reply token never leaves the process")
     void the_document_carries_no_capability() {
       String document =
-          InputRenderer.standard(MAPPER)
+          InputDocumentRenderer.standard(MAPPER)
               .render(asking("watchman", "prune_images", "prod-eu-1"))
               .toString();
 
@@ -194,7 +194,7 @@ class OpaPolicyEngineTest {
     @DisplayName("the AuthZEN document keeps the token out too")
     void the_authzen_document_carries_no_capability() {
       String document =
-          InputRenderer.authzen(MAPPER)
+          InputDocumentRenderer.authzen(MAPPER)
               .render(asking("watchman", "prune_images", "prod-eu-1"))
               .toString();
 

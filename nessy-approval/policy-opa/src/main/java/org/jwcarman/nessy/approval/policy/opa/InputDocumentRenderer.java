@@ -22,8 +22,9 @@ import tools.jackson.databind.node.ObjectNode;
 /**
  * Builds the <b>input document</b> — what a Rego policy sees as {@code input}.
  *
- * <p>OPA's own word, and unambiguous behind this package boundary. Elsewhere in Nessy {@code input}
- * means a tool's bound arguments, which is exactly why this vocabulary does not leave here.
+ * <p>{@code input} is OPA's own word for what a policy is evaluated against, and it is not ours: in
+ * Nessy an input is what a caller hands an agent. Two unrelated meanings of one word, so this one
+ * says <em>document</em> and does not leave this package.
  *
  * <p>Named for what it DOES rather than what it produces — the document is the noun, this renders
  * one — matching {@code ActionRenderer}, which renders the sentence a person consents to. One
@@ -37,14 +38,14 @@ import tools.jackson.databind.node.ObjectNode;
  * choosing to.
  */
 @FunctionalInterface
-public interface InputRenderer {
+public interface InputDocumentRenderer {
 
   String ACTION_FIELD = "action";
 
   ObjectNode render(ApprovalRequest request);
 
   /** Everything a rule could reasonably judge on, flat, and nothing that grants authority. */
-  static InputRenderer standard(ObjectMapper mapper) {
+  static InputDocumentRenderer standard(ObjectMapper mapper) {
     return request -> {
       ObjectNode input = mapper.createObjectNode();
       input.put("agentType", request.agentType().value());
@@ -77,7 +78,7 @@ public interface InputRenderer {
    * <p>Note that AuthZEN's <em>response</em> is a boolean and cannot express {@code Delegate}. See
    * {@link DecisionInterpreter#authzen()}.
    */
-  static InputRenderer authzen(ObjectMapper mapper) {
+  static InputDocumentRenderer authzen(ObjectMapper mapper) {
     return request -> {
       ObjectNode input = mapper.createObjectNode();
       ObjectNode subject = input.putObject("subject");

@@ -39,8 +39,8 @@ public interface OpaPolicyEngineConfig {
   /** Defaults to a fresh mapper. */
   OpaPolicyEngineConfig objectMapper(ObjectMapper mapper);
 
-  /** What the policy is written against. Defaults to {@link InputRenderer#standard}. */
-  OpaPolicyEngineConfig renderer(InputRenderer renderer);
+  /** What the policy is written against. Defaults to {@link InputDocumentRenderer#standard}. */
+  OpaPolicyEngineConfig renderer(InputDocumentRenderer renderer);
 
   /** How the answer is read. Defaults to {@link DecisionInterpreter#effectStyle}. */
   OpaPolicyEngineConfig interpreter(DecisionInterpreter interpreter);
