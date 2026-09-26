@@ -38,6 +38,7 @@ import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
 import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
 import org.jwcarman.nessy.engine.effect.EffectDispatcher;
+import org.jwcarman.nessy.engine.effect.EffectOutcomes;
 import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.store.EffectStore;
 import org.jwcarman.nessy.engine.store.JdbcAgents;
@@ -221,7 +222,7 @@ final class DefaultQueuedHarness<O>
             transactions.execute(
                 _ -> {
                   agents.lock(agentType, agentId);
-                  boolean wrote = apply(agentId, command(outcome), traceContext);
+                  boolean wrote = apply(agentId, EffectOutcomes.command(outcome), traceContext);
                   // A turn that ended leaves the agent idle, and the next thing waiting becomes
                   // the next turn -- here, before this transaction commits.
                   return wrote
@@ -300,31 +301,6 @@ final class DefaultQueuedHarness<O>
     if (dispatcher != null) {
       dispatcher.nudge();
     }
-  }
-
-  /** An outcome, as the command it becomes. Nothing is unpacked: it already holds references. */
-  private static AgentCommand command(EffectOutcome outcome) {
-    return switch (outcome) {
-      case EffectOutcome.InferenceAnswered(var answer) ->
-          new AgentCommand.CompleteInference(new AgentCommand.InferenceOutcome.Answered(answer));
-      case EffectOutcome.InferenceRefused(String category) ->
-          new AgentCommand.CompleteInference(new AgentCommand.InferenceOutcome.Refused(category));
-      case EffectOutcome.InferenceFailed(var failure) ->
-          new AgentCommand.CompleteInference(new AgentCommand.InferenceOutcome.Failed(failure));
-      case EffectOutcome.InferenceRequestedActions(var request, var calls) ->
-          new AgentCommand.CompleteInference(
-              new AgentCommand.InferenceOutcome.RequestedActions(request, calls));
-      case EffectOutcome.ToolSucceeded(var callId, var result) ->
-          new AgentCommand.CompleteToolCall(callId, new AgentCommand.ToolOutcome.Succeeded(result));
-      case EffectOutcome.ToolFailed(var callId, String message) ->
-          new AgentCommand.CompleteToolCall(callId, new AgentCommand.ToolOutcome.Failed(message));
-      case EffectOutcome.ToolApproved(var callId, var reference) ->
-          new AgentCommand.CompleteApproval(
-              callId, new AgentCommand.ApprovalOutcome.Approved(reference));
-      case EffectOutcome.ToolDenied(var callId, String reason, var reference) ->
-          new AgentCommand.CompleteApproval(
-              callId, new AgentCommand.ApprovalOutcome.Denied(reason, reference));
-    };
   }
 
   /**

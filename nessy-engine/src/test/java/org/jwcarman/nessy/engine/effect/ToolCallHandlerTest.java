@@ -129,17 +129,20 @@ class ToolCallHandlerTest {
     return (agentId, requestSeq, callId) -> Optional.empty();
   }
 
+  private static EffectTermsSource terms(Tools tools) {
+    return new EffectTermsSource(
+        tools,
+        Duration.ofSeconds(30),
+        new RetryPolicy.Never(),
+        Duration.ofMinutes(10),
+        new RetryPolicy.Never(),
+        Duration.ofMinutes(5),
+        new RetryPolicy.Never());
+  }
+
   private Awaited<EffectOutcome> handled(Tools tools, ToolCalls calls) {
     return new ToolCallHandler(
-            TYPE,
-            tools,
-            calls,
-            TOKENS,
-            Narrator.silent(),
-            Duration.ofSeconds(30),
-            new RetryPolicy.Never(),
-            CLOCK,
-            PAYLOADS)
+            TYPE, tools, calls, TOKENS, Narrator.silent(), terms(tools), CLOCK, PAYLOADS)
         .handle(
             AGENT, new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("lookup")));
   }
@@ -260,22 +263,14 @@ class ToolCallHandlerTest {
                     Duration.ofMinutes(10),
                     new RetryPolicy.Never())));
 
-    EffectTerms terms =
+    EffectTerms resolved =
         new ToolCallHandler(
-                TYPE,
-                tools,
-                nothing(),
-                TOKENS,
-                Narrator.silent(),
-                Duration.ofSeconds(30),
-                new RetryPolicy.Never(),
-                CLOCK,
-                PAYLOADS)
+                TYPE, tools, nothing(), TOKENS, Narrator.silent(), terms(tools), CLOCK, PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("lookup")));
 
-    assertThat(terms.timeout()).isEqualTo(Duration.ofSeconds(90));
-    assertThat(terms.retryPolicy()).isInstanceOf(RetryPolicy.FixedDelay.class);
+    assertThat(resolved.timeout()).isEqualTo(Duration.ofSeconds(90));
+    assertThat(resolved.retryPolicy()).isInstanceOf(RetryPolicy.FixedDelay.class);
   }
 
   /**
@@ -284,20 +279,19 @@ class ToolCallHandlerTest {
    */
   @Test
   void anUnboundToolFallsBackToTheHarnessTerms() {
-    EffectTerms terms =
+    EffectTerms resolved =
         new ToolCallHandler(
                 TYPE,
                 Tools.none(),
                 nothing(),
                 TOKENS,
                 Narrator.silent(),
-                Duration.ofSeconds(30),
-                new RetryPolicy.Never(),
+                terms(Tools.none()),
                 CLOCK,
                 PAYLOADS)
             .termsFor(new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("gone")));
 
-    assertThat(terms.timeout()).isEqualTo(Duration.ofSeconds(30));
+    assertThat(resolved.timeout()).isEqualTo(Duration.ofSeconds(30));
   }
 
   /**
@@ -307,25 +301,24 @@ class ToolCallHandlerTest {
    */
   @Test
   void bothStoredFailuresNameTheCallTheyDischarge() {
-    EffectTerms terms =
+    EffectTerms resolved =
         new ToolCallHandler(
                 TYPE,
                 Tools.none(),
                 nothing(),
                 TOKENS,
                 Narrator.silent(),
-                Duration.ofSeconds(30),
-                new RetryPolicy.Never(),
+                terms(Tools.none()),
                 CLOCK,
                 PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(new Seq(2), new CallId("c1"), new ToolName("lookup")));
 
-    assertThat(terms.undispatchable())
+    assertThat(resolved.undispatchable())
         .asInstanceOf(type(EffectOutcome.ToolFailed.class))
         .extracting(EffectOutcome.ToolFailed::callId)
         .isEqualTo(new CallId("c1"));
-    assertThat(terms.failed(new IllegalStateException("boom")))
+    assertThat(resolved.failed(new IllegalStateException("boom")))
         .asInstanceOf(type(EffectOutcome.ToolFailed.class))
         .extracting(EffectOutcome.ToolFailed::callId)
         .isEqualTo(new CallId("c1"));

@@ -141,15 +141,16 @@ class ApprovalHandlerTest {
   }
 
   private ApprovalHandler handler(Tools tools, ToolCalls calls) {
-    return new ApprovalHandler(
-        TYPE,
-        tools,
-        calls,
-        TOKENS,
-        Narrator.silent(),
-        Duration.ofMinutes(10),
-        new RetryPolicy.Never(),
-        CLOCK);
+    EffectTermsSource terms =
+        new EffectTermsSource(
+            tools,
+            Duration.ofSeconds(30),
+            new RetryPolicy.Never(),
+            Duration.ofMinutes(10),
+            new RetryPolicy.Never(),
+            Duration.ofMinutes(5),
+            new RetryPolicy.Never());
+    return new ApprovalHandler(TYPE, tools, calls, TOKENS, Narrator.silent(), terms, CLOCK);
   }
 
   private EffectOutcome ask(Tools tools) {

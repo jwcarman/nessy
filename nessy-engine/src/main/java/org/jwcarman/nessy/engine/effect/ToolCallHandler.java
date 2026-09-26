@@ -16,14 +16,12 @@
 package org.jwcarman.nessy.engine.effect;
 
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Narration;
-import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
@@ -64,8 +62,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
   private final ToolCalls calls;
   private final Narrator narrator;
   private final ReplyTokens replyTokens;
-  private final Duration timeout;
-  private final RetryPolicy retryPolicy;
+  private final EffectTermsSource terms;
   private final Clock clock;
 
   public ToolCallHandler(
@@ -74,8 +71,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
       ToolCalls calls,
       ReplyTokens replyTokens,
       Narrator narrator,
-      Duration timeout,
-      RetryPolicy retryPolicy,
+      EffectTermsSource terms,
       Clock clock,
       PayloadStore payloads) {
     this.agentType = agentType;
@@ -84,63 +80,20 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
     this.calls = calls;
     this.replyTokens = replyTokens;
     this.narrator = narrator;
-    this.timeout = timeout;
-    this.retryPolicy = retryPolicy;
+    this.terms = terms;
     this.clock = clock;
   }
 
   /**
    * The terms the bound tool was given, falling back to the harness-wide ones.
    *
-   * <p>Per tool rather than per kind, because a lookup and a build are not worth the same wait and
-   * an application says which is which. A call for a tool that is not bound still needs terms -- it
-   * is about to be discharged with a failure, and that discharge has to be written somewhere -- so
-   * the defaults answer for it.
+   * <p>Delegated to {@link EffectTermsSource}, which is what the direct door will ask without
+   * building a handler at all. What a call of this tool is worth does not depend on anything this
+   * handler holds for the sake of running one.
    */
   @Override
   public EffectTerms termsFor(AgentEffect.CallTool effect) {
-    return tools
-        .find(effect.toolName())
-        .<EffectTerms>map(
-            binding -> new CallTerms(effect.callId(), binding.timeout(), binding.retryPolicy()))
-        .orElseGet(() -> new CallTerms(effect.callId(), timeout, retryPolicy));
-  }
-
-  /**
-   * One call's terms, and the two failures it might be discharged with.
-   *
-   * <p>The call id is here so those failures can name it. An outcome that could not say which call
-   * it answers discharges nothing: the fold matches on the id, so an anonymous failure leaves the
-   * call outstanding and the turn unable to close -- the exact state this handler exists to make
-   * impossible.
-   */
-  private record CallTerms(CallId callId, Duration timeout, RetryPolicy retryPolicy)
-      implements EffectTerms {
-
-    /**
-     * What the agent is told when the deadline arrives and nothing else has been said.
-     *
-     * <p><b>It does not claim the tool did not run</b>, and that is the whole of the wording. This
-     * one blob covers two situations the row cannot tell apart, because nothing about a deferral is
-     * recorded: a call whose deadline passed while it was still queued, which genuinely never ran,
-     * and a call that ran, deferred, and was never reported back on -- which may have charged a
-     * card or started a rebuild. Saying "was not run" is right for the first and dangerously wrong
-     * for the second, and wrong in the direction that invites a model to do it again.
-     *
-     * <p>So it says only what is known in both: time ran out, and what happened is not known. A
-     * model can act on that -- check, ask, or choose something else -- where it cannot safely act
-     * on a false reassurance.
-     */
-    @Override
-    public EffectOutcome undispatchable() {
-      return new EffectOutcome.ToolFailed(
-          callId, "the call did not complete before its deadline; whether it ran is not known");
-    }
-
-    @Override
-    public EffectOutcome failed(RuntimeException cause) {
-      return new EffectOutcome.ToolFailed(callId, "the call failed: " + cause.getMessage());
-    }
+    return terms.termsFor(effect);
   }
 
   @Override

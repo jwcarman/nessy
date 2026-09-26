@@ -37,6 +37,7 @@ import org.jwcarman.nessy.engine.core.AgentEventStore;
 import org.jwcarman.nessy.engine.effect.ApprovalHandler;
 import org.jwcarman.nessy.engine.effect.EffectDispatcher;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
+import org.jwcarman.nessy.engine.effect.EffectTermsSource;
 import org.jwcarman.nessy.engine.effect.InferenceHandler;
 import org.jwcarman.nessy.engine.effect.ToolCallHandler;
 import org.jwcarman.nessy.engine.history.EventStreamHistory;
@@ -198,6 +199,18 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     // Built here because it needs the store, which a caller has no handle on.
     DefaultQueuedHarnessConfig.Inference inference = config.inference();
     DefaultQueuedHarnessConfig.Inference.Context context = inference.context();
+    // What each kind of effect is worth, from the tools this harness bound and the harness-wide
+    // defaults alone -- nothing else, so the direct door can ask the same question without
+    // building a handler just to hold it.
+    EffectTermsSource terms =
+        new EffectTermsSource(
+            tools,
+            config.toolTimeout(),
+            config.toolRetryPolicy(),
+            config.approvalTimeout(),
+            config.toolRetryPolicy(),
+            inference.timeout(),
+            inference.retryPolicy());
     // Observed as they are handed over, the way a tool is wrapped as it is bound: what the
     // engine is given reports its own work, and the assembler knows nothing about spans.
     InferenceContextAssembler assembler =
@@ -221,9 +234,9 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     EffectHandlers handlers =
         new EffectHandlers(
             createInferenceHandler(
-                agentType, assembler, inference, config, tools, narrator, payloads),
-            createApprovalHandler(agentType, tools, narrator, config),
-            createToolCallHandler(agentType, tools, narrator, config, payloads));
+                agentType, assembler, inference, config, tools, narrator, payloads, terms),
+            createApprovalHandler(agentType, tools, narrator, terms),
+            createToolCallHandler(agentType, tools, narrator, payloads, terms));
     EffectStore effects = new EffectStore(agentType, handlers, effectRows);
     DefaultQueuedHarness<O> harness =
         new DefaultQueuedHarness<>(
@@ -270,34 +283,32 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     return harness;
   }
 
-  private <O> @NonNull ToolCallHandler createToolCallHandler(
+  private @NonNull ToolCallHandler createToolCallHandler(
       AgentType agentType,
       Tools tools,
       Listeners narrator,
-      DefaultQueuedHarnessConfig<O> config,
-      PayloadStore payloads) {
+      PayloadStore payloads,
+      EffectTermsSource terms) {
     return new ToolCallHandler(
         agentType,
         tools,
         new EventStreamToolCalls(events, payloads),
         replyTokens,
         narrator,
-        config.toolTimeout(),
-        config.toolRetryPolicy(),
+        terms,
         clock,
         payloads);
   }
 
-  private <O> @NonNull ApprovalHandler createApprovalHandler(
-      AgentType agentType, Tools tools, Listeners narrator, DefaultQueuedHarnessConfig<O> config) {
+  private @NonNull ApprovalHandler createApprovalHandler(
+      AgentType agentType, Tools tools, Listeners narrator, EffectTermsSource terms) {
     return new ApprovalHandler(
         agentType,
         tools,
         new EventStreamToolCalls(events, payloads),
         replyTokens,
         narrator,
-        config.approvalTimeout(),
-        config.toolRetryPolicy(),
+        terms,
         clock);
   }
 
@@ -308,7 +319,8 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
       DefaultQueuedHarnessConfig<O> config,
       Tools tools,
       Listeners narrator,
-      PayloadStore payloads) {
+      PayloadStore payloads,
+      EffectTermsSource terms) {
     return new InferenceHandler(
         agentType,
         new DefaultInferenceService(
@@ -318,8 +330,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
             tools.offers(),
             narrator),
         inference.options(),
-        inference.timeout(),
-        inference.retryPolicy(),
+        terms,
         payloads,
         narrator);
   }

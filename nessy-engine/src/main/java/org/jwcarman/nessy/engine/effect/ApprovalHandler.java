@@ -16,13 +16,11 @@
 package org.jwcarman.nessy.engine.effect;
 
 import java.time.Clock;
-import java.time.Duration;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Narration;
-import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
@@ -60,8 +58,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
   private final ToolCalls calls;
   private final Narrator narrator;
   private final ReplyTokens replyTokens;
-  private final Duration timeout;
-  private final RetryPolicy retryPolicy;
+  private final EffectTermsSource terms;
   private final Clock clock;
 
   public ApprovalHandler(
@@ -70,35 +67,26 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
       ToolCalls calls,
       ReplyTokens replyTokens,
       Narrator narrator,
-      Duration timeout,
-      RetryPolicy retryPolicy,
+      EffectTermsSource terms,
       Clock clock) {
     this.agentType = agentType;
     this.tools = tools;
     this.calls = calls;
     this.replyTokens = replyTokens;
     this.narrator = narrator;
-    this.timeout = timeout;
-    this.retryPolicy = retryPolicy;
+    this.terms = terms;
     this.clock = clock;
   }
 
   /**
    * The bound tool's approval terms, falling back to the harness-wide ones.
    *
-   * <p>Generous by nature where a person is on the other end, and unrelated to what the tool itself
-   * is worth waiting for: a build that takes five minutes may be waved through in milliseconds, and
-   * a one-second lookup may wait an hour for somebody to read the question.
+   * <p>Delegated to {@link EffectTermsSource}, which is what the direct door will ask without
+   * building a handler at all.
    */
   @Override
   public EffectTerms termsFor(AgentEffect.Approve effect) {
-    return tools
-        .find(effect.toolName())
-        .<EffectTerms>map(
-            binding ->
-                new AskingTerms(
-                    effect.callId(), binding.approvalTimeout(), binding.approvalRetryPolicy()))
-        .orElseGet(() -> new AskingTerms(effect.callId(), timeout, retryPolicy));
+    return terms.termsFor(effect);
   }
 
   @Override
@@ -200,28 +188,5 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
         yield new Awaited.Deferred<>();
       }
     };
-  }
-
-  /**
-   * One question's terms, and the two failures the call might be discharged with.
-   *
-   * <p>Both are {@code ToolFailed} rather than {@code ToolDenied}: nobody said no. Claiming a
-   * denial when the question never arrived would tell the model it was refused by somebody who
-   * never saw it.
-   */
-  private record AskingTerms(CallId callId, Duration timeout, RetryPolicy retryPolicy)
-      implements EffectTerms {
-
-    @Override
-    public EffectOutcome undispatchable() {
-      return new EffectOutcome.ToolFailed(
-          callId, "the call could not be authorised, so it was not run");
-    }
-
-    @Override
-    public EffectOutcome failed(RuntimeException cause) {
-      return new EffectOutcome.ToolFailed(
-          callId, "the call could not be authorised: " + cause.getMessage());
-    }
   }
 }

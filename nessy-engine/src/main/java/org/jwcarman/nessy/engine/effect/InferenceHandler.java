@@ -15,20 +15,17 @@
  */
 package org.jwcarman.nessy.engine.effect;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Narration;
-import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
 import org.jwcarman.nessy.engine.core.ActionRequest;
 import org.jwcarman.nessy.engine.inference.InferenceInvocation;
 import org.jwcarman.nessy.engine.inference.InferenceService;
-import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.block.Block;
@@ -50,15 +47,14 @@ import org.slf4j.LoggerFactory;
  * turn, so an escaping exception would leave it waiting on an answer nothing will ever bring. What
  * used to be a catch block one frame from the throw is now a case label the compiler checks.
  */
-public class InferenceHandler implements EffectHandler<AgentEffect.Infer>, EffectTerms {
+public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
 
   private static final Logger log = LoggerFactory.getLogger(InferenceHandler.class);
 
   private final AgentType agentType;
   private final InferenceService inference;
   private final InferenceOptions options;
-  private final Duration timeout;
-  private final RetryPolicy retryPolicy;
+  private final EffectTermsSource terms;
 
   /** Where what the model said goes, so that what reaches the fold is a reference to it. */
   private final PayloadStore payloads;
@@ -69,55 +65,26 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer>, Effec
       AgentType agentType,
       InferenceService inference,
       InferenceOptions options,
-      Duration timeout,
-      RetryPolicy retryPolicy,
+      EffectTermsSource terms,
       PayloadStore payloads,
       Narrator narrator) {
     this.agentType = agentType;
     this.inference = inference;
     this.options = options;
-    this.timeout = timeout;
-    this.retryPolicy = retryPolicy;
+    this.terms = terms;
     this.payloads = payloads;
     this.narrator = Objects.requireNonNull(narrator, "narrator must not be null");
   }
 
-  /** Uniform: one agent type calls one model on one set of terms. */
+  /**
+   * Uniform: one agent type calls one model on one set of terms.
+   *
+   * <p>Delegated to {@link EffectTermsSource}, which is what the direct door will ask without
+   * building a handler at all.
+   */
   @Override
   public EffectTerms termsFor(AgentEffect.Infer effect) {
-    return this;
-  }
-
-  @Override
-  public Duration timeout() {
-    return timeout;
-  }
-
-  /**
-   * Widened by most applications. A provider's 503 is the canonical retryable failure, and an
-   * inference that never reached one changed nothing by being repeated.
-   */
-  @Override
-  public RetryPolicy retryPolicy() {
-    return retryPolicy;
-  }
-
-  /**
-   * Unknown, and honestly so. An inference that failed on its own terms never reaches here --
-   * {@link InferenceService} is total for those and they arrive as {@link InferenceResult.Fault}
-   * below. What lands here is anything else that threw: a fold that would not commit, a bug in this
-   * class. Nobody found out whether the call happened.
-   */
-  @Override
-  public EffectOutcome failed(RuntimeException cause) {
-    return new EffectOutcome.InferenceFailed(
-        new Failure.Unknown(String.valueOf(cause.getMessage())));
-  }
-
-  @Override
-  public EffectOutcome undispatchable() {
-    return new EffectOutcome.InferenceFailed(
-        new Failure.Permanent("the inference could not be dispatched"));
+    return terms.termsFor(effect);
   }
 
   @Override
