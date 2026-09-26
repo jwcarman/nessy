@@ -23,6 +23,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.store.TurnHistory;
@@ -37,7 +38,6 @@ import org.jwcarman.nessy.inference.TurnId;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.turn.Summary;
 import org.jwcarman.nessy.inference.turn.Turn;
-import org.jwcarman.nessy.spi.lock.Locks;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

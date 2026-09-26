@@ -31,7 +31,7 @@
   <artifactId>nessy-example-watchman</artifactId>
   <name>Nessy Example: Watchman</name>
   <description>The watchman on the durable engine. NO LONGER A SPIKE: as of 2026-08-28 the design
-    here is the design of record rather than a comparison. It depends on nessy-spi, nessy-agent and
+    here is the design of record rather than a comparison. It depends on nessy-engine, nessy-agent and
     nessy-model-openai deliberately — the transcript, memory fold, substrate and model client are
     Nessy's and are reused rather than reinvented. An earlier description claimed the opposite on
     both counts.</description>
@@ -109,17 +109,6 @@
   </dependencyManagement>
 
   <dependencies>
-    <!-- THE TRANSCRIPT IS NESSY'S, NOT OURS. The soak measured the cost of embedding it in the
-         durable state (14x growth in 64 minutes, every revision rewriting the whole document), and
-         the fix is an append-only journal, which Nessy already has. nessy-spi's Substrate gives
-         its own purpose-built tables over a DataSource;
-         puts it on the DataSource Spring already owns. Writing a second journal by hand would have
-         been strictly worse. -->
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spi</artifactId>
-      <version>${project.version}</version>
-    </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-spring-boot-starter</artifactId>

@@ -21,7 +21,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
-import org.jwcarman.nessy.spi.lock.Locks;
+import org.jwcarman.nessy.backend.lock.Locks;
 
 /**
  * Locks held in this process and nowhere else.

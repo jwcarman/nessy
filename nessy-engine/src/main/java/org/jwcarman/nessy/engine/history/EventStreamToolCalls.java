@@ -20,13 +20,13 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.engine.core.AgentEvent;
-import org.jwcarman.nessy.engine.core.AgentEvents;
+import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.backend.event.AgentEvents;
+import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.spi.store.Payloads;
 
 /**
  * The call a model asked for, found in the request that asked for it.

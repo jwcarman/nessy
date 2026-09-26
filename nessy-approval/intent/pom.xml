@@ -43,9 +43,11 @@
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-api</artifactId>
     </dependency>
+    <!-- Test only: Schemas.initialize, which applies the schema the way an application would. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-spi</artifactId>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>tools.jackson.core</groupId>

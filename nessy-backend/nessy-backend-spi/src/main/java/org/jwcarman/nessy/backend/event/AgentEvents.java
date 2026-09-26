@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.engine.core;
+package org.jwcarman.nessy.backend.event;
 
 import java.time.Instant;
 import java.util.List;
@@ -35,10 +35,9 @@ import org.jwcarman.nessy.inference.Seq;
  * crash, and wrong in a way nothing detects. Finding it costs reading backwards to the nearest
  * {@link AgentEvent.TurnStarted}, which is one turn's worth of rows.
  *
- * <p><b>TODO -- this belongs in {@code nessy-spi}</b>, beside {@code Payloads}. It cannot go there
- * yet: it is typed on {@link AgentEvent}, which carries a {@code Failure}, which lives in the SPI
- * -- so the move waits on {@code Failure} being lifted to {@code nessy-api}, which the design
- * record already has planned for other reasons.
+ * <p>Lives in {@code nessy-backend-spi}, beside {@link org.jwcarman.nessy.backend.payload.Payloads}
+ * and {@link org.jwcarman.nessy.backend.lock.Locks}: it is typed on {@link AgentEvent}, and a
+ * backend cannot implement this without seeing the grammar it is asked to store.
  */
 public interface AgentEvents {
 
@@ -58,7 +57,7 @@ public interface AgentEvents {
   /**
    * The last turn that started, and everything after it.
    *
-   * <p>What a harness replays onto {@link AgentState#idle} to find out where an agent is, and the
+   * <p>What a harness replays onto its state's idle fold to find out where an agent is, and the
    * answer is whatever state comes back: a turn that ended leaves it idle, one that did not leaves
    * it where it stopped, and an agent that was ended comes back terminated. Nothing here has to
    * know which of those happened -- that is the fold's job, and asking it is the whole of this

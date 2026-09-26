@@ -29,7 +29,7 @@
 
   <artifactId>nessy-spi</artifactId>
   <name>Nessy SPI</name>
-  <description>What an integrator implements: where state lives, and how payloads are encoded. Deliberately free of the message vocabulary, so it can be shared without dragging the API in.</description>
+  <description>The JDBC schema bootstrap: gathers every module's own nessy-schema.sql off the classpath and runs it. Everything that used to share this module with Schemas -- Locks, Payloads, the event grammar, narration -- has moved to nessy-backend-spi or nessy-api; this is what is left until Schemas itself moves to a nessy-backend-jdbc module.</description>
 
   <dependencies>
     <dependency>

@@ -43,12 +43,12 @@
       <artifactId>nessy-api</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- The plan reaches the model as a pipeline stage; without one it is a store nothing reads. -->
-    <!-- Only SubstratePlanStore needs this. The vocabulary above it needs nothing. -->
+    <!-- Test only: Schemas.initialize, which applies the schema the way an application would. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-spi</artifactId>
       <version>${project.version}</version>
+      <scope>test</scope>
     </dependency>
     <!-- Real PostgreSQL: H2 coerces a UUID into a TEXT column that PostgreSQL refuses, and hid
          exactly that bug in this store. -->

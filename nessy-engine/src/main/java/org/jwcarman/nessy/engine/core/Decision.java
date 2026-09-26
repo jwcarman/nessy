@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.core;
 
 import java.util.List;
+import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 
 /**

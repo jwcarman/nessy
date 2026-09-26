@@ -24,12 +24,12 @@ import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
-import org.jwcarman.nessy.engine.core.AgentEvents;
+import org.jwcarman.nessy.backend.event.AgentEvents;
+import org.jwcarman.nessy.backend.lock.Locks;
+import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.inmemory.InMemoryLocks;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.lock.Locks;
-import org.jwcarman.nessy.spi.store.Payloads;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 

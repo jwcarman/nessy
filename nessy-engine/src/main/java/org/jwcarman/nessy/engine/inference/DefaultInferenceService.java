@@ -16,13 +16,13 @@
 package org.jwcarman.nessy.engine.inference;
 
 import java.util.List;
+import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.Toolset;
-import org.jwcarman.nessy.spi.narration.Narrator;
 
 /** Assemble, then send. The only thing that holds both halves at once, and it is one line. */
 public class DefaultInferenceService implements InferenceService {

@@ -13,11 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.narration;
-
-import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Narration;
+package org.jwcarman.nessy.api;
 
 /**
  * Where an agent says what it is doing.

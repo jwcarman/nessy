@@ -49,6 +49,12 @@ import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
  * unreserved in PostgreSQL, so a column named {@code key} passes there and fails here. One DDL file
  * per module serves every database only while both rules hold — which is why {@code SchemasTest}
  * runs real DDL against H2 rather than trusting anyone to remember them.
+ *
+ * <p><b>Staying here for now, not moving with the rest of {@code nessy-spi}.</b> This is
+ * JDBC-specific and belongs beside the tables it initializes, in a {@code nessy-backend-jdbc}
+ * module that does not exist yet -- it is a later stage of the backends design record. Eleven
+ * modules use this type today, so moving it is its own change rather than something to fold into
+ * the {@code Locks}/{@code Payloads}/event-grammar move that emptied the rest of {@code nessy-spi}.
  */
 public final class Schemas {
 

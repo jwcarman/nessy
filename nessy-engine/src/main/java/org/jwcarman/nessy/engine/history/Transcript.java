@@ -19,14 +19,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jwcarman.nessy.api.PayloadRef;
-import org.jwcarman.nessy.engine.core.AgentEvent;
+import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.turn.Exchange;
 import org.jwcarman.nessy.inference.turn.Input;
 import org.jwcarman.nessy.inference.turn.ToolOutcome;
 import org.jwcarman.nessy.inference.turn.Turn;
 import org.jwcarman.nessy.inference.turn.TurnResult;
-import org.jwcarman.nessy.spi.store.Payloads;
 
 /**
  * The event stream, read back as the conversation a model is shown.

@@ -24,7 +24,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
-import org.jwcarman.nessy.spi.narration.Narrator;
+import org.jwcarman.nessy.api.Narrator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

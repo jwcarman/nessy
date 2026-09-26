@@ -31,8 +31,8 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.spi.lock.Locks;
-import org.jwcarman.nessy.spi.lock.Locks.Attempt;
+import org.jwcarman.nessy.backend.lock.Locks;
+import org.jwcarman.nessy.backend.lock.Locks.Attempt;
 
 @DisplayName("Locks held in this process")
 class InMemoryLocksTest {

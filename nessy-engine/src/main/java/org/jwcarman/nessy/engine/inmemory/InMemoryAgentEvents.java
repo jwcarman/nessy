@@ -23,8 +23,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.engine.core.AgentEvent;
-import org.jwcarman.nessy.engine.core.AgentEvents;
+import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.inference.Seq;
 
 /**

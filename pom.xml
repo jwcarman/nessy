@@ -58,6 +58,7 @@
     
     <module>nessy-api</module>
     <module>nessy-spi</module>
+    <module>nessy-backend</module>
     <module>nessy-engine</module>
     <module>nessy-lease</module>
     <module>nessy-prompt</module>
@@ -400,6 +401,11 @@
       <dependency>
         <groupId>org.jwcarman.nessy</groupId>
         <artifactId>nessy-spi</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.nessy</groupId>
+        <artifactId>nessy-backend-spi</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

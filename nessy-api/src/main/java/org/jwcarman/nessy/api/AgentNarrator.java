@@ -13,9 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.narration;
+package org.jwcarman.nessy.api;
 
-import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 
 /**

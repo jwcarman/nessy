@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.narration;
+package org.jwcarman.nessy.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -22,9 +22,6 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 
 @DisplayName("Binding a narrator to an agent")

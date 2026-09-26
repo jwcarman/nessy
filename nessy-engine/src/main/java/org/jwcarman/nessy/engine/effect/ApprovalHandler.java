@@ -21,6 +21,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Narration;
+import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
@@ -30,7 +31,6 @@ import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.spi.narration.Narrator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

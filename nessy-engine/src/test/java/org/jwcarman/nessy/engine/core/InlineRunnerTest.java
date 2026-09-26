@@ -23,6 +23,8 @@ import java.util.Optional;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.backend.event.ActionRequest;
+import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.ToolName;
 

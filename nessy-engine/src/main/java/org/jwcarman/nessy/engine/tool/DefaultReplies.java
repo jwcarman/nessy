@@ -27,6 +27,7 @@ import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
 import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
@@ -34,7 +35,6 @@ import org.jwcarman.nessy.engine.store.Attempt;
 import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.tool.CallId;
-import org.jwcarman.nessy.spi.store.Payloads;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

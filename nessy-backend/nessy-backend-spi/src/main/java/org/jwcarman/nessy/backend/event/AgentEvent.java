@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.engine.core;
+package org.jwcarman.nessy.backend.event;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
@@ -34,6 +34,13 @@ import org.jwcarman.nessy.inference.tool.CallId;
  *
  * <p>Two scopes live here. Most events belong to a turn and carry its id; {@link Terminated}
  * belongs to the agent's life and sits between turns.
+ *
+ * <p><b>This grammar is public backend SPI.</b> {@link
+ * org.jwcarman.nessy.backend.event.AgentEvents} is what a backend implements, and it is typed on
+ * this interface -- a backend cannot store what it cannot see, and {@code JdbcAgentEvents}
+ * genuinely inspects arms (it writes a {@code starts_turn} column by asking whether an event is a
+ * {@link TurnStarted}). So from here on, adding an arm to this sealed interface is a public API
+ * change, not an internal one; treat it with the same care as any other change to a published type.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({

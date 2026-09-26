@@ -21,7 +21,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
-import org.jwcarman.nessy.spi.lock.Locks;
+import org.jwcarman.nessy.backend.lock.Locks;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**

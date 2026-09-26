@@ -38,10 +38,18 @@
       <artifactId>nessy-api</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- The Locks contract EpisodeSummarizer serializes behind. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-backend-spi</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- Test only: Schemas.initialize, which applies the schema the way an application would. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-spi</artifactId>
       <version>${project.version}</version>
+      <scope>test</scope>
     </dependency>
     <!-- The story to summarise, and the lease that says whose turn it is to: both the engine's. -->
     <dependency>

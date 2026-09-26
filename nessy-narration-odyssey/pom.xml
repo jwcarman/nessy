@@ -69,11 +69,6 @@
       <version>${project.version}</version>
     </dependency>
     <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spi</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
       <groupId>org.jwcarman.odyssey</groupId>
       <artifactId>odyssey</artifactId>
     </dependency>

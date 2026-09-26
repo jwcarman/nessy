@@ -18,6 +18,8 @@ package org.jwcarman.nessy.engine.core;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jwcarman.nessy.backend.event.ActionRequest;
+import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.Outstanding;
 import org.jwcarman.nessy.inference.Seq;

@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
@@ -49,7 +50,6 @@ import org.jwcarman.nessy.inference.block.Block;
 import org.jwcarman.nessy.inference.tool.CallId;
 import org.jwcarman.nessy.inference.tool.InputSchema;
 import org.jwcarman.nessy.inference.tool.ToolName;
-import org.jwcarman.nessy.spi.narration.Narrator;
 import tools.jackson.databind.json.JsonMapper;
 
 /**

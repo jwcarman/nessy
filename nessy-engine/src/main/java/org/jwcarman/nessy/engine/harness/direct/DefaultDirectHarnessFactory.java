@@ -35,8 +35,10 @@ import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
-import org.jwcarman.nessy.engine.core.AgentEvent;
-import org.jwcarman.nessy.engine.core.AgentEvents;
+import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.backend.event.AgentEvents;
+import org.jwcarman.nessy.backend.lock.Locks;
+import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.effect.EffectTermsSource;
 import org.jwcarman.nessy.engine.inmemory.InMemoryAgentEvents;
 import org.jwcarman.nessy.engine.inmemory.InMemoryLocks;
@@ -47,8 +49,6 @@ import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.OutputSchema;
-import org.jwcarman.nessy.spi.lock.Locks;
-import org.jwcarman.nessy.spi.store.Payloads;
 import tools.jackson.databind.ObjectMapper;
 
 /**

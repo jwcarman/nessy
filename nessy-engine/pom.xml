@@ -105,6 +105,18 @@
       <artifactId>nessy-lease</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- The event grammar, AgentEvents/Locks/Payloads: what a backend implements, and what the
+         harnesses are typed on. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-backend-spi</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- Schemas, for the tests: nothing in this module's main code uses nessy-spi any more, but
+         the tests need Schemas.initialize to stand up a real schema against H2. Left at compile
+         scope rather than test scope because several downstream modules (the autoconfigure and
+         console modules, notably) reach Schemas transitively through this dependency rather than
+         declaring their own; narrowing it here would silently break their compile. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-spi</artifactId>

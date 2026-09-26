@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.engine.agent;
 
 import java.util.Objects;
-import org.jwcarman.nessy.engine.core.ActionRequest;
+import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.inference.Seq;
 
 /**

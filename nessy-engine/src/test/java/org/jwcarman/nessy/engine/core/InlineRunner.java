@@ -25,6 +25,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.UnaryOperator;
 import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.inference.Seq;
 import org.jwcarman.nessy.inference.tool.CallId;
