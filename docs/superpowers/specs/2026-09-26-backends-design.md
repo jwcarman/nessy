@@ -8,9 +8,11 @@ line). Every signature under "the design" is a proposal unless it says otherwise
 Date: 2026-09-26. Adjacent to `2026-09-25-locks-as-plumbing-design.md`, whose §11 measured the
 queued door's JDBC coupling and recommended a follow-on, whose §14 Q7 asked whether to widen, and
 whose §13b module split this record must land BEFORE (§9). It answers Q7 with a shape James gave
-rather than the store-shaped config §11 sketched. Two rulings made while this record was being
+rather than the store-shaped config §11 sketched. Three rulings made while this record was being
 written are folded in rather than appended: the store types take the plural name and lose the word
-"Store" (§3), and there is no single `JdbcBackend` (§5).
+"Store" (§3), there is no single `JdbcBackend` (§5), and a backend's contract states the door's
+semantics while "shared" and "durable" are two properties of an implementation, named by its type
+and not by a flag (§4a) — which closed what had been this record's last open question.
 
 ---
 
@@ -34,12 +36,15 @@ from the JDBC substrate work (`2026-09-04-durable-runtime-design.md`, and again 
 both-stores-or-neither rule arriving again"). It has been ruled twice; a configuration that lets it
 be broken is a configuration that lets a ruling be broken by accident.
 
-**The queued door is durable by definition.** Its premise, in its own javadoc, is that "a
-transaction takes the agent, folds a command, writes the events and the effects it decided on, and
-commits. Performing those effects happens afterwards and elsewhere." Work outlives the call that
-submitted it — that is "the whole reason this door exists and the whole reason it can wait hours
-for a person to approve something." An in-memory outbox is a queue that dies with the process, and
-an approval parked in it is an approval nobody will ever be able to answer.
+**The queued door's outbox and its events must match too.** The door's premise is not
+durability (§4a says what it is); but whatever the backing, the outbox and the story have to be
+the same backing, because a row in one names a state in the other. Durable events over an
+in-memory outbox: after a restart the story says `Inferring` and the row that would have brought
+the agent back is gone — no watchdog, no deadline recovery on this door, an agent stuck until
+somebody notices. An in-memory story over a durable outbox: the row comes due, is performed, and
+its outcome is folded into an agent that has no history, which the fold ignores by phase — a
+queue that faithfully delivers into nothing. Corrupt one way, pointless the other, exactly as with
+events and payloads.
 
 **Locks are the exception, and the dangerous one.** In-memory locks over JDBC stores are correct
 in one process and silently wrong in two: each process believes it holds the agent, both run a
@@ -246,6 +251,98 @@ interfaces is three signatures declared twice, which is the price of not asserti
 if a neutral supertype ever earns its place, the thing that would earn it is the TCK (§8e) wanting
 to run one shared suite for events, payloads and locks against every backend, and extracting it
 then would be evidence-driven rather than anticipated. It is not designed here.
+
+### 4a. What the contract says, and the two properties it does not: shared and durable
+
+A draft of this record asked whether `QueuedBackend` should carry the word "durable" — in its
+javadoc or its name — so that nobody wires an in-memory one into a service and waits hours for an
+approval that died with the process. James's answer came in two steps, and the second reframes the
+first.
+
+**Durability is not the essence of the queued door.** James: "the idea there is fire-and-forget
+semantics and we allow queueing of the inputs over time." The door's own javadoc in `nessy-api`
+already says exactly that and nothing else: "**It always accepts.** Telling an agent something
+cannot fail and cannot be refused: what arrives goes in the queue, and the queue is what makes the
+agent's own pace nobody else's problem. Nothing comes back, because there is nothing a caller could
+do with it -- by the time the turn runs, whoever spoke has gone." So the **contract** — what a
+`QueuedBackend` implementation must honour and what a TCK can test — is the door's promise: `tell`
+returns immediately and always accepts; inputs queue over time and coalesce per the harness's
+`BacklogPolicy`; the outcome arrives later, through the callback, not the caller. All of that holds
+over a map. Durability is not in it.
+
+**Then: "durability is the thing that makes it work in a distributed environment really well"**,
+and, asked about the two axes, "yes, it's sharable and durable." A database gives both at once,
+which is why they blur; they are different properties and only one of them is about distribution.
+
+| | **shared** — every instance sees the same rows | **durable** — survives a restart |
+|---|---|---|
+| `JdbcDirectBackend`, `JdbcQueuedBackend` | yes | yes |
+| `InMemoryDirectBackend` (and an in-memory queued one, if ever written) | no | no |
+| a filesystem backend on local disk | no | yes |
+
+*Shared* is what lets instance B's poller claim an effect instance A's `tell` wrote, and what lets
+a row lock exclude across machines. *Durable* is what lets an approval parked on a person be
+answered after a deploy. Each backend implementation in this record states its row in its class
+javadoc; the table is the whole of the rule.
+
+**The in-memory backend's real hazard, restated.** Its problem in a distributed deployment is not
+that it forgets — a single instance that forgets on restart is a legitimate configuration, and the
+console runs on one. It is that two instances would each run their own turns for the same agent,
+each believing it held that agent, because nothing either holds is visible to the other. That is
+the `InMemoryLocks` hazard the locks record documents at `DirectHarnessAutoConfiguration`'s
+`locks.getIfAvailable(InMemoryLocks::new)` and §1 above measures, now stated as a property of a
+whole backend rather than of one class: an in-memory backend is *unshared*, and unshared is the
+property that breaks exclusion, before durability is ever asked about.
+
+**The filesystem quadrant is the useful one in this framing.** Local disk is fully durable and not
+shared at all — so a filesystem `QueuedBackend` would buy the less useful half of what a database
+gives and would still be useless distributed: instance B cannot claim a file on instance A's disk,
+and a file lock excludes across processes on one machine only. That is a sharper argument against
+building one than the file-locking difficulty §8e records, and it is independent of it; both stand.
+
+**No capability flags.** A `boolean shared()` / `boolean durable()` — or a `Set<Capability>` —
+that the starter or a harness could query is machinery for a problem three implementations do not
+have. The type names carry it: `InMemoryQueuedBackend` is self-describing, `JdbcQueuedBackend` is
+self-describing, and a reader who has to be told by a method what the class name already says is
+not helped by the method. The javadoc says the rest. If a fourth implementation ever sits in a
+quadrant its name cannot say, that is the day to reconsider, with evidence.
+
+**Bounding is a policy concern, and already backend-agnostic.** `BacklogPolicy.bounded(int)` bounds
+a JDBC table exactly as it bounds a map — it reads `backlog.size()` and calls
+`backlog.dropOldest(...)` through the `Backlog<I>` interface and knows nothing about rows — so an
+in-memory backend does not need to invent a bound of its own, and `keepAll()` over JDBC carries the
+same unbounded exposure relocated to disk. Verified: `bounded` computes `waiting - max + 1`, drops
+that many oldest, then appends. So it **drops the oldest rather than applying backpressure**, and
+that is a named trade rather than a defect: it keeps `tell` "returns immediately" and "always
+accepts" by sacrificing an input, and its javadoc already calls this "bounded loss." Real
+backpressure would trade the first promise for the third — `tell` would block or refuse to keep
+every input — and the door would no longer be fire-and-forget. A backend cannot make that choice
+for the harness, and it should not try.
+
+**Prose this record's work has to rewrite**, found by reading the queued door's javadocs for a
+justification in terms of durability rather than fire-and-forget-plus-queueing:
+
+- `DefaultQueuedHarness`'s class javadoc: "**Nothing here holds a lock while a model is called.**
+  A transaction takes the agent, folds a command, writes the events and the effects it decided on,
+  and commits. Performing those effects happens afterwards and elsewhere; the answer comes back
+  through `deliverOutcome` as a second transaction. That is the whole reason this door exists and
+  the whole reason it can wait hours for a person to approve something." The first sentence is
+  true and stays. "The whole reason this door exists" is the transaction, which is the JDBC
+  backend's property and not the door's; the door exists for fire-and-forget and queueing, and
+  "wait hours" is what a shared, durable backend adds. The paragraph is rewritten in the step that
+  hands the harness a backend, and the following "**Transactions are explicit**" paragraph goes
+  with the `TransactionTemplate` in the locks record's §13a step 5.
+- `QueuedHarnessFactory`'s javadoc (`nessy-api`): "this supplies the stores, the transaction
+  template, the scheduler, the codec factory, and the provider and model" — not a durability claim,
+  but it names the transaction template (going) and the stores (now a backend). Rewritten in the
+  same step.
+- `QueuedHarness`'s javadoc is already the contract as ruled and is untouched. Its "Everything an
+  agent type needs -- its codec, its renderer, its transactions, the callback ... is behind an
+  implementation a caller cannot reach" mentions transactions as one of the hidden things, which
+  stays true: they are hidden inside `locks()`.
+
+Nothing in `nessy-api` justifies the queued door by durability. The one place that did is the
+engine's own class, and it is on the list.
 
 ---
 
@@ -623,7 +720,8 @@ across processes over a directory means file locking that reimplements `FOR UPDA
 and "due rows of one type, oldest first" means either scanning every file or maintaining an index
 that can go stale. James's "memory, postgres, and file system" is right for the direct door and
 should be read as "memory and postgres" for the queued one until somebody wants the third badly
-enough to build the queue.
+enough to build the queue — and §4a adds the independent reason that even a built one would be
+durable without being shared, which is the half a queue does not need.
 
 ---
 
@@ -670,6 +768,16 @@ TCK → §13a 6–7 → §13b.
 
 ## 10. Open questions for James
 
+**Closed since the first draft, and no longer asked:** whether `QueuedBackend`'s contract should
+carry "durable." The draft's worry was that an in-memory `QueuedBackend` could pass a TCK and still
+not be a queued door in the sense the door's javadoc promised. The answer (§4a) is that the door
+never promised durability — its contract is fire-and-forget plus queueing, which an in-memory
+backend honours in full — and that "shared" and "durable" are two properties of an
+*implementation*, of which only the first is about distribution. The contract states the door's
+semantics; the type name says which quadrant an implementation sits in; the javadoc says what that
+costs; and there are no capability flags. The engine's one javadoc that justified the door by its
+transaction is on §4a's rewrite list.
+
 1. **`Outbox` as the name of the per-agent-type wrapper** (§3), so that the row store can be
    `Effects`. The word is already the design vocabulary's ("inbox-outbox" record, three javadocs,
    the schema); it has never been a type name. Yes?
@@ -698,13 +806,3 @@ TCK → §13a 6–7 → §13b.
    for this record's landing or a follow-on once `JdbcDirectBackend` and `InMemoryDirectBackend`
    both exist to be held to it. The record says follow-on: two implementations of `DirectBackend`
    are enough to justify it and one of `QueuedBackend` is not.
-8. **The doubt, stated rather than smoothed.** §8b found that the outbox's correctness rests on
-   per-statement atomicity plus the fold's idempotence, not on a transaction, which is what makes
-   `Effects` a contract rather than a table. But the *queued door's* correctness still rests on
-   `insert` being inside the fold's transaction, and that transaction is a property of
-   `JdbcRowLocks`, not of `QueuedBackend`. So `QueuedBackend` can be implemented in memory and pass
-   a TCK, and still not be a *queued door* in the sense the door's javadoc promises, because the
-   promise is durability and the interface cannot say so. Is that acceptable — an interface whose
-   in-memory implementation exists to prove the contract and is documented as not a deployment —
-   or should `QueuedBackend`'s javadoc, or its name, carry the word "durable" so that nobody wires
-   the in-memory one into a service and waits hours for an approval that died with the process?
