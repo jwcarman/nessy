@@ -25,12 +25,12 @@ import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
-import org.jwcarman.nessy.engine.direct.DefaultDirectHarnessFactory;
-import org.jwcarman.nessy.engine.direct.DirectHarnessFactoryConfig;
-import org.jwcarman.nessy.engine.direct.InMemoryLocks;
+import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
+import org.jwcarman.nessy.engine.harness.direct.DirectHarnessFactoryConfig;
+import org.jwcarman.nessy.engine.inmemory.InMemoryLocks;
+import org.jwcarman.nessy.engine.jdbc.JdbcAgentEvents;
+import org.jwcarman.nessy.engine.jdbc.JdbcPayloads;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
-import org.jwcarman.nessy.engine.store.JdbcAgentEventStore;
-import org.jwcarman.nessy.engine.store.JdbcPayloadStore;
 import org.jwcarman.nessy.spi.lock.Locks;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
@@ -94,8 +94,8 @@ public class DirectHarnessAutoConfiguration {
         config ->
             config
                 .locks(locks.getIfAvailable(InMemoryLocks::new))
-                .events(new JdbcAgentEventStore(jdbc, codecs))
-                .payloads(new JdbcPayloadStore(jdbc, codecs))
+                .events(new JdbcAgentEvents(jdbc, codecs))
+                .payloads(new JdbcPayloads(jdbc, codecs))
                 .provider(models)
                 .schemas(schemas.getIfAvailable(VictoolsInputSchemaGenerator::new))
                 .mapper(mapper));

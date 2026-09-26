@@ -21,7 +21,7 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
-import org.jwcarman.nessy.engine.direct.DefaultDirectHarnessFactory;
+import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.block.Block;

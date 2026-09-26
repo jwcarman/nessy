@@ -1,0 +1,171 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.engine.harness.queued;
+
+import io.micrometer.observation.ObservationRegistry;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import javax.sql.DataSource;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.engine.tool.ReplyTokens;
+import org.jwcarman.nessy.engine.trace.TraceCarrier;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceProvider;
+
+/**
+ * What an engine needs from the application, and what it will assume if not told.
+ *
+ * <p><b>Two required things: somewhere to keep agents and something to ask.</b> The rest are
+ * application facts with defaults: who hears what agents do, where spans go, which keys seal a
+ * reply token, what is done to the bytes it stores. Anything an agent type might tune -- timeouts,
+ * retries, the context it is shown -- has its default in the engine and is overridden on the
+ * harness that wants otherwise.
+ *
+ * <p><b>Nothing here is the engine's own plumbing.</b> How rows are encoded, how tool arguments are
+ * described to a model, how tokens are estimated, which transaction manager wraps a fold and which
+ * thread looks for due work are all decided by the engine from the {@code DataSource} -- they used
+ * to be knobs, and every caller set them to the same thing, which is what a knob that should not
+ * exist looks like.
+ *
+ * <p>Customizer-shaped, like {@link org.jwcarman.nessy.api.QueuedHarnessConfig} and the configs
+ * beneath it: an application says what it wants and stays silent about the rest.
+ */
+public final class QueuedHarnessFactoryConfig {
+
+  private DataSource dataSource;
+  private InferenceProvider provider;
+  private InferenceOptions options;
+  private final List<NarrationListener> listeners = new ArrayList<>();
+  private ObservationRegistry observations = ObservationRegistry.NOOP;
+  private TraceCarrier traceCarrier;
+  private ReplyTokens replyTokens;
+  private Codec<byte[]> storage;
+
+  QueuedHarnessFactoryConfig() {}
+
+  /** Where agents, their stories and their outstanding work are kept. Required. */
+  public QueuedHarnessFactoryConfig dataSource(DataSource dataSource) {
+    this.dataSource = dataSource;
+    return this;
+  }
+
+  /**
+   * The model every agent type talks to, and the terms it is asked on.
+   *
+   * <p>One provider for the engine because a provider is a connection; which model to call travels
+   * per request, so an agent type wanting a different one overrides it on its harness.
+   */
+  public QueuedHarnessFactoryConfig inference(
+      InferenceProvider provider, InferenceOptions options) {
+    this.provider = provider;
+    this.options = options;
+    return this;
+  }
+
+  /**
+   * Somebody who hears what every agent of every harness does. Repeatable; defaults to nobody,
+   * because narration costs a line per event and nobody asked. A harness adds its own with {@code
+   * QueuedHarnessConfig.listener(...)}.
+   */
+  public QueuedHarnessFactoryConfig listener(NarrationListener listener) {
+    listeners.add(Objects.requireNonNull(listener, "listener must not be null"));
+    return this;
+  }
+
+  /**
+   * Where spans go. Defaults to {@link ObservationRegistry#NOOP}, which is the whole of switching
+   * tracing off: no carrier is captured, no column is written, no span is opened.
+   */
+  public QueuedHarnessFactoryConfig observations(ObservationRegistry observations) {
+    this.observations = Objects.requireNonNull(observations, "observations must not be null");
+    return this;
+  }
+
+  /**
+   * How the trace in force is written beside an effect without a span of its own. Defaults to
+   * opening a momentary {@code nessy.effect.emit} span, which is the only way an input can have
+   * headers written for it; a tracing library can do it directly, and the Boot starter hands one
+   * in.
+   */
+  public QueuedHarnessFactoryConfig traceCarrier(TraceCarrier traceCarrier) {
+    this.traceCarrier = Objects.requireNonNull(traceCarrier, "traceCarrier must not be null");
+    return this;
+  }
+
+  /**
+   * How a deferred answer finds its way back. Defaults to a key that dies with this process, so an
+   * approval parked on a person becomes unanswerable after a restart -- fine for a test, and the
+   * reason an application configures one.
+   */
+  public QueuedHarnessFactoryConfig replyTokens(ReplyTokens replyTokens) {
+    this.replyTokens = replyTokens;
+    return this;
+  }
+
+  /**
+   * What happens to every byte the engine stores, after Jackson has written it and before Jackson
+   * reads it back: compression, encryption, both, composed with {@link Codec#andThen}. Defaults to
+   * nothing. Fixed for the life of the data: rows written under one transform are unreadable under
+   * another, which is the same fact as an encryption key.
+   */
+  public QueuedHarnessFactoryConfig storage(Codec<byte[]> transform) {
+    this.storage = Objects.requireNonNull(transform, "transform must not be null");
+    return this;
+  }
+
+  // ---- what the factory reads ------------------------------------------------------------
+
+  DataSource requiredDataSource() {
+    return Objects.requireNonNull(
+        dataSource,
+        "an engine needs a DataSource: agents, their stories and their outstanding work are all"
+            + " rows, and there is nowhere to keep them");
+  }
+
+  InferenceProvider requiredProvider() {
+    return Objects.requireNonNull(
+        provider,
+        "an engine needs an InferenceProvider: it is the thing an agent asks, and there is"
+            + " nothing to ask without one");
+  }
+
+  InferenceOptions requiredOptions() {
+    return Objects.requireNonNull(options, "inference(provider, options) needs both");
+  }
+
+  List<NarrationListener> listeners() {
+    return List.copyOf(listeners);
+  }
+
+  ObservationRegistry observations() {
+    return observations;
+  }
+
+  Optional<TraceCarrier> traceCarrier() {
+    return Optional.ofNullable(traceCarrier);
+  }
+
+  Optional<Codec<byte[]>> storage() {
+    return Optional.ofNullable(storage);
+  }
+
+  ReplyTokens replyTokens() {
+    return replyTokens != null ? replyTokens : ReplyTokens.ephemeral();
+  }
+}

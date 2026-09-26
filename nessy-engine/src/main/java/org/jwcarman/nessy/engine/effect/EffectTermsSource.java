@@ -39,7 +39,7 @@ import org.jwcarman.nessy.inference.tool.CallId;
  * needs.
  *
  * <p>The three {@code termsFor} overloads are public rather than package-private: the direct door
- * lives in {@code engine.direct} and asks this same question of the same code, so the
+ * lives in {@code engine.harness.direct} and asks this same question of the same code, so the
  * phase-to-timeout mapping stays out of both doors rather than being duplicated into a second
  * resolver.
  */

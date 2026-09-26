@@ -24,6 +24,7 @@ import org.jwcarman.nessy.engine.agent.AgentEffect;
 import org.jwcarman.nessy.engine.agent.EffectOutcome;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
+import org.jwcarman.nessy.engine.jdbc.JdbcEffects;
 
 /**
  * One agent type's view of the outbox: what this agent type owes the outside world.

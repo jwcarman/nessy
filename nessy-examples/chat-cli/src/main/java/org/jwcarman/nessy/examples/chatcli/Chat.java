@@ -23,7 +23,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.Repl;
-import org.jwcarman.nessy.engine.direct.DefaultDirectHarnessFactory;
+import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
