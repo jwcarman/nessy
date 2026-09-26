@@ -44,13 +44,25 @@ context-pipeline reform.)
 - **Build economics**: `clean verify` on the whole reactor is the FINAL GATE,
   run ONCE per task before its last commit — never per step. While iterating,
   use warm scoped builds: `./mvnw -q -pl :<artifactId> -am test` (no `clean`).
-  **Select by artifactId, with the colon** — `-pl :nessy-model-openai`, never
-  `-pl nessy-model/openai`. The path form breaks whenever a module moves; the
+  **Select by artifactId, with the colon** — `-pl :nessy-inference-openai`, never
+  `-pl nessy-inference/openai`. The path form breaks whenever a module moves; the
   artifactId form does not, and modules live under family directories
-  (`nessy-model/`, `nessy-memory/`, `nessy-spring-boot/`, `nessy-examples/`).
+  (`nessy-inference/`, `nessy-backend/`, `nessy-memory/`, `nessy-spring-boot/`,
+  `nessy-examples/`). Pass `-am` whenever the change touches a module the selected
+  one depends on: without it a stale jar in `~/.m2` shadows the source and you get
+  "cannot find symbol" for a type you are looking at.
   Never run two Maven processes concurrently in one worktree (they collide on
-  `target/`). Parallel reactor builds (`-T 1C`) are permitted once verified
-  green in a worktree.
+  `target/`, and the resulting errors name modules you never touched). Parallel
+  reactor builds (`-T 1C`) are permitted once verified green in a worktree.
+- **Database tests are excluded by default.** `nessy.excludedGroups` defaults to
+  `live,container`, so a plain `clean verify` skips every `@Tag("container")`
+  test — which is most of the `engine.jdbc` suite and `DurableDirectHarnessTest`.
+  Anything touching JDBC, locks or the backends gates on
+  `./mvnw -q clean verify -Dnessy.excludedGroups=live`, which keeps the
+  token-spending tests out and lets the Testcontainers ones run.
+- `spotless:check` runs BEFORE compilation, so one unformatted file reports as a
+  build failure with no compiler output at all. Run `spotless:apply` before
+  reading errors.
 - **Required before every push**: `./mvnw spotless:apply license:format`. Every source file
   carries the Apache header, and the formatting is google-java-format; both are enforced, so a
   push that skips this fails CI at its first job. `./mvnw spotless:check license:check` is what
