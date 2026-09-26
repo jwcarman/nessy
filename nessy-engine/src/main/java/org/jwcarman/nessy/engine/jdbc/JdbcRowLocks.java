@@ -29,15 +29,16 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * A {@link Locks} whose exclusion is a Postgres row lock, held for exactly one transaction.
+ * A {@link Locks} whose exclusion is a Postgres advisory lock, held for exactly one transaction.
  *
  * <p>A lease is approximate: its row says who holds it and until when, because the process that
  * took it can die without telling anyone, and a caller checking that row is trusting a fact that
- * may already be stale. A row lock has none of that trouble. {@code SELECT ... FOR UPDATE} is held
- * by a transaction and released by the database the moment that transaction ends -- committed,
- * rolled back, or its connection simply dropped -- so there is no stale holder to fence against and
- * nothing for a time-to-live to bound. {@code nessy_lock} therefore has neither a {@code holder}
- * column nor an {@code expires_at}: a row lock IS the holder, for as long as it is one.
+ * may already be stale. {@code pg_advisory_xact_lock} has none of that trouble. It is held by a
+ * transaction and released by the database the moment that transaction ends -- committed, rolled
+ * back, or its connection simply dropped -- so there is no stale holder to fence against and
+ * nothing for a time-to-live to bound. Unlike a row lock, it needs no row to be true of: it is
+ * taken against a 64-bit key computed from the {@code (kind, type, agent)} triple, with nothing to
+ * insert, ensure, or ever clean up.
  *
  * <p><b>{@link #withLock} absorbs the transaction.</b> There is no separate seam for one: taking
  * the lock, running the work, and committing all happen inside the one transaction this class
@@ -46,9 +47,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * the transaction.
  *
  * <p><b>Why two constructors.</b> The correctness of the lock depends on one setting: {@link
- * TransactionDefinition#PROPAGATION_REQUIRED}. The row lock and the work it guards -- an append, a
- * payload write, an outbox insert -- must commit as one transaction, or the lock is released before
- * the work it was guarding is durable and it will have guarded nothing. A {@code
+ * TransactionDefinition#PROPAGATION_REQUIRED}. The advisory lock and the work it guards -- an
+ * append, a payload write, an outbox insert -- must commit as one transaction, or the lock is
+ * released before the work it was guarding is durable and it will have guarded nothing. A {@code
  * TransactionTemplate} handed in by a caller could carry any propagation, isolation or timeout it
  * likes -- a template built with {@code REQUIRES_NEW}, for instance, would silently put the lock in
  * a transaction separate from the work, and nothing would fail, and nothing would be excluded. So
@@ -73,35 +74,39 @@ import org.springframework.transaction.support.TransactionTemplate;
  * the lock from the work it guards -- the very thing {@link #withLock} exists to prevent. Anyone
  * who finds a queue of waiters behind a slow request handler should look here first.
  *
- * <p><b>The row is ensured to exist in a transaction of its own.</b> {@code REQUIRES_NEW} rather
- * than the {@code REQUIRED} used everywhere else in this class: the ensure is idempotent
- * bookkeeping with nothing of the caller's in it and nothing to keep atomic with anything else -- a
- * row with no columns but the key. Committing it immediately, on its own, before the lock-and-work
- * transaction opens means the row is never left uncommitted for the length of a turn. This holds
- * regardless of whether the caller already has an ambient transaction open -- {@code REQUIRES_NEW}
- * suspends it for the ensure and resumes it afterward, so a caller nested inside its own
- * {@code @Transactional} method gets the same guarantee as one with no ambient transaction at all.
+ * <p><b>The key is a hash, and hashes can collide.</b> {@code pg_advisory_xact_lock} takes a single
+ * 64-bit integer, not a triple, so the {@code (kind, type, agent)} key is hashed down to one with
+ * {@code hashtextextended}. Two different triples can therefore land on the same 64-bit value and
+ * serialise against each other even though nothing about them is actually related. That is
+ * acceptable because a collision can only ever make two unrelated agents take turns behind the same
+ * lock -- it can never let two callers who share a real key both hold it, since equal keys always
+ * hash to the same value. A collision is a performance event, not a correctness one, and at 64 bits
+ * it is also a rare one.
+ *
+ * <p><b>The key is namespaced.</b> Advisory locks are scoped to a database, not to a schema or an
+ * application, so any other application sharing this database and calling {@code
+ * pg_advisory_xact_lock} with an unrelated key could, by coincidence, collide with this class's
+ * locks. The {@code "nessy:"} prefix folded into the key before it is hashed is what keeps this
+ * class's locks in their own namespace rather than sharing the whole database's advisory-lock space
+ * by accident.
+ *
+ * <p><b>Losing the table costs some observability, but less than it first appears.</b> {@code
+ * nessy_lock} let an operator enumerate held locks by reading a table -- but it never said WHO held
+ * one, since it had no holder column, so that table could only ever answer "is (kind, type, agent)
+ * locked," never "by what." {@code pg_locks} answers a narrower question the same way: it lists
+ * advisory locks by their hashed {@code objid}/{@code classid}, not by the triple that produced
+ * them, so there is no column to read a held lock's agent back out of. What still works is the
+ * question run forward instead of backward -- hash the {@code (kind, type, agent)} you already
+ * suspect with the same {@code "nessy:" + kind + "/" + type + "/" + agent} key and {@code
+ * hashtextextended(key, 0)} this class uses, and look for that value among granted locks in {@code
+ * pg_locks}.
  */
 public final class JdbcRowLocks implements Locks {
 
-  private static final String ENSURE =
-      """
-      INSERT INTO nessy_lock (kind, agent_type, agent_id)
-      VALUES (?, ?, ?)
-          ON CONFLICT DO NOTHING
-      """;
-
-  private static final String LOCK =
-      """
-      SELECT 1
-        FROM nessy_lock
-       WHERE kind = ? AND agent_type = ? AND agent_id = ?
-         FOR UPDATE
-      """;
+  private static final String LOCK = "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))";
 
   private final JdbcClient jdbc;
   private final TransactionTemplate transactions;
-  private final TransactionTemplate ensureTransaction;
 
   /**
    * For a caller that already coordinates its own transactions -- every Spring Boot application
@@ -114,9 +119,6 @@ public final class JdbcRowLocks implements Locks {
     TransactionTemplate template = new TransactionTemplate(transactions);
     template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
     this.transactions = template;
-    TransactionTemplate ensureTemplate = new TransactionTemplate(transactions);
-    ensureTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-    this.ensureTransaction = ensureTemplate;
   }
 
   /**
@@ -133,19 +135,18 @@ public final class JdbcRowLocks implements Locks {
     Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(agent, "agent must not be null");
     Objects.requireNonNull(work, "work must not be null");
-    ensureTransaction.executeWithoutResult(_ -> ensure(kind, type, agent));
     return transactions.execute(
         _ -> {
-          take(LOCK, kind, type, agent);
+          take(kind, type, agent);
           return work.get();
         });
   }
 
-  private void ensure(LockKind kind, AgentType type, AgentId agent) {
-    jdbc.sql(ENSURE).params(kind.value(), type.value(), agent.value()).update();
-  }
-
-  private void take(String sql, LockKind kind, AgentType type, AgentId agent) {
-    jdbc.sql(sql).params(kind.value(), type.value(), agent.value()).query(Integer.class).single();
+  private void take(LockKind kind, AgentType type, AgentId agent) {
+    String key = "nessy:" + kind.value() + "/" + type.value() + "/" + agent.value();
+    // pg_advisory_xact_lock returns void, so this is a query, not an update -- executeUpdate()
+    // rejects it with "A result was returned when none was expected." query() requires a non-null
+    // extractor result, so the extractor returns a throwaway value rather than the row's content.
+    jdbc.sql(LOCK).param(key).query(resultSet -> Boolean.TRUE);
   }
 }

@@ -18,6 +18,9 @@ package org.jwcarman.nessy.engine.jdbc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -177,6 +180,37 @@ class JdbcRowLocksTest {
   }
 
   @Test
+  @DisplayName(
+      "while a caller is inside its work, Postgres itself reports the advisory lock as granted")
+  void the_lock_is_visibly_granted_in_pg_locks_while_the_work_runs() throws Exception {
+    AgentId agent = AgentId.random();
+    CountDownLatch holding = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    Thread holder = holderOf(KIND, agent, holding, release);
+    holding.await();
+
+    long grantedAdvisoryLocks;
+    try (Connection observer = dataSource.getConnection();
+        PreparedStatement query =
+            observer.prepareStatement(
+                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted")) {
+      try (ResultSet resultSet = query.executeQuery()) {
+        resultSet.next();
+        grantedAdvisoryLocks = resultSet.getLong(1);
+      }
+    }
+
+    release.countDown();
+    holder.join();
+
+    assertThat(grantedAdvisoryLocks)
+        .as(
+            "the advisory lock outlasted the statement that took it -- it was still granted while"
+                + " the work it guards was running, not only for the instant of the SELECT")
+        .isPositive();
+  }
+
+  @Test
   @DisplayName("work that throws rolls back its writes and does not leave the lock held")
   void work_that_throws_rolls_back_and_releases() {
     AgentId agent = AgentId.random();
@@ -220,6 +254,100 @@ class JdbcRowLocksTest {
       String result = explicit.withLock(KIND, TYPE, AgentId.random(), () -> "ran");
 
       assertThat(result).isEqualTo("ran");
+    }
+  }
+
+  /**
+   * These measure Postgres itself, not {@link JdbcRowLocks} -- they exist because the design
+   * depends on three claims about {@code pg_advisory_xact_lock} and {@code hashtextextended} that
+   * are easy to assert and wrong to assume.
+   */
+  @Nested
+  @DisplayName("the advisory-lock primitive this class is built on")
+  class The_underlying_postgres_primitive {
+
+    private long hashOf(String key) throws Exception {
+      try (Connection connection = dataSource.getConnection();
+          PreparedStatement statement =
+              connection.prepareStatement("SELECT hashtextextended(?, 0)")) {
+        statement.setString(1, key);
+        try (ResultSet resultSet = statement.executeQuery()) {
+          resultSet.next();
+          return resultSet.getLong(1);
+        }
+      }
+    }
+
+    @Test
+    @DisplayName("hashtextextended of the same key is identical across two different connections")
+    void hashtextextended_agrees_across_connections() throws Exception {
+      String key = "nessy:turn/chat/" + AgentId.random().value();
+
+      long fromFirstConnection = hashOf(key);
+      long fromSecondConnection = hashOf(key);
+
+      assertThat(fromSecondConnection).isEqualTo(fromFirstConnection);
+    }
+
+    @Test
+    @DisplayName("the lock is released by a rollback, not only by a commit")
+    void the_lock_is_released_by_rollback() throws Exception {
+      long key = hashOf("nessy:turn/chat/" + AgentId.random().value());
+      try (Connection holder = dataSource.getConnection()) {
+        holder.setAutoCommit(false);
+        try (PreparedStatement take = holder.prepareStatement("SELECT pg_advisory_xact_lock(?)")) {
+          take.setLong(1, key);
+          take.execute();
+        }
+
+        holder.rollback();
+
+        try (Connection contender = dataSource.getConnection()) {
+          contender.setAutoCommit(false);
+          boolean acquired;
+          try (PreparedStatement tryTake =
+              contender.prepareStatement("SELECT pg_try_advisory_xact_lock(?)")) {
+            tryTake.setLong(1, key);
+            try (ResultSet resultSet = tryTake.executeQuery()) {
+              resultSet.next();
+              acquired = resultSet.getBoolean(1);
+            }
+          }
+          contender.rollback();
+
+          assertThat(acquired).as("the rolled-back holder's lock was released").isTrue();
+        }
+      }
+    }
+
+    @Test
+    @DisplayName("the lock is released when its connection is dropped without commit or rollback")
+    void the_lock_is_released_when_the_connection_is_dropped() throws Exception {
+      long key = hashOf("nessy:turn/chat/" + AgentId.random().value());
+      Connection holder = dataSource.getConnection();
+      holder.setAutoCommit(false);
+      try (PreparedStatement take = holder.prepareStatement("SELECT pg_advisory_xact_lock(?)")) {
+        take.setLong(1, key);
+        take.execute();
+      }
+
+      holder.close();
+
+      try (Connection contender = dataSource.getConnection()) {
+        contender.setAutoCommit(false);
+        boolean acquired;
+        try (PreparedStatement tryTake =
+            contender.prepareStatement("SELECT pg_try_advisory_xact_lock(?)")) {
+          tryTake.setLong(1, key);
+          try (ResultSet resultSet = tryTake.executeQuery()) {
+            resultSet.next();
+            acquired = resultSet.getBoolean(1);
+          }
+        }
+        contender.rollback();
+
+        assertThat(acquired).as("the dropped connection's lock was released").isTrue();
+      }
     }
   }
 }

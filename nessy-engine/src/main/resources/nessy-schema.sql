@@ -137,22 +137,17 @@ CREATE TABLE IF NOT EXISTS nessy_agent_event
 CREATE INDEX IF NOT EXISTS nessy_agent_event_turn_starts
     ON nessy_agent_event (agent_id, seq DESC) WHERE starts_turn;
 
--- A row to hold, for exclusion that is exact rather than approximate.
+-- An agent lock has no table. It is a Postgres advisory lock, taken with
+-- pg_advisory_xact_lock on a hash of (kind, agent type, agent id) and released by the database
+-- when the transaction ends -- committed, rolled back, or its connection simply dropped. There is
+-- no stale holder to fence against and nothing for an expiry to time, which is the same argument
+-- the row this replaces was making; the row was only ever something for FOR UPDATE to point at,
+-- carried no data, and was never deleted. A lease still needs its own table, and the difference is
+-- the whole distinction between the two: a lease must outlive the process that took it, so it is a
+-- fact to store; a lock exists only while a transaction is running, so there is nothing to keep.
 --
--- Taken with SELECT ... FOR UPDATE, exactly like nessy_agent above, and for the same reason: a row
--- lock is held by a transaction and released by the database the instant that transaction ends,
--- including when its connection simply drops, so there is no stale holder to fence against and
--- nothing for an expiry to time. That is why this table has neither a holder column nor an
--- expires_at -- the transaction holding the row IS the holder, for as long as it is one. A lease
--- needs both columns precisely because it is the mechanism that cannot know whether its holder is
--- still alive; a row lock never has to ask.
-CREATE TABLE IF NOT EXISTS nessy_lock
-(
-    kind       VARCHAR(64) NOT NULL,
-    agent_type VARCHAR(64) NOT NULL,
-    agent_id   UUID        NOT NULL,
-    PRIMARY KEY (kind, agent_type, agent_id)
-);
+-- An existing database keeps its now-unused nessy_lock table; nothing reads it, and this file has
+-- never destroyed anything.
 
 -- Work offered to an agent that is busy, waiting its turn.
 --
