@@ -31,6 +31,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
+import org.jwcarman.nessy.backend.inmemory.InMemoryQueuedBackend;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -103,8 +104,10 @@ class NessyAutoConfigurationTest {
    * {@code NessyAutoConfiguration} itself declares nothing that needs a {@code DataSource} any
    * more.
    *
-   * <p>There is no in-memory {@code QueuedBackend}, so the queued door simply does not appear --
-   * nothing here fails over it, because nothing asked for it.
+   * <p>Both doors, not just the direct one: the queued door's backend is in memory too now, so an
+   * application with no database still gets the door that writes work down and picks it up later.
+   * Nothing it writes survives a restart, which is what makes it a test's backend and not a
+   * production one.
    */
   @Test
   @DisplayName("with no DataSource, the in-memory backend takes over and the context starts")
@@ -127,7 +130,9 @@ class NessyAutoConfigurationTest {
               assertThat(context).hasSingleBean(DirectBackend.class);
               assertThat(context.getBean(DirectBackend.class))
                   .isInstanceOf(InMemoryDirectBackend.class);
-              assertThat(context).doesNotHaveBean(QueuedBackend.class);
+              assertThat(context).hasSingleBean(QueuedBackend.class);
+              assertThat(context.getBean(QueuedBackend.class))
+                  .isInstanceOf(InMemoryQueuedBackend.class);
             });
   }
 

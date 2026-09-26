@@ -19,6 +19,7 @@ package org.jwcarman.nessy.backend.inmemory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
 import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.backend.backlog.Backlog;
 import org.jwcarman.nessy.backend.backlog.Pull;
@@ -35,27 +36,37 @@ import org.jwcarman.nessy.backend.backlog.Pull;
 public final class InMemoryBacklog<I> implements Backlog<I> {
 
   private final List<BacklogItem<I>> items;
-  private boolean ended;
+  private final BooleanSupplier ended;
 
   public InMemoryBacklog() {
     this(List.of());
   }
 
   public InMemoryBacklog(List<BacklogItem<I>> waiting) {
+    this(waiting, () -> false);
+  }
+
+  /**
+   * @param ended whether the agent this belongs to has been told to stop. Asked rather than held,
+   *     because ending an agent is {@link org.jwcarman.nessy.backend.agent.Agents}' business and a
+   *     backlog that kept its own flag would be a second answer to the same question. The durable
+   *     one asks the same way: its {@code take} reads the agent's row rather than its own table.
+   */
+  public InMemoryBacklog(List<BacklogItem<I>> waiting, BooleanSupplier ended) {
     this.items = new ArrayList<>(Objects.requireNonNull(waiting, "waiting must not be null"));
+    this.ended = Objects.requireNonNull(ended, "ended must not be null");
+  }
+
+  /** Abandons what was waiting and says how much there was, for {@code Agents} when it seals. */
+  int clear() {
+    int abandoned = items.size();
+    items.clear();
+    return abandoned;
   }
 
   /** What is waiting now, oldest first. */
   public List<BacklogItem<I>> items() {
     return List.copyOf(items);
-  }
-
-  /** End it: abandon what was waiting, and answer every read afterwards with the pill. */
-  public int seal() {
-    int abandoned = items.size();
-    items.clear();
-    ended = true;
-    return abandoned;
   }
 
   /**
@@ -66,12 +77,7 @@ public final class InMemoryBacklog<I> implements Backlog<I> {
     if (!items.isEmpty()) {
       return new Pull.Item<>(items.removeFirst());
     }
-    return ended ? new Pull.Pill<>() : new Pull.Empty<>();
-  }
-
-  /** Whether this agent has been told to end, whether or not it has noticed yet. */
-  public boolean terminated() {
-    return ended;
+    return ended.getAsBoolean() ? new Pull.Pill<>() : new Pull.Empty<>();
   }
 
   @Override

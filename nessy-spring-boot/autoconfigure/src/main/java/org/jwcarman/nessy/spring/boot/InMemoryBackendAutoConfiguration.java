@@ -17,8 +17,10 @@ package org.jwcarman.nessy.spring.boot;
 
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.backend.DirectBackend;
+import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLeases;
+import org.jwcarman.nessy.backend.inmemory.InMemoryQueuedBackend;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -44,6 +46,18 @@ public class InMemoryBackendAutoConfiguration {
   @ConditionalOnMissingBean
   public DirectBackend directBackend(CodecFactory codecs) {
     return new InMemoryDirectBackend(codecs);
+  }
+
+  /**
+   * The queued door works with nothing behind it but this process, which is what lets a test drive
+   * it without a database. Nothing it writes survives a restart, so it is right for a test and a
+   * CLI and wrong for anything that must not lose work; the JDBC backend is ordered ahead for
+   * exactly that reason, and this only appears when there is no DataSource to build one from.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public QueuedBackend queuedBackend(CodecFactory codecs) {
+    return new InMemoryQueuedBackend(codecs);
   }
 
   /**

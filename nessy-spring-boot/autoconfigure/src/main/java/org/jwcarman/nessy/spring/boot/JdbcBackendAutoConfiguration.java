@@ -77,6 +77,14 @@ public class JdbcBackendAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean(name = "nessySchema")
+  /**
+   * Named by every store this class hands out, and used by none of them: asking for it is what
+   * makes Boot create the tables before anything exists that would query them.
+   *
+   * <p>It belongs here rather than on a door. A door takes a backend and cannot see what is behind
+   * it, so a door that asked for a schema would be a door that knew what a table is; and the
+   * in-memory backend, which satisfies the same interface, has nothing to create.
+   */
   public NessySchema nessySchema(DataSource dataSource, NessyProperties properties) {
     boolean initialize = Boolean.TRUE.equals(properties.initializeSchema());
     if (initialize) {
@@ -95,14 +103,20 @@ public class JdbcBackendAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public DirectBackend directBackend(
-      DataSource dataSource, PlatformTransactionManager transactions, CodecFactory codecs) {
+      DataSource dataSource,
+      PlatformTransactionManager transactions,
+      CodecFactory codecs,
+      NessySchema schema) {
     return new JdbcDirectBackend(dataSource, transactions, codecs);
   }
 
   @Bean
   @ConditionalOnMissingBean
   public QueuedBackend queuedBackend(
-      DataSource dataSource, PlatformTransactionManager transactions, CodecFactory codecs) {
+      DataSource dataSource,
+      PlatformTransactionManager transactions,
+      CodecFactory codecs,
+      NessySchema schema) {
     return new JdbcQueuedBackend(dataSource, transactions, codecs);
   }
 
@@ -116,7 +130,7 @@ public class JdbcBackendAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
-  public Leases leases(DataSource dataSource) {
+  public Leases leases(DataSource dataSource, NessySchema schema) {
     return new JdbcLeases(dataSource);
   }
 }
