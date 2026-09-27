@@ -240,6 +240,8 @@
     <gpg.plugin.version>3.2.8</gpg.plugin.version>
     <sonatype.plugin.version>0.11.0</sonatype.plugin.version>
     <jacoco.version>0.8.15</jacoco.version>
+    <!-- Also written out in .github/workflows/maven.yml, which must invoke this plugin by its
+         full coordinates rather than the sonar: prefix. Bump both together. -->
     <sonar.plugin.version>5.7.0.6970</sonar.plugin.version>
     <exec.plugin.version>3.6.3</exec.plugin.version>
     <jar.plugin.version>3.5.1</jar.plugin.version>
