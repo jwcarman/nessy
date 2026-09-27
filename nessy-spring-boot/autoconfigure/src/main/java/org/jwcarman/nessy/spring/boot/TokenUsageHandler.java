@@ -21,6 +21,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import java.util.Objects;
+import org.jwcarman.nessy.api.Tokens;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 
@@ -67,8 +68,10 @@ public final class TokenUsageHandler implements ObservationHandler<Observation.C
     sample(context, "reasoning", usage.reasoningTokens());
   }
 
-  private void sample(Observation.Context context, String type, Integer tokens) {
-    if (tokens == null) {
+  private void sample(Observation.Context context, String type, Tokens tokens) {
+    // A vendor that said nothing gets no sample, so a histogram never shows a measured zero for
+    // a count nobody took. The type carries that distinction; this only has to honour it.
+    if (!(tokens instanceof Tokens.Counted(int count))) {
       return;
     }
     DistributionSummary.Builder summary =
@@ -78,6 +81,6 @@ public final class TokenUsageHandler implements ObservationHandler<Observation.C
         summary.tag(tag.getKey(), tag.getValue());
       }
     }
-    summary.register(meters).record(tokens);
+    summary.register(meters).record(count);
   }
 }

@@ -20,6 +20,7 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
 import java.util.Objects;
+import org.jwcarman.nessy.api.Tokens;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.inference.Failure;
@@ -200,9 +201,15 @@ public final class ObservedInferenceProvider implements InferenceProvider {
   }
 
   /** One span attribute, or none at all when nobody counted that part. */
-  private static void attribute(Observation observation, String key, Integer count) {
-    if (count != null) {
-      observation.highCardinalityKeyValue(key, Integer.toString(count));
+  /**
+   * An attribute per count that exists, and none where a vendor said nothing.
+   *
+   * <p>The distinction is the type's, not this method's: {@link Tokens} is either a count or the
+   * absence of one, so there is no null to forget to check and no zero to mistake for an answer.
+   */
+  private static void attribute(Observation observation, String key, Tokens count) {
+    if (count instanceof Tokens.Counted(int value)) {
+      observation.highCardinalityKeyValue(key, Integer.toString(value));
     }
   }
 }

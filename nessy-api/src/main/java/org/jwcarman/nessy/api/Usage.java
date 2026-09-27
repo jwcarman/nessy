@@ -98,42 +98,69 @@ import org.jspecify.annotations.Nullable;
  */
 public record Usage(
     @Nullable String model,
-    @Nullable Integer inputTokens,
-    @Nullable Integer outputTokens,
-    @Nullable Integer cacheReadTokens,
-    @Nullable Integer cacheWriteTokens,
-    @Nullable Integer reasoningTokens) {
+    Tokens inputTokens,
+    Tokens outputTokens,
+    Tokens cacheReadTokens,
+    Tokens cacheWriteTokens,
+    Tokens reasoningTokens) {
 
   public Usage {
     if (model != null && model.isBlank()) {
       throw new IllegalArgumentException("model must not be blank");
     }
-    requireCounted("inputTokens", inputTokens);
-    requireCounted("outputTokens", outputTokens);
-    requireCounted("cacheReadTokens", cacheReadTokens);
-    requireCounted("cacheWriteTokens", cacheWriteTokens);
-    requireCounted("reasoningTokens", reasoningTokens);
-    // The whole point of holding the model here is that a count is never unpriceable.
+    inputTokens = orNone(inputTokens);
+    outputTokens = orNone(outputTokens);
+    cacheReadTokens = orNone(cacheReadTokens);
+    cacheWriteTokens = orNone(cacheWriteTokens);
+    reasoningTokens = orNone(reasoningTokens);
+    // The whole point of holding the model here is that a count is never unpriceable. One clause
+    // now, where it used to be five: a field that says nothing says so in its own type.
     if (model == null
-        && (inputTokens != null
-            || outputTokens != null
-            || cacheReadTokens != null
-            || cacheWriteTokens != null
-            || reasoningTokens != null)) {
+        && (inputTokens.counted()
+            || outputTokens.counted()
+            || cacheReadTokens.counted()
+            || cacheWriteTokens.counted()
+            || reasoningTokens.counted())) {
       throw new IllegalArgumentException("a counted usage must name the model it was counted on");
     }
   }
 
-  private static void requireCounted(String name, @Nullable Integer count) {
-    if (count != null && count < 0) {
-      throw new IllegalArgumentException(name + " must not be negative: " + count);
-    }
+  /**
+   * What a vendor's response gave, which is nullable boxes.
+   *
+   * <p>Construction comes from an SDK and reading does not, so this takes what an adapter has in
+   * hand and the canonical constructor takes what a reader wants back. Neither has to convert.
+   */
+  public Usage(
+      @Nullable String model,
+      @Nullable Integer inputTokens,
+      @Nullable Integer outputTokens,
+      @Nullable Integer cacheReadTokens,
+      @Nullable Integer cacheWriteTokens,
+      @Nullable Integer reasoningTokens) {
+    this(
+        model,
+        Tokens.reported(inputTokens),
+        Tokens.reported(outputTokens),
+        Tokens.reported(cacheReadTokens),
+        Tokens.reported(cacheWriteTokens),
+        Tokens.reported(reasoningTokens));
+  }
+
+  private static Tokens orNone(@Nullable Tokens tokens) {
+    return tokens == null ? Tokens.none() : tokens;
   }
 
   /** The ordinary case: a vendor that counted what went in and what came out, and nothing else. */
   public static Usage of(
       String model, @Nullable Integer inputTokens, @Nullable Integer outputTokens) {
-    return new Usage(model, inputTokens, outputTokens, null, null, null);
+    return new Usage(
+        model,
+        Tokens.reported(inputTokens),
+        Tokens.reported(outputTokens),
+        Tokens.none(),
+        Tokens.none(),
+        Tokens.none());
   }
 
   /**
@@ -143,7 +170,8 @@ public record Usage(
    * count being zero, which would claim the call was free.
    */
   public static Usage unreported() {
-    return new Usage(null, null, null, null, null, null);
+    return new Usage(
+        null, Tokens.none(), Tokens.none(), Tokens.none(), Tokens.none(), Tokens.none());
   }
 
   /**
@@ -154,33 +182,56 @@ public record Usage(
    */
   public static Usage unreported(String model) {
     return new Usage(
-        Objects.requireNonNull(model, "model must not be null"), null, null, null, null, null);
+        Objects.requireNonNull(model, "model must not be null"),
+        Tokens.none(),
+        Tokens.none(),
+        Tokens.none(),
+        Tokens.none(),
+        Tokens.none());
   }
 
   /**
    * The same counts, with what was read from cache -- part of {@link #inputTokens()}, not extra.
    */
   public Usage withCacheRead(@Nullable Integer tokens) {
-    return new Usage(model, inputTokens, outputTokens, tokens, cacheWriteTokens, reasoningTokens);
+    return new Usage(
+        model,
+        inputTokens,
+        outputTokens,
+        Tokens.reported(tokens),
+        cacheWriteTokens,
+        reasoningTokens);
   }
 
   /** The same counts, with what was written to cache -- part of {@link #inputTokens()}. */
   public Usage withCacheWrite(@Nullable Integer tokens) {
-    return new Usage(model, inputTokens, outputTokens, cacheReadTokens, tokens, reasoningTokens);
+    return new Usage(
+        model,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        Tokens.reported(tokens),
+        reasoningTokens);
   }
 
   /** The same counts, with what was spent thinking -- part of {@link #outputTokens()}. */
   public Usage withReasoning(@Nullable Integer tokens) {
-    return new Usage(model, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, tokens);
+    return new Usage(
+        model,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheWriteTokens,
+        Tokens.reported(tokens));
   }
 
   /** Whether any count at all was reported. */
   public boolean counted() {
-    return inputTokens != null
-        || outputTokens != null
-        || cacheReadTokens != null
-        || cacheWriteTokens != null
-        || reasoningTokens != null;
+    return inputTokens.counted()
+        || outputTokens.counted()
+        || cacheReadTokens.counted()
+        || cacheWriteTokens.counted()
+        || reasoningTokens.counted();
   }
 
   /**
@@ -190,10 +241,7 @@ public record Usage(
    * the two numbers being added, so including them would double-count. One side counted and the
    * other not sums to the side that was, which is the most that can honestly be said.
    */
-  public @Nullable Integer totalTokens() {
-    if (inputTokens == null && outputTokens == null) {
-      return null;
-    }
-    return (inputTokens == null ? 0 : inputTokens) + (outputTokens == null ? 0 : outputTokens);
+  public Tokens totalTokens() {
+    return inputTokens.plus(outputTokens);
   }
 }

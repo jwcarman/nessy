@@ -38,9 +38,11 @@ class UsageTest {
     @Test
     void distinguishes_a_counted_zero_from_nobody_counting() {
       assertThat(Usage.unreported().counted()).isFalse();
-      assertThat(Usage.unreported().totalTokens()).isNull();
+      assertThat(Usage.unreported().totalTokens().counted())
+          .as("nobody counted, so the total is not a number")
+          .isFalse();
       assertThat(Usage.of("a-model", 0, 0).counted()).isTrue();
-      assertThat(Usage.of("a-model", 0, 0).totalTokens()).isZero();
+      assertThat(Usage.of("a-model", 0, 0).totalTokens()).isEqualTo(Tokens.of(0));
     }
 
     /**
@@ -53,17 +55,17 @@ class UsageTest {
     void is_per_count_rather_than_all_or_nothing() {
       Usage partly = Usage.of("a-model", 25, 63);
 
-      assertThat(partly.inputTokens()).isEqualTo(25);
-      assertThat(partly.cacheReadTokens()).isNull();
-      assertThat(partly.reasoningTokens()).isNull();
+      assertThat(partly.inputTokens()).isEqualTo(Tokens.of(25));
+      assertThat(partly.cacheReadTokens()).isEqualTo(Tokens.none());
+      assertThat(partly.reasoningTokens()).isEqualTo(Tokens.none());
       assertThat(partly.counted()).isTrue();
     }
 
     /** One side counted is the most that can honestly be totalled. */
     @Test
     void totals_the_side_that_was_counted_when_only_one_was() {
-      assertThat(Usage.of("a-model", 25, null).totalTokens()).isEqualTo(25);
-      assertThat(Usage.of("a-model", null, 63).totalTokens()).isEqualTo(63);
+      assertThat(Usage.of("a-model", 25, null).totalTokens()).isEqualTo(Tokens.of(25));
+      assertThat(Usage.of("a-model", null, 63).totalTokens()).isEqualTo(Tokens.of(63));
     }
   }
 
@@ -109,10 +111,10 @@ class UsageTest {
       Usage usage =
           Usage.of("a-model", 1000, 200).withCacheRead(900).withCacheWrite(50).withReasoning(150);
 
-      assertThat(usage.totalTokens()).isEqualTo(1200);
-      assertThat(usage.cacheReadTokens()).isEqualTo(900);
-      assertThat(usage.cacheWriteTokens()).isEqualTo(50);
-      assertThat(usage.reasoningTokens()).isEqualTo(150);
+      assertThat(usage.totalTokens()).isEqualTo(Tokens.of(1200));
+      assertThat(usage.cacheReadTokens()).isEqualTo(Tokens.of(900));
+      assertThat(usage.cacheWriteTokens()).isEqualTo(Tokens.of(50));
+      assertThat(usage.reasoningTokens()).isEqualTo(Tokens.of(150));
     }
 
     @Test
@@ -120,8 +122,8 @@ class UsageTest {
       Usage usage = Usage.of("a-model", 10, 20).withCacheRead(5);
 
       assertThat(usage.model()).isEqualTo("a-model");
-      assertThat(usage.inputTokens()).isEqualTo(10);
-      assertThat(usage.outputTokens()).isEqualTo(20);
+      assertThat(usage.inputTokens()).isEqualTo(Tokens.of(10));
+      assertThat(usage.outputTokens()).isEqualTo(Tokens.of(20));
     }
 
     @Test
