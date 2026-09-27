@@ -260,16 +260,17 @@ class VictoolsJsonSchemaGeneratorTest {
     void is_described_as_the_type_it_writes() {
       String schema = new VictoolsJsonSchemaGenerator().generate(Payment.class).json();
 
-      assertThat(schema).contains("\"amount\":{\"type\":\"string\"}");
-      assertThat(schema).doesNotContain("cents").doesNotContain("currency");
+      assertThat(schema)
+          .contains("\"amount\":{\"type\":\"string\"}")
+          .doesNotContain("cents")
+          .doesNotContain("currency");
     }
 
     @Test
     void is_described_as_a_number_when_that_is_what_it_writes() {
       String schema = new VictoolsJsonSchemaGenerator().generate(Transfer.class).json();
 
-      assertThat(schema).contains("\"amount\":{\"type\":\"number\"}");
-      assertThat(schema).doesNotContain("cents");
+      assertThat(schema).contains("\"amount\":{\"type\":\"number\"}").doesNotContain("cents");
     }
 
     /**

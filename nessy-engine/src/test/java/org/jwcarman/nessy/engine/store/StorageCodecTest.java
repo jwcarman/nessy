@@ -114,8 +114,7 @@ class StorageCodecTest {
             .params(agentId.value())
             .query(byte[].class)
             .list();
-    assertThat(story).isNotEmpty();
-    assertThat(story).allSatisfy(row -> assertThat(row[0]).isNotEqualTo((byte) '{'));
+    assertThat(story).isNotEmpty().allSatisfy(row -> assertThat(row[0]).isNotEqualTo((byte) '{'));
     assertThat(new String(reverse(story.getFirst()), java.nio.charset.StandardCharsets.UTF_8))
         .as("and it is JSON again once the codec is undone")
         .startsWith("{");
@@ -128,7 +127,6 @@ class StorageCodecTest {
             .params(agentId.value())
             .query(byte[].class)
             .list();
-    assertThat(content).isNotEmpty();
-    assertThat(content).allSatisfy(row -> assertThat(row[0]).isNotEqualTo((byte) '['));
+    assertThat(content).isNotEmpty().allSatisfy(row -> assertThat(row[0]).isNotEqualTo((byte) '['));
   }
 }

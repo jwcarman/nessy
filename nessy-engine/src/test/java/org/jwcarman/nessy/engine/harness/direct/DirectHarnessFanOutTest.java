@@ -179,7 +179,7 @@ class DirectHarnessFanOutTest {
       started.countDown();
       try {
         release.await();
-      } catch (InterruptedException interrupted) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
       } finally {
         current.decrementAndGet();
@@ -218,7 +218,7 @@ class DirectHarnessFanOutTest {
       if (request.callId().equals(slow)) {
         try {
           release.await();
-        } catch (InterruptedException interrupted) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
         }
       }
@@ -477,7 +477,7 @@ class DirectHarnessFanOutTest {
               firstStarted.countDown();
               try {
                 releaseFirst.await();
-              } catch (InterruptedException interrupted) {
+              } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
               }
             } else {

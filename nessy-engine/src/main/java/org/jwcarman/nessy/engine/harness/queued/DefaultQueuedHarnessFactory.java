@@ -109,9 +109,8 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
    * provider. The backend is where the stores, the transaction manager and the codec they share
    * come from, chosen together, so there is nothing for a caller to assemble and nothing for two
    * callers to assemble differently.
-   */
-  /**
-   * One factory, from every customizer that has something to say about the engine.
+   *
+   * <p>One factory, from every customizer that has something to say about the engine.
    *
    * <p>A list because this is what a container hands over: every {@code
    * Customizer<QueuedHarnessFactoryConfig>} bean an application declared, in order, each adding to
