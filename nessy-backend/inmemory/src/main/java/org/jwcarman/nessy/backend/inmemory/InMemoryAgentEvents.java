@@ -18,6 +18,7 @@ package org.jwcarman.nessy.backend.inmemory;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -53,7 +54,32 @@ public final class InMemoryAgentEvents implements AgentEvents {
    * only wasteful here, but keeping the same shape means the two stores answer the same questions
    * the same way rather than by coincidence.
    */
-  private record Stored(Seq seq, boolean startsTurn, byte[] bytes) {}
+  private record Stored(Seq seq, boolean startsTurn, byte[] bytes) {
+
+    /**
+     * Spelled out because the component is an array, and a record's generated methods compare
+     * arrays by identity. Two Stored holding equal bytes would be unequal, and a printed one would
+     * say {@code [B@1b6d3586} rather than anything about the event. Nothing here compares or prints
+     * one today; writing it now means nothing has to notice before relying on it.
+     */
+    @Override
+    public boolean equals(Object other) {
+      return other instanceof Stored(Seq otherSeq, boolean otherStarts, byte[] otherBytes)
+          && seq.equals(otherSeq)
+          && startsTurn == otherStarts
+          && Arrays.equals(bytes, otherBytes);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(seq, startsTurn, Arrays.hashCode(bytes));
+    }
+
+    @Override
+    public String toString() {
+      return "Stored[seq=%s, startsTurn=%s, bytes=%d]".formatted(seq, startsTurn, bytes.length);
+    }
+  }
 
   /** An agent is a type and an id together, exactly as the durable table's key is. */
   private record Key(AgentType type, AgentId agent) {}

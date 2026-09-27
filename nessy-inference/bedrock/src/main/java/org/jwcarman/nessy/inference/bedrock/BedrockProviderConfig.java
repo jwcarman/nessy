@@ -155,14 +155,21 @@ public final class BedrockProviderConfig {
     if (region != null) {
       return region;
     }
-    if (useEnv) {
-      String value = System.getenv(AWS_REGION_ENV_VAR);
-      if (value == null) {
-        value = System.getenv(AWS_DEFAULT_REGION_ENV_VAR);
-      }
-      if (value != null) {
-        return Region.of(value);
-      }
+    // Said before reading anything, because the message below is about environment variables and
+    // this caller never asked for them. It used to fall through to that message, so a caller who
+    // simply forgot region(...) was told AWS_REGION was unset -- advice about a mechanism it had
+    // not opted into.
+    if (!useEnv) {
+      throw new IllegalStateException(
+          "a region is required: call region(...) or fromEnv(), or provide a preconfigured client"
+              + " via client(...)");
+    }
+    String value = System.getenv(AWS_REGION_ENV_VAR);
+    if (value == null) {
+      value = System.getenv(AWS_DEFAULT_REGION_ENV_VAR);
+    }
+    if (value != null) {
+      return Region.of(value);
     }
     throw new IllegalStateException(
         AWS_REGION_ENV_VAR
