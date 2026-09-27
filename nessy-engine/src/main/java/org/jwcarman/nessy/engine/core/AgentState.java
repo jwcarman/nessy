@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
@@ -119,7 +120,8 @@ public sealed interface AgentState {
     @Override
     public AgentState accept(AgentEvent event) {
       return switch (event) {
-        case AgentEvent.TurnStarted started -> new Inferring(started.seq(), started.turn());
+        case AgentEvent.TurnStarted started ->
+            new Inferring(started.seq(), started.turn(), TurnStats.opened(started.startedAt()));
         // Only here: Terminate is accepted only by Idle, so this fact can only ever follow an
         // idle agent. A busy arm carrying this case would claim something that cannot happen.
         case AgentEvent.Terminated _ -> new Terminal();
@@ -134,7 +136,7 @@ public sealed interface AgentState {
           Seq at = seq.next();
           TurnId opened = at.opensTurn();
           yield Decision.of(
-              List.of(new AgentEvent.TurnStarted(at, opened, start.input())),
+              List.of(new AgentEvent.TurnStarted(at, opened, start.input(), start.at())),
               List.of(new AgentEffect.Infer(opened)));
         }
         case AgentCommand.Terminate _ ->
@@ -148,19 +150,22 @@ public sealed interface AgentState {
   }
 
   /** A turn is open and the model has been asked. */
-  record Inferring(Seq seq, TurnId turn) implements AgentState {
+  record Inferring(Seq seq, TurnId turn, TurnStats stats) implements AgentState {
 
     @Override
     public AgentState accept(AgentEvent event) {
       return switch (event) {
+        // A turn that ends takes its tally with it: the state left behind is idle, and an idle
+        // agent is between turns with nothing to count.
         case AgentEvent.InferenceAnswered answered -> new Idle(answered.seq());
         case AgentEvent.InferenceRefused refused -> new Idle(refused.seq());
         case AgentEvent.InferenceFailed failed -> new Idle(failed.seq());
         // Still asking. An attempt that failed and was tried again moves the story forward
         // without moving the turn: the call it belongs to has not settled, and the state this
         // rebuilds to must be the one the next event expects to find.
-        case AgentEvent.InferenceAttempted attempted -> new Inferring(attempted.seq(), turn);
-        case AgentEvent.ActionsRequested requested -> AwaitingActions.opening(requested);
+        case AgentEvent.InferenceAttempted attempted ->
+            new Inferring(attempted.seq(), turn, stats.failed(attempted.usage()));
+        case AgentEvent.ActionsRequested requested -> AwaitingActions.opening(requested, stats);
         default -> throw unexpected(event, this);
       };
     }
@@ -249,7 +254,11 @@ public sealed interface AgentState {
    *     behind it -- and by the time an approval comes back, {@code seq} is the approval's.
    */
   record AwaitingActions(
-      Seq seq, TurnId turn, Seq requestSeq, Map<CallId, OutstandingAction> outstanding)
+      Seq seq,
+      TurnId turn,
+      Seq requestSeq,
+      Map<CallId, OutstandingAction> outstanding,
+      TurnStats stats)
       implements AgentState {
 
     public AwaitingActions {
@@ -261,12 +270,17 @@ public sealed interface AgentState {
       outstanding = Map.copyOf(outstanding);
     }
 
-    static AwaitingActions opening(AgentEvent.ActionsRequested requested) {
+    static AwaitingActions opening(AgentEvent.ActionsRequested requested, TurnStats stats) {
       Map<CallId, OutstandingAction> calls = new LinkedHashMap<>();
       for (ActionRequest action : requested.actions()) {
         calls.put(action.id(), OutstandingAction.awaitingApproval(action, requested.seq()));
       }
-      return new AwaitingActions(requested.seq(), requested.turn(), requested.seq(), calls);
+      return new AwaitingActions(
+          requested.seq(),
+          requested.turn(),
+          requested.seq(),
+          calls,
+          stats.requestedActions(requested.actions().size(), requested.usage()));
     }
 
     @Override
@@ -287,16 +301,18 @@ public sealed interface AgentState {
       }
       Map<CallId, OutstandingAction> next = new LinkedHashMap<>(outstanding);
       next.put(callId, call.running(at));
-      return new AwaitingActions(at, turn, requestSeq, next);
+      return new AwaitingActions(at, turn, requestSeq, next, stats);
     }
 
     /** One fewer thing to wait for -- and back to inferring when it was the last. */
     private AgentState discharge(Seq at, CallId callId) {
       Map<CallId, OutstandingAction> next = new LinkedHashMap<>(outstanding);
       next.remove(callId);
+      // The tally travels with the turn, not with the phase: a call finishing changes what the
+      // agent is waiting for and nothing about what the turn has spent.
       return next.isEmpty()
-          ? new Inferring(at, turn)
-          : new AwaitingActions(at, turn, requestSeq, next);
+          ? new Inferring(at, turn, stats)
+          : new AwaitingActions(at, turn, requestSeq, next, stats);
     }
 
     @Override

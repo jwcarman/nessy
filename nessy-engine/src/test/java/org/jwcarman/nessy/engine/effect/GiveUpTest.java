@@ -121,6 +121,7 @@ class GiveUpTest {
         .as("the turn is closed by a failure message, never by an invented answer")
         .hasSize(2)
         .first()
+        .usingRecursiveComparison(EngineFixture.ignoringWhenItStarted())
         .isEqualTo(engine.turnStarted(agentId, 1, "will not work"));
     assertThat(story.get(1))
         .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.InferenceFailed.class))

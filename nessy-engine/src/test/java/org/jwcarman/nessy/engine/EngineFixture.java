@@ -18,9 +18,11 @@ package org.jwcarman.nessy.engine;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.observation.ObservationRegistry;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.assertj.core.api.recursive.comparison.RecursiveComparisonConfiguration;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.TypeRef;
@@ -227,10 +229,22 @@ public final class EngineFixture implements AutoCloseable {
    * <p>The turn is derived from the position rather than passed, because an input's own seq is the
    * turn it opens -- the same rule {@code AgentState} applies.
    */
+  /**
+   * The opening event of a turn, as the fold would have written it -- except for when.
+   *
+   * <p>A real engine stamps {@code startedAt} from its own clock, and this factory has no way to
+   * know what that was. The instant here is a placeholder, so compare with {@link
+   * #ignoringWhenItStarted()} rather than by equality.
+   */
   public AgentEvent.TurnStarted turnStarted(AgentId agent, long seq, String said) {
     Seq at = new Seq(seq);
     return new AgentEvent.TurnStarted(
-        at, at.opensTurn(), ref(agent, List.of(new Block.Text(said))));
+        at, at.opensTurn(), ref(agent, List.of(new Block.Text(said))), Instant.EPOCH);
+  }
+
+  /** Everything about a turn's opening except the moment it happened. */
+  public static RecursiveComparisonConfiguration ignoringWhenItStarted() {
+    return RecursiveComparisonConfiguration.builder().withIgnoredFields("startedAt").build();
   }
 
   /** The event recording an answer of {@code said}, as the fold would have written it. */

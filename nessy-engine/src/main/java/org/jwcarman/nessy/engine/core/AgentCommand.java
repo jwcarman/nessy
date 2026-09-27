@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.engine.core;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -63,7 +64,12 @@ public sealed interface AgentCommand {
    * redundant with the harness not asking -- two harnesses can both read an idle state and both
    * ask, and this is what makes the loser harmless.
    */
-  record StartTurn(PayloadRef input) implements AgentCommand {}
+  /**
+   * @param at when the turn is opening, stamped by whoever is asking rather than read inside the
+   *     fold. The fold reads no clock: the same command has to decide the same way whenever it is
+   *     applied, and an instant that arrives with it does, where one it fetched would not.
+   */
+  record StartTurn(PayloadRef input, Instant at) implements AgentCommand {}
 
   /** Accept nothing further. Work already in flight is still owed its outcome. */
   record Terminate() implements AgentCommand {}

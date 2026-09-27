@@ -17,6 +17,7 @@ package org.jwcarman.nessy.backend.event;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.PayloadRef;
@@ -62,8 +63,19 @@ public sealed interface AgentEvent {
   /** Where this event sits. Strictly increasing, and what {@code apply} checks. */
   Seq seq();
 
-  /** A turn opened on an input. Its {@link TurnId} is this event's own position. */
-  record TurnStarted(Seq seq, TurnId turn, PayloadRef input) implements AgentEvent {}
+  /**
+   * A turn opened on an input. Its {@link TurnId} is this event's own position.
+   *
+   * <p><b>The one event that carries an instant.</b> A turn's age is something a policy decides on
+   * and something a reader wants, and it has to come from somewhere -- so the moment the turn
+   * opened is written down here, once, as a fact. That is not the same as the fold reading a clock:
+   * a recorded instant replays identically forever, where a duration worked out at replay time
+   * would depend on when the replay happened. {@code AgentEvents.writtenAt} is the store's own
+   * clock and answers a different question, which is when the row was written rather than when the
+   * turn began.
+   */
+  record TurnStarted(Seq seq, TurnId turn, PayloadRef input, Instant startedAt)
+      implements AgentEvent {}
 
   /**
    * The model answered, and the turn is over.

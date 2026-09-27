@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.engine.core;
 
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -84,7 +85,7 @@ final class InlineRunner {
     AgentState state = AgentState.idle(Seq.NONE);
 
     Deque<AgentCommand> pending = new ArrayDeque<>();
-    pending.add(new AgentCommand.StartTurn(claimCheck(question)));
+    pending.add(new AgentCommand.StartTurn(claimCheck(question), Instant.EPOCH));
 
     while (!pending.isEmpty()) {
       Decision decision = state.execute(pending.poll());

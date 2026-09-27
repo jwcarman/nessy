@@ -791,7 +791,8 @@ class DefaultDirectHarnessTest {
     events.append(
         TYPE,
         agent,
-        List.of(new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput)),
+        List.of(
+            new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput, Instant.EPOCH)),
         Seq.NONE);
 
     Scripted model = new Scripted().then(answering("second turn's answer"));
@@ -861,7 +862,7 @@ class DefaultDirectHarnessTest {
         TYPE,
         agent,
         List.of(
-            new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput),
+            new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput, Instant.EPOCH),
             new AgentEvent.ActionsRequested(
                 new Seq(2),
                 new TurnId(1),
@@ -931,7 +932,7 @@ class DefaultDirectHarnessTest {
         TYPE,
         agent,
         List.of(
-            new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput),
+            new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput, Instant.EPOCH),
             new AgentEvent.ActionsRequested(
                 new Seq(2),
                 new TurnId(1),
@@ -1010,7 +1011,8 @@ class DefaultDirectHarnessTest {
             new AgentEvent.TurnStarted(
                 secondTurnSeq,
                 secondTurnSeq.opensTurn(),
-                payloads.forAgent(agent).put(List.of(new Block.Text("second"))))),
+                payloads.forAgent(agent).put(List.of(new Block.Text("second"))),
+                Instant.EPOCH)),
         lastSeq);
 
     Outcome<String> midTurn = harness.ask(agent, "are you still there?");
@@ -1125,7 +1127,8 @@ class DefaultDirectHarnessTest {
               new AgentEvent.TurnStarted(
                   opening,
                   opening.opensTurn(),
-                  payloads.forAgent(agent).put(List.of(new Block.Text("somebody else's input")))),
+                  payloads.forAgent(agent).put(List.of(new Block.Text("somebody else's input"))),
+                  Instant.EPOCH),
               new AgentEvent.InferenceAnswered(
                   opening.next(),
                   opening.opensTurn(),

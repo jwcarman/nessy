@@ -18,6 +18,7 @@ package org.jwcarman.nessy.backend.jdbc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -104,7 +105,8 @@ class JdbcDirectBackendTest {
     DirectBackend writer = backend(dataSource);
     DirectBackend reader = backend(dataSource);
     AgentId agent = AgentId.random();
-    AgentEvent event = new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), new PayloadRef("p1"));
+    AgentEvent event =
+        new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), new PayloadRef("p1"), Instant.EPOCH);
 
     writer.events().append(TYPE, agent, List.of(event), Seq.NONE);
 

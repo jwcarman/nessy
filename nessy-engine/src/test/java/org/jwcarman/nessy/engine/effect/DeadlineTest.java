@@ -118,6 +118,7 @@ class DeadlineTest {
         .as("the turn is closed by the failure stored beside the effect")
         .hasSize(2)
         .first()
+        .usingRecursiveComparison(EngineFixture.ignoringWhenItStarted())
         .isEqualTo(engine.turnStarted(agentId, 1, "too late already"));
     // Where the failure sits, not what it says: the reason is the dispatcher's wording and this
     // test is about the turn being closed at all.

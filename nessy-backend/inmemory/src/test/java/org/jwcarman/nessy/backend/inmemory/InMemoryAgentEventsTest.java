@@ -51,7 +51,8 @@ class InMemoryAgentEventsTest {
   private final AgentId agent = AgentId.random();
 
   private static AgentEvent started(long seq, long turn) {
-    return new AgentEvent.TurnStarted(new Seq(seq), new TurnId(turn), PayloadRef.of("p1"));
+    return new AgentEvent.TurnStarted(
+        new Seq(seq), new TurnId(turn), PayloadRef.of("p1"), Instant.EPOCH);
   }
 
   /**

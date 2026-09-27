@@ -73,7 +73,8 @@ class JdbcAgentEventsTest {
   private final PayloadRef somewhere = new PayloadRef("p1");
 
   private static AgentEvent started(long seq, long turn) {
-    return new AgentEvent.TurnStarted(new Seq(seq), new TurnId(turn), new PayloadRef("p1"));
+    return new AgentEvent.TurnStarted(
+        new Seq(seq), new TurnId(turn), new PayloadRef("p1"), Instant.EPOCH);
   }
 
   private AgentEvent answered(long seq, long turn) {

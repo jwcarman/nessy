@@ -99,13 +99,17 @@ class HarnessLoopTest {
 
     // The input is recorded and the model call owed in the same transaction as the
     // state, so the story shows the question before anything has been asked.
-    assertThat(story(CHAT, agentId)).containsExactly(observed(agentId, 1, "what is nessy?"));
+    assertThat(story(CHAT, agentId))
+        .usingRecursiveFieldByFieldElementComparator(EngineFixture.ignoringWhenItStarted())
+        .containsExactly(observed(agentId, 1, "what is nessy?"));
 
     await()
         .atMost(Duration.ofSeconds(10))
         .untilAsserted(
             () ->
                 assertThat(story(CHAT, agentId))
+                    .usingRecursiveFieldByFieldElementComparator(
+                        EngineFixture.ignoringWhenItStarted())
                     .containsExactly(
                         observed(agentId, 1, "what is nessy?"),
                         engine.answered(agentId, 2, 1, "a lake monster")));
@@ -145,6 +149,8 @@ class HarnessLoopTest {
         .untilAsserted(
             () ->
                 assertThat(story(CHAT, agentId))
+                    .usingRecursiveFieldByFieldElementComparator(
+                        EngineFixture.ignoringWhenItStarted())
                     .containsExactly(
                         observed(agentId, 1, "first"),
                         engine.answered(agentId, 2, 1, "a lake monster"),

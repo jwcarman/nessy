@@ -351,7 +351,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       case RecoveryOutcome.Busy() -> StepResult.declined(new Outcome.Busy<>());
       case RecoveryOutcome.Recovered(AgentState.Idle idle) -> {
         Payloads content = backend.payloads().forAgent(agent);
-        Decision decision = idle.execute(new AgentCommand.StartTurn(content.put(rendered)));
+        Decision decision =
+            idle.execute(new AgentCommand.StartTurn(content.put(rendered), clock.instant()));
         backend.events().append(agentType, agent, decision.events(), idle.seq());
         decision.events().forEach(event -> narrate(agent, event));
         TurnId turn = ((AgentEvent.TurnStarted) decision.events().getFirst()).turn();

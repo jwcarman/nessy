@@ -303,7 +303,8 @@ final class DefaultQueuedHarness<I>
           apply(
               agentId,
               new AgentCommand.StartTurn(
-                  backend.payloads().forAgent(agentId).put(renderer.render(next.input()))),
+                  backend.payloads().forAgent(agentId).put(renderer.render(next.input())),
+                  clock.instant()),
               trace);
       case Pull.Pill<I> _ -> apply(agentId, new AgentCommand.Terminate(), trace);
       case Pull.Empty<I> _ -> false;
