@@ -64,8 +64,8 @@ public sealed interface AgentEffect {
    * the running build has never heard of" -- and a row missing its turn is the same situation
    * arriving by a different route.
    */
-  private static TurnId required(TurnId turn) {
-    return Objects.requireNonNull(turn, "turn must not be null");
+  private static void requireTurn(TurnId turn) {
+    Objects.requireNonNull(turn, "turn must not be null");
   }
 
   /**
@@ -77,7 +77,7 @@ public sealed interface AgentEffect {
    */
   record Infer(TurnId turn) implements AgentEffect {
     public Infer {
-      required(turn);
+      requireTurn(turn);
     }
   }
 
@@ -108,7 +108,7 @@ public sealed interface AgentEffect {
   record CallTool(TurnId turn, Seq requestSeq, CallId callId, ToolName toolName)
       implements AgentEffect {
     public CallTool {
-      required(turn);
+      requireTurn(turn);
     }
   }
 
@@ -134,7 +134,7 @@ public sealed interface AgentEffect {
   record Approve(TurnId turn, Seq requestSeq, CallId callId, ToolName toolName)
       implements AgentEffect {
     public Approve {
-      required(turn);
+      requireTurn(turn);
     }
   }
 }
