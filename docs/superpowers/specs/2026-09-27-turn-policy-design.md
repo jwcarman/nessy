@@ -375,6 +375,17 @@ so counts are what a default may assume; time and spend stay opt-in through the 
 **`calls` rejects `failAt <= answerAt`.** Two ints of the same type in one factory invite
 `calls(25, 20)`, which compiles and reads as a policy while behaving as neither threshold.
 
+**Both thresholds read as "at or past", never as equality.** `modelCalls` does not advance once per
+consultation -- a tool completing moves the turn on without calling the model -- so a policy asking
+whether the count *is* twenty can be consulted at nineteen, then at twenty-one, and never fire at
+all. Comparing with `>=` removes that whole class of silent miss.
+
+**One provided implementation, and no combinators.** `calls` exists because it is the default and a
+default has to be nameable. Anything else -- a second unit, two thresholds in different units, two
+policies at once -- is the function, written directly by whoever wants it. Helpers can follow if
+anyone finds themselves writing the same lambda twice; inventing them first would be building a
+vocabulary for uses nobody has had yet.
+
 Anything wanting thresholds in different units -- calls for one, spend for the other -- writes the
 function directly, which is what the function form is for.
 
