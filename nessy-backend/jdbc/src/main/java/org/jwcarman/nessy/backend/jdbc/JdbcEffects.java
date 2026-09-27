@@ -20,15 +20,18 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.Effects;
+import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
@@ -65,7 +68,7 @@ public class JdbcEffects implements Effects {
 
   private static final String COLUMNS_SELECT =
       "SELECT effect_id, agent_id, payload, failure_payload, attempts_made, deadline,"
-          + " trace_context";
+          + " trace_context, failed_attempts";
 
   private static final String COLUMNS =
       "effect_id, agent_id, agent_type, payload, timeout_millis, failure_payload, deadline,"
@@ -101,7 +104,7 @@ public class JdbcEffects implements Effects {
                 FOR UPDATE SKIP LOCKED
                 LIMIT ?)
             RETURNING effect_id, agent_id, payload, failure_payload, attempts_made, deadline,
-                      trace_context
+                      trace_context, failed_attempts
             """;
 
   /**
@@ -119,12 +122,14 @@ public class JdbcEffects implements Effects {
       "DELETE FROM nessy_agent_effect"
           + " WHERE effect_id = ? AND status = ? AND attempts_made = ?";
   private static final String RESCHEDULE =
-      "UPDATE nessy_agent_effect SET status = ?, actionable_at = ?, updated_at = ?"
+      "UPDATE nessy_agent_effect SET status = ?, actionable_at = ?, updated_at = ?,"
+          + " failed_attempts = ?"
           + " WHERE effect_id = ? AND status = ? AND attempts_made = ?";
 
   private final JdbcClient jdbc;
   private final Codec<AgentEffect> effectCodec;
   private final Codec<EffectOutcome> outcomeCodec;
+  private final Codec<List<FailedAttempt>> attemptCodec;
 
   /**
    * Builds its own codecs rather than being handed them.
@@ -141,6 +146,17 @@ public class JdbcEffects implements Effects {
     // What to tell the agent when nobody can say anything better -- an unreadable payload, or
     // a deadline that passed before the work started.
     this.outcomeCodec = codecs.create(EffectOutcome.class);
+    // What the attempts before the current one learned. A TypeRef rather than a class because
+    // what is stored is the whole list: a row keeps one blob, not a row per attempt.
+    this.attemptCodec = codecs.create(new TypeRef<List<FailedAttempt>>() {});
+  }
+
+  /** Null where nothing was ever kept, which is every row that was never tried twice. */
+  @Override
+  public List<FailedAttempt> attemptsOf(Attempt attempt) {
+    Objects.requireNonNull(attempt, "attempt must not be null");
+    byte[] stored = attempt.failedAttempts();
+    return stored == null ? List.of() : attemptCodec.decode(stored);
   }
 
   /**
@@ -219,7 +235,8 @@ public class JdbcEffects implements Effects {
                     rs.getBytes("failure_payload"),
                     rs.getInt("attempts_made"),
                     rs.getObject("deadline", OffsetDateTime.class).toInstant(),
-                    rs.getString("trace_context")))
+                    rs.getString("trace_context"),
+                    rs.getBytes("failed_attempts")))
         .list();
   }
 
@@ -248,7 +265,8 @@ public class JdbcEffects implements Effects {
                     rs.getBytes("failure_payload"),
                     rs.getInt("attempts_made"),
                     rs.getObject("deadline", OffsetDateTime.class).toInstant(),
-                    rs.getString("trace_context")))
+                    rs.getString("trace_context"),
+                    rs.getBytes("failed_attempts")))
         .list();
   }
 
@@ -266,9 +284,14 @@ public class JdbcEffects implements Effects {
    * decides.
    */
   @Override
-  public boolean reschedule(UUID effectId, int attemptsMade, Instant at) {
+  public boolean reschedule(
+      UUID effectId, int attemptsMade, Instant at, List<FailedAttempt> failedAttempts) {
+    byte[] encoded =
+        failedAttempts == null || failedAttempts.isEmpty()
+            ? null
+            : attemptCodec.encode(List.copyOf(failedAttempts));
     return jdbc.sql(RESCHEDULE)
-            .params(PENDING, utc(at), utc(at), effectId, RUNNING, attemptsMade)
+            .params(PENDING, utc(at), utc(at), encoded, effectId, RUNNING, attemptsMade)
             .update()
         == 1;
   }

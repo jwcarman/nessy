@@ -32,6 +32,7 @@ import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.Effects;
+import org.jwcarman.nessy.backend.effect.FailedAttempt;
 
 /**
  * The work queue as a map, for a door with no database.
@@ -95,9 +96,11 @@ public final class InMemoryEffects implements Effects {
       this.actionableAt = at;
     }
 
+    private List<FailedAttempt> failedAttempts = List.of();
+
     private Attempt asAttempt() {
       return new Attempt(
-          effectId, agent, payload, failurePayload, attemptsMade, deadline, traceContext);
+          effectId, agent, payload, failurePayload, attemptsMade, deadline, traceContext, null);
     }
   }
 
@@ -193,7 +196,8 @@ public final class InMemoryEffects implements Effects {
 
   /** The same fence, putting the row back rather than taking it away. */
   @Override
-  public synchronized boolean reschedule(UUID effectId, int attemptsMade, Instant at) {
+  public synchronized boolean reschedule(
+      UUID effectId, int attemptsMade, Instant at, List<FailedAttempt> failedAttempts) {
     Objects.requireNonNull(at, "at must not be null");
     Row row = rows.get(effectId);
     if (row == null || row.status != Status.RUNNING || row.attemptsMade != attemptsMade) {
@@ -201,7 +205,16 @@ public final class InMemoryEffects implements Effects {
     }
     row.status = Status.PENDING;
     row.actionableAt = at.isAfter(row.deadline) ? row.deadline : at;
+    row.failedAttempts = failedAttempts == null ? List.of() : List.copyOf(failedAttempts);
     return true;
+  }
+
+  /** Kept as objects here, so there is nothing to decode and nothing that can fail to. */
+  @Override
+  public List<FailedAttempt> attemptsOf(Attempt attempt) {
+    Objects.requireNonNull(attempt, "attempt must not be null");
+    Row row = rows.get(attempt.effectId());
+    return row == null ? List.of() : row.failedAttempts;
   }
 
   @Override

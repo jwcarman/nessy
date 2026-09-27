@@ -503,7 +503,10 @@ public class EffectDispatcher {
       }
       case RetryDecision.RetryAfter(var backoff) -> {
         Instant next = clock.instant().plus(backoff);
-        if (effects.reschedule(attempt.effectId(), attempt.attemptsMade(), next)) {
+        // Nothing accumulated yet -- what this attempt learned reaches the row once the
+        // dispatcher is taught to carry it, which is the next piece of this work.
+        if (effects.reschedule(
+            attempt.effectId(), attempt.attemptsMade(), next, effects.attemptsOf(attempt))) {
           log.debug(
               "[{}] effect {} will be tried again after {}",
               agentType.value(),

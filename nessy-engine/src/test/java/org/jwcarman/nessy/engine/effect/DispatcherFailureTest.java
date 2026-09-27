@@ -41,6 +41,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
 import org.jwcarman.nessy.inference.Failure;
@@ -361,7 +362,7 @@ class DispatcherFailureTest {
 
   private static Attempt attempt(Instant deadline, int attemptsMade) {
     return new Attempt(
-        UUID.randomUUID(), AGENT, new byte[0], new byte[0], attemptsMade, deadline, null);
+        UUID.randomUUID(), AGENT, new byte[0], new byte[0], attemptsMade, deadline, null, null);
   }
 
   /** A handler that answers, for the tests where the handler is not what is failing. */
@@ -560,9 +561,15 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public boolean reschedule(UUID effectId, int attemptsMade, Instant at) {
+    public boolean reschedule(
+        UUID effectId, int attemptsMade, Instant at, List<FailedAttempt> failedAttempts) {
       rescheduled.add(effectId);
       return rescheduleWins;
+    }
+
+    @Override
+    public List<FailedAttempt> attemptsOf(Attempt attempt) {
+      return List.of();
     }
   }
 

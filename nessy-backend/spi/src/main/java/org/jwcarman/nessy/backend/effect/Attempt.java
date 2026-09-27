@@ -41,9 +41,15 @@ public record Attempt(
     int attemptsMade,
     Instant deadline,
     /** The trace this effect was emitted in, or null if nothing was tracing. */
-    String traceContext) {
+    String traceContext,
+    /**
+     * What the attempts before this one learned, or null when this is the first. Encoded the same
+     * way the two blobs above are, and for the same reason: what a failed attempt knows is the
+     * engine's vocabulary, and a row that understood it would have to change when that does.
+     */
+    byte[] failedAttempts) {
 
-  // Both blobs are compared by content, as a record of arrays otherwise would not be.
+  // Every blob is compared by content, as a record of arrays otherwise would not be.
 
   @Override
   public boolean equals(Object o) {
@@ -56,14 +62,16 @@ public record Attempt(
                 byte[] thatFailurePayload,
                 int thatAttemptsMade,
                 Instant thatDeadline,
-                String thatTraceContext)
+                String thatTraceContext,
+                byte[] thatFailedAttempts)
         && attemptsMade == thatAttemptsMade
         && Objects.equals(effectId, thatEffectId)
         && Objects.equals(agentId, thatAgentId)
         && Arrays.equals(payload, thatPayload)
         && Arrays.equals(failurePayload, thatFailurePayload)
         && Objects.equals(deadline, thatDeadline)
-        && Objects.equals(traceContext, thatTraceContext);
+        && Objects.equals(traceContext, thatTraceContext)
+        && Arrays.equals(failedAttempts, thatFailedAttempts);
   }
 
   @Override
@@ -75,12 +83,13 @@ public record Attempt(
         Arrays.hashCode(failurePayload),
         attemptsMade,
         deadline,
-        traceContext);
+        traceContext,
+        Arrays.hashCode(failedAttempts));
   }
 
   @Override
   public String toString() {
-    return "Attempt[effectId=%s, agentId=%s, payload=%d bytes, failurePayload=%d bytes, attemptsMade=%d, deadline=%s, traceContext=%s]"
+    return "Attempt[effectId=%s, agentId=%s, payload=%d bytes, failurePayload=%d bytes, attemptsMade=%d, deadline=%s, traceContext=%s, failedAttempts=%d bytes]"
         .formatted(
             effectId,
             agentId,
@@ -88,6 +97,7 @@ public record Attempt(
             failurePayload == null ? 0 : failurePayload.length,
             attemptsMade,
             deadline,
-            traceContext);
+            traceContext,
+            failedAttempts == null ? 0 : failedAttempts.length);
   }
 }

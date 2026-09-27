@@ -190,6 +190,7 @@ class MisroutedReplyTest {
         new byte[0],
         1,
         Instant.parse("2026-09-18T12:00:00Z"),
+        null,
         null);
   }
 

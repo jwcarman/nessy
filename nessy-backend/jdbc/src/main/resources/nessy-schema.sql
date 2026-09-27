@@ -78,6 +78,17 @@ CREATE TABLE IF NOT EXISTS nessy_agent_effect
     -- It never runs past deadline. A row coming due at its deadline comes due to be given up on,
     -- not to be tried again, and a backoff that would land beyond it is not a later retry.
     attempts_made INT          NOT NULL CHECK (attempts_made >= 0),
+    -- What the attempts before this one learned, appended each time the row is rescheduled. Null
+    -- until something is tried a second time, which is the overwhelming majority of rows.
+    --
+    -- Here rather than derived later because a retry may span a crash: the process that made the
+    -- first attempt need not be the one that finishes the work, and an accounting that lived in
+    -- the dispatcher's memory would lose exactly the attempts a long retry made.
+    --
+    -- A blob for the same reason the payload beside it is one. What a failed attempt learned is
+    -- the engine's vocabulary -- a classification and a count of tokens -- and a table that
+    -- understood it would be a table that has to change when that vocabulary does.
+    failed_attempts BYTEA,
     actionable_at TIMESTAMP WITH TIME ZONE   NOT NULL,
     created_at  TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_at  TIMESTAMP WITH TIME ZONE

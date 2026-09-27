@@ -24,6 +24,7 @@ import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.Effects;
+import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
 
@@ -89,8 +90,14 @@ public class Outbox {
     return rows.complete(effectId, attemptsMade);
   }
 
-  public boolean reschedule(UUID effectId, int attemptsMade, Instant at) {
-    return rows.reschedule(effectId, attemptsMade, at);
+  public boolean reschedule(
+      UUID effectId, int attemptsMade, Instant at, List<FailedAttempt> failedAttempts) {
+    return rows.reschedule(effectId, attemptsMade, at, failedAttempts);
+  }
+
+  /** What the attempts before this one learned. Empty for a row nobody has retried. */
+  public List<FailedAttempt> attemptsOf(Attempt attempt) {
+    return rows.attemptsOf(attempt);
   }
 
   public AgentEffect effectOf(Attempt attempt) {

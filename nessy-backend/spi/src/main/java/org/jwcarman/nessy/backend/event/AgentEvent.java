@@ -123,8 +123,11 @@ public sealed interface AgentEvent {
    * <p>One event per attempt rather than a list on the closing event: an attempt is a fact, and a
    * fact hidden inside another event's collection is one no projection over the story will find.
    *
-   * <p>Only {@link Failure.Transient} ever appears here. It is the one classification that says
-   * trying again could help, so it is the only one that produces a further attempt to record.
+   * <p>Two classifications reach here, by two routes. {@link Failure.Transient} is a provider
+   * saying the call might work next time, returned as a value. {@link Failure.Unknown} is an
+   * attempt that threw, which the engine classifies itself because a call it never heard back from
+   * is exactly what nothing is known about -- and a throw has no vendor's count, so its usage is
+   * always unreported. The rest never appear: they end the work rather than repeat it.
    */
   record InferenceAttempted(Seq seq, TurnId turn, Failure failure, Usage usage)
       implements AgentEvent {

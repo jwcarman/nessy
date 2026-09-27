@@ -67,7 +67,22 @@ public interface Effects {
   boolean complete(UUID effectId, int attemptsMade);
 
   /** Puts a failed attempt back for another go, fenced the same way. */
-  boolean reschedule(UUID effectId, int attemptsMade, Instant at);
+  /**
+   * @param failedAttempts what every attempt so far has learned, this one included. The caller
+   *     reads what was there, appends, and hands back the lot -- a stored list cannot be appended
+   *     to in a statement. Empty for work that learned nothing worth keeping: a tool call knows
+   *     only that it failed, with no classification and no count.
+   */
+  boolean reschedule(
+      UUID effectId, int attemptsMade, Instant at, List<FailedAttempt> failedAttempts);
+
+  /**
+   * What the attempts before this one learned, read back off the row.
+   *
+   * <p>Here rather than on {@link Attempt} for the same reason {@link #effectOf} is: the row keeps
+   * bytes, and only an implementation holding the codec that wrote them can say what they mean.
+   */
+  List<FailedAttempt> attemptsOf(Attempt attempt);
 
   /** Reads the effect an attempt is for. */
   AgentEffect effectOf(Attempt attempt);
