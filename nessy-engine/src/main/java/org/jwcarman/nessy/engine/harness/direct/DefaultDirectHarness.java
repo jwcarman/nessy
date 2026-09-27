@@ -49,6 +49,7 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
@@ -140,6 +141,13 @@ import org.slf4j.LoggerFactory;
  * of the batch.
  */
 public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
+
+  /**
+   * This door tries a model call once. Its retry policy is stored and read back but not honoured,
+   * so no work here is ever attempted twice and there is never anything for a turn to be told about
+   * earlier tries. Named rather than inlined five times, so a reader meets the reason once.
+   */
+  private static final List<FailedAttempt> NO_ATTEMPTS = List.of();
 
   private static final Logger LOG = LoggerFactory.getLogger(DefaultDirectHarness.class);
 
@@ -591,7 +599,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   /** Work nobody performed, as the completion of the turn that is owed it. */
   private static AgentCommand undispatchable(TurnId turn, EffectTerms terms) {
-    return EffectOutcomes.command(turn, terms.undispatchable());
+    return EffectOutcomes.command(turn, terms.undispatchable(), NO_ATTEMPTS);
   }
 
   /** The first outstanding call whose own deadline has passed, if there is one. */
@@ -721,13 +729,14 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         () ->
             switch (handlers.perform(agent, effect)) {
               case Awaited.Ready<EffectOutcome>(EffectOutcome outcome) ->
-                  EffectOutcomes.command(turn, outcome);
+                  EffectOutcomes.command(turn, outcome, NO_ATTEMPTS);
               case Awaited.Deferred<EffectOutcome> _ ->
                   EffectOutcomes.command(
                       turn,
                       terms.failed(
                           new IllegalStateException(
-                              "the effect was deferred, and nothing here can wait for it")));
+                              "the effect was deferred, and nothing here can wait for it")),
+                      NO_ATTEMPTS);
             });
   }
 
@@ -765,13 +774,16 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     } catch (TimeoutException expired) {
       future.cancel(true);
       return EffectOutcomes.command(
-          turn, terms.failed(new IllegalStateException("no answer within " + terms.timeout())));
+          turn,
+          terms.failed(new IllegalStateException("no answer within " + terms.timeout())),
+          NO_ATTEMPTS);
     } catch (ExecutionException broken) {
       // A provider that throws rather than returning a Fault -- infer() hands provider.infer(...)
       // to a switch with no try around it -- surfaces here instead of escaping runTurn with the
       // agent stuck Inferring. Delivered the same way an expiry is: attempted, and nobody found out
       // how it went.
-      return EffectOutcomes.command(turn, terms.failed(asRuntimeException(broken.getCause())));
+      return EffectOutcomes.command(
+          turn, terms.failed(asRuntimeException(broken.getCause())), NO_ATTEMPTS);
     } catch (InterruptedException interrupted) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException("interrupted while waiting on " + terms, interrupted);

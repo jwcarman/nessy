@@ -15,8 +15,10 @@
  */
 package org.jwcarman.nessy.engine.effect;
 
+import java.util.List;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 
 /**
@@ -39,20 +41,23 @@ public final class EffectOutcomes {
   private EffectOutcomes() {}
 
   /** An outcome, as the command it becomes. Nothing is unpacked: it already holds references. */
-  public static AgentCommand command(TurnId turn, EffectOutcome outcome) {
+  public static AgentCommand command(
+      TurnId turn, EffectOutcome outcome, List<FailedAttempt> priorAttempts) {
     return switch (outcome) {
       case EffectOutcome.InferenceAnswered(var answer, var usage) ->
           new AgentCommand.CompleteInference(
-              turn, new AgentCommand.InferenceOutcome.Answered(answer, usage));
+              turn, new AgentCommand.InferenceOutcome.Answered(answer, usage), priorAttempts);
       case EffectOutcome.InferenceRefused(String category, var usage) ->
           new AgentCommand.CompleteInference(
-              turn, new AgentCommand.InferenceOutcome.Refused(category, usage));
+              turn, new AgentCommand.InferenceOutcome.Refused(category, usage), priorAttempts);
       case EffectOutcome.InferenceFailed(var failure, var usage) ->
           new AgentCommand.CompleteInference(
-              turn, new AgentCommand.InferenceOutcome.Failed(failure, usage));
+              turn, new AgentCommand.InferenceOutcome.Failed(failure, usage), priorAttempts);
       case EffectOutcome.InferenceRequestedActions(var request, var calls, var usage) ->
           new AgentCommand.CompleteInference(
-              turn, new AgentCommand.InferenceOutcome.RequestedActions(request, calls, usage));
+              turn,
+              new AgentCommand.InferenceOutcome.RequestedActions(request, calls, usage),
+              priorAttempts);
       case EffectOutcome.ToolSucceeded(var callId, var result) ->
           new AgentCommand.CompleteToolCall(
               turn, callId, new AgentCommand.ToolOutcome.Succeeded(result));

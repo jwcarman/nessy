@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine.effect;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
@@ -35,6 +36,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.engine.observability.EffectSpans;
 import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.store.Outbox;
@@ -342,7 +344,11 @@ public class EffectDispatcher {
           // due again, is performed again, and the fold recognises the redelivery and
           // ignores it.
           callback.deliverOutcome(
-              attempt.agentId(), Optional.of(effect.turn()), outcome, attempt.traceContext());
+              attempt.agentId(),
+              Optional.of(effect.turn()),
+              outcome,
+              attempt.traceContext(),
+              effects.attemptsOf(attempt));
           retire(attempt, "performed");
         }
         // Neither delivered nor retired nor rescheduled -- the row is left exactly as it
@@ -391,6 +397,23 @@ public class EffectDispatcher {
    * because repeating work that may already have run is a decision that belongs to the kind of work
    * rather than to this switch.
    */
+  /**
+   * What the row should remember once this attempt is written off, oldest first.
+   *
+   * <p>Only a model call has anything to add. A tool that failed knows it failed and nothing else
+   * -- no classification to keep and no tokens to count -- so its row accumulates an unchanged list
+   * and the story of a retried tool call is the same as it always was.
+   */
+  private List<FailedAttempt> accumulated(Attempt attempt, Supplier<EffectOutcome> discharge) {
+    List<FailedAttempt> so_far = effects.attemptsOf(attempt);
+    if (!(discharge.get() instanceof EffectOutcome.InferenceFailed(Failure failure, Usage usage))) {
+      return so_far;
+    }
+    List<FailedAttempt> all = new ArrayList<>(so_far);
+    all.add(new FailedAttempt(failure, usage));
+    return all;
+  }
+
   private static boolean worthAnotherGo(EffectOutcome outcome) {
     return outcome instanceof EffectOutcome.InferenceFailed(Failure.Transient _, Usage _);
   }
@@ -423,7 +446,11 @@ public class EffectDispatcher {
     }
     try {
       callback.deliverOutcome(
-          attempt.agentId(), Optional.of(turn), outcome, attempt.traceContext());
+          attempt.agentId(),
+          Optional.of(turn),
+          outcome,
+          attempt.traceContext(),
+          effects.attemptsOf(attempt));
     } catch (RuntimeException e) {
       log.error(
           "[{}] could not tell agent {} that effect {} passed its deadline; keeping"
@@ -458,7 +485,11 @@ public class EffectDispatcher {
   private void undispatchable(Attempt attempt) {
     try {
       callback.deliverOutcome(
-          attempt.agentId(), Optional.empty(), effects.failureOf(attempt), attempt.traceContext());
+          attempt.agentId(),
+          Optional.empty(),
+          effects.failureOf(attempt),
+          attempt.traceContext(),
+          effects.attemptsOf(attempt));
     } catch (RuntimeException e) {
       log.error(
           "[{}] effect {} has no readable failure response either; its agent will"
@@ -503,10 +534,8 @@ public class EffectDispatcher {
       }
       case RetryDecision.RetryAfter(var backoff) -> {
         Instant next = clock.instant().plus(backoff);
-        // Nothing accumulated yet -- what this attempt learned reaches the row once the
-        // dispatcher is taught to carry it, which is the next piece of this work.
         if (effects.reschedule(
-            attempt.effectId(), attempt.attemptsMade(), next, effects.attemptsOf(attempt))) {
+            attempt.effectId(), attempt.attemptsMade(), next, accumulated(attempt, discharge))) {
           log.debug(
               "[{}] effect {} will be tried again after {}",
               agentType.value(),
@@ -538,7 +567,11 @@ public class EffectDispatcher {
     EffectOutcome outcome = discharge.get();
     try {
       callback.deliverOutcome(
-          attempt.agentId(), Optional.of(effect.turn()), outcome, attempt.traceContext());
+          attempt.agentId(),
+          Optional.of(effect.turn()),
+          outcome,
+          attempt.traceContext(),
+          effects.attemptsOf(attempt));
     } catch (RuntimeException e) {
       // Giving up and failing to say so are not the same thing. Retiring the row here would
       // end the attempts and leave the agent waiting forever, so the obligation stays and

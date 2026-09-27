@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.engine.core;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +23,7 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
+import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.agent.OutstandingAction;
@@ -190,8 +192,28 @@ public sealed interface AgentState {
       };
     }
 
+    /**
+     * <b>The one decision that writes more than one event.</b> Every other emits exactly one, and
+     * for most calls so does this: the attempts list is empty unless an application asked for
+     * retries and got them. When it is not, each attempt is written down before the event that
+     * closes the call, in the order they happened, so the story reads the way the turn went.
+     *
+     * <p>The seqs run consecutively from the same source as any single event, and what fences the
+     * append is the seq the state was read at -- unchanged by how many follow it. So this costs no
+     * new agreement with the store; only this method counts further than one.
+     */
     private Decision completed(AgentCommand.CompleteInference done) {
-      Seq at = seq.next();
+      List<AgentEvent> attempts = new ArrayList<>();
+      Seq at = seq;
+      for (FailedAttempt attempt : done.priorAttempts()) {
+        at = at.next();
+        attempts.add(
+            new AgentEvent.InferenceAttempted(at, turn, attempt.failure(), attempt.usage()));
+      }
+      return closing(done, at.next()).prepend(attempts);
+    }
+
+    private Decision closing(AgentCommand.CompleteInference done, Seq at) {
       return switch (done.outcome()) {
         case AgentCommand.InferenceOutcome.Answered answered ->
             Decision.of(

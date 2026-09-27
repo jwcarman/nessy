@@ -15,10 +15,12 @@
  */
 package org.jwcarman.nessy.engine.effect;
 
+import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.FailedAttempt;
 
 /**
  * How a performed effect gets back into the agent it was performed for.
@@ -48,6 +50,16 @@ public interface AgentEffectCallback {
    * @param traceContext the trace of the effect this answers, so whatever the outcome causes stays
    *     in the same turn's trace; null when that effect had none
    */
+  /**
+   * @param priorAttempts what the attempts before this one learned, oldest first. Empty unless the
+   *     work was tried more than once, and always empty for a door that does not retry. Carried
+   *     here rather than inside the outcome so that the four inference arms -- already a published
+   *     grammar -- did not each have to grow a field for it.
+   */
   void deliverOutcome(
-      AgentId agentId, Optional<TurnId> turn, EffectOutcome outcome, String traceContext);
+      AgentId agentId,
+      Optional<TurnId> turn,
+      EffectOutcome outcome,
+      String traceContext,
+      List<FailedAttempt> priorAttempts);
 }

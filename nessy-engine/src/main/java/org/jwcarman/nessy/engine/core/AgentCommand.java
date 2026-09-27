@@ -21,6 +21,7 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.inference.Failure;
@@ -67,8 +68,25 @@ public sealed interface AgentCommand {
   /** Accept nothing further. Work already in flight is still owed its outcome. */
   record Terminate() implements AgentCommand {}
 
-  /** An inference came back. */
-  record CompleteInference(TurnId turn, InferenceOutcome outcome) implements AgentCommand {}
+  /**
+   * An inference came back.
+   *
+   * @param priorAttempts what the attempts before this one learned, oldest first, and empty when
+   *     the call succeeded first time -- which is every call an application has not asked to be
+   *     retried. They ride the command because the row they were kept on is retired by the same
+   *     delivery that carries this, and the fold is the last thing able to write them down.
+   */
+  record CompleteInference(TurnId turn, InferenceOutcome outcome, List<FailedAttempt> priorAttempts)
+      implements AgentCommand {
+    public CompleteInference {
+      priorAttempts = priorAttempts == null ? List.of() : List.copyOf(priorAttempts);
+    }
+
+    /** A call that settled on its first attempt, which is all of them unless retries are on. */
+    public CompleteInference(TurnId turn, InferenceOutcome outcome) {
+      this(turn, outcome, List.of());
+    }
+  }
 
   /** An approval decision came back for one call. */
   record CompleteApproval(TurnId turn, CallId callId, ApprovalOutcome outcome)

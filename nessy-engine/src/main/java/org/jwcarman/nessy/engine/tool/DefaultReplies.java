@@ -162,7 +162,10 @@ public final class DefaultReplies implements Replies {
             // its turn has closed settles nothing rather than settling the current one.
             Optional.of(found.get().effect().turn()),
             outcome.of(where.callId(), attempt, bound.payloads().forAgent(agentId)),
-            attempt.traceContext());
+            attempt.traceContext(),
+            // Nothing to carry. Only a model call keeps what a failed attempt learned -- a tool
+            // knows it failed and nothing else -- and this is always a tool's answer.
+            List.of());
     if (!bound.effects().complete(attempt.effectId(), attempt.attemptsMade())) {
       // The fence: the row moved on while this answer was being folded, so it is not ours
       // to retire. Harmless -- the call is discharged either way, and whatever holds the row

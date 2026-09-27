@@ -89,6 +89,15 @@ and a cheap failing call and an expensive one are different problems that a poli
 one of the two could not tell apart. `failedAttempts` is there so a policy can see stumbling
 without reading usage at all, which matters on a provider that reports no counts (§3c).
 
+**The derived figures are methods on `TurnStats`, not arithmetic at each call site.** The
+counters are deliberately not a partition, so the useful numbers come from subtracting -- and a
+subtraction of nullable counts is exactly where the same question gets answered two different ways
+by two different readers. `productiveCalls()` (`modelCalls - failedAttempts`) and
+`productiveUsage()` (`usage - failedUsage`) belong here, beside `elapsed(Instant now)` from §3b, so
+that whatever §10 (4) settles about nulls is settled once. A policy asking whether a turn is
+thrashing, a dashboard showing what a turn bought, and a test asserting on either must not be able
+to disagree.
+
 ### 3b. Elapsed is derived, never stored
 
 This is the load-bearing decision. The fold is replayed -- `AgentState`'s own javadoc: *"apply

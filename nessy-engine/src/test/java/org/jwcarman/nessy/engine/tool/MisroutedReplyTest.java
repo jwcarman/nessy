@@ -38,6 +38,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
@@ -231,7 +232,11 @@ class MisroutedReplyTest {
 
     @Override
     public void deliverOutcome(
-        AgentId agentId, Optional<TurnId> turn, EffectOutcome outcome, String traceContext) {
+        AgentId agentId,
+        Optional<TurnId> turn,
+        EffectOutcome outcome,
+        String traceContext,
+        List<FailedAttempt> priorAttempts) {
       outcomes.add(outcome);
     }
   }

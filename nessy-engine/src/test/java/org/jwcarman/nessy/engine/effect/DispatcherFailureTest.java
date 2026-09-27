@@ -580,7 +580,11 @@ class DispatcherFailureTest {
 
     @Override
     public void deliverOutcome(
-        AgentId agentId, Optional<TurnId> turn, EffectOutcome outcome, String traceContext) {
+        AgentId agentId,
+        Optional<TurnId> turn,
+        EffectOutcome outcome,
+        String traceContext,
+        List<FailedAttempt> priorAttempts) {
       outcomes.add(outcome);
     }
   }

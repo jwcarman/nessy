@@ -36,6 +36,7 @@ import org.jwcarman.nessy.backend.backlog.Backlogs;
 import org.jwcarman.nessy.backend.backlog.Pull;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.lock.Locks;
@@ -217,7 +218,11 @@ final class DefaultQueuedHarness<I>
   /** What an effect came to, folded under a lock of its own. */
   @Override
   public void deliverOutcome(
-      AgentId agentId, Optional<TurnId> turn, EffectOutcome outcome, String traceContext) {
+      AgentId agentId,
+      Optional<TurnId> turn,
+      EffectOutcome outcome,
+      String traceContext,
+      List<FailedAttempt> priorAttempts) {
     log.debug(
         "[{}] delivering {} to agent {}",
         agentType.value(),
@@ -232,7 +237,7 @@ final class DefaultQueuedHarness<I>
                 agentId,
                 () -> {
                   backend.agents().ensure(agentType, agentId);
-                  boolean wrote = fold(agentId, turn, outcome, traceContext);
+                  boolean wrote = fold(agentId, turn, outcome, traceContext, priorAttempts);
                   // A turn that ended leaves the agent idle, and the next thing waiting becomes
                   // the next turn -- here, before this transaction commits.
                   return wrote
@@ -252,7 +257,11 @@ final class DefaultQueuedHarness<I>
    * ended agent has no turn at all, so there is nothing such an outcome could settle.
    */
   private boolean fold(
-      AgentId agentId, Optional<TurnId> turn, EffectOutcome outcome, String trace) {
+      AgentId agentId,
+      Optional<TurnId> turn,
+      EffectOutcome outcome,
+      String trace,
+      List<FailedAttempt> priorAttempts) {
     Optional<TurnId> answered = turn.or(() -> turnOf(reconstitute(agentId)));
     if (answered.isEmpty()) {
       log.debug(
@@ -262,7 +271,7 @@ final class DefaultQueuedHarness<I>
           outcome.getClass().getSimpleName());
       return false;
     }
-    return apply(agentId, EffectOutcomes.command(answered.get(), outcome), trace);
+    return apply(agentId, EffectOutcomes.command(answered.get(), outcome, priorAttempts), trace);
   }
 
   /** The turn an agent is on, if it is on one. */

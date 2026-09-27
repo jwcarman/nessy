@@ -31,6 +31,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
+import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.agent.OutstandingAction;
@@ -186,6 +187,63 @@ class AgentStateTest {
                   .events());
 
       assertThat(after).isInstanceOf(AgentState.Idle.class);
+    }
+
+    @Test
+    @DisplayName("a call that took three goes writes each one down before the answer")
+    void attempts_are_written_before_the_event_that_closes_the_call() {
+      AgentState inferring = idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL)).events());
+      List<FailedAttempt> attempts =
+          List.of(
+              new FailedAttempt(new Failure.Transient("busy"), Usage.of("a-model", 11, 0)),
+              new FailedAttempt(new Failure.Unknown("no answer"), Usage.unreported()));
+
+      Decision decision =
+          inferring.execute(
+              new AgentCommand.CompleteInference(
+                  TURN,
+                  new AgentCommand.InferenceOutcome.Answered(ANSWER, Usage.of("a-model", 20, 5)),
+                  attempts));
+
+      assertThat(decision.events())
+          .as("the two tries, then the answer")
+          .extracting(event -> event.getClass().getSimpleName())
+          .containsExactly("InferenceAttempted", "InferenceAttempted", "InferenceAnswered");
+      assertThat(decision.events())
+          .as("consecutive from where the state was read, so nothing can land between them")
+          .extracting(AgentEvent::seq)
+          .containsExactly(
+              inferring.seq().next(),
+              inferring.seq().next().next(),
+              inferring.seq().next().next().next());
+      assertThat(inferring.applyAll(decision.events()))
+          .as("and the turn still closes")
+          .isInstanceOf(AgentState.Idle.class);
+    }
+
+    @Test
+    @DisplayName("a redelivered answer writes nothing, its attempts included")
+    void attempts_are_not_written_twice_by_a_redelivery() {
+      AgentState inferring = idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL)).events());
+      AgentState closed =
+          inferring.applyAll(
+              inferring
+                  .execute(
+                      new AgentCommand.CompleteInference(
+                          TURN,
+                          new AgentCommand.InferenceOutcome.Answered(ANSWER, Usage.unreported())))
+                  .events());
+
+      Decision again =
+          closed.execute(
+              new AgentCommand.CompleteInference(
+                  TURN,
+                  new AgentCommand.InferenceOutcome.Answered(ANSWER, Usage.unreported()),
+                  List.of(new FailedAttempt(new Failure.Transient("busy"), Usage.unreported()))));
+
+      assertThat(again.events())
+          .as("the turn is already closed; its attempts are not news a second time")
+          .isEmpty();
     }
 
     @Test

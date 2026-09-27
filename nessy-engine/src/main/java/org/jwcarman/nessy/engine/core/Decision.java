@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.engine.core;
 
+import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.event.AgentEvent;
@@ -70,5 +71,25 @@ public sealed interface Decision {
 
   static Decision of(List<AgentEvent> events, List<AgentEffect> effects) {
     return new Advance(events, effects);
+  }
+
+  /**
+   * The same decision with facts in front of it.
+   *
+   * <p>For the one case where a command settles something that happened over several tries: the
+   * tries are written down before the event that closes the work. Prepended rather than appended
+   * because they happened first, and a story out of order is worse than no story.
+   *
+   * <p>An {@link Ignore} stays ignored. If the command decided nothing, nothing about it is worth
+   * recording either -- a redelivered outcome would otherwise write its attempts down a second
+   * time, which is the precise shape of the bug this guards.
+   */
+  default Decision prepend(List<AgentEvent> earlier) {
+    if (earlier.isEmpty() || this instanceof Ignore) {
+      return this;
+    }
+    List<AgentEvent> all = new ArrayList<>(earlier);
+    all.addAll(events());
+    return new Advance(all, effects());
   }
 }
