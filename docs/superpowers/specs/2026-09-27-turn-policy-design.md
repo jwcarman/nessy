@@ -444,14 +444,27 @@ Both are produced from the turn's closing event: `DefaultDirectHarness.asOutcome
 terminal event of `turn` off the stream, and both doors' `narrate` switches announce `TurnFailed`
 then `TurnEnded`. `FailTurn(reason)` lands on those two arms and adds nothing beside them.
 
-**Which event records it is an open question (§10 (5)).** Today the only event that closes a turn
-with a reason is `InferenceFailed(seq, turn, Failure, usage)`, and writing one for a turn the policy
-ended would record an inference that never happened -- `Failure`'s arms are statements about
-whether *a request* would fail again, and there was no request. The stream is a record of facts,
-and `Decision.Ignore`'s javadoc is the house rule: recording something that did not happen *"is
-worse than no record"*. A new arm is the honest answer, and adding one is *"a public API change,
-not an internal one"* (`AgentEvent` javadoc) -- which is exactly why it is asked rather than
-assumed here.
+**It is recorded by a new arm, `AgentEvent.TurnFailed(Seq seq, TurnId turn, String reason)`**, and
+that arm carries **no usage**. Ruled 2026-09-27.
+
+Today the only event that closes a turn with a reason is
+`InferenceFailed(seq, turn, Failure, usage)`, and reusing it is not merely inelegant -- it has a
+`Usage` slot, and the only value available to fill it is `Usage.unreported()`, which says *a call
+happened and nobody counted it*. No call happened. **An arm with no usage field cannot tell that
+lie**, and what the turn did spend is already on the events that spent it. `Failure`'s arms are
+statements about whether *a request* would fail again, and there was no request, so that field has
+nothing to say either -- which is why the arm carries a plain reason instead.
+
+The name completes one vocabulary end to end:
+`TurnDecision.FailTurn(reason)` -> `AgentEvent.TurnFailed(seq, turn, reason)` ->
+`Narration.TurnFailed(reason)` -> `Outcome.Failed(reason)`. The event grammar has lacked a
+`TurnFailed` only because until now a turn could fail in one way, by an inference failing; this
+policy is the second way, which is what the arm is for.
+
+Adding an arm is *"a public API change, not an internal one"* (`AgentEvent` javadoc), and what it
+costs is exactly what `InferenceAttempted` (§3c) cost: a line in the subtype list, an arm in both
+doors' `narrate` switches, one in `Transcript`, and one in `DefaultDirectHarness.asOutcome`.
+`JdbcAgentEvents` needs nothing.
 
 ### 6b. `AnswerNow` -- the only part that touches the wire
 
@@ -706,13 +719,9 @@ Listed, not answered.
    within one call than across a turn, since a retry lands on the same alias minutes apart; but
    it is no longer avoided.
 
-5. **The event that records `FailTurn`** (§6a). Reusing `InferenceFailed` with a `Failure` and
-   `Usage.unreported()` works with zero downstream change and records an inference that never
-   happened; a new `AgentEvent` arm is honest and is a public backend SPI change. What adding
-   one costs is exactly what `InferenceAttempted` (§3c) costs: a line in `AgentEvent`'s own
-   subtype list, an arm in both doors' `narrate` switches, one in `Transcript`, and one in
-   `DefaultDirectHarness.asOutcome`. `JdbcAgentEvents` needs nothing -- it inspects only
-   `TurnStarted`, and the codec learns an arm from the subtype list, not from the store.
+5. ~~The event that records `FailTurn`.~~ **Settled** (§6a): a new
+   `AgentEvent.TurnFailed(Seq, TurnId, String reason)` carrying no usage, because deciding not to
+   infer costs nothing and `InferenceFailed`'s usage field could only have lied about it.
 
 6. **What each adapter does for `ToolChoice.Answer`, measured** (§6b). This used to be one
    global unknown -- whether every vendor accepts a story containing tool calls when no tools are
