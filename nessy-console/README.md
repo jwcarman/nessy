@@ -21,17 +21,19 @@ application does not have to:
   `OPENAI_BASE_URL` for a local runtime), and the model id comes from
   `NESSY_MODEL`. Put the adapter jar you want on your classpath; this module
   deliberately drags none of them in.
-- **The database** is the `DataSource` that same context has, so
-  `SPRING_DATASOURCE_URL` (with `USERNAME` and `PASSWORD`) is the easy button,
-  and `dataSource(...)` on the config replaces it. The schema is applied on
-  the way in. A conversation therefore survives the process: the agent id is
-  fixed per terminal, so the next run picks up the same story.
+- **The conversation itself stays in memory.** The terminal is the
+  conversation: a turn that has ended has ended, and a CLI that resumed
+  yesterday's chat would surprise the person typing into it. A `DataSource`
+  is still worth having when a tool brings its own store — a notebook, a
+  plan — and `dataSource(...)` on the config, or `SPRING_DATASOURCE_URL`
+  from the same Boot context, is where that comes from. Its schema is
+  applied on the way in.
 
 ## What it is not
 
 There is no provider override. An application that wants to name its own
 adapter is not reaching for an easy button, and has the ordinary way to say
-so: `DefaultHarnessFactory` directly, or `nessy-spring-boot-starter`.
+so: `DefaultDirectHarnessFactory` directly, or `nessy-spring-boot-starter`.
 
 ## Configuration
 
@@ -47,16 +49,16 @@ prompt is a complete program.
 | `systemPrompt(String)` / `systemPrompt(SystemPromptSource)` | a generic assistant |
 | `tool(Tool)` / `tool(Tool, binding)` | none |
 | `agent(AgentType)` | `chat` |
-| `id(AgentId)` | one fixed id for the terminal, so a returning person finds the same conversation |
+| `id(AgentId)` | one fixed id for the terminal, rather than a random one each run |
 | `maxTokens(int)` | 4096 |
 | `dataSource(DataSource)` | the Boot context's |
-| `harness(customizer)` | reaches the full `HarnessConfig` |
+| `harness(customizer)` | reaches the full `DirectHarnessConfig<String>` |
 
 ## The one thing worth reading the source for
 
-`Harness#observe` is a post, not a call: it returns the moment the line is
-durably the agent's problem, and the answer arrives later on other threads as
-events. What makes a REPL out of that is the single place `ReplLoop` waits —
-after posting a line it blocks until `TurnEnded`, so a person is never asked to
-type over a reply still being written. An unattended application simply would
-not wait.
+`DirectHarness#ask` is a call, not a post: it runs the whole turn on the
+calling thread and returns the `Outcome` when it is over, so `ReplLoop` has
+nothing to wait for once it has called it. What makes streaming work
+without printing an answer twice is the listener: a provider that streams
+writes each delta to the terminal as it arrives, and `reportAnswer` prints
+the value `ask` returned only when nothing was already written that way.
