@@ -4,10 +4,9 @@ The Planning pattern, as `nessy-planning`: a plan the model writes, holds
 across turns, and works through.
 
 ```java
-PlanStore plans = new JdbcPlanStore(dataSource, TYPE);
+Plans plans = new JdbcPlans(dataSource, TYPE);
 
-Harness<String> harness = factory.create(config -> config
-        .agentType(TYPE)
+QueuedHarness<String> harness = factory.create(TYPE, h -> h
         .systemPrompt(prompt)
         .inference(in -> in.context(ctx -> ctx.ambient(PlanTools.plan(plans))))
         .tool(PlanTools.updatePlan(plans)));
@@ -16,7 +15,9 @@ Harness<String> harness = factory.create(config -> config
 Two halves. `PlanTools.plan(store)` is the read half, an `AmbientSource`
 that puts the agent's current plan in front of it on every call.
 `PlanTools.updatePlan(store)` is the write half, one tool named
-`update_plan` that replaces the plan wholesale.
+`update_plan` that replaces the plan wholesale. `Plans` is the store
+interface and `JdbcPlans` the one that ships, keyed by agent type and agent
+id over `nessy_plan_task`.
 
 ## The plan is minimal on purpose
 

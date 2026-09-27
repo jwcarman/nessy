@@ -138,10 +138,16 @@ and read by trying **every** one, so a rotation does not invalidate a token
 already sitting in somebody's inbox:
 
 ```java
-new DefaultHarnessFactory(engine -> engine
+DefaultQueuedHarnessFactory.of(engine -> engine
         .replyTokens(ReplyTokens.withKeys(currentKey, previousKey))     // byte[32] each
-        ...);
+        .backend(backend)
+        .inference(provider, options));
 ```
+
+Only the queued door's factory takes a `ReplyTokens`: the direct door
+cannot park a call in the first place, so it mints its own with an
+ephemeral key regardless. See
+[Spring Boot](../guides/spring-boot.md#reply-tokens-and-where-they-do-and-dont-reach).
 
 By default they are **ephemeral**, a fresh key per process, so tokens die
 with the JVM. That is right for a test and wrong for anything that parks
@@ -221,11 +227,11 @@ JSON-shaped request buys: OPA reads `input.toolName` and `input.arguments`
 directly.
 
 ```java
-PolicyEngine opa = OpaPolicyEngine.create(policy -> policy
+PolicyEngine opa = OpaPolicyEngine.of(policy -> policy
     .url("http://localhost:8181")
     .decisionPath("nessy/tools/decision"));
 
-Approver gate = PolicyApprover.create(config -> config
+Approver gate = PolicyApprover.of(config -> config
     .engine(opa)
     .delegate("humans", desk));
 ```
@@ -234,9 +240,10 @@ A gate written in Java ships when the application ships. A gate written in
 Rego is data: reviewed by whoever owns the risk, versioned on its own, and
 changed without a release.
 
-Two seams shape the conversation with OPA. An `InputRenderer` builds the
-`input` document from the request (`standard(mapper)` is the field-by-field
-default that keeps the reply token out), and a `DecisionInterpreter` reads
+Two seams shape the conversation with OPA. An `InputDocumentRenderer` builds
+the `input` document from the request (`standard(mapper)` is the
+field-by-field default that keeps the reply token out), and a
+`DecisionInterpreter` reads
 the result back into a `Verdict` (`effectStyle()` understands the
 `{"effect": ...}` shape below). Replace either when your Rego is shaped
 differently, and set `timeout` and `connectTimeout` for the call.
