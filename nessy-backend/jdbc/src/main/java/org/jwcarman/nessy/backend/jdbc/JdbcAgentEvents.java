@@ -125,17 +125,6 @@ public final class JdbcAgentEvents implements AgentEvents {
   }
 
   /**
-   * <b>Whether this actually streams depends on the caller, and that is worth knowing.</b> pgjdbc
-   * uses a server-side cursor only when the connection is in a transaction AND a fetch size is set.
-   * The fetch size is set here; the transaction is the caller's. Inside one -- the fold's own reads
-   * -- rows arrive in batches and a caller that stops early stops the reading. Outside one, the
-   * driver buffers the whole result before the first element, so this is lazy in shape and eager in
-   * fact.
-   *
-   * <p>It is still the right primitive either way: correctness does not depend on which happened,
-   * and the case that matters for a long story is the one inside a transaction.
-   */
-  /**
    * <b>Overridden rather than inherited, because the two are different queries and not one wrapped
    * in the other.</b> The default collects {@link #streamFrom}, which on this store means {@code
    * queryForStream} -- a ResultSet-backed spliterator whose connection is held until the stream
@@ -157,6 +146,17 @@ public final class JdbcAgentEvents implements AgentEvents {
         .list();
   }
 
+  /**
+   * <b>Whether this actually streams depends on the caller, and that is worth knowing.</b> pgjdbc
+   * uses a server-side cursor only when the connection is in a transaction AND a fetch size is set.
+   * The fetch size is set here; the transaction is the caller's. Inside one -- the fold's own reads
+   * -- rows arrive in batches and a caller that stops early stops the reading. Outside one, the
+   * driver buffers the whole result before the first element, so this is lazy in shape and eager in
+   * fact.
+   *
+   * <p>It is still the right primitive either way: correctness does not depend on which happened,
+   * and the case that matters for a long story is the one inside a transaction.
+   */
   @Override
   public Stream<AgentEvent> streamFrom(AgentType type, AgentId agent, Seq watermark) {
     Objects.requireNonNull(type, TYPE_REQUIRED);

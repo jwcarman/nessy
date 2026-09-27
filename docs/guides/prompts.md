@@ -14,9 +14,7 @@ public interface SystemPromptSource {
 ```
 
 It is asked on the dispatcher's thread, off the agent's row lock, so a
-prompt that needs to look something up may. What it returned is written
-down with every call in `nessy_inference_context`, so a prompt that varies
-is never a mystery afterwards.
+prompt that needs to look something up may.
 
 ## Templates
 

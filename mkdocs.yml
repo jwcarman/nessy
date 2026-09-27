@@ -76,6 +76,8 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Concepts:
+      - Two Doors: concepts/two-doors.md
+      - Turns: concepts/turns.md
       - Agent as Scope: concepts/agent-as-scope.md
       - Durable Computation: concepts/durable-computation.md
       - Tools: concepts/tools.md
@@ -83,14 +85,18 @@ nav:
       - Intent: concepts/intent.md
       - Memory: concepts/memory.md
       - Planning: concepts/planning.md
+      - Outcomes: concepts/outcomes.md
+      - Backlog: concepts/backlog.md
+      - Events: concepts/events.md
       - Storage: concepts/storage.md
       - Leases: concepts/leases.md
   - Guides:
       - Getting Started: guides/getting-started.md
       - Harness: guides/harness.md
       - Providers: guides/providers.md
+      - Structured Output: guides/structured-output.md
       - Prompts: guides/prompts.md
-      - Events: guides/events.md
+      - Narration: guides/narration.md
       - MCP Clients: guides/mcp-clients.md
       - Observability: guides/observability.md
       - Spring Boot: guides/spring-boot.md

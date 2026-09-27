@@ -319,13 +319,6 @@ public interface InferenceProvider {
   Bedrock). An adapter that does not stream may ignore the narrator, and
   nothing above it can tell; only the person watching can.
 
-## What the engine records about a call
-
-Every call's request is written down whole in `nessy_inference_context`
-before the provider is asked, and its outcome afterwards. When a call goes
-wrong, that row is what the model actually saw. See
-[Storage](../concepts/storage.md#what-the-model-was-shown).
-
 ## Where next
 
 - [Getting Started](getting-started.md), the smallest harness

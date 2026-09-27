@@ -153,7 +153,7 @@ harness.tell(AgentId.random(), "the porch light came on");
 and the turn happens afterwards on the harness's own dispatcher. There is
 nothing to return, because by the time the turn runs whoever spoke has
 gone — the answer reaches a caller through a listener instead (see
-[Events](events.md)).
+[Narration](narration.md)).
 
 `QueuedHarnessFactory.create(agentType, customizer)` takes a model and
 token cap from the engine's own `inference(provider, options)` unless the

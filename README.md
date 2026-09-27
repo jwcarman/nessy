@@ -204,7 +204,7 @@ add `nessy-inference-spi`; an application building an agent depends on
 | Storage: a table per thing, a codec seam for encryption, every model call on record | [Storage](https://jwcarman.github.io/nessy/concepts/storage/) |
 | Providers: four adapters, every OpenAI-compatible endpoint, and thinking as a provider setting | [Providers](https://jwcarman.github.io/nessy/guides/providers/) |
 | Prompts: templates with holes, and sources for the values | [Prompts](https://jwcarman.github.io/nessy/guides/prompts/) |
-| Events: listeners, the builder, and streams a browser can resume | [Events](https://jwcarman.github.io/nessy/guides/events/) |
+| Narration: listeners, the builder, and streams a browser can resume | [Narration](https://jwcarman.github.io/nessy/guides/narration/) |
 | MCP: import a remote server's tools as ordinary tools | [MCP Clients](https://jwcarman.github.io/nessy/guides/mcp-clients/) |
 | The harness: two doors, kept not closed; outcomes, coalescing, and approval desks | [The Harness](https://jwcarman.github.io/nessy/guides/harness/) |
 | Observability: GenAI semantic conventions, traces that cross the outbox, and the record | [Observability](https://jwcarman.github.io/nessy/guides/observability/) |
