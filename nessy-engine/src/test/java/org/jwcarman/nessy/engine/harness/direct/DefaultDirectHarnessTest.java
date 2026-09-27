@@ -531,7 +531,7 @@ class DefaultDirectHarnessTest {
           inTurn.countDown();
           try {
             release.await();
-          } catch (InterruptedException interrupted) {
+          } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
           }
           return answering("hi");
@@ -572,7 +572,7 @@ class DefaultDirectHarnessTest {
           inTurn.countDown();
           try {
             release.await();
-          } catch (InterruptedException interrupted) {
+          } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
           }
           return answering("hi");
@@ -614,7 +614,7 @@ class DefaultDirectHarnessTest {
   private static void awaitForever() {
     try {
       new CountDownLatch(1).await();
-    } catch (InterruptedException interrupted) {
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
     }
   }

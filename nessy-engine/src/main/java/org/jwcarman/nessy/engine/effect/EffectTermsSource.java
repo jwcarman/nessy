@@ -111,6 +111,7 @@ public final class EffectTermsSource {
 
   /** Uniform: one agent type calls one model on one set of terms. */
   public EffectTerms termsFor(AgentEffect.Infer effect) {
+    Objects.requireNonNull(effect, "effect must not be null");
     return inferenceTerms;
   }
 

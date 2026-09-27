@@ -65,7 +65,6 @@ import tools.jackson.databind.json.JsonMapper;
 class DirectHarnessLiveTest {
 
   private static final AgentType TYPE = new AgentType("chat");
-  private static final int MAX_TAIL = 50;
 
   private static final String BASE_URL =
       System.getenv().getOrDefault("CHAT_MODEL_URL", "http://localhost:1234/v1");

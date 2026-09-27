@@ -19,7 +19,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -193,10 +192,5 @@ class InlineRunnerTest {
         .extracting(event -> event.getClass().getSimpleName())
         .contains("ToolFailed");
     assertThat(ran.state()).isInstanceOf(AgentState.Idle.class);
-  }
-
-  /** Unused, but it keeps the import honest about what a POC leaves out. */
-  private static Optional<String> notDeferrable() {
-    return Optional.empty();
   }
 }

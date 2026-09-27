@@ -51,6 +51,9 @@ import org.jwcarman.nessy.inference.Usage;
  */
 public sealed interface AgentCommand {
 
+  /** Shared by every {@link InferenceOutcome} arm: none of them tolerates a missing cost. */
+  String USAGE_MUST_NOT_BE_NULL = "usage must not be null";
+
   /**
    * Begin a turn on this input.
    *
@@ -91,19 +94,19 @@ public sealed interface AgentCommand {
 
     record Answered(PayloadRef answer, Usage usage) implements InferenceOutcome {
       public Answered {
-        Objects.requireNonNull(usage, "usage must not be null");
+        Objects.requireNonNull(usage, USAGE_MUST_NOT_BE_NULL);
       }
     }
 
     record Refused(String category, Usage usage) implements InferenceOutcome {
       public Refused {
-        Objects.requireNonNull(usage, "usage must not be null");
+        Objects.requireNonNull(usage, USAGE_MUST_NOT_BE_NULL);
       }
     }
 
     record Failed(Failure failure, Usage usage) implements InferenceOutcome {
       public Failed {
-        Objects.requireNonNull(usage, "usage must not be null");
+        Objects.requireNonNull(usage, USAGE_MUST_NOT_BE_NULL);
       }
     }
 
@@ -111,7 +114,7 @@ public sealed interface AgentCommand {
         implements InferenceOutcome {
       public RequestedActions {
         actions = List.copyOf(actions);
-        Objects.requireNonNull(usage, "usage must not be null");
+        Objects.requireNonNull(usage, USAGE_MUST_NOT_BE_NULL);
       }
     }
   }

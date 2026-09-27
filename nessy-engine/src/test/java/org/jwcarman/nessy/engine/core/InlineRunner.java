@@ -126,7 +126,7 @@ final class InlineRunner {
           yield new AgentCommand.CompleteToolCall(
               call.turn(),
               call.callId(),
-              new AgentCommand.ToolOutcome.Succeeded(claimCheck(tool.apply(argumentsFor(call)))));
+              new AgentCommand.ToolOutcome.Succeeded(claimCheck(tool.apply(argumentsFor()))));
         } catch (RuntimeException broken) {
           yield new AgentCommand.CompleteToolCall(
               call.turn(), call.callId(), new AgentCommand.ToolOutcome.Failed(broken.getMessage()));
@@ -136,7 +136,7 @@ final class InlineRunner {
   }
 
   /** A POC: the tool is handed the question, which is enough to watch a value flow through. */
-  private Object argumentsFor(AgentEffect.CallTool call) {
+  private Object argumentsFor() {
     return payloads.values().iterator().next();
   }
 
