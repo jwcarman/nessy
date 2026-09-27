@@ -87,11 +87,6 @@ public sealed interface Narration {
   /** The model is being asked. Narrated before the call, so a watcher can show waiting. */
   record Thinking() implements Narration {}
 
-  // The turn ended with an answer. Carries the text, unlike most facts here, because a watcher
-  // that cannot show the answer is not much of a watcher -- and a provider that does not stream
-  // has narrated no deltas, so this is the only place the answer appears. Text rather than
-  // blocks: the block grammar is the engine's business, and what a watcher wants is what a
-  // person would read.
   /**
    * The turn produced an answer.
    *

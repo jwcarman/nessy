@@ -32,11 +32,13 @@ import org.jwcarman.nessy.api.tool.ToolConfig;
  * your agent type's name, working perfectly and doing the wrong job, with nothing in the logs to
  * say so.
  *
+ * <p>The agent type, settled when the harness was asked for rather than here, does more work on
+ * this door than on the direct one: besides naming the rows, it is what the dispatcher polls by, so
+ * two types share a database without either one seeing the other's queue.
+ *
  * @param <I> the input type this agent takes
  */
 public interface QueuedHarnessConfig<I> extends HarnessConfig<QueuedHarnessConfig<I>> {
-
-  // What this agent type is called. Names its rows and scopes its dispatcher's polling.
 
   /** What this agent is, in the same words for every agent of the type. */
   QueuedHarnessConfig<I> systemPrompt(String prompt);
