@@ -76,11 +76,11 @@ import org.slf4j.LoggerFactory;
  *
  * <p><b>N short locked transactions, never one held across a turn.</b> Each step -- reconstitute
  * the agent from {@link AgentEvents#sinceLastTurnStarted}, decide, append -- happens under {@link
- * Locks#withLock}, which {@link org.jwcarman.nessy.backend.jdbc.JdbcRowLocks} turns into one short
- * database transaction. The effect a step decided on -- an inference, an approval, a tool call --
- * is then performed with the lock released and no transaction open, and its outcome becomes the
- * next step's command. No state is carried across a release: every step re-reads the agent under
- * its own lock (design record {@code 2026-09-25-locks-as-plumbing}, §3).
+ * Locks#withLock}, which {@code JdbcRowLocks} turns into one short database transaction. The effect
+ * a step decided on -- an inference, an approval, a tool call -- is then performed with the lock
+ * released and no transaction open, and its outcome becomes the next step's command. No state is
+ * carried across a release: every step re-reads the agent under its own lock (design record {@code
+ * 2026-09-25-locks-as-plumbing}, §3).
  *
  * <p><b>The phase check is the guard, not the lock.</b> A hold is now a read, an append and a
  * commit -- a few milliseconds -- against a turn that runs for seconds, so a lock refusal would

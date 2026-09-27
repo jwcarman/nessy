@@ -43,7 +43,7 @@ import org.jwcarman.nessy.engine.observability.ObservedTool;
  * distinct token count, which is how a metrics bill becomes a story.
  *
  * <p><b>What this cannot do, and why.</b> Nothing here can say which agent or turn a model call
- * belongs to: {@link ModelRequest} carries a context, a prompt, tools and capabilities, and no
+ * belongs to: an {@code InferenceRequest} carries a context, a prompt, tools and a toolset, and no
  * identity; {@link ToolCallRequest} carries a reply address and nothing else. So model and tool
  * spans are correctly timed and correctly attributed, and they are ROOTS — they do not nest under a
  * turn, because there is nothing to nest them under. Approvals are the exception: {@link

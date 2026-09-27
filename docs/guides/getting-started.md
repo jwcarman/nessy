@@ -5,8 +5,8 @@ door through line by line, then shows the other one.
 
 ## Install
 
-Nessy has not yet released to Maven Central. Build locally
-(`./mvnw install`) and depend on `0.1.0-SNAPSHOT`.
+Import the BOM to align every module's version, then pick the artifacts the
+application actually needs.
 
 ```xml
 <dependencyManagement>
@@ -14,7 +14,7 @@ Nessy has not yet released to Maven Central. Build locally
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-bom</artifactId>
-      <version>0.1.0-SNAPSHOT</version>
+      <version>0.1.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>

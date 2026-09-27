@@ -23,8 +23,8 @@ import org.springframework.util.PropertyPlaceholderHelper;
 
 /**
  * The simple engine: Spring's own placeholder syntax, {@code ${name}}, with {@code ${name:default}}
- * for a hole that may go unfilled and {@code \${} for a literal. Pure substitution -- no sections,
- * no loops -- which is most prompts, and nothing beyond spring-core to carry.
+ * for a hole that may go unfilled and <code>\${</code> for a literal. Pure substitution -- no
+ * sections, no loops -- which is most prompts, and nothing beyond spring-core to carry.
  *
  * <p>A hole with neither a value nor a default is refused: {@link PromptTemplate#render} throws
  * rather than hand a model the placeholder.

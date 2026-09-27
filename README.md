@@ -139,9 +139,8 @@ actually parked.
 
 ## Install
 
-Nessy has not yet made a public release to Maven Central: until then, build
-locally (`./mvnw install`) and depend on `0.1.0-SNAPSHOT`. Every module
-shares `groupId` `org.jwcarman.nessy`.
+Every module shares `groupId` `org.jwcarman.nessy` and is published to Maven
+Central.
 
 Import the BOM to align versions, then pick the artifacts your application
 actually needs:
@@ -152,7 +151,7 @@ actually needs:
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-bom</artifactId>
-      <version>0.1.0-SNAPSHOT</version>
+      <version>0.1.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>

@@ -108,7 +108,7 @@ public class HeadSummarizer {
     return Transcripts.text(blocks);
   }
 
-  /** What a summariser is made of; see {@link HeadSummarizer#create(Consumer)}. */
+  /** What a summariser is made of; see {@link HeadSummarizer#of(Customizer)}. */
   public static final class Config {
     private AgentType agentType;
     private JdbcSummaries summaries;

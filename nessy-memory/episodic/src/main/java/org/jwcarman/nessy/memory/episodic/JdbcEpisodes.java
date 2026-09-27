@@ -105,7 +105,7 @@ public class JdbcEpisodes implements Summarizer {
           + " WHERE agent_type = ? AND agent_id = ? AND episode_no = ?"
           + " AND through_turn IS NOT NULL AND summary IS NULL";
 
-  /** What a store is made of; see {@link JdbcEpisodes#create(Consumer)}. */
+  /** What a store is made of; see {@link JdbcEpisodes#of(Customizer)}. */
   public static final class Config {
     private DataSource dataSource;
     private AgentType agentType;

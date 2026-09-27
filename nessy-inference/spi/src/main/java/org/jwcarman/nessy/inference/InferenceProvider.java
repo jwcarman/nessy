@@ -22,7 +22,7 @@ package org.jwcarman.nessy.inference;
  * somebody else chose and returns what came back. The seam exists so the drainer can be tested with
  * no model behind it, and so a provider's wire shape stays on the far side of it.
  *
- * <p><b>Why this is public rather than hidden behind {@link InferenceService}.</b> Not every
+ * <p><b>Why this is public rather than hidden behind {@code InferenceService}.</b> Not every
  * inference belongs to an agent's conversation. An assembler that summarises has to call a model,
  * and it wants its own context assembled its own way -- going through the service would send it
  * back through assembly and recurse. It calls this instead.

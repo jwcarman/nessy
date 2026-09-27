@@ -23,8 +23,8 @@ import org.jwcarman.nessy.api.Customizer;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * What {@link GeminiInferenceProvider#create(Customizer<GeminiProviderConfig>)} hands a customizer:
- * a CONFIG, not a builder -- fluent setters, no public {@code build()}.
+ * What {@link GeminiInferenceProvider#of(Customizer)} hands a customizer: a CONFIG, not a builder
+ * -- fluent setters, no public {@code build()}.
  */
 public final class GeminiProviderConfig {
 

@@ -32,17 +32,16 @@ import org.jwcarman.nessy.backend.lease.Leases;
  * passes.
  *
  * <p>For a CLI, a test, or anything else with one JVM and no database. A row per {@code (kind,
- * type, agent)} in a map plays the part {@code nessy_lease} plays for {@link
- * org.jwcarman.nessy.backend.jdbc.JdbcLeases}: who holds it, and until when. {@link
- * ConcurrentHashMap#compute} is what makes taking one atomic -- reading whether the current holder
- * has expired and writing the new holder happen inside one call, so two callers racing for the same
- * key can never both conclude it is free.
+ * type, agent)} in a map plays the part {@code nessy_lease} plays for {@code JdbcLeases}: who holds
+ * it, and until when. {@link ConcurrentHashMap#compute} is what makes taking one atomic -- reading
+ * whether the current holder has expired and writing the new holder happen inside one call, so two
+ * callers racing for the same key can never both conclude it is free.
  *
  * <p><b>Only the holder that took it may release it.</b> A holder whose lease was taken over from
  * it, because it was believed dead or merely slow, must not release the new holder's -- exactly the
- * hazard {@link org.jwcarman.nessy.backend.jdbc.JdbcLeases}'s {@code WHERE holder = ?} guards
- * against, matched here by comparing the release against the holder recorded in the entry at the
- * moment of release rather than the one this caller took.
+ * hazard {@code JdbcLeases}'s {@code WHERE holder = ?} guards against, matched here by comparing
+ * the release against the holder recorded in the entry at the moment of release rather than the one
+ * this caller took.
  */
 public final class InMemoryLeases implements Leases {
 

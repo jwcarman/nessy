@@ -38,7 +38,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * The effect table, row by row.
  *
  * <p>Shared by every agent type: it knows SQL and codecs, and nothing about what any particular
- * agent type's effects are worth waiting for. That is {@link Outbox}'s job, one instance of which
+ * agent type's effects are worth waiting for. That is {@code Outbox}'s job, one instance of which
  * sits in front of this per harness.
  *
  * <p>The rows underneath the outbox: what an agent owes the outside world.

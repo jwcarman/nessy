@@ -28,7 +28,7 @@ import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.inference.Failure;
 
 /**
- * What happened. Facts, in order, and the only thing that moves an {@link AgentState}.
+ * What happened. Facts, in order, and the only thing that moves an {@code AgentState}.
  *
  * <p><b>No payloads.</b> Every one of these carries identifiers, status, a human decision or a
  * count -- and a {@link PayloadRef} where content would otherwise be. That is what keeps the stream
@@ -81,8 +81,8 @@ public sealed interface AgentEvent {
   /**
    * The model answered, and the turn is over.
    *
-   * <p>Carries what the call cost, as the vendor counted it. {@link Usage#unknown()} stands for an
-   * entry written before this event recorded one, and for a vendor that did not say -- the same
+   * <p>Carries what the call cost, as the vendor counted it. {@link Usage#unreported()} stands for
+   * an entry written before this event recorded one, and for a vendor that did not say -- the same
    * reading, because neither counted.
    */
   record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer, Usage usage)
@@ -213,7 +213,7 @@ public sealed interface AgentEvent {
    * The agent will accept nothing further.
    *
    * <p>Agent-scoped, so it carries no {@link TurnId}: it sits between turns rather than inside one.
-   * Applying it yields {@link AgentState.Terminal}, which refuses everything -- so termination is
+   * Applying it yields {@code AgentState.Terminal}, which refuses everything -- so termination is
    * irreversible by construction rather than by a flag somebody must remember to check.
    */
   record Terminated(Seq seq) implements AgentEvent {}

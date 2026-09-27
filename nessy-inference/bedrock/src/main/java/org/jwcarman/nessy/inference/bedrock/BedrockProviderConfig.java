@@ -27,8 +27,8 @@ import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClientB
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * What {@link BedrockInferenceProvider#create(Customizer<BedrockProviderConfig>)} hands a
- * customizer: a CONFIG, not a builder -- fluent setters, no public {@code build()}.
+ * What {@link BedrockInferenceProvider#of(Customizer)} hands a customizer: a CONFIG, not a builder
+ * -- fluent setters, no public {@code build()}.
  *
  * <p>There is no {@code apiKey}. Bedrock is reached with AWS credentials, ambient on most machines,
  * which is also why the starter wires no bean for it: an application that wants Bedrock says so in

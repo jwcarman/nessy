@@ -98,7 +98,7 @@ public class EpisodeSummarizer {
       Do not narrate, and do not describe the conversation as a conversation. Keep exact values: \
       a name, a number or an identifier is worth more than a sentence about it.""";
 
-  /** What a summariser is made of; see {@link EpisodeSummarizer#create(Consumer)}. */
+  /** What a summariser is made of; see {@link EpisodeSummarizer#of(Customizer)}. */
   public static final class Config {
     private AgentType agentType;
     private JdbcEpisodes episodes;

@@ -24,9 +24,8 @@ import org.jwcarman.nessy.api.Customizer;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * What {@link OpenAiInferenceProvider#create(Customizer<OpenAiProviderConfig>)} hands a customizer:
- * a CONFIG, not a builder (design of record 2026-08-16 §1) — fluent setters, no public {@code
- * build()}.
+ * What {@link OpenAiInferenceProvider#of(Customizer)} hands a customizer: a CONFIG, not a builder
+ * (design of record 2026-08-16 §1) — fluent setters, no public {@code build()}.
  */
 public final class OpenAiProviderConfig {
 

@@ -22,8 +22,8 @@ import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
 
 /**
- * What {@link OpenAiEmbeddingProvider#create(Customizer<OpenAiEmbedderConfig>)} hands a customizer:
- * a CONFIG, not a builder -- fluent setters, no public {@code build()}.
+ * What {@link OpenAiEmbeddingProvider#of(Customizer)} hands a customizer: a CONFIG, not a builder
+ * -- fluent setters, no public {@code build()}.
  */
 public final class OpenAiEmbedderConfig {
 

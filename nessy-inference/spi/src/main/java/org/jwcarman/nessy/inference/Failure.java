@@ -17,6 +17,7 @@ package org.jwcarman.nessy.inference;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import org.jwcarman.nessy.api.RetryPolicy;
 
 /**
  * Why a piece of work produced no result.

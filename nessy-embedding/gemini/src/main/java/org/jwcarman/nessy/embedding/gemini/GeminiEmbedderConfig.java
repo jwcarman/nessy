@@ -22,8 +22,8 @@ import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
 
 /**
- * What {@link GeminiEmbeddingProvider#create(Customizer<GeminiEmbedderConfig>)} hands a customizer:
- * a CONFIG, not a builder -- fluent setters, no public {@code build()}.
+ * What {@link GeminiEmbeddingProvider#of(Customizer)} hands a customizer: a CONFIG, not a builder
+ * -- fluent setters, no public {@code build()}.
  */
 public final class GeminiEmbedderConfig {
 

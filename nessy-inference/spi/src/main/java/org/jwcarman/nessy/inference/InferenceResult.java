@@ -54,7 +54,7 @@ public sealed interface InferenceResult {
 
   /**
    * What the call cost, whatever it came back as. A refusal and a fault that reached the model are
-   * billed too; an adapter that was not told reports {@link Usage#unknown()}.
+   * billed too; an adapter that was not told reports {@link Usage#unreported()}.
    */
   Usage usage();
 

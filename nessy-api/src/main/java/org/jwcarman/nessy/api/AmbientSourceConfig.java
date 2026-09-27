@@ -22,7 +22,7 @@ import java.util.function.Function;
 import org.jwcarman.nessy.api.block.Block;
 
 /**
- * What a source is made of; see {@link AmbientSource#of(java.util.function.Consumer)}.
+ * What a source is made of; see {@link AmbientSource#of(Customizer)}.
  *
  * <p>A kind and a function, which is the whole of a source small enough not to want a class. What
  * it offers is said one way or the other: as an {@link Ambient}, or as the text of one.

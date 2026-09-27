@@ -16,11 +16,11 @@
 /**
  * Turns an MCP server's tools into nessy {@link org.jwcarman.nessy.api.tool.Tool}s.
  *
- * <p>The kernel does not change: {@link org.jwcarman.nessy.api.tool.ToolSpec} already carries a raw
- * schema, {@link org.jwcarman.nessy.api.tool.Tool#spec()} is a default method an MCP-backed tool
- * simply overrides, and the durable loop never learns a tool came from a network call rather than a
- * hand-written record. {@link org.jwcarman.nessy.tool.mcp.McpToolbox} is the one public door in:
- * connect it to a transport from the official MCP Java SDK, grant the tools it opens like any
- * other, and the model calls a remote server the same way it calls anything local.
+ * <p>The kernel does not change: {@link org.jwcarman.nessy.api.tool.Tool#inputSchema} is a default
+ * method an MCP-backed tool simply overrides with the schema its server published, and the durable
+ * loop never learns a tool came from a network call rather than a hand-written record. {@link
+ * org.jwcarman.nessy.tool.mcp.McpToolbox} is the one public door in: connect it to a transport from
+ * the official MCP Java SDK, grant the tools it opens like any other, and the model calls a remote
+ * server the same way it calls anything local.
  */
 package org.jwcarman.nessy.tool.mcp;

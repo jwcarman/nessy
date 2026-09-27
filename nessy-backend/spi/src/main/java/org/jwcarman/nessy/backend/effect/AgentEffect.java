@@ -28,7 +28,7 @@ import org.jwcarman.nessy.api.tool.ToolName;
  * happened -- only that it is owed.
  *
  * <p>An effect says what to do and nothing about how to run it: no retry policy, no timeout. Those
- * are terms of the binding it came from and travel in an {@link EffectRequest} alongside it.
+ * are terms of the binding it came from and travel in an {@code EffectRequest} alongside it.
  *
  * <p><b>Every effect names the turn that emitted it</b>, and it is the first thing each one says.
  * The fold always knows its own turn when it decides an effect is owed, and an outcome delivered

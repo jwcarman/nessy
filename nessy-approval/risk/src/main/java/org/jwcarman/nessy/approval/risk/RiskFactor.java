@@ -19,7 +19,7 @@ import java.util.Objects;
 
 /**
  * A typed, open-vocabulary reason behind a {@link RiskAssessment} (action-wave spec §2) —
- * deliberately unlike {@link Key}: two modules that both say "destructive" mean the same factor, so
+ * deliberately unlike a key: two modules that both say "destructive" mean the same factor, so
  * equality is by name (record default), not by identity. {@link RiskFactors} seeds the starting
  * vocabulary; an org's own factor is just another {@code RiskFactor}, never a sealed grammar.
  *

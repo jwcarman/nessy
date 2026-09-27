@@ -47,7 +47,7 @@ public sealed interface TurnDecision {
    * {@link Narration.TurnFailed}, and a caller receives {@link Outcome.Failed}. One vocabulary from
    * the decision to the answer.
    *
-   * <p>Distinct from {@link RetryDecision#giveUp()}, which is about one call rather than a whole
+   * <p>Distinct from {@link RetryDecision.GiveUp}, which is about one call rather than a whole
    * turn, and carries no reason because a caller of that one never sees it.
    */
   record FailTurn(String reason) implements TurnDecision {
