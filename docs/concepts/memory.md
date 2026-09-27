@@ -9,9 +9,10 @@ tail         the most recent turns of the story, whole
 ambient      whatever every AmbientSource has to say right now
 ```
 
-The story itself, one row per message in `nessy_agent_history`, is appended
-and never rewritten. Everything on this page is a policy about how much of
-it a model sees and what stands in for the rest.
+The story itself, one row per event in `nessy_agent_event` with its content
+in `nessy_payload`, is appended and never rewritten. Everything on this page
+is a policy about how much of it a model sees and what stands in for the
+rest. See [Storage](storage.md).
 
 ```java
 config.inference(in -> in.context(ctx -> ctx
@@ -69,7 +70,7 @@ into the previous summary, leaving `minTail` turns shown whole.
 ```java
 JdbcSummaries summaries = new JdbcSummaries(dataSource, TYPE);
 
-HeadSummarizer summarizer = HeadSummarizer.create(c -> c
+HeadSummarizer summarizer = HeadSummarizer.of(c -> c
         .agentType(TYPE)
         .summaries(summaries)
         .histories(factory.histories())
@@ -77,16 +78,17 @@ HeadSummarizer summarizer = HeadSummarizer.create(c -> c
         .inference(provider, InferenceOptions.of("claude-haiku-4-5"))
         .tail(20, 8));
 
-Harness<String> harness = factory.create(config -> config
-        .agentType(TYPE)
+QueuedHarness<String> harness = factory.create(TYPE, h -> h
         .listener(summarizer.listener())
         .inference(in -> in.context(ctx -> ctx.summaries(summaries).maxTail(20))));
 ```
 
-Three things about how it runs:
+This is the queued door: the summariser hears a turn end asynchronously and
+nobody is waiting on that call, which is the case it is built for. Three
+things about how it runs:
 
-- **Event-driven, off the fold.** It is an `AgentEventListener` on the
-  turn-ended event, wrapped `async()`, so the model call it makes never
+- **Event-driven, off the fold.** It is a `NarrationListener` on the
+  turn-ended `Narration`, wrapped `async()`, so the model call it makes never
   holds up the agent. The next call the agent makes sees the new summary.
 - **Under a lease.** Two processes hearing the same turn end do not both
   fold; `Leases.tryRun` lets one through per agent and the other finds
@@ -150,28 +152,35 @@ the store's current embedder cannot be compared and ranks last; the model's
 name is stored beside every vector so the store knows which.
 
 ```java
-JdbcEpisodes episodes = JdbcEpisodes.create(c -> c
+AgentType SUPPORT = new AgentType("support");
+
+EmbeddingProvider connection = OpenAiEmbeddingProvider.fromEnv();
+Embedder embedder = new DefaultEmbedderFactory(connection).create(c -> c.dimension(512));
+
+JdbcEpisodes episodes = JdbcEpisodes.of(c -> c
         .dataSource(dataSource)
-        .agentType(new AgentType("support"))
-        .embedder(OpenAiEmbedder.create(e -> e.fromEnv().dimension(512)))
+        .agentType(SUPPORT)
+        .embedder(embedder)
         .shown(5));
 
-EpisodeSummarizer summarizer = EpisodeSummarizer.create(c -> c
-        .agentType(new AgentType("support"))
+EpisodeSummarizer summarizer = EpisodeSummarizer.of(c -> c
+        .agentType(SUPPORT)
         .episodes(episodes)
         .histories(factory.histories())
         .leases(new JdbcLeases(dataSource))
         .inference(provider, InferenceOptions.of("claude-sonnet-5")));
 
-factory.create(String.class, h -> h
-        .agentType(new AgentType("support"))
-        .tool(EpisodeTools.begin(episodes), t -> {})
-        .tool(EpisodeTools.recall(episodes), t -> {})
+factory.create(SUPPORT, h -> h
+        .tool(EpisodeTools.begin(episodes))
+        .tool(EpisodeTools.recall(episodes))
         .inference(in -> in.context(ctx -> ctx
                 .summaries(episodes)
                 .ambient(EpisodeTools.index(episodes))))
         .listener(summarizer.listener()));
 ```
+
+This is the queued door again, for the same reason: the summariser reacts to
+a turn ending, off to one side of whoever is talking to the agent.
 
 Run episodes or the head summariser on an agent type, not both: the head
 would fold turns an episode already stands in for. Episodes suit an agent
@@ -256,11 +265,15 @@ refuses a short reply rather than padding it, and has a live test tagged
 `live` that runs when the vendor's key is in the environment.
 
 ```java
-Embedder embedder = OpenAiEmbedder.create(c -> c
-        .fromEnv()
-        .model("text-embedding-3-small")
-        .dimension(512));
+EmbeddingProvider connection = OpenAiEmbeddingProvider.fromEnv();
+EmbedderFactory embedders = new DefaultEmbedderFactory(connection, "text-embedding-3-small");
+Embedder embedder = embedders.create(c -> c.dimension(512));
 ```
+
+The provider is the vendor connection, kept once; `EmbedderFactory` mints as
+many `Embedder`s over it as there are stores, each with its own model and
+width. In a Boot application this is `EmbedderFactory`, contributed as a
+bean when an embedding module and its API key are on the classpath.
 
 An `Embedding` carries its model's name and compares by content; its
 `similarity` is the cosine between two vectors and refuses a pair from

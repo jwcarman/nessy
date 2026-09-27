@@ -5,26 +5,30 @@ it is read, and there is no abstraction between the engine and its SQL.
 
 | What | Where | Lives for |
 |---|---|---|
-| Where an agent is | `nessy_agent_state` | until the agent is terminated, and after |
-| The story, one row per message | `nessy_agent_history` | forever, unless you prune it |
+| An agent, so there is something to lock | `nessy_agent` | until it is terminated, and after |
+| What happened to an agent, one row per event, append-only | `nessy_agent_event` | forever, unless you prune it |
+| Content: what a message or a tool result actually said | `nessy_payload` | forever, unless you prune it |
 | Work an agent owes, with its deadline | `nessy_agent_effect` | until it completes or is given up on |
-| What each model call was shown, and what it cost | `nessy_inference_context` | until you prune it |
+| Work offered to a busy agent, waiting its turn (queued door only) | `nessy_agent_backlog` | until it is claimed or coalesced away |
 | One rolling summary per agent | `nessy_summary` | replaced as the story grows |
 | Episodes, each with its summary and the summary's embedding | `nessy_episode` | forever, unless you prune it |
 | Notes, plan tasks, declared intent | `nessy_note`, `nessy_plan_task`, `nessy_intent` | as their modules decide |
 | Background work claimed once, see [Leases](leases.md) | `nessy_lease` | its TTL |
 
-Every module that needs a table ships it in its own `nessy-schema.sql`.
+Every module that needs a table ships it in its own `nessy-schema.sql`; the
+first six come from `nessy-backend-jdbc`, the rest from `nessy-memory-*`,
+`nessy-planning` and `nessy-approval-intent`.
 
 ## PostgreSQL, and only PostgreSQL
 
-The queries this engine rests on are PostgreSQL's: `SELECT ... FOR UPDATE`
-to serialise an agent, `FOR UPDATE SKIP LOCKED` to claim work, `INSERT ...
-ON CONFLICT` to take a lease, `TIMESTAMPTZ` columns. There is no in-memory
-fallback and no H2: a fallback would not run a degraded Nessy, it would run
-one that fails on the first turn, and saying so at startup is kinder than an
-embedded database that looks like it worked. The test suite runs the same
-DDL against a real PostgreSQL container.
+The queries this engine rests on are PostgreSQL's: `pg_advisory_xact_lock`
+to serialise an agent for the length of one transaction, `FOR UPDATE SKIP
+LOCKED` to claim work, `INSERT ... ON CONFLICT` to take a lease, `TIMESTAMPTZ`
+columns. There is no in-memory fallback and no H2: a fallback would not run
+a degraded Nessy, it would run one that fails on the first turn, and saying
+so at startup is kinder than an embedded database that looks like it
+worked. The test suite runs the same DDL against a real PostgreSQL
+container.
 
 ## Applying the schema
 
@@ -42,95 +46,128 @@ or feed the files to whatever runs your migrations. `classpath*:` matters:
 it enumerates *every* matching resource rather than the first, so a module
 added later brings its table with it.
 
-## The engine builds its own access
+## Two doors, two backends, different tables
 
-The factory is handed a `DataSource` and nothing else about the database:
+`nessy-backend-spi` defines `DirectBackend` and `QueuedBackend`;
+`nessy-backend-jdbc` implements both over one `DataSource`, and
+`nessy-backend-inmemory` implements both in-process for a test or a CLI
+with nothing behind them but this JVM.
+
+A `DirectBackend` needs only the story and the lock: `JdbcDirectBackend`
+touches `nessy_agent_event`, `nessy_payload` and the advisory lock, and
+nothing else — the direct door never names `nessy_agent`, `nessy_agent_effect`
+or `nessy_agent_backlog`, so a caller that only ever builds a direct backend
+is not handed tables it will never write a row to. A `QueuedBackend` needs
+the rest as well: `JdbcQueuedBackend` adds `nessy_agent` (something to lock
+even between turns), `nessy_agent_effect` (the outbox a dispatcher polls)
+and `nessy_agent_backlog` (work offered to a busy agent).
 
 ```java
-new DefaultHarnessFactory(engine -> engine
-        .dataSource(dataSource)
-        .inference(provider, options));
+JdbcQueuedBackend backend =
+    new JdbcQueuedBackend(dataSource, transactionManager, codecFactory);
+
+DefaultQueuedHarnessFactory factory =
+    DefaultQueuedHarnessFactory.of(engine -> engine
+        .backend(backend)
+        .inference(provider, InferenceOptions.of("claude-sonnet-5")));
 ```
 
-From it the factory builds the JDBC client, the transaction manager and
-every store. There is nothing to assemble and nothing for two callers to
-assemble differently. Two things are exposed for reading, and only for
-reading: `histories()`, the story as turns, and `inferenceContexts()`, what
-the model was shown.
+A Spring Boot application never builds a backend by hand: `nessy-backend-jdbc`
+on the classpath with a `DataSource` bean gives you `JdbcBackendAutoConfiguration`,
+which contributes the `DirectBackend`, `QueuedBackend` and `Leases` beans, and
+each door's own auto-configuration turns those into a `DefaultDirectHarnessFactory`
+or `DefaultQueuedHarnessFactory`. See [Spring Boot](../guides/spring-boot.md).
+
+## Reading the story back
+
+Only the queued door's factory exposes a read side, because only it keeps
+work alive across a restart for something outside the engine to inspect:
+
+```java
+TurnHistories histories = factory.histories();
+TurnHistory story = histories.forAgent(agentType, agentId);
+List<Turn> turns = story.turnsFrom(0);
+```
+
+In a Boot application this is the `TurnHistories` bean contributed by
+`QueuedHarnessAutoConfiguration`.
 
 ## Rows are Jackson, then whatever you say
 
 Every payload column is bytes: the row encoded by Jackson, then passed
-through whatever `Codec<byte[]>` the engine was given.
+through whatever `Codec<byte[]>` the backend was built with. A backend built
+from a Boot application's `CodecFactory` bean gets whatever the
+`StorageCodecConfigurer` bean appended:
 
 ```java
-new DefaultHarnessFactory(engine -> engine
-        .dataSource(dataSource)
-        .inference(provider, options)
-        .storage(gzip.andThen(aesGcm)));
+@Bean
+StorageCodecConfigurer storage() {
+  return original -> original.andThen(gzip).andThen(aesGcm);
+}
 ```
 
 That is the seam for compression and for encryption at rest, and it covers
-the state, the story, the effects and the recorded inference contexts
-alike. It is fixed for the life of the data: rows written under one
-transform are unreadable under another, which is the same fact as an
-encryption key. In a Boot application a `StorageCodec` bean is picked up,
-and the same transform is handed to the Odyssey event stream's journal so
-what a listener wrote is protected the way the story is.
+every store a backend builds — the story, the payloads, and for the queued
+door the effects and the backlog too. `nessy_agent_backlog` is the one
+table the schema flags as holding raw user text ahead of an event, so it is
+the one table a storage transform must never skip. It is fixed for the life
+of the data: rows written under one transform are unreadable under another,
+which is the same fact as an encryption key.
 
-## What the state row holds
+## What an agent's row holds
 
-A phase, a sequence number, a turn id, the backlog of observations waiting,
-and the calls outstanding, as one Jackson document a few hundred bytes
-long. It does not grow with the conversation: the story is its own table,
-and the fold says what to append by returning it. A `version` column moves
-by one on every save, so the row is also where an entry's sequence number
-comes from, read under the lock.
+`nessy_agent` is small on purpose: `agent_type`, `agent_id`, `created_at`,
+and `terminated_at`, set once and never cleared. It exists only so there is
+something to lock — `pg_advisory_xact_lock` is taken against a hash of
+`(kind, agent_type, agent_id)` and needs no row of its own to be true of,
+but the queued door still needs a durable place to record that an agent was
+told to end, since ending cannot be delivered mid-turn and has to be
+remembered until the agent is next idle.
+
+Where an agent actually *is* — idle, inferring, or waiting on a named set of
+outstanding calls — is not stored anywhere as a row. It is rebuilt by
+replaying `nessy_agent_event` from the start, which is why that table has
+no update statement in its schema: reconstitution is a loop over history,
+not a read of a snapshot. See [Agent as Scope](agent-as-scope.md).
 
 ## The story
 
-`nessy_agent_history` is one row per entry, appended and never rewritten,
-keyed by agent and sequence, with the turn it belongs to and a rough token
-estimate beside the payload. The estimate is there so a budget can be
-applied in the query, a running sum over turns stopping at the oldest that
-fits, rather than by loading a conversation to measure it. The provider's
-tokenizer is the authority and being wrong is survivable, because a request
-refused for length is retried rather than lost.
+`nessy_agent_event` is one row per event, appended and never rewritten,
+keyed by agent type, agent id and `seq`, with a `starts_turn` flag marking
+where each turn began. The flag is there so replaying an agent's last turn
+is a lookup rather than a scan: a partial index over `starts_turn` picks out
+the handful of rows per agent that matter to that query, however long the
+conversation.
 
-## What the model was shown
-
-`nessy_inference_context` is written by the engine around every model call:
-the whole `InferenceRequest` as rendered, system prompt, summaries, tail,
-ambient, tools and options, before the provider is asked, and the outcome
-(`answer`, `actions`, `refusal`, `fault`) with a completion time afterwards.
-It cannot be reconstructed later: the head summary replaces itself, ambient
-changes every call, and a templated prompt is rendered per call. Stored
-whole rather than by reference to the story, so a row means something
-wherever it is read.
-
-It is on by default and costs one row per call. `recordInferenceContexts(false)`
-on the engine turns it off. Read it back through `InferenceContexts`, as
-`RecordedInference` values: this is the evidence trajectories, evals and
-critics are built from, and the first thing to look at when a call went
-wrong.
+Events carry no content directly. What a message said, or a tool returned,
+lives in `nessy_payload`, addressed by the SHA-256 hash of its own encoded
+bytes and scoped to the agent that produced it. That buys idempotence — an
+effect retried after a failure writes the same row rather than a second
+copy — and it buys forgetting: deleting everything one agent ever said is
+one statement over one table, with nothing shared out from under another
+agent. Identical content in two agents is stored twice, and that is the
+trade.
 
 ## Effects
 
 `nessy_agent_effect` carries the work an agent owes and everything needed
-to perform it without decoding it: a status, when it is next actionable,
-how many attempts it has had, a per-attempt timeout, a hard deadline, the
-W3C trace context of the turn it belongs to, and beside the payload a second
-blob saying what to tell the agent if the work can never be done. See
+to perform it without decoding it: a status, when it is next actionable
+(`actionable_at`, which serves both a first attempt's due time and a
+running attempt's watchdog time), how many attempts it has had
+(`attempts_made`), a per-attempt timeout (`timeout_millis`) and a hard
+deadline that never moves, the W3C trace context of the turn it belongs to,
+and beside the payload a second blob, `failure_payload`, saying what to
+tell the agent if the work can never be dispatched at all. See
 [Durable Computation](durable-computation.md).
 
 ## Retention
 
 Nothing here deletes. Terminating an agent ends its activity and leaves its
-rows; the story and the inference contexts grow until you prune them. That
-is a policy your operators own, applied to the tables directly, and the
-schema is plain enough to do it in one statement per table.
+rows; the story and its payloads grow until you prune them. That is a
+policy your operators own, applied to the tables directly, and the schema
+is plain enough to do it in one statement per table.
 
-## See also
+## Where next
 
 - [Memory](memory.md), what a model call is built from
 - [Durable Computation](durable-computation.md), what survives a crash, and how
