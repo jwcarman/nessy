@@ -197,6 +197,30 @@ class AgentStateTest {
           .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.TurnFailed.class))
           .extracting(AgentEvent.TurnFailed::reason)
           .isEqualTo("that is enough");
+      assertThat(awaiting.applyAll(decision.events()))
+          .as("and what it decided can be replayed, which is how every later read gets there")
+          .isInstanceOf(AgentState.Idle.class);
+    }
+
+    @Test
+    @DisplayName("a turn the policy failed can be replayed, and leaves the agent idle")
+    void a_failed_turn_replays() {
+      AgentState awaiting = awaitingOneCall();
+      TurnPolicy stopNow = (stats, now) -> new TurnDecision.FailTurn("that is enough");
+
+      Decision decision =
+          awaiting.execute(
+              new AgentCommand.CompleteToolCall(
+                  TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT)),
+              stopNow,
+              Instant.EPOCH);
+
+      // The decision is only half of it. Everything that reads an agent afterwards -- another
+      // ask, a terminate, any reconstitute at all -- gets there by replaying these events, so a
+      // decision the fold cannot apply leaves the agent unusable rather than merely ended.
+      assertThat(awaiting.applyAll(decision.events()))
+          .as("the turn is over, so the agent is between turns")
+          .isInstanceOf(AgentState.Idle.class);
     }
 
     @Test
@@ -218,6 +242,9 @@ class AgentStateTest {
           .extracting(AgentEffect.Infer::answerOnly)
           .as("still a call, and still counted as one -- what changes is what it may reach for")
           .isEqualTo(true);
+      assertThat(awaiting.applyAll(decision.events()))
+          .as("the turn is still open, waiting on the answer it just asked for")
+          .isInstanceOf(AgentState.Inferring.class);
     }
 
     @Test

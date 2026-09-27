@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-27
+
+### Fixed
+
+- A turn ended by a `TurnPolicy` returning `FailTurn` could not be replayed,
+  which left the agent unusable rather than merely ended: every later
+  `ask`, `terminate`, or any other read reconstitutes from the event stream
+  and threw `TurnFailed cannot happen in Inferring`. The default policy is
+  `TurnPolicy.calls(20, 25)`, so this reached any turn that made
+  twenty-five model calls without finishing.
+
+  `AgentState.Inferring` now accepts `AgentEvent.TurnFailed` and returns to
+  `Idle`. The event is emitted by `AwaitingActions` but arrives in
+  `Inferring`, because the discharge that freed the last outstanding call is
+  applied first.
+
 ## [0.1.0] - 2026-09-27
 
 Nessy is an agent harness framework for Java. This is the first release.
@@ -75,4 +91,5 @@ Nessy is an agent harness framework for Java. This is the first release.
 - Java 25.
 - Spring Boot 4.1 (optional — only needed for `nessy-spring-boot-starter`).
 
+[0.1.1]: https://github.com/jwcarman/nessy/releases/tag/0.1.1
 [0.1.0]: https://github.com/jwcarman/nessy/releases/tag/0.1.0

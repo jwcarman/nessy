@@ -178,6 +178,11 @@ public sealed interface AgentState {
         case AgentEvent.InferenceAnswered answered -> new Idle(answered.seq());
         case AgentEvent.InferenceRefused refused -> new Idle(refused.seq());
         case AgentEvent.InferenceFailed failed -> new Idle(failed.seq());
+        // A turn the policy ended, which lands here rather than on AwaitingActions: the discharge
+        // that freed the last call is applied first, and it leaves this state behind. Without
+        // this arm the decision and the replay disagree -- the live turn ends correctly and every
+        // later read of the agent throws, which makes an ended turn an unusable agent.
+        case AgentEvent.TurnFailed ended -> new Idle(ended.seq());
         // Still asking. An attempt that failed and was tried again moves the story forward
         // without moving the turn: the call it belongs to has not settled, and the state this
         // rebuilds to must be the one the next event expects to find.
