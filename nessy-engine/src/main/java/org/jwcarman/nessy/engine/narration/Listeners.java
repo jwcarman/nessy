@@ -59,10 +59,29 @@ public final class Listeners implements Narrator, AutoCloseable {
       propagating(
           Executors.newSingleThreadExecutor(Thread.ofVirtual().name("nessy-narration").factory()));
 
-  // One thread per event per async listener, as async() promises; still in the trace.
+  /**
+   * One thread per event per async listener, as {@code async()} promises, and deliberately NOT in
+   * the turn's trace.
+   *
+   * <p><b>This used to propagate, and the spans it produced lied about what a turn cost.</b> An
+   * episode summary is a model call of its own: it began after its turn's span had closed and ran
+   * 300ms past it, so a waterfall showed a 1.45s bar nested inside a 1.12s one. The longest bar in
+   * a trace is the first thing anyone reads when asking why a request was slow, and that bar was
+   * work nobody waited for. A child outliving its parent also breaks self-time and critical-path
+   * arithmetic, which assume a child is contained.
+   *
+   * <p><b>What is lost is one click; what is kept is the answer.</b> These spans still carry {@link
+   * org.jwcarman.nessy.engine.observability.Identity} -- {@code gen_ai.agent.name} and {@code
+   * gen_ai.conversation.id} -- so "what else happened for this agent" is a query, and a better one
+   * than parentage: it finds the work across every trace rather than only the turn you happened to
+   * open. As roots these also become measurable on their own, which is the only way to ask whether
+   * summaries are getting slower.
+   *
+   * <p>The synchronous {@link #teller} still propagates, and should: those listeners run inside the
+   * turn, and their spans belong to it.
+   */
   private final ExecutorService asyncTeller =
-      propagating(
-          Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("nessy-listener").factory()));
+      Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("nessy-listener").factory());
 
   private static ExecutorService propagating(ExecutorService executor) {
     return ContextExecutorService.wrap(executor, SNAPSHOTS::captureAll);
@@ -95,7 +114,8 @@ public final class Listeners implements Narrator, AutoCloseable {
   private void tell(
       NarrationListener listener, AgentType agentType, AgentId agentId, Narration event) {
     if (listener instanceof NarrationListener.Async async) {
-      // Its own thread, as it asked, but one of ours: the trace goes with it.
+      // Its own thread, as it asked, and one of ours so shutdown can wait for it -- but the trace
+      // does NOT go with it. See asyncTeller.
       asyncTeller.execute(() -> async.tell(agentType, agentId, event));
       return;
     }

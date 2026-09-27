@@ -32,7 +32,15 @@ import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.TurnId;
 
-/** The observation current when an event is narrated is current where the listener runs. */
+/**
+ * A synchronous listener runs inside the narrating observation; an asynchronous one does not.
+ *
+ * <p>The asynchronous half is the interesting half, and it is deliberate. A listener nobody waits
+ * for can outlive the turn that narrated to it -- an episode summary is a model call of its own --
+ * and a child span that begins after its parent has closed renders as the longest bar in a trace
+ * that nothing in the request was actually waiting on. Such work gets its own trace, and is found
+ * by the identity it carries rather than by parentage.
+ */
 @DisplayName("Listeners and the trace")
 class ListenersTraceTest {
 
@@ -46,7 +54,7 @@ class ListenersTraceTest {
   }
 
   @Test
-  void a_sync_and_an_async_listener_both_see_the_narrating_observation() {
+  void a_sync_listener_sees_the_narrating_observation_and_an_async_one_does_not() {
     ObservationRegistry registry = registry();
     List<String> seen = new CopyOnWriteArrayList<>();
     NarrationListener sync =
@@ -73,7 +81,7 @@ class ListenersTraceTest {
       await().atMost(Duration.ofSeconds(5)).until(() -> seen.size() == 2);
     }
 
-    assertThat(seen).contains("sync:nessy.turn", "async:nessy.turn:nessy-listener");
+    assertThat(seen).contains("sync:nessy.turn", "async:none:nessy-listener");
   }
 
   @Test

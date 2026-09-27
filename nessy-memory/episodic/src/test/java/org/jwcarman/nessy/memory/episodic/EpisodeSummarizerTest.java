@@ -44,6 +44,7 @@ import org.jwcarman.nessy.backend.jdbc.JdbcLeases;
 import org.jwcarman.nessy.backend.jdbc.JdbcQueuedBackend;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
+import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -222,16 +223,21 @@ class EpisodeSummarizerTest {
         .isEqualTo("EpisodeSummarizerTest");
     assertThat(recorded.tag(ObservedInferenceProvider.DURATION, "gen_ai.response.finish_reasons"))
         .isEqualTo("stop");
-    // Beneath the turn that caused it: the summary was told about on the engine's threads, and
-    // the observation current when the turn ended travelled with the event.
+    // A root of its own, not a child of the turn that caused it. Nobody waits for a summary, so
+    // it outlives that turn -- and a span that begins after its parent has closed renders as the
+    // longest bar in a trace nothing in the request was waiting on. What ties it back is the
+    // identity it carries, which answers a better question: every summary for this agent, across
+    // every trace, rather than only the one turn you happened to open.
     Observation.Context summary =
         recorded.stopped.stream()
             .filter(c -> c.getName().equals(SummaryObservation.NAME))
             .findFirst()
             .orElseThrow();
-    assertThat(summary.getParentObservation()).isNotNull();
-    assertThat(summary.getParentObservation().getContextView().getName())
-        .isIn("nessy.effect", "nessy.tell");
+    assertThat(summary.getParentObservation()).isNull();
+    assertThat(summary.getHighCardinalityKeyValue(Identity.CONVERSATION_ID))
+        .isNotNull()
+        .extracting(KeyValue::getValue)
+        .isEqualTo(agent.value().toString());
   }
 
   @Test
