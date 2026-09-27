@@ -37,7 +37,7 @@ jobs:
         cache: maven
 
     - name: Check formatting and licence headers
-      run: mvn -B spotless:check license:check
+      run: ./mvnw -B spotless:check license:check
 
   build:
     needs: check
@@ -67,7 +67,7 @@ jobs:
       # sat at reliability D on an assertion that could never fail, uploaded and read by nobody.
       run: |
         if [ -n "$SONAR_TOKEN" ]; then
-          mvn -Pci -B verify sonar:sonar -Dsonar.qualitygate.wait=true -Dnessy.excludedGroups=live
+          ./mvnw -Pci -B verify sonar:sonar -Dsonar.qualitygate.wait=true -Dnessy.excludedGroups=live
         else
-          mvn -Pci -B verify -Dnessy.excludedGroups=live
+          ./mvnw -Pci -B verify -Dnessy.excludedGroups=live
         fi

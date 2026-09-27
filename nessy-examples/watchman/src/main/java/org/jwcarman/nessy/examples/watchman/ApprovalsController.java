@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.examples.watchman;
 
-import java.security.Principal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -51,6 +50,16 @@ import org.springframework.web.bind.annotation.RequestParam;
 public class ApprovalsController {
 
   private static final Logger LOG = LoggerFactory.getLogger(ApprovalsController.class);
+
+  /**
+   * Who answered, which is all this page can honestly say.
+   *
+   * <p>There is no login and no user store, so there was never a principal to name -- the method
+   * parameter that used to be here resolved to null on every request and this is what it always
+   * printed. Put authentication in front of this and the answer becomes a real one; until then,
+   * saying "someone" is the truth rather than a fallback.
+   */
+  private static final String SOMEBODY = "someone";
 
   /** A row as the page draws it: strings, because a template renders what toString says. */
   public record Row(
@@ -158,14 +167,9 @@ public class ApprovalsController {
   public String approve(
       @PathVariable("agentType") String agentType,
       @PathVariable("agentId") String agentId,
-      @PathVariable("callId") String callId,
-      Principal who) {
+      @PathVariable("callId") String callId) {
     return answer(
-        new AgentType(agentType),
-        agent(agentId),
-        new CallId(callId),
-        ApprovalResult.approved(),
-        who);
+        new AgentType(agentType), agent(agentId), new CallId(callId), ApprovalResult.approved());
   }
 
   @PostMapping("/deny/{agentType}/{agentId}/{callId}")
@@ -177,24 +181,22 @@ public class ApprovalsController {
       // and the form has always sent "reason", so every denial a person typed was bound to
       // nothing and recorded as the literal "denied" -- the one thing a denial exists to carry,
       // dropped in silence.
-      @RequestParam(name = "reason", defaultValue = "") String reason,
-      Principal who) {
+      @RequestParam(name = "reason", defaultValue = "") String reason) {
     return answer(
         new AgentType(agentType),
         agent(agentId),
         new CallId(callId),
-        ApprovalResult.denied(reason.isBlank() ? "denied" : reason),
-        who);
+        ApprovalResult.denied(reason.isBlank() ? "denied" : reason));
   }
 
   private String answer(
-      AgentType agentType, AgentId agentId, CallId callId, ApprovalResult result, Principal who) {
+      AgentType agentType, AgentId agentId, CallId callId, ApprovalResult result) {
     PendingApproval row = approvals.byCallId(agentType, agentId, callId).orElse(null);
     if (row == null || !row.waiting()) {
-      LOG.info("[watchman] {} answered {}, which was not waiting", name(who), callId.value());
+      LOG.info("[watchman] {} answered {}, which was not waiting", SOMEBODY, callId.value());
       return "redirect:/";
     }
-    LOG.info("[watchman] {} answered {} with {}", name(who), callId.value(), result);
+    LOG.info("[watchman] {} answered {} with {}", SOMEBODY, callId.value(), result);
     switch (replies.approve(new ReplyToken(row.replyToken()), result)) {
       case ReplyOutcome.Settled _ -> recordLocally(agentType, agentId, callId, result);
       // The agent gets the last word on whether an answer landed, and it can refuse: a call whose
@@ -203,13 +205,13 @@ public class ApprovalsController {
       case ReplyOutcome.NotAwaiting _ ->
           LOG.warn(
               "[watchman] {} answered {}, but the agent had already moved on",
-              name(who),
+              SOMEBODY,
               callId.value());
       case ReplyOutcome.Unreadable _ ->
           LOG.warn(
               "[watchman] {} answered {} with a token this application cannot read; was the"
                   + " reply key changed?",
-              name(who),
+              SOMEBODY,
               callId.value());
     }
     return "redirect:/";
@@ -240,10 +242,6 @@ public class ApprovalsController {
       return hours + "h " + (minutes % 60) + "m";
     }
     return (hours / 24) + "d " + (hours % 24) + "h";
-  }
-
-  private static String name(Principal who) {
-    return who == null ? "someone" : who.getName();
   }
 
   /** An id from the address bar; UUID.fromString refuses what is not one, and that is a 400. */

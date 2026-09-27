@@ -31,7 +31,7 @@
 
   <artifactId>nessy-prompt-spring</artifactId>
   <name>Nessy Prompt: Spring</name>
-  <description>The simple template engine: Spring's PropertyPlaceholderHelper, ${name} with :defaults, and an Environment as a source of variables.</description>
+  <description>The simple template engine: Spring's PropertyPlaceholderHelper, dollar-brace placeholders with :defaults, and an Environment as a source of variables.</description>
 
   <dependencies>
     <dependency>
