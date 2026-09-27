@@ -935,6 +935,24 @@ limitations under the License.]]></inlineHeader>
               <publishingServerId>central</publishingServerId>
               <tokenAuth>true</tokenAuth>
               <autoPublish>true</autoPublish>
+              <!--
+                Examples are applications, not libraries: nobody depends on one, and a Boot fat
+                jar on Central is a download that can only mislead. maven.deploy.skip does not
+                reach this plugin, which collects from the reactor rather than through
+                deploy:deploy, so each one is named here.
+
+                A new example must be added to this list. That is the cost of naming them; the
+                alternative was keeping them out of the release reactor entirely, which would
+                have meant the release build no longer compiles the code the guides show.
+              -->
+              <excludeArtifacts>
+                <excludeArtifact>nessy-examples</excludeArtifact>
+                <excludeArtifact>nessy-example-chat-cli</excludeArtifact>
+                <excludeArtifact>nessy-example-chat-web</excludeArtifact>
+                <excludeArtifact>nessy-example-mcp</excludeArtifact>
+                <excludeArtifact>nessy-example-policy</excludeArtifact>
+                <excludeArtifact>nessy-example-watchman</excludeArtifact>
+              </excludeArtifacts>
             </configuration>
           </plugin>
           <plugin>

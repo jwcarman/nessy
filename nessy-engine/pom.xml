@@ -33,22 +33,6 @@
 
   <dependencyManagement>
     <dependencies>
-    <!-- Spring JDBC as a LIBRARY: the engine owns its own bookkeeping (claims, reminders) and
-         builds it over a DataSource. JdbcClient needs no ApplicationContext and no Spring Boot. -->
-    <dependency>
-      <groupId>org.springframework</groupId>
-      <artifactId>spring-jdbc</artifactId>
-    </dependency>
-    <!-- TEST only. Nothing in main code uses H2, and at compile scope it reached every
-         application through the starter: adding spring-boot-starter-jdbc without a datasource URL
-         then gave Boot an embedded H2, JdbcBackendAutoConfiguration a backend over it, and
-         Schemas.initialize a PostgreSQL DDL script to run into it. The engine's SQL is
-         PostgreSQL's; its tests use real PostgreSQL for that reason. -->
-    <dependency>
-      <groupId>com.h2database</groupId>
-      <artifactId>h2</artifactId>
-      <scope>test</scope>
-    </dependency>
       <dependency>
         <groupId>tools.jackson</groupId>
         <artifactId>jackson-bom</artifactId>

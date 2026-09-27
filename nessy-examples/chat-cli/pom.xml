@@ -38,14 +38,6 @@
     <exec.skip>false</exec.skip>
   </properties>
 
-  <dependencyManagement>
-    <dependencies>
-    <dependency>
-      <groupId>org.springframework</groupId>
-      <artifactId>spring-jdbc</artifactId>
-    </dependency>
-    </dependencies>
-  </dependencyManagement>
 
   <dependencies>
     <!-- The backend this application chooses: in memory, because the conversation is the
