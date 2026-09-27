@@ -77,7 +77,7 @@ public sealed interface AgentEffect {
    */
   record Infer(TurnId turn) implements AgentEffect {
     public Infer {
-      turn = required(turn);
+      required(turn);
     }
   }
 
@@ -108,7 +108,7 @@ public sealed interface AgentEffect {
   record CallTool(TurnId turn, Seq requestSeq, CallId callId, ToolName toolName)
       implements AgentEffect {
     public CallTool {
-      turn = required(turn);
+      required(turn);
     }
   }
 
@@ -134,7 +134,7 @@ public sealed interface AgentEffect {
   record Approve(TurnId turn, Seq requestSeq, CallId callId, ToolName toolName)
       implements AgentEffect {
     public Approve {
-      turn = required(turn);
+      required(turn);
     }
   }
 }

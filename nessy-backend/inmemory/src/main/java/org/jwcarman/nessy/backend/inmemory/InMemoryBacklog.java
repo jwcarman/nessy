@@ -35,6 +35,8 @@ import org.jwcarman.nessy.backend.backlog.Pull;
  */
 public final class InMemoryBacklog<I> implements Backlog<I> {
 
+  private static final String ITEM_REQUIRED = "item must not be null";
+
   private final List<BacklogItem<I>> items;
   private final BooleanSupplier ended;
 
@@ -82,17 +84,17 @@ public final class InMemoryBacklog<I> implements Backlog<I> {
 
   @Override
   public void append(BacklogItem<I> item) {
-    items.add(Objects.requireNonNull(item, "item must not be null"));
+    items.add(Objects.requireNonNull(item, ITEM_REQUIRED));
   }
 
   @Override
   public void prepend(BacklogItem<I> item) {
-    items.addFirst(Objects.requireNonNull(item, "item must not be null"));
+    items.addFirst(Objects.requireNonNull(item, ITEM_REQUIRED));
   }
 
   @Override
   public void replaceAll(BacklogItem<I> item) {
-    Objects.requireNonNull(item, "item must not be null");
+    Objects.requireNonNull(item, ITEM_REQUIRED);
     items.clear();
     items.add(item);
   }

@@ -17,11 +17,13 @@ package org.jwcarman.nessy.backend.jdbc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -140,7 +142,9 @@ class JdbcDirectBackendTest {
     assertThat(waiter.isDone())
         .as("a second instance, over the same database, waits while the first holds it")
         .isFalse();
-    Thread.sleep(200);
+    // Nothing to poll for here -- the point is that the window elapses without the waiter
+    // finishing, so a wait past the window is the only way to say it stayed excluded that long.
+    Awaitility.await().pollDelay(Duration.ofMillis(200)).until(() -> true);
     assertThat(waiter.isDone()).as("still waiting behind the first instance").isFalse();
 
     release.countDown();
