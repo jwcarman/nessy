@@ -46,11 +46,10 @@ branch on, not a fault. Neither has anything behind it yet. This is what goes be
 
 The fold keeps a running tally of the turn -- when it opened, how many times the model has been
 asked, how many calls it has asked for, what it has cost, and how much of that cost bought
-nothing. At the one point where the fold would
-otherwise ask the model again, it hands that tally to a policy and obeys the answer: carry on, ask
-the model to answer from what it already has, or fail the turn with a reason. The decision is made
-inside the lock, in the same place on both doors, and comes out as events and effects like every
-other decision the fold makes.
+nothing. At the one point where the fold would otherwise ask the model again, it hands that tally
+to a policy and obeys the answer: carry on, ask the model to answer from what it already has, or
+fail the turn with a reason. The decision is made inside the lock, in the same place on both
+doors, and comes out as events and effects like every other decision the fold makes.
 
 ## 3. `TurnStats` -- a running tally in the agent state
 
@@ -61,7 +60,7 @@ Only recorded facts:
 | field | what it is |
 |---|---|
 | `startedAt` | the instant the turn opened |
-| `modelCalls` | how many inferences of this turn have settled |
+| `modelCalls` | how many inferences of this turn came back with something -- an answer, a refusal, or a request for work |
 | `toolCalls` | how many calls the model has asked for in this turn |
 | `failedAttempts` | how many attempts at the model produced nothing |
 | `usage` | what this turn spent getting somewhere, summed |
@@ -99,9 +98,13 @@ and no clock.
 `InferenceAttempted` (below), so the fold is handed every number it needs on the events it
 applies. The counting rules:
 
-- `modelCalls` goes up by one on each of the four settling events. Every one of them *is* an
-  inference that came back and closed its call; `ActionsRequested`'s javadoc already makes the
-  point that a turn calling three tools pays for four inferences.
+- `modelCalls` goes up by one on `InferenceAnswered`, `InferenceRefused` and `ActionsRequested`.
+  Every one of them *is* an inference that came back with something; `ActionsRequested`'s javadoc
+  already makes the point that a turn calling three tools pays for four inferences. An earlier
+  draft counted `InferenceFailed` here too. It moved to `failedAttempts` when the tally split,
+  so that each count pairs with exactly one usage -- `modelCalls` with `usage`, `failedAttempts`
+  with `failedUsage` -- and every try the turn made is `modelCalls + failedAttempts` with nothing
+  counted twice.
 - `toolCalls` goes up by `actions().size()` on `ActionsRequested`. Calls the model asked for, not
   calls that ran: a denied call was still a round of the loop, and at the moment the policy is
   consulted (§5a) every call asked for has been settled, so the two readings agree there anyway.
@@ -123,33 +126,151 @@ dispatcher's `catch`, and no adapter throws -- each one catches its vendor's exc
 `EffectOutcome.InferenceFailed`. So a failure the provider classified `Failure.Transient` ended the
 turn, and the classification decided nothing. Since that fix, `EffectDispatcher.worthAnotherGo`
 sends a returned `InferenceFailed` whose `Failure` is `Transient` through the same `settle` a
-throw always took; `Permanent`, `Rejected` and `Unknown` stay terminal. `settle` then does one of
-two things. On `RetryDecision.RetryAfter` it reschedules the row and delivers nothing --
-`DispatcherFailureTest` pins that the turn *"has not been told anything yet"*. On
-`RetryDecision.GiveUp` it delivers the handler's own outcome for the last attempt, carrying the provider's real `Failure`
-and that attempt's `Usage`, rather than the blob stored beside the row.
+throw always took; a returned `Permanent`, `Rejected` or `Unknown` stays terminal. (A throw still
+reaches `settle` as it always did, classified `Unknown` by
+`EffectTermsSource.InferenceTerms.failed`; it is the *returned* `Unknown` that is terminal.)
+`settle` then does one of two things. On `RetryDecision.RetryAfter` it reschedules the row and
+delivers nothing -- `DispatcherFailureTest` pins that the turn *"has not been told anything
+yet"*. On `RetryDecision.GiveUp` it delivers the handler's own outcome for the last attempt,
+carrying the provider's real `Failure` and that attempt's `Usage`, rather than the blob stored
+beside the row.
 
-So the fold is told about one attempt per model call: the one that produced an outcome, or the
-last one when the attempts ran out. `TurnStats` accumulates what it is told and reconstructs
-nothing -- `modelCalls` goes up once for the call, `usage` takes the one `Usage` on the event.
-Tokens a vendor billed for the earlier transient attempts are not in `usage`; they are the
-dispatcher's to observe, which is where they were before the fix too. Nothing is added to make it
-otherwise -- no per-attempt event, no accumulated-usage column on the effect row, no summing in
-the dispatcher -- because the stats are a tally of the turn's *story*, and the story records
-outcomes, not attempts.
+**That is the starting position, and it is a blind spot.** Verified again in source: the
+`RetryAfter` arm of `settle` calls `effects.reschedule(attempt.effectId(), attempt.attemptsMade(),
+next)` -- through `Outbox.reschedule`, which passes straight to `Effects.reschedule` -- and never
+`callback.deliverOutcome`. So the fold is told about one attempt per model call: the one that
+produced an outcome, or the last one when the attempts ran out. Tokens a vendor billed for the
+earlier attempts reach nothing: not the story, not the tally, not the caller. An earlier draft of
+this record accepted that on the grounds that the story records outcomes, not attempts. That was
+wrong for exactly the case the tally exists to catch: a turn that is thrashing is spending
+precisely where nobody is looking, and a budget that cannot see it is bounding the wrong thing.
 
-Two facts bound how often this matters. **Retrying is off by default and stays off**: every retry
-default in the tree is `RetryPolicy.Never` -- `DefaultQueuedHarnessConfig`'s
+**The design closes it, by making each failed attempt a fact of its own.** Five pieces:
+
+- **A new `AgentEvent` arm, `InferenceAttempted(Seq seq, TurnId turn, Failure failure, Usage
+  usage)`.** One event per failed attempt, not a list inside one event: an attempt is a fact, and a
+  fact hidden inside another event's collection is one no projection over the story will find.
+  Told apart from `InferenceFailed` by finality -- that one ends the turn, this one is the turn
+  carrying on -- so `Inferring.accept` stays `Inferring` on it, with the seq moved and the tally
+  grown. It is in the story for whoever is counting what the turn spent and for nobody else:
+  neither door's `narrate` announces it (a call being tried again is the engine keeping its own
+  promise, not anything the turn did), `Transcript` does not show it to the model (from where the
+  model sits, the call it receives is the first one), and `DefaultDirectHarness.asOutcome` reads
+  past it because it closes nothing. The `Failure` it carries is what the attempt was classified
+  as: `Failure.Transient` when the adapter returned one, because that is the only returned arm
+  `worthAnotherGo` admits; `Failure.Unknown` when the attempt threw, because
+  `EffectTermsSource.InferenceTerms.failed` classifies every throw so, with `Usage.unreported()`
+  beside it. Both go through the same `settle` and the same policy, so both can be retried and
+  both are recorded.
+- **A new record, `FailedAttempt(Failure failure, Usage usage)`, in `nessy-backend-spi`.** What one
+  attempt learned, carried from the dispatcher to the fold. It is *not* what the event holds; the
+  event flattens the two fields beside its `Seq` and `TurnId`. It lives in the backend SPI because
+  the effect store is what accumulates it and the engine is what reads it back, and the type has to
+  be visible to both.
+- **The effect row accumulates them durably.** `Effects.reschedule` gains the failed attempt as a
+  parameter, and a column on `nessy_agent_effect` holds the accumulated list, appended to in the
+  same fenced `UPDATE` (`status = RUNNING AND attempts_made = ?`) that puts the row back. On the
+  row rather than in the dispatcher's memory because a retry spans crashes: the row is what
+  survives, and a process that dies between attempt two and attempt three must not come back
+  having forgotten attempt one. The column is `failed_attempts BYTEA`, nullable, encoded through
+  the same pinned mapper as the row's two existing blobs; a null reads as an empty list, which is
+  what every row written before the column existed truthfully has. `Attempt` -- the claimed row as
+  handed to the performer -- carries the list read off it, so the dispatcher has it at delivery
+  time without a second query.
+
+  **How an existing database gets the column.** It does not get it from `nessy-schema.sql`. That
+  file is `CREATE TABLE IF NOT EXISTS` throughout, `Schemas`' own javadoc says it is *"a bootstrap,
+  not a migration"* -- *"change a column and this silently does nothing, and the mismatch surfaces
+  at query time rather than at startup"* -- and there is no `ALTER TABLE` anywhere in the tree. So
+  a database that already has the table keeps the old shape, and the new build's claim and
+  reschedule statements would name a column that is not there and fail on the first effect. The
+  column arrives by an operator running `ALTER TABLE nessy_agent_effect ADD COLUMN failed_attempts
+  BYTEA` before the new build starts; a fresh database gets it from the file like any other column.
+  Whether the file should learn to say that itself is §10 (7).
+- **`AgentEffectCallback.deliverOutcome` carries the accumulated list**, rather than the four
+  inference arms of `EffectOutcome` each gaining one. The four arms of both grammars --
+  `EffectOutcome.Inference*` and `AgentEvent.Inference*` -- stay exactly as they are, and that was
+  the whole reason this shape was chosen over a list on each: what settled the call is one thing,
+  what it cost to get there is another, and the second is the delivery's to carry. Every delivery
+  off a row carries what the row accumulated -- the ordinary `Ready` arm, `giveUp` on either of the
+  two paths that reach it, and `expired`; `undispatchable` too, since the row is readable even
+  when its effect is not. From the callback the list rides the command: `EffectOutcomes.command`
+  takes it beside the turn and `CompleteInference` carries it into the fold, which is a field on
+  an engine-internal command and not a new concept. The direct door performs effects on its own
+  threads and never retries an inference (below), so it passes an empty list and nothing about it
+  changes.
+- **The fold emits N+1 events from one command.** `Inferring.completed`, handed a
+  `CompleteInference` with N accumulated attempts, emits one `InferenceAttempted` per attempt in
+  the order they happened and then the closing event -- whichever of the four it would have
+  emitted before. On `GiveUp` after three tries that is two `InferenceAttempted` and one
+  `InferenceFailed`, the last attempt's `Failure` and `Usage` on the closing event where
+  `d36de45c9` put them. This is the first command in the fold to yield more than one event, and
+  §3d says why that is safe.
+
+**What is recorded for a tool retry: nothing.** A tool attempt that throws goes through the same
+`settle` and can be rescheduled by its own policy, but its discharge is `ToolFailed(callId,
+message)` -- no `Failure`, no `Usage` -- so there is nothing a `FailedAttempt` could hold. The
+dispatcher records an attempt only when the discharge is an `InferenceFailed`; a rescheduled tool
+row accumulates nothing, and the tally is about inferences anyway. How `reschedule` spells "nothing
+to add" is a mechanical internal.
+
+Two facts bound how often any of this fires. **Retrying is off by default and stays off**: every
+retry default in the tree is `RetryPolicy.Never` -- `DefaultQueuedHarnessConfig`'s
 `DEFAULT_INFERENCE_RETRY_POLICY` and `DEFAULT_TOOL_RETRY_POLICY`, `DefaultDirectHarnessConfig`'s
-`DEFAULT_RETRY_POLICY` -- so the fix made the knob work and did not turn it on, and a model call
-has a second attempt only where an application asked for one. And **it is queued-door only**:
+`DEFAULT_RETRY_POLICY` -- so `d36de45c9` made the knob work and did not turn it on, and a model
+call has a second attempt only where an application asked for one. And **it is queued-door only**:
 `EffectDispatcher` is used by `DefaultQueuedHarness` alone; the direct door performs effects on its
 own threads, and `DefaultDirectHarnessConfig` documents its inference retry policy as *"Stored ...
-but not honoured"*. On the direct door a model call is exactly one attempt, and the tally is
-complete without any of this.
+but not honoured"*. On the direct door a model call is exactly one attempt, no `InferenceAttempted`
+is ever written, and `failedAttempts` can only ever reach one -- on the `InferenceFailed` that ends
+the turn. The fold is shared, so the multi-event path is tested once and holds on both doors.
 
-`Usage.unreported()` -- an event written before usage was recorded, or a provider that did not
-count -- adds nothing, which is the honest reading: null is "nobody counted", not zero.
+`Usage.unreported()` -- an event written before usage was recorded, a provider that did not count,
+or an attempt that threw before reaching one -- adds nothing to either counter, which is the honest
+reading: null is "nobody counted", not zero. It still counts one in `failedAttempts`, which is why
+that field exists beside the usage: a provider that reports no counts is exactly where a policy
+watching only tokens would see a thrashing turn as a free one.
+
+### 3d. Several events from one command -- a first
+
+Every decision `AgentState` makes today yields exactly one event. Verified: four sites do `Seq at
+= seq.next()` once -- `Idle.execute(StartTurn)`, `Inferring.completed`, `AwaitingActions.approved`
+and `AwaitingActions.ran` -- and the fifth, `Idle.execute(Terminate)`, calls `seq.next()` inline
+for its one `Terminated`; every one of them passes a single-element list to `Decision.of`. The
+N+1 emission in §3c is the first command to yield several, so the two facts that make it safe are
+stated here rather than assumed.
+
+**The append already takes a list, and the list commits as one.** `AgentEvents.append(type, agent,
+events, expectedLast)` is typed on `List<AgentEvent>`. `JdbcAgentEvents` writes one row per
+event, but inside the transaction the fold's lock opened -- `JdbcRowLocks.withLock` runs its body
+under `transactions.execute`, and both doors call `append` from inside it -- so the N+1 rows land
+together or not at all, the same guarantee the effect rows written beside them already rely on.
+`InMemoryAgentEvents.append` is `synchronized` over the whole list. No backend has to learn
+anything; the list was always the contract.
+
+**The fence does not depend on how many events are appended.** On both doors `expectedLast` is
+`state.seq()` -- the seq the state was read at -- verified at every `append` call in
+`DefaultQueuedHarness.apply` and `DefaultDirectHarness`. A competing writer that decided from the
+same state mints the same first seq and violates the primary key on its first row, whatever either
+of them appended after it. So the conflict detection is exactly what it was for one event. (An
+earlier line of reasoning had the fence become attempt-count-dependent; it does not, and this
+paragraph is here so nobody repeats it.)
+
+**Turn identity is undisturbed.** `Seq.opensTurn()` mints the `TurnId` from the seq of the
+`TurnStarted` that opened the turn, and only that seq. Extra events mid-turn shift the seqs of
+everything after them and touch nothing about which turn they are in; `InferenceAttempted`
+carries the `TurnId` like every other turn-scoped event and the fold's own-turn check on
+`CompleteInference` is unchanged.
+
+What *is* new is the idiom: the fold must allocate several consecutive seqs in one decision --
+`seq.next()`, then the next after that, N+1 times -- where every site today takes one and is done.
+That is a new habit in `AgentState`, not a new mechanism, and it stays inside `Inferring.completed`.
+
+One promise to check rather than assume: `DefaultDirectHarness.timedEffectsOf` relies on *"exactly
+one event behind any effects this engine emits"*. It holds, because it is the direct door's helper
+over the direct door's decisions, and the direct door never carries attempts (§3c): on that door
+`completed` still yields one event. The queued door, where a `RequestedActions` closing a retried
+call yields N+1 events beside its `Approve` effects, has no such helper and makes no such promise.
 
 ## 4. `TurnPolicy` and `TurnDecision` -- the two halves
 
@@ -233,9 +354,10 @@ and ignore it otherwise"* -- and the instant follows the same pattern:
   writes it into `TurnStarted` as `startedAt`, which is where the tally's first fact comes from.
 - `CompleteToolCall` and `CompleteApproval` gain `Instant at`, stamped at the same moment the
   `TurnId` is -- `EffectOutcomes.command(turn, outcome)` is the one place both doors build a
-  completion, and it takes the instant beside the turn. That `at` is the `now` the policy is
-  handed.
-- `CompleteInference` gains it too, for uniformity, though no decision is made on it today.
+  completion, and it takes the instant beside the turn (and, after §3c, the accumulated attempts
+  beside both). That `at` is the `now` the policy is handed.
+- `CompleteInference` gains it too, for uniformity, though no decision is made on it today. It is
+  the one completion that also carries a list of `FailedAttempt` (§3c), empty on the direct door.
 - `Terminate` carries none: it ends an agent rather than answering anything.
 
 One clock, on both sides of the subtraction. `startedAt` and `now` are both the harness's
@@ -268,8 +390,9 @@ it none. This lasts one turn per agent across one deploy and then never happens 
 
 `AnswerNow` needs no event of its own. The discharge event is the one event behind the effect --
 `DefaultDirectHarness.timedEffectsOf` relies on *"exactly one event behind any effects this engine
-emits"*, and that stays true -- and the effect is a durable row written in the same transaction,
-carrying the flag. On replay the agent comes back `Inferring`, which is correct whether or not the
+emits"*, and that stays true here: a discharge is a tool or approval completion, which carries no
+attempts, so the N+1 case of §3d never reaches this decision -- and the effect is a durable row
+written in the same transaction, carrying the flag. On replay the agent comes back `Inferring`, which is correct whether or not the
 inference in flight was told to answer: the row knows, and the fold does not need to.
 
 **`AnswerNow` is not sticky.** If the model, told to answer, nonetheless comes back asking for
@@ -438,6 +561,27 @@ wants the numbers (§10 (3)). Rejected:
   inference failure (`InferenceFailed`), all of which are everywhere in this codebase, and the arm
   has to survive being read in a `switch` far from its declaration.
 
+**`failedAttempts` and `failedUsage`, as a pair.** The count is named for the set it counts, and
+the usage for the same set, so the two read as one fact seen two ways. `attempts` was rejected
+for the count: it reads as every try, and every try is `modelCalls + failedAttempts`, which a
+policy that wants it can add. `retries` was rejected because it is wrong twice over -- the first
+failed try is not a retry, and the count is of failures, not of repeats. `wastedUsage` was weighed
+for the usage and rejected because it judges: an attempt that failed may have been the provider's
+weather rather than waste, and the fact recorded is only that it produced nothing.
+
+**`InferenceAttempted`, not `InferenceRetried`.** The event records the attempt that failed, and
+it is written whether or not another follows -- on `GiveUp`, the last attempt is the
+`InferenceFailed` and the earlier ones are these. "Retried" would name the decision that came
+after the fact rather than the fact. It sits beside `InferenceAnswered`, `InferenceRefused` and
+`InferenceFailed` as a fourth past participle about one call, and the odd one out on purpose: the
+other three settle the call and this one does not.
+
+**`FailedAttempt`, not `Attempt`.** `Attempt` is already taken -- `backend.effect.Attempt` is a
+claimed effect row -- and the two are not the same thing: one is a row about to be performed, the
+other is what performing it once came to. A carrier of a `Failure` and a `Usage` that could be
+confused with the row it is stored on would be read wrongly in the one place both appear, which
+is the dispatcher.
+
 **`ToolChoice.Answer`, not `ToolChoice.AnswerNow`.** The decision and the request are two things
 at two layers, and they are named so as not to stutter. `TurnDecision.AnswerNow` is what a policy
 says and the fold obeys; `ToolChoice.Answer` is what a request tells an adapter, beside `Auto`,
@@ -461,8 +605,10 @@ The general term is *stopping criteria*, or *early stopping*. Two frameworks are
 
 - **AutoGen** has composable `TerminationCondition` primitives -- `MaxMessageTermination`,
   `TokenUsageTermination`, `TimeoutTermination` -- combined with `|` and `&`. The composability is
-  attractive and the three built-ins map directly onto the three facts in `TurnStats`
-  (`modelCalls`/`toolCalls`, `usage`, `startedAt`). The stem is not borrowed, for the reason above.
+  attractive and the three built-ins map directly onto three of the facts in `TurnStats`
+  (`modelCalls`/`toolCalls`, `usage`, `startedAt`). None of them sees what `failedAttempts` and
+  `failedUsage` see -- AutoGen's token count is one number -- which is the case §3a argues is the
+  one most worth stopping on. The stem is not borrowed, for the reason above.
 - **LangChain**'s `AgentExecutor` has `max_iterations` plus `early_stopping_method`, whose values
   are `"force"` -- stop and return a canned "stopped due to iteration limit" -- and `"generate"`
   -- make one final model call with no further tool use and return whatever it says. That is
@@ -513,26 +659,35 @@ Listed, not answered.
    timestamp"* by design and is announced, not stored; a tally on it would be a new kind of
    announcement.
 
-4. **How nullable `Usage` counts sum, and into what.** `Usage.totalTokens()` sets one precedent
-   -- null + null is null, null + x is x, *"which is the most that can honestly be said"* -- and
-   per-field summing on that rule is the obvious reading. Two things are not obvious. First, a
-   sum that silently absorbs an uncounted call under-reports, and a policy bounding spend cannot
-   tell "41k tokens" from "41k tokens plus two calls nobody counted"; whether the tally should
-   also carry how many calls went uncounted is a real question. Second, `Usage` insists that a
-   counted value *"must name the model it was counted on"*, and a turn's inferences may be billed
-   as different dated builds of one alias; a cumulative `Usage` has one `model` field and no honest
-   value to put in it. The tally may need to hold the five counts rather than a `Usage`. The sum is
-   across *calls* only: a retried call reaches the fold once, with its last attempt's `Usage`
-   (§3c), so the fold never sums across attempts and the dated-build concern does not arise within
-   one call. It would only start to if something in §3c changed so that earlier attempts were
-   reported, and then the concern is weaker there than across a turn -- a retry lands on the
-   same alias minutes apart.
+4. **How nullable `Usage` counts sum.** *Into what* is closed by §3a: two counters, `usage` and
+   `failedUsage`, each summing a different set of calls. *How* is open, and the split made it
+   sharper rather than softer, because every part of the question now applies twice.
+   `Usage.totalTokens()` sets one precedent -- null + null is null, null + x is x, *"which is the
+   most that can honestly be said"* -- and per-field summing on that rule is the obvious reading.
+   Three things are not obvious. First, a sum that silently absorbs an uncounted call
+   under-reports, and a policy bounding spend cannot tell "41k tokens" from "41k tokens plus two
+   calls nobody counted"; whether each counter should also carry how many of its calls went
+   uncounted is a real question, and it bites harder on `failedUsage`, where a thrown attempt is
+   *always* uncounted (§3c) and so a turn thrashing on throws reads as free. Second, `Usage`
+   insists that a counted value *"must name the model it was counted on"*, and that invariant
+   applies to both counters: a turn's inferences may be billed as different dated builds of one
+   alias, and the attempts under one call may be too, so a cumulative `Usage` has one `model`
+   field and no honest value to put in it. Each counter may need to hold the five counts rather
+   than a `Usage`. Third, `totalTokens()` on whatever a cumulative counter turns out to be is
+   ambiguous the moment there are two of them: a reader has to be able to tell whether the number
+   is productive spend or everything, and a method that does not say so in its name will be read
+   both ways. What the fold sums across is now settled -- across calls for `usage`, across
+   attempts and the closing failure for `failedUsage` -- and the dated-build concern is weaker
+   within one call than across a turn, since a retry lands on the same alias minutes apart; but
+   it is no longer avoided.
 
 5. **The event that records `FailTurn`** (§6a). Reusing `InferenceFailed` with a `Failure` and
    `Usage.unreported()` works with zero downstream change and records an inference that never
-   happened; a new `AgentEvent` arm is honest and is a public backend SPI change that
-   `JdbcAgentEvents`, both doors' `narrate` switches and `DefaultDirectHarness.asOutcome` all have
-   to learn.
+   happened; a new `AgentEvent` arm is honest and is a public backend SPI change. What adding
+   one costs is exactly what `InferenceAttempted` (§3c) costs: a line in `AgentEvent`'s own
+   subtype list, an arm in both doors' `narrate` switches, one in `Transcript`, and one in
+   `DefaultDirectHarness.asOutcome`. `JdbcAgentEvents` needs nothing -- it inspects only
+   `TurnStarted`, and the codec learns an arm from the subtype list, not from the store.
 
 6. **What each adapter does for `ToolChoice.Answer`, measured** (§6b). This used to be one
    global unknown -- whether every vendor accepts a story containing tool calls when no tools are
@@ -544,3 +699,16 @@ Listed, not answered.
    rejected request. If an adapter cannot produce prose on some path, `AnswerNow` on that vendor
    is an `InferenceFailed` and the caller gets `Outcome.Failed` where an answer was promised; that
    is a defect in the adapter, not a fact about the engine.
+
+7. **Whether `nessy-schema.sql` learns to add a column** (§3c). Today an existing database gets
+   `failed_attempts` only from an operator's `ALTER TABLE`, run before the build that needs it
+   starts, and nothing in the tree says so except this record. `Schemas` calls that trade
+   *"accepted before 1.0"* and names versioned scripts as the point it stops being acceptable. The
+   choices are: a line of `ALTER TABLE nessy_agent_effect ADD COLUMN IF NOT EXISTS ...` in the
+   file, which PostgreSQL spells so and which keeps the file idempotent (whether H2 accepts the
+   same spelling is the portability question `Schemas` already says nothing enforces); a
+   versioned migration tool, which is the answer `Schemas` itself points at; or leaving it
+   operator-run and documented in `docs/concepts/storage.md`. The file has faced this before and
+   declined -- its own note on `nessy_lock` says *"this file has never destroyed anything"* and
+   leaves the dead table in place -- so whatever is chosen here is the first time it adds rather
+   than leaves alone, and is the precedent.
