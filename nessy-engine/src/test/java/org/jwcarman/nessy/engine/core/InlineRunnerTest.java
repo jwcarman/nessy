@@ -22,11 +22,11 @@ import java.util.Map;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
-import org.jwcarman.nessy.inference.Usage;
 
 /**
  * A whole turn, on one thread, with no database and nothing written down.

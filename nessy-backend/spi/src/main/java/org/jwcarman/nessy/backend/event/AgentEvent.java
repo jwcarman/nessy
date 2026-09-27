@@ -22,9 +22,9 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.inference.Failure;
-import org.jwcarman.nessy.inference.Usage;
 
 /**
  * What happened. Facts, in order, and the only thing that moves an {@link AgentState}.

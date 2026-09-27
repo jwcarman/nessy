@@ -16,8 +16,8 @@
 package org.jwcarman.nessy.backend.effect;
 
 import java.util.Objects;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.inference.Failure;
-import org.jwcarman.nessy.inference.Usage;
 
 /**
  * What one attempt learned before it was tried again.

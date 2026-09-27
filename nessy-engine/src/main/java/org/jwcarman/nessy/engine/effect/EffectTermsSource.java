@@ -18,12 +18,12 @@ package org.jwcarman.nessy.engine.effect;
 import java.time.Duration;
 import java.util.Objects;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.Failure;
-import org.jwcarman.nessy.inference.Usage;
 
 /**
  * What every kind of effect is worth, resolved from {@link Tools} and the harness-wide defaults

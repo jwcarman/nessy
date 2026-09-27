@@ -32,6 +32,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -48,7 +49,6 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.ToolOffer;
-import org.jwcarman.nessy.inference.Usage;
 
 /**
  * A whole round, through real Postgres: the model asks for work, the work is dispatched as its own

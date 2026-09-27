@@ -42,6 +42,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.Turn;
@@ -51,7 +52,6 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Toolset;
-import org.jwcarman.nessy.inference.Usage;
 import tools.jackson.databind.json.JsonMapper;
 
 @DisplayName("The Gemini provider")

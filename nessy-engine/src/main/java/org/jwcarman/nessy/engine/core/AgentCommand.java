@@ -20,12 +20,12 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.inference.Failure;
-import org.jwcarman.nessy.inference.Usage;
 
 /**
  * What the harness asks of an {@link AgentState}. Five of them, and the same five whatever the

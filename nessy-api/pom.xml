@@ -49,6 +49,10 @@
       <artifactId>slf4j-api</artifactId>
     </dependency>
     <dependency>
+      <groupId>org.jspecify</groupId>
+      <artifactId>jspecify</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.jwcarman.codec</groupId>
       <artifactId>codec-core</artifactId>
     </dependency>
