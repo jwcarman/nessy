@@ -144,6 +144,51 @@ class AgentStateTest {
     }
 
     @Test
+    @DisplayName("a call tried again leaves the agent still inferring, one seq further on")
+    void a_retried_attempt_does_not_close_the_turn() {
+      AgentState inferring = idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL)).events());
+
+      AgentState after =
+          inferring.apply(
+              new AgentEvent.InferenceAttempted(
+                  inferring.seq().next(),
+                  TURN,
+                  new Failure.Transient("the model was busy"),
+                  Usage.of("a-model", 11, 0)));
+
+      assertThat(after)
+          .as("the call it belongs to has not settled, so the turn is still open")
+          .isInstanceOf(AgentState.Inferring.class);
+      assertThat(after.seq())
+          .as("but the story moved, and the next event must land after it")
+          .isEqualTo(inferring.seq().next());
+    }
+
+    @Test
+    @DisplayName("a turn that stumbled and then answered still ends idle")
+    void attempts_do_not_disturb_the_close() {
+      AgentState inferring = idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL)).events());
+      AgentState stumbled =
+          inferring.apply(
+              new AgentEvent.InferenceAttempted(
+                  inferring.seq().next(),
+                  TURN,
+                  new Failure.Transient("the model was busy"),
+                  Usage.unreported()));
+
+      AgentState after =
+          stumbled.applyAll(
+              stumbled
+                  .execute(
+                      new AgentCommand.CompleteInference(
+                          TURN,
+                          new AgentCommand.InferenceOutcome.Answered(ANSWER, Usage.unreported())))
+                  .events());
+
+      assertThat(after).isInstanceOf(AgentState.Idle.class);
+    }
+
+    @Test
     @DisplayName(
         "an event out of order is refused rather than quietly building a state that never existed")
     void out_of_order_is_refused() {

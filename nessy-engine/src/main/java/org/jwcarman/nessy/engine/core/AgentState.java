@@ -154,6 +154,10 @@ public sealed interface AgentState {
         case AgentEvent.InferenceAnswered answered -> new Idle(answered.seq());
         case AgentEvent.InferenceRefused refused -> new Idle(refused.seq());
         case AgentEvent.InferenceFailed failed -> new Idle(failed.seq());
+        // Still asking. An attempt that failed and was tried again moves the story forward
+        // without moving the turn: the call it belongs to has not settled, and the state this
+        // rebuilds to must be the one the next event expects to find.
+        case AgentEvent.InferenceAttempted attempted -> new Inferring(attempted.seq(), turn);
         case AgentEvent.ActionsRequested requested -> AwaitingActions.opening(requested);
         default -> throw unexpected(event, this);
       };

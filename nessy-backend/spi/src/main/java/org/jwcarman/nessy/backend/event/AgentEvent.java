@@ -49,6 +49,7 @@ import org.jwcarman.nessy.inference.Usage;
   @JsonSubTypes.Type(value = AgentEvent.InferenceAnswered.class, name = "inference-answered"),
   @JsonSubTypes.Type(value = AgentEvent.InferenceRefused.class, name = "inference-refused"),
   @JsonSubTypes.Type(value = AgentEvent.InferenceFailed.class, name = "inference-failed"),
+  @JsonSubTypes.Type(value = AgentEvent.InferenceAttempted.class, name = "inference-attempted"),
   @JsonSubTypes.Type(value = AgentEvent.ActionsRequested.class, name = "actions-requested"),
   @JsonSubTypes.Type(value = AgentEvent.ToolApproved.class, name = "tool-approved"),
   @JsonSubTypes.Type(value = AgentEvent.ToolDenied.class, name = "tool-denied"),
@@ -102,6 +103,32 @@ public sealed interface AgentEvent {
    */
   record InferenceFailed(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {
     public InferenceFailed {
+      usage = usage == null ? Usage.unreported() : usage;
+    }
+  }
+
+  /**
+   * A model call failed and was tried again.
+   *
+   * <p><b>Told apart from {@link InferenceFailed} by finality, which is the difference that
+   * matters.</b> That one ends a turn; this one is a turn carrying on. A reader who treats them
+   * alike will count a turn that stumbled twice and answered as three failures.
+   *
+   * <p><b>It exists because the attempt cost something and nothing else records it.</b> A retried
+   * call reaches the fold once, when it finally settles, carrying the last attempt's count -- so
+   * without this the tokens spent on the attempts before it are invisible to anything asking what a
+   * turn has spent. That is the reading a budget most needs, because a turn that is thrashing is
+   * spending precisely where nobody is looking.
+   *
+   * <p>One event per attempt rather than a list on the closing event: an attempt is a fact, and a
+   * fact hidden inside another event's collection is one no projection over the story will find.
+   *
+   * <p>Only {@link Failure.Transient} ever appears here. It is the one classification that says
+   * trying again could help, so it is the only one that produces a further attempt to record.
+   */
+  record InferenceAttempted(Seq seq, TurnId turn, Failure failure, Usage usage)
+      implements AgentEvent {
+    public InferenceAttempted {
       usage = usage == null ? Usage.unreported() : usage;
     }
   }

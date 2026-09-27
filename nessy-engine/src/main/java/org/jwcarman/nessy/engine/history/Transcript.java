@@ -96,7 +96,12 @@ public final class Transcript {
         }
 
         // Bookkeeping, not conversation.
-        case AgentEvent.ToolApproved _, AgentEvent.Terminated _ -> {}
+        // A failed attempt is not part of the conversation. The model is not shown that a call
+        // it never received was tried and failed -- from where it sits, the call it does receive
+        // is the first one. Showing it would invite it to apologise for the engine's weather.
+        case AgentEvent.ToolApproved _,
+            AgentEvent.InferenceAttempted _,
+            AgentEvent.Terminated _ -> {}
       }
     }
     if (open != null) {
@@ -119,6 +124,7 @@ public final class Transcript {
             AgentEvent.ToolApproved _,
             AgentEvent.InferenceRefused _,
             AgentEvent.InferenceFailed _,
+            AgentEvent.InferenceAttempted _,
             AgentEvent.Terminated _ -> {
           // Nothing behind these but the words already in them.
         }

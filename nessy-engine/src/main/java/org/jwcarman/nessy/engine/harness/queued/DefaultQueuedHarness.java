@@ -358,6 +358,10 @@ final class DefaultQueuedHarness<I>
       return;
     }
     switch (event) {
+      // Not narrated. A watcher is told what is happening to a turn, and a call being tried
+      // again is the engine keeping its own promise rather than anything the turn did. It is in
+      // the story for whoever is counting what the turn spent.
+      case AgentEvent.InferenceAttempted _ -> {}
       case AgentEvent.ActionsRequested asked ->
           say(
               agentId,

@@ -3,13 +3,20 @@
 **Status: APPROVED, NOT BUILT.** The shape was settled in conversation with James on 2026-09-27
 and this record writes it down. Nothing in it is on `main`. It adds three public types --
 `TurnStats`, `TurnPolicy`, `TurnDecision` -- one arm on `ToolChoice` (`Answer`, §6b), one field on
-`AgentEffect.Infer`, and an instant on `AgentEvent.TurnStarted` and the commands that need one
-(§5b); anything else it turned out to need is listed in §10 as a question rather than quietly
-added.
+`AgentEffect.Infer`, an instant on `AgentEvent.TurnStarted` and the commands that need one (§5b),
+one arm on `AgentEvent` (`InferenceAttempted`, §3c) with the `FailedAttempt` record that feeds it,
+and one column on `nessy_agent_effect` (§3c); anything else it turned out to need is listed in §10
+as a question rather than quietly added.
 
 Revised the same day, after three rulings: the answer-now request is intent the adapters honour,
 not an empty toolset (§6b); inference retry was found unreachable and fixed in `d36de45c9`, which
 changes what §3c can promise; and `FailTurn` is confirmed as the name of the third arm (§8).
+
+Revised a second time, the same day, after two more: the tokens a retried call burned on its
+earlier attempts are no longer invisible to the fold -- each failed attempt becomes an event of
+its own, accumulated durably on the effect row until the call settles (§3c), which makes this the
+first command to yield several events (§3d); and the tally keeps productive and wasted spend as
+two counters rather than one sum, beside a count of the attempts that failed (§3a).
 
 Date: 2026-09-27. Sits on the pure core of
 `2026-09-24-inline-inference-and-the-turn-executor-design.md` and the two doors of
@@ -38,7 +45,8 @@ branch on, not a fault. Neither has anything behind it yet. This is what goes be
 ## 2. The shape in one paragraph
 
 The fold keeps a running tally of the turn -- when it opened, how many times the model has been
-asked, how many calls it has asked for, what it has cost. At the one point where the fold would
+asked, how many calls it has asked for, what it has cost, and how much of that cost bought
+nothing. At the one point where the fold would
 otherwise ask the model again, it hands that tally to a policy and obeys the answer: carry on, ask
 the model to answer from what it already has, or fail the turn with a reason. The decision is made
 inside the lock, in the same place on both doors, and comes out as events and effects like every
@@ -53,13 +61,26 @@ Only recorded facts:
 | field | what it is |
 |---|---|
 | `startedAt` | the instant the turn opened |
-| `modelCalls` | how many inferences of this turn have come back |
+| `modelCalls` | how many inferences of this turn have settled |
 | `toolCalls` | how many calls the model has asked for in this turn |
-| `usage` | what this turn's inferences have cost, summed |
+| `failedAttempts` | how many attempts at the model produced nothing |
+| `usage` | what this turn spent getting somewhere, summed |
+| `failedUsage` | what this turn burned on attempts that produced nothing, summed |
 
 It is accumulated by the fold and is part of the state a replay rebuilds: `AgentState.Inferring`
 and `AgentState.AwaitingActions` each carry one, and it moves with every event they accept. A turn
 that begins has an empty tally; `Idle` and `Terminal` carry none, because there is no turn.
+
+**Productive and wasted spend are two counters, not one sum.** They answer different questions,
+and a policy wants both. Total spend is a budget signal. The share of it that bought nothing is a
+*thrashing* signal, and thrashing is the case actually worth failing a turn over: a turn spending
+steadily is working, a turn spending on failures is stuck. Summed into one number the two are
+indistinguishable, and the only policy anyone could write would bound total spend -- which ends
+the working turn and the stuck one alike. `failedUsage` composes with `failedAttempts` rather than
+duplicating it: the count says how often the turn stumbled, the usage says what each stumble cost,
+and a cheap failing call and an expensive one are different problems that a policy reading only
+one of the two could not tell apart. `failedAttempts` is there so a policy can see stumbling
+without reading usage at all, which matters on a provider that reports no counts (§3c).
 
 ### 3b. Elapsed is derived, never stored
 
@@ -74,16 +95,26 @@ and no clock.
 ### 3c. What the fold already sees
 
 `Usage` (`nessy-inference-spi`) is already carried by four `AgentEvent` arms -- `InferenceAnswered`,
-`InferenceRefused`, `InferenceFailed` and `ActionsRequested` -- so the fold is handed every number
-it needs on the events it already applies. The counting rules:
+`InferenceRefused`, `InferenceFailed` and `ActionsRequested` -- and this spec adds a fifth,
+`InferenceAttempted` (below), so the fold is handed every number it needs on the events it
+applies. The counting rules:
 
-- `modelCalls` goes up by one on each of those four events. Every one of them *is* an inference
-  that came back; `ActionsRequested`'s javadoc already makes the point that a turn calling three
-  tools pays for four inferences.
+- `modelCalls` goes up by one on each of the four settling events. Every one of them *is* an
+  inference that came back and closed its call; `ActionsRequested`'s javadoc already makes the
+  point that a turn calling three tools pays for four inferences.
 - `toolCalls` goes up by `actions().size()` on `ActionsRequested`. Calls the model asked for, not
   calls that ran: a denied call was still a round of the loop, and at the moment the policy is
   consulted (§5a) every call asked for has been settled, so the two readings agree there anyway.
-- `usage` accumulates the four events' `usage`. How nullable counts sum is §10 (4).
+- `failedAttempts` goes up by one on `InferenceAttempted` and on `InferenceFailed`: the attempts
+  that produced nothing. Since `InferenceFailed` closes the turn, at any point the policy is
+  consulted the count is the `InferenceAttempted` events alone; the closing arm is counted so the
+  tally exposed to a reader after the turn (§10 (3)) is complete.
+- `usage` accumulates `usage` from `InferenceAnswered`, `InferenceRefused` and
+  `ActionsRequested` -- the calls that got the turn somewhere. A refusal is in this set: the model
+  read the input and answered, even if the answer was no.
+- `failedUsage` accumulates `usage` from `InferenceAttempted` and `InferenceFailed` -- the same
+  set `failedAttempts` counts, so the two always describe the same calls.
+- How nullable counts sum, for either counter, is §10 (4).
 
 **Retried attempts, and what the fold sees of them.** Until `d36de45c9` no inference was ever
 retried on either door, whatever a policy said: retrying was reachable only from the queued
