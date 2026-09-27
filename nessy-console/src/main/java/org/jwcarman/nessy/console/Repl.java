@@ -26,7 +26,7 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
-import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.spring.boot.QueuedHarnessAutoConfiguration;
 import org.springframework.beans.BeansException;
@@ -147,7 +147,7 @@ public final class Repl {
                   factory
                       .backend(new InMemoryDirectBackend(codecs))
                       .provider(provider)
-                      .schemas(new VictoolsInputSchemaGenerator())
+                      .schemas(new VictoolsJsonSchemaGenerator())
                       .mapper(mapper)),
           model.get(),
           config,

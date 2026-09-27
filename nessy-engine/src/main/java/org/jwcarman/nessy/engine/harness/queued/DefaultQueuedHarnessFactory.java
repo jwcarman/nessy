@@ -25,11 +25,11 @@ import org.jspecify.annotations.NonNull;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.QueuedHarnessFactory;
-import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.backlog.Backlogs;
@@ -52,7 +52,7 @@ import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.engine.observability.ObservedSummarizer;
 import org.jwcarman.nessy.engine.observability.ObservedTurnHistories;
-import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.DefaultReplies;
@@ -83,7 +83,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   // change, so none of it is asked for. What is done to a stored byte after Jackson -- compressed,
   // encrypted -- is the backend's, chosen together with the stores it is applied to.
   private final ObjectMapper mapper = JsonMapper.builder().build();
-  private final InputSchemaGenerator schemas = new VictoolsInputSchemaGenerator();
+  private final JsonSchemaGenerator schemas = new VictoolsJsonSchemaGenerator();
   private final Clock clock = Clock.systemUTC();
 
   /**

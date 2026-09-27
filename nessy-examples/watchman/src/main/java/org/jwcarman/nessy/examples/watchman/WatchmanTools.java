@@ -26,9 +26,9 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.InputSchema;
-import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -43,8 +43,8 @@ public final class WatchmanTools {
   private static final JsonMapper JSON = JsonMapper.builder().build();
 
   /** Every watchman tool takes no arguments, and says so rather than saying nothing. */
-  private static final InputSchema NO_ARGUMENTS =
-      new InputSchema("{\"type\":\"object\",\"properties\":{},\"required\":[]}");
+  private static final JsonSchema NO_ARGUMENTS =
+      new JsonSchema("{\"type\":\"object\",\"properties\":{},\"required\":[]}");
 
   public record Spec(
       ToolName name,
@@ -131,7 +131,7 @@ public final class WatchmanTools {
       }
 
       @Override
-      public InputSchema inputSchema(InputSchemaGenerator generator) {
+      public JsonSchema inputSchema(JsonSchemaGenerator generator) {
         return NO_ARGUMENTS;
       }
 

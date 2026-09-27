@@ -38,7 +38,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.inmemory.InMemoryAgentEvents;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLocks;
 import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
-import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Usage;
@@ -148,7 +148,7 @@ class DirectHarnessObservabilityTest {
                                 new InMemoryPayloads(
                                     new JacksonCodecFactory(JsonMapper.builder().build()))))
                         .provider(model)
-                        .schemas(new VictoolsInputSchemaGenerator())
+                        .schemas(new VictoolsJsonSchemaGenerator())
                         .mapper(JsonMapper.builder().build())
                         .observations(observations))
             .<String>create(

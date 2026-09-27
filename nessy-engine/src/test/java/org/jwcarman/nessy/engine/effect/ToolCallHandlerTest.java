@@ -30,6 +30,7 @@ import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
@@ -38,7 +39,6 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.InputSchema;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -109,7 +109,7 @@ class ToolCallHandlerTest {
             new ToolBinding<>(
                 tool,
                 JsonMapper.builder().build(),
-                new InputSchema("{}"),
+                new JsonSchema("{}"),
                 Duration.ofSeconds(30),
                 new RetryPolicy.Never(),
                 ActionRenderer.byToString(),
@@ -258,7 +258,7 @@ class ToolCallHandlerTest {
                 new ToolBinding<>(
                     echo(),
                     JsonMapper.builder().build(),
-                    new InputSchema("{}"),
+                    new JsonSchema("{}"),
                     Duration.ofSeconds(90),
                     new RetryPolicy.FixedDelay(3, Duration.ofSeconds(1), Duration.ZERO),
                     ActionRenderer.byToString(),

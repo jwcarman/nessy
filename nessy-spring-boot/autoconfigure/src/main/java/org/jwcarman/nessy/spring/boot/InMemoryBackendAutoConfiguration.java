@@ -28,15 +28,17 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean;
 
 /**
- * The direct door's fallback, for an application with no durable backend of its own.
+ * Either door's fallback, for an application with no durable backend of its own.
  *
  * <p>Ordered after {@link JdbcBackendAutoConfiguration} so a {@code DataSource} wins when there is
  * one: an application with both a database and this module on its classpath gets the durable
  * backend, and only an application with neither -- a CLI, a test -- falls back to this.
  *
- * <p>Contributes only a {@link DirectBackend}. There is no in-memory {@code QueuedBackend}: nothing
- * in this module implements an in-memory {@code Agents} or {@code Effects}, so the queued door
- * stays undeclared until a durable backend supplies one.
+ * <p><b>Both doors, not just the direct one.</b> The queued door needs an {@code Agents} and an
+ * {@code Effects} on top of what the direct one needs, and this module implements both, so an
+ * application with no database still gets the door that writes work down and picks it up later.
+ * What it does not get is durability: nothing here survives the process, which is what makes this a
+ * test's backend rather than a production one.
  */
 @AutoConfiguration(after = {NessyAutoConfiguration.class, JdbcBackendAutoConfiguration.class})
 @ConditionalOnClass(InMemoryDirectBackend.class)

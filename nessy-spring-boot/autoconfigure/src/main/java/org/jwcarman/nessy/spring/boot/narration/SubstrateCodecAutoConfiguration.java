@@ -29,11 +29,11 @@ import org.springframework.context.annotation.Bean;
  * The bridge between the engine's storage transform and Substrate's journal.
  *
  * <p>The engine wants its storage transform baked into a {@code CodecFactory} (the one bean {@link
- * org.jwcarman.nessy.spring.boot.JdbcBackendAutoConfiguration#codecFactory} builds); Substrate
- * wants the raw {@code byte[] -> byte[]} transform on its own, as a {@link PayloadTransformer}.
- * Both ask the same {@link StorageCodecConfigurer} bean for the same transform, seeded with the
- * same {@link IdentityCodec#INSTANCE} -- one composition, read by two consumers, rather than two
- * independent copies of the same fold.
+ * org.jwcarman.nessy.spring.boot.NessyAutoConfiguration#codecFactory} builds); Substrate wants the
+ * raw {@code byte[] -> byte[]} transform on its own, as a {@link PayloadTransformer}. Both ask the
+ * same {@link StorageCodecConfigurer} bean for the same transform, seeded with the same {@link
+ * IdentityCodec#INSTANCE} -- one composition, read by two consumers, rather than two independent
+ * copies of the same fold.
  *
  * <p>Taken through an {@link ObjectProvider} rather than as an ordinary parameter: this class runs
  * whenever Substrate is on the classpath, which is not the same condition as the JDBC backend being

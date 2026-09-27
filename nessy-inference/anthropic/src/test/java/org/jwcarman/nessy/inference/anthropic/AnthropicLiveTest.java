@@ -23,11 +23,11 @@ import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.InputSchema;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.Turn;
@@ -36,7 +36,6 @@ import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.inference.OutputSchema;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.Toolset;
@@ -102,7 +101,7 @@ class AnthropicLiveTest {
         new InferenceOptions(MODEL, 2048));
   }
 
-  private static InferenceRequest askingFor(List<Turn> turns, OutputSchema shape) {
+  private static InferenceRequest askingFor(List<Turn> turns, JsonSchema shape) {
     return new InferenceRequest(
         SYSTEM,
         InferenceContext.of(turns),
@@ -166,7 +165,7 @@ class AnthropicLiveTest {
           new ToolOffer(
               new ToolName("lake_depth"),
               "returns the maximum depth of a named lake, in metres",
-              new InputSchema(
+              new JsonSchema(
                   """
                   {"type":"object","properties":{"name":{"type":"string",\
                   "description":"the lake to look up"}},"required":["name"]}"""));
@@ -249,13 +248,13 @@ class AnthropicLiveTest {
         new ToolOffer(
             new ToolName("lake_depth"),
             "returns the maximum depth of a named lake, in metres",
-            new InputSchema(
+            new JsonSchema(
                 """
                 {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}""")),
         new ToolOffer(
             new ToolName("weather"),
             "returns today's weather for a named place",
-            new InputSchema(
+            new JsonSchema(
                 """
                 {"type":"object","properties":{"place":{"type":"string"}},"required":["place"]}""")));
   }
@@ -346,8 +345,8 @@ class AnthropicLiveTest {
    */
   @Test
   void an_answer_can_be_asked_for_in_a_shape() {
-    OutputSchema shape =
-        new OutputSchema(
+    JsonSchema shape =
+        new JsonSchema(
             """
             {"type":"object",
              "properties":{"city":{"type":"string"},"country":{"type":"string"}},
@@ -369,8 +368,8 @@ class AnthropicLiveTest {
   /** Asking for a shape the question fits badly still comes back as that shape. */
   @Test
   void the_shape_is_honoured_even_when_the_question_fits_it_badly() {
-    OutputSchema shape =
-        new OutputSchema(
+    JsonSchema shape =
+        new JsonSchema(
             """
             {"type":"object",
              "properties":{"answer":{"type":"string"},"confident":{"type":"boolean"}},

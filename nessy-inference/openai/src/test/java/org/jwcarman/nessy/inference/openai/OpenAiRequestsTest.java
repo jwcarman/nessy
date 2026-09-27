@@ -24,12 +24,12 @@ import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Ambient;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.InputSchema;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Input;
@@ -377,7 +377,7 @@ class OpenAiRequestsTest {
                       new ToolOffer(
                           new ToolName("lookup"),
                           "looks a thing up",
-                          new InputSchema(
+                          new JsonSchema(
                               "{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}")))),
               OPTIONS);
 
@@ -428,7 +428,7 @@ class OpenAiRequestsTest {
                       new ToolOffer(
                           new ToolName("lookup"),
                           "looks a thing up",
-                          new InputSchema(
+                          new JsonSchema(
                               "{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"))),
                   choice),
               OPTIONS),

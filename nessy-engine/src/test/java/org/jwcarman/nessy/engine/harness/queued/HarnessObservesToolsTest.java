@@ -31,13 +31,13 @@ import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.InputSchema;
-import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
@@ -74,8 +74,8 @@ class HarnessObservesToolsTest {
         }
 
         @Override
-        public InputSchema inputSchema(InputSchemaGenerator generator) {
-          return new InputSchema("{\"type\":\"string\"}");
+        public JsonSchema inputSchema(JsonSchemaGenerator generator) {
+          return new JsonSchema("{\"type\":\"string\"}");
         }
 
         @Override
@@ -113,7 +113,7 @@ class HarnessObservesToolsTest {
                 (_, _) -> new InferenceResult.Answer(List.of(new Block.Text("ok"))),
                 InferenceOptions.of("m")),
             JsonMapper.builder().build(),
-            type -> new InputSchema("{}"),
+            type -> new JsonSchema("{}"),
             observations);
     config.tool(ECHO, t -> t.approver(_ -> Awaited.ready(ApprovalResult.approved()), a -> {}));
     config.tool(UNGATED, t -> {});
@@ -139,8 +139,8 @@ class HarnessObservesToolsTest {
         }
 
         @Override
-        public InputSchema inputSchema(InputSchemaGenerator generator) {
-          return new InputSchema("{\"type\":\"string\"}");
+        public JsonSchema inputSchema(JsonSchemaGenerator generator) {
+          return new JsonSchema("{\"type\":\"string\"}");
         }
 
         @Override

@@ -17,6 +17,7 @@ package org.jwcarman.nessy.inference;
 
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.SystemPrompt;
 
 /**
@@ -36,7 +37,7 @@ public record InferenceRequest(
     InferenceContext context,
     Toolset toolset,
     InferenceOptions options,
-    Optional<OutputSchema> outputSchema) {
+    Optional<JsonSchema> outputSchema) {
 
   public InferenceRequest {
     Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");

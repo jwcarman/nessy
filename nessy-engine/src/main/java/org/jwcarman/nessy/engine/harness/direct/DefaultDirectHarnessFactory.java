@@ -24,9 +24,7 @@ import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.BiFunction;
 import org.jwcarman.codec.TypeRef;
-import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Customizer;
@@ -34,11 +32,10 @@ import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.HarnessConfig;
+import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.NarrationListener;
-import org.jwcarman.nessy.api.Outcome;
-import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.backend.DirectBackend;
-import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.effect.ApprovalHandler;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
@@ -62,7 +59,6 @@ import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
-import org.jwcarman.nessy.inference.OutputSchema;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -113,7 +109,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
   private final DirectBackend backend;
 
   private final InferenceProvider provider;
-  private final InputSchemaGenerator schemas;
+  private final JsonSchemaGenerator schemas;
   private final ObjectMapper mapper;
   private final Clock clock;
   private final ObservationRegistry observations;
@@ -192,7 +188,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
     Objects.requireNonNull(answers, "answers must not be null");
     // The same generator the tools use: turning a Java type into a JSON schema is one job, and a
     // provider constrains an answer with the same kind of document it constrains an argument with.
-    OutputSchema shape = new OutputSchema(schemas.generate(answers.rawClass()).json());
+    JsonSchema shape = new JsonSchema(schemas.generate(answers.rawClass()).json());
     // Only this method knows O is what answers itself carries -- inside DefaultDirectHarness O is
     // an abstract type variable, so the parse a harness will use is decided here and handed over.
     return build(
@@ -218,8 +214,8 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
   private <I, O> DefaultDirectHarness<I, O> build(
       AgentType agentType,
       Customizer<DirectHarnessConfig<I>> customizer,
-      Optional<OutputSchema> outputSchema,
-      BiFunction<AgentId, AgentEvent.InferenceAnswered, Outcome<O>> reading) {
+      Optional<JsonSchema> outputSchema,
+      OutcomeReader<O> reading) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     DefaultDirectHarnessConfig<I> config =
         new DefaultDirectHarnessConfig<>(agentType, observations);

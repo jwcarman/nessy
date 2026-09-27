@@ -77,7 +77,7 @@ public interface AgentEvents {
    *
    * <p>What this is for: lazy recovery measures a deadline from when a phase actually started, not
    * from now, and the seq it started at is already in hand -- {@code Inferring.seq()}, or an {@code
-   * Outstanding.since()} -- so this is the lookup that turns that seq into a clock start.
+   * OutstandingAction.since()} -- so this is the lookup that turns that seq into a clock start.
    *
    * <p>The caller only ever asks about a seq that came from an event it already replayed, so a
    * missing row is a programming error, not a condition to signal through the return type -- hence

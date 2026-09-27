@@ -22,6 +22,7 @@ import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -29,7 +30,6 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.InputSchema;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -93,7 +93,7 @@ class EffectTermsSourceTest {
     return new ToolBinding<>(
         tool(),
         JsonMapper.builder().build(),
-        new InputSchema("{}"),
+        new JsonSchema("{}"),
         timeout,
         retryPolicy,
         ActionRenderer.byToString(),

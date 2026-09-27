@@ -20,9 +20,9 @@ import io.modelcontextprotocol.spec.McpSchema;
 import java.util.List;
 import java.util.Map;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.InputSchema;
-import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -36,7 +36,7 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p><b>The schema is the server's, verbatim.</b> A generated schema would describe a Java type
  * this module does not have; the server already said exactly what it accepts, so {@link
- * #inputSchema(InputSchemaGenerator)} ignores the generator and hands the server's document through
+ * #inputSchema(JsonSchemaGenerator)} ignores the generator and hands the server's document through
  * as text. Arguments arrive bound to a {@link JsonNode} for the same reason -- there is no type to
  * bind to that the server did not define -- and go back out as the plain map the SDK wants.
  */
@@ -71,8 +71,8 @@ final class McpTool implements Tool<JsonNode> {
   }
 
   @Override
-  public InputSchema inputSchema(InputSchemaGenerator generator) {
-    return new InputSchema(mapper.writeValueAsString(tool.inputSchema()));
+  public JsonSchema inputSchema(JsonSchemaGenerator generator) {
+    return new JsonSchema(mapper.writeValueAsString(tool.inputSchema()));
   }
 
   /**

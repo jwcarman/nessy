@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.api.tool;
 
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.JsonSchemaGenerator;
 
 public interface Tool<I> {
 
@@ -44,7 +46,7 @@ public interface Tool<I> {
    * <p>The generator is handed in rather than reached for, so a tool cannot generate against
    * different rules than the harness advertises. It is called once, when the tool is bound.
    */
-  default InputSchema inputSchema(InputSchemaGenerator generator) {
+  default JsonSchema inputSchema(JsonSchemaGenerator generator) {
     return generator.generate(inputType());
   }
 }

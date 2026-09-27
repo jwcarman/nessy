@@ -39,7 +39,7 @@ import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
-import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.openai.OpenAiInferenceProvider;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -85,7 +85,7 @@ class DirectHarnessLiveTest {
             config
                 .backend(new InMemoryDirectBackend(new JacksonCodecFactory(mapper)))
                 .provider(OpenAiInferenceProvider.of(c -> c.apiKey(key()).baseUrl(BASE_URL)))
-                .schemas(new VictoolsInputSchemaGenerator())
+                .schemas(new VictoolsJsonSchemaGenerator())
                 .mapper(mapper));
   }
 

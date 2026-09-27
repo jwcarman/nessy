@@ -1,11 +1,17 @@
 # Spring Boot
 
-`nessy-spring-boot-starter` wires a working agent from properties and beans.
+`nessy-spring-boot-starter` wires an application's beans into a running
+harness. It carries no code of its own; every bean lives in
+`nessy-spring-boot-autoconfigure`, which the starter pulls in.
 
 ```xml
 <dependency>
   <groupId>org.jwcarman.nessy</groupId>
   <artifactId>nessy-spring-boot-starter</artifactId>
+</dependency>
+<dependency>
+  <groupId>org.jwcarman.nessy</groupId>
+  <artifactId>nessy-backend-jdbc</artifactId>
 </dependency>
 <dependency>
   <groupId>org.jwcarman.nessy</groupId>
@@ -20,93 +26,185 @@ spring:
     username: nessy
     password: secret
 nessy:
-  type: assistant
   model: claude-sonnet-5
-  system-prompt: You are a terse assistant.
 ```
 
-Set `ANTHROPIC_API_KEY` and you have a `Harness<String>` bean, every `Tool`
-bean granted to it.
+Set `ANTHROPIC_API_KEY` and the context has a `DirectHarnessFactory` bean,
+built from that `DataSource` and that provider. Nothing answers on its own
+yet: an agent type is a decision an application makes, not one the starter
+can make for it, so the next step is declaring a harness from the factory.
+See [The Harness](harness.md).
 
-## Two artifacts, and which one you want
+## Two doors, and a factory bean for each
 
-Almost always the starter. It carries **no code**, the shape every Spring
-Boot starter has, and brings the auto-configuration plus what a running
-application needs.
+An application picks the door its work needs. `DirectHarness.ask` is for a
+caller standing there waiting on an answer; `QueuedHarness.tell` is for
+work nobody is waiting on, written down and picked up by a dispatcher
+later. Both can be present in the same application, and each has its own
+factory interface, its own auto-configuration, and its own condition for
+appearing at all:
 
-| Artifact | What it is |
-|---|---|
-| `nessy-spring-boot-starter` | the one dependency to add; no classes of its own |
-| `nessy-spring-boot-autoconfigure` | the beans and the `nessy.*` properties; every auto-configuration Nessy ships lives here |
+| Auto-configuration | Fires when | Factory bean |
+|---|---|---|
+| `DirectHarnessAutoConfiguration` | a `DirectBackend` bean exists | `DefaultDirectHarnessFactory`, against the `DirectHarnessFactory` interface |
+| `QueuedHarnessAutoConfiguration` | a `QueuedBackend` bean exists | `DefaultQueuedHarnessFactory`, against the `QueuedHarnessFactory` interface |
 
-Every optional module's auto-configuration is in the autoconfigure jar too,
-gated on that module's classes being present: add `nessy-lease` and a
-`Leases` bean appears, add an engine and the prompt becomes a template.
+Neither auto-configuration asks for a database directly. Each asks for a
+*backend*, and which backend answers that ask is the next section.
+
+## The backend is chosen by the classpath
+
+`nessy-backend-jdbc` on the classpath with a `DataSource` bean gives you
+`JdbcBackendAutoConfiguration`: a `DirectBackend` and a `QueuedBackend`
+backed by PostgreSQL, and a `Leases` bean for background work that must run
+once across processes. `nessy-backend-inmemory` gives you
+`InMemoryBackendAutoConfiguration`: the same three beans, with nothing
+behind them but this process, so a restart loses everything they held.
+
+`InMemoryBackendAutoConfiguration` is ordered after the JDBC one, so an
+application with both modules on its classpath and a `DataSource` gets the
+durable backend, and only an application with neither — a CLI, a test —
+falls back to the in-memory one. That is what lets `nessy-console`'s
+`Repl.run` and a plain unit test start the same starter with no database at
+all: the direct door still appears, because something on the classpath
+still supplied a `DirectBackend`.
+
+There is no in-memory `QueuedBackend` fallback distinct from the in-memory
+module's: `nessy-backend-inmemory` supplies both a `DirectBackend` and a
+`QueuedBackend`, so the queued door is available under the same conditions
+the direct door is — durable when JDBC wins the classpath race, in-process
+otherwise.
+
+An application that wants neither backend excludes both auto-configurations,
+and both doors simply do not appear: nothing downstream demands a backend
+that was never asked for.
 
 ## Properties
 
-| Property | Default |
-|---|---|
-| `nessy.type` | `agent`: the agent type, and the key every row is stored under |
-| `nessy.model` | *required*: sent to your `InferenceProvider` with every call |
-| `nessy.max-tokens` | 4096 |
-| `nessy.system-prompt` | the standing instruction, inline |
-| `nessy.system-prompt-file` | a `Resource`; **setting both is an error**, because silently preferring one makes a misconfigured prompt very hard to notice |
-| `nessy.initialize-schema` | `true`: run every module's `nessy-schema.sql` at startup |
-| `nessy.reply-token-encryption-keys` | ephemeral; see below |
-| `nessy.prompt.engine` | `spring`, or `mustache` |
-| `nessy.narration.odyssey.inactivity-ttl`, `entry-ttl`, `retention-ttl` | a day, a day, an hour |
+Everything below is read from `nessy.*`, bound by `NessyProperties`.
+
+| Property | Default | Read by |
+|---|---|---|
+| `nessy.model` | *required* when read | the queued door's factory, always; the direct door only if your own configuration calls `NessyProperties.model()` |
+| `nessy.max-tokens` | 4096 | the same two places as `nessy.model` |
+| `nessy.system-prompt` | none | your own configuration, via `NessyProperties.resolveSystemPrompt()`; also the prompt-template auto-configuration when a prompt engine is on the classpath |
+| `nessy.system-prompt-file` | none; a `Resource`. **Setting both is an error** | the same places as `nessy.system-prompt` |
+| `nessy.type` | `agent` | bound and validated, but not read by any bean the starter builds today — an agent's type is named when you call `factory.create(agentType, ...)`, not from a property |
+| `nessy.initialize-schema` | `true`: apply every module's `nessy-schema.sql` at startup | `JdbcBackendAutoConfiguration`'s schema bean |
+| `nessy.reply-token-encryption-keys` | ephemeral; see below | the `ReplyTokens` bean, which only the queued door's factory is given |
+| `nessy.prompt.engine` | `spring`, or `mustache` | `PromptEngineAutoConfiguration` |
+| `nessy.narration.odyssey.inactivity-ttl`, `entry-ttl`, `retention-ttl` | a day, a day, an hour | `OdysseyNarrationAutoConfiguration`, when Odyssey is present |
 | `anthropic.api-key`, `openai.api-key`, `openai.base-url`, `xai.api-key`, `gemini.api-key`, `google.api-key` | pick a provider; see [Providers](providers.md#boot-auto-configuration) |
+
+`nessy.type` looks like it should name an agent type the way
+`nessy.model` names a model, and it does not: it is validated at startup
+(blank becomes `agent`) and then nothing asks for it. Treat it as reserved
+rather than load-bearing until an auto-configuration reads it.
 
 ## Every bean backs off
 
-Each bean is `@ConditionalOnMissingBean`. The starter is a convenience over
-the engine, never a replacement for it: declare your own `@Bean` and the
-starter steps aside, and the choice is written down where a reader can find
-it.
+Each bean below is `@ConditionalOnMissingBean`. Declare your own of the
+same type and the starter's step aside, so the choice is written down where
+a reader can find it.
+
+**Always present** (`NessyAutoConfiguration`, unconditional):
 
 | Bean | What it is |
 |---|---|
-| `NessySchema` | the tables, created when `nessy.initialize-schema` says so; everything that needs tables depends on it |
 | `ReplyTokens` | from the configured keys, or ephemeral, loudly |
-| `DefaultHarnessFactory` | the engine, from the `DataSource`, the provider, the keys, your `ObservationRegistry` and `StorageCodec` if present; closed on shutdown |
-| `TurnHistories`, `InferenceContexts` | the story and the recorded model calls, read-only |
-| `Replies` | the door outside answers park calls through |
-| `Harness<String>` | built from `nessy.*` and every `Tool` bean, each wrapped for observation |
-| `InferenceProvider` | from an adapter on the classpath and its key |
-| `PromptTemplateFactory`, `SystemPromptSource` | when a prompt engine is present; see [Prompts](prompts.md) |
-| `Leases` | when `nessy-lease` is present |
-| `AgentStreams`, `OdysseyNarrator` | when `nessy-narration-odyssey` and an `Odyssey` bean are present |
+| `CodecFactory` | Jackson over the context's `ObjectMapper`, with the `StorageCodecConfigurer` bean's transform appended |
+| `StorageCodecConfigurer` | nothing appended, unless you declare one |
+| `InferenceReport` | logs which provider and model will actually answer, once, at startup |
 
-Every `AgentEventListener` bean is attached to the engine once the context
-has fully started, so a listener may depend on the factory without a cycle.
+**With a `DirectBackend` bean** (`DirectHarnessAutoConfiguration`):
 
-The auto-configuration classes, for an application that excludes one:
-`NessyAutoConfiguration` (the engine and the free harness),
-`OpenAiAutoConfiguration`, `AnthropicAutoConfiguration` and
-`GeminiAutoConfiguration` under `inference`, `PromptEngineAutoConfiguration`
-and `PromptAutoConfiguration` under `prompt`, `LeaseAutoConfiguration`,
-`OdysseyNarrationAutoConfiguration` and `SubstrateCodecAutoConfiguration`
-under `narration`. The console excludes the engine's and the lease's to build
-its own from the same beans.
+| Bean | What it is |
+|---|---|
+| `JsonSchemaGenerator` | `VictoolsJsonSchemaGenerator`, for tool arguments and constrained answers |
+| `DefaultDirectHarnessFactory` | against the `DirectHarnessFactory` interface; built from the backend, the provider, the schema generator and the `ObjectMapper` |
 
-Tools come from the application context: every `Tool` bean is granted,
-ungated. Gating one, or adding summaries, ambient sources or a listener to
-the harness, means declaring the `Harness<String>` yourself with the
-factory, because an approver is a decision about *your* policy and the
-starter cannot know it. That is what `nessy-examples/chat-web` does.
+Every `NarrationListener` bean is attached to it once the context has
+started, so a listener may depend on the factory without a cycle.
 
-## The database
+**With a `QueuedBackend` bean** (`QueuedHarnessAutoConfiguration`):
 
-Boot's own auto-configuration supplies the `DataSource` from
-`spring.datasource.*`; there is no in-memory fallback. With
-`nessy.initialize-schema` on, the starter runs every module's
-`nessy-schema.sql` at startup, safe to repeat. Turn it off when migrations
-are yours, and apply the same files through whatever runs them. Boot looks
-for `schema.sql`; Nessy's file is `nessy-schema.sql`, so the name *is* the
-opt-in. See [Storage](../concepts/storage.md).
+| Bean | What it is |
+|---|---|
+| `DefaultQueuedHarnessFactory` | against the `QueuedHarnessFactory` interface; built from the backend, the provider, `nessy.model` and `nessy.max-tokens`, and the `ReplyTokens` bean |
+| `TurnHistories` | the story, read-only |
+| `Replies` | the door a deferred answer comes back through |
 
-## Reply tokens outlive the process, if you let them
+Every `NarrationListener` bean is attached to it the same way.
+
+**With a `DataSource` bean and `nessy-backend-jdbc` on the classpath**
+(`JdbcBackendAutoConfiguration`):
+
+| Bean | What it is |
+|---|---|
+| `DirectBackend`, `QueuedBackend` | `JdbcDirectBackend`, `JdbcQueuedBackend`, over the `DataSource`, the `PlatformTransactionManager` and the `CodecFactory` |
+| `Leases` | `JdbcLeases`, an `INSERT ... ON CONFLICT` against `nessy_lease` |
+
+**With no `DataSource` and `nessy-backend-inmemory` on the classpath**
+(`InMemoryBackendAutoConfiguration`):
+
+| Bean | What it is |
+|---|---|
+| `DirectBackend`, `QueuedBackend` | in-process, gone on restart |
+| `Leases` | in-process; excludes other work in this JVM only |
+
+## Leases
+
+There is no separate lease module or property to add. Whichever backend
+auto-configuration fires — `JdbcBackendAutoConfiguration` or
+`InMemoryBackendAutoConfiguration` — contributes the `Leases` bean beside
+its `DirectBackend` and `QueuedBackend`, because a lease is storage the
+backend already owns. The JDBC one takes the lease with an `INSERT ... ON
+CONFLICT` against `nessy_lease`, so it excludes other processes; the
+in-memory one excludes only work in this JVM. See
+[Leases](../concepts/leases.md) for what a lease is for.
+
+## One codec for the whole application
+
+`CodecFactory` is a single bean, so every store the engine writes through —
+an agent's events, its payloads, the queued door's backlog and the effects it
+owes — encodes the same way. What it does beyond Jackson is a separate
+seam, `StorageCodecConfigurer`, so an application appends compression,
+encryption, or both, once, and every store gets it:
+
+```java
+@Bean
+StorageCodecConfigurer storage() {
+  return original -> original.andThen(gzip).andThen(aesGcm);
+}
+```
+
+`configure` is handed the transform assembled so far — the identity
+transform the first time anything runs — and returns the transform to use
+from here on, composed with `Codec.andThen`. It takes and returns a plain
+`Codec<byte[]>`, not something generic over the stored type, because the
+transform runs *after* Jackson has already turned a value into bytes: by
+that point every store looks the same, and a seam that could see the
+original type would invite a transform that only works for one of them.
+
+No transform ships with the starter. The codec, its keys and their rotation
+are the application's; declare nothing and `CodecFactory` hands back plain
+Jackson.
+
+## The schema
+
+`nessy.initialize-schema` defaults to `true`: with `nessy-backend-jdbc` and a
+`DataSource`, the starter gathers every module's `nessy-schema.sql` from the
+classpath and runs them at startup, safe to repeat. An application using
+Flyway or Liquibase sets it to `false` and applies the same files through
+whichever migration tool it already runs — Boot looks for `schema.sql`,
+Nessy's file is named `nessy-schema.sql`, and that name is the whole opt-in.
+See [Storage](../concepts/storage.md).
+
+The bean this produces, `JdbcBackendAutoConfiguration.NessySchema`, is a
+marker record: nothing queries it, and everything that needs the tables to
+exist first depends on it, so Spring builds it before them.
+
+## Reply tokens, and where they do and don't reach
 
 A `ReplyToken` is the address a parked call is answered at, and it is
 **encrypted**: the coordinates inside it are sealed with AES-GCM so the
@@ -132,60 +230,37 @@ nessy:
 
 **Configure none and they are ephemeral**: a fresh key at startup, so every
 token minted before a restart becomes unreadable and every approval parked
-on a person silently becomes unanswerable. Right for a test, wrong for
-anything else, and the starter says so loudly at startup.
+on a person silently becomes unanswerable. The starter says so loudly.
 
 **Rotating.** Tokens are minted with the **first** key and read by trying
 **every** one, so putting a new key at the front and keeping the old one
 below it means a token already sitting in somebody's inbox still works.
 
-## Leases
-
-`nessy-lease` is a small module with one interface, for background work
-that must run once even when several processes hear the same event:
-
-```java
-public interface Leases {
-  boolean tryRun(String kind, String key, Duration ttl, Runnable work);
-}
-```
-
-`JdbcLeases` takes the lease with one `INSERT ... ON CONFLICT` against
-`nessy_lease`, runs the work if it won, and releases it. A holder that dies
-mid-work loses the lease when the TTL passes. The head and episode
-summarisers run under one; so will anything else that reacts to events from
-more than one process. The starter contributes a `Leases` bean when the
-module is on the classpath. Why a lease rather than an effect, and what it
-does and does not promise, is on the [Leases](../concepts/leases.md) page.
-
-## Encryption at rest
-
-Declare a `StorageCodec` bean and every row the engine writes passes
-through it after Jackson, and so does every entry the Odyssey narration
-writes to its journal:
-
-```java
-@Bean
-StorageCodec nessyStorage(KeySource keys) {
-    return StorageCodec.of(new AesCodec(keys));
-}
-```
-
-No codec ships with the starter: the seam is there, and the codec, its keys
-and their rotation are the application's.
+This bean reaches the **queued** door's factory only, and the direct door's
+factory mints its own with an ephemeral key regardless of what
+`nessy.reply-token-encryption-keys` says. That costs nothing, because the
+direct door cannot park a call in the first place: a caller is standing there
+waiting, so an approver or tool that tries to defer fails immediately rather
+than handing back an address. A token minted behind the direct door never
+outlives the call it was minted for, and one that does not survive a restart
+loses nothing. Set the keys for the queued door, which is the one that can
+leave a call parked on a person.
 
 ## A worked example
 
-`nessy-examples/chat-web` is the full shape: the starter, a harness declared
-by hand with a notebook, a plan and the head summariser, an approval desk
-that pushes cards to the browser over Odyssey streams, and `Last-Event-ID`
-resume when a tab reconnects. `nessy-examples/watchman` is the soak: an
-agent doing rounds on a timer against a real host, proposing remediations
-it is not allowed to run itself.
+`nessy-examples/chat-web` declares its own `DirectHarness<String, String>`
+bean rather than taking a free one: the starter's factory binds tools with
+no gate, and an email tool needs an approver. The configuration reads
+`NessyProperties.model()`, `.maxTokens()` and `.resolveSystemPrompt()`
+itself and passes them to the factory's `create(...)` call, the same way
+any application layers a notebook, a plan and a summariser onto the door
+the starter hands it. `nessy-examples/watchman` is the same shape, doing
+rounds on a timer against a real host.
 
-## See also
+## Where next
 
-- [The Harness](harness.md), the configuration the starter is wrapping
-- [Prompts](prompts.md), the prompt as a template
-- [Events](events.md), listeners and streams
-- [Observability](observability.md), traces and metrics
+- [The Harness](harness.md), building a harness from the factory the
+  starter gives you
+- [Providers](providers.md#boot-auto-configuration), how an `InferenceProvider`
+  bean gets chosen
+- [Storage](../concepts/storage.md), the tables and the codec seam

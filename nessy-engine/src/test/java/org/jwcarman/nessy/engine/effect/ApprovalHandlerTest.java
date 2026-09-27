@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
@@ -39,7 +40,6 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.InputSchema;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -109,7 +109,7 @@ class ApprovalHandlerTest {
             new ToolBinding<>(
                 tool(),
                 JsonMapper.builder().build(),
-                new InputSchema("{}"),
+                new JsonSchema("{}"),
                 Duration.ofSeconds(30),
                 new RetryPolicy.Never(),
                 action,

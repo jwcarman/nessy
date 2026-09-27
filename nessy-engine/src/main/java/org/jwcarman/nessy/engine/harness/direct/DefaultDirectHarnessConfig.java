@@ -155,7 +155,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
   }
 
   List<ToolBinding<?>> bindings(
-      org.jwcarman.nessy.api.tool.InputSchemaGenerator schemas,
+      org.jwcarman.nessy.api.JsonSchemaGenerator schemas,
       tools.jackson.databind.ObjectMapper mapper) {
     return tools.stream().<ToolBinding<?>>map(request -> bind(request, schemas, mapper)).toList();
   }
@@ -167,7 +167,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
    */
   private <T> ToolBinding<T> bind(
       ToolRequest<T> request,
-      org.jwcarman.nessy.api.tool.InputSchemaGenerator schemas,
+      org.jwcarman.nessy.api.JsonSchemaGenerator schemas,
       tools.jackson.databind.ObjectMapper mapper) {
     Binding<T> said = new Binding<>();
     request.customizer().customize(said);

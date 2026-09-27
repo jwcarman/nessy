@@ -34,8 +34,8 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Optional;
 import org.jwcarman.nessy.api.Customizer;
-import org.jwcarman.nessy.api.tool.InputSchema;
-import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
+import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -59,17 +59,17 @@ import tools.jackson.databind.node.ObjectNode;
  * application's choice, made through the customizer, and arrives with that module's own
  * dependencies.
  *
- * <p>That victools is what does this is deliberately not visible from {@link InputSchemaGenerator}:
+ * <p>That victools is what does this is deliberately not visible from {@link JsonSchemaGenerator}:
  * a tool is handed something that generates, and never learns how -- nor which Jackson it generated
- * with, which is the point of returning {@link InputSchema} rather than a node.
+ * with, which is the point of returning {@link JsonSchema} rather than a node.
  */
-public final class VictoolsInputSchemaGenerator implements InputSchemaGenerator {
+public final class VictoolsJsonSchemaGenerator implements JsonSchemaGenerator {
 
   private final SchemaGeneratorConfig config;
   private final SchemaGenerator generator;
 
   /** Jackson descriptions and polymorphism, and nothing else. */
-  public VictoolsInputSchemaGenerator() {
+  public VictoolsJsonSchemaGenerator() {
     this(Customizer.withDefaults());
   }
 
@@ -78,11 +78,11 @@ public final class VictoolsInputSchemaGenerator implements InputSchemaGenerator 
    *     register further modules and can override anything set here -- including the required
    *     check, which a module of its own may want to decide instead
    */
-  public VictoolsInputSchemaGenerator(Customizer<SchemaGeneratorConfigBuilder> customizer) {
+  public VictoolsJsonSchemaGenerator(Customizer<SchemaGeneratorConfigBuilder> customizer) {
     SchemaGeneratorConfigBuilder builder =
         new SchemaGeneratorConfigBuilder(SchemaVersion.DRAFT_2020_12, OptionPreset.PLAIN_JSON)
             .with(new JacksonSchemaModule());
-    builder.forFields().withRequiredCheck(VictoolsInputSchemaGenerator::isRequired);
+    builder.forFields().withRequiredCheck(VictoolsJsonSchemaGenerator::isRequired);
     builder.forTypesInGeneral().withCustomDefinitionProvider(new JsonValueAsItsOwnType());
     customizer.customize(builder);
     this.config = builder.build();
@@ -140,8 +140,8 @@ public final class VictoolsInputSchemaGenerator implements InputSchemaGenerator 
    * Jackson -- and its version of it -- from reaching any adapter.
    */
   @Override
-  public InputSchema generate(Class<?> inputType) {
-    return new InputSchema(generateNode(inputType).toString());
+  public JsonSchema generate(Class<?> inputType) {
+    return new JsonSchema(generateNode(inputType).toString());
   }
 
   /** The generated schema as a tree, for callers inside this package that want one. */

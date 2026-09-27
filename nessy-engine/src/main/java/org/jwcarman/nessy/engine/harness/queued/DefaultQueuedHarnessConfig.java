@@ -32,6 +32,7 @@ import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.EffectsConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
 import org.jwcarman.nessy.api.InputRenderer;
+import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.RetryPolicy;
@@ -42,7 +43,6 @@ import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalEnricher;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.ApproverConfig;
-import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.engine.observability.ObservedApprover;
@@ -78,7 +78,7 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
 
   private final TypeRef<I> inputType;
   private final ObjectMapper mapper;
-  private final InputSchemaGenerator schemas;
+  private final JsonSchemaGenerator schemas;
 
   private final AgentType agentType;
   private SystemPromptSource systemPrompt;
@@ -96,7 +96,7 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
       TypeRef<I> inputType,
       Defaults defaults,
       ObjectMapper mapper,
-      InputSchemaGenerator schemas,
+      JsonSchemaGenerator schemas,
       ObservationRegistry observations) {
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.inputType = inputType;

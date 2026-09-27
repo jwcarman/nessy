@@ -22,6 +22,7 @@ import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
@@ -30,7 +31,6 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.InputSchema;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -60,7 +60,7 @@ public final class ToolBinding<I> {
 
   private final Tool<I> tool;
   private final ObjectMapper mapper;
-  private final InputSchema schema;
+  private final JsonSchema schema;
   private final Duration timeout;
   private final RetryPolicy retryPolicy;
   private final ActionRenderer<I> action;
@@ -72,7 +72,7 @@ public final class ToolBinding<I> {
   public ToolBinding(
       Tool<I> tool,
       ObjectMapper mapper,
-      InputSchema schema,
+      JsonSchema schema,
       Duration timeout,
       RetryPolicy retryPolicy,
       ActionRenderer<I> action,
@@ -102,7 +102,7 @@ public final class ToolBinding<I> {
     return tool.description();
   }
 
-  public InputSchema schema() {
+  public JsonSchema schema() {
     return schema;
   }
 

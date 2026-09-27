@@ -34,11 +34,11 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.InputSchema;
-import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -272,8 +272,8 @@ class EffectTraceCarrierTest {
         }
 
         @Override
-        public InputSchema inputSchema(InputSchemaGenerator generator) {
-          return new InputSchema("{\"type\":\"string\"}");
+        public JsonSchema inputSchema(JsonSchemaGenerator generator) {
+          return new JsonSchema("{\"type\":\"string\"}");
         }
 
         @Override

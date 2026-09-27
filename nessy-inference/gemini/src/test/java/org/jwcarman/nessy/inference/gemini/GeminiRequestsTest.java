@@ -32,12 +32,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Ambient;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.InputSchema;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Input;
@@ -262,7 +262,7 @@ class GeminiRequestsTest {
           new ToolOffer(
               new ToolName("depth"),
               "how deep a lake is",
-              new InputSchema(
+              new JsonSchema(
                   "{\"type\":\"object\",\"properties\":{\"lake\":{\"type\":\"string\"}},\"required\":[\"lake\"]}"));
 
       GenerateContentConfig config =
@@ -362,7 +362,7 @@ class GeminiRequestsTest {
       return new ToolOffer(
           new ToolName("lookup"),
           "looks a thing up",
-          new InputSchema("{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"));
+          new JsonSchema("{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"));
     }
 
     /** An absent config already means auto, so nothing is sent. */

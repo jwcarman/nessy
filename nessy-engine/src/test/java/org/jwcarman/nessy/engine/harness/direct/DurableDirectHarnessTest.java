@@ -35,7 +35,7 @@ import org.jwcarman.nessy.backend.jdbc.JdbcAgentEvents;
 import org.jwcarman.nessy.backend.jdbc.JdbcPayloads;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.backend.payload.Payloads;
-import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
@@ -94,7 +94,7 @@ class DurableDirectHarnessTest {
             f ->
                 f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
                     .provider(model)
-                    .schemas(new VictoolsInputSchemaGenerator())
+                    .schemas(new VictoolsJsonSchemaGenerator())
                     .mapper(JsonMapper.builder().build()))
         .<String>create(
             TYPE,

@@ -41,7 +41,7 @@ public final class OpenAiProviderConfig {
   private Duration timeout;
 
   /**
-   * Reads a tool's schema back from the JSON text an {@code InputSchema} carries.
+   * Reads a tool's schema back from the JSON text an {@code JsonSchema} carries.
    *
    * <p>A default rather than a hidden global: it is one field on this config, so an application
    * that has configured its own mapper hands that one over instead of discovering later that an

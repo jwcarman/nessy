@@ -38,9 +38,9 @@ import org.jwcarman.nessy.backend.event.ActionRequest;
  * around to asking. It costs no migration, because this state is never stored -- it is rebuilt by
  * replay every time.
  */
-public record Outstanding(ActionRequest action, Phase phase, Seq since) {
+public record OutstandingAction(ActionRequest action, Phase phase, Seq since) {
 
-  public Outstanding {
+  public OutstandingAction {
     Objects.requireNonNull(action, "action must not be null");
     Objects.requireNonNull(phase, "phase must not be null");
     Objects.requireNonNull(since, "since must not be null");
@@ -56,11 +56,11 @@ public record Outstanding(ActionRequest action, Phase phase, Seq since) {
     RUNNING
   }
 
-  public static Outstanding awaitingApproval(ActionRequest action, Seq since) {
-    return new Outstanding(action, Phase.AWAITING_APPROVAL, since);
+  public static OutstandingAction awaitingApproval(ActionRequest action, Seq since) {
+    return new OutstandingAction(action, Phase.AWAITING_APPROVAL, since);
   }
 
-  public Outstanding running(Seq since) {
-    return new Outstanding(action, Phase.RUNNING, since);
+  public OutstandingAction running(Seq since) {
+    return new OutstandingAction(action, Phase.RUNNING, since);
   }
 }

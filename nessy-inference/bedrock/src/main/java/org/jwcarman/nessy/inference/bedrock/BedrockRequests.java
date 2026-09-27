@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 import org.jwcarman.nessy.api.Ambient;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -31,7 +32,6 @@ import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.inference.InferenceRequest;
-import org.jwcarman.nessy.inference.OutputSchema;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
 import software.amazon.awssdk.core.SdkBytes;
@@ -115,13 +115,13 @@ public final class BedrockRequests {
    * Asks for the answer in a shape, natively.
    *
    * <p>Converse takes the schema as a string, so unlike every other adapter here nothing has to be
-   * parsed and rebuilt into a vendor type on the way through -- what {@link OutputSchema} holds is
+   * parsed and rebuilt into a vendor type on the way through -- what {@link JsonSchema} holds is
    * what goes on the wire.
    *
    * <p>The name is a label this wire requires and nothing reads, so it is a constant rather than
-   * something {@code OutputSchema} has to carry.
+   * something {@code JsonSchema} has to carry.
    */
-  private static void askForShape(ConverseStreamRequest.Builder builder, OutputSchema schema) {
+  private static void askForShape(ConverseStreamRequest.Builder builder, JsonSchema schema) {
     builder.outputConfig(
         output ->
             output.textFormat(

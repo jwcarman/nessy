@@ -20,7 +20,7 @@ import com.anthropic.models.messages.Tool;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import org.jwcarman.nessy.api.tool.InputSchema;
+import org.jwcarman.nessy.api.JsonSchema;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -53,7 +53,7 @@ public final class AnthropicSchemas {
    * JsonValue.fromJsonNode} wants a Jackson 2 node. {@code JsonValue.from(Object)} is the bridge
    * that needs neither to know about the other.
    */
-  public static Tool.InputSchema toInputSchema(InputSchema schema, JsonMapper mapper) {
+  public static Tool.InputSchema toInputSchema(JsonSchema schema, JsonMapper mapper) {
     Map<String, Object> document = mapper.readValue(schema.json(), new TypeReference<>() {});
 
     Tool.InputSchema.Properties.Builder properties = Tool.InputSchema.Properties.builder();

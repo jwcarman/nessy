@@ -27,7 +27,7 @@ import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.Repl;
 import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
-import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
@@ -123,7 +123,7 @@ public class Chat {
             config
                 .backend(new InMemoryDirectBackend(codecs))
                 .provider(provider)
-                .schemas(new VictoolsInputSchemaGenerator())
+                .schemas(new VictoolsJsonSchemaGenerator())
                 .mapper(mapper));
   }
 

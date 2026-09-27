@@ -32,15 +32,15 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.tool.InputSchema;
+import org.jwcarman.nessy.api.JsonSchema;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-class VictoolsInputSchemaGeneratorTest {
+class VictoolsJsonSchemaGeneratorTest {
 
-  private final VictoolsInputSchemaGenerator generator = new VictoolsInputSchemaGenerator();
+  private final VictoolsJsonSchemaGenerator generator = new VictoolsJsonSchemaGenerator();
 
   // ---- fixtures ----
 
@@ -258,7 +258,7 @@ class VictoolsInputSchemaGeneratorTest {
 
     @Test
     void is_described_as_the_type_it_writes() {
-      String schema = new VictoolsInputSchemaGenerator().generate(Payment.class).json();
+      String schema = new VictoolsJsonSchemaGenerator().generate(Payment.class).json();
 
       assertThat(schema).contains("\"amount\":{\"type\":\"string\"}");
       assertThat(schema).doesNotContain("cents").doesNotContain("currency");
@@ -266,7 +266,7 @@ class VictoolsInputSchemaGeneratorTest {
 
     @Test
     void is_described_as_a_number_when_that_is_what_it_writes() {
-      String schema = new VictoolsInputSchemaGenerator().generate(Transfer.class).json();
+      String schema = new VictoolsJsonSchemaGenerator().generate(Transfer.class).json();
 
       assertThat(schema).contains("\"amount\":{\"type\":\"number\"}");
       assertThat(schema).doesNotContain("cents");
@@ -283,7 +283,7 @@ class VictoolsInputSchemaGeneratorTest {
      */
     @Test
     void is_accepted_by_jackson_in_the_shape_the_schema_advertises() {
-      String schema = new VictoolsInputSchemaGenerator().generate(Transfer.class).json();
+      String schema = new VictoolsJsonSchemaGenerator().generate(Transfer.class).json();
       assertThat(schema).contains("\"type\":\"number\"");
 
       Transfer read =
@@ -298,14 +298,14 @@ class VictoolsInputSchemaGeneratorTest {
     /** Victools handles enums behind its own option; taking them here would change that. */
     @Test
     void leaves_enums_to_victools() {
-      String schema = new VictoolsInputSchemaGenerator().generate(Transfer.class).json();
+      String schema = new VictoolsJsonSchemaGenerator().generate(Transfer.class).json();
 
       assertThat(schema).contains("ROUTINE").contains("URGENT");
     }
 
     @Test
     void still_describes_an_ordinary_record_by_its_components() {
-      String schema = new VictoolsInputSchemaGenerator().generate(Payment.class).json();
+      String schema = new VictoolsJsonSchemaGenerator().generate(Payment.class).json();
 
       assertThat(schema).contains("\"to\"");
     }
@@ -535,7 +535,7 @@ class VictoolsInputSchemaGeneratorTest {
     /** Text, so no adapter inherits this class's Jackson -- or its major version. */
     @Test
     void isTextThatParsesBackToTheGeneratedTree() {
-      InputSchema published = generator.generate(ReadFile.class);
+      JsonSchema published = generator.generate(ReadFile.class);
 
       assertThat(mapper.readTree(published.json()))
           .isEqualTo(generator.generateNode(ReadFile.class));
@@ -543,7 +543,7 @@ class VictoolsInputSchemaGeneratorTest {
 
     @Test
     void survivesTheRoundTripForASealedVocabulary() {
-      InputSchema published = generator.generate(Vocabulary.class);
+      JsonSchema published = generator.generate(Vocabulary.class);
 
       JsonNode parsed = mapper.readTree(published.json());
 
@@ -554,7 +554,7 @@ class VictoolsInputSchemaGeneratorTest {
     /** A no-argument tool still publishes the empty properties object the wire requires. */
     @Test
     void keepsTheEmptyPropertiesObjectForANoArgumentTool() {
-      InputSchema published = generator.generate(Nothing.class);
+      JsonSchema published = generator.generate(Nothing.class);
 
       JsonNode parsed = mapper.readTree(published.json());
 
@@ -570,7 +570,7 @@ class VictoolsInputSchemaGeneratorTest {
 
     @Test
     void rejectsBlankJson() {
-      assertThatThrownBy(() -> new InputSchema("  ")).isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(() -> new JsonSchema("  ")).isInstanceOf(IllegalArgumentException.class);
     }
   }
 
@@ -588,8 +588,8 @@ class VictoolsInputSchemaGeneratorTest {
      */
     @Test
     void aModuleAddedByTheCustomizerReachesTheSchema() {
-      VictoolsInputSchemaGenerator customized =
-          new VictoolsInputSchemaGenerator(config -> config.with(new JakartaValidationModule()));
+      VictoolsJsonSchemaGenerator customized =
+          new VictoolsJsonSchemaGenerator(config -> config.with(new JakartaValidationModule()));
 
       ObjectNode schema = customized.generateNode(Bounded.class);
 
@@ -613,8 +613,8 @@ class VictoolsInputSchemaGeneratorTest {
      */
     @Test
     void anOptionAddedByTheCustomizerInlinesInsteadOfReferencing() {
-      VictoolsInputSchemaGenerator inlining =
-          new VictoolsInputSchemaGenerator(config -> config.with(Option.INLINE_ALL_SCHEMAS));
+      VictoolsJsonSchemaGenerator inlining =
+          new VictoolsJsonSchemaGenerator(config -> config.with(Option.INLINE_ALL_SCHEMAS));
 
       ObjectNode schema = inlining.generateNode(VocabularyWithSharedNestedRecord.class);
 
@@ -630,8 +630,8 @@ class VictoolsInputSchemaGeneratorTest {
      */
     @Test
     void inliningCannotRepresentARecursiveInputType() {
-      VictoolsInputSchemaGenerator inlining =
-          new VictoolsInputSchemaGenerator(config -> config.with(Option.INLINE_ALL_SCHEMAS));
+      VictoolsJsonSchemaGenerator inlining =
+          new VictoolsJsonSchemaGenerator(config -> config.with(Option.INLINE_ALL_SCHEMAS));
 
       assertThatThrownBy(() -> inlining.generateNode(Tree.class))
           .isInstanceOf(IllegalArgumentException.class)
@@ -656,8 +656,8 @@ class VictoolsInputSchemaGeneratorTest {
      */
     @Test
     void theOptionalRuleOutranksTheModulesRequiredCheck() {
-      VictoolsInputSchemaGenerator customized =
-          new VictoolsInputSchemaGenerator(config -> config.with(new JakartaValidationModule()));
+      VictoolsJsonSchemaGenerator customized =
+          new VictoolsJsonSchemaGenerator(config -> config.with(new JakartaValidationModule()));
 
       ObjectNode schema = customized.generateNode(Contested.class);
 

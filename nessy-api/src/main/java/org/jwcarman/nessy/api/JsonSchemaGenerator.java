@@ -13,27 +13,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.tool;
+package org.jwcarman.nessy.api;
+
+import org.jwcarman.nessy.api.tool.Tool;
 
 /**
- * How an input type becomes the JSON Schema a model is offered.
+ * How a Java type becomes the JSON Schema describing it.
  *
  * <p>An interface rather than a class because generating a schema from a Java type is a choice, not
  * a fact: which annotations count, which constraints survive, which draft is spoken. The
- * application makes that choice once, and every tool that does not know its own shape is measured
- * by it.
+ * application makes that choice once, and every type that does not describe itself is measured by
+ * it.
  *
- * <p>A tool reaches this through {@link Tool#inputSchema(InputSchemaGenerator)}, which is handed
- * the configured one rather than finding it -- so a tool cannot quietly generate against different
+ * <p>A tool reaches this through {@link Tool#inputSchema(JsonSchemaGenerator)}, which is handed the
+ * configured one rather than finding it -- so a tool cannot quietly generate against different
  * rules than the harness advertises. Nothing here says how the generating is done, and nothing
  * needs to.
  */
 @FunctionalInterface
-public interface InputSchemaGenerator {
+public interface JsonSchemaGenerator {
 
   /**
-   * @param inputType the type a tool binds its arguments to
+   * @param type the type to describe
    * @return the schema describing it
    */
-  InputSchema generate(Class<?> inputType);
+  JsonSchema generate(Class<?> type);
 }

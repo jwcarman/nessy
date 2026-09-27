@@ -24,7 +24,7 @@ import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
-import org.jwcarman.nessy.engine.agent.Outstanding;
+import org.jwcarman.nessy.engine.agent.OutstandingAction;
 
 /**
  * The whole of the pure core: where an agent is, what a command means there, and what a fact does
@@ -215,7 +215,8 @@ public sealed interface AgentState {
    *     effect naming a call has to name that request too, because the call itself is content
    *     behind it -- and by the time an approval comes back, {@code seq} is the approval's.
    */
-  record AwaitingActions(Seq seq, TurnId turn, Seq requestSeq, Map<CallId, Outstanding> outstanding)
+  record AwaitingActions(
+      Seq seq, TurnId turn, Seq requestSeq, Map<CallId, OutstandingAction> outstanding)
       implements AgentState {
 
     public AwaitingActions {
@@ -228,9 +229,9 @@ public sealed interface AgentState {
     }
 
     static AwaitingActions opening(AgentEvent.ActionsRequested requested) {
-      Map<CallId, Outstanding> calls = new LinkedHashMap<>();
+      Map<CallId, OutstandingAction> calls = new LinkedHashMap<>();
       for (ActionRequest action : requested.actions()) {
-        calls.put(action.id(), Outstanding.awaitingApproval(action, requested.seq()));
+        calls.put(action.id(), OutstandingAction.awaitingApproval(action, requested.seq()));
       }
       return new AwaitingActions(requested.seq(), requested.turn(), requested.seq(), calls);
     }
@@ -247,18 +248,18 @@ public sealed interface AgentState {
     }
 
     private AgentState running(Seq at, CallId callId) {
-      Outstanding call = outstanding.get(callId);
+      OutstandingAction call = outstanding.get(callId);
       if (call == null) {
         throw new IllegalArgumentException("no outstanding call " + callId);
       }
-      Map<CallId, Outstanding> next = new LinkedHashMap<>(outstanding);
+      Map<CallId, OutstandingAction> next = new LinkedHashMap<>(outstanding);
       next.put(callId, call.running(at));
       return new AwaitingActions(at, turn, requestSeq, next);
     }
 
     /** One fewer thing to wait for -- and back to inferring when it was the last. */
     private AgentState discharge(Seq at, CallId callId) {
-      Map<CallId, Outstanding> next = new LinkedHashMap<>(outstanding);
+      Map<CallId, OutstandingAction> next = new LinkedHashMap<>(outstanding);
       next.remove(callId);
       return next.isEmpty()
           ? new Inferring(at, turn)
@@ -281,9 +282,9 @@ public sealed interface AgentState {
     }
 
     private Decision approved(AgentCommand.CompleteApproval done) {
-      Outstanding call = outstanding.get(done.callId());
+      OutstandingAction call = outstanding.get(done.callId());
       // Already discharged, or never ours: a redelivery. Nothing happened.
-      if (call == null || call.phase() != Outstanding.Phase.AWAITING_APPROVAL) {
+      if (call == null || call.phase() != OutstandingAction.Phase.AWAITING_APPROVAL) {
         return Decision.ignore();
       }
       Seq at = seq.next();
@@ -302,7 +303,7 @@ public sealed interface AgentState {
     }
 
     private Decision ran(AgentCommand.CompleteToolCall done) {
-      Outstanding call = outstanding.get(done.callId());
+      OutstandingAction call = outstanding.get(done.callId());
       // Already discharged, or never ours: a redelivery.
       if (call == null) {
         return Decision.ignore();
@@ -318,7 +319,7 @@ public sealed interface AgentState {
       // because nobody said no -- and refusing it here because the call never ran would leave the
       // turn open with nothing left that could ever close it.
       if (done.outcome() instanceof AgentCommand.ToolOutcome.Succeeded
-          && call.phase() != Outstanding.Phase.RUNNING) {
+          && call.phase() != OutstandingAction.Phase.RUNNING) {
         return Decision.ignore();
       }
       Seq at = seq.next();

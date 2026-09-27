@@ -21,12 +21,12 @@ import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
+import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.NarrationListener;
-import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
 import org.jwcarman.nessy.engine.harness.direct.DirectHarnessFactoryConfig;
-import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
@@ -35,7 +35,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.core.env.Environment;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -64,8 +63,8 @@ public class DirectHarnessAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  public InputSchemaGenerator nessyInputSchemaGenerator() {
-    return new VictoolsInputSchemaGenerator();
+  public JsonSchemaGenerator nessyJsonSchemaGenerator() {
+    return new VictoolsJsonSchemaGenerator();
   }
 
   @Bean
@@ -78,7 +77,7 @@ public class DirectHarnessAutoConfiguration {
       DirectBackend backend,
       InferenceProvider models,
       ObservationRegistry observations,
-      InputSchemaGenerator schemas,
+      JsonSchemaGenerator schemas,
       ObjectMapper mapper,
       ObjectProvider<Customizer<DirectHarnessFactoryConfig>> customizers) {
     // The starter says what it knows, then every customizer bean has its turn. An application
@@ -109,15 +108,5 @@ public class DirectHarnessAutoConfiguration {
   public SmartInitializingSingleton nessyDirectListeners(
       DefaultDirectHarnessFactory factory, ObjectProvider<NarrationListener> listeners) {
     return () -> listeners.orderedStream().forEach(factory::listener);
-  }
-
-  /** Says what will actually answer, before a single turn runs. */
-  @Bean
-  @ConditionalOnMissingBean
-  public InferenceReport nessyInferenceReport(
-      ObjectProvider<InferenceProvider> providers,
-      NessyProperties properties,
-      Environment environment) {
-    return new InferenceReport(providers, properties, environment);
   }
 }

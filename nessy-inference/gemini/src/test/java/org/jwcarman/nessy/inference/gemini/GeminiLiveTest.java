@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
@@ -32,7 +33,6 @@ import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.inference.OutputSchema;
 import org.jwcarman.nessy.inference.Toolset;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -61,7 +61,7 @@ class GeminiLiveTest {
         new InferenceOptions(MODEL, 1024));
   }
 
-  private static InferenceRequest askingFor(String question, OutputSchema shape) {
+  private static InferenceRequest askingFor(String question, JsonSchema shape) {
     return new InferenceRequest(
         new SystemPrompt("You are a terse assistant."),
         InferenceContext.of(
@@ -135,8 +135,8 @@ class GeminiLiveTest {
    */
   @Test
   void an_answer_can_be_asked_for_in_a_shape() {
-    OutputSchema shape =
-        new OutputSchema(
+    JsonSchema shape =
+        new JsonSchema(
             """
             {"type":"object",
              "properties":{"city":{"type":"string"},"country":{"type":"string"}},
@@ -157,8 +157,8 @@ class GeminiLiveTest {
   /** Asking for a shape the question fits badly still comes back as that shape. */
   @Test
   void the_shape_is_honoured_even_when_the_question_fits_it_badly() {
-    OutputSchema shape =
-        new OutputSchema(
+    JsonSchema shape =
+        new JsonSchema(
             """
             {"type":"object",
              "properties":{"answer":{"type":"string"},"confident":{"type":"boolean"}},

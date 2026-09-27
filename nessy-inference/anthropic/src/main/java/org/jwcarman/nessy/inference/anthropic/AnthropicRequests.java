@@ -39,6 +39,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 import org.jwcarman.nessy.api.Ambient;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -49,7 +50,6 @@ import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceRequest;
-import org.jwcarman.nessy.inference.OutputSchema;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
 import tools.jackson.core.type.TypeReference;
@@ -400,7 +400,7 @@ public final class AnthropicRequests {
    * doing the work it needs to do before it can answer at all.
    */
   private static void askForShape(
-      MessageCreateParams.Builder builder, OutputSchema schema, JsonMapper mapper) {
+      MessageCreateParams.Builder builder, JsonSchema schema, JsonMapper mapper) {
     JsonOutputFormat.Schema.Builder shape = JsonOutputFormat.Schema.builder();
     Map<String, Object> properties = mapper.readValue(schema.json(), new TypeReference<>() {});
     properties.forEach((name, value) -> shape.putAdditionalProperty(name, JsonValue.from(value)));

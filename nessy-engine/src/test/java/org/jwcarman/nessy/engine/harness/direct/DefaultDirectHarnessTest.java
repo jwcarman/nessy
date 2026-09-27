@@ -45,6 +45,7 @@ import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
+import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
@@ -54,7 +55,6 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -70,7 +70,7 @@ import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
-import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -93,7 +93,7 @@ class DefaultDirectHarnessTest {
 
   private static final ToolName LOOKUP = new ToolName("lookup");
   private static final CallId CALL = new CallId("call-1");
-  private static final InputSchemaGenerator SCHEMAS = new VictoolsInputSchemaGenerator();
+  private static final JsonSchemaGenerator SCHEMAS = new VictoolsJsonSchemaGenerator();
   private static final ObjectMapper MAPPER = JsonMapper.builder().build();
 
   /**

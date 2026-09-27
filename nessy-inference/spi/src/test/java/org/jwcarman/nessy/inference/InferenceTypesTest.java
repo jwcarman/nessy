@@ -21,9 +21,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.InputSchema;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.turn.Summary;
 
@@ -39,7 +39,7 @@ class InferenceTypesTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("at least one call");
     ToolName name = new ToolName("t");
-    InputSchema schema = new InputSchema("{}");
+    JsonSchema schema = new JsonSchema("{}");
     assertThatThrownBy(() -> new ToolOffer(name, " ", schema))
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> new InferenceOptions(" ", 10))

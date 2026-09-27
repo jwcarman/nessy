@@ -37,6 +37,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.jwcarman.nessy.api.Ambient;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -47,7 +48,6 @@ import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceRequest;
-import org.jwcarman.nessy.inference.OutputSchema;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
 import tools.jackson.core.type.TypeReference;
@@ -66,10 +66,10 @@ public final class OpenAiRequests {
 
   /**
    * @param mapper reads a tool's schema back into a document. {@link
-   *     org.jwcarman.nessy.api.tool.InputSchema} carries JSON text on purpose -- a tree would have
-   *     to be some library's tree, and this wire's is not the one this project speaks -- so the
-   *     parse is the bridge between the two, not a validation step. Supplied rather than made here,
-   *     because a mapper an application cannot configure is a mapper it cannot fix.
+   *     org.jwcarman.nessy.api.JsonSchema} carries JSON text on purpose -- a tree would have to be
+   *     some library's tree, and this wire's is not the one this project speaks -- so the parse is
+   *     the bridge between the two, not a validation step. Supplied rather than made here, because
+   *     a mapper an application cannot configure is a mapper it cannot fix.
    */
   public static ChatCompletionCreateParams toParams(InferenceRequest request, JsonMapper mapper) {
     InferenceOptions options = request.options();
@@ -111,10 +111,10 @@ public final class OpenAiRequests {
    * nothing about the calls it makes on the way there.
    *
    * <p>The schema's name is a label this wire requires and nothing reads, so it is a constant here
-   * rather than something {@link OutputSchema} has to carry.
+   * rather than something {@link JsonSchema} has to carry.
    */
   private static void constrainAnswer(
-      ChatCompletionCreateParams.Builder builder, OutputSchema schema, JsonMapper mapper) {
+      ChatCompletionCreateParams.Builder builder, JsonSchema schema, JsonMapper mapper) {
     ResponseFormatJsonSchema.JsonSchema.Schema.Builder shape =
         ResponseFormatJsonSchema.JsonSchema.Schema.builder();
     Map<String, Object> properties = mapper.readValue(schema.json(), new TypeReference<>() {});

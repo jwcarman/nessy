@@ -19,8 +19,8 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.tool.InputSchema;
-import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
+import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -61,7 +61,7 @@ public final class ObservedTool {
       }
 
       @Override
-      public InputSchema inputSchema(InputSchemaGenerator generator) {
+      public JsonSchema inputSchema(JsonSchemaGenerator generator) {
         return delegate.inputSchema(generator);
       }
 

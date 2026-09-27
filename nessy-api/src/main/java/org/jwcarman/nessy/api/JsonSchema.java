@@ -13,12 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.api.tool;
+package org.jwcarman.nessy.api;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.Objects;
 
 /**
- * The JSON Schema describing a tool's arguments, as text.
+ * A JSON Schema document, as text.
+ *
+ * <p>One type for every schema, whichever direction it points. A tool's arguments and an answer's
+ * required shape are the same kind of document, read by the same parsers, and the two used to be
+ * two records with identical bodies -- which taught a reader that the distinction mattered when it
+ * never did. What a schema is FOR is said by the member holding it, not by its type.
  *
  * <p><b>Text rather than a parsed tree, on purpose.</b> A tree would have to be some library's
  * tree, and that library would become every adapter's problem: this engine speaks Jackson 3, the
@@ -33,15 +40,23 @@ import java.util.Objects;
  * string cannot be. An adapter is free to parse once into whatever its own SDK speaks and cache
  * that, knowing the source can never change underneath it.
  *
+ * <p>Written down as the bare string rather than an object wrapping one, so a schema that ends up
+ * inside something stored or sent reads as the document it is.
+ *
  * @param json the schema document; well-formedness is the producer's responsibility, checked where
  *     a tool is bound rather than here
  */
-public record InputSchema(String json) {
+public record JsonSchema(@JsonValue String json) {
 
-  public InputSchema {
+  public JsonSchema {
     Objects.requireNonNull(json, "json must not be null");
     if (json.isBlank()) {
       throw new IllegalArgumentException("json must not be blank");
     }
+  }
+
+  @JsonCreator
+  public static JsonSchema of(String json) {
+    return new JsonSchema(json);
   }
 }

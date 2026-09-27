@@ -23,10 +23,10 @@ import java.util.Objects;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.HarnessConfig;
+import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.NarrationListener;
-import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.backend.DirectBackend;
-import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -47,7 +47,7 @@ public final class DirectHarnessFactoryConfig {
 
   private DirectBackend backend;
   private InferenceProvider provider;
-  private InputSchemaGenerator schemas = new VictoolsInputSchemaGenerator();
+  private JsonSchemaGenerator schemas = new VictoolsJsonSchemaGenerator();
   private ObjectMapper mapper = JsonMapper.builder().build();
   private Clock clock = Clock.systemUTC();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
@@ -77,7 +77,7 @@ public final class DirectHarnessFactoryConfig {
   }
 
   /** How a Java type becomes a schema, for tools and for a constrained answer. */
-  public DirectHarnessFactoryConfig schemas(InputSchemaGenerator schemas) {
+  public DirectHarnessFactoryConfig schemas(JsonSchemaGenerator schemas) {
     this.schemas = schemas;
     return this;
   }
@@ -165,7 +165,7 @@ public final class DirectHarnessFactoryConfig {
     return require(provider, "an inference provider");
   }
 
-  InputSchemaGenerator schemas() {
+  JsonSchemaGenerator schemas() {
     return schemas;
   }
 

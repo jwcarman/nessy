@@ -55,7 +55,7 @@ import org.jwcarman.nessy.backend.inmemory.InMemoryLocks;
 import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.backend.lock.LockKind;
 import org.jwcarman.nessy.backend.lock.Locks;
-import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
+import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -232,7 +232,7 @@ class DirectHarnessFanOutTest {
         c ->
             c.backend(new FixedDirectBackend(locks, events, payloads))
                 .provider(model)
-                .schemas(new VictoolsInputSchemaGenerator())
+                .schemas(new VictoolsJsonSchemaGenerator())
                 .mapper(MAPPER)
                 .clock(clock));
   }
@@ -496,7 +496,7 @@ class DirectHarnessFanOutTest {
                             new FixedDirectBackend(
                                 new InMemoryLocks(), steppedEvents, steppedPayloads))
                         .provider(model)
-                        .schemas(new VictoolsInputSchemaGenerator())
+                        .schemas(new VictoolsJsonSchemaGenerator())
                         .mapper(MAPPER)
                         .clock(stepped))
             .<String>create(

@@ -20,8 +20,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.SystemPrompt;
-import org.jwcarman.nessy.api.tool.InputSchema;
 import org.jwcarman.nessy.api.tool.ToolName;
 
 /**
@@ -36,7 +36,7 @@ class ToolChoiceTest {
   private static final SystemPrompt SYSTEM = new SystemPrompt("you are a helpful assistant");
 
   private static final ToolOffer LOOKUP =
-      new ToolOffer(new ToolName("lookup"), "looks something up", new InputSchema("{}"));
+      new ToolOffer(new ToolName("lookup"), "looks something up", new JsonSchema("{}"));
 
   private static Toolset with(ToolChoice choice) {
     return new Toolset(List.of(LOOKUP), choice);

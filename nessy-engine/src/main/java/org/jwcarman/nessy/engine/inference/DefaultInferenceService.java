@@ -18,12 +18,12 @@ package org.jwcarman.nessy.engine.inference;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.inference.OutputSchema;
 import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.Toolset;
 
@@ -49,7 +49,7 @@ public class DefaultInferenceService implements InferenceService {
    * Uniform per service rather than per call: a caller that wants a shape says so when the harness
    * is made, the same moment the model and the tools are settled.
    */
-  private final Optional<OutputSchema> outputSchema;
+  private final Optional<JsonSchema> outputSchema;
 
   public DefaultInferenceService(
       InferenceContextAssembler assembler,
@@ -57,7 +57,7 @@ public class DefaultInferenceService implements InferenceService {
       SystemPromptSource systemPrompt,
       List<ToolOffer> tools,
       Narrator narrator,
-      Optional<OutputSchema> outputSchema) {
+      Optional<JsonSchema> outputSchema) {
     this.assembler = assembler;
     this.provider = provider;
     this.systemPrompt = systemPrompt;

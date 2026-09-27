@@ -33,7 +33,7 @@ import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
-import org.jwcarman.nessy.engine.agent.Outstanding;
+import org.jwcarman.nessy.engine.agent.OutstandingAction;
 import org.jwcarman.nessy.inference.Failure;
 
 /**
@@ -263,7 +263,7 @@ class AgentStateTest {
       AgentState.AwaitingActions state = (AgentState.AwaitingActions) running;
       assertThat(state.outstanding()).isNotEmpty();
       assertThat(state.outstanding().get(CALL).since()).isEqualTo(state.seq());
-      assertThat(state.outstanding().get(CALL).phase()).isEqualTo(Outstanding.Phase.RUNNING);
+      assertThat(state.outstanding().get(CALL).phase()).isEqualTo(OutstandingAction.Phase.RUNNING);
     }
   }
 

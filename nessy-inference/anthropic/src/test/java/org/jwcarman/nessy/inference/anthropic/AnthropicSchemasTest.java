@@ -22,7 +22,7 @@ import com.anthropic.models.messages.Tool;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.tool.InputSchema;
+import org.jwcarman.nessy.api.JsonSchema;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -43,7 +43,7 @@ class AnthropicSchemasTest {
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
   private static Tool.InputSchema adapt(String json) {
-    return AnthropicSchemas.toInputSchema(new InputSchema(json), MAPPER);
+    return AnthropicSchemas.toInputSchema(new JsonSchema(json), MAPPER);
   }
 
   @Test

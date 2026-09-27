@@ -26,12 +26,12 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Ambient;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.InputSchema;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Input;
@@ -510,7 +510,7 @@ class AnthropicRequestsTest {
       return new ToolOffer(
           new ToolName(name),
           "looks a thing up",
-          new InputSchema("{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"));
+          new JsonSchema("{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"));
     }
 
     private static MessageCreateParams withTools(List<ToolOffer> tools) {
@@ -719,7 +719,7 @@ class AnthropicRequestsTest {
       return new ToolOffer(
           new ToolName(name),
           "looks a thing up",
-          new InputSchema("{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"));
+          new JsonSchema("{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"));
     }
 
     private static MessageCreateParams choosing(ToolChoice choice) {

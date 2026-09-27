@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.inference;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.tool.InputSchema;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.tool.ToolName;
 
 /**
@@ -30,7 +30,7 @@ import org.jwcarman.nessy.api.tool.ToolName;
  * <p>Built once when the harness is created, not per inference: a tool's shape cannot change
  * between calls.
  */
-public record ToolOffer(ToolName name, String description, InputSchema schema) {
+public record ToolOffer(ToolName name, String description, JsonSchema schema) {
 
   public ToolOffer {
     Objects.requireNonNull(name, "name must not be null");

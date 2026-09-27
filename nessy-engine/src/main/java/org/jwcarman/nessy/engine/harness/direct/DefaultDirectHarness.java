@@ -30,7 +30,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
@@ -52,7 +51,7 @@ import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
-import org.jwcarman.nessy.engine.agent.Outstanding;
+import org.jwcarman.nessy.engine.agent.OutstandingAction;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
@@ -166,7 +165,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * shape -- inside this generic class {@code O} is neither. It arrives final, because a harness
    * whose reader could be set afterwards would answer its first question with a null.
    */
-  private final BiFunction<AgentId, AgentEvent.InferenceAnswered, Outcome<O>> reading;
+  private final OutcomeReader<O> reading;
 
   /**
    * The handle everything watching this agent is reached through.
@@ -226,7 +225,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       AgentType agentType,
       Clock clock,
       InputRenderer<I> renderer,
-      BiFunction<AgentId, AgentEvent.InferenceAnswered, Outcome<O>> reading,
+      OutcomeReader<O> reading,
       Narrator narrator,
       EffectHandlers handlers,
       ExecutorService effects,
@@ -408,15 +407,15 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   /**
    * One effect, tagged with the seq of the single event whose fold produced it -- the same "since"
-   * {@link Outstanding} and {@link AgentState.Inferring} themselves carry, and the one {@link
+   * {@link OutstandingAction} and {@link AgentState.Inferring} themselves carry, and the one {@link
    * #recoverToIdle} would replay its way back to for this exact call. Tracked here, locally, rather
    * than trusted from a field on {@link AgentEffect} itself: {@link
    * AgentEffect.CallTool#requestSeq} names the {@code ActionsRequested} entry holding the call's
-   * arguments, which is NOT the seq {@link Outstanding#since} moves to once the call is {@code
-   * RUNNING} -- that is the {@code ToolApproved} seq instead. Reusing {@code requestSeq} here would
-   * silently reintroduce the disagreement this whole fix exists to remove; computing {@code since}
-   * from the decision that just produced the effect cannot disagree with replay, because it is
-   * exactly what replay does.
+   * arguments, which is NOT the seq {@link OutstandingAction#since} moves to once the call is
+   * {@code RUNNING} -- that is the {@code ToolApproved} seq instead. Reusing {@code requestSeq}
+   * here would silently reintroduce the disagreement this whole fix exists to remove; computing
+   * {@code since} from the decision that just produced the effect cannot disagree with replay,
+   * because it is exactly what replay does.
    *
    * @param since the seq of the event {@code effect} was born alongside
    */
@@ -546,7 +545,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   /** The first outstanding call whose own deadline has passed, if there is one. */
   private Optional<AgentCommand> overdueCall(AgentId agent, AgentState.AwaitingActions awaiting) {
-    for (Outstanding outstanding : awaiting.outstanding().values()) {
+    for (OutstandingAction outstanding : awaiting.outstanding().values()) {
       AgentEffect effect = effectFor(awaiting.turn(), awaiting.requestSeq(), outstanding);
       EffectTerms terms = handlers.termsFor(effect);
       Instant started = backend.events().writtenAt(agent, outstanding.since());
@@ -565,7 +564,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * compiling. A cast would instead have kept compiling and thrown here at recovery time, which is
    * the least observable moment in this class to learn about it.
    */
-  private static AgentEffect effectFor(TurnId turn, Seq requestSeq, Outstanding outstanding) {
+  private static AgentEffect effectFor(TurnId turn, Seq requestSeq, OutstandingAction outstanding) {
     return switch (outstanding.action()) {
       case ActionRequest.ToolCall(var id, var name) ->
           switch (outstanding.phase()) {
@@ -808,7 +807,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   private Outcome<O> asOutcome(AgentId agent, TurnId turn, AgentEvent event) {
     return switch (event) {
       case AgentEvent.InferenceAnswered answered when answered.turn().equals(turn) ->
-          reading.apply(agent, answered);
+          reading.read(agent, answered);
       case AgentEvent.InferenceRefused refused when refused.turn().equals(turn) ->
           new Outcome.Refused<>(refused.category());
       case AgentEvent.InferenceFailed failed when failed.turn().equals(turn) ->
