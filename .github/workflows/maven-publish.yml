@@ -23,8 +23,16 @@ jobs:
           gpg-private-key: ${{ secrets.GPG_SIGNING_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
 
+      # processAllModules, because nessy-bom deliberately has no <parent> and versions:set
+      # otherwise walks only the modules inheritance reaches. Left out, the bom keeps its
+      # -SNAPSHOT version, routes to the snapshot repository, and the whole deployment is
+      # refused with a 403 -- which is how the 0.1.0 cut first failed.
       - name: Set version
-        run: ./mvnw versions:set -DnewVersion=${{ github.event.release.tag_name }}
+        run: >-
+          ./mvnw versions:set
+          -DnewVersion=${{ github.event.release.tag_name }}
+          -DprocessAllModules=true
+          -DgenerateBackupPoms=false
 
       - name: Publish package
         run: ./mvnw -P release --batch-mode deploy -DskipTests
