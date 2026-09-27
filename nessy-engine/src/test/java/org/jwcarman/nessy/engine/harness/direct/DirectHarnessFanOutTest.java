@@ -40,6 +40,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
@@ -75,6 +76,9 @@ import tools.jackson.databind.json.JsonMapper;
  * the same assertion true a little later.
  */
 class DirectHarnessFanOutTest {
+
+  /** Stands in for a tally nobody is asserting on, and is never compared. */
+  private static final TurnStats ANY_STATS = TurnStats.opened(Instant.EPOCH);
 
   private static final AgentType TYPE = new AgentType("chat");
   private static final ToolName LOOKUP = new ToolName("lookup");
@@ -276,7 +280,10 @@ class DirectHarnessFanOutTest {
           .isTrue();
 
       release.countDown();
-      assertThat(future.get()).isEqualTo(new Outcome.Answered<>("done"));
+      assertThat(future.get())
+          .usingRecursiveComparison()
+          .ignoringFields("stats")
+          .isEqualTo(new Outcome.Answered<>("done", ANY_STATS));
       assertThat(events.readAll(TYPE, agent))
           .extracting(e -> e.getClass().getSimpleName())
           .filteredOn(name -> name.equals("ToolSucceeded"))
@@ -324,7 +331,10 @@ class DirectHarnessFanOutTest {
           .isEqualTo(limit);
 
       release.countDown();
-      assertThat(future.get()).isEqualTo(new Outcome.Answered<>("done"));
+      assertThat(future.get())
+          .usingRecursiveComparison()
+          .ignoringFields("stats")
+          .isEqualTo(new Outcome.Answered<>("done", ANY_STATS));
     }
 
     assertThat(tool.peak())
@@ -392,7 +402,10 @@ class DirectHarnessFanOutTest {
       assertThat(tool.current()).isEqualTo(calls);
 
       release.countDown();
-      assertThat(future.get()).isEqualTo(new Outcome.Answered<>("done"));
+      assertThat(future.get())
+          .usingRecursiveComparison()
+          .ignoringFields("stats")
+          .isEqualTo(new Outcome.Answered<>("done", ANY_STATS));
     }
 
     assertThat(locks.max())
@@ -522,7 +535,10 @@ class DirectHarnessFanOutTest {
       stepped.advance(toolTimeout.plusSeconds(1));
 
       releaseFirst.countDown();
-      assertThat(future.get()).isEqualTo(new Outcome.Answered<>("done"));
+      assertThat(future.get())
+          .usingRecursiveComparison()
+          .ignoringFields("stats")
+          .isEqualTo(new Outcome.Answered<>("done", ANY_STATS));
     }
 
     assertThat(secondRan.get())

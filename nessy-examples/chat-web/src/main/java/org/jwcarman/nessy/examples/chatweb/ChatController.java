@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -96,10 +97,18 @@ public class ChatController {
   public ResponseEntity<Map<String, String>> say(
       @PathVariable("id") String id, @RequestBody MessageRequest body) {
     return switch (harness.ask(agent(id), body.text())) {
-      case Outcome.Answered<String>(String said) -> ResponseEntity.ok(Map.of("said", said));
-      case Outcome.Refused<String>(String category) ->
+      // The answer and what it cost, which is the whole reason a turn's tally rides along with
+      // it: a caller that waited for the answer is the one entitled to know what it spent, and
+      // asking the event store afterwards would be reaching into a backend to find out.
+      case Outcome.Answered<String>(String said, TurnStats stats) ->
+          ResponseEntity.ok(
+              Map.of(
+                  "said", said,
+                  "tokens", String.valueOf(stats.spent().orZero()),
+                  "calls", String.valueOf(stats.modelCalls())));
+      case Outcome.Refused<String>(String category, _) ->
           ResponseEntity.ok(Map.of("refused", category));
-      case Outcome.Failed<String>(String reason) ->
+      case Outcome.Failed<String>(String reason, _) ->
           ResponseEntity.internalServerError().body(Map.of("failed", reason));
       // Somebody else is mid-turn on this agent -- another tab, or a request that has not
       // finished. Not an error: the page can say so and let them try again.

@@ -55,7 +55,9 @@ import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TerminationOutcome;
+import org.jwcarman.nessy.api.Tokens;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
@@ -92,6 +94,9 @@ import tools.jackson.databind.json.JsonMapper;
  * stream, and what the model is shown is rebuilt from that stream rather than remembered.
  */
 class DefaultDirectHarnessTest {
+
+  /** Stands in for a tally nobody is asserting on, and is never compared. */
+  private static final TurnStats ANY_STATS = TurnStats.opened(Instant.EPOCH);
 
   private static final AgentType TYPE = new AgentType("chat");
   private static final int MAX_TAIL = 50;
@@ -251,7 +256,12 @@ class DefaultDirectHarnessTest {
   }
 
   private static InferenceResult answering(String text) {
-    return new InferenceResult.Answer(List.of(new Block.Text(text)), Usage.unreported());
+    return answering(text, Usage.unreported());
+  }
+
+  /** The same, from a vendor that counted, for the tests that are about what a turn cost. */
+  private static InferenceResult answering(String text, Usage usage) {
+    return new InferenceResult.Answer(List.of(new Block.Text(text)), usage);
   }
 
   private static InferenceResult asking(String tool) {
@@ -313,13 +323,35 @@ class DefaultDirectHarnessTest {
   }
 
   @Test
+  @DisplayName("the answer says what the turn cost, so a caller need not read the event store")
+  void an_answer_carries_what_it_cost() {
+    Outcome<String> outcome =
+        harness(new Scripted().then(answering("forty two", Usage.of("a-model", 100, 20))))
+            .ask(AgentId.random(), "what is the answer?");
+
+    assertThat(outcome)
+        .asInstanceOf(InstanceOfAssertFactories.type(Outcome.Answered.class))
+        .extracting(Outcome.Answered::stats)
+        .satisfies(
+            stats -> {
+              assertThat(stats.modelCalls()).isEqualTo(1);
+              assertThat(stats.spent()).isEqualTo(Tokens.of(120));
+              assertThat(stats.wasted()).as("nothing failed").isEqualTo(Tokens.none());
+              assertThat(stats.productiveTokens()).isEqualTo(Tokens.of(120));
+            });
+  }
+
+  @Test
   @DisplayName("a turn with no tools runs to an answer")
   void a_plain_turn() {
     Outcome<String> outcome =
         harness(new Scripted().then(answering("forty two")))
             .ask(AgentId.random(), "what is the answer?");
 
-    assertThat(outcome).isEqualTo(new Outcome.Answered<>("forty two"));
+    assertThat(outcome)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("forty two", ANY_STATS));
   }
 
   @Test
@@ -330,7 +362,10 @@ class DefaultDirectHarnessTest {
 
     Outcome outcome = harness(model, tool("found it")).ask(agent, "look up my charge");
 
-    assertThat(outcome).isEqualTo(new Outcome.Answered<>("charge 42.00"));
+    assertThat(outcome)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("charge 42.00", ANY_STATS));
     assertThat(events.readAll(TYPE, agent))
         .extracting(e -> e.getClass().getSimpleName())
         .containsExactly(
@@ -416,7 +451,10 @@ class DefaultDirectHarnessTest {
 
     assertThat(harness.terminate(agent)).isEqualTo(new TerminationOutcome.Ended());
 
-    assertThat(harness.ask(agent, "again")).isEqualTo(new Outcome.Refused<String>("terminated"));
+    assertThat(harness.ask(agent, "again"))
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Refused<String>("terminated", ANY_STATS));
   }
 
   /** Asking twice is not an error, and the second answer says it was already over. */
@@ -478,7 +516,9 @@ class DefaultDirectHarnessTest {
         .isEqualTo(new TerminationOutcome.Busy());
     assertThat(outcome)
         .as("and the turn it was already running still finished")
-        .isEqualTo(new Outcome.Answered<>("ok"));
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("ok", ANY_STATS));
   }
 
   @Test
@@ -488,7 +528,10 @@ class DefaultDirectHarnessTest {
     Scripted model = new Scripted().then(asking("lookup")).then(answering("sorry"));
     Outcome<String> outcome = harness(model, broken("the ledger is down")).ask(agent, "try");
 
-    assertThat(outcome).isEqualTo(new Outcome.Answered<>("sorry"));
+    assertThat(outcome)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("sorry", ANY_STATS));
     assertThat(events.readAll(TYPE, agent))
         .extracting(e -> e.getClass().getSimpleName())
         .contains("ToolFailed");
@@ -554,7 +597,10 @@ class DefaultDirectHarnessTest {
           .isInstanceOf(AgentEvent.TurnStarted.class);
 
       release.countDown();
-      assertThat(holder.get()).isEqualTo(new Outcome.Answered<>("hi"));
+      assertThat(holder.get())
+          .usingRecursiveComparison()
+          .ignoringFields("stats")
+          .isEqualTo(new Outcome.Answered<>("hi", ANY_STATS));
     }
   }
 
@@ -588,7 +634,10 @@ class DefaultDirectHarnessTest {
 
       assertThat(refused).as("every one of them, at once").containsOnly(new Outcome.Busy<>());
       release.countDown();
-      assertThat(holder.get()).isEqualTo(new Outcome.Answered<>("hi"));
+      assertThat(holder.get())
+          .usingRecursiveComparison()
+          .ignoringFields("stats")
+          .isEqualTo(new Outcome.Answered<>("hi", ANY_STATS));
     }
   }
 
@@ -660,7 +709,10 @@ class DefaultDirectHarnessTest {
 
     // Idle, not stuck: a second turn on the same agent starts and finishes normally.
     Outcome<String> next = harness.ask(agent, "still there?");
-    assertThat(next).isEqualTo(new Outcome.Answered<>("the second call was never made to wait"));
+    assertThat(next)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("the second call was never made to wait", ANY_STATS));
   }
 
   /** A tool that hangs until interrupted, the way a hung downstream call does. */
@@ -716,7 +768,10 @@ class DefaultDirectHarnessTest {
 
     Outcome<String> outcome = harness.ask(agent, "look it up");
 
-    assertThat(outcome).isEqualTo(new Outcome.Answered<>("noted, moving on"));
+    assertThat(outcome)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("noted, moving on", ANY_STATS));
     List<AgentEvent> history = events.readAll(TYPE, agent);
     assertThat(history).isNotEmpty();
     assertThat(history)
@@ -760,7 +815,10 @@ class DefaultDirectHarnessTest {
 
     Outcome<String> outcome = harness.ask(agent, "look it up");
 
-    assertThat(outcome).isEqualTo(new Outcome.Answered<>("noted, moving on"));
+    assertThat(outcome)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("noted, moving on", ANY_STATS));
     List<AgentEvent> history = events.readAll(TYPE, agent);
     assertThat(history).isNotEmpty();
     assertThat(history)
@@ -815,7 +873,10 @@ class DefaultDirectHarnessTest {
 
     Outcome<String> outcome = harness.ask(agent, "second turn, please");
 
-    assertThat(outcome).isEqualTo(new Outcome.Answered<>("second turn's answer"));
+    assertThat(outcome)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("second turn's answer", ANY_STATS));
 
     List<AgentEvent> stream = events.readAll(TYPE, agent);
     assertThat(stream)
@@ -897,7 +958,10 @@ class DefaultDirectHarnessTest {
 
     Outcome<String> outcome = harness.ask(agent, "second turn, please");
 
-    assertThat(outcome).isEqualTo(new Outcome.Answered<>("second turn's answer"));
+    assertThat(outcome)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("second turn's answer", ANY_STATS));
     // "The provider stub records zero calls" (design record, this step's brief) is true of
     // recovery itself: discharging the expired approval and the inference its discharge reopened
     // is pure fold and append, with no call to the provider. The one call recorded below is the
@@ -996,7 +1060,10 @@ class DefaultDirectHarnessTest {
                         .inference(in -> in.model("a-model").timeout(Duration.ofHours(1))));
 
     Outcome<String> first = harness.ask(agent, "first turn");
-    assertThat(first).isEqualTo(new Outcome.Answered<>("first turn's answer"));
+    assertThat(first)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("first turn's answer", ANY_STATS));
 
     // A second turn that a process started and never came back to finish -- well inside its own
     // deadline, so the caller below must be told Busy rather than shown whatever the fold has on
@@ -1062,7 +1129,9 @@ class DefaultDirectHarnessTest {
         .containsExactly("TurnStarted", "InferenceAnswered", "TurnStarted", "InferenceAnswered");
     assertThat(outcome)
         .as("its own turn's answer, not the latest one on the stream")
-        .isEqualTo(new Outcome.Answered<>("this caller's own answer"));
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("this caller's own answer", ANY_STATS));
   }
 
   /**
@@ -1162,7 +1231,10 @@ class DefaultDirectHarnessTest {
     Outcome<Capital> outcome =
         shapedHarness(model, Capital.class).ask(AgentId.random(), "capital of France?");
 
-    assertThat(outcome).isEqualTo(new Outcome.Answered<>(new Capital("Paris", "France")));
+    assertThat(outcome)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>(new Capital("Paris", "France"), ANY_STATS));
     assertThat(model.seen).hasSize(1);
     assertThat(model.seen.getFirst().outputSchema())
         .as("the provider was told the shape, which is the whole point")
@@ -1179,7 +1251,10 @@ class DefaultDirectHarnessTest {
 
     Outcome<String> outcome = harness(model).ask(AgentId.random(), "capital?");
 
-    assertThat(outcome).isEqualTo(new Outcome.Answered<>("Paris."));
+    assertThat(outcome)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("Paris.", ANY_STATS));
     assertThat(model.seen.getFirst().outputSchema()).isEmpty();
   }
 
@@ -1207,7 +1282,10 @@ class DefaultDirectHarnessTest {
     Outcome<List<Capital>> outcome =
         shapedHarness(model, new TypeRef<List<Capital>>() {}).ask(AgentId.random(), "capitals?");
 
-    assertThat(outcome).isEqualTo(new Outcome.Answered<>(List.of(new Capital("Paris", "France"))));
+    assertThat(outcome)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>(List.of(new Capital("Paris", "France")), ANY_STATS));
   }
 
   @Test
@@ -1289,7 +1367,10 @@ class DefaultDirectHarnessTest {
             .ask(agent, "look it up");
 
     assertThat(ran).as("a denied call is not a call").isFalse();
-    assertThat(outcome).isEqualTo(new Outcome.Answered<>("understood"));
+    assertThat(outcome)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("understood", ANY_STATS));
     assertThat(events.readAll(TYPE, agent))
         .extracting(e -> e.getClass().getSimpleName())
         .contains("ToolDenied");
@@ -1425,7 +1506,10 @@ class DefaultDirectHarnessTest {
 
       Outcome<Lookup> outcome = harness.ask(AgentId.random(), "which one?");
 
-      assertThat(outcome).isEqualTo(new Outcome.Answered<>(new Lookup("42")));
+      assertThat(outcome)
+          .usingRecursiveComparison()
+          .ignoringFields("stats")
+          .isEqualTo(new Outcome.Answered<>(new Lookup("42"), ANY_STATS));
     }
 
     /**

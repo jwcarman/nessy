@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine.harness.direct;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
 import java.util.List;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
@@ -28,6 +29,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.event.AgentEvents;
@@ -55,6 +57,9 @@ import tools.jackson.databind.json.JsonMapper;
 @Tag("container")
 @DisplayName("A direct harness over a database")
 class DurableDirectHarnessTest {
+
+  /** Stands in for a tally nobody is asserting on, and is never compared. */
+  private static final TurnStats ANY_STATS = TurnStats.opened(Instant.EPOCH);
 
   private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
 
@@ -112,13 +117,19 @@ class DurableDirectHarnessTest {
     Outcome<String> first =
         harness(saying("the capital is Paris")).ask(agent, "capital of France?");
 
-    assertThat(first).isEqualTo(new Outcome.Answered<>("the capital is Paris"));
+    assertThat(first)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("the capital is Paris", ANY_STATS));
 
     // A different harness over the same database: no shared memory, no shared objects.
     InferenceProvider second = saying("and Japan's is Tokyo");
     Outcome<String> answered = harness(second).ask(agent, "and Japan?");
 
-    assertThat(answered).isEqualTo(new Outcome.Answered<>("and Japan's is Tokyo"));
+    assertThat(answered)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("and Japan's is Tokyo", ANY_STATS));
     assertThat(events.readAll(TYPE, agent)).as("both turns, in one story").hasSize(4);
   }
 
@@ -157,7 +168,9 @@ class DurableDirectHarnessTest {
 
     assertThat(harness(saying("again")).ask(mine, "again?"))
         .as("reading one agent back does not need another agent's content")
-        .isEqualTo(new Outcome.Answered<>("again"));
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("again", ANY_STATS));
   }
 
   @Test
@@ -170,6 +183,8 @@ class DurableDirectHarnessTest {
 
     assertThat(harness(saying("never")).ask(agent, "still there?"))
         .as("a caller who is owed an answer gets one, even when the answer is no")
-        .isEqualTo(new Outcome.Refused<String>("terminated"));
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Refused<String>("terminated", ANY_STATS));
   }
 }

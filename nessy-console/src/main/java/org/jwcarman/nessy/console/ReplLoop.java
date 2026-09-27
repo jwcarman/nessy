@@ -121,10 +121,12 @@ final class ReplLoop {
   private void report(Outcome<String> outcome) {
     io.write(System.lineSeparator());
     switch (outcome) {
-      case Outcome.Answered<String>(String said) -> reportAnswer(said);
-      case Outcome.Refused<String>(String category) ->
+      // The tally is bound and ignored: a terminal shows the answer, not the arithmetic. It is
+      // there for anyone who wants to print what a question cost.
+      case Outcome.Answered<String>(String said, _) -> reportAnswer(said);
+      case Outcome.Refused<String>(String category, _) ->
           note("the model refused to answer: " + category);
-      case Outcome.Failed<String>(String reason) -> note("the turn failed: " + reason);
+      case Outcome.Failed<String>(String reason, _) -> note("the turn failed: " + reason);
       // Only reachable with a lock somebody else holds -- another terminal, or another machine
       // on the same agent. Worth saying plainly rather than looking like a failure.
       case Outcome.Busy<String> _ -> note("that agent is busy with another turn; try again");

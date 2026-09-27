@@ -45,6 +45,7 @@ import org.jwcarman.nessy.api.OutputReader;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TerminationOutcome;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
@@ -59,6 +60,7 @@ import org.jwcarman.nessy.engine.agent.OutstandingAction;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
+import org.jwcarman.nessy.engine.core.TurnTally;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
@@ -345,7 +347,10 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     AgentState state = reconstitute(agent);
     if (state instanceof AgentState.Terminal) {
       LOG.debug("[{}] agent {} has ended; the question is refused", agentType.value(), agent);
-      return StepResult.declined(new Outcome.Refused<>("terminated"));
+      // No turn opened, so there is nothing this agent did to report. An ended agent refusing a
+      // question is the agent's state, not a turn's cost.
+      return StepResult.declined(
+          new Outcome.Refused<>("terminated", TurnStats.opened(clock.instant())));
     }
     return switch (recoverToIdle(agent, state)) {
       case RecoveryOutcome.Busy() -> StepResult.declined(new Outcome.Busy<>());
@@ -872,21 +877,26 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * answer, which this scoping is what rules out.
    */
   private Outcome<O> outcome(AgentId agent, TurnId turn) {
-    return backend.events().readAll(agentType, agent).reversed().stream()
-        .map(event -> asOutcome(agent, turn, event))
+    // Read once and tallied once. The state that was accumulating this turn's counts has already
+    // gone idle by now, so what the caller is told it cost is worked out from the same events the
+    // fold counted -- by the same arithmetic, in TurnTally, so the two cannot disagree.
+    List<AgentEvent> story = backend.events().readAll(agentType, agent);
+    TurnStats stats = TurnTally.of(story, turn);
+    return story.reversed().stream()
+        .map(event -> asOutcome(agent, turn, event, stats))
         .filter(Objects::nonNull)
         .findFirst()
         .orElseThrow(() -> new IllegalStateException("a turn that ended without ending"));
   }
 
-  private Outcome<O> asOutcome(AgentId agent, TurnId turn, AgentEvent event) {
+  private Outcome<O> asOutcome(AgentId agent, TurnId turn, AgentEvent event, TurnStats stats) {
     return switch (event) {
       case AgentEvent.InferenceAnswered answered when answered.turn().equals(turn) ->
-          readAnswer(agent, answered);
+          readAnswer(agent, answered, stats);
       case AgentEvent.InferenceRefused refused when refused.turn().equals(turn) ->
-          new Outcome.Refused<>(refused.category());
+          new Outcome.Refused<>(refused.category(), stats);
       case AgentEvent.InferenceFailed failed when failed.turn().equals(turn) ->
-          new Outcome.Failed<>(failed.failure().reason());
+          new Outcome.Failed<>(failed.failure().reason(), stats);
       default -> null;
     };
   }
@@ -919,12 +929,13 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * turn -- which is the whole reason a caller asked for a shape instead of prose -- and it fails
    * as an {@link Outcome.Failed} rather than an exception out of a door that promised a value.
    */
-  private Outcome<O> readAnswer(AgentId agent, AgentEvent.InferenceAnswered answered) {
+  private Outcome<O> readAnswer(
+      AgentId agent, AgentEvent.InferenceAnswered answered, TurnStats stats) {
     String text = textOf(backend.payloads(), agent, answered);
     try {
-      return new Outcome.Answered<>(reading.read(text));
+      return new Outcome.Answered<>(reading.read(text), stats);
     } catch (RuntimeException notTheShape) {
-      return new Outcome.Failed<>("the answer did not fit: " + notTheShape.getMessage());
+      return new Outcome.Failed<>("the answer did not fit: " + notTheShape.getMessage(), stats);
     }
   }
 

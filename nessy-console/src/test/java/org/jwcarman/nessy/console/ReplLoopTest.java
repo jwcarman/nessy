@@ -17,6 +17,7 @@ package org.jwcarman.nessy.console;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -27,6 +28,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -36,6 +38,9 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 
 @DisplayName("A terminal conversation")
 class ReplLoopTest {
+
+  /** Stands in for a tally nothing here is measuring. */
+  static final TurnStats ANY_STATS = TurnStats.opened(Instant.EPOCH);
 
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
 
@@ -91,7 +96,7 @@ class ReplLoopTest {
   void an_answer_that_was_not_streamed_is_printed_whole() {
     FakeHarness harness =
         new FakeHarness(List.of(new Narration.Answered()))
-            .answering(new Outcome.Answered<>("all at once"));
+            .answering(new Outcome.Answered<>("all at once", ANY_STATS));
     FakeConsole console = new FakeConsole("hi", "quit");
     run(harness, console, config());
     assertThat(console.written()).contains("all at once");
@@ -251,7 +256,8 @@ class ReplLoopTest {
     @Test
     void a_silent_completion_says_so_rather_than_printing_nothing() {
       FakeHarness harness =
-          new FakeHarness(List.of(new Narration.Answered())).answering(new Outcome.Answered<>(""));
+          new FakeHarness(List.of(new Narration.Answered()))
+              .answering(new Outcome.Answered<>("", ANY_STATS));
       FakeConsole console = new FakeConsole("hello", "/exit");
       run(harness, console, config());
       assertThat(console.written()).contains("ended the turn without saying anything");
@@ -260,7 +266,7 @@ class ReplLoopTest {
     @Test
     void a_refusal_is_reported() {
       FakeHarness harness =
-          new FakeHarness(List.of()).answering(new Outcome.Refused<>("self-harm"));
+          new FakeHarness(List.of()).answering(new Outcome.Refused<>("self-harm", ANY_STATS));
       FakeConsole console = new FakeConsole("hello", "/exit");
       run(harness, console, config());
       assertThat(console.written()).contains("refused");
@@ -269,7 +275,8 @@ class ReplLoopTest {
     @Test
     void a_failure_is_reported() {
       FakeHarness harness =
-          new FakeHarness(List.of()).answering(new Outcome.Failed<>("the model was unreachable"));
+          new FakeHarness(List.of())
+              .answering(new Outcome.Failed<>("the model was unreachable", ANY_STATS));
       FakeConsole console = new FakeConsole("hello", "/exit");
       run(harness, console, config());
       assertThat(console.written()).contains("failed");

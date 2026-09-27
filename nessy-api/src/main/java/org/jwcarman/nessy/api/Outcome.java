@@ -24,11 +24,18 @@ public sealed interface Outcome<T> {
    * <p>Text when nothing was asked of the answer's shape, and the shape itself when something was
    * -- the same arm either way, because a caller that asked for an invoice wants an invoice, not an
    * invoice it has to parse.
+   *
+   * @param stats what the turn that produced it did and what it cost
    */
-  record Answered<T>(T value) implements Outcome<T> {}
+  record Answered<T>(T value, TurnStats stats) implements Outcome<T> {}
 
-  /** The model declined, and would decline again. */
-  record Refused<T>(String category) implements Outcome<T> {}
+  /**
+   * The model declined, and would decline again.
+   *
+   * @param stats what the turn that declined did and what it cost -- a refusal is not free, since
+   *     the model read the input before deciding not to answer it
+   */
+  record Refused<T>(String category, TurnStats stats) implements Outcome<T> {}
 
   /**
    * The turn ended without an answer.
@@ -40,8 +47,11 @@ public sealed interface Outcome<T> {
    * <p>An answer that would not fit the shape it was asked for arrives here too. The turn happened
    * and the model spoke; what came back was not the thing requested, which is a failure of the
    * asking rather than a refusal by the model.
+   *
+   * @param stats what the turn spent before it failed, which is the reading that matters most -- a
+   *     turn that failed expensively is a different problem from one that failed at once
    */
-  record Failed<T>(String reason) implements Outcome<T> {}
+  record Failed<T>(String reason, TurnStats stats) implements Outcome<T> {}
 
   /**
    * Somebody else is already running a turn on this scope, so this one never started.
@@ -52,6 +62,10 @@ public sealed interface Outcome<T> {
    *
    * <p>Says nothing about who holds the scope or for how long. Nothing can know that honestly; only
    * that a moment ago it was taken.
+   *
+   * <p><b>The one arm with no tally</b>, because there was no turn to tally. Every other arm can
+   * say what it cost; this one would have to invent an empty one, and an empty tally reads as a
+   * turn that ran and spent nothing rather than as a turn that never was.
    */
   record Busy<T>() implements Outcome<T> {}
 }

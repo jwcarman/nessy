@@ -164,8 +164,9 @@ public sealed interface AgentState {
         // without moving the turn: the call it belongs to has not settled, and the state this
         // rebuilds to must be the one the next event expects to find.
         case AgentEvent.InferenceAttempted attempted ->
-            new Inferring(attempted.seq(), turn, stats.failed(attempted.usage()));
-        case AgentEvent.ActionsRequested requested -> AwaitingActions.opening(requested, stats);
+            new Inferring(attempted.seq(), turn, TurnTally.after(stats, attempted));
+        case AgentEvent.ActionsRequested requested ->
+            AwaitingActions.opening(requested, TurnTally.after(stats, requested));
         default -> throw unexpected(event, this);
       };
     }
@@ -275,12 +276,7 @@ public sealed interface AgentState {
       for (ActionRequest action : requested.actions()) {
         calls.put(action.id(), OutstandingAction.awaitingApproval(action, requested.seq()));
       }
-      return new AwaitingActions(
-          requested.seq(),
-          requested.turn(),
-          requested.seq(),
-          calls,
-          stats.requestedActions(requested.actions().size(), requested.usage()));
+      return new AwaitingActions(requested.seq(), requested.turn(), requested.seq(), calls, stats);
     }
 
     @Override

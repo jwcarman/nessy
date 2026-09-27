@@ -16,6 +16,7 @@
 
 package org.jwcarman.nessy.console;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.api.AgentId;
@@ -25,6 +26,7 @@ import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.TerminationOutcome;
+import org.jwcarman.nessy.api.TurnStats;
 
 /**
  * A harness that narrates a scripted run of events and then returns an outcome.
@@ -34,12 +36,15 @@ import org.jwcarman.nessy.api.TerminationOutcome;
  */
 final class FakeHarness implements DirectHarness<String, String> {
 
+  /** Stands in for a tally nothing here is measuring. */
+  static final TurnStats ANY_STATS = TurnStats.opened(Instant.EPOCH);
+
   private static final AgentType TYPE = new AgentType("chat");
 
   private final List<List<Narration>> answers;
   private final List<String> asked = new ArrayList<>();
   private NarrationListener narrator = NarrationListener.none();
-  private Outcome<String> outcome = new Outcome.Answered<>("(already streamed)");
+  private Outcome<String> outcome = new Outcome.Answered<>("(already streamed)", ANY_STATS);
   private int next;
 
   @SafeVarargs
