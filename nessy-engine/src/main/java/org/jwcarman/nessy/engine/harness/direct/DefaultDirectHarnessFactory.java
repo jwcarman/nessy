@@ -17,6 +17,7 @@
 package org.jwcarman.nessy.engine.harness.direct;
 
 import io.micrometer.context.ContextExecutorService;
+import io.micrometer.context.ContextSnapshotFactory;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.util.List;
@@ -135,7 +136,8 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
   private final ExecutorService effects =
       ContextExecutorService.wrap(
           Executors.newThreadPerTaskExecutor(
-              Thread.ofVirtual().name("nessy-direct-effect-", 0).factory()));
+              Thread.ofVirtual().name("nessy-direct-effect-", 0).factory()),
+          ContextSnapshotFactory.builder().build());
 
   /**
    * Reads the config rather than holding it, so a caller that keeps a reference and changes it
