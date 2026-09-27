@@ -2,9 +2,14 @@
 
 **Status: APPROVED, NOT BUILT.** The shape was settled in conversation with James on 2026-09-27
 and this record writes it down. Nothing in it is on `main`. It adds three public types --
-`TurnStats`, `TurnPolicy`, `TurnDecision` -- one field on `AgentEffect.Infer`, and an instant on
-`AgentEvent.TurnStarted` and the commands that need one (§5b); anything else it turned out to need
-is listed in §10 as a question rather than quietly added.
+`TurnStats`, `TurnPolicy`, `TurnDecision` -- one arm on `ToolChoice` (`Answer`, §6b), one field on
+`AgentEffect.Infer`, and an instant on `AgentEvent.TurnStarted` and the commands that need one
+(§5b); anything else it turned out to need is listed in §10 as a question rather than quietly
+added.
+
+Revised the same day, after three rulings: the answer-now request is intent the adapters honour,
+not an empty toolset (§6b); inference retry was found unreachable and fixed in `d36de45c9`, which
+changes what §3c can promise; and `FailTurn` is confirmed as the name of the third arm (§8).
 
 Date: 2026-09-27. Sits on the pure core of
 `2026-09-24-inline-inference-and-the-turn-executor-design.md` and the two doors of
@@ -80,14 +85,37 @@ it needs on the events it already applies. The counting rules:
   consulted (§5a) every call asked for has been settled, so the two readings agree there anyway.
 - `usage` accumulates the four events' `usage`. How nullable counts sum is §10 (4).
 
-**What is not counted, and why.** An attempt that threw and was retried by the queued door's
-dispatcher never reaches the fold -- `EffectDispatcher.settle` consults the row's `RetryPolicy`
-and reschedules the row, and only the attempt that finally produced an outcome (or the give-up)
-becomes a command. Its tokens, if a vendor billed them, are not in `usage`. The stats are a tally
-of the turn's *story*, which is the only thing a replayable fold can tally; what the dispatcher
-spent between rows is the dispatcher's to observe. The direct door does not retry an inference at
-all (`DefaultDirectHarnessConfig`: *"Stored ... but not honoured"*), so there the two numbers are
-one.
+**Retried attempts, and what the fold sees of them.** Until `d36de45c9` no inference was ever
+retried on either door, whatever a policy said: retrying was reachable only from the queued
+dispatcher's `catch`, and no adapter throws -- each one catches its vendor's exception and returns
+`InferenceResult.Fault`, which `InferenceHandler` turns into a *returned*
+`EffectOutcome.InferenceFailed`. So a failure the provider classified `Failure.Transient` ended the
+turn, and the classification decided nothing. Since that fix, `EffectDispatcher.worthAnotherGo`
+sends a returned `InferenceFailed` whose `Failure` is `Transient` through the same `settle` a
+throw always took; `Permanent`, `Rejected` and `Unknown` stay terminal. `settle` then does one of
+two things. On `RetryDecision.RetryAfter` it reschedules the row and delivers nothing --
+`DispatcherFailureTest` pins that the turn *"has not been told anything yet"*. On
+`RetryDecision.GiveUp` it delivers the handler's own outcome for the last attempt, carrying the provider's real `Failure`
+and that attempt's `Usage`, rather than the blob stored beside the row.
+
+So the fold is told about one attempt per model call: the one that produced an outcome, or the
+last one when the attempts ran out. `TurnStats` accumulates what it is told and reconstructs
+nothing -- `modelCalls` goes up once for the call, `usage` takes the one `Usage` on the event.
+Tokens a vendor billed for the earlier transient attempts are not in `usage`; they are the
+dispatcher's to observe, which is where they were before the fix too. Nothing is added to make it
+otherwise -- no per-attempt event, no accumulated-usage column on the effect row, no summing in
+the dispatcher -- because the stats are a tally of the turn's *story*, and the story records
+outcomes, not attempts.
+
+Two facts bound how often this matters. **Retrying is off by default and stays off**: every retry
+default in the tree is `RetryPolicy.Never` -- `DefaultQueuedHarnessConfig`'s
+`DEFAULT_INFERENCE_RETRY_POLICY` and `DEFAULT_TOOL_RETRY_POLICY`, `DefaultDirectHarnessConfig`'s
+`DEFAULT_RETRY_POLICY` -- so the fix made the knob work and did not turn it on, and a model call
+has a second attempt only where an application asked for one. And **it is queued-door only**:
+`EffectDispatcher` is used by `DefaultQueuedHarness` alone; the direct door performs effects on its
+own threads, and `DefaultDirectHarnessConfig` documents its inference retry policy as *"Stored ...
+but not honoured"*. On the direct door a model call is exactly one attempt, and the tally is
+complete without any of this.
 
 `Usage.unreported()` -- an event written before usage was recorded, or a provider that did not
 count -- adds nothing, which is the honest reading: null is "nobody counted", not zero.
@@ -107,11 +135,11 @@ sealed interface TurnDecision {
 ```
 
 - **`Continue`** -- carry on; the next inference is issued as it would have been.
-- **`AnswerNow`** -- the next inference offers **no tools**, so the model must answer from what it
-  already has. The caller still gets a real `Outcome.Answered`. This is the arm that makes the
-  feature valuable rather than merely safe: a turn that has done nine tool calls' worth of work and
-  is cut off with a failure has wasted all nine, where one more inference with the tools taken
-  away turns them into an answer.
+- **`AnswerNow`** -- the next inference is sent with `ToolChoice.Answer` (§6b), so the model is
+  asked to answer from what it already has rather than call again. The caller still gets a real
+  `Outcome.Answered`. This is the arm that makes the feature valuable rather than merely safe: a
+  turn that has done nine tool calls' worth of work and is cut off with a failure has wasted all
+  nine, where one more inference told to answer turns them into an answer.
 - **`FailTurn(reason)`** -- the turn ends now, with that reason.
 
 `now` is passed rather than read, for the same reason `RetryPolicy.decide` takes its
@@ -213,7 +241,7 @@ emits"*, and that stays true -- and the effect is a durable row written in the s
 carrying the flag. On replay the agent comes back `Inferring`, which is correct whether or not the
 inference in flight was told to answer: the row knows, and the fold does not need to.
 
-**`AnswerNow` is not sticky.** If the model, offered nothing, nonetheless comes back asking for
+**`AnswerNow` is not sticky.** If the model, told to answer, nonetheless comes back asking for
 work, the fold treats it as it treats any request for actions, and the policy is consulted again
 at the next discharge with a larger tally. The stats only ever grow within a turn, so any policy
 with a ceiling on any of them reaches `FailTurn` eventually; a policy that answers `AnswerNow`
@@ -249,49 +277,75 @@ assumed here.
 ### 6b. `AnswerNow` -- the only part that touches the wire
 
 `AgentEffect.Infer` currently carries only a `TurnId` (verified: `record Infer(TurnId turn)`).
-Withholding tools means the effect has to say so, and an effect is a durable row.
+Telling the model to answer means the effect has to say so, and an effect is a durable row: the
+intent has to survive from the fold's decision to whenever that row is performed, which on the
+queued door may be another process on another day.
 
-**One field, and its absent reading is "tools offered".** The row is decoded by
+**One field, and its absent reading is "ask as usual".** The row is decoded by
 `JdbcEffects.effectOf` through a `Codec<AgentEffect>` built from the pinned mapper, so a row
 written by the build before this one decodes with the field missing. The house already has the
 pattern for that: `InferenceAnswered`'s compact constructor turns a null `usage` into
 `Usage.unreported()`, *"an entry written before this event recorded one"*. `Infer` does the same
 -- the field is boxed on the wire and normalised in the constructor, so the default is written in
 the code where a reader can see it rather than left to a deserializer's setting for primitives. A
-row that says nothing is a row that wants tools, because that is what every row said before.
+row that says nothing is a row that asks as usual, because that is what every row said before.
 
-The field is named so that the default is the quiet one: `answerOnly`, true when tools are
-withheld. A test decodes a pre-change row (`{"type":"infer","turn":7}`) and asserts it asks with
-tools; that is the whole of the compatibility contract, and it is the same contract `Infer`'s
-`requireTurn` already documents from the other direction.
+The field is named so that the default is the quiet one: `answerOnly`, true when the model is to
+answer rather than call. A test decodes a pre-change row (`{"type":"infer","turn":7}`) and asserts
+it asks as usual; that is the whole of the compatibility contract, and it is the same contract
+`Infer`'s `requireTurn` already documents from the other direction.
 
-**What "no tools" means on the wire, and why it is not `ToolChoice.None`.** `Toolset.none()`
-already exists -- *"Nothing on offer, which is how a model was asked before tools existed at
-all"* -- and `Toolset.any()` exists so that an adapter sends no `tools` array at all rather than an
-empty one, which several OpenAI-compatible servers reject. `ToolChoice.None` was considered and is
-ruled out by measurements already in the tree: its own javadoc records that *"measured against
-Anthropic on 2026-09-20, a ban with tools still in the request ends the turn with no content at
-all"*, and that Bedrock's Converse cannot express it. The same javadoc says what does work:
-*"An application that does not want a tool called should not offer the tool: that works on every
-vendor, sends no schemas, and cannot be dropped in translation."* So `AnswerNow` is an empty offer.
+**What the request says: `ToolChoice.Answer`, a new arm.** The request carries the intent, and
+each provider adapter decides how to honour it on its vendor. `ToolChoice` rides on
+`Toolset.choice` (verified: `record Toolset(List<ToolOffer> offers, ToolChoice choice)`), and its
+javadoc already names this exact case -- *"A turn that has gone round the loop enough times needs
+to be told to answer rather than call again"* -- with nothing behind it. `Answer` is what goes
+behind it: the offers stay what they were, and the choice says answer.
+
+An earlier draft of this record ruled otherwise -- an empty offer, `Toolset.none()`, sent by the
+engine -- and the ruling that replaced it is better for one reason: **the cached prefix is why
+this belongs in the adapter.** `ToolChoice.None`'s javadoc records that the tools *"are the cached
+prefix on vendors that cache, so taking them out for a turn throws the cache away."* If the engine
+forces an answer by sending an empty toolset, it pays that cost on every vendor, including the
+ones that need not. If the request only says "answer now", an adapter whose vendor can express
+that keeps the tools in place, and one whose vendor cannot drops them. Each adapter pays only the
+cost its own vendor imposes -- and the engine cannot make that trade, because it does not know
+which vendor it is talking to.
+
+**This amends `ToolChoice`'s stated contract, and the amendment is deliberate.** That type
+promises *"translation rather than emulation"*: every existing arm -- `Auto`, `None`, `Any`,
+`Named` -- is something every vendor literally spells, and the javadoc lists the four spellings.
+`Answer` is the first arm adapters *emulate*. There is no field on any wire that says "answer
+now"; each adapter composes it from what its vendor has, and two adapters may compose it
+differently. The javadoc says so in as many words, or someone will later "fix" an emulating
+adapter back into a literal translation and break it.
+
+**Each of the four adapters must honour `Answer`.** What each one does is that adapter's business,
+subject to actually producing prose, and each has to be measured (§10 (6)). Two constraints are
+already in the tree. Bedrock's Converse cannot express `None` at all (`BedrockRequests` refuses it
+with *"offer no tools instead"*), so that adapter will likely drop the offers. And Anthropic is
+measured: a `None` with the tools still in the request *"ends the turn with no content at all"*,
+so that adapter cannot honour `Answer` by translating it to `ToolChoiceNone` either, whatever it
+does instead. OpenAI's `none` and Gemini's `NONE` are candidates that would keep the prefix; that
+they produce prose is not measured, and is the obligation.
+
+`Toolset.requireCoherent` gains an arm: `Answer` is satisfiable whatever is on offer, including
+nothing, the same as `Auto` and `None`. That is a mechanical internal, not a new concept.
+
+**The two names do not stutter.** `TurnDecision.AnswerNow` is the decision the fold makes;
+`ToolChoice.Answer` is what the request says. One is a policy's answer, the other a vendor-facing
+intent, and calling both `AnswerNow` would suggest the fold reaches into the request, which it
+does not (§8).
 
 The flag travels `Infer` -> `InferenceHandler.handle` -> `InferenceInvocation` ->
 `DefaultInferenceService.infer`, which today puts its one `toolset` on every request and, for an
-`answerOnly` invocation, puts `Toolset.none()` instead. `DefaultInferenceService`'s comment that
-the offer is *"the same ... on every call of this agent type"* is amended to say: except the one
-call that has been told to answer.
-
-Two costs, stated rather than discovered:
-
-- **The cache prefix.** `ToolChoice.None`'s javadoc notes the tools *"are the cached prefix on
-  vendors that cache, so taking them out for a turn throws the cache away."* An `AnswerNow`
-  inference pays full input price on such a vendor. Once per turn, on the last call, and only when
-  a policy asked for it.
-- **A story with calls in it, sent with no tools defined.** The tail this inference is shown
-  contains the tool calls and results that got the turn here, and the model is now told it has no
-  tools. `DefaultInferenceService` already warns that this *"reads to it as having imagined them"*;
-  whether every vendor *accepts* such a request is not established anywhere in the tree and must
-  be measured per adapter before this ships (§10 (6)).
+`answerOnly` invocation, puts a `Toolset` with the same offers and `Answer` as its choice.
+`DefaultInferenceService`'s comment that the offer is *"the same ... on every call of this agent
+type"* stays true -- it is the choice, not the offer, that varies -- which is the reason
+`Toolset`'s own javadoc gives for building the offers once: *"varying what is on offer
+mid-conversation leaves calls in the story for tools the model can no longer see, which reads to
+it as having imagined them."* Whether an adapter then chooses to drop the offers for its vendor is
+that adapter's cost to weigh, and the story it is sending still has the calls in it either way.
 
 The effect's terms are unchanged: `EffectTermsSource.termsFor(Infer)` is uniform for the agent
 type, so an `answerOnly` inference has the same timeout, retry policy and fallback outcomes as any
@@ -338,7 +392,7 @@ wants the numbers (§10 (3)). Rejected:
   been spent against it.
 
 **`TurnDecision` arms.** `Continue` and `AnswerNow` name what the engine does next.
-`FailTurn(reason)` was chosen over two alternatives:
+`FailTurn(reason)` is confirmed, and was chosen over two alternatives:
 
 - `GiveUp(reason)` -- the obvious echo of `RetryDecision.GiveUp()`, and rejected for the same
   reason it was tempting. It would have shared a name with an arm that carries nothing, and every
@@ -352,6 +406,12 @@ wants the numbers (§10 (3)). Rejected:
   (`EffectTerms.failed`, `RetryDecision`), tool failure (`ToolFailed`, `ToolOutcome.Failed`) and
   inference failure (`InferenceFailed`), all of which are everywhere in this codebase, and the arm
   has to survive being read in a `switch` far from its declaration.
+
+**`ToolChoice.Answer`, not `ToolChoice.AnswerNow`.** The decision and the request are two things
+at two layers, and they are named so as not to stutter. `TurnDecision.AnswerNow` is what a policy
+says and the fold obeys; `ToolChoice.Answer` is what a request tells an adapter, beside `Auto`,
+`None`, `Any` and `Named`, all of which are one word about the model's freedom to call. `Answer`
+reads in that row; `AnswerNow` would read as the decision having leaked into the wire vocabulary.
 
 **The `Termination*` stem is deliberately avoided**, even though AutoGen uses it for exactly this
 concept. `TerminationOutcome` in this codebase already means ending the *agent* --
@@ -387,8 +447,9 @@ The general term is *stopping criteria*, or *early stopping*. Two frameworks are
   the fold put a sentence in front of the model for one call. Building that seam for this would be
   building it backwards.
 - **Withholding only some tools.** Cut: it would couple the policy to a particular agent's
-  toolset, and a policy that knows tool names is not a function of `TurnStats` any more. All or
-  nothing, and "nothing" is the arm that has precedent.
+  toolset, and a policy that knows tool names is not a function of `TurnStats` any more. The
+  policy has no view of the toolset at all; it says "answer", and what that does to the offer is
+  the adapter's (§6b).
 - **Caller-initiated cancellation of a turn in flight.** `DirectHarness.terminate` returns
   `TerminationOutcome.Busy` while a turn is running -- *"A turn is in flight, and nothing was
   written"* -- and that rule is unchanged by this spec. `QueuedHarness.terminate` is `void` and
@@ -429,7 +490,12 @@ Listed, not answered.
    also carry how many calls went uncounted is a real question. Second, `Usage` insists that a
    counted value *"must name the model it was counted on"*, and a turn's inferences may be billed
    as different dated builds of one alias; a cumulative `Usage` has one `model` field and no honest
-   value to put in it. The tally may need to hold the five counts rather than a `Usage`.
+   value to put in it. The tally may need to hold the five counts rather than a `Usage`. The sum is
+   across *calls* only: a retried call reaches the fold once, with its last attempt's `Usage`
+   (§3c), so the fold never sums across attempts and the dated-build concern does not arise within
+   one call. It would only start to if something in §3c changed so that earlier attempts were
+   reported, and then the concern is weaker there than across a turn -- a retry lands on the
+   same alias minutes apart.
 
 5. **The event that records `FailTurn`** (§6a). Reusing `InferenceFailed` with a `Failure` and
    `Usage.unreported()` works with zero downstream change and records an inference that never
@@ -437,9 +503,13 @@ Listed, not answered.
    `JdbcAgentEvents`, both doors' `narrate` switches and `DefaultDirectHarness.asOutcome` all have
    to learn.
 
-6. **Whether every vendor accepts a story containing tool calls when no tools are offered**
-   (§6b). Not measured anywhere in the tree. If a vendor rejects the request, `AnswerNow` on that
-   vendor is an `InferenceFailed` and the caller gets `Outcome.Failed` where an answer was
-   promised -- and the fallback, `ToolChoice.None`, is already measured not to produce an answer on
-   Anthropic. This has to be measured per adapter before the arm can be relied on, and the answer
-   may be that one adapter needs to do something the others do not.
+6. **What each adapter does for `ToolChoice.Answer`, measured** (§6b). This used to be one
+   global unknown -- whether every vendor accepts a story containing tool calls when no tools are
+   offered -- and with the intent in the request it becomes four per-adapter obligations, each of
+   which still has to be measured before the arm can be relied on. For each of Anthropic, OpenAI,
+   Gemini and Bedrock: which composition of the vendor's own fields honours `Answer`, whether it
+   keeps the offers (and so the cached prefix) or drops them, and -- the only thing the engine
+   requires -- that the model then produces prose rather than a call, an empty reply or a
+   rejected request. If an adapter cannot produce prose on some path, `AnswerNow` on that vendor
+   is an `InferenceFailed` and the caller gets `Outcome.Failed` where an answer was promised; that
+   is a defect in the adapter, not a fact about the engine.
