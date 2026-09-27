@@ -17,10 +17,12 @@ waiting on a person, and plenty of events are not worth announcing.
 public sealed interface AgentEvent {
   Seq seq();
 
-  record TurnStarted(Seq seq, TurnId turn, PayloadRef input) implements AgentEvent {}
+  record TurnStarted(Seq seq, TurnId turn, PayloadRef input, Instant startedAt) implements AgentEvent {}
   record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer, Usage usage) implements AgentEvent {}
   record InferenceRefused(Seq seq, TurnId turn, String category, Usage usage) implements AgentEvent {}
   record InferenceFailed(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {}
+  record InferenceAttempted(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {}
+  record TurnFailed(Seq seq, TurnId turn, String reason) implements AgentEvent {}
   record ActionsRequested(Seq seq, TurnId turn, PayloadRef request, List<ActionRequest> actions, Usage usage) implements AgentEvent {}
   record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> reference) implements AgentEvent {}
   record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> reference) implements AgentEvent {}
@@ -37,11 +39,35 @@ the agent's life and sits between turns instead.
 or a count — and a `PayloadRef` where content would otherwise sit. That is
 what keeps the stream small enough to replay on every command.
 
-**Four arms carry `Usage`**: `InferenceAnswered`, `InferenceRefused`,
-`InferenceFailed` and `ActionsRequested`. A tool-using turn pays for every
-inference along the way, not only the last one that produced an answer —
-`ActionsRequested` is itself a model call and costs like one. A refusal
-still costs too: the model read the input before declining to answer it.
+**Five arms carry `Usage`**: `InferenceAnswered`, `InferenceRefused`,
+`InferenceFailed`, `InferenceAttempted` and `ActionsRequested`. A
+tool-using turn pays for every inference along the way, not only the last
+one that produced an answer — `ActionsRequested` is itself a model call
+and costs like one. A refusal still costs too: the model read the input
+before declining to answer it.
+
+**`InferenceAttempted` is a model call that failed and was tried
+again**, told apart from `InferenceFailed` by finality — which is the
+difference that matters. `InferenceFailed` ends a turn; `InferenceAttempted`
+is a turn carrying on. A reader that treats them alike will count a turn
+that stumbled twice and answered as three failures. It exists because the
+attempt cost something and nothing else records it: a retried call reaches
+the fold once, when it finally settles, carrying only the last attempt's
+count, so without this event the tokens spent on the attempts before it
+are invisible to anything asking what a turn has spent — precisely the
+reading a budget needs most, since a turn that is thrashing is spending
+where nobody is looking. Two classifications reach it: `Failure.Transient`,
+a provider saying the call might work next time, and `Failure.Unknown`, an
+attempt that threw and whose usage is therefore always unreported.
+
+**`TurnFailed` is a turn ended by a policy** — see
+[Turn Policy](turn-policy.md) — rather than an inference that failed:
+`InferenceFailed` is for a call that was made and produced nothing,
+`TurnFailed` is for a turn a policy stopped without making a call at all.
+It carries **no `Usage`**, because deciding not to ask costs nothing — what
+the turn actually spent is already recorded on the events that spent it,
+and a `TurnFailed` with a field for a count would invite claiming a call
+happened that nothing measured.
 
 **This grammar is public backend SPI.** `AgentEvents` is typed on it, and a
 JDBC backend genuinely inspects arms — it writes a `starts_turn` column by

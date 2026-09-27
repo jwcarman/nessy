@@ -12,9 +12,9 @@ production.
 
 ```java
 public sealed interface Outcome<T> {
-  record Answered<T>(T value) implements Outcome<T> {}
-  record Refused<T>(String category) implements Outcome<T> {}
-  record Failed<T>(String reason) implements Outcome<T> {}
+  record Answered<T>(T value, TurnStats stats) implements Outcome<T> {}
+  record Refused<T>(String category, TurnStats stats) implements Outcome<T> {}
+  record Failed<T>(String reason, TurnStats stats) implements Outcome<T> {}
   record Busy<T>() implements Outcome<T> {}
 }
 ```
@@ -46,6 +46,17 @@ type would be far less honest than saying the shape wasn't met.
 else is already running a turn on this scope, so nothing was appended and
 nothing was spent. It's also the only one worth simply retrying — the other
 three are answers, and asking again just gets another one.
+
+**`Answered`, `Refused` and `Failed` each carry a `TurnStats`** — what the
+turn that produced them did, and what it cost. A caller who waited for the
+answer is the one entitled to know what it spent; reading it off the
+outcome means never reaching into a backend to find out. A failed turn's
+tally matters as much as an answered one's: a turn that failed expensively
+is a different problem from one that failed at once. `Busy` carries none —
+**the one arm with no tally**, deliberately. There was no turn, and an
+empty tally would read as a turn that ran and spent nothing rather than as
+a turn that never was. See [Cost](cost.md) for what `TurnStats` holds and
+how to read it.
 
 ## `TerminationOutcome`
 

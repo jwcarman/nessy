@@ -65,13 +65,16 @@ something an engine can assume.
 
 **What counts as a failure worth repeating depends on what failed.** A tool
 or an approver that throws has told you nothing, so the policy decides. A
-model call is different: its adapter catches its vendor's exception and
-classifies what went wrong, and only `Failure.Transient` — it failed, and
-it might not next time — reaches the policy at all. `Permanent` means the
-identical request fails identically. `Rejected` names content that will
-fail every time it is sent, so the answer is to quarantine it rather than
-send it again. `Unknown` means nobody found out whether the call happened,
-and repeating work that may already have run is not a chance this engine
+model call is different, and stricter: its adapter catches its vendor's
+exception and classifies what went wrong, and a model call only reaches
+the retry policy at all when its adapter classified the failure
+`Failure.Transient` — a value returned, not an exception thrown, saying
+the call might work next time. `Permanent`, `Rejected` and `Unknown` all
+stay terminal and never reach the policy. `Permanent` means the identical
+request fails identically. `Rejected` names content that will fail every
+time it is sent, so the answer is to quarantine it rather than send it
+again. `Unknown` means nobody found out whether the call happened, and
+repeating work that may already have run is not a chance this engine
 takes on its own.
 
 Retries belong to the queued door. A `DirectHarness` performs its effects
