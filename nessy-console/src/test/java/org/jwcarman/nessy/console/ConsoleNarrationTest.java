@@ -87,8 +87,8 @@ class ConsoleNarrationTest {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
-    narration.on(CHAT, AGENT, new Narration.TurnFailed());
-    narration.on(CHAT, AGENT, new Narration.TurnRefused());
+    narration.on(CHAT, AGENT, new Narration.TurnFailed("the provider gave up"));
+    narration.on(CHAT, AGENT, new Narration.TurnRefused("safety"));
 
     for (Narration quiet :
         List.of(

@@ -377,11 +377,11 @@ final class DefaultQueuedHarness<I>
       // However it ended, it ended: the one event to hear when the story grew by a turn. An
       // answer, a refusal and a fault all close one; asking for actions does not.
       case AgentEvent.InferenceRefused refused -> {
-        say(agentId, new Narration.TurnRefused());
+        say(agentId, new Narration.TurnRefused(refused.category()));
         say(agentId, new Narration.TurnEnded(refused.turn()));
       }
       case AgentEvent.InferenceFailed failed -> {
-        say(agentId, new Narration.TurnFailed());
+        say(agentId, new Narration.TurnFailed(failed.failure().reason()));
         say(agentId, new Narration.TurnEnded(failed.turn()));
       }
       case AgentEvent.Terminated _ -> say(agentId, new Narration.Terminated());

@@ -771,11 +771,11 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         tell(agent, new Narration.TurnEnded(answered.turn()));
       }
       case AgentEvent.InferenceRefused refused -> {
-        tell(agent, new Narration.TurnRefused());
+        tell(agent, new Narration.TurnRefused(refused.category()));
         tell(agent, new Narration.TurnEnded(refused.turn()));
       }
       case AgentEvent.InferenceFailed failed -> {
-        tell(agent, new Narration.TurnFailed());
+        tell(agent, new Narration.TurnFailed(failed.failure().reason()));
         tell(agent, new Narration.TurnEnded(failed.turn()));
       }
       case AgentEvent.Terminated _ -> tell(agent, new Narration.Terminated());

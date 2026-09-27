@@ -111,11 +111,30 @@ public sealed interface Narration {
    */
   record TurnEnded(TurnId turn) implements Narration {}
 
-  /** The turn ended without an answer, and might have gone otherwise. */
-  record TurnFailed() implements Narration {}
+  /**
+   * The turn ended without an answer, and might have gone otherwise.
+   *
+   * <p><b>Carries why, because for one door this is the only place it is said.</b> The direct door
+   * hands the reason back from {@code ask} as an {@code Outcome.Failed}; the queued door's {@code
+   * tell} returns nothing, so a watcher that is not told here can only learn what happened by
+   * reading the event stream -- which is a backend concern rather than something an application
+   * should have to reach for.
+   *
+   * @param reason the provider adapter's account of what went wrong, the same text the direct door
+   *     returns
+   */
+  record TurnFailed(String reason) implements Narration {}
 
-  /** The turn was declined, and would be declined again. */
-  record TurnRefused() implements Narration {}
+  /**
+   * The turn was declined, and would be declined again.
+   *
+   * <p>Carries the category for the same reason {@link TurnFailed} carries its text. A refusal is
+   * not a failure -- the call succeeded and the model chose not to answer -- and the category is
+   * the whole of what it said about choosing.
+   *
+   * @param category the provider's own word for why, unchanged and uninterpreted
+   */
+  record TurnRefused(String category) implements Narration {}
 
   /**
    * What the model said while asking for work -- "Let me look that up."

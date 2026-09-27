@@ -145,6 +145,16 @@ class TerminationAndConfigurationTest {
 
     List<Turn> turns = engine.harnesses().histories().forAgent(FAILING, agentId).turnsFrom(0);
     assertThat(turns).singleElement().extracting(Turn::result).isEqualTo(new TurnResult.Failed());
+
+    // The reason travels with the narration, and for THIS door that is the only way it travels:
+    // tell() returns nothing, so a watcher told only that a turn failed would have to read the
+    // event stream -- a backend concern -- to find out anything more.
+    assertThat(events)
+        .filteredOn(Narration.TurnFailed.class::isInstance)
+        .singleElement()
+        .extracting(narration -> ((Narration.TurnFailed) narration).reason())
+        .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.STRING)
+        .isNotBlank();
   }
 
   @Test
