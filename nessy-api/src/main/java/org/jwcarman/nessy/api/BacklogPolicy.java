@@ -59,7 +59,7 @@ public interface BacklogPolicy<I> {
 
   /** Every input matters. The right answer for anything a person said. */
   static <I> BacklogPolicy<I> keepAll() {
-    return (backlog, incoming) -> backlog.append(incoming);
+    return Coalescing::append;
   }
 
   /**
@@ -68,7 +68,7 @@ public interface BacklogPolicy<I> {
    * up should do one round, not every one it missed.
    */
   static <I> BacklogPolicy<I> keepLatest() {
-    return (backlog, incoming) -> backlog.replaceAll(incoming);
+    return Coalescing::replaceAll;
   }
 
   /**

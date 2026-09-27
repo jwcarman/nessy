@@ -36,7 +36,7 @@ import org.jwcarman.nessy.api.tool.ToolConfig;
  */
 public interface QueuedHarnessConfig<I> extends HarnessConfig<QueuedHarnessConfig<I>> {
 
-  /** What this agent type is called. Names its rows and scopes its dispatcher's polling. */
+  // What this agent type is called. Names its rows and scopes its dispatcher's polling.
 
   /** What this agent is, in the same words for every agent of the type. */
   QueuedHarnessConfig<I> systemPrompt(String prompt);

@@ -176,7 +176,7 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
         continue;
       }
       ChatCompletionChunk.Choice.Delta delta = choice.delta();
-      delta.content().filter(text -> !text.isEmpty()).ifPresent(text -> narrator.text(text));
+      delta.content().filter(text -> !text.isEmpty()).ifPresent(narrator::text);
       for (String field : REASONING_FIELDS) {
         if (delta._additionalProperties().get(field) instanceof JsonString reasoning
             && !reasoning.value().isEmpty()) {
@@ -215,17 +215,6 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
     return read(completion.choices().getFirst()).withUsage(usage);
   }
 
-  /**
-   * Which of the three shapes an assistant message is.
-   *
-   * <p>A refusal is checked first because it is the one the SDK reports in a field of its own --
-   * most wires make it indistinguishable from an ordinary answer, and this one does not, so the
-   * distinction is taken where it is offered.
-   *
-   * <p>Otherwise the choice is made on the presence of {@code tool_calls} rather than on {@code
-   * finish_reason}: the content is the thing that has to be answered, and several OpenAI-compatible
-   * servers report the reason inconsistently while all of them put the calls in the same place.
-   */
   /**
    * What the call cost, in the shape {@link Usage} defines.
    *
@@ -266,6 +255,17 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
         .orElseGet(() -> Usage.unreported(completion.model()));
   }
 
+  /**
+   * Which of the three shapes an assistant message is.
+   *
+   * <p>A refusal is checked first because it is the one the SDK reports in a field of its own --
+   * most wires make it indistinguishable from an ordinary answer, and this one does not, so the
+   * distinction is taken where it is offered.
+   *
+   * <p>Otherwise the choice is made on the presence of {@code tool_calls} rather than on {@code
+   * finish_reason}: the content is the thing that has to be answered, and several OpenAI-compatible
+   * servers report the reason inconsistently while all of them put the calls in the same place.
+   */
   private static InferenceResult read(ChatCompletion.Choice choice) {
     ChatCompletionMessage message = choice.message();
     if (message.refusal().isPresent()) {
