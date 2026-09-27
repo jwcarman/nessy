@@ -32,6 +32,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.assertj.core.api.InstanceOfAssertFactories;
@@ -53,6 +54,7 @@ import org.jwcarman.nessy.api.OutputReader;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TerminationOutcome;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
@@ -412,9 +414,71 @@ class DefaultDirectHarnessTest {
     DirectHarness<String, String> harness = harness(new Scripted().then(answering("ok")));
     harness.ask(agent, "hello");
 
-    harness.terminate(agent);
+    assertThat(harness.terminate(agent)).isEqualTo(new TerminationOutcome.Ended());
 
     assertThat(harness.ask(agent, "again")).isEqualTo(new Outcome.Refused<String>("terminated"));
+  }
+
+  /** Asking twice is not an error, and the second answer says it was already over. */
+  @Test
+  void ending_an_ended_agent_says_so_rather_than_pretending_to_end_it_again() {
+    AgentId agent = AgentId.random();
+    DirectHarness<String, String> harness = harness(new Scripted().then(answering("ok")));
+    harness.ask(agent, "hello");
+    harness.terminate(agent);
+
+    assertThat(harness.terminate(agent)).isEqualTo(new TerminationOutcome.AlreadyEnded());
+  }
+
+  /**
+   * <b>The case that used to be silent.</b> Ending is accepted only from idle, so a request that
+   * lands mid-turn writes nothing -- and while this returned void, a caller had no way to tell that
+   * from having succeeded. The agent must still answer the turn it was already running.
+   *
+   * <p>Mid-turn is arranged by terminating from inside the tool the turn is waiting on: at that
+   * moment the fold is holding an outstanding call, which is as busy as an agent gets.
+   */
+  @Test
+  @DisplayName("ending an agent mid-turn is refused, and says so")
+  void ending_a_busy_agent_reports_busy_rather_than_nothing() {
+    AgentId agent = AgentId.random();
+    AtomicReference<TerminationOutcome> whileRunning = new AtomicReference<>();
+    AtomicReference<DirectHarness<String, String>> self = new AtomicReference<>();
+    Tool<Lookup> terminatesItself =
+        new Tool<>() {
+          @Override
+          public Class<Lookup> inputType() {
+            return Lookup.class;
+          }
+
+          @Override
+          public ToolName name() {
+            return new ToolName("lookup");
+          }
+
+          @Override
+          public String description() {
+            return "ends its own agent while the turn is still open";
+          }
+
+          @Override
+          public Awaited<ToolResult> call(ToolCallRequest<Lookup> request) {
+            whileRunning.set(self.get().terminate(agent));
+            return Awaited.ready(ToolResult.ok(new Block.Text("42")));
+          }
+        };
+    DirectHarness<String, String> harness =
+        harness(new Scripted().then(asking("lookup")).then(answering("ok")), terminatesItself);
+    self.set(harness);
+
+    Outcome<String> outcome = harness.ask(agent, "look it up");
+
+    assertThat(whileRunning.get())
+        .as("the turn was in flight, so ending it was refused")
+        .isEqualTo(new TerminationOutcome.Busy());
+    assertThat(outcome)
+        .as("and the turn it was already running still finished")
+        .isEqualTo(new Outcome.Answered<>("ok"));
   }
 
   @Test

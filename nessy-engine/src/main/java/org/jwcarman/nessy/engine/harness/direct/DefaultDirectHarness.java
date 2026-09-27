@@ -41,6 +41,7 @@ import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.OutputReader;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TerminationOutcome;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.DirectBackend;
@@ -255,10 +256,12 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   }
 
   @Override
-  public void terminate(AgentId agent) {
+  public TerminationOutcome terminate(AgentId agent) {
     // The core only takes Terminate from Idle: asking while a turn is running is declined by the
-    // fold itself (Decision.ignore()), and waiting for the turn is not this door's habit.
-    backend
+    // fold itself (Decision.ignore()), and waiting for the turn is not this door's habit. What the
+    // fold decided is the answer -- an empty decision IS the refusal, so nothing needs to re-derive
+    // which states accept ending.
+    return backend
         .locks()
         .withLock(
             Locks.TURN,
@@ -266,8 +269,18 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
             agent,
             () -> {
               AgentState state = reconstitute(agent);
+              if (state instanceof AgentState.Terminal) {
+                return new TerminationOutcome.AlreadyEnded();
+              }
               Decision decision = state.execute(new AgentCommand.Terminate());
+              if (decision.events().isEmpty()) {
+                LOG.debug(
+                    "[{}] agent {} is mid-turn; ending it was refused", agentType.value(), agent);
+                return new TerminationOutcome.Busy();
+              }
               backend.events().append(agentType, agent, decision.events(), state.seq());
+              decision.events().forEach(event -> narrate(agent, event));
+              return new TerminationOutcome.Ended();
             });
   }
 

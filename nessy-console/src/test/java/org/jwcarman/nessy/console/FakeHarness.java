@@ -24,6 +24,7 @@ import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.TerminationOutcome;
 
 /**
  * A harness that narrates a scripted run of events and then returns an outcome.
@@ -67,8 +68,9 @@ final class FakeHarness implements DirectHarness<String, String> {
   }
 
   @Override
-  public void terminate(AgentId agent) {
+  public TerminationOutcome terminate(AgentId agent) {
     narrator.on(TYPE, agent, new Narration.Terminated());
+    return new TerminationOutcome.Ended();
   }
 
   List<String> observed() {
