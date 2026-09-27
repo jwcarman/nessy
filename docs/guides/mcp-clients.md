@@ -14,15 +14,16 @@ blanket "trust this server":
 ```java
 McpToolbox toolbox = McpToolbox.connect(transport, mapper);
 
-Harness<String> harness = factory.create(config -> config
-        .agentType(new AgentType("traveller"))
-        .systemPrompt(prompt)
-        .tool(toolbox.tool("search"))
-        .tool(toolbox.tool("purchase"), binding -> binding
-                .approver(desk)
-                .action(arguments -> "purchase " + arguments.path("flight").asText())));
+QueuedHarness<String> harness = factory.create(
+        new AgentType("traveller"),
+        config -> config
+                .systemPrompt(prompt)
+                .tool(toolbox.tool("search"))
+                .tool(toolbox.tool("purchase"), binding -> binding
+                        .approver(desk)
+                        .action(arguments -> "purchase " + arguments.path("flight").asText())));
 
-harness.observe(agentId, "find the cheapest flight and buy it");
+harness.tell(agentId, "find the cheapest flight and buy it");
 ```
 
 An MCP tool is governed exactly like a hand-written one, because nothing
@@ -65,23 +66,29 @@ that snapshot.
 researching public GitHub repositories:
 
 ```java
-McpToolbox toolbox = McpToolbox.connect(transport, mapper);
-
-Harness<String> harness = factory.create(config -> config
-        .agentType(new AgentType("researcher"))
-        .systemPrompt(prompt)
-        .tool(toolbox.tool("read_wiki_structure"))
-        .tool(toolbox.tool("read_wiki_contents"))
-        .tool(toolbox.tool("ask_question"), binding -> binding.approver(desk)));
-
-harness.observe(agentId, "what does jwcarman/nessy's harness module do?");
+// Closed at the end of the conversation: the toolbox owns the connection to the server.
+try (McpToolbox toolbox = McpToolbox.connect(transport, mapper)) {
+  Repl.run(
+      config ->
+          config
+              .banner("nessy mcp -- researching with DeepWiki's tools. /exit to leave.")
+              .systemPrompt(prompt)
+              .agent(new AgentType("researcher"))
+              // Reading is free, so it is ungated.
+              .tool(toolbox.tool("read_wiki_structure"))
+              .tool(toolbox.tool("read_wiki_contents"))
+              // The one that spends someone else's model budget, so the one a person answers.
+              .tool(
+                  toolbox.tool("ask_question"),
+                  binding -> binding.approver(ConsoleApprover.atTheTerminal())));
+}
 ```
 
 `read_wiki_structure` and `read_wiki_contents` are free. `ask_question` is
 DeepWiki's own AI-in-the-loop tool, spending DeepWiki's model budget, so it
 is the one gated behind an approver. If DeepWiki ever renames or removes one
 of these tools, `toolbox.tool(name)` fails at connect time, before the
-harness takes its first observation.
+first turn ever runs.
 
 ## Boundaries
 

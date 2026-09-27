@@ -15,9 +15,9 @@ ambient blocks, the tools on offer, the model and token cap) and the adapter
 turns it into the vendor's wire shape, narrates the deltas as they stream,
 and hands back one of four results: an `Answer`, `Actions` the model wants
 taken, a `Refusal`, or a `Fault` with a `Failure` that says whether retrying
-could help. Whichever it is, the result carries a `Usage`, tokens in and
-tokens out as the vendor counted them, or `Usage.unknown()` from a server
-that did not say; the engine records it and puts it on the call's span.
+could help. Whichever it is, the result carries a `Usage`; the engine
+records it and puts it on the call's span. See [Usage](#usage) below for
+what it holds.
 
 Four adapters ship: `nessy-inference-anthropic` on Anthropic's Java SDK,
 `nessy-inference-openai` on OpenAI's, `nessy-inference-gemini` on Google's
@@ -25,25 +25,63 @@ java-genai SDK, and `nessy-inference-bedrock` on the AWS SDK's Converse API.
 The OpenAI one also reaches every service that speaks OpenAI's wire protocol,
 covered [below](#the-openai-compatible-universe).
 
+## Usage
+
+`Usage` is a model name plus five nullable token counts: `inputTokens`,
+`outputTokens`, `cacheReadTokens`, `cacheWriteTokens` and
+`reasoningTokens`. A null count means the provider did not say, not that
+it was zero — a reply that genuinely cost nothing and a reply nobody
+measured are different facts, and only a nullable count can tell them
+apart. `Usage.unreported()` is nothing counted and no model named, for an
+effect that never reached a vendor; `Usage.unreported(String model)` is a
+call that was really made but came back with no count at all, on a model
+worth naming.
+
+`inputTokens` is normalised to mean ALL input processed, cache reads
+included, because the vendors disagree about what their own input count
+covers. OpenAI's `prompt_tokens` and Gemini's `promptTokenCount` already
+include what was read from cache, so an adapter for either takes the
+number as given. Anthropic's `input_tokens` and Bedrock's `inputTokens`
+exclude it, so those two adapters derive the normalised count by summing
+the vendor's input figure with its cache-read and cache-write counts.
+Deriving is safe only there: a count either vendor leaves out means
+nothing was cached, so the sum is exact, whereas subtracting to find an
+uncached figure from OpenAI or Gemini would be unsafe, since a compatible
+server such as LM Studio omits cache detail entirely and the subtraction
+would discard a real count.
+
+`cacheReadTokens` and `cacheWriteTokens` are a breakdown of `inputTokens`,
+not an addition to it — the three token prices differ by an order of
+magnitude, so a single input count cannot be turned into money.
+`reasoningTokens` is likewise a breakdown of `outputTokens`, kept because
+it answers whether an expensive turn thought a lot rather than produced a
+lot, not because it changes billing.
+
+`totalTokens()` covers `inputTokens` plus `outputTokens` only. Cache and
+reasoning counts are already inside one of those two numbers, so adding
+them again would double-count.
+
 ## Which model
 
 The provider is engine-wide. The model is a setting: the engine's default,
 overridden per harness.
 
 ```java
-DefaultHarnessFactory factory = new DefaultHarnessFactory(engine -> engine
-        .dataSource(dataSource)
-        .inference(AnthropicInferenceProvider.fromEnv(), InferenceOptions.of("claude-sonnet-5")));
+DirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> config
+        .backend(new InMemoryDirectBackend(codecs))
+        .provider(AnthropicInferenceProvider.fromEnv()));
 
-Harness<String> triage = factory.create(config -> config
-        .agentType(new AgentType("triage"))
-        .systemPrompt(triagePrompt)
-        .inference(in -> in.model("claude-haiku-4-5").maxTokens(512)));
+DirectHarness<String, String> triage = factory.create(
+        new AgentType("triage"),
+        config -> config
+                .systemPrompt(triagePrompt)
+                .inference(in -> in.model("claude-haiku-4-5").maxTokens(512)));
 
-Harness<String> review = factory.create(config -> config
-        .agentType(new AgentType("review"))
-        .systemPrompt(reviewPrompt)
-        .inference(in -> in.model("claude-opus-5")));
+DirectHarness<String, String> review = factory.create(
+        new AgentType("review"),
+        config -> config
+                .systemPrompt(reviewPrompt)
+                .inference(in -> in.model("claude-opus-5")));
 ```
 
 `maxTokens` is per harness for a reason: it is how you make a model give a
@@ -56,14 +94,14 @@ provider.
 
 ## Building a provider
 
-Each adapter is built the same way, a static `create(customizer)` over a
+Each adapter is built the same way, a static `of(customizer)` over a
 config, never a public builder:
 
 ```java
-InferenceProvider anthropic = AnthropicInferenceProvider.create(c -> c.apiKey(key));
-InferenceProvider openai = OpenAiInferenceProvider.create(c -> c.apiKey(key));
-InferenceProvider gemini = GeminiInferenceProvider.create(c -> c.apiKey(key));
-InferenceProvider bedrock = BedrockInferenceProvider.create(c -> c.region(Region.US_EAST_1));
+InferenceProvider anthropic = AnthropicInferenceProvider.of(c -> c.apiKey(key));
+InferenceProvider openai = OpenAiInferenceProvider.of(c -> c.apiKey(key));
+InferenceProvider gemini = GeminiInferenceProvider.of(c -> c.apiKey(key));
+InferenceProvider bedrock = BedrockInferenceProvider.of(c -> c.region(Region.US_EAST_1));
 ```
 
 Each also has `fromEnv()`, which delegates to the SDK's own reading of the
@@ -73,7 +111,7 @@ environment: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` and
 over the environment:
 
 ```java
-InferenceProvider provider = AnthropicInferenceProvider.create(c -> c
+InferenceProvider provider = AnthropicInferenceProvider.of(c -> c
         .fromEnv()
         .baseUrl("http://127.0.0.1:1234"));
 ```
@@ -85,7 +123,7 @@ and arguments.
 ### Anthropic features
 
 ```java
-InferenceProvider provider = AnthropicInferenceProvider.create(c -> c
+InferenceProvider provider = AnthropicInferenceProvider.of(c -> c
         .fromEnv()
         .thinking(true)
         .thinkingBudget(4096)
@@ -113,10 +151,10 @@ when an adapter is on the classpath and its key is in the environment:
 
 | Property | Bean |
 |---|---|
-| `anthropic.api-key` (`ANTHROPIC_API_KEY`) | `AnthropicInferenceProvider.create(c -> c.apiKey(key))` |
+| `anthropic.api-key` (`ANTHROPIC_API_KEY`) | `AnthropicInferenceProvider.of(c -> c.apiKey(key))` |
 | `openai.api-key` (`OPENAI_API_KEY`), with `openai.base-url` layered on when present | `OpenAiInferenceProvider` |
 | `xai.api-key` (`XAI_API_KEY`) | the OpenAI adapter at xAI's base URL, reporting `x_ai` as its provider name |
-| `gemini.api-key` (`GEMINI_API_KEY`) or `google.api-key` (`GOOGLE_API_KEY`) | `GeminiInferenceProvider.create(c -> c.apiKey(key))` |
+| `gemini.api-key` (`GEMINI_API_KEY`) or `google.api-key` (`GOOGLE_API_KEY`) | `GeminiInferenceProvider.of(c -> c.apiKey(key))` |
 
 Bedrock contributes no bean, deliberately. AWS credentials are ambient on a
 large fraction of machines, so any mechanism that let their presence choose
@@ -195,7 +233,7 @@ Name the vendor when it is not OpenAI, so spans and metrics say who was
 actually called:
 
 ```java
-InferenceProvider grok = OpenAiInferenceProvider.create(c -> c
+InferenceProvider grok = OpenAiInferenceProvider.of(c -> c
         .apiKey(key)
         .baseUrl("https://api.x.ai/v1")
         .provider("x_ai"));
@@ -229,7 +267,7 @@ LM Studio also speaks Anthropic's Messages dialect, and the Anthropic
 adapter reaches it through the same `baseUrl` setting:
 
 ```java
-InferenceProvider provider = AnthropicInferenceProvider.create(c -> c
+InferenceProvider provider = AnthropicInferenceProvider.of(c -> c
         .apiKey("lm-studio")
         .baseUrl("http://127.0.0.1:1234"));
 ```

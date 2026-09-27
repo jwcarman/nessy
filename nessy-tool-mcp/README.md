@@ -14,15 +14,14 @@ blanket "trust this server":
 ```java
 McpToolbox toolbox = McpToolbox.connect(transport, mapper);
 
-Harness<String> harness = factory.createHarness(String.class, config -> config
-        .type(AgentType.of("traveller"))
-        .systemPrompt(prompt)
-        .model(ModelId.of("claude-opus-4"))
-        .renderer(UserMessage::of)
-        .tool(toolbox.tool("search"))
-        .tool(toolbox.tool("purchase"), binding -> binding.approver(desk)));
+DirectHarness<String, String> harness = factory.create(
+        new AgentType("traveller"),
+        config -> config
+                .systemPrompt(prompt)
+                .inference(in -> in.model("claude-opus-5"))
+                .tool(toolbox.tool("search"))
+                .tool(toolbox.tool("purchase"), binding -> binding.approver(desk)));
 ```
-
 
 `toolbox.tool(name)` fails noisy — `NoSuchElementException` naming every
 tool the server actually advertised — rather than handing back `null` for
@@ -42,7 +41,7 @@ swallowing the closed session.
 
 ## Transports arrive from the SDK
 
-`McpToolbox.connect(McpClientTransport transport, ObjectMapper mapper)`
+`McpToolbox.connect(McpClientTransport transport, JsonMapper mapper)`
 takes an already-built transport — nessy adds no transport of its own.
 The official MCP Java SDK (`io.modelcontextprotocol.sdk`) ships the
 transports an application actually needs:
@@ -70,10 +69,10 @@ look a tool up.
   content — images, embedded resources — has no text-shaped nessy analog
   yet, so v1 degrades honestly: the content object is JSON-encoded into
   the text output rather than silently dropped.
-- **No elicitation or sampling yet.** Every `McpTool#execute` call is a
+- **No elicitation or sampling yet.** Every `McpTool#call` is a
   single request/response round trip — `Awaited.ready(...)`, never a
   park. MCP elicitation (a server asking the *caller* a question
-  mid-call) would pair naturally with nessy's `Awaited.parked` and the
+  mid-call) would pair naturally with nessy's `Awaited.deferred()` and the
   durable HITL flow, but that pairing touches approval UX and is its own
   generation of work — banked, not forgotten. Sampling (a server asking
   the caller's *model* to complete something) is banked alongside it.
@@ -94,25 +93,27 @@ look a tool up.
 
 ## The Jackson note
 
-This module depends on `mcp-json-jackson2`, not the `mcp` facade
-artifact. The facade defaults to `mcp-json-jackson3` (Jackson 3), while
-the rest of this repo — including `ToolSpec`'s `ObjectNode` — is built on
-Jackson 2 (`com.fasterxml.jackson.core`). Depending on `mcp-core` plus
-`mcp-json-jackson2` explicitly, rather than the facade, keeps Jackson 3
-off this module's classpath entirely and lets `McpToolbox.connect` be
-handed nessy's own `ObjectMapper` directly (via `JacksonMcpJsonMapper`
-at the transport's own construction time) instead of a
-ServiceLoader-discovered default.
+This module depends on `mcp-core` plus `mcp-json-jackson3` explicitly,
+rather than the `mcp` facade artifact — which is also the facade's own
+default, so nothing here fights it. This repo is on Jackson 3
+(`tools.jackson`) throughout, `Tool<JsonNode>` included, so the one
+`JsonMapper` an application already has serves the wire, the schema and
+the arguments; nothing crosses a Jackson major anywhere in this module.
+An application hands that same mapper to the transport itself, via
+`JacksonMcpJsonMapper` at the transport's own construction time, instead
+of leaving it to a ServiceLoader-discovered default.
 
 ## Testing
 
 The MCP Java SDK ships the **server** side too, so this module's tests
 run the whole `initialize`/`tools/list`/`tools/call` handshake against a
 real, in-process MCP server — no Docker, no key, no network, default
-build. Discovery, schema fidelity, execution (including the `isError`
-and non-text-degradation paths), and closed-toolbox behavior are all
-proven against that real server. An end-to-end test grants an `McpTool`
-through a real `AgentConfig` and drives it via a scripted model
-provider and the actual `ToolInvoker`/`GatedToolCallExecutor` path — the
-zero-kernel claim (the kernel needed no changes at all to run an
-MCP-backed tool) proven, not merely asserted.
+build. Discovery, schema fidelity, a failed handshake, execution
+(including the `isError` and non-text-degradation paths), and
+closed-toolbox behavior are all proven against that real server.
+
+There is no wrapper class under test for governance — approval, action
+rendering, timeouts — because there is no wrapper: an `McpTool` is bound
+to a harness exactly the way a hand-written `Tool` is, and the engine's
+own tool-binding tests cover what binding does. This module's job ends
+at producing an ordinary `Tool<JsonNode>`.
