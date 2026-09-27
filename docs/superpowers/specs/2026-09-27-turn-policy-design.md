@@ -336,6 +336,48 @@ Built-in policies are not enumerated here. Whatever ships must be expressible as
 `TurnStats` and `now` and nothing else; a policy that wants to read the story, the toolset or a
 feature flag is asking for something the fold cannot give it (§5).
 
+
+### 4a. The default is two thresholds, and it is a guardrail rather than a tuning
+
+`TurnPolicy.calls(int answerAt, int failAt)` is a provided implementation, and the default is
+`calls(20, 25)`: `AnswerNow` at twenty model calls, `FailTurn` at twenty-five.
+
+**Why a default at all.** For retries, `Never` is the safe default because doing nothing costs
+nothing. Here the analogy inverts -- doing nothing means a turn that will not converge keeps
+spending until somebody notices -- so "no bound" looks conservative and is not. This is also the
+only cheap moment to set one: after 0.1.0 a new bound is a breaking change for every agent already
+running.
+
+**Why twenty.** It is the ecosystem's number rather than ours. LangChain's `AgentExecutor` has
+defaulted `max_iterations` to 15 for years, which is evidence of where loops stop converging even
+though no derivation is published alongside it; twenty gives headroom over that without abandoning
+it. A number chosen for being safely enormous -- a hundred, say -- would only ever catch a
+catastrophe, and the case that actually costs people money is the turn stuck at twenty.
+
+**Why the first response does not destroy work.** At twenty you cannot tell a stuck loop from a
+long honest turn -- research and multi-file work genuinely run that long -- and that is exactly when
+a policy must not throw away what the turn has done. `AnswerNow` returns a real answer, slightly
+early, to a turn that was fine, and stops one that was not. An agent that never reaches twenty
+cannot tell the policy exists, which is the property a default needs.
+
+**Why there is a second threshold.** `ToolChoice.Answer` is emulated per adapter and unmeasured
+(§10 (5)). If a vendor ignores it and the model keeps asking for tools, `AnswerNow` alone loops
+forever; `FailTurn` at twenty-five ends it. This is also what makes the default shippable before
+that measurement lands: on an adapter where `Answer` does not work the behaviour degrades to
+"fails at twenty-five" rather than breaking, and improves as each adapter is measured.
+
+**Model calls, not tool calls, and not time or tokens.** Model calls are what cost money. A
+wall-clock default would misfire on the queued door, where elapsed includes queueing and process
+downtime (§7), so a turn that was merely waiting would be failed for it. A token or currency
+default would be arbitrary across models and applications. Counts mean the same thing everywhere,
+so counts are what a default may assume; time and spend stay opt-in through the same function.
+
+**`calls` rejects `failAt <= answerAt`.** Two ints of the same type in one factory invite
+`calls(25, 20)`, which compiles and reads as a policy while behaving as neither threshold.
+
+Anything wanting thresholds in different units -- calls for one, spend for the other -- writes the
+function directly, which is what the function form is for.
+
 ## 5. Where the decision is made: inside the fold
 
 ### 5a. The point
@@ -685,11 +727,8 @@ Listed, not answered.
    method on each of `DirectHarnessConfig` and `QueuedHarnessConfig`, the way `inference(...)`
    and `listener(...)` are declared twice today.
 
-2. **The default policy.** Unbounded (`Continue` always) leaves the gap this spec exists to close
-   open for everyone who does not read about it; any ceiling ends turns that ran fine yesterday.
-   `QueuedHarnessConfig`'s own principle -- *"Everything else has a default"*, and a wrong default
-   is one *"working perfectly and doing the wrong job, with nothing in the logs to say so"* -- cuts
-   both ways here.
+2. ~~The default policy.~~ **Settled** (§4a): `TurnPolicy.calls(20, 25)` -- answer now at twenty
+   model calls, fail the turn at twenty-five.
 
 3. **Whether `TurnStats` is exposed beyond the policy** -- on narration, so a watcher can show
    "3 calls, 41k tokens, 12s" while a turn runs, or to tools through their context. James's stated
