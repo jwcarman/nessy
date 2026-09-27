@@ -893,6 +893,17 @@ limitations under the License.]]></inlineHeader>
                 <exclude>.mvn/**</exclude>
                 <exclude>mvnw</exclude>
                 <exclude>mvnw.cmd</exclude>
+                <!-- Git worktrees live inside this directory and .gitignore already says they are
+                     never committed. A Maven plugin walks the filesystem rather than the index, so
+                     it scanned them anyway: a worktree checked out at another commit failed
+                     license:check on the ROOT project in under a second, before a single test ran,
+                     and license:format had already written headers INTO another worktree's files.
+                     Ignoring something in git is not ignoring it in the build. -->
+                <exclude>.worktrees/**</exclude>
+                <exclude>.claude/**</exclude>
+                <!-- Review artifacts: .diff files the plugin has no comment syntax for, which is
+                     every "Unknown file extension" warning a local build prints. -->
+                <exclude>.superpowers/**</exclude>
               </excludes>
             </licenseSet>
           </licenseSets>
