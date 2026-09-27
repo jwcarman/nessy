@@ -43,6 +43,7 @@ import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
+import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.Usage;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.scheduling.TaskScheduler;
@@ -223,6 +224,105 @@ class DispatcherFailureTest {
   }
 
   /**
+   * A provider that catches its vendor's exception and classifies the failure is not thereby giving
+   * up. Every adapter catches -- an escaping exception would leave an agent waiting on an answer
+   * nothing will bring -- so a failure that arrives as a value is the only kind a model call
+   * produces, and it has to be able to ask for another go.
+   */
+  @Test
+  void a_transient_model_failure_is_tried_again() {
+    Effects effects = new Effects();
+    effects.due = List.of(attempt(NOW.plusSeconds(600), 1));
+
+    dispatcherFor(effects, failingWith(new Failure.Transient("the model was busy"))).dispatch();
+
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(() -> assertThat(effects.rescheduled).hasSize(1));
+    assertThat(effects.retired).as("it has not been given up on").isEmpty();
+    assertThat(delivered.outcomes).as("the turn has not been told anything yet").isEmpty();
+  }
+
+  /** Permanent means the identical request fails identically, so another go is a turn wasted. */
+  @Test
+  void a_permanent_model_failure_ends_the_turn_without_trying_again() {
+    Effects effects = new Effects();
+    effects.due = List.of(attempt(NOW.plusSeconds(600), 1));
+
+    dispatcherFor(effects, failingWith(new Failure.Permanent("the model refused the request")))
+        .dispatch();
+
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(() -> assertThat(delivered.outcomes).hasSize(1));
+    assertThat(effects.rescheduled).as("nothing about it would go differently").isEmpty();
+  }
+
+  /**
+   * What reaches the fold when the attempts run out is the handler's OWN account, not the stored
+   * blob: it names the failure the provider classified and carries what the call cost, and both
+   * would be lost by falling back to the response frozen beside the row.
+   */
+  @Test
+  void a_transient_failure_that_runs_out_of_attempts_reaches_the_fold_with_what_it_learned() {
+    Effects effects = new Effects();
+    effects.due = List.of(attempt(NOW.plusSeconds(600), 1));
+    EffectOutcome.InferenceFailed failed =
+        new EffectOutcome.InferenceFailed(
+            new Failure.Transient("the model was busy"), Usage.of("a-model", 11, 0));
+
+    dispatcherFor(effects, failingOnceWith(failed)).dispatch();
+
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(() -> assertThat(delivered.outcomes).hasSize(1));
+    assertThat(delivered.outcomes.getFirst())
+        .as("the provider's own account survives the attempts running out")
+        .isEqualTo(failed);
+    assertThat(effects.rescheduled).as("the one attempt it was allowed is spent").isEmpty();
+    assertThat(effects.retired).as("and the row is done with").hasSize(1);
+  }
+
+  /**
+   * An attempt that threw knows only the exception, so what discharges it is the terms' account of
+   * that -- not a provider classification, which on this path does not exist. Pinned because the
+   * two kinds of failure now reach the same give-up through the same argument, and nothing else
+   * would notice if the throwing one started discharging with the wrong thing.
+   */
+  @Test
+  void a_thrown_failure_that_runs_out_of_attempts_is_discharged_by_its_terms() {
+    Effects effects = new Effects();
+    effects.due = List.of(attempt(NOW.plusSeconds(600), 1));
+
+    dispatcherFor(effects, throwingOnce()).dispatch();
+
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(() -> assertThat(delivered.outcomes).hasSize(1));
+    assertThat(delivered.outcomes.getFirst())
+        .as("the terms say what a thrown attempt amounts to")
+        .isEqualTo(new EffectOutcome.InferenceRefused("failed", Usage.unreported()));
+  }
+
+  /**
+   * Nobody found out whether the work happened, and repeating work that may already have run is a
+   * question about the kind of work rather than one this dispatcher answers. Pinned because the
+   * decision is currently defended only in prose, and widening the guard would break no other test.
+   */
+  @Test
+  void an_unknown_model_failure_is_not_tried_again() {
+    Effects effects = new Effects();
+    effects.due = List.of(attempt(NOW.plusSeconds(600), 1));
+
+    dispatcherFor(effects, failingWith(new Failure.Unknown("no answer from the model"))).dispatch();
+
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(() -> assertThat(delivered.outcomes).hasSize(1));
+    assertThat(effects.rescheduled).as("it may already have happened once").isEmpty();
+  }
+
+  /**
    * The reschedule is fenced on the attempt doing it, so losing the fence means this attempt
    * overran its deadline and another took the work over. Theirs is the live one; this one stops.
    */
@@ -300,6 +400,48 @@ class DispatcherFailureTest {
     }
   }
 
+  /** A handler that fails the way a real model call does: by returning a classified failure. */
+  private static EffectHandler<AgentEffect.Infer> failingWith(Failure failure) {
+    return new Failing(new EffectOutcome.InferenceFailed(failure, Usage.unreported()), new Terms());
+  }
+
+  /** The same, with one attempt allowed, so the give-up path is what gets measured. */
+  private static EffectHandler<AgentEffect.Infer> failingOnceWith(EffectOutcome outcome) {
+    return new Failing(outcome, new OneGo());
+  }
+
+  private record Failing(EffectOutcome outcome, EffectTerms terms)
+      implements EffectHandler<AgentEffect.Infer> {
+
+    @Override
+    public EffectTerms termsFor(AgentEffect.Infer effect) {
+      return terms;
+    }
+
+    @Override
+    public Awaited<EffectOutcome> handle(AgentId agentId, AgentEffect.Infer effect) {
+      return new Awaited.Ready<>(outcome);
+    }
+  }
+
+  /** Throws, with one attempt allowed, so the give-up path is what gets measured. */
+  private static EffectHandler<AgentEffect.Infer> throwingOnce() {
+    return new ThrowingOnce();
+  }
+
+  private static final class ThrowingOnce implements EffectHandler<AgentEffect.Infer> {
+
+    @Override
+    public EffectTerms termsFor(AgentEffect.Infer effect) {
+      return new OneGo();
+    }
+
+    @Override
+    public Awaited<EffectOutcome> handle(AgentId agentId, AgentEffect.Infer effect) {
+      throw new IllegalStateException("the model call failed");
+    }
+  }
+
   /** The kinds of effect no test here writes; reaching one is a bug in the test. */
   private static <E extends AgentEffect> EffectHandler<E> unusable() {
     return new Unusable<>();
@@ -315,6 +457,30 @@ class DispatcherFailureTest {
     @Override
     public Awaited<EffectOutcome> handle(AgentId agentId, E effect) {
       throw new UnsupportedOperationException("no test here writes this kind of effect");
+    }
+  }
+
+  /** One attempt and no more, so what is measured is what happens when they run out. */
+  private record OneGo() implements EffectTerms {
+
+    @Override
+    public Duration timeout() {
+      return Duration.ofMinutes(1);
+    }
+
+    @Override
+    public RetryPolicy retryPolicy() {
+      return new RetryPolicy.FixedDelay(1, Duration.ofSeconds(1), Duration.ZERO);
+    }
+
+    @Override
+    public EffectOutcome undispatchable() {
+      return new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported());
+    }
+
+    @Override
+    public EffectOutcome failed(RuntimeException cause) {
+      return new EffectOutcome.InferenceRefused("failed", Usage.unreported());
     }
   }
 

@@ -25,6 +25,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import java.util.random.RandomGenerator;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -38,6 +39,8 @@ import org.jwcarman.nessy.engine.observability.EffectSpans;
 import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
+import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.Usage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.TaskScheduler;
@@ -323,6 +326,17 @@ public class EffectDispatcher {
           attempt.agentId().value(),
           attempt.attemptsMade());
       switch (handlers.perform(attempt.agentId(), effect)) {
+        case Awaited.Ready<EffectOutcome>(EffectOutcome outcome) when worthAnotherGo(outcome) -> {
+          // True whatever the policy then decides. Saying "it will be tried again" here would
+          // be a promise this line is not in a position to make: with the default policy it
+          // will not be, and the next line would contradict this one.
+          log.warn(
+              "[{}] effect {} failed on attempt {}; the provider called it transient",
+              agentType.value(),
+              attempt.effectId(),
+              attempt.attemptsMade());
+          settle(attempt, effect, () -> outcome);
+        }
         case Awaited.Ready<EffectOutcome>(EffectOutcome outcome) -> {
           // The outcome is folded first: if that commits and this crashes, the row comes
           // due again, is performed again, and the fold recognises the redelivery and
@@ -355,8 +369,30 @@ public class EffectDispatcher {
           attempt.effectId(),
           attempt.attemptsMade(),
           e);
-      settle(attempt, effect, e);
+      settle(attempt, effect, () -> handlers.termsFor(effect).failed(e));
     }
+  }
+
+  /**
+   * Whether an outcome the handler RETURNED is worth another attempt.
+   *
+   * <p><b>A failure that arrives as a value is still a failure.</b> Retrying used to be reachable
+   * only by throwing, and an adapter that catches its vendor's exceptions -- which every one of
+   * them does, because an escaping exception would leave an agent waiting on an answer nothing will
+   * bring -- could never ask for one. So the classification the adapters were carefully producing
+   * decided nothing: a call the provider itself said would probably work next time ended the turn.
+   *
+   * <p>Only {@link Failure.Transient} qualifies, because it is the only one of the four arms that
+   * asserts trying again could help. {@link Failure.Permanent} says the identical request fails
+   * identically, and its own javadoc rules out consulting a policy at all. {@link Failure.Rejected}
+   * names content that will fail every time it is sent, so another go is the same failure arriving
+   * later -- the answer there is quarantine, not retry. {@link Failure.Unknown} is the one worth
+   * arguing about -- nobody found out whether the work happened -- and it stays terminal here
+   * because repeating work that may already have run is a decision that belongs to the kind of work
+   * rather than to this switch.
+   */
+  private static boolean worthAnotherGo(EffectOutcome outcome) {
+    return outcome instanceof EffectOutcome.InferenceFailed(Failure.Transient _, Usage _);
   }
 
   /**
@@ -443,7 +479,7 @@ public class EffectDispatcher {
    * the first failure, the turn ends, and the agent goes on. Retries change when we give up, never
    * what happens then.
    */
-  private void settle(Attempt attempt, AgentEffect effect, RuntimeException cause) {
+  private void settle(Attempt attempt, AgentEffect effect, Supplier<EffectOutcome> discharge) {
     // The row's own policy, frozen when the effect was written. Not this dispatcher's:
     // there isn't one, because a model call and a tool call are worth trying to different
     // degrees, and a policy edited since must not reach work already queued.
@@ -463,7 +499,7 @@ public class EffectDispatcher {
             "[{}] effect {} would back off past its deadline; giving up instead",
             agentType.value(),
             attempt.effectId());
-        giveUp(attempt, effect, cause);
+        giveUp(attempt, effect, discharge);
       }
       case RetryDecision.RetryAfter(var backoff) -> {
         Instant next = clock.instant().plus(backoff);
@@ -481,7 +517,7 @@ public class EffectDispatcher {
               attempt.attemptsMade());
         }
       }
-      case RetryDecision.GiveUp _ -> giveUp(attempt, effect, cause);
+      case RetryDecision.GiveUp _ -> giveUp(attempt, effect, discharge);
     }
   }
 
@@ -491,11 +527,12 @@ public class EffectDispatcher {
    * <p>Reached two ways -- a policy that has had enough, and a backoff with nowhere to land -- and
    * they owe the agent the same thing, so they say it the same way.
    */
-  private void giveUp(Attempt attempt, AgentEffect effect, RuntimeException cause) {
-    // The handler's own answer, and one that keeps the cause. The stored blob says only that
-    // nobody found out how the work went; this says that too AND names the exception that ended
-    // it, which is the whole of what an attempt that ran and threw knows.
-    EffectOutcome outcome = handlers.termsFor(effect).failed(cause);
+  private void giveUp(Attempt attempt, AgentEffect effect, Supplier<EffectOutcome> discharge) {
+    // Whatever the failing attempt actually learned, which is never the stored blob: that one
+    // says only that nobody found out how the work went. An attempt that threw knows the
+    // exception that ended it; one that returned a classified failure knows the provider's own
+    // account and what the call cost. Falling back here would throw away whichever it was.
+    EffectOutcome outcome = discharge.get();
     try {
       callback.deliverOutcome(
           attempt.agentId(), Optional.of(effect.turn()), outcome, attempt.traceContext());
