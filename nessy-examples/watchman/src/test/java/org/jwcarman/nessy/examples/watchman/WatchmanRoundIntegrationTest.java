@@ -69,10 +69,8 @@ class WatchmanRoundIntegrationTest {
   @Test
   void a_proposed_prune_waits_on_the_board_until_a_person_approves_it() {
     // The first round starts on ApplicationReadyEvent; the prune reaches the board...
-    await()
-        .atMost(Duration.ofSeconds(60))
-        .untilAsserted(() -> assertThat(approvals.pending()).hasSize(1));
-    PendingApproval waiting = approvals.pending().getFirst();
+    await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> assertThat(ours()).hasSize(1));
+    PendingApproval waiting = ours().getFirst();
     assertThat(waiting.action()).isEqualTo("docker image prune -af");
     assertThat(waiting.agentId()).isEqualTo(Watchman.AGENT);
     assertThat(waiting.callId()).isEqualTo(new CallId("round-1-prune"));
@@ -89,7 +87,7 @@ class WatchmanRoundIntegrationTest {
         .exchange((request, response) -> response.getStatusCode());
 
     // ...which takes it off the board and lets the round finish with its notes.
-    assertThat(approvals.pending()).isEmpty();
+    assertThat(ours()).isEmpty();
     await()
         .atMost(Duration.ofSeconds(60))
         .untilAsserted(
@@ -108,5 +106,20 @@ class WatchmanRoundIntegrationTest {
                 .orElseThrow()
                 .answer())
         .contains("approved");
+  }
+
+  /**
+   * The board, filtered to the agent this test owns.
+   *
+   * <p>{@code approvals.pending()} is every row in the table, and this module runs two Spring
+   * contexts against one Postgres container -- so a sibling test's fixtures are visible here. A
+   * size assertion over all of them passes or fails on test ORDER rather than on what this test
+   * did, which is how it came to report "expected 1 but was 7" with its own row sitting correctly
+   * among six belonging to somebody else.
+   */
+  private List<PendingApproval> ours() {
+    return approvals.pending().stream()
+        .filter(pending -> pending.agentId().equals(Watchman.AGENT))
+        .toList();
   }
 }
