@@ -99,8 +99,11 @@ public final class Transcript {
         // A failed attempt is not part of the conversation. The model is not shown that a call
         // it never received was tried and failed -- from where it sits, the call it does receive
         // is the first one. Showing it would invite it to apologise for the engine's weather.
+        // A turn ended by a policy likewise shows the model nothing: no call was made and
+        // nothing came back, so there is no message in it to carry forward.
         case AgentEvent.ToolApproved _,
             AgentEvent.InferenceAttempted _,
+            AgentEvent.TurnFailed _,
             AgentEvent.Terminated _ -> {}
       }
     }
@@ -125,6 +128,7 @@ public final class Transcript {
             AgentEvent.InferenceRefused _,
             AgentEvent.InferenceFailed _,
             AgentEvent.InferenceAttempted _,
+            AgentEvent.TurnFailed _,
             AgentEvent.Terminated _ -> {
           // Nothing behind these but the words already in them.
         }

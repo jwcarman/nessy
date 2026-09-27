@@ -234,6 +234,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
             effects,
             narrator,
             clock,
+            config.turnPolicy(),
             traces);
 
     // The harness is the callback, so it has to exist before its dispatcher does -- and the

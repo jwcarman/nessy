@@ -33,6 +33,7 @@ import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.SystemPromptSource;
+import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalEnricher;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -69,6 +70,21 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
 
   /** One tool and everything said about it, kept until there is a mapper to bind it with. */
   private record ToolRequest<T>(Tool<T> tool, Customizer<ToolConfig<T>> customizer) {}
+
+  /** The default bounds a turn without ending one that is merely long; see TurnPolicy. */
+  static final TurnPolicy DEFAULT_TURN_POLICY = TurnPolicy.calls(20, 25);
+
+  private TurnPolicy turnPolicy = DEFAULT_TURN_POLICY;
+
+  @Override
+  public DirectHarnessConfig<I> turnPolicy(TurnPolicy policy) {
+    this.turnPolicy = Objects.requireNonNull(policy, "turn policy must not be null");
+    return this;
+  }
+
+  public TurnPolicy turnPolicy() {
+    return turnPolicy;
+  }
 
   @Override
   public DirectHarnessConfig<I> systemPrompt(String prompt) {

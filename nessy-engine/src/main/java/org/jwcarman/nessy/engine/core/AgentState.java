@@ -15,12 +15,15 @@
  */
 package org.jwcarman.nessy.engine.core;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TurnDecision;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
@@ -110,7 +113,22 @@ public sealed interface AgentState {
   }
 
   /** What this command means here. */
-  Decision execute(AgentCommand command);
+  Decision execute(AgentCommand command, TurnPolicy policy, Instant now);
+
+  /**
+   * The same, with nothing bounding the turn.
+   *
+   * <p>For callers that have no policy to apply -- a test about the grammar rather than about
+   * bounds, and every path that cannot reach the point where a bound is consulted.
+   *
+   * <p><b>The instant here is a placeholder, and is only safe because the policy here ignores
+   * it.</b> The two travel together: change this default to a policy that reads the clock and every
+   * caller of this form would be handed a turn that appears to have been open since 1970. If a
+   * bound is ever wanted by default, it belongs where the harness passes a real one, not here.
+   */
+  default Decision execute(AgentCommand command) {
+    return execute(command, TurnPolicy.unbounded(), Instant.EPOCH);
+  }
 
   // ---------------------------------------------------------------------------------------------
 
@@ -130,7 +148,7 @@ public sealed interface AgentState {
     }
 
     @Override
-    public Decision execute(AgentCommand command) {
+    public Decision execute(AgentCommand command, TurnPolicy policy, Instant now) {
       return switch (command) {
         case AgentCommand.StartTurn start -> {
           Seq at = seq.next();
@@ -172,7 +190,7 @@ public sealed interface AgentState {
     }
 
     @Override
-    public Decision execute(AgentCommand command) {
+    public Decision execute(AgentCommand command, TurnPolicy policy, Instant now) {
       return switch (command) {
         // An answer to a turn that is not the one open here. At-least-once delivery and a door
         // that lets go of its lock between steps mean a completion can arrive after the turn it
@@ -312,21 +330,21 @@ public sealed interface AgentState {
     }
 
     @Override
-    public Decision execute(AgentCommand command) {
+    public Decision execute(AgentCommand command, TurnPolicy policy, Instant now) {
       return switch (command) {
         // As in Inferring: an outcome that names another turn settles nothing here. The call id
         // alone is not enough -- ids come from the model and a later turn can reuse one.
         case AgentCommand.CompleteApproval done when !done.turn().equals(turn) -> Decision.ignore();
         case AgentCommand.CompleteToolCall done when !done.turn().equals(turn) -> Decision.ignore();
-        case AgentCommand.CompleteApproval done -> approved(done);
-        case AgentCommand.CompleteToolCall done -> ran(done);
+        case AgentCommand.CompleteApproval done -> approved(done, policy, now);
+        case AgentCommand.CompleteToolCall done -> ran(done, policy, now);
         // As in Inferring: held by the harness until the turn closes.
         case AgentCommand.StartTurn _, AgentCommand.Terminate _ -> Decision.ignore();
         default -> Decision.ignore();
       };
     }
 
-    private Decision approved(AgentCommand.CompleteApproval done) {
+    private Decision approved(AgentCommand.CompleteApproval done, TurnPolicy policy, Instant now) {
       OutstandingAction call = outstanding.get(done.callId());
       // Already discharged, or never ours: a redelivery. Nothing happened.
       if (call == null || call.phase() != OutstandingAction.Phase.AWAITING_APPROVAL) {
@@ -339,15 +357,15 @@ public sealed interface AgentState {
                 List.of(new AgentEvent.ToolApproved(at, turn, done.callId(), ok.reference())),
                 List.of(performing(turn, requestSeq, call.action())));
         case AgentCommand.ApprovalOutcome.Denied no ->
-            Decision.of(
-                List.of(
-                    new AgentEvent.ToolDenied(
-                        at, turn, done.callId(), no.reason(), no.reference())),
-                nextInference(1));
+            continuing(
+                at,
+                new AgentEvent.ToolDenied(at, turn, done.callId(), no.reason(), no.reference()),
+                policy,
+                now);
       };
     }
 
-    private Decision ran(AgentCommand.CompleteToolCall done) {
+    private Decision ran(AgentCommand.CompleteToolCall done, TurnPolicy policy, Instant now) {
       OutstandingAction call = outstanding.get(done.callId());
       // Already discharged, or never ours: a redelivery.
       if (call == null) {
@@ -375,7 +393,7 @@ public sealed interface AgentState {
             case AgentCommand.ToolOutcome.Failed no ->
                 new AgentEvent.ToolFailed(at, turn, done.callId(), no.message());
           };
-      return Decision.of(List.of(event), nextInference(1));
+      return continuing(at, event, policy, now);
     }
 
     /** The work that performs an action, whatever kind of action it is. */
@@ -386,9 +404,34 @@ public sealed interface AgentState {
       };
     }
 
-    /** Ask the model again once this discharge leaves nothing outstanding. */
-    private List<AgentEffect> nextInference(int discharging) {
-      return outstanding.size() == discharging ? List.of(new AgentEffect.Infer(turn)) : List.of();
+    /**
+     * One call discharged, and whatever follows from it being the last.
+     *
+     * <p><b>Where a turn is bounded.</b> Anywhere else a bound could go would be either too early
+     * -- before the turn has done anything worth measuring -- or too late, after the model has
+     * already been asked again. Here the fold is about to go round, which is the only moment the
+     * question "should it?" has an answer.
+     *
+     * <p>Consulted only when this discharge leaves nothing outstanding. A turn still waiting on two
+     * more tools is not going round yet, and asking a policy about it would let a bound fire
+     * against a count that has not moved since the last time it was asked.
+     */
+    private Decision continuing(Seq at, AgentEvent event, TurnPolicy policy, Instant now) {
+      if (outstanding.size() != 1) {
+        return Decision.of(List.of(event), List.of());
+      }
+      return switch (policy.decide(stats, now)) {
+        case TurnDecision.Continue _ ->
+            Decision.of(List.of(event), List.of(new AgentEffect.Infer(turn)));
+        // Still a model call, and still counted as one; what changes is what it may reach for.
+        case TurnDecision.AnswerNow _ ->
+            Decision.of(List.of(event), List.of(new AgentEffect.Infer(turn, true)));
+        // No further call, so no further cost -- and the fact says so by having nowhere to put a
+        // count. The discharge is written down first: it happened, whatever is decided after it.
+        case TurnDecision.FailTurn(String reason) ->
+            Decision.of(
+                List.of(event, new AgentEvent.TurnFailed(at.next(), turn, reason)), List.of());
+      };
     }
   }
 
@@ -427,7 +470,7 @@ public sealed interface AgentState {
     }
 
     @Override
-    public Decision execute(AgentCommand command) {
+    public Decision execute(AgentCommand command, TurnPolicy policy, Instant now) {
       return switch (command) {
         case AgentCommand.StartTurn _, AgentCommand.Terminate _ ->
             throw new IllegalStateException(

@@ -29,7 +29,9 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.Tokens;
+import org.jwcarman.nessy.api.TurnDecision;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -148,6 +150,74 @@ class AgentStateTest {
                   .events());
 
       assertThat(after).isInstanceOf(AgentState.Idle.class);
+    }
+
+    /** A turn with one tool call approved and running: the state a discharge lands on. */
+    private AgentState awaitingOneCall() {
+      AgentState inferring =
+          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+      AgentState awaiting =
+          inferring.applyAll(
+              inferring
+                  .execute(
+                      new AgentCommand.CompleteInference(
+                          TURN,
+                          new AgentCommand.InferenceOutcome.RequestedActions(
+                              MAIL,
+                              List.of(new ActionRequest.ToolCall(CALL, TOOL)),
+                              Usage.unreported())))
+                  .events());
+      return awaiting.applyAll(
+          awaiting
+              .execute(
+                  new AgentCommand.CompleteApproval(
+                      TURN, CALL, new AgentCommand.ApprovalOutcome.Approved(Optional.empty())))
+              .events());
+    }
+
+    @Test
+    @DisplayName("a turn past its bound is ended rather than asked again")
+    void a_bounded_turn_is_failed_instead_of_continuing() {
+      AgentState awaiting = awaitingOneCall();
+      TurnPolicy stopNow = (stats, now) -> new TurnDecision.FailTurn("that is enough");
+
+      Decision decision =
+          awaiting.execute(
+              new AgentCommand.CompleteToolCall(
+                  TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT)),
+              stopNow,
+              Instant.EPOCH);
+
+      assertThat(decision.effects()).as("the whole point: the model is not asked again").isEmpty();
+      assertThat(decision.events())
+          .extracting(event -> event.getClass().getSimpleName())
+          .as("what happened, then the decision about it")
+          .containsExactly("ToolSucceeded", "TurnFailed");
+      assertThat(decision.events().getLast())
+          .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.TurnFailed.class))
+          .extracting(AgentEvent.TurnFailed::reason)
+          .isEqualTo("that is enough");
+    }
+
+    @Test
+    @DisplayName("a turn told to answer is asked again, but offered nothing to call")
+    void a_turn_told_to_answer_asks_without_tools() {
+      AgentState awaiting = awaitingOneCall();
+      TurnPolicy wrapUp = (stats, now) -> new TurnDecision.AnswerNow();
+
+      Decision decision =
+          awaiting.execute(
+              new AgentCommand.CompleteToolCall(
+                  TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT)),
+              wrapUp,
+              Instant.EPOCH);
+
+      assertThat(decision.effects())
+          .singleElement()
+          .asInstanceOf(InstanceOfAssertFactories.type(AgentEffect.Infer.class))
+          .extracting(AgentEffect.Infer::answerOnly)
+          .as("still a call, and still counted as one -- what changes is what it may reach for")
+          .isEqualTo(true);
     }
 
     @Test

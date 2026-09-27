@@ -30,6 +30,7 @@ import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.backlog.Backlog;
 import org.jwcarman.nessy.backend.backlog.Backlogs;
@@ -94,6 +95,7 @@ final class DefaultQueuedHarness<I>
   private final Outbox effects;
   private final Narrator narrator;
   private final Clock clock;
+  private final TurnPolicy turnPolicy;
   private final Traces traces;
 
   private EffectDispatcher dispatcher;
@@ -107,6 +109,7 @@ final class DefaultQueuedHarness<I>
       Outbox effects,
       Narrator narrator,
       Clock clock,
+      TurnPolicy turnPolicy,
       Traces traces) {
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.policy = Objects.requireNonNull(policy, "policy must not be null");
@@ -116,6 +119,7 @@ final class DefaultQueuedHarness<I>
     this.effects = Objects.requireNonNull(effects, "effects must not be null");
     this.narrator = Objects.requireNonNull(narrator, "narrator must not be null");
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
+    this.turnPolicy = Objects.requireNonNull(turnPolicy, "turn policy must not be null");
     this.traces = Objects.requireNonNull(traces, "traces must not be null");
   }
 
@@ -314,7 +318,8 @@ final class DefaultQueuedHarness<I>
   /** Folds one command and writes what it decided. */
   private boolean apply(AgentId agentId, AgentCommand command, String trace) {
     AgentState state = reconstitute(agentId);
-    if (!(state.execute(command) instanceof Decision.Advance advance)) {
+    if (!(state.execute(command, turnPolicy, clock.instant())
+        instanceof Decision.Advance advance)) {
       // Ignore writes nothing at all. A record showing something happening when nothing did is
       // worse than no record.
       log.debug(
@@ -397,6 +402,12 @@ final class DefaultQueuedHarness<I>
       case AgentEvent.InferenceFailed failed -> {
         say(agentId, new Narration.TurnFailed(failed.failure().reason()));
         say(agentId, new Narration.TurnEnded(failed.turn()));
+      }
+      // Heard exactly as any other failed turn is. A watcher does not care whether the model
+      // could not answer or a policy decided it had answered enough; either way the turn is over.
+      case AgentEvent.TurnFailed ended -> {
+        say(agentId, new Narration.TurnFailed(ended.reason()));
+        say(agentId, new Narration.TurnEnded(ended.turn()));
       }
       case AgentEvent.Terminated _ -> say(agentId, new Narration.Terminated());
       case AgentEvent.TurnStarted started ->

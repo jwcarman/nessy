@@ -74,10 +74,20 @@ public sealed interface AgentEffect {
    * <p>The messages travel in the effect rather than being looked up when it runs, so whatever
    * executes this needs nothing but the row: the request is exactly what the fold decided it should
    * be, even if the agent has moved on since.
+   *
+   * <p><b>{@code answerOnly}</b> is a turn being told to finish: the model is asked for prose
+   * rather than another round of tools. It rides the row because the decision is the fold's and the
+   * request is built whenever the row is finally performed, which may be in another process. A row
+   * written before this existed decodes as {@code false}, which is the ordinary ask.
    */
-  record Infer(TurnId turn) implements AgentEffect {
+  record Infer(TurnId turn, boolean answerOnly) implements AgentEffect {
     public Infer {
       requireTurn(turn);
+    }
+
+    /** The ordinary ask, where the model may reach for a tool if it wants one. */
+    public Infer(TurnId turn) {
+      this(turn, false);
     }
   }
 

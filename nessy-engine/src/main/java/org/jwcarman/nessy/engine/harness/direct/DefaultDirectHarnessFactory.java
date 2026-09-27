@@ -305,7 +305,8 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
         handlers,
         effects,
         config.maxInFlight(),
-        observations);
+        observations,
+        config.turnPolicy());
   }
 
   /**

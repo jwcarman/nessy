@@ -38,6 +38,7 @@ import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPromptSource;
+import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalEnricher;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -208,6 +209,11 @@ class ReplConfigTest {
       @Override
       public AgentType agentType() {
         return new AgentType("recording");
+      }
+
+      @Override
+      public DirectHarnessConfig<String> turnPolicy(TurnPolicy policy) {
+        return this;
       }
 
       @Override

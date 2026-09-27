@@ -45,6 +45,7 @@ import org.jwcarman.nessy.api.OutputReader;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TerminationOutcome;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.DirectBackend;
@@ -235,6 +236,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    */
   private final ObservationRegistry observations;
 
+  private final TurnPolicy turnPolicy;
+
   private final Semaphore inFlight;
 
   public DefaultDirectHarness(
@@ -247,7 +250,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       EffectHandlers handlers,
       ExecutorService effects,
       int maxInFlight,
-      ObservationRegistry observations) {
+      ObservationRegistry observations,
+      TurnPolicy turnPolicy) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
     this.agentType = agentType;
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
@@ -258,6 +262,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     this.effects = Objects.requireNonNull(effects, "effects must not be null");
     this.inFlight = new Semaphore(maxInFlight);
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
+    this.turnPolicy = Objects.requireNonNull(turnPolicy, "turn policy must not be null");
   }
 
   @Override
@@ -321,7 +326,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
               if (state instanceof AgentState.Terminal) {
                 return new TerminationOutcome.AlreadyEnded();
               }
-              Decision decision = state.execute(new AgentCommand.Terminate());
+              Decision decision =
+                  state.execute(new AgentCommand.Terminate(), turnPolicy, clock.instant());
               if (decision.events().isEmpty()) {
                 LOG.debug(
                     "[{}] agent {} is mid-turn; ending it was refused", agentType.value(), agent);
@@ -380,7 +386,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     if (state instanceof AgentState.Terminal) {
       return Decision.ignore();
     }
-    Decision decision = state.execute(command);
+    Decision decision = state.execute(command, turnPolicy, clock.instant());
     backend.events().append(agentType, agent, decision.events(), state.seq());
     decision.events().forEach(event -> narrate(agent, event));
     return decision;
@@ -547,7 +553,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         return new RecoveryOutcome.Busy();
       }
       dischargedSomething = true;
-      Decision decision = current.execute(discharge.get());
+      Decision decision = current.execute(discharge.get(), turnPolicy, clock.instant());
       backend.events().append(agentType, agent, decision.events(), current.seq());
       decision.events().forEach(event -> narrate(agent, event));
       current = current.applyAll(decision.events());
@@ -846,6 +852,13 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         tell(agent, new Narration.TurnFailed(failed.failure().reason()));
         tell(agent, new Narration.TurnEnded(failed.turn()));
       }
+      // Heard exactly as any other failed turn is. A watcher does not care whether the model
+      // could not answer or a policy decided it had answered enough; either way the turn is over
+      // and the reason is the whole of what is worth saying about it.
+      case AgentEvent.TurnFailed ended -> {
+        tell(agent, new Narration.TurnFailed(ended.reason()));
+        tell(agent, new Narration.TurnEnded(ended.turn()));
+      }
       case AgentEvent.Terminated _ -> tell(agent, new Narration.Terminated());
       // Said even though the caller knows: the caller is not the only watcher. A page on the
       // narration stream while the request blocks, or a second one opened beside it, learns what
@@ -897,6 +910,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
           new Outcome.Refused<>(refused.category(), stats);
       case AgentEvent.InferenceFailed failed when failed.turn().equals(turn) ->
           new Outcome.Failed<>(failed.failure().reason(), stats);
+      case AgentEvent.TurnFailed ended when ended.turn().equals(turn) ->
+          new Outcome.Failed<>(ended.reason(), stats);
       default -> null;
     };
   }

@@ -442,13 +442,22 @@ class DirectHarnessFanOutTest {
   }
 
   /**
-   * The budget fix, pinned: {@code inFlight} is harness-wide, so call-2's {@code CallTool} effect
-   * can queue for a permit behind call-1's -- held here by a latch standing in for a slow tool --
-   * for arbitrarily long. If {@link DefaultDirectHarness#perform} handed a freshly-permitted effect
-   * a fresh full timeout, call-2 would run anyway, however late its permit arrived; measuring what
-   * is left of its OWN budget instead means that once that budget is spent while queued, call-2 is
-   * discharged as failed the moment it is finally permitted, and its {@link Tool#call} is never
-   * invoked at all.
+   * The budget fix, pinned: {@code inFlight} is harness-wide, so the second of two sibling {@code
+   * CallTool} effects queues for a permit behind the first -- held here by a latch standing in for
+   * a slow tool -- for arbitrarily long. If {@link DefaultDirectHarness#perform} handed a
+   * freshly-permitted effect a fresh full timeout, the queued call would run anyway, however late
+   * its permit arrived; measuring what is left of its OWN budget instead means that once that
+   * budget is spent while queued, it is discharged as failed the moment it is finally permitted,
+   * and its {@link Tool#call} is never invoked at all.
+   *
+   * <p><b>Which of the two calls gets the permit first is not this test's business.</b> A permit is
+   * released inside the effect's own task, before that task's {@code Future} has finished
+   * enqueueing itself for completion, so the order sibling completions are folded in -- and
+   * therefore the order their {@code CallTool} effects queue for permits -- is genuinely
+   * unspecified. The tool below therefore latches on ARRIVAL order rather than on a call id: the
+   * first call to arrive is the one holding the permit, and the one that never arrives at all is
+   * the one whose budget elapsed while queued. Keying on {@code call-1} instead made this test
+   * assume an ordering nothing enforces, and it failed on CI whenever the fold order flipped.
    */
   @Test
   @DisplayName(
@@ -465,6 +474,7 @@ class DirectHarnessFanOutTest {
 
     CountDownLatch firstStarted = new CountDownLatch(1);
     CountDownLatch releaseFirst = new CountDownLatch(1);
+    AtomicInteger arrivals = new AtomicInteger();
     AtomicInteger secondRan = new AtomicInteger();
     Duration toolTimeout = Duration.ofSeconds(30);
     Tool<Lookup> tool =
@@ -481,12 +491,12 @@ class DirectHarnessFanOutTest {
 
           @Override
           public String description() {
-            return "call-1 holds the only permit; call-2 must never run";
+            return "whichever call arrives first holds the only permit; the other must never run";
           }
 
           @Override
           public Awaited<ToolResult> call(ToolCallRequest<Lookup> request) {
-            if (request.callId().equals(new CallId("call-1"))) {
+            if (arrivals.incrementAndGet() == 1) {
               firstStarted.countDown();
               try {
                 releaseFirst.await();
@@ -517,8 +527,8 @@ class DirectHarnessFanOutTest {
                   c.systemPrompt("terse")
                       .inputRenderer(said -> List.of(new Block.Text(said)))
                       .inference(in -> in.model("a-model"))
-                      // One permit: call-2's CallTool effect cannot even be submitted until
-                      // call-1's is released, which is the gap the budget fix has to survive.
+                      // One permit: the second CallTool effect cannot even be submitted until
+                      // the first is released, which is the gap the budget fix has to survive.
                       .maxInFlight(1);
                   c.tool(tool, t -> t.timeout(toolTimeout).approver(Approver.allow()));
                 });
@@ -527,11 +537,11 @@ class DirectHarnessFanOutTest {
       Future<Outcome<String>> future = callers.submit(() -> harness.ask(agent, "look up two"));
 
       assertThat(firstStarted.await(5, TimeUnit.SECONDS))
-          .as("call-1 is running and holding the only permit")
+          .as("one of the two calls is running and holding the only permit")
           .isTrue();
 
-      // Real time passing while call-2 waits for a permit -- exactly what a harness-wide semaphore
-      // opens up, and exactly what a fresh-timeout bug would paper over.
+      // Real time passing while the second call waits for a permit -- exactly what a harness-wide
+      // semaphore opens up, and exactly what a fresh-timeout bug would paper over.
       stepped.advance(toolTimeout.plusSeconds(1));
 
       releaseFirst.countDown();
@@ -543,12 +553,14 @@ class DirectHarnessFanOutTest {
 
     assertThat(secondRan.get())
         .as(
-            "call-2's own budget had already elapsed by the time its permit freed; it must never"
-                + " run")
+            "the queued call's own budget had already elapsed by the time its permit freed; it must"
+                + " never run")
         .isZero();
     assertThat(steppedEvents.readAll(TYPE, agent))
         .extracting(e -> e.getClass().getSimpleName())
-        .as("call-1 ran to completion; call-2 was discharged as failed without ever running")
+        .as(
+            "the permitted call ran to completion; the queued one was discharged as failed without"
+                + " ever running")
         .contains("ToolSucceeded", "ToolFailed");
   }
 }

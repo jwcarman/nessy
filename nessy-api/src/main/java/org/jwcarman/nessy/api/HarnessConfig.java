@@ -58,6 +58,18 @@ public interface HarnessConfig<SELF extends HarnessConfig<SELF>> {
   AgentType agentType();
 
   /** Something the model may call. */
+  /**
+   * What bounds a turn that will not finish.
+   *
+   * <p>Defaults to {@link TurnPolicy#calls(int, int)} at twenty and twenty-five: the model is asked
+   * to answer from what it has at twenty calls, and the turn ends at twenty-five. A default is here
+   * at all because doing nothing is not the safe choice -- unlike a retry policy, where doing
+   * nothing costs nothing, an unbounded turn that will not converge spends until somebody notices.
+   *
+   * <p>On both doors, because both fold the same way and neither has a reason to differ.
+   */
+  SELF turnPolicy(TurnPolicy policy);
+
   <T> SELF tool(Tool<T> tool);
 
   /**

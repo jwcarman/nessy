@@ -51,6 +51,7 @@ import org.jwcarman.nessy.inference.Failure;
   @JsonSubTypes.Type(value = AgentEvent.InferenceRefused.class, name = "inference-refused"),
   @JsonSubTypes.Type(value = AgentEvent.InferenceFailed.class, name = "inference-failed"),
   @JsonSubTypes.Type(value = AgentEvent.InferenceAttempted.class, name = "inference-attempted"),
+  @JsonSubTypes.Type(value = AgentEvent.TurnFailed.class, name = "turn-failed"),
   @JsonSubTypes.Type(value = AgentEvent.ActionsRequested.class, name = "actions-requested"),
   @JsonSubTypes.Type(value = AgentEvent.ToolApproved.class, name = "tool-approved"),
   @JsonSubTypes.Type(value = AgentEvent.ToolDenied.class, name = "tool-denied"),
@@ -118,6 +119,23 @@ public sealed interface AgentEvent {
       usage = usage == null ? Usage.unreported() : usage;
     }
   }
+
+  /**
+   * The turn was ended on purpose, and this is why.
+   *
+   * <p><b>Not an inference that failed.</b> That arm exists for a call that was made and produced
+   * nothing; this one is for a turn stopped by a policy, where no call was made at all. Reusing
+   * {@link InferenceFailed} would have meant filling its usage with "nobody counted", which claims
+   * a call happened that nothing measured -- and no call happened.
+   *
+   * <p><b>It carries no count, because deciding not to ask costs nothing.</b> What the turn really
+   * spent is already recorded on the events that spent it, and an arm with no field for a count
+   * cannot say otherwise.
+   *
+   * <p>A plain reason rather than a {@link Failure}: those arms are statements about whether a
+   * request would fail again, and there was no request.
+   */
+  record TurnFailed(Seq seq, TurnId turn, String reason) implements AgentEvent {}
 
   /**
    * A model call failed and was tried again.
