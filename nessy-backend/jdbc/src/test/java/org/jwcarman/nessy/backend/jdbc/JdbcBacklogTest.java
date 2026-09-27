@@ -32,7 +32,6 @@ import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.backend.agent.Agents;
 import org.jwcarman.nessy.backend.backlog.Backlog;
 import org.jwcarman.nessy.backend.backlog.Pull;
-import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;

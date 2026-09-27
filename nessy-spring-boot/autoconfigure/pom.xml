@@ -132,6 +132,15 @@
       <artifactId>nessy-backend-jdbc</artifactId>
       <optional>true</optional>
     </dependency>
+    <!-- The other backend this module knows how to configure. Declared here rather than reached
+         through the engine, which now keeps its own copy at test scope: the engine names no backend,
+         so nothing arrives transitively any more. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-backend-inmemory</artifactId>
+      <version>${project.version}</version>
+      <optional>true</optional>
+    </dependency>
     <!-- TEST, because the only H2 left is the wiring tests' own DataSource. There used to be an
          in-memory fallback for an application that supplied none, and this was RUNTIME to make it
          work; the fallback is gone (the engine's queries are PostgreSQL's, so it ran a Nessy that
@@ -141,10 +150,6 @@
       <groupId>com.h2database</groupId>
       <artifactId>h2</artifactId>
       <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spi</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>

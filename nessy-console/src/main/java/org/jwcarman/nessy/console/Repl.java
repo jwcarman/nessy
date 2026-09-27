@@ -18,14 +18,16 @@ package org.jwcarman.nessy.console;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
+import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
-import org.jwcarman.nessy.spi.store.Schemas;
 import org.jwcarman.nessy.spring.boot.QueuedHarnessAutoConfiguration;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
@@ -35,7 +37,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
-import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.ObjectMapper;
 
 /** One call from a main method to a working terminal agent. */
 public final class Repl {
@@ -134,9 +136,19 @@ public final class Repl {
       // ended, and a CLI that resumed yesterday's chat would surprise the person typing into it.
       // A tool that wants to remember something still brings its own store.
       config.dataSource().ifPresent(Schemas::initialize);
+      // Both taken from the context rather than built here: Boot configures the mapper, the starter
+      // configures the codec factory, and a terminal that made its own would write bytes by
+      // different rules than the rest of the process it is running in.
+      ObjectMapper mapper = context.getBean(ObjectMapper.class);
+      CodecFactory codecs = context.getBean(CodecFactory.class);
       run(
-          DefaultDirectHarnessFactory.inMemory(
-              provider, new VictoolsInputSchemaGenerator(), JsonMapper.builder().build()),
+          DefaultDirectHarnessFactory.of(
+              factory ->
+                  factory
+                      .backend(new InMemoryDirectBackend(codecs))
+                      .provider(provider)
+                      .schemas(new VictoolsInputSchemaGenerator())
+                      .mapper(mapper)),
           model.get(),
           config,
           io);

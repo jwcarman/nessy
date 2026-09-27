@@ -156,14 +156,17 @@ actually needs:
 ```
 
 Tool and policy authors compile against `nessy-api` alone; adapter authors
-add `nessy-spi`; an application building an agent depends on
-`nessy-engine`, which pulls both in, plus one provider adapter.
+add `nessy-inference-spi`; an application building an agent depends on
+`nessy-engine` plus one provider adapter and one backend.
 
 | Artifact | What it is for |
 |---|---|
 | `nessy-api` | the shared vocabulary: `Tool`, `Approver`, `Awaited`, blocks, `AgentEvent`, `AgentEventListener` |
-| `nessy-spi` | adapter authors: `InferenceProvider`, and `Schemas` |
-| `nessy-engine` | the engine: `DefaultHarnessFactory`, the durable stores |
+| `nessy-inference-spi` | adapter authors: `InferenceProvider` |
+| `nessy-backend-spi` | backend authors: the stores a door writes to |
+| `nessy-backend-jdbc` | one PostgreSQL `DataSource` behind either door, and `Schemas` |
+| `nessy-backend-inmemory` | the same stores with nothing behind them but the process |
+| `nessy-engine` | the engine: the two doors, and the fold behind them |
 | `nessy-inference-anthropic`, `nessy-inference-openai`, `nessy-inference-gemini`, `nessy-inference-bedrock` | the provider adapters; the OpenAI one reaches every OpenAI-compatible endpoint |
 | `nessy-console` | terminal applications: `Repl.run` |
 | `nessy-spring-boot-starter` | the one dependency a Boot application adds; no code of its own |

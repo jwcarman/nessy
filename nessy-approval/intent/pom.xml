@@ -46,7 +46,7 @@
     <!-- Test only: Schemas.initialize, which applies the schema the way an application would. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spi</artifactId>
+      <artifactId>nessy-backend-jdbc</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -61,9 +61,17 @@
       <groupId>org.jwcarman.codec</groupId>
       <artifactId>codec-jackson</artifactId>
     </dependency>
+    <!-- Real PostgreSQL: the JDBC backend's DDL, which Schemas.initialize applies from this
+         module's test classpath, declares a partial index that H2 cannot parse. And these tests
+         turn on a lost insert race, which only the real database can settle. -->
     <dependency>
-      <groupId>com.h2database</groupId>
-      <artifactId>h2</artifactId>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

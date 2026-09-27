@@ -42,7 +42,6 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.backend.lease.Attempt;
 import org.jwcarman.nessy.backend.lease.LeaseKind;
 import org.jwcarman.nessy.backend.lease.Leases;
-import org.jwcarman.nessy.spi.store.Schemas;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;

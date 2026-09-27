@@ -25,6 +25,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.TypeRef;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.BacklogItem;
@@ -36,9 +37,10 @@ import org.jwcarman.nessy.backend.backlog.Pull;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
-import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * What {@link JdbcQueuedBackend} hands back is not a copy of anything -- it is the same tables
@@ -48,6 +50,18 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @Tag("container")
 @DisplayName("A queued backend over a database")
 class JdbcQueuedBackendTest {
+
+  /**
+   * What the Spring auto-configuration hands in, spelled out here. JdbcQueuedBackend takes a codec
+   * factory rather than making one, so a test says which bytes it means exactly as an application
+   * does.
+   */
+  private static QueuedBackend backend(DataSource dataSource) {
+    return new JdbcQueuedBackend(
+        dataSource,
+        new JdbcTransactionManager(dataSource),
+        new JacksonCodecFactory(JsonMapper.builder().build()));
+  }
 
   private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
 
@@ -70,8 +84,8 @@ class JdbcQueuedBackendTest {
   @Test
   @DisplayName("an agent ensured through one instance is seen as ensured through another")
   void agents_are_shared_across_instances() {
-    QueuedBackend writer = new JdbcQueuedBackend(dataSource);
-    QueuedBackend reader = new JdbcQueuedBackend(dataSource);
+    QueuedBackend writer = backend(dataSource);
+    QueuedBackend reader = backend(dataSource);
     AgentId agent = AgentId.random();
 
     writer.agents().ensure(TYPE, agent);
@@ -86,8 +100,8 @@ class JdbcQueuedBackendTest {
   @Test
   @DisplayName("an effect inserted through one instance is claimable through another")
   void effects_are_shared_across_instances() {
-    QueuedBackend writer = new JdbcQueuedBackend(dataSource);
-    QueuedBackend reader = new JdbcQueuedBackend(dataSource);
+    QueuedBackend writer = backend(dataSource);
+    QueuedBackend reader = backend(dataSource);
     AgentId agent = AgentId.random();
     Instant now = Instant.parse("2026-09-26T12:00:00Z");
     writer.agents().ensure(TYPE, agent);
@@ -115,8 +129,8 @@ class JdbcQueuedBackendTest {
   @Test
   @DisplayName("a backlog built through one instance is readable and takeable through another")
   void backlogs_are_shared_across_instances() {
-    QueuedBackend writer = new JdbcQueuedBackend(dataSource);
-    QueuedBackend reader = new JdbcQueuedBackend(dataSource);
+    QueuedBackend writer = backend(dataSource);
+    QueuedBackend reader = backend(dataSource);
     AgentId agent = AgentId.random();
     writer.agents().ensure(TYPE, agent);
     Backlogs<String> writerBacklogs = writer.backlogs(TypeRef.of(String.class));

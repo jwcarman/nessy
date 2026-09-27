@@ -28,6 +28,10 @@ Nessy has not yet released to Maven Central. Build locally
   </dependency>
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
+    <artifactId>nessy-backend-jdbc</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-inference-anthropic</artifactId>
   </dependency>
   <dependency>
@@ -38,21 +42,26 @@ Nessy has not yet released to Maven Central. Build locally
 ```
 
 `nessy-engine` pulls in `nessy-api` (the vocabulary you write tools against)
-and `nessy-spi` (the seams you write adapters against).
+and `nessy-inference-spi` (the seam you write provider adapters against). The
+engine holds the doors and nothing else: a backend is a separate dependency,
+because which one you pick is a decision the engine does not make for you.
+`nessy-backend-jdbc` is the durable one, and where `Schemas` lives.
 
 ## Two things the engine needs
 
-**A database.** The engine is PostgreSQL rows: an agent's state, its story,
-the work it owes. Bring a `DataSource` and apply the schema once:
+**A backend.** With `nessy-backend-jdbc` that is PostgreSQL rows: an agent's
+state, its story, the work it owes. Bring a `DataSource` and apply the schema
+once:
 
 ```java
 DataSource dataSource = ...;          // any PostgreSQL DataSource
 Schemas.initialize(dataSource);       // every module's nessy-schema.sql, once
 ```
 
-There is no in-memory fallback. The queries the engine rests on are
-PostgreSQL's, so a fallback would not run a degraded Nessy, it would run one
-that fails on the first turn. See [Storage](../concepts/storage.md).
+`nessy-backend-inmemory` implements the same stores with nothing behind them
+but the process, for tests and for a run that may lose its work. It is not a
+degraded PostgreSQL: it keeps the contracts the doors rest on, and keeps them
+only until the process exits. See [Storage](../concepts/storage.md).
 
 **A provider.** An `InferenceProvider` is a vendor adapter, one per
 application:

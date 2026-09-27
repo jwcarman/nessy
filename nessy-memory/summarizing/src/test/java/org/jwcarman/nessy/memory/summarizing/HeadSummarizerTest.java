@@ -33,6 +33,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.QueuedHarness;
@@ -42,14 +43,16 @@ import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.backend.jdbc.JdbcLeases;
 import org.jwcarman.nessy.backend.jdbc.JdbcQueuedBackend;
+import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
-import org.jwcarman.nessy.spi.store.Schemas;
+import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * A whole engine on PostgreSQL, with a model that answers chat and writes summaries, so the sweep
@@ -119,7 +122,11 @@ class HeadSummarizerTest {
         DefaultQueuedHarnessFactory.of(
             engine ->
                 engine
-                    .backend(new JdbcQueuedBackend(dataSource))
+                    .backend(
+                        new JdbcQueuedBackend(
+                            dataSource,
+                            new JdbcTransactionManager(dataSource),
+                            new JacksonCodecFactory(JsonMapper.builder().build())))
                     .inference(model, InferenceOptions.of("m")));
     summaries = new JdbcSummaries(dataSource, CHAT);
     summarizer =

@@ -30,7 +30,6 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.payload.Payloads;
-import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;

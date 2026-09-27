@@ -48,6 +48,13 @@
   </dependencyManagement>
 
   <dependencies>
+    <!-- The backend this application chooses: in memory, because the conversation is the
+         process. The engine names no backend, so this is the application's to bring. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-backend-inmemory</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-console</artifactId>
@@ -57,7 +64,7 @@
          run a DDL file behind its back. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spi</artifactId>
+      <artifactId>nessy-backend-jdbc</artifactId>
       <version>${project.version}</version>
     </dependency>
     <!-- The prompt is a template: ${today} is filled in per call, so the date is never stale. -->

@@ -44,13 +44,6 @@
       <artifactId>nessy-backend-spi</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- Test only: Schemas.initialize, which applies the schema the way an application would. -->
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spi</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
     <!-- Test only: the summarizer is exercised against a real JDBC queued backend. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>

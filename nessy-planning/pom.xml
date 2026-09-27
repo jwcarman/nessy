@@ -46,7 +46,7 @@
     <!-- Test only: Schemas.initialize, which applies the schema the way an application would. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spi</artifactId>
+      <artifactId>nessy-backend-jdbc</artifactId>
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>

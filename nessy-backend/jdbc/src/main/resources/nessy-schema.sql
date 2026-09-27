@@ -12,14 +12,14 @@ CREATE TABLE IF NOT EXISTS nessy_agent
 (
     agent_type   VARCHAR(64) NOT NULL,
     agent_id     UUID        NOT NULL,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at   TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     -- When it was told to end, and null while it has not been.
     --
     -- Terminating cannot be delivered to an agent in the middle of a turn, because the fold takes
     -- it only from idle. So it is recorded here, the backlog is emptied, and every read of the
     -- backlog afterwards answers with the pill. The next time the agent is idle and asks for work,
     -- ending IS the work.
-    terminated_at TIMESTAMPTZ,
+    terminated_at TIMESTAMP WITH TIME ZONE,
     PRIMARY KEY (agent_type, agent_id)
 );
 
@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS nessy_agent_effect
     -- Frozen at emit like timeout_millis above, and never touched again, so retries spend one
     -- budget rather than restarting it. Distinct from actionable_at, which moves with every
     -- attempt; this never moves.
-    deadline    TIMESTAMPTZ NOT NULL,
+    deadline    TIMESTAMP WITH TIME ZONE NOT NULL,
     -- The trace this effect belongs to, in W3C's own format, captured as the row was written.
     --
     -- Here because the thread that performs this row has nothing to inherit from: the emitting
@@ -78,9 +78,9 @@ CREATE TABLE IF NOT EXISTS nessy_agent_effect
     -- It never runs past deadline. A row coming due at its deadline comes due to be given up on,
     -- not to be tried again, and a backoff that would land beyond it is not a later retry.
     attempts_made INT          NOT NULL CHECK (attempts_made >= 0),
-    actionable_at TIMESTAMPTZ   NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL,
-    updated_at  TIMESTAMPTZ
+    actionable_at TIMESTAMP WITH TIME ZONE   NOT NULL,
+    created_at  TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at  TIMESTAMP WITH TIME ZONE
 );
 
 -- Shaped for the one query that matters: due work of one agent type, oldest first.
@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS nessy_payload
     -- is not a thing anybody can do.
     hash       BYTEA       NOT NULL,
     content    BYTEA       NOT NULL,
-    written_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    written_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     PRIMARY KEY (agent_id, hash)
 );
 
@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS nessy_agent_event
     -- is the events saying it themselves.
     starts_turn BOOLEAN     NOT NULL,
     payload     BYTEA       NOT NULL,
-    written_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    written_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     PRIMARY KEY (agent_id, seq)
 );
 
@@ -166,7 +166,7 @@ CREATE TABLE IF NOT EXISTS nessy_agent_backlog
     -- The backlog's own arrival ordinal, not an event seq: an item here is not an event yet and
     -- may never become one, since a coalescer is free to drop it.
     ordinal    BIGINT      NOT NULL,
-    arrived_at TIMESTAMPTZ NOT NULL,
+    arrived_at TIMESTAMP WITH TIME ZONE NOT NULL,
     payload    BYTEA       NOT NULL,
     PRIMARY KEY (agent_type, agent_id, ordinal)
 );
@@ -192,7 +192,7 @@ CREATE TABLE IF NOT EXISTS nessy_lease
     agent_type VARCHAR(64) NOT NULL,
     agent_id   UUID        NOT NULL,
     holder     UUID        NOT NULL,
-    expires_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
     takeovers  INT         NOT NULL DEFAULT 0,
     PRIMARY KEY (kind, agent_type, agent_id)
 );

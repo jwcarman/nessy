@@ -18,15 +18,12 @@ package org.jwcarman.nessy.backend.jdbc;
 import java.util.Objects;
 import javax.sql.DataSource;
 import org.jwcarman.codec.CodecFactory;
-import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.springframework.transaction.PlatformTransactionManager;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * A {@link DirectBackend} over one PostgreSQL {@link DataSource}: {@link JdbcAgentEvents}, {@link
@@ -45,19 +42,6 @@ public final class JdbcDirectBackend implements DirectBackend {
   private final AgentEvents events;
   private final Payloads payloads;
   private final Locks locks;
-
-  /**
-   * For a plain, non-Spring caller with no {@link PlatformTransactionManager} of its own and no
-   * {@link CodecFactory} of its own -- mints a {@link JdbcTransactionManager} over {@code
-   * dataSource} the same way {@link JdbcRowLocks#JdbcRowLocks(DataSource)} does, and writes plain
-   * Jackson bytes.
-   */
-  public JdbcDirectBackend(DataSource dataSource) {
-    this(
-        dataSource,
-        new JdbcTransactionManager(dataSource),
-        new JacksonCodecFactory(JsonMapper.builder().build()));
-  }
 
   /**
    * For a caller that already coordinates its own transactions and builds its own codecs -- a

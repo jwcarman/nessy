@@ -20,7 +20,6 @@ import javax.sql.DataSource;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.TypeRef;
-import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.agent.Agents;
 import org.jwcarman.nessy.backend.backlog.Backlogs;
@@ -29,9 +28,7 @@ import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.springframework.transaction.PlatformTransactionManager;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * A {@link QueuedBackend} over one PostgreSQL {@link DataSource}: {@link JdbcAgentEvents}, {@link
@@ -54,19 +51,6 @@ public final class JdbcQueuedBackend implements QueuedBackend {
   private final Locks locks;
   private final Agents agents;
   private final Effects effects;
-
-  /**
-   * For a plain, non-Spring caller with no {@link PlatformTransactionManager} of its own and no
-   * {@link CodecFactory} of its own -- mints a {@link JdbcTransactionManager} over {@code
-   * dataSource} the same way {@link JdbcRowLocks#JdbcRowLocks(DataSource)} does, and writes plain
-   * Jackson bytes.
-   */
-  public JdbcQueuedBackend(DataSource dataSource) {
-    this(
-        dataSource,
-        new JdbcTransactionManager(dataSource),
-        new JacksonCodecFactory(JsonMapper.builder().build()));
-  }
 
   /**
    * For a caller that already coordinates its own transactions and builds its own codecs -- a

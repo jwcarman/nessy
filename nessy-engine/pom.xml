@@ -101,12 +101,14 @@
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
-    <!-- The default direct-harness factory's fallback backend, for a caller with no database:
-         DefaultDirectHarnessFactory builds one itself when the caller supplies no DirectBackend. -->
+    <!-- Tests only, like the JDBC one below. This module holds the two doors and is typed on
+         nessy-backend-spi alone: which backend is behind a door is the application's decision, and
+         a door that named one could not be handed the other. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-backend-inmemory</artifactId>
       <version>${project.version}</version>
+      <scope>test</scope>
     </dependency>
     <!-- Tests only: EngineFixture and the harness tests build a real JDBC backend against
          PostgreSQL, and StorageCodecTest exercises the codec that lives beside it. Nothing in this
@@ -143,15 +145,17 @@
       <artifactId>nessy-backend-spi</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- Schemas, for the tests: nothing in this module's main code uses nessy-spi any more, but
-         the tests need Schemas.initialize to stand up a real schema against H2. Left at compile
-         scope rather than test scope because several downstream modules (the autoconfigure and
-         console modules, notably) reach Schemas transitively through this dependency rather than
-         declaring their own; narrowing it here would silently break their compile. -->
+    <!-- TypeRef, and nothing else from codec: this module names the types a store round-trips and
+         never encodes one itself. A CodecFactory is a backend's business, so codec-jackson is here
+         for the tests that build a backend and for nothing in main. -->
     <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spi</artifactId>
-      <version>${project.version}</version>
+      <groupId>org.jwcarman.codec</groupId>
+      <artifactId>codec-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.jwcarman.codec</groupId>
+      <artifactId>codec-jackson</artifactId>
+      <scope>test</scope>
     </dependency>
     <!-- Spring as a LIBRARY, not a framework: TaskScheduler for the effect poller. No
          ApplicationContext is required to use the engine. -->

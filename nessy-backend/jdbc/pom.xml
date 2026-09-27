@@ -81,14 +81,6 @@
       <artifactId>awaitility</artifactId>
       <scope>test</scope>
     </dependency>
-    <!-- Schemas, for the tests: SchemasTest-style bootstrap of the tables this module ships,
-         gathered off the classpath by classpath*:nessy-schema.sql. -->
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-spi</artifactId>
-      <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
     <!-- Real PostgreSQL for the integration tests. The queries this backend rests on are
          PostgreSQL's own: FOR UPDATE SKIP LOCKED, LEAST, and parameters H2 accepts that
          PostgreSQL refuses. A test on H2 would pass against exactly the bugs that matter. -->

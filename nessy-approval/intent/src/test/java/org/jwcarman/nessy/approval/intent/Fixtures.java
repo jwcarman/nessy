@@ -17,6 +17,8 @@ package org.jwcarman.nessy.approval.intent;
 
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import javax.sql.DataSource;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
@@ -27,18 +29,24 @@ import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
-import org.jwcarman.nessy.spi.store.Schemas;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
-import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+import org.jwcarman.nessy.backend.jdbc.Schemas;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
  * What the engine hands this module, and somewhere to keep what it writes.
  *
- * <p>H2, because nothing here runs an agent: the intent table belongs to this module and is read
- * and written with ordinary SQL. The engine's own queries are PostgreSQL's, and its tests use real
- * PostgreSQL for exactly that reason.
+ * <p><b>Real PostgreSQL, not H2.</b> {@link Schemas#initialize} applies every {@code
+ * nessy-schema.sql} on the classpath, and this module's test classpath carries the JDBC backend's:
+ * it declares a partial index, which H2 cannot parse and which has no portable spelling. H2 was
+ * also the wrong database to prove the thing these tests care most about -- a declaration that
+ * loses an insert race and retries -- because a compare-and-set that holds on H2 says nothing about
+ * the database this store actually runs on.
+ *
+ * <p>One container for the JVM, and a fresh schema per call to {@link #freshDatabase()}, so a test
+ * that asserts a store holds nothing still starts from nothing.
  */
 final class Fixtures {
 
@@ -49,12 +57,21 @@ final class Fixtures {
 
   private Fixtures() {}
 
-  static EmbeddedDatabase freshDatabase() {
-    EmbeddedDatabase database =
-        new EmbeddedDatabaseBuilder()
-            .setType(EmbeddedDatabaseType.H2)
-            .generateUniqueName(true)
-            .build();
+  private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
+  private static final AtomicInteger SCHEMAS = new AtomicInteger();
+
+  static {
+    POSTGRES.start();
+  }
+
+  /** An empty schema of its own, with every {@code nessy-schema.sql} on the classpath applied. */
+  static DataSource freshDatabase() {
+    String schema = "intent_" + SCHEMAS.incrementAndGet();
+    DriverManagerDataSource database =
+        new DriverManagerDataSource(
+            POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+    new JdbcTemplate(database).execute("CREATE SCHEMA " + schema);
+    database.setSchema(schema);
     Schemas.initialize(database);
     return database;
   }

@@ -7,6 +7,6 @@ CREATE TABLE IF NOT EXISTS nessy_summary (
   from_turn    BIGINT      NOT NULL,
   through_turn BIGINT      NOT NULL,
   content      TEXT        NOT NULL,
-  updated_at   TIMESTAMPTZ NOT NULL,
+  updated_at   TIMESTAMP WITH TIME ZONE NOT NULL,
   PRIMARY KEY (agent_type, agent_id)
 );

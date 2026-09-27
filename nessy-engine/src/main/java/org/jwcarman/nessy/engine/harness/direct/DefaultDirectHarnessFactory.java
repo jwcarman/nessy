@@ -26,7 +26,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.BiFunction;
 import org.jwcarman.codec.TypeRef;
-import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -40,7 +39,6 @@ import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.tool.InputSchemaGenerator;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.event.AgentEvent;
-import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.effect.ApprovalHandler;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
@@ -66,7 +64,6 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.OutputSchema;
 import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Makes direct harnesses that share what should be shared.
@@ -175,20 +172,6 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
   /** One customizer, for a caller that is not a container. */
   public static DefaultDirectHarnessFactory of(Customizer<DirectHarnessFactoryConfig> customizer) {
     return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
-  }
-
-  /** Everything in one process and nothing written down: a CLI, a test, a one-shot. */
-  public static DefaultDirectHarnessFactory inMemory(
-      InferenceProvider provider, InputSchemaGenerator schemas, ObjectMapper mapper) {
-    return of(
-        config ->
-            config
-                .backend(
-                    new InMemoryDirectBackend(
-                        new JacksonCodecFactory(JsonMapper.builder().build())))
-                .provider(provider)
-                .schemas(schemas)
-                .mapper(mapper));
   }
 
   /**

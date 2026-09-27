@@ -123,8 +123,11 @@ See [Authorization](concepts/authorization.md).
 | Module | Who compiles against it |
 |---|---|
 | `nessy-api` | tool and policy authors: `Tool`, `Approver`, `Awaited`, `AgentEvent`, `AgentEventListener`, the block vocabulary |
-| `nessy-spi` | adapter authors: `InferenceProvider`, and `Schemas` |
-| `nessy-engine` | application builders: `DefaultHarnessFactory`, the durable stores |
+| `nessy-inference-spi` | adapter authors: `InferenceProvider` |
+| `nessy-backend-spi` | backend authors: the stores a door writes to |
+| `nessy-backend-jdbc` | one PostgreSQL `DataSource` behind either door, and `Schemas` |
+| `nessy-backend-inmemory` | the same stores with nothing behind them but the process |
+| `nessy-engine` | application builders: the two doors, and the fold behind them |
 | `nessy-inference-anthropic`, `nessy-inference-openai`, `nessy-inference-gemini`, `nessy-inference-bedrock` | the provider adapters; the OpenAI one reaches every OpenAI-compatible endpoint |
 | `nessy-console` | terminal applications: `Repl.run` |
 | `nessy-spring-boot-starter` | Boot applications: one dependency, no code of its own |

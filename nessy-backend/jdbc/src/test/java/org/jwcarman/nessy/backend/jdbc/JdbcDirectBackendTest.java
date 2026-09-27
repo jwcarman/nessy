@@ -25,6 +25,7 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.PayloadRef;
@@ -35,9 +36,10 @@ import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.lock.LockKind;
 import org.jwcarman.nessy.backend.payload.Payloads;
-import org.jwcarman.nessy.spi.store.Schemas;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * What {@link JdbcDirectBackend} hands back is not a copy of anything -- it is the same three
@@ -46,6 +48,18 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @Tag("container")
 @DisplayName("A direct backend over a database")
 class JdbcDirectBackendTest {
+
+  /**
+   * What the Spring auto-configuration hands in, spelled out here. JdbcDirectBackend takes a codec
+   * factory rather than making one, so a test says which bytes it means exactly as an application
+   * does.
+   */
+  private static DirectBackend backend(DataSource dataSource) {
+    return new JdbcDirectBackend(
+        dataSource,
+        new JdbcTransactionManager(dataSource),
+        new JacksonCodecFactory(JsonMapper.builder().build()));
+  }
 
   private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
 
@@ -70,8 +84,8 @@ class JdbcDirectBackendTest {
   @DisplayName(
       "a payload put through one instance is readable through another built over the same database")
   void payloads_are_shared_across_instances() {
-    DirectBackend writer = new JdbcDirectBackend(dataSource);
-    DirectBackend reader = new JdbcDirectBackend(dataSource);
+    DirectBackend writer = backend(dataSource);
+    DirectBackend reader = backend(dataSource);
     AgentId agent = AgentId.random();
 
     PayloadRef ref = writer.payloads().forAgent(agent).put(List.of(new Block.Text("hello")));
@@ -85,8 +99,8 @@ class JdbcDirectBackendTest {
   @DisplayName(
       "an event appended through one instance is readable through another built over the same database")
   void events_are_shared_across_instances() {
-    DirectBackend writer = new JdbcDirectBackend(dataSource);
-    DirectBackend reader = new JdbcDirectBackend(dataSource);
+    DirectBackend writer = backend(dataSource);
+    DirectBackend reader = backend(dataSource);
     AgentId agent = AgentId.random();
     AgentEvent event = new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), new PayloadRef("p1"));
 
@@ -98,8 +112,8 @@ class JdbcDirectBackendTest {
   @Test
   @DisplayName("a lock held through one instance excludes a second instance over the same agent")
   void locks_exclude_across_instances() throws Exception {
-    DirectBackend first = new JdbcDirectBackend(dataSource);
-    DirectBackend second = new JdbcDirectBackend(dataSource);
+    DirectBackend first = backend(dataSource);
+    DirectBackend second = backend(dataSource);
     AgentId agent = AgentId.random();
     CountDownLatch holding = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);

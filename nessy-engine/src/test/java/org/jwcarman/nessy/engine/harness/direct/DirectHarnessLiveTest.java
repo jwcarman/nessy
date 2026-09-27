@@ -30,6 +30,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.TypeRef;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Customizer;
@@ -37,8 +38,10 @@ import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.engine.schema.VictoolsInputSchemaGenerator;
 import org.jwcarman.nessy.inference.openai.OpenAiInferenceProvider;
+import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -76,10 +79,14 @@ class DirectHarnessLiveTest {
 
   private static DefaultDirectHarnessFactory factory() {
     assumeTrue(serving(), "no OpenAI-compatible endpoint at " + BASE_URL);
-    return DefaultDirectHarnessFactory.inMemory(
-        OpenAiInferenceProvider.of(c -> c.apiKey(key()).baseUrl(BASE_URL)),
-        new VictoolsInputSchemaGenerator(),
-        JsonMapper.builder().build());
+    ObjectMapper mapper = JsonMapper.builder().build();
+    return DefaultDirectHarnessFactory.of(
+        config ->
+            config
+                .backend(new InMemoryDirectBackend(new JacksonCodecFactory(mapper)))
+                .provider(OpenAiInferenceProvider.of(c -> c.apiKey(key()).baseUrl(BASE_URL)))
+                .schemas(new VictoolsInputSchemaGenerator())
+                .mapper(mapper));
   }
 
   private static Customizer<DirectHarnessConfig<String>> config() {

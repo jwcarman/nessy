@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS nessy_episode (
   summary         TEXT,
   embedding       REAL[],
   embedding_model TEXT,
-  opened_at       TIMESTAMPTZ NOT NULL,
-  closed_at       TIMESTAMPTZ,
+  opened_at       TIMESTAMP WITH TIME ZONE NOT NULL,
+  closed_at       TIMESTAMP WITH TIME ZONE,
   PRIMARY KEY (agent_type, agent_id, episode_no)
 );

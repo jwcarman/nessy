@@ -25,7 +25,7 @@ import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
-import org.jwcarman.nessy.spi.store.Schemas;
+import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 

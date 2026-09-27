@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spi.store;
+package org.jwcarman.nessy.backend.jdbc;
 
 import java.util.Objects;
 import javax.sql.DataSource;
@@ -46,15 +46,14 @@ import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
  * {@code LIMIT ?} all work on both it and PostgreSQL. The one failure was {@code TIMESTAMPTZ},
  * which is a PostgreSQL alias — {@code TIMESTAMP WITH TIME ZONE} is the standard spelling and both
  * accept it. And no reserved words as identifiers: {@code key} is reserved in H2 and merely
- * unreserved in PostgreSQL, so a column named {@code key} passes there and fails here. One DDL file
- * per module serves every database only while both rules hold — which is why {@code SchemasTest}
- * runs real DDL against H2 rather than trusting anyone to remember them.
+ * unreserved in PostgreSQL, so a column named {@code key} passes there and fails here.
  *
- * <p><b>Staying here for now, not moving with the rest of {@code nessy-spi}.</b> This is
- * JDBC-specific and belongs beside the tables it initializes, in a {@code nessy-backend-jdbc}
- * module that does not exist yet -- it is a later stage of the backends design record. Eleven
- * modules use this type today, so moving it is its own change rather than something to fold into
- * the {@code Locks}/{@code Payloads}/event-grammar move that emptied the rest of {@code nessy-spi}.
+ * <p><b>Nothing enforces those two rules today.</b> They are conventions a reader has to remember,
+ * not a test that fails. A test that ran every declared file against H2 used to hold them, and it
+ * went when the engine was transplanted; the tests that create these tables now all run against
+ * PostgreSQL, where a vendor alias passes and so proves nothing about portability. Whether that
+ * wants restoring depends on whether one DDL file per module is still meant to serve more than one
+ * database -- which is the open question about H2, not a gap to paper over here.
  */
 public final class Schemas {
 

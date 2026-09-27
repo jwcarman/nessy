@@ -32,6 +32,13 @@
   <description>One call from a main method to a working terminal agent</description>
 
   <dependencies>
+    <!-- The backend this application chooses: in memory, because the conversation is the
+         process. The engine names no backend, so this is the application's to bring. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-backend-inmemory</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-jdbc</artifactId>
@@ -39,6 +46,13 @@
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-engine</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- Schemas.initialize, to create the tables before the first turn. Declared here rather than
+         reached through the starter, whose copy is optional and so does not travel. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-backend-jdbc</artifactId>
       <version>${project.version}</version>
     </dependency>
     <!-- The model comes from whichever credentials are in the environment: a minimal Boot context

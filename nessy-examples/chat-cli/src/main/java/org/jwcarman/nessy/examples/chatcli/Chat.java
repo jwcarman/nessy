@@ -19,8 +19,11 @@ package org.jwcarman.nessy.examples.chatcli;
 import java.time.Clock;
 import java.time.LocalDate;
 import javax.sql.DataSource;
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
+import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
+import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.Repl;
 import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
@@ -35,7 +38,6 @@ import org.jwcarman.nessy.planning.Plans;
 import org.jwcarman.nessy.prompt.PromptVariableSource;
 import org.jwcarman.nessy.prompt.TemplatedSystemPrompt;
 import org.jwcarman.nessy.prompt.spring.SpringPromptTemplateFactory;
-import org.jwcarman.nessy.spi.store.Schemas;
 import org.jwcarman.nessy.spring.boot.NessyAutoConfiguration;
 import org.jwcarman.nessy.spring.boot.prompt.PromptAutoConfiguration;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,7 +45,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
-import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * A terminal chat with a notebook, a plan, and one tool a person has to approve.
@@ -106,11 +108,23 @@ public class Chat {
     return new JdbcPlans(database, TYPE);
   }
 
-  /** Everything an application owns once. In memory, because the conversation is the process. */
+  /**
+   * Everything an application owns once. In memory, because the conversation is the process.
+   *
+   * <p>The mapper and the codec factory are both asked for rather than built: Boot configures the
+   * one, the starter configures the other, and an application that made its own would be storing
+   * bytes by different rules than everything else in the same process.
+   */
   @Bean
-  public DirectHarnessFactory harnesses(InferenceProvider provider) {
-    return DefaultDirectHarnessFactory.inMemory(
-        provider, new VictoolsInputSchemaGenerator(), JsonMapper.builder().build());
+  public DirectHarnessFactory harnesses(
+      InferenceProvider provider, ObjectMapper mapper, CodecFactory codecs) {
+    return DefaultDirectHarnessFactory.of(
+        config ->
+            config
+                .backend(new InMemoryDirectBackend(codecs))
+                .provider(provider)
+                .schemas(new VictoolsInputSchemaGenerator())
+                .mapper(mapper));
   }
 
   @Bean

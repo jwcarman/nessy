@@ -284,7 +284,7 @@ class JdbcIntentsTest {
    * a caller-supplied codec is actually honored by the recipe — the raw stored bytes carry the
    * marker, and a read still round-trips through it. A local hand-rolled equivalent of
    * nessy-agent's own {@code MarkerBytesCodec} test support, which this module cannot depend on
-   * (design authority: nessy-intent depends only on nessy-api and nessy-spi).
+   * (design authority: nessy-intent depends only on nessy-api).
    */
   private static final class MarkerBytesCodec implements Codec<byte[]> {
 

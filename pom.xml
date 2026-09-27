@@ -57,7 +57,6 @@
     <module>nessy-bom</module>
     
     <module>nessy-api</module>
-    <module>nessy-spi</module>
     <module>nessy-backend</module>
     <module>nessy-engine</module>
     <module>nessy-prompt</module>
@@ -198,8 +197,8 @@
          dependencyManagement; see the comment there for why it is last. -->
     <spring-boot.version>4.1.1</spring-boot.version>
 
-    <!-- Spring Framework, taken as a LIBRARY, never as a framework: nessy-spi uses JdbcClient,
-         ResourceDatabasePopulator and EmbeddedDatabaseBuilder, all of which work from a bare
+    <!-- Spring Framework, taken as a LIBRARY, never as a framework: the JDBC backend uses JdbcClient
+         and ResourceDatabasePopulator, both of which work from a bare
          DataSource with no ApplicationContext and no Spring Boot. That is what lets a plain main()
          (nessy-console) and a Boot application share one storage layer.
 
@@ -399,11 +398,6 @@
       </dependency>
       <dependency>
         <groupId>org.jwcarman.nessy</groupId>
-        <artifactId>nessy-spi</artifactId>
-        <version>${project.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.jwcarman.nessy</groupId>
         <artifactId>nessy-backend-spi</artifactId>
         <version>${project.version}</version>
       </dependency>
@@ -436,13 +430,6 @@
         <groupId>org.jwcarman.nessy</groupId>
         <artifactId>nessy-spring-boot-autoconfigure</artifactId>
         <version>${project.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.jwcarman.nessy</groupId>
-        <artifactId>nessy-spi</artifactId>
-        <version>${project.version}</version>
-        <classifier>tests</classifier>
-        <type>test-jar</type>
       </dependency>
       <dependency>
         <groupId>org.postgresql</groupId>
