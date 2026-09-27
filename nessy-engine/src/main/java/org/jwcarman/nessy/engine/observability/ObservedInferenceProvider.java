@@ -200,9 +200,8 @@ public final class ObservedInferenceProvider implements InferenceProvider {
     };
   }
 
-  /** One span attribute, or none at all when nobody counted that part. */
   /**
-   * An attribute per count that exists, and none where a vendor said nothing.
+   * One span attribute, or none at all when nobody counted that part.
    *
    * <p>The distinction is the type's, not this method's: {@link Tokens} is either a count or the
    * absence of one, so there is no null to forget to check and no zero to mistake for an answer.

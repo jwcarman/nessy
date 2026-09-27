@@ -104,6 +104,8 @@ public final class InMemoryEffects implements Effects {
     }
   }
 
+  private static final String ATTEMPT_REQUIRED = "attempt must not be null";
+
   private final Codec<AgentEffect> effects;
   private final Codec<EffectOutcome> outcomes;
   private final Map<UUID, Row> rows = new ConcurrentHashMap<>();
@@ -219,19 +221,18 @@ public final class InMemoryEffects implements Effects {
    */
   @Override
   public synchronized List<FailedAttempt> attemptsOf(Attempt attempt) {
-    Objects.requireNonNull(attempt, "attempt must not be null");
+    Objects.requireNonNull(attempt, ATTEMPT_REQUIRED);
     Row row = rows.get(attempt.effectId());
     return row == null ? List.of() : row.failedAttempts;
   }
 
   @Override
   public AgentEffect effectOf(Attempt attempt) {
-    return effects.decode(Objects.requireNonNull(attempt, "attempt must not be null").payload());
+    return effects.decode(Objects.requireNonNull(attempt, ATTEMPT_REQUIRED).payload());
   }
 
   @Override
   public EffectOutcome failureOf(Attempt attempt) {
-    return outcomes.decode(
-        Objects.requireNonNull(attempt, "attempt must not be null").failurePayload());
+    return outcomes.decode(Objects.requireNonNull(attempt, ATTEMPT_REQUIRED).failurePayload());
   }
 }

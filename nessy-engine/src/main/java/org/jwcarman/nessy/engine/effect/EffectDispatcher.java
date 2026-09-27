@@ -398,7 +398,7 @@ public class EffectDispatcher {
    * rather than to this switch.
    */
   private static boolean worthAnotherGo(EffectOutcome outcome) {
-    return outcome instanceof EffectOutcome.InferenceFailed(Failure.Transient _, Usage _);
+    return outcome instanceof EffectOutcome.InferenceFailed(Failure.Transient _, _);
   }
 
   /**

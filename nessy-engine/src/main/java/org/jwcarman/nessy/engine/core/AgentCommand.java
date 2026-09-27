@@ -63,8 +63,7 @@ public sealed interface AgentCommand {
    * while the agent is busy and asks when the agent is not. The state refusing when busy is not
    * redundant with the harness not asking -- two harnesses can both read an idle state and both
    * ask, and this is what makes the loser harmless.
-   */
-  /**
+   *
    * @param at when the turn is opening, stamped by whoever is asking rather than read inside the
    *     fold. The fold reads no clock: the same command has to decide the same way whenever it is
    *     applied, and an instant that arrives with it does, where one it fetched would not.

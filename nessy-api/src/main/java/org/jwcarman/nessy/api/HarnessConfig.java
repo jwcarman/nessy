@@ -57,7 +57,6 @@ public interface HarnessConfig<SELF extends HarnessConfig<SELF>> {
    */
   AgentType agentType();
 
-  /** Something the model may call. */
   /**
    * What bounds a turn that will not finish.
    *
@@ -70,6 +69,7 @@ public interface HarnessConfig<SELF extends HarnessConfig<SELF>> {
    */
   SELF turnPolicy(TurnPolicy policy);
 
+  /** Something the model may call. */
   <T> SELF tool(Tool<T> tool);
 
   /**
