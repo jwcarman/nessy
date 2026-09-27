@@ -25,8 +25,11 @@ the front door: enough to run something real and decide what to install.
 
 ## The five-minute example
 
-Build a harness once, keep it, tell it things. A PostgreSQL `DataSource` and
-a key, and this makes a real call:
+Two harness doors, and they are peers. `DirectHarness<I, O>.ask` runs a
+turn on the calling thread and hands back an `Outcome<O>` — for a caller
+standing there waiting on an answer. `QueuedHarness<I>.tell` always accepts
+and returns nothing — for work nobody is waiting on. Build one once, keep
+it, and ask it things:
 
 ```bash
 export ANTHROPIC_API_KEY=...
@@ -46,24 +49,26 @@ class AddTool implements Tool<Add> {
     }
 }
 
-Schemas.initialize(dataSource);
+DirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> config
+        .backend(backend)
+        .provider(AnthropicInferenceProvider.fromEnv()));
 
-DefaultHarnessFactory factory = new DefaultHarnessFactory(engine -> engine
-        .dataSource(dataSource)
-        .inference(AnthropicInferenceProvider.fromEnv(), InferenceOptions.of("claude-sonnet-5")));
+DirectHarness<String, String> harness = factory.<String>create(
+        new AgentType("assistant"),
+        config -> config
+                .systemPrompt("You are a terse assistant.")
+                .inference(in -> in.model("claude-sonnet-5"))
+                .tool(new AddTool()));
 
-Harness<String> harness = factory.create(config -> config
-        .agentType(new AgentType("assistant"))
-        .systemPrompt("You are a terse assistant.")
-        .listener(AgentEventListener.of(on -> on
-                .onContentDelta((type, id, delta) -> System.out.print(delta.text()))))
-        .tool(new AddTool()));
-
-harness.observe(AgentId.random(), "what is 2+2?");
+Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
 ```
 
-`observe` is a post, not a call: it returns as soon as the observation is
-durable, and the answer is **narrated** to listeners rather than returned.
+`ask` never throws for anything it understands: a model declining, a turn
+running out of budget or the agent already being busy are `Outcome` arms —
+`Answered`, `Refused`, `Failed`, `Busy` — to branch on, not faults. See
+[The Harness](https://jwcarman.github.io/nessy/guides/harness/) for the
+queued door, which trades that returned outcome for a backlog and answers
+narrated to listeners.
 
 For a terminal agent, one call does the whole bootstrap: database, provider,
 harness and loop:
@@ -161,12 +166,12 @@ add `nessy-inference-spi`; an application building an agent depends on
 
 | Artifact | What it is for |
 |---|---|
-| `nessy-api` | the shared vocabulary: `Tool`, `Approver`, `Awaited`, blocks, `AgentEvent`, `AgentEventListener` |
+| `nessy-api` | the shared vocabulary: `Tool`, `Approver`, `Awaited`, blocks, `NarrationListener`, `Outcome` |
 | `nessy-inference-spi` | adapter authors: `InferenceProvider` |
-| `nessy-backend-spi` | backend authors: the stores a door writes to |
+| `nessy-backend-spi` | backend authors: `DirectBackend`, `QueuedBackend`, and `Leases` for work that must run once across processes |
 | `nessy-backend-jdbc` | one PostgreSQL `DataSource` behind either door, and `Schemas` |
 | `nessy-backend-inmemory` | the same stores with nothing behind them but the process |
-| `nessy-engine` | the engine: the two doors, and the fold behind them |
+| `nessy-engine` | the two doors' factories, and the fold behind them |
 | `nessy-inference-anthropic`, `nessy-inference-openai`, `nessy-inference-gemini`, `nessy-inference-bedrock` | the provider adapters; the OpenAI one reaches every OpenAI-compatible endpoint |
 | `nessy-console` | terminal applications: `Repl.run` |
 | `nessy-spring-boot-starter` | the one dependency a Boot application adds; no code of its own |
@@ -177,7 +182,6 @@ add `nessy-inference-spi`; an application building an agent depends on
 | `nessy-memory-summarizing` | one rolling summary per agent, replaced as the story grows |
 | `nessy-memory-episodic` | the story cut into episodes the model names; each summarised when it closes and shown again when it is relevant, ranked by embedding when the store has one |
 | `nessy-planning` | the Planning pattern: a plan an agent writes and works through across turns |
-| `nessy-lease` | background work that must run once across processes |
 | `nessy-narration-odyssey` | agent events as resumable streams, for a browser |
 | `nessy-approval-risk` | the risk gate: two thresholds with a person in between |
 | `nessy-approval-intent` | the declared-intent claim channel |
@@ -202,7 +206,7 @@ add `nessy-inference-spi`; an application building an agent depends on
 | Prompts: templates with holes, and sources for the values | [Prompts](https://jwcarman.github.io/nessy/guides/prompts/) |
 | Events: listeners, the builder, and streams a browser can resume | [Events](https://jwcarman.github.io/nessy/guides/events/) |
 | MCP: import a remote server's tools as ordinary tools | [MCP Clients](https://jwcarman.github.io/nessy/guides/mcp-clients/) |
-| The harness: kept, not closed; observing, coalescing, and approval desks | [The Harness](https://jwcarman.github.io/nessy/guides/harness/) |
+| The harness: two doors, kept not closed; outcomes, coalescing, and approval desks | [The Harness](https://jwcarman.github.io/nessy/guides/harness/) |
 | Observability: GenAI semantic conventions, traces that cross the outbox, and the record | [Observability](https://jwcarman.github.io/nessy/guides/observability/) |
 | Spring Boot: a harness and every optional module from `nessy.*` properties and beans | [Spring Boot](https://jwcarman.github.io/nessy/guides/spring-boot/) |
 

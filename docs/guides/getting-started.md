@@ -1,7 +1,7 @@
 # Getting Started
 
-Build a harness once, keep it, tell it things. This page walks that door
-through line by line.
+Build a direct harness once, keep it, ask it things. This page walks that
+door through line by line, then shows the other one.
 
 ## Install
 
@@ -28,40 +28,39 @@ Nessy has not yet released to Maven Central. Build locally
   </dependency>
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
-    <artifactId>nessy-backend-jdbc</artifactId>
+    <artifactId>nessy-backend-inmemory</artifactId>
   </dependency>
   <dependency>
     <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-inference-anthropic</artifactId>
   </dependency>
   <dependency>
-    <groupId>org.postgresql</groupId>
-    <artifactId>postgresql</artifactId>
+    <groupId>org.jwcarman.codec</groupId>
+    <artifactId>codec-jackson</artifactId>
   </dependency>
 </dependencies>
 ```
 
 `nessy-engine` pulls in `nessy-api` (the vocabulary you write tools against)
-and `nessy-inference-spi` (the seam you write provider adapters against). The
-engine holds the doors and nothing else: a backend is a separate dependency,
-because which one you pick is a decision the engine does not make for you.
-`nessy-backend-jdbc` is the durable one, and where `Schemas` lives.
+and `nessy-inference-spi` (the seam you write provider adapters against). A
+backend is a separate dependency, because which one you pick is a decision
+the engine does not make for you.
 
-## Two things the engine needs
+## What the factory needs
 
-**A backend.** With `nessy-backend-jdbc` that is PostgreSQL rows: an agent's
-state, its story, the work it owes. Bring a `DataSource` and apply the schema
-once:
+**A backend.** `nessy-backend-inmemory` keeps an agent's state, its story
+and its outstanding work in the process's own heap — nothing here is
+durable, and nothing here needs to be, for a first run:
 
 ```java
-DataSource dataSource = ...;          // any PostgreSQL DataSource
-Schemas.initialize(dataSource);       // every module's nessy-schema.sql, once
+CodecFactory codecs = new JacksonCodecFactory(JsonMapper.builder().build());
+DirectBackend backend = new InMemoryDirectBackend(codecs);
 ```
 
-`nessy-backend-inmemory` implements the same stores with nothing behind them
-but the process, for tests and for a run that may lose its work. It is not a
-degraded PostgreSQL: it keeps the contracts the doors rest on, and keeps them
-only until the process exits. See [Storage](../concepts/storage.md).
+`nessy-backend-jdbc` implements the same `DirectBackend` seam over
+PostgreSQL rows instead, for anything that must survive a restart — bring a
+`DataSource`, call `Schemas.initialize(dataSource)` once, and hand a
+`JdbcDirectBackend` to the factory instead. See [Storage](../concepts/storage.md).
 
 **A provider.** An `InferenceProvider` is a vendor adapter, one per
 application:
@@ -100,66 +99,69 @@ good field names *is* the documentation. `Awaited.ready` answers now;
 
 ## The smallest harness
 
-Two configurations, and the difference matters. **The engine** is one per
-process:
+**The factory** is one per process, built from the backend and the
+provider:
 
 ```java
-DefaultHarnessFactory factory = new DefaultHarnessFactory(engine -> engine
-        .dataSource(dataSource)
-        .inference(provider, InferenceOptions.of("claude-sonnet-5")));
+DirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> config
+        .backend(backend)
+        .provider(provider));
 ```
 
-**A harness** is one per agent type:
+**A harness** is one per agent type, and states its own model — there is no
+factory-wide default to fall back on:
 
 ```java
-Harness<String> harness = factory.create(config -> config
-        .agentType(new AgentType("assistant"))
-        .systemPrompt("You are a terse assistant.")
-        .tool(new AddTool()));
+DirectHarness<String, String> harness = factory.<String>create(
+        new AgentType("assistant"),
+        config -> config
+                .systemPrompt("You are a terse assistant.")
+                .inference(in -> in.model("claude-sonnet-5"))
+                .tool(new AddTool()));
 ```
 
-`create(customizer)` is the `String` observation type. Use your own record
-when a string is not the honest shape, and say how it reads to the model:
+`create` with no answer type is the `String` overload: the model's prose,
+joined, unparsed. Ask for a Java type instead when the caller wants a
+shape, and the shape reaches the provider as a schema:
 
 ```java
-record HouseEvent(String room, String what) {}
+record Verdict(boolean approved, String reason) {}
 
-Harness<HouseEvent> house = factory.create(HouseEvent.class, config -> config
-        .agentType(new AgentType("watchman"))
-        .systemPrompt("You watch a house.")
-        .observationRenderer(event -> List.of(new Block.Text(event.room() + ": " + event.what()))));
+DirectHarness<String, Verdict> reviewer = factory.<String, Verdict>create(
+        new AgentType("reviewer"), Verdict.class,
+        config -> config
+                .systemPrompt("You review a request and decide.")
+                .inference(in -> in.model("claude-sonnet-5")));
 ```
 
-The model and the token cap come from the engine unless a harness says
-otherwise:
+## Asking, and getting an outcome
+
+`ask` runs the whole turn on the calling thread and hands back an
+`Outcome<O>` — nothing here throws for anything it understands:
 
 ```java
-config.inference(in -> in.model("claude-haiku-4-5").maxTokens(1024));
+Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
+
+switch (outcome) {
+    case Outcome.Answered<String>(String said) -> System.out.println(said);
+    case Outcome.Refused<String>(String category) -> System.out.println("refused: " + category);
+    case Outcome.Failed<String>(String reason) -> System.out.println("failed: " + reason);
+    case Outcome.Busy<String> _ -> System.out.println("busy; try again");
+}
 ```
 
-## Telling it something, and hearing back
+`Busy` means no turn ran at all — somebody else already holds this agent —
+and is the only arm worth simply retrying. See [The Harness](harness.md#outcome)
+for what each arm carries and why.
 
-`observe` is a post, not a call. It returns as soon as the observation is
-durable; the answer is **narrated** to listeners.
+A listener is still worth attaching even though the answer comes back
+directly: it is the only way to watch the deltas arrive before `ask`
+returns.
 
 ```java
-AgentId agentId = AgentId.random();
-
-Harness<String> harness = factory.create(config -> config
-        .agentType(new AgentType("assistant"))
-        .systemPrompt("You are a terse assistant.")
-        .listener(AgentEventListener.of(on -> on
-                .onContentDelta((type, id, delta) -> System.out.print(delta.text()))
-                .onTurnEnded((type, id, ended) -> System.out.println())))
-        .tool(new AddTool()));
-
-harness.observe(agentId, "what is 2+2?");
+.listener(NarrationListener.of(on -> on
+        .onContentDelta((type, id, delta) -> System.out.print(delta.text()))))
 ```
-
-A listener hears every agent of its harness, in order, off the thread that
-folds the turn. Attach one to the engine instead to hear every harness. See
-[Events](events.md) for the eighteen event kinds and for streaming them to a
-browser.
 
 ## The console door
 
@@ -183,17 +185,35 @@ Run it against a local model with no key and no cost:
 export OPENAI_API_KEY=not-needed
 export OPENAI_BASE_URL=http://localhost:1234/v1
 export NESSY_MODEL=<a model id your endpoint serves>
-export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/nessy
-export SPRING_DATASOURCE_USERNAME=nessy
-export SPRING_DATASOURCE_PASSWORD=secret
 ```
 
 `nessy-examples/chat-cli` is exactly this, with a notebook, a plan and a
 templated prompt added.
 
+## Telling it something instead
+
+Not every caller is waiting. `QueuedHarness<I>.tell` always accepts and
+returns nothing; the turn happens later, on the harness's own dispatcher,
+and the answer is narrated to listeners rather than returned:
+
+```java
+QueuedHarnessFactory factory = DefaultQueuedHarnessFactory.of(config -> config
+        .backend(new InMemoryQueuedBackend(codecs))
+        .inference(provider, InferenceOptions.of("claude-sonnet-5")));
+
+QueuedHarness<String> harness = factory.create(new AgentType("watchman"), config -> config
+        .systemPrompt("You watch a house."));
+
+harness.tell(AgentId.random(), "the porch light came on");
+```
+
+See [The Harness](harness.md) for the queued door's backlog policy, its
+approvals that can genuinely wait on a person, and the rest of its
+configuration surface.
+
 ## Where next
 
-- [The Harness](harness.md), the full configuration surface
+- [The Harness](harness.md), both doors and their full configuration surface
 - [Agent as Scope](../concepts/agent-as-scope.md), one locked row per id, phases as data
 - [Tools](../concepts/tools.md), deferring, and answering from outside
 - [Authorization](../concepts/authorization.md), approvers and reply tokens
