@@ -60,22 +60,30 @@ Only recorded facts:
 | field | what it is |
 |---|---|
 | `startedAt` | the instant the turn opened |
-| `modelCalls` | how many inferences of this turn came back with something -- an answer, a refusal, or a request for work |
+| `modelCalls` | how many times this turn called the model, every attempt included |
 | `toolCalls` | how many calls the model has asked for in this turn |
 | `failedAttempts` | how many attempts at the model produced nothing |
-| `usage` | what this turn spent getting somewhere, summed |
-| `failedUsage` | what this turn burned on attempts that produced nothing, summed |
+| `usage` | what this turn spent, summed -- everything, including the calls that bought nothing |
+| `failedUsage` | the part of `usage` that bought nothing, summed |
 
 It is accumulated by the fold and is part of the state a replay rebuilds: `AgentState.Inferring`
 and `AgentState.AwaitingActions` each carry one, and it moves with every event they accept. A turn
 that begins has an empty tally; `Idle` and `Terminal` carry none, because there is no turn.
 
-**Productive and wasted spend are two counters, not one sum.** They answer different questions,
-and a policy wants both. Total spend is a budget signal. The share of it that bought nothing is a
-*thrashing* signal, and thrashing is the case actually worth failing a turn over: a turn spending
-steadily is working, a turn spending on failures is stuck. Summed into one number the two are
-indistinguishable, and the only policy anyone could write would bound total spend -- which ends
-the working turn and the stuck one alike. `failedUsage` composes with `failedAttempts` rather than
+**Total spend and wasted spend are two counters, and one contains the other.** They answer
+different questions, and a policy wants both. Total spend is a budget signal. The share of it that
+bought nothing is a *thrashing* signal, and thrashing is the case actually worth failing a turn
+over: a turn spending steadily is working, a turn spending on failures is stuck. With only the
+total, the two are indistinguishable, and the only policy anyone could write would bound total
+spend -- which ends the working turn and the stuck one alike.
+
+**Each counter is named for the question it answers, not for a share of a partition.** `usage` is
+everything the turn spent and `modelCalls` is every call it made, because those are what a reader
+means by the words; `failedUsage` and `failedAttempts` are the subsets that bought nothing.
+Subtract to get the productive figures. An earlier draft made the four numbers partition by
+narrowing `usage` and `modelCalls` to the productive calls -- tidier arithmetic, and wrong where it
+counts, since the totals are what anyone reconciling against a vendor's bill or a rate limit
+reaches for first. `failedUsage` composes with `failedAttempts` rather than
 duplicating it: the count says how often the turn stumbled, the usage says what each stumble cost,
 and a cheap failing call and an expensive one are different problems that a policy reading only
 one of the two could not tell apart. `failedAttempts` is there so a policy can see stumbling
@@ -98,13 +106,19 @@ and no clock.
 `InferenceAttempted` (below), so the fold is handed every number it needs on the events it
 applies. The counting rules:
 
-- `modelCalls` goes up by one on `InferenceAnswered`, `InferenceRefused` and `ActionsRequested`.
-  Every one of them *is* an inference that came back with something; `ActionsRequested`'s javadoc
-  already makes the point that a turn calling three tools pays for four inferences. An earlier
-  draft counted `InferenceFailed` here too. It moved to `failedAttempts` when the tally split,
-  so that each count pairs with exactly one usage -- `modelCalls` with `usage`, `failedAttempts`
-  with `failedUsage` -- and every try the turn made is `modelCalls + failedAttempts` with nothing
-  counted twice.
+- `modelCalls` goes up by one on every inference event: `InferenceAnswered`, `InferenceRefused`,
+  `ActionsRequested`, `InferenceFailed` and `InferenceAttempted`. It answers "how many times did
+  this turn call the model", and a call that failed was still a call -- someone was asked, a
+  request crossed the wire, a rate limit was consumed. A draft of this spec had it count only the
+  calls that came back with something, so that the counts would partition. **That is the wrong
+  trade.** `modelCalls` is the number a reader reaches for when reasoning about load or rate
+  limits, and one that said 2 while the engine made 5 requests would be wrong in the way that
+  matters most. `ActionsRequested`'s own javadoc already makes the related point: a turn calling
+  three tools pays for four inferences.
+
+  **These counters are not a partition and are not meant to be.** `failedAttempts` is a subset of
+  `modelCalls`, and `modelCalls - failedAttempts` is how many calls got the turn somewhere. Each
+  number answers its own question honestly, which is worth more than arithmetic that adds up.
 - `toolCalls` goes up by `actions().size()` on `ActionsRequested`. Calls the model asked for, not
   calls that ran: a denied call was still a round of the loop, and at the moment the policy is
   consulted (§5a) every call asked for has been settled, so the two readings agree there anyway.
@@ -112,11 +126,13 @@ applies. The counting rules:
   that produced nothing. Since `InferenceFailed` closes the turn, at any point the policy is
   consulted the count is the `InferenceAttempted` events alone; the closing arm is counted so the
   tally exposed to a reader after the turn (§10 (3)) is complete.
-- `usage` accumulates `usage` from `InferenceAnswered`, `InferenceRefused` and
-  `ActionsRequested` -- the calls that got the turn somewhere. A refusal is in this set: the model
-  read the input and answered, even if the answer was no.
+- `usage` accumulates `usage` from **every** inference event, the failures included. It answers
+  "what did this turn cost", and the honest answer includes calls that were billed and produced
+  nothing -- a vendor's invoice certainly includes them. A reader comparing this against a bill
+  must not come up short, and `usage` is the one number they will reach for first.
 - `failedUsage` accumulates `usage` from `InferenceAttempted` and `InferenceFailed` -- the same
-  set `failedAttempts` counts, so the two always describe the same calls.
+  set `failedAttempts` counts, so the two always describe the same calls. It is a **part of**
+  `usage`, not a sibling of it: `usage - failedUsage` is what the spending bought.
 - How nullable counts sum, for either counter, is §10 (4).
 
 **Retried attempts, and what the fold sees of them.** Until `d36de45c9` no inference was ever
