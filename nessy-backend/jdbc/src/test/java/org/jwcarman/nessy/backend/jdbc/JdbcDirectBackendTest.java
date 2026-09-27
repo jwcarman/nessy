@@ -104,9 +104,9 @@ class JdbcDirectBackendTest {
     AgentId agent = AgentId.random();
     AgentEvent event = new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), new PayloadRef("p1"));
 
-    writer.events().append(agent, List.of(event), Seq.NONE);
+    writer.events().append(TYPE, agent, List.of(event), Seq.NONE);
 
-    assertThat(reader.events().readFrom(agent, Seq.NONE)).containsExactly(event);
+    assertThat(reader.events().readAll(TYPE, agent)).containsExactly(event);
   }
 
   @Test

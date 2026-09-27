@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -37,17 +38,19 @@ import org.jwcarman.nessy.engine.tool.ToolCalls;
  */
 public final class EventStreamToolCalls implements ToolCalls {
 
+  private final AgentType agentType;
   private final AgentEvents events;
   private final Payloads payloads;
 
-  public EventStreamToolCalls(AgentEvents events, Payloads payloads) {
+  public EventStreamToolCalls(AgentEvents events, Payloads payloads, AgentType agentType) {
+    this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.events = Objects.requireNonNull(events, "events must not be null");
     this.payloads = Objects.requireNonNull(payloads, "payloads must not be null");
   }
 
   @Override
   public Optional<ResolvedCall> find(AgentId agentId, Seq requestSeq, CallId callId) {
-    return events.readFrom(agentId, Seq.NONE).stream()
+    return events.readAll(agentType, agentId).stream()
         .filter(AgentEvent.ActionsRequested.class::isInstance)
         .map(AgentEvent.ActionsRequested.class::cast)
         .filter(asked -> asked.seq().equals(requestSeq))

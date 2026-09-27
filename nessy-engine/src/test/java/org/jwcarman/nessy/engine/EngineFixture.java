@@ -26,6 +26,7 @@ import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
@@ -136,7 +137,8 @@ public final class EngineFixture implements AutoCloseable {
     this.events = new JdbcAgentEvents(jdbc, codecs);
     this.payloads = new JdbcPayloads(jdbc, codecs);
     this.history =
-        (type, id) -> new EventStreamHistory(events, new Transcript(payloads.forAgent(id)), id);
+        (type, id) ->
+            new EventStreamHistory(events, new Transcript(payloads.forAgent(id)), type, id);
 
     this.harnesses =
         DefaultQueuedHarnessFactory.of(
@@ -179,8 +181,8 @@ public final class EngineFixture implements AutoCloseable {
    * <p>What a test asserting on what happened wants, and the replacement for reading entries from a
    * turn: the events ARE the story now, and a turn is a reading of them.
    */
-  public List<AgentEvent> story(AgentId agent) {
-    return events.readFrom(agent, Seq.NONE);
+  public List<AgentEvent> story(AgentType type, AgentId agent) {
+    return events.readAll(type, agent);
   }
 
   /**
@@ -204,8 +206,8 @@ public final class EngineFixture implements AutoCloseable {
    * the events are the truth and a state is what replaying them produces. So this is not a
    * convenience over a stored answer -- it is the same thing the engine itself does to find out.
    */
-  public AgentState stateOf(AgentId agent) {
-    return AgentState.idle(Seq.NONE).applyAll(story(agent));
+  public AgentState stateOf(AgentType type, AgentId agent) {
+    return AgentState.idle(Seq.NONE).applyAll(story(type, agent));
   }
 
   /**

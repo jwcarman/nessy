@@ -114,8 +114,8 @@ class ApprovalEnrichmentTest {
   }
 
   /** The state replay produces, named -- there is no state column to read. */
-  private String agentStateOf(AgentId agentId) {
-    return engine.stateOf(agentId).getClass().getSimpleName();
+  private String agentStateOf(AgentType agentType, AgentId agentId) {
+    return engine.stateOf(agentType, agentId).getClass().getSimpleName();
   }
 
   private static InferenceProvider asksToWipe(String target) {
@@ -182,7 +182,7 @@ class ApprovalEnrichmentTest {
     harness.tell(agentId, "clean up /prod/data");
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
+        .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
     assertThat(seen)
         .singleElement()
@@ -198,7 +198,7 @@ class ApprovalEnrichmentTest {
                   .isEqualTo("delete everything under /prod/data");
             });
     assertThat(ran).as("denied on what the enrichers found").isEmpty();
-    assertThat(engine.story(agentId).get(2))
+    assertThat(engine.story(type, agentId).get(2))
         .isEqualTo(
             new AgentEvent.ToolDenied(
                 new Seq(3),
@@ -249,7 +249,7 @@ class ApprovalEnrichmentTest {
     harness.tell(agentId, "clean up /tmp/scratch");
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
+        .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
     assertThat(ran).containsExactly("/tmp/scratch");
   }
@@ -337,10 +337,10 @@ class ApprovalEnrichmentTest {
     harness.tell(agentId, "clean up /prod/data");
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
+        .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
     assertThat(ran).as("a broken gatherer must not become an approval").isEmpty();
-    assertThat(engine.story(agentId)).noneMatch(AgentEvent.ToolApproved.class::isInstance);
+    assertThat(engine.story(type, agentId)).noneMatch(AgentEvent.ToolApproved.class::isInstance);
   }
 
   /** Nothing gathers by default, and a question with no facts is an ordinary one. */

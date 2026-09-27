@@ -119,9 +119,7 @@ class DurableDirectHarnessTest {
     Outcome<String> answered = harness(second).ask(agent, "and Japan?");
 
     assertThat(answered).isEqualTo(new Outcome.Answered<>("and Japan's is Tokyo"));
-    assertThat(events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE))
-        .as("both turns, in one story")
-        .hasSize(4);
+    assertThat(events.readAll(TYPE, agent)).as("both turns, in one story").hasSize(4);
   }
 
   @Test

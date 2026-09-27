@@ -40,7 +40,6 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
-import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
@@ -278,7 +277,7 @@ class DirectHarnessFanOutTest {
 
       release.countDown();
       assertThat(future.get()).isEqualTo(new Outcome.Answered<>("done"));
-      assertThat(events.readFrom(agent, Seq.NONE))
+      assertThat(events.readAll(TYPE, agent))
           .extracting(e -> e.getClass().getSimpleName())
           .filteredOn(name -> name.equals("ToolSucceeded"))
           .as("all three calls ran to completion, exactly once each, once released")
@@ -531,7 +530,7 @@ class DirectHarnessFanOutTest {
             "call-2's own budget had already elapsed by the time its permit freed; it must never"
                 + " run")
         .isZero();
-    assertThat(steppedEvents.readFrom(agent, Seq.NONE))
+    assertThat(steppedEvents.readAll(TYPE, agent))
         .extracting(e -> e.getClass().getSimpleName())
         .as("call-1 ran to completion; call-2 was discharged as failed without ever running")
         .contains("ToolSucceeded", "ToolFailed");

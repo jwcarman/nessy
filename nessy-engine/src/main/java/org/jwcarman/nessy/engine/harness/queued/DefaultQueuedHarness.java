@@ -314,7 +314,7 @@ final class DefaultQueuedHarness<I>
           command.getClass().getSimpleName());
       return false;
     }
-    backend.events().append(agentId, advance.events(), state.seq());
+    backend.events().append(agentType, agentId, advance.events(), state.seq());
     for (AgentEffect effect : advance.effects()) {
       effects.insert(agentId, effect, clock.instant(), trace);
     }
@@ -331,7 +331,7 @@ final class DefaultQueuedHarness<I>
 
   /** The agent as it stands: the last turn that started, replayed onto idle. */
   private AgentState reconstitute(AgentId agentId) {
-    List<AgentEvent> lastTurn = backend.events().sinceLastTurnStarted(agentId);
+    List<AgentEvent> lastTurn = backend.events().sinceLastTurnStarted(agentType, agentId);
     Seq from =
         lastTurn.isEmpty() ? Seq.NONE : new Seq(Math.max(0, lastTurn.getFirst().seq().value() - 1));
     return AgentState.idle(from).applyAll(lastTurn);

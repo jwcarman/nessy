@@ -165,7 +165,8 @@ class EffectTraceCarrierTest {
       release.countDown();
       await()
           .atMost(Duration.ofSeconds(20))
-          .untilAsserted(() -> assertThat(engine.story(agentId)).hasSize(2));
+          .untilAsserted(
+              () -> assertThat(engine.story(new AgentType("traced"), agentId)).hasSize(2));
     }
   }
 
@@ -236,7 +237,7 @@ class EffectTraceCarrierTest {
 
       await()
           .atMost(Duration.ofSeconds(20))
-          .untilAsserted(() -> assertThat(engine.story(agentId)).hasSize(5));
+          .untilAsserted(() -> assertThat(engine.story(type, agentId)).hasSize(5));
     }
 
     assertThat(captures).as("the context was captured once, when the turn opened").hasValue(1);

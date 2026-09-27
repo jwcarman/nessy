@@ -258,7 +258,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
                 ObservedTurnHistories.wrap(
                     (type, id) ->
                         new EventStreamHistory(
-                            backend.events(), new Transcript(payloads.forAgent(id)), id),
+                            backend.events(), new Transcript(payloads.forAgent(id)), type, id),
                     observations),
                 inference.summaries().stream()
                     .map(source -> ObservedSummarizer.wrap(source, observations))
@@ -268,7 +268,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
                     .map(source -> ObservedAmbientSource.wrap(source, observations))
                     .toList()),
             observations);
-    EventStreamToolCalls calls = new EventStreamToolCalls(backend.events(), payloads);
+    EventStreamToolCalls calls = new EventStreamToolCalls(backend.events(), payloads, agentType);
     // What performs an effect once the fold has decided one is owed -- built exactly as the
     // queued factory builds its own, so the two doors cannot describe a call, an approval or an
     // inference differently.

@@ -17,7 +17,9 @@ package org.jwcarman.nessy.backend.event;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.stream.Stream;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Seq;
 
 /**
@@ -44,15 +46,59 @@ public interface AgentEvents {
   /**
    * Appends, if nothing else has.
    *
+   * <p><b>An agent is a type and an id together, which is why every method here takes both.</b> An
+   * id alone was enough while every id was minted fresh, but a caller names its own -- {@code
+   * ask(agentId, ...)} and {@code tell(agentId, ...)} both take one -- so an application keying
+   * agents off a business identifier can run two agent types over one id. Keyed by id alone, those
+   * two share a single story while {@link org.jwcarman.nessy.backend.agent.Agents} keeps them
+   * apart, which is one agent's history containing another's turns.
+   *
    * @param expectedLast the seq the caller believes is last. An append that finds otherwise must
    *     fail rather than write: the caller decided against a state that no longer holds, and its
    *     recourse is to reconstitute and decide again. Vacuous for a direct harness, load-bearing
    *     for a queued one, and the same seam serves both.
    */
-  void append(AgentId agent, List<AgentEvent> events, Seq expectedLast);
+  void append(AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast);
 
-  /** Everything after {@code after}, in order. {@link Seq#NONE} reads the whole story. */
-  List<AgentEvent> readFrom(AgentId agent, Seq after);
+  /**
+   * Everything after {@code after}, in order, without holding it all at once.
+   *
+   * <p><b>The primitive, and the one a backend implements.</b> {@link #readFrom} is this collected,
+   * so a store says how to produce events once and both shapes follow.
+   *
+   * <p><b>Close it.</b> The returned stream holds whatever the store needed to produce it -- a
+   * result set, a cursor, a connection -- until it is closed, exactly as {@code Files.lines} does.
+   * Use it in a try-with-resources; a caller that does not will leak whatever is behind it.
+   *
+   * <p><b>Do not do slow work per element.</b> A durable store may be holding a transaction open
+   * for as long as this stream is open, and a network call inside a {@code map} would hold it
+   * across the call -- which pins a pooled connection and, on PostgreSQL, holds back vacuum. Read
+   * what is wanted, close the stream, then go slow.
+   */
+  Stream<AgentEvent> streamFrom(AgentType type, AgentId agent, Seq after);
+
+  /** The whole story, streamed. Close it; see {@link #streamFrom}. */
+  default Stream<AgentEvent> streamAll(AgentType type, AgentId agent) {
+    return streamFrom(type, agent, Seq.NONE);
+  }
+
+  /**
+   * Everything after {@code after}, in order, as a list.
+   *
+   * <p>{@link #streamFrom} collected and closed. Convenient, and the right choice whenever the
+   * answer is small -- one turn, one lookup. For a whole story of unknown length, prefer the stream
+   * and stop when the answer is found.
+   */
+  default List<AgentEvent> readFrom(AgentType type, AgentId agent, Seq after) {
+    try (Stream<AgentEvent> events = streamFrom(type, agent, after)) {
+      return events.toList();
+    }
+  }
+
+  /** The whole story, as a list. See {@link #readFrom} for when that is the wrong shape. */
+  default List<AgentEvent> readAll(AgentType type, AgentId agent) {
+    return readFrom(type, agent, Seq.NONE);
+  }
 
   /**
    * The last turn that started, and everything after it.
@@ -65,7 +111,7 @@ public interface AgentEvents {
    *
    * <p>Empty for an agent nothing has happened to.
    */
-  List<AgentEvent> sinceLastTurnStarted(AgentId agent);
+  List<AgentEvent> sinceLastTurnStarted(AgentType type, AgentId agent);
 
   /**
    * When the event at {@code seq} was written -- the database's clock, not the event's.
@@ -83,9 +129,9 @@ public interface AgentEvents {
    * missing row is a programming error, not a condition to signal through the return type -- hence
    * a thrown exception rather than an {@code Optional}.
    *
-   * @throws IllegalArgumentException if {@code agent} has no event at {@code seq}
+   * @throws IllegalArgumentException if this agent has no event at {@code seq}
    */
-  Instant writtenAt(AgentId agent, Seq seq);
+  Instant writtenAt(AgentType type, AgentId agent, Seq seq);
 
   /** Raised when {@code expectedLast} did not hold. */
   final class Conflict extends RuntimeException {

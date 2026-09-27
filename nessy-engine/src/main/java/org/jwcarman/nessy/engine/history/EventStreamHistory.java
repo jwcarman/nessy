@@ -19,7 +19,7 @@ package org.jwcarman.nessy.engine.history;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.backend.event.AgentEvent;
@@ -43,16 +43,19 @@ public final class EventStreamHistory implements TurnHistory {
 
   private final AgentEvents events;
   private final Transcript transcript;
+  private final AgentType agentType;
   private final AgentId agent;
 
-  public EventStreamHistory(AgentEvents events, Transcript transcript, AgentId agent) {
+  public EventStreamHistory(
+      AgentEvents events, Transcript transcript, AgentType agentType, AgentId agent) {
     this.events = Objects.requireNonNull(events, "events must not be null");
     this.transcript = Objects.requireNonNull(transcript, "transcript must not be null");
+    this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.agent = Objects.requireNonNull(agent, "agent must not be null");
   }
 
   private List<Turn> all() {
-    List<AgentEvent> stream = events.readFrom(agent, Seq.NONE);
+    List<AgentEvent> stream = events.readAll(agentType, agent);
     return transcript.of(stream);
   }
 

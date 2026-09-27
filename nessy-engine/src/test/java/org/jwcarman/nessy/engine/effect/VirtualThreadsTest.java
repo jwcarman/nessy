@@ -75,7 +75,7 @@ class VirtualThreadsTest {
 
       await()
           .atMost(Duration.ofSeconds(20))
-          .untilAsserted(() -> assertThat(engine.story(agentId)).hasSize(2));
+          .untilAsserted(() -> assertThat(engine.story(type, agentId)).hasSize(2));
 
       assertThat(virtual.get())
           .as("a model call that held a platform thread would starve every other agent")

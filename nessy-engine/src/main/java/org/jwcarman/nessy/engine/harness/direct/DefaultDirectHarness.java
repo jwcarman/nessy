@@ -267,7 +267,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
             () -> {
               AgentState state = reconstitute(agent);
               Decision decision = state.execute(new AgentCommand.Terminate());
-              backend.events().append(agent, decision.events(), state.seq());
+              backend.events().append(agentType, agent, decision.events(), state.seq());
             });
   }
 
@@ -292,7 +292,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       case RecoveryOutcome.Recovered(AgentState.Idle idle) -> {
         Payloads content = backend.payloads().forAgent(agent);
         Decision decision = idle.execute(new AgentCommand.StartTurn(content.put(rendered)));
-        backend.events().append(agent, decision.events(), idle.seq());
+        backend.events().append(agentType, agent, decision.events(), idle.seq());
         decision.events().forEach(event -> narrate(agent, event));
         TurnId turn = ((AgentEvent.TurnStarted) decision.events().getFirst()).turn();
         yield StepResult.advanced(turn, timedEffectsOf(decision));
@@ -315,7 +315,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       return Decision.ignore();
     }
     Decision decision = state.execute(command);
-    backend.events().append(agent, decision.events(), state.seq());
+    backend.events().append(agentType, agent, decision.events(), state.seq());
     decision.events().forEach(event -> narrate(agent, event));
     return decision;
   }
@@ -482,7 +482,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       }
       dischargedSomething = true;
       Decision decision = current.execute(discharge.get());
-      backend.events().append(agent, decision.events(), current.seq());
+      backend.events().append(agentType, agent, decision.events(), current.seq());
       decision.events().forEach(event -> narrate(agent, event));
       current = current.applyAll(decision.events());
     }
@@ -524,7 +524,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   private Optional<AgentCommand> overdueInference(AgentId agent, AgentState.Inferring inferring) {
     EffectTerms terms = handlers.termsFor(infer(inferring));
-    Instant started = backend.events().writtenAt(agent, inferring.seq());
+    Instant started = backend.events().writtenAt(agentType, agent, inferring.seq());
     return isOverdue(started, terms)
         ? Optional.of(undispatchable(inferring.turn(), terms))
         : Optional.empty();
@@ -547,7 +547,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     for (OutstandingAction outstanding : awaiting.outstanding().values()) {
       AgentEffect effect = effectFor(awaiting.turn(), awaiting.requestSeq(), outstanding);
       EffectTerms terms = handlers.termsFor(effect);
-      Instant started = backend.events().writtenAt(agent, outstanding.since());
+      Instant started = backend.events().writtenAt(agentType, agent, outstanding.since());
       if (isOverdue(started, terms)) {
         return Optional.of(undispatchable(awaiting.turn(), terms));
       }
@@ -589,7 +589,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   /** The agent, rebuilt from its last turn alone -- one read every locked step starts with. */
   private AgentState reconstitute(AgentId agent) {
-    List<AgentEvent> lastTurn = backend.events().sinceLastTurnStarted(agent);
+    List<AgentEvent> lastTurn = backend.events().sinceLastTurnStarted(agentType, agent);
     Seq from = lastTurn.isEmpty() ? Seq.NONE : previous(lastTurn.getFirst().seq());
     return AgentState.idle(from).applyAll(lastTurn);
   }
@@ -655,7 +655,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     // is the same one, but an outcome has to name the turn that ASKED for the work rather than
     // whichever turn the agent happens to be in by the time the answer lands.
     TurnId turn = effect.turn();
-    Instant started = backend.events().writtenAt(agent, since);
+    Instant started = backend.events().writtenAt(agentType, agent, since);
     if (isOverdue(started, terms)) {
       return undispatchable(turn, terms);
     }
@@ -796,7 +796,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * answer, which this scoping is what rules out.
    */
   private Outcome<O> outcome(AgentId agent, TurnId turn) {
-    return backend.events().readFrom(agent, Seq.NONE).reversed().stream()
+    return backend.events().readAll(agentType, agent).reversed().stream()
         .map(event -> asOutcome(agent, turn, event))
         .filter(Objects::nonNull)
         .findFirst()

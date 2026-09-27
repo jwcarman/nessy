@@ -102,7 +102,7 @@ class StorageCodecTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(
             () ->
-                assertThat(engine.story(agentId))
+                assertThat(engine.story(CHAT, agentId))
                     .filteredOn(AgentEvent.InferenceAnswered.class::isInstance)
                     .hasSize(1));
 

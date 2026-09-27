@@ -132,8 +132,8 @@ class DeferredToolTest {
   }
 
   /** The state replay produces, named -- there is no state column to read. */
-  private String agentStateOf(AgentId agentId) {
-    return engine.stateOf(agentId).getClass().getSimpleName();
+  private String agentStateOf(AgentType agentType, AgentId agentId) {
+    return engine.stateOf(agentType, agentId).getClass().getSimpleName();
   }
 
   private int outstandingEffects(AgentId agentId) {
@@ -158,9 +158,9 @@ class DeferredToolTest {
     AgentId agentId = park(type, Duration.ofMinutes(30));
 
     // Approved and dispatched, and then waiting on work rather than on a decision.
-    assertThat(agentStateOf(agentId)).isEqualTo("AwaitingActions");
+    assertThat(agentStateOf(type, agentId)).isEqualTo("AwaitingActions");
     assertThat(outstandingEffects(agentId)).isEqualTo(1);
-    assertThat(engine.story(agentId))
+    assertThat(engine.story(type, agentId))
         .as("permission was granted before the tool ever ran")
         .anyMatch(AgentEvent.ToolApproved.class::isInstance);
 
@@ -172,11 +172,11 @@ class DeferredToolTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(
             () -> {
-              assertThat(agentStateOf(agentId)).isEqualTo("Idle");
+              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
               assertThat(outstandingEffects(agentId)).isZero();
             });
 
-    List<AgentEvent> story = engine.story(agentId);
+    List<AgentEvent> story = engine.story(type, agentId);
     assertThat(story.get(3))
         .isEqualTo(
             new AgentEvent.ToolSucceeded(
@@ -202,9 +202,9 @@ class DeferredToolTest {
 
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
+        .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
-    assertThat(engine.story(agentId).get(3))
+    assertThat(engine.story(type, agentId).get(3))
         .asInstanceOf(type(AgentEvent.ToolFailed.class))
         .satisfies(
             failed -> {
@@ -262,11 +262,11 @@ class DeferredToolTest {
         .atMost(Duration.ofSeconds(25))
         .untilAsserted(
             () -> {
-              assertThat(agentStateOf(agentId)).isEqualTo("Idle");
+              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
               assertThat(outstandingEffects(agentId)).isZero();
             });
 
-    assertThat(engine.story(agentId).get(3))
+    assertThat(engine.story(type, agentId).get(3))
         .asInstanceOf(type(AgentEvent.ToolFailed.class))
         .satisfies(
             failed -> {
@@ -288,7 +288,7 @@ class DeferredToolTest {
 
     await()
         .atMost(Duration.ofSeconds(25))
-        .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
+        .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
     assertThat(engine.replies().complete(handed.peek(), ToolResult.ok(new Block.Text("too late"))))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);

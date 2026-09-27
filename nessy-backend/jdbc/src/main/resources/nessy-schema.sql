@@ -119,6 +119,10 @@ CREATE TABLE IF NOT EXISTS nessy_payload
 -- right way to find out that the state it decided against no longer holds.
 CREATE TABLE IF NOT EXISTS nessy_agent_event
 (
+    -- An agent is a type and an id together. An id alone was enough while every id was minted
+    -- fresh, but a caller names its own, so an application keying agents off a business identifier
+    -- can run two agent types over one id -- and keyed by id alone those two would share one story.
+    agent_type  VARCHAR(64) NOT NULL,
     agent_id    UUID        NOT NULL,
     seq         BIGINT      NOT NULL,
     -- Where a turn begins, which is the only thing about an event this table needs to know
@@ -129,13 +133,13 @@ CREATE TABLE IF NOT EXISTS nessy_agent_event
     starts_turn BOOLEAN     NOT NULL,
     payload     BYTEA       NOT NULL,
     written_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-    PRIMARY KEY (agent_id, seq)
+    PRIMARY KEY (agent_type, agent_id, seq)
 );
 
 -- Only the turn starts, which is all the boundary lookup reads. A handful of rows per agent
 -- however long the conversation.
 CREATE INDEX IF NOT EXISTS nessy_agent_event_turn_starts
-    ON nessy_agent_event (agent_id, seq DESC) WHERE starts_turn;
+    ON nessy_agent_event (agent_type, agent_id, seq DESC) WHERE starts_turn;
 
 -- An agent lock has no table. It is a Postgres advisory lock, taken with
 -- pg_advisory_xact_lock on a hash of (kind, agent type, agent id) and released by the database

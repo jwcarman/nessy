@@ -105,7 +105,7 @@ class FirstInputRaceTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(
             () -> {
-              List<AgentEvent> story = engine.story(agentId);
+              List<AgentEvent> story = engine.story(CHAT, agentId);
               assertThat(story)
                   .filteredOn(AgentEvent.TurnStarted.class::isInstance)
                   .hasSize(CALLERS);

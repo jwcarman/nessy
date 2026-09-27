@@ -118,8 +118,8 @@ class NarrationTest {
   }
 
   /** The state replay produces, named -- there is no state column to read. */
-  private String agentStateOf(AgentId agentId) {
-    return engine.stateOf(agentId).getClass().getSimpleName();
+  private String agentStateOf(AgentType agentType, AgentId agentId) {
+    return engine.stateOf(agentType, agentId).getClass().getSimpleName();
   }
 
   private static InferenceProvider callsThenAnswers() {
@@ -148,7 +148,7 @@ class NarrationTest {
     harness(type).tell(agentId, "how deep is Loch Ness?");
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
+        .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
     assertThat(EVENTS)
         .extracting(event -> event.getClass().getSimpleName())
@@ -181,7 +181,7 @@ class NarrationTest {
     harness(type).tell(agentId, "how deep is Loch Ness?");
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
+        .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
     assertThat(of(Narration.Commentary.class))
         .singleElement()
@@ -238,7 +238,7 @@ class NarrationTest {
                   .isEqualTo("look up loch ness");
               assertThat(waiting.until()).isNotNull();
             });
-    assertThat(agentStateOf(agentId))
+    assertThat(agentStateOf(type, agentId))
         .as("and the state says only that a call is outstanding, as designed")
         .isEqualTo("AwaitingActions");
   }
@@ -264,7 +264,7 @@ class NarrationTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(
             () -> {
-              assertThat(agentStateOf(agentId)).isEqualTo("Idle");
+              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
               assertThat(
                       engine
                           .jdbc()

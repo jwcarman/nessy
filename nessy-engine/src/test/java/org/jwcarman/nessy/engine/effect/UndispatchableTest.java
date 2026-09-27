@@ -131,7 +131,7 @@ class UndispatchableTest {
   }
 
   private String stateOf(AgentId agentId) {
-    return engine.stateOf(agentId).getClass().getSimpleName();
+    return engine.stateOf(TYPE, agentId).getClass().getSimpleName();
   }
 
   private int effectsFor(AgentId agentId) {

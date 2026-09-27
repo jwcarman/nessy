@@ -135,8 +135,8 @@ class DeferredApprovalTest {
   }
 
   /** The state replay produces, named -- there is no state column to read. */
-  private String agentStateOf(AgentId agentId) {
-    return engine.stateOf(agentId).getClass().getSimpleName();
+  private String agentStateOf(AgentType agentType, AgentId agentId) {
+    return engine.stateOf(agentType, agentId).getClass().getSimpleName();
   }
 
   private int outstandingEffects(AgentId agentId) {
@@ -177,12 +177,12 @@ class DeferredApprovalTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(
             () -> {
-              assertThat(agentStateOf(agentId)).isEqualTo("Idle");
+              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
               assertThat(outstandingEffects(agentId)).isZero();
             });
 
     assertThat(ran).containsExactly("loch ness");
-    List<AgentEvent> story = engine.story(agentId);
+    List<AgentEvent> story = engine.story(type, agentId);
     assertThat(story.get(2))
         .as("the grant carries the join to whoever actually said yes")
         .isEqualTo(
@@ -242,7 +242,7 @@ class DeferredApprovalTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(
             () -> {
-              assertThat(agentStateOf(agentId)).isEqualTo("Idle");
+              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
               assertThat(outstandingEffects(agentId)).isZero();
             });
 

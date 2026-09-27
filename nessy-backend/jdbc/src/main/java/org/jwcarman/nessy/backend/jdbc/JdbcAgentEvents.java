@@ -20,9 +20,11 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Stream;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
@@ -42,20 +44,23 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * turn, and it carries on from where it stopped.
  *
  * <p><b>The primary key is the concurrency control.</b> Two writers that decided from the same
- * state mint the same seq, so the second violates {@code (agent_id, seq)} and is told. That is what
- * {@code expectedLast} means here: not a version column to compare, but a claim that the seqs about
- * to be written are free -- and the database is the thing that knows.
+ * state mint the same seq, so the second violates {@code (agent_type, agent_id, seq)} and is told.
+ * That is what {@code expectedLast} means here: not a version column to compare, but a claim that
+ * the seqs about to be written are free -- and the database is the thing that knows.
  */
 public final class JdbcAgentEvents implements AgentEvents {
 
   private static final String APPEND =
-      "INSERT INTO nessy_agent_event (agent_id, seq, starts_turn, payload) VALUES (?, ?, ?, ?)";
+      "INSERT INTO nessy_agent_event (agent_type, agent_id, seq, starts_turn, payload)"
+          + " VALUES (?, ?, ?, ?, ?)";
 
   private static final String READ_FROM =
-      "SELECT payload FROM nessy_agent_event WHERE agent_id = ? AND seq > ? ORDER BY seq";
+      "SELECT payload FROM nessy_agent_event"
+          + " WHERE agent_type = ? AND agent_id = ? AND seq > ? ORDER BY seq";
 
   private static final String WRITTEN_AT =
-      "SELECT written_at FROM nessy_agent_event WHERE agent_id = ? AND seq = ?";
+      "SELECT written_at FROM nessy_agent_event"
+          + " WHERE agent_type = ? AND agent_id = ? AND seq = ?";
 
   /**
    * The last turn, and nothing before it.
@@ -67,10 +72,12 @@ public final class JdbcAgentEvents implements AgentEvents {
       """
       SELECT payload
         FROM nessy_agent_event
-       WHERE agent_id = ?
+       WHERE agent_type = ?
+         AND agent_id = ?
          AND seq >= COALESCE((SELECT MAX(seq)
                                 FROM nessy_agent_event
-                               WHERE agent_id = ?
+                               WHERE agent_type = ?
+                                 AND agent_id = ?
                                  AND starts_turn), 0)
        ORDER BY seq
       """;
@@ -84,13 +91,15 @@ public final class JdbcAgentEvents implements AgentEvents {
   }
 
   @Override
-  public void append(AgentId agent, List<AgentEvent> events, Seq expectedLast) {
+  public void append(AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast) {
+    Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(agent, "agent must not be null");
     Objects.requireNonNull(events, "events must not be null");
     for (AgentEvent event : events) {
       try {
         jdbc.sql(APPEND)
             .params(
+                type.value(),
                 agent.value(),
                 event.seq().value(),
                 event instanceof AgentEvent.TurnStarted,
@@ -111,31 +120,70 @@ public final class JdbcAgentEvents implements AgentEvents {
     }
   }
 
+  /**
+   * <b>Whether this actually streams depends on the caller, and that is worth knowing.</b> pgjdbc
+   * uses a server-side cursor only when the connection is in a transaction AND a fetch size is set.
+   * The fetch size is set here; the transaction is the caller's. Inside one -- the fold's own reads
+   * -- rows arrive in batches and a caller that stops early stops the reading. Outside one, the
+   * driver buffers the whole result before the first element, so this is lazy in shape and eager in
+   * fact.
+   *
+   * <p>It is still the right primitive either way: correctness does not depend on which happened,
+   * and the case that matters for a long story is the one inside a transaction.
+   */
+  /**
+   * <b>Overridden rather than inherited, because the two are different queries and not one wrapped
+   * in the other.</b> The default collects {@link #streamFrom}, which on this store means {@code
+   * queryForStream} -- a ResultSet-backed spliterator whose connection is held until the stream
+   * closes. {@code list()} goes through {@code RowMapperResultSetExtractor} instead: one loop into
+   * one list, resources released by the template before it returns.
+   *
+   * <p>Worth the extra method because the reads that matter are small. One turn, one lookup, the
+   * boundary replay -- all of them want every row they asked for, and none of them wants a pipeline
+   * per row or a connection whose release depends on somebody remembering to close.
+   */
   @Override
-  public List<AgentEvent> readFrom(AgentId agent, Seq watermark) {
+  public List<AgentEvent> readFrom(AgentType type, AgentId agent, Seq watermark) {
+    Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(agent, "agent must not be null");
     Objects.requireNonNull(watermark, "watermark must not be null");
     return jdbc.sql(READ_FROM)
-        .params(agent.value(), watermark.value())
+        .params(type.value(), agent.value(), watermark.value())
         .query((rs, _) -> codec.decode(rs.getBytes("payload")))
         .list();
   }
 
   @Override
-  public List<AgentEvent> sinceLastTurnStarted(AgentId agent) {
+  public Stream<AgentEvent> streamFrom(AgentType type, AgentId agent, Seq watermark) {
+    Objects.requireNonNull(type, "type must not be null");
+    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(watermark, "watermark must not be null");
+    return jdbc
+        .sql(READ_FROM)
+        .param(type.value())
+        .param(agent.value())
+        .param(watermark.value())
+        .query((rs, _) -> codec.decode(rs.getBytes("payload")))
+        .stream();
+  }
+
+  @Override
+  public List<AgentEvent> sinceLastTurnStarted(AgentType type, AgentId agent) {
+    Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(agent, "agent must not be null");
     return jdbc.sql(LAST_TURN)
-        .params(agent.value(), agent.value())
+        .params(type.value(), agent.value(), type.value(), agent.value())
         .query((rs, _) -> codec.decode(rs.getBytes("payload")))
         .list();
   }
 
   @Override
-  public Instant writtenAt(AgentId agent, Seq seq) {
+  public Instant writtenAt(AgentType type, AgentId agent, Seq seq) {
+    Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(agent, "agent must not be null");
     Objects.requireNonNull(seq, "seq must not be null");
     return jdbc.sql(WRITTEN_AT)
-        .params(agent.value(), seq.value())
+        .params(type.value(), agent.value(), seq.value())
         .query((rs, _) -> rs.getObject("written_at", OffsetDateTime.class).toInstant())
         .optional()
         .orElseThrow(

@@ -33,6 +33,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -327,9 +328,8 @@ class DefaultDirectHarnessTest {
 
     Outcome outcome = harness(model, tool("found it")).ask(agent, "look up my charge");
 
-    System.out.println("EVENTS: " + events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE));
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("charge 42.00"));
-    assertThat(events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE))
+    assertThat(events.readAll(TYPE, agent))
         .extracting(e -> e.getClass().getSimpleName())
         .containsExactly(
             "TurnStarted",
@@ -347,7 +347,7 @@ class DefaultDirectHarnessTest {
 
     harness(model, tool("the tool's own words")).ask(agent, "a question with words");
 
-    assertThat(events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE).toString())
+    assertThat(events.readAll(TYPE, agent).toString())
         .doesNotContain("a question with words")
         .doesNotContain("the tool's own words")
         .doesNotContain("the answer itself");
@@ -425,7 +425,7 @@ class DefaultDirectHarnessTest {
     Outcome<String> outcome = harness(model, broken("the ledger is down")).ask(agent, "try");
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("sorry"));
-    assertThat(events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE))
+    assertThat(events.readAll(TYPE, agent))
         .extracting(e -> e.getClass().getSimpleName())
         .contains("ToolFailed");
   }
@@ -481,7 +481,7 @@ class DefaultDirectHarnessTest {
       Outcome<String> outcome = harness.ask(agent, "anyone home?");
 
       assertThat(outcome).isEqualTo(new Outcome.Busy<>());
-      assertThat(events.readFrom(agent, Seq.NONE))
+      assertThat(events.readAll(TYPE, agent))
           .as(
               "the second, busy caller appended nothing; only the first caller's own turn is on"
                   + " the stream")
@@ -653,7 +653,7 @@ class DefaultDirectHarnessTest {
     Outcome<String> outcome = harness.ask(agent, "look it up");
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("noted, moving on"));
-    List<AgentEvent> history = events.readFrom(agent, Seq.NONE);
+    List<AgentEvent> history = events.readAll(TYPE, agent);
     assertThat(history).isNotEmpty();
     assertThat(history)
         .extracting(e -> e.getClass().getSimpleName())
@@ -697,7 +697,7 @@ class DefaultDirectHarnessTest {
     Outcome<String> outcome = harness.ask(agent, "look it up");
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("noted, moving on"));
-    List<AgentEvent> history = events.readFrom(agent, Seq.NONE);
+    List<AgentEvent> history = events.readAll(TYPE, agent);
     assertThat(history).isNotEmpty();
     assertThat(history)
         .extracting(e -> e.getClass().getSimpleName())
@@ -725,6 +725,7 @@ class DefaultDirectHarnessTest {
     AgentId agent = AgentId.random();
     PayloadRef abandonedInput = payloads.forAgent(agent).put(List.of(new Block.Text("first")));
     events.append(
+        TYPE,
         agent,
         List.of(new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput)),
         Seq.NONE);
@@ -751,7 +752,7 @@ class DefaultDirectHarnessTest {
 
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("second turn's answer"));
 
-    List<AgentEvent> stream = events.readFrom(agent, Seq.NONE);
+    List<AgentEvent> stream = events.readAll(TYPE, agent);
     assertThat(stream)
         .extracting(e -> e.getClass().getSimpleName())
         .as("the abandoned first turn is failed by recovery before the second turn even starts")
@@ -793,6 +794,7 @@ class DefaultDirectHarnessTest {
     PayloadRef abandonedInput = payloads.forAgent(agent).put(List.of(new Block.Text("first")));
     PayloadRef abandonedRequest = payloads.forAgent(agent).put(List.of(new Block.Text("asked")));
     events.append(
+        TYPE,
         agent,
         List.of(
             new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput),
@@ -839,7 +841,7 @@ class DefaultDirectHarnessTest {
         .as("recovery made no calls; this is the recovering caller's own turn")
         .hasSize(1);
 
-    List<AgentEvent> stream = events.readFrom(agent, Seq.NONE);
+    List<AgentEvent> stream = events.readAll(TYPE, agent);
     assertThat(stream)
         .extracting(e -> e.getClass().getSimpleName())
         .as(
@@ -862,6 +864,7 @@ class DefaultDirectHarnessTest {
     PayloadRef abandonedInput = payloads.forAgent(agent).put(List.of(new Block.Text("first")));
     PayloadRef abandonedRequest = payloads.forAgent(agent).put(List.of(new Block.Text("asked")));
     events.append(
+        TYPE,
         agent,
         List.of(
             new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput),
@@ -895,7 +898,7 @@ class DefaultDirectHarnessTest {
     Outcome<String> outcome = harness.ask(agent, "anyone home?");
 
     assertThat(outcome).isEqualTo(new Outcome.Busy<>());
-    assertThat(events.readFrom(agent, Seq.NONE))
+    assertThat(events.readAll(TYPE, agent))
         .as("nothing was discharged, and the busy caller appended nothing")
         .hasSize(2);
   }
@@ -933,10 +936,11 @@ class DefaultDirectHarnessTest {
     // A second turn that a process started and never came back to finish -- well inside its own
     // deadline, so the caller below must be told Busy rather than shown whatever the fold has on
     // hand, which is the first turn's own answer.
-    List<AgentEvent> afterFirstTurn = events.readFrom(agent, Seq.NONE);
+    List<AgentEvent> afterFirstTurn = events.readAll(TYPE, agent);
     Seq lastSeq = afterFirstTurn.getLast().seq();
     Seq secondTurnSeq = lastSeq.next();
     events.append(
+        TYPE,
         agent,
         List.of(
             new AgentEvent.TurnStarted(
@@ -985,7 +989,7 @@ class DefaultDirectHarnessTest {
 
     Outcome<String> outcome = harness.ask(agent, "mine, please");
 
-    List<AgentEvent> stream = events.readFrom(agent, Seq.NONE);
+    List<AgentEvent> stream = events.readAll(TYPE, agent);
     assertThat(stream)
         .extracting(e -> e.getClass().getSimpleName())
         .as("a whole later turn landed after this caller's own answer")
@@ -1012,32 +1016,38 @@ class DefaultDirectHarnessTest {
     }
 
     @Override
-    public void append(AgentId agent, List<AgentEvent> events, Seq expectedLast) {
-      delegate.append(agent, events, expectedLast);
+    public void append(AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast) {
+      delegate.append(type, agent, events, expectedLast);
     }
 
     @Override
-    public List<AgentEvent> readFrom(AgentId agent, Seq watermark) {
-      intrude(agent);
-      return delegate.readFrom(agent, watermark);
+    public List<AgentEvent> readFrom(AgentType type, AgentId agent, Seq watermark) {
+      intrude(type, agent);
+      return delegate.readFrom(type, agent, watermark);
     }
 
     @Override
-    public List<AgentEvent> sinceLastTurnStarted(AgentId agent) {
-      return delegate.sinceLastTurnStarted(agent);
+    public Stream<AgentEvent> streamFrom(AgentType type, AgentId agent, Seq watermark) {
+      intrude(type, agent);
+      return delegate.streamFrom(type, agent, watermark);
     }
 
     @Override
-    public Instant writtenAt(AgentId agent, Seq seq) {
-      return delegate.writtenAt(agent, seq);
+    public List<AgentEvent> sinceLastTurnStarted(AgentType type, AgentId agent) {
+      return delegate.sinceLastTurnStarted(type, agent);
+    }
+
+    @Override
+    public Instant writtenAt(AgentType type, AgentId agent, Seq seq) {
+      return delegate.writtenAt(type, agent, seq);
     }
 
     /**
      * Once, and only once this agent has an answered turn behind it: before that the reads are the
      * projection assembling the model's context, which is not the moment being described.
      */
-    private void intrude(AgentId agent) {
-      List<AgentEvent> stream = delegate.readFrom(agent, Seq.NONE);
+    private void intrude(AgentType type, AgentId agent) {
+      List<AgentEvent> stream = delegate.readAll(type, agent);
       if (intruded || stream.stream().noneMatch(AgentEvent.InferenceAnswered.class::isInstance)) {
         return;
       }
@@ -1045,6 +1055,7 @@ class DefaultDirectHarnessTest {
       Seq last = stream.getLast().seq();
       Seq opening = last.next();
       delegate.append(
+          type,
           agent,
           List.of(
               new AgentEvent.TurnStarted(
@@ -1212,7 +1223,7 @@ class DefaultDirectHarnessTest {
 
     assertThat(ran).as("a denied call is not a call").isFalse();
     assertThat(outcome).isEqualTo(new Outcome.Answered<>("understood"));
-    assertThat(events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE))
+    assertThat(events.readAll(TYPE, agent))
         .extracting(e -> e.getClass().getSimpleName())
         .contains("ToolDenied");
   }
@@ -1255,7 +1266,7 @@ class DefaultDirectHarnessTest {
     harness(model, watched, _ -> Awaited.deferred()).ask(agent, "look it up");
 
     assertThat(ran).isFalse();
-    assertThat(events.readFrom(agent, org.jwcarman.nessy.api.Seq.NONE))
+    assertThat(events.readAll(TYPE, agent))
         .extracting(e -> e.getClass().getSimpleName())
         .contains("ToolFailed");
   }

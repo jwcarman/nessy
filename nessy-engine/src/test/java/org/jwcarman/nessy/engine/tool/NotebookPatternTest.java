@@ -113,8 +113,8 @@ class NotebookPatternTest {
   }
 
   /** The state replay produces, named -- there is no state column to read. */
-  private String agentStateOf(AgentId agentId) {
-    return engine.stateOf(agentId).getClass().getSimpleName();
+  private String agentStateOf(AgentType agentType, AgentId agentId) {
+    return engine.stateOf(agentType, agentId).getClass().getSimpleName();
   }
 
   @Test
@@ -169,7 +169,7 @@ class NotebookPatternTest {
     harness.tell(agentId, "remember that the deploy is frozen");
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
+        .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
     assertThat(notebook).containsEntry(agentId.value(), "the deploy is frozen");
     assertThat(systemPrompts)
@@ -184,7 +184,7 @@ class NotebookPatternTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(
             () -> {
-              assertThat(agentStateOf(agentId)).isEqualTo("Idle");
+              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
               assertThat(systemPrompts).hasSizeGreaterThan(2);
             });
 
@@ -228,7 +228,7 @@ class NotebookPatternTest {
     harness.tell(agentId, "hello");
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(() -> assertThat(agentStateOf(agentId)).isEqualTo("Idle"));
+        .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
     String story =
         engine

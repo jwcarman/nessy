@@ -52,7 +52,7 @@ class InFlightLimitTest {
   /** The whole record, flattened -- what was stored, not what would be sent. */
   private static List<AgentEvent> story(
       EngineFixture engine, AgentType agentType, AgentId agentId) {
-    return engine.story(agentId);
+    return engine.story(LIMITED, agentId);
   }
 
   @Test

@@ -22,9 +22,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
@@ -53,8 +55,11 @@ public final class InMemoryAgentEvents implements AgentEvents {
    */
   private record Stored(Seq seq, boolean startsTurn, byte[] bytes) {}
 
-  private final Map<AgentId, List<Stored>> streams = new ConcurrentHashMap<>();
-  private final Map<AgentId, Map<Seq, Instant>> writtenAt = new ConcurrentHashMap<>();
+  /** An agent is a type and an id together, exactly as the durable table's key is. */
+  private record Key(AgentType type, AgentId agent) {}
+
+  private final Map<Key, List<Stored>> streams = new ConcurrentHashMap<>();
+  private final Map<Key, Map<Seq, Instant>> writtenAt = new ConcurrentHashMap<>();
   private final Clock clock;
   private final Codec<AgentEvent> codec;
 
@@ -68,8 +73,10 @@ public final class InMemoryAgentEvents implements AgentEvents {
   }
 
   @Override
-  public synchronized void append(AgentId agent, List<AgentEvent> events, Seq expectedLast) {
-    List<Stored> stream = streams.computeIfAbsent(agent, _ -> new ArrayList<>());
+  public synchronized void append(
+      AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast) {
+    Key key = key(type, agent);
+    List<Stored> stream = streams.computeIfAbsent(key, _ -> new ArrayList<>());
     Seq last = stream.isEmpty() ? Seq.NONE : stream.getLast().seq();
     if (!last.equals(expectedLast)) {
       throw new Conflict("expected " + expectedLast + " but the stream is at " + last);
@@ -78,24 +85,37 @@ public final class InMemoryAgentEvents implements AgentEvents {
       stream.add(
           new Stored(event.seq(), event instanceof AgentEvent.TurnStarted, codec.encode(event)));
     }
-    Map<Seq, Instant> stamps = writtenAt.computeIfAbsent(agent, _ -> new ConcurrentHashMap<>());
+    Map<Seq, Instant> stamps = writtenAt.computeIfAbsent(key, _ -> new ConcurrentHashMap<>());
     Instant now = clock.instant();
     for (AgentEvent event : events) {
       stamps.put(event.seq(), now);
     }
   }
 
+  /**
+   * <b>A snapshot, taken under the lock, then decoded lazily outside it.</b> Copying the references
+   * is what makes this safe to hand out: an append that lands while a caller is still reading
+   * cannot change what is being read, and nothing holds the lock for as long as the stream is open.
+   * Decoding stays lazy, so a caller that stops early decodes only what it looked at.
+   *
+   * <p>Nothing needs closing here -- there is no cursor and no connection -- but callers close it
+   * anyway, because they cannot know which store they have.
+   */
   @Override
-  public synchronized List<AgentEvent> readFrom(AgentId agent, Seq watermark) {
-    return streams.getOrDefault(agent, List.of()).stream()
+  public Stream<AgentEvent> streamFrom(AgentType type, AgentId agent, Seq watermark) {
+    Objects.requireNonNull(watermark, "watermark must not be null");
+    List<Stored> snapshot;
+    synchronized (this) {
+      snapshot = List.copyOf(streams.getOrDefault(key(type, agent), List.of()));
+    }
+    return snapshot.stream()
         .filter(stored -> stored.seq().compareTo(watermark) > 0)
-        .map(stored -> codec.decode(stored.bytes()))
-        .toList();
+        .map(stored -> codec.decode(stored.bytes()));
   }
 
   @Override
-  public List<AgentEvent> sinceLastTurnStarted(AgentId agent) {
-    List<Stored> stream = streams.getOrDefault(agent, List.of());
+  public List<AgentEvent> sinceLastTurnStarted(AgentType type, AgentId agent) {
+    List<Stored> stream = streams.getOrDefault(key(type, agent), List.of());
     for (int i = stream.size() - 1; i >= 0; i--) {
       if (stream.get(i).startsTurn()) {
         return stream.subList(i, stream.size()).stream()
@@ -107,11 +127,17 @@ public final class InMemoryAgentEvents implements AgentEvents {
   }
 
   @Override
-  public Instant writtenAt(AgentId agent, Seq seq) {
-    Instant stamp = writtenAt.getOrDefault(agent, Map.of()).get(seq);
+  public Instant writtenAt(AgentType type, AgentId agent, Seq seq) {
+    Instant stamp = writtenAt.getOrDefault(key(type, agent), Map.of()).get(seq);
     if (stamp == null) {
       throw new IllegalArgumentException("no event at " + seq + " for agent " + agent.value());
     }
     return stamp;
+  }
+
+  private static Key key(AgentType type, AgentId agent) {
+    Objects.requireNonNull(type, "type must not be null");
+    Objects.requireNonNull(agent, "agent must not be null");
+    return new Key(type, agent);
   }
 }

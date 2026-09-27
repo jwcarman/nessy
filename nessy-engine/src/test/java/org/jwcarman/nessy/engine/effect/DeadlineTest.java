@@ -102,7 +102,7 @@ class DeadlineTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(
             () -> {
-              assertThat(agentStateOf(agentId))
+              assertThat(agentStateOf(type, agentId))
                   .as("the turn ended, so the agent is not left waiting on a call")
                   .isEqualTo("Idle");
               assertThat(outstandingEffects(agentId))
@@ -158,7 +158,7 @@ class DeadlineTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(
             () -> {
-              assertThat(agentStateOf(agentId))
+              assertThat(agentStateOf(type, agentId))
                   .as("the turn ended rather than waiting out a ten-minute backoff")
                   .isEqualTo("Idle");
               assertThat(outstandingEffects(agentId))
@@ -172,12 +172,12 @@ class DeadlineTest {
   }
 
   private List<AgentEvent> story(AgentType agentType, AgentId agentId) {
-    return engine.story(agentId);
+    return engine.story(agentType, agentId);
   }
 
   /** The state replay produces, named -- there is no state column to read. */
-  private String agentStateOf(AgentId agentId) {
-    return engine.stateOf(agentId).getClass().getSimpleName();
+  private String agentStateOf(AgentType agentType, AgentId agentId) {
+    return engine.stateOf(agentType, agentId).getClass().getSimpleName();
   }
 
   private int outstandingEffects(AgentId agentId) {

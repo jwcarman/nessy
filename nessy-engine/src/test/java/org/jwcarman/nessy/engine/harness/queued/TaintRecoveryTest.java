@@ -86,7 +86,7 @@ class TaintRecoveryTest {
 
   /** The whole record, flattened -- what was stored, not what would be sent. */
   private List<AgentEvent> story(AgentType agentType, AgentId agentId) {
-    return engine.story(agentId);
+    return engine.story(agentType, agentId);
   }
 
   @Test

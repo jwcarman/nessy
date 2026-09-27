@@ -58,7 +58,7 @@ class NudgeTest {
 
       await()
           .atMost(Duration.ofSeconds(10))
-          .untilAsserted(() -> assertThat(engine.story(agentId)).hasSize(2));
+          .untilAsserted(() -> assertThat(engine.story(type, agentId)).hasSize(2));
     }
   }
 }

@@ -204,7 +204,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
                 ObservedTurnHistories.wrap(
                     (type, id) ->
                         new EventStreamHistory(
-                            backend.events(), new Transcript(payloads.forAgent(id)), id),
+                            backend.events(), new Transcript(payloads.forAgent(id)), type, id),
                     observations),
                 context.summaries().stream()
                     .map(source -> ObservedSummarizer.wrap(source, observations))
@@ -275,7 +275,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     return new ToolCallHandler(
         agentType,
         tools,
-        new EventStreamToolCalls(backend.events(), payloads),
+        new EventStreamToolCalls(backend.events(), payloads, agentType),
         replyTokens,
         narrator,
         terms,
@@ -292,7 +292,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     return new ApprovalHandler(
         agentType,
         tools,
-        new EventStreamToolCalls(backend.events(), payloads),
+        new EventStreamToolCalls(backend.events(), payloads, agentType),
         replyTokens,
         narrator,
         terms,
@@ -344,7 +344,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     // and a second shape of it would be a second thing to keep in step.
     return (type, id) ->
         new EventStreamHistory(
-            backend.events(), new Transcript(backend.payloads().forAgent(id)), id);
+            backend.events(), new Transcript(backend.payloads().forAgent(id)), type, id);
   }
 
   /**
