@@ -159,9 +159,9 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
     }
   }
 
-  /** Prompt in; candidates and thoughts out, since thinking is billed as output everywhere. */
   /**
-   * What the call cost, in the shape {@link Usage} defines.
+   * What the call cost, in the shape {@link Usage} defines. Prompt in; candidates and thoughts out,
+   * since thinking is billed as output everywhere.
    *
    * <p><b>Nothing is summed into the input, because {@code promptTokenCount} already includes what
    * was served from cache.</b> What IS summed is the output: Gemini counts what it said and what it

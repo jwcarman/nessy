@@ -75,9 +75,8 @@ public sealed interface Narration {
 
   // ---- facts: from the engine, after the fold commits ---------------------------------
 
-  /** An input was taken up and a turn opened on it. */
   /**
-   * A turn opened.
+   * A turn opened. An input was taken up and a turn opened on it.
    *
    * <p>The input is not echoed here. Whoever sent it has it, and anybody else reads the story;
    * narration says what is happening, and repeating content into it makes every watcher pay to be
@@ -88,14 +87,11 @@ public sealed interface Narration {
   /** The model is being asked. Narrated before the call, so a watcher can show waiting. */
   record Thinking() implements Narration {}
 
-  /**
-   * The turn ended with an answer.
-   *
-   * <p>Carries the text, unlike most facts here, because a watcher that cannot show the answer is
-   * not much of a watcher -- and a provider that does not stream has narrated no deltas, so this is
-   * the only place the answer appears. Text rather than blocks: the block grammar is the engine's
-   * business, and what a watcher wants is what a person would read.
-   */
+  // The turn ended with an answer. Carries the text, unlike most facts here, because a watcher
+  // that cannot show the answer is not much of a watcher -- and a provider that does not stream
+  // has narrated no deltas, so this is the only place the answer appears. Text rather than
+  // blocks: the block grammar is the engine's business, and what a watcher wants is what a
+  // person would read.
   /**
    * The turn produced an answer.
    *

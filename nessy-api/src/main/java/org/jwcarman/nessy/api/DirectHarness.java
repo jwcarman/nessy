@@ -38,8 +38,6 @@ package org.jwcarman.nessy.api;
  * rather than a wait -- the caller is standing right there and would rather know than block. What
  * kind of lock decides whether that holds across machines or only inside this one.
  *
- * <p><b>TODO -- James:</b> the name.
- *
  * @param <I> what a caller hands in
  * @param <O> what a caller gets back
  */

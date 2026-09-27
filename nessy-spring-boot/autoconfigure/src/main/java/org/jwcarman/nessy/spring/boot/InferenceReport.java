@@ -71,18 +71,20 @@ final class InferenceReport implements SmartInitializingSingleton {
       log.warn("NESSY INFERENCE: no provider is configured");
       return;
     }
-    log.info(
-        "NESSY INFERENCE: {} answering as model '{}', up to {} tokens",
-        chosen.providerName(),
-        properties.model(),
-        properties.maxTokens());
+    if (log.isInfoEnabled()) {
+      log.info(
+          "NESSY INFERENCE: {} answering as model '{}', up to {} tokens",
+          chosen.providerName(),
+          properties.model(),
+          properties.maxTokens());
+    }
 
     // Only ONE provider bean is ever built -- each is conditional on no other existing -- so the
     // one that wins is the one whose auto-configuration happened to run first, and the losers say
     // nothing at all. The keys are what the decision was actually made from, so they are what is
     // worth reporting when there is more than one of them.
     List<String> configured = KEYS.stream().filter(environment::containsProperty).toList();
-    if (configured.size() > 1) {
+    if (configured.size() > 1 && log.isWarnEnabled()) {
       log.warn(
           "NESSY INFERENCE: {} provider keys are set ({}), and only one provider is built."
               + " {} won by the order auto-configurations happen to run in, which is nobody's"

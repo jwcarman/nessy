@@ -43,9 +43,10 @@ import tools.jackson.databind.json.JsonMapper;
  */
 class BedrockLiveTest {
 
-  /** The cheapest model that streams, because this runs on somebody's bill. */
   /**
-   * Overridable, because structured output on Converse is a <em>per-model</em> capability: Nova
+   * The cheapest model that streams, because this runs on somebody's bill.
+   *
+   * <p>Overridable, because structured output on Converse is a <em>per-model</em> capability: Nova
    * Lite answers "This model doesn't support the outputConfig field", where a Claude model on the
    * same wire accepts it. Point the suite at another with {@code NESSY_LIVE_MODEL}.
    */

@@ -63,27 +63,37 @@ final class ReplLoop {
     if (!config.banner().isEmpty()) {
       io.write(config.banner() + System.lineSeparator());
     }
-    while (true) {
-      io.write(System.lineSeparator() + config.prompt());
-      io.flush();
-      String line = io.readLine();
-      if (line == null || config.isExit(line)) {
-        break;
-      }
-      if (DIAGNOSTIC.equalsIgnoreCase(line.strip())) {
-        describe();
-        continue;
-      }
-      if (!line.isBlank()) {
-        narration.beginTurn();
-        report(harness.ask(agentId, line));
-        io.flush();
-      }
+    while (readAndHandleOneLine()) {
+      // keeps going until told to stop, in readAndHandleOneLine()
     }
     if (!config.farewell().isEmpty()) {
       io.write(System.lineSeparator() + config.farewell() + System.lineSeparator());
       io.flush();
     }
+  }
+
+  /**
+   * Prompts, reads one line and acts on it.
+   *
+   * @return false when the loop should stop -- EOF or a quit line -- true otherwise
+   */
+  private boolean readAndHandleOneLine() {
+    io.write(System.lineSeparator() + config.prompt());
+    io.flush();
+    String line = io.readLine();
+    if (line == null || config.isExit(line)) {
+      return false;
+    }
+    if (DIAGNOSTIC.equalsIgnoreCase(line.strip())) {
+      describe();
+      return true;
+    }
+    if (!line.isBlank()) {
+      narration.beginTurn();
+      report(harness.ask(agentId, line));
+      io.flush();
+    }
+    return true;
   }
 
   /**
