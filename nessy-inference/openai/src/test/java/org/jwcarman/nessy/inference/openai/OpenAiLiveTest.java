@@ -247,6 +247,35 @@ class OpenAiLiveTest {
   }
 
   /**
+   * Answering now, where the model would plainly have reached for a tool.
+   *
+   * <p><b>The one arm this adapter emulates.</b> {@code ToolChoice.Answer} is an intent rather than
+   * a wire value, and what it must deliver is prose -- so unlike a ban, where only the absence of a
+   * call is asserted, here the answer itself is the contract. A turn told to wrap up and handed
+   * nothing back would be a bound that destroys the work it was meant to rescue.
+   *
+   * <p>The offers stay in the request. Dropping them would work too and would cost the cached
+   * prefix, which is the whole reason this choice belongs to the adapter rather than the engine.
+   */
+  @Test
+  void answering_now_produces_prose_with_the_tools_still_on_offer() {
+    try (OpenAiInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(asking("How deep is Loch Ness?", twoTools(), new ToolChoice.Answer()));
+
+      assertThat(result)
+          .as("a turn told to answer must answer; empty content would be a bound that broke it")
+          .isInstanceOf(InferenceResult.Answer.class);
+      assertThat(result)
+          .as("the lake tool was right there, so a call would mean the intent was dropped")
+          .isNotInstanceOf(InferenceResult.Actions.class);
+      assertThat(result.usage().counted())
+          .as("the call reached the model, so this is behaviour and not a failed send")
+          .isTrue();
+    }
+  }
+
+  /**
    * Forbidding tools, where the model would plainly have reached for one.
    *
    * <p>What is asserted is that no call was made, not that an answer arrived in its place: the
