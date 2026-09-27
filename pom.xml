@@ -946,6 +946,19 @@ limitations under the License.]]></inlineHeader>
                 have meant the release build no longer compiles the code the guides show.
               -->
               <excludeArtifacts>
+                <!--
+                  Family aggregators: build-time grouping only. Nothing declares one as its
+                  parent, so nobody resolving a nessy artifact ever needs them. nessy-parent is
+                  NOT here, because it genuinely is the parent of every published module.
+                -->
+                <excludeArtifact>nessy-backend</excludeArtifact>
+                <excludeArtifact>nessy-inference</excludeArtifact>
+                <excludeArtifact>nessy-approval</excludeArtifact>
+                <excludeArtifact>nessy-embedding</excludeArtifact>
+                <excludeArtifact>nessy-memory</excludeArtifact>
+                <excludeArtifact>nessy-spring-boot</excludeArtifact>
+                <excludeArtifact>nessy-prompt-parent</excludeArtifact>
+                <excludeArtifact>nessy-coverage</excludeArtifact>
                 <excludeArtifact>nessy-examples</excludeArtifact>
                 <excludeArtifact>nessy-example-chat-cli</excludeArtifact>
                 <excludeArtifact>nessy-example-chat-web</excludeArtifact>
