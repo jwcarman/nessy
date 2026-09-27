@@ -61,6 +61,7 @@ import org.jwcarman.nessy.engine.core.Decision;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
+import org.jwcarman.nessy.engine.observability.EffectSpans;
 import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.slf4j.Logger;
@@ -712,6 +713,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     }
     Duration remaining = Duration.between(clock.instant(), started.plus(terms.timeout()));
     return within(
+        agent,
+        effect,
         turn,
         remaining,
         terms,
@@ -750,8 +753,13 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * now decides before this method is ever called.
    */
   private AgentCommand within(
-      TurnId turn, Duration budget, EffectTerms terms, Supplier<AgentCommand> work) {
-    Future<AgentCommand> future = effects.submit(work::get);
+      AgentId agent,
+      AgentEffect effect,
+      TurnId turn,
+      Duration budget,
+      EffectTerms terms,
+      Supplier<AgentCommand> work) {
+    Future<AgentCommand> future = effects.submit(() -> observed(agent, effect, turn, work));
     try {
       return future.get(budget.toMillis(), TimeUnit.MILLISECONDS);
     } catch (TimeoutException expired) {
@@ -901,5 +909,29 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     } catch (RuntimeException notTheShape) {
       return new Outcome.Failed<>("the answer did not fit: " + notTheShape.getMessage());
     }
+  }
+
+  /**
+   * One effect, inside a span of its own, on the thread that actually runs it.
+   *
+   * <p>Opened here rather than in {@link #perform} because that method runs on the caller's thread
+   * and only submits: a span opened there would time the submission and the wait, not the work.
+   * This runs on the virtual thread, so what it measures is the effect.
+   *
+   * <p>Named the way the queued door names the same effect -- see {@link EffectSpans} -- so that a
+   * dashboard reads the same whichever door performed it. What it adds over the {@code chat} or
+   * {@code execute_tool} span inside it is the part only this door knows: which effects of a turn
+   * ran at once, and how long one waited before it could.
+   */
+  private AgentCommand observed(
+      AgentId agent, AgentEffect effect, TurnId turn, Supplier<AgentCommand> work) {
+    if (observations.isNoop()) {
+      return work.get();
+    }
+    Observation observation =
+        Observation.createNotStarted(EffectSpans.EFFECT, observations)
+            .contextualName(EffectSpans.nameOf(effect));
+    new Identity(agentType, agent).on(observation, turn);
+    return observation.observe(work::get);
   }
 }

@@ -31,10 +31,10 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.RetryDecision;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.engine.observability.EffectSpans;
 import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
@@ -264,20 +264,6 @@ public class EffectDispatcher {
   }
 
   /**
-   * What an effect span is called: its kind, and for a tool call the tool, as {@code execute_tool
-   * <name>} is. An approval often has no span beneath it to say which call it was for.
-   */
-  private static String spanNameOf(AgentEffect effect) {
-    return switch (effect) {
-      case AgentEffect.Infer _ -> "nessy.effect infer";
-      case AgentEffect.Approve(_, _, _, ToolName toolName) ->
-          "nessy.effect approve " + toolName.value();
-      case AgentEffect.CallTool(_, _, _, ToolName toolName) ->
-          "nessy.effect call_tool " + toolName.value();
-    };
-  }
-
-  /**
    * Performs one attempt inside the trace of the turn it belongs to.
    *
    * <p>The span covers everything the attempt does -- reading the payload, running the handler,
@@ -287,7 +273,7 @@ public class EffectDispatcher {
    */
   private void perform(Attempt attempt) {
     traces.restore(
-        "nessy.effect",
+        EffectSpans.EFFECT,
         attempt.traceContext(),
         new Identity(agentType, attempt.agentId()),
         () -> {
@@ -328,7 +314,7 @@ public class EffectDispatcher {
       return;
     }
 
-    traces.nameCurrent(spanNameOf(effect));
+    traces.nameCurrent(EffectSpans.nameOf(effect));
     try {
       log.debug(
           "[{}] performing {} for agent {} (attempt {})",
