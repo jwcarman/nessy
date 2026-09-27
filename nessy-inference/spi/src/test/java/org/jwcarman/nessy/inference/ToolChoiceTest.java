@@ -71,11 +71,12 @@ class ToolChoiceTest {
     List<ToolOffer> nothing = List.of();
     ToolChoice any = new ToolChoice.Any();
     ToolChoice named = new ToolChoice.Named(new ToolName("absent"));
+    List<ToolOffer> offers = List.of(LOOKUP);
 
     assertThatThrownBy(() -> new Toolset(nothing, any))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("needs a tool on offer");
-    assertThatThrownBy(() -> new Toolset(List.of(LOOKUP), named))
+    assertThatThrownBy(() -> new Toolset(offers, named))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("absent");
   }

@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
@@ -264,8 +265,8 @@ class NotebookPatternTest {
                             ctx ->
                                 ctx.ambient(Ambient.text("notebook", "one"))
                                     .ambient(Ambient.text("notebook", "two"))));
-    org.assertj.core.api.Assertions.assertThatThrownBy(
-            () -> harnesses.create(new AgentType("notebook-clash"), String.class, twoNotebooks))
+    AgentType clashType = new AgentType("notebook-clash");
+    assertThatThrownBy(() -> harnesses.create(clashType, String.class, twoNotebooks))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("notebook");
   }

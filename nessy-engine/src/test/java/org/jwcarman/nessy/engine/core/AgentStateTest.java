@@ -498,10 +498,11 @@ class AgentStateTest {
     @Test
     @DisplayName("an agent waiting for nothing is not a state that can exist")
     void awaiting_nothing_is_rejected() {
-      assertThatThrownBy(
-              () ->
-                  new AgentState.AwaitingActions(
-                      Seq.of(1), Seq.of(1).opensTurn(), Seq.of(1), Map.of()))
+      Seq seq = Seq.of(1);
+      TurnId turn = seq.opensTurn();
+      Map<CallId, OutstandingAction> noActions = Map.of();
+
+      assertThatThrownBy(() -> new AgentState.AwaitingActions(seq, turn, seq, noActions))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("awaiting nothing");
     }
@@ -737,8 +738,9 @@ class AgentStateTest {
     @DisplayName("a terminated agent refuses to start a turn, loudly")
     void terminal_refuses_work() {
       AgentState dead = idle.applyAll(idle.execute(new AgentCommand.Terminate()).events());
+      AgentCommand.StartTurn startTurn = new AgentCommand.StartTurn(MAIL);
 
-      assertThatThrownBy(() -> dead.execute(new AgentCommand.StartTurn(MAIL)))
+      assertThatThrownBy(() -> dead.execute(startTurn))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("accepts nothing further");
     }
@@ -747,8 +749,9 @@ class AgentStateTest {
     @DisplayName("a terminated agent refuses a second terminate, loudly")
     void terminal_refuses_terminate() {
       AgentState dead = idle.applyAll(idle.execute(new AgentCommand.Terminate()).events());
+      AgentCommand.Terminate terminate = new AgentCommand.Terminate();
 
-      assertThatThrownBy(() -> dead.execute(new AgentCommand.Terminate()))
+      assertThatThrownBy(() -> dead.execute(terminate))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("accepts nothing further");
     }

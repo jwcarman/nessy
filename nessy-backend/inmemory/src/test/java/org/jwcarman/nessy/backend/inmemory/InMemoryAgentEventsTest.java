@@ -161,8 +161,9 @@ class InMemoryAgentEventsTest {
     AgentEvents events =
         new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
     events.append(TYPE, agent, List.of(started(1, 1)), Seq.NONE);
+    Seq unknownSeq = new Seq(99);
 
-    assertThatThrownBy(() -> events.writtenAt(TYPE, agent, new Seq(99)))
+    assertThatThrownBy(() -> events.writtenAt(TYPE, agent, unknownSeq))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("99")
         .hasMessageContaining(agent.value().toString());

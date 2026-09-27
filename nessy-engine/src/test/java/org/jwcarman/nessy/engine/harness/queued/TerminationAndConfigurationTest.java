@@ -198,7 +198,8 @@ class TerminationAndConfigurationTest {
                 .systemPrompt("You are a test assistant.")
                 .tool(new PingTool())
                 .tool(new PingTool());
-    assertThatThrownBy(() -> harnesses.create(new AgentType("chat-clash"), clash))
+    AgentType clashType = new AgentType("chat-clash");
+    assertThatThrownBy(() -> harnesses.create(clashType, clash))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("duplicate");
 
@@ -207,7 +208,8 @@ class TerminationAndConfigurationTest {
             config
                 .systemPrompt("You are a test assistant.")
                 .inference(in -> in.context(ctx -> ctx.maxTail(0)));
-    assertThatThrownBy(() -> harnesses.create(new AgentType("chat-tail"), noTail))
+    AgentType tailType = new AgentType("chat-tail");
+    assertThatThrownBy(() -> harnesses.create(tailType, noTail))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("maxTail");
   }

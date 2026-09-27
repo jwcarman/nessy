@@ -167,8 +167,9 @@ class JdbcAgentEventsTest {
   @DisplayName("an unknown seq names the agent and the seq rather than staying quiet about it")
   void writtenAt_of_an_unknown_seq_throws() {
     events.append(TYPE, agent, List.of(started(1, 1)), Seq.NONE);
+    Seq unknownSeq = new Seq(99);
 
-    assertThatThrownBy(() -> events.writtenAt(TYPE, agent, new Seq(99)))
+    assertThatThrownBy(() -> events.writtenAt(TYPE, agent, unknownSeq))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("99")
         .hasMessageContaining(agent.value().toString());

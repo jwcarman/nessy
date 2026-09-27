@@ -263,8 +263,10 @@ class InMemoryLeasesTest {
   @Test
   @DisplayName("a ttl with no life in it is refused at the call")
   void a_ttl_that_is_not_positive_is_refused() {
+    AgentId agent = agent();
+
     assertThatThrownBy(
-            () -> leases.tryWithLease(SUMMARY, TYPE, agent(), Duration.ZERO, () -> "never runs"))
+            () -> leases.tryWithLease(SUMMARY, TYPE, agent, Duration.ZERO, () -> "never runs"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 }
