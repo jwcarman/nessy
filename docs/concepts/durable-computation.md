@@ -58,6 +58,27 @@ comes due at its deadline is claimed to be given up on, not filtered out,
 because a row nobody claims is a row nobody retires and its agent waits
 forever.
 
+**`Never` is the default, for every kind of work.** Tools, approvers and
+model calls all retry only when an application says to. Retrying spends
+tokens or repeats a side effect, and which of those is acceptable is not
+something an engine can assume.
+
+**What counts as a failure worth repeating depends on what failed.** A tool
+or an approver that throws has told you nothing, so the policy decides. A
+model call is different: its adapter catches its vendor's exception and
+classifies what went wrong, and only `Failure.Transient` — it failed, and
+it might not next time — reaches the policy at all. `Permanent` means the
+identical request fails identically. `Rejected` names content that will
+fail every time it is sent, so the answer is to quarantine it rather than
+send it again. `Unknown` means nobody found out whether the call happened,
+and repeating work that may already have run is not a chance this engine
+takes on its own.
+
+Retries belong to the queued door. A `DirectHarness` performs its effects
+on its own threads while a caller waits, and it does not retry a failed
+inference — the caller is standing right there, and asking again is theirs
+to decide.
+
 Giving up is not silence. Beside every effect row sits a second blob,
 `failure_payload`, written at emit time: what to tell the agent if this
 work can never be done. That is what reaches the agent when a deadline
