@@ -99,7 +99,11 @@ public final class BedrockRequests {
             .toList();
     builder.messages(alternating(drafted));
 
-    if (request.toolset().any()) {
+    // Converse cannot say "not this turn" at all, so answering now is expressed the only way it
+    // can be here: by offering nothing. The cached prefix is the price, paid only on the turns a
+    // bound fires.
+    boolean answering = request.toolset().choice() instanceof ToolChoice.Answer;
+    if (request.toolset().any() && !answering) {
       ToolConfiguration.Builder tools =
           ToolConfiguration.builder()
               .tools(
@@ -159,6 +163,10 @@ public final class BedrockRequests {
               software.amazon.awssdk.services.bedrockruntime.model.ToolChoice.builder()
                   .tool(SpecificToolChoice.builder().name(name.value()).build())
                   .build());
+      // Never reached: a request that means to answer sends no tool configuration at all, so
+      // nothing calls this. Here because the grammar is sealed and silence would be a guess.
+      case ToolChoice.Answer _ ->
+          throw new IllegalStateException("answering sends no tools, so no choice to make");
     }
   }
 

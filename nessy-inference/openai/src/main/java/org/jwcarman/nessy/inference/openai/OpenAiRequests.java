@@ -313,6 +313,13 @@ public final class OpenAiRequests {
         // What the absent field already means.
       }
       case ToolChoice.None _ -> builder.toolChoice(ChatCompletionToolChoiceOption.Auto.NONE);
+      // The same wire value, for a different intent that happens to coincide here: OpenAI
+      // documents "none" as not calling a tool and generating a message instead, which is what
+      // answering now means. The offers stay in the request, so a cached prefix is not disturbed.
+      //
+      // Documented rather than measured. If a model here ever returns empty content under this,
+      // the fallback is to send no tools at all -- at the cost of the cache.
+      case ToolChoice.Answer _ -> builder.toolChoice(ChatCompletionToolChoiceOption.Auto.NONE);
       case ToolChoice.Any _ -> builder.toolChoice(ChatCompletionToolChoiceOption.Auto.REQUIRED);
       case ToolChoice.Named(ToolName name) ->
           builder.toolChoice(

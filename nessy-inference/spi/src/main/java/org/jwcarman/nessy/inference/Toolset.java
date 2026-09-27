@@ -81,8 +81,10 @@ public record Toolset(List<ToolOffer> offers, ToolChoice choice) {
           throw new IllegalArgumentException("no tool named " + name.value() + " is on offer");
         }
       }
-      // Auto and None are satisfiable whatever is on offer, including nothing.
-      case ToolChoice.Auto _, ToolChoice.None _ -> {
+      // Auto, None and Answer are satisfiable whatever is on offer, including nothing. Answer
+      // deliberately keeps the offers: leaving them in place is what preserves a cached prefix,
+      // and an adapter that has to drop them to honour it can drop them itself.
+      case ToolChoice.Auto _, ToolChoice.None _, ToolChoice.Answer _ -> {
         /* always coherent */
       }
     }

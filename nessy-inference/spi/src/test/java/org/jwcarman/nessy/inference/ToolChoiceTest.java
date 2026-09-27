@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.SystemPrompt;
@@ -127,5 +128,26 @@ class ToolChoiceTest {
     assertThat(new ToolChoice.None()).isEqualTo(new ToolChoice.None());
     assertThat(new ToolChoice.Named(new ToolName("a")))
         .isNotEqualTo(new ToolChoice.Named(new ToolName("b")));
+  }
+
+  @Test
+  @DisplayName("answering keeps the offers, because dropping them throws away a cached prefix")
+  void answering_keeps_the_offers() {
+    Toolset toolset =
+        new Toolset(
+            List.of(new ToolOffer(new ToolName("refund"), "issues a refund", JsonSchema.of("{}"))),
+            new ToolChoice.Answer());
+
+    assertThat(toolset.offers())
+        .as("still on offer; the request merely says not to use them")
+        .hasSize(1);
+    assertThat(toolset.choice()).isInstanceOf(ToolChoice.Answer.class);
+  }
+
+  @Test
+  @DisplayName("answering is coherent with nothing on offer too")
+  void answering_with_nothing_on_offer_is_fine() {
+    assertThat(new Toolset(List.of(), new ToolChoice.Answer()).choice())
+        .isInstanceOf(ToolChoice.Answer.class);
   }
 }

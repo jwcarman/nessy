@@ -38,6 +38,7 @@ import org.jwcarman.nessy.api.tool.ToolName;
 @JsonSubTypes({
   @JsonSubTypes.Type(value = ToolChoice.Auto.class, name = "auto"),
   @JsonSubTypes.Type(value = ToolChoice.None.class, name = "none"),
+  @JsonSubTypes.Type(value = ToolChoice.Answer.class, name = "answer"),
   @JsonSubTypes.Type(value = ToolChoice.Any.class, name = "any"),
   @JsonSubTypes.Type(value = ToolChoice.Named.class, name = "named")
 })
@@ -65,6 +66,24 @@ public sealed interface ToolChoice {
    * something weaker.
    */
   record None() implements ToolChoice {}
+
+  /**
+   * Answer now, whatever is on offer.
+   *
+   * <p><b>The one arm that is emulated rather than translated.</b> Every other arm names something
+   * each vendor spells; this one names an INTENT and leaves each adapter to honour it however its
+   * own wire allows. That is a deliberate amendment to this type's promise, and it is here because
+   * the alternative is worse: an engine that forced an answer by sending no tools would throw away
+   * the cached prefix on every vendor that caches, including the ones that need not lose it. Only
+   * an adapter knows whether its vendor can say "answer" while leaving the offers in place.
+   *
+   * <p>Do not "fix" an adapter that emulates this into a literal translation of {@link None}. That
+   * one is measured not to work: on Anthropic, a ban with tools still in the request ends the turn
+   * with no content at all, and Bedrock's Converse cannot express it.
+   *
+   * <p>What every adapter must deliver is prose. How it gets there is its own business.
+   */
+  record Answer() implements ToolChoice {}
 
   /** Some tool, the model's pick of those offered. An answer without a call is not an option. */
   record Any() implements ToolChoice {}

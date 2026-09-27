@@ -148,6 +148,13 @@ public final class GeminiRequests {
         return;
       }
       case ToolChoice.None _ -> calling.mode(new FunctionCallingConfigMode(Known.NONE));
+      // Gemini's NONE is documented as the model not calling a function and producing text, which
+      // is what answering now means -- so the same mode serves a different intent, and the
+      // declarations stay in the request rather than being stripped out of it.
+      //
+      // Documented rather than measured. If a model here returns nothing under this, the fallback
+      // is the one Anthropic already takes: send no declarations.
+      case ToolChoice.Answer _ -> calling.mode(new FunctionCallingConfigMode(Known.NONE));
       case ToolChoice.Any _ -> calling.mode(new FunctionCallingConfigMode(Known.ANY));
       case ToolChoice.Named(ToolName name) ->
           calling.mode(new FunctionCallingConfigMode(Known.ANY)).allowedFunctionNames(name.value());

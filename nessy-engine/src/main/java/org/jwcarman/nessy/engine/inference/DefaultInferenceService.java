@@ -24,6 +24,7 @@ import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.Toolset;
 
@@ -66,6 +67,11 @@ public class DefaultInferenceService implements InferenceService {
     this.outputSchema = Objects.requireNonNull(outputSchema, "outputSchema must not be null");
   }
 
+  /** The same offer, asked to produce prose. */
+  private Toolset answering() {
+    return new Toolset(toolset.offers(), new ToolChoice.Answer());
+  }
+
   @Override
   public InferenceResult infer(InferenceInvocation invocation) {
     // Resolved here, on the dispatcher's thread and off the agent's row lock, so a prompt
@@ -74,7 +80,10 @@ public class DefaultInferenceService implements InferenceService {
         new InferenceRequest(
             systemPrompt.forAgent(invocation.agentId()),
             assembler.assemble(invocation),
-            toolset,
+            // The same tools, and a request that says to answer rather than call. Left to the
+            // adapter rather than decided here: dropping the offers would throw away a cached
+            // prefix on every vendor, including the ones whose wire can say this outright.
+            invocation.answerOnly() ? answering() : toolset,
             invocation.options(),
             outputSchema);
     // Bound here, which is the only place that knows both who is being served and where the

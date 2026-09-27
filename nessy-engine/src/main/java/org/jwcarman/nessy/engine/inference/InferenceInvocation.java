@@ -26,7 +26,13 @@ import org.jwcarman.nessy.inference.InferenceOptions;
  * <p>Identity rather than messages, because choosing what to send is the service's job. A caller
  * that had to assemble the context first would be doing the curation itself.
  */
-public record InferenceInvocation(AgentType agentType, AgentId agentId, InferenceOptions options) {
+public record InferenceInvocation(
+    AgentType agentType, AgentId agentId, InferenceOptions options, boolean answerOnly) {
+
+  /** The ordinary ask, where the model may reach for a tool if it wants one. */
+  public InferenceInvocation(AgentType agentType, AgentId agentId, InferenceOptions options) {
+    this(agentType, agentId, options, false);
+  }
 
   public InferenceInvocation {
     Objects.requireNonNull(agentType, "agentType must not be null");

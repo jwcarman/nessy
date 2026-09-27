@@ -115,8 +115,15 @@ public final class AnthropicRequests {
       builder.systemOfTextBlockParams(system);
     }
     addMessages(builder, request.context().summaries(), request.context().turns(), marker, mapper);
-    addTools(builder, request.toolset().offers(), marker, mapper);
-    chooseTool(builder, request.toolset().offers(), request.toolset().choice());
+    // Answering now is the one choice this vendor cannot be told: measured 2026-09-20, a ban with
+    // the tools still in the request ends the turn with no content at all. What works here is not
+    // offering them, so that is what this adapter does -- and the cached prefix is the price, paid
+    // only on the turns a bound actually fires.
+    boolean answering = request.toolset().choice() instanceof ToolChoice.Answer;
+    if (!answering) {
+      addTools(builder, request.toolset().offers(), marker, mapper);
+      chooseTool(builder, request.toolset().offers(), request.toolset().choice());
+    }
     request.outputSchema().ifPresent(schema -> askForShape(builder, schema, mapper));
 
     if (features.thinking()) {
@@ -387,6 +394,10 @@ public final class AnthropicRequests {
       case ToolChoice.None _ -> builder.toolChoice(ToolChoiceNone.builder().build());
       case ToolChoice.Any _ -> builder.toolChoice(ToolChoiceAny.builder().build());
       case ToolChoice.Named(ToolName name) -> builder.toolToolChoice(name.value());
+      // Never reached: a request that means to answer sends no tools, so this method is not
+      // called at all. Here because the grammar is sealed and silence would be a guess.
+      case ToolChoice.Answer _ ->
+          throw new IllegalStateException("answering sends no tools, so no choice to make");
     }
   }
 
