@@ -31,7 +31,6 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
-import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -40,6 +39,7 @@ import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.OutputReader;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
@@ -60,7 +60,6 @@ import org.jwcarman.nessy.engine.effect.EffectOutcomes;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import tools.jackson.databind.ObjectMapper;
 
 /**
  * A turn, run as a sequence of short locked steps with the slow work performed between them.
@@ -165,7 +164,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * shape -- inside this generic class {@code O} is neither. It arrives final, because a harness
    * whose reader could be set afterwards would answer its first question with a null.
    */
-  private final OutcomeReader<O> reading;
+  private final OutputReader<O> reading;
 
   /**
    * The handle everything watching this agent is reached through.
@@ -225,7 +224,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       AgentType agentType,
       Clock clock,
       InputRenderer<I> renderer,
-      OutcomeReader<O> reading,
+      OutputReader<O> reading,
       Narrator narrator,
       EffectHandlers handlers,
       ExecutorService effects,
@@ -807,7 +806,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   private Outcome<O> asOutcome(AgentId agent, TurnId turn, AgentEvent event) {
     return switch (event) {
       case AgentEvent.InferenceAnswered answered when answered.turn().equals(turn) ->
-          reading.read(agent, answered);
+          readAnswer(agent, answered);
       case AgentEvent.InferenceRefused refused when refused.turn().equals(turn) ->
           new Outcome.Refused<>(refused.category());
       case AgentEvent.InferenceFailed failed when failed.turn().equals(turn) ->
@@ -836,40 +835,20 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   }
 
   /**
-   * What a caller who asked for no particular shape gets: whatever the model said.
+   * The answer, read into the shape this harness was created for.
    *
-   * <p>Package-private rather than {@code private}: called through a method reference the factory
-   * builds for a harness whose {@code O} is {@link String} -- the one fact only the factory's
-   * unstructured {@code create} method can state, since that method is where {@code O} is String
-   * rather than merely this class's abstract type variable.
+   * <p>Fetching the text and deciding what a bad read costs belong here rather than in the {@link
+   * OutputReader}: a reader is handed text and hands back an object, so the only thing it can do
+   * about text that is not its shape is throw. A model that answered around its schema fails the
+   * turn -- which is the whole reason a caller asked for a shape instead of prose -- and it fails
+   * as an {@link Outcome.Failed} rather than an exception out of a door that promised a value.
    */
-  static Outcome<String> saidText(
-      Payloads payloads, AgentId agent, AgentEvent.InferenceAnswered answered) {
-    return new Outcome.Answered<>(textOf(payloads, agent, answered));
-  }
-
-  /**
-   * The answer, parsed into the shape it was asked for.
-   *
-   * <p>A model that answered around the schema fails the turn rather than handing back something
-   * that does not fit -- which is the whole reason a caller asked for a shape instead of prose.
-   *
-   * <p>Package-private for the same reason as {@link #saidText}: the factory's bound {@code create}
-   * method calls this on the harness it just built, where {@code type} and this instance's {@code
-   * O} are the same type parameter.
-   */
-  static <T> Outcome<T> read(
-      Payloads payloads,
-      ObjectMapper mapper,
-      AgentId agent,
-      AgentEvent.InferenceAnswered answered,
-      TypeRef<T> type) {
-    String json = textOf(payloads, agent, answered);
+  private Outcome<O> readAnswer(AgentId agent, AgentEvent.InferenceAnswered answered) {
+    String text = textOf(backend.payloads(), agent, answered);
     try {
-      return new Outcome.Answered<>(mapper.readValue(json, mapper.constructType(type.getType())));
+      return new Outcome.Answered<>(reading.read(text));
     } catch (RuntimeException notTheShape) {
-      return new Outcome.Failed<>(
-          "the answer did not fit " + type + ": " + notTheShape.getMessage());
+      return new Outcome.Failed<>("the answer did not fit: " + notTheShape.getMessage());
     }
   }
 }

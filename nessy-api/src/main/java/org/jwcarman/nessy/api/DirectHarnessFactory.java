@@ -53,10 +53,40 @@ public interface DirectHarnessFactory {
   <I, O> DirectHarness<I, O> create(
       AgentType agentType, TypeRef<O> answers, Customizer<DirectHarnessConfig<I>> customizer);
 
+  /**
+   * The same, reading the answer some way other than parsing it as JSON.
+   *
+   * <p>Supplied here rather than through {@link DirectHarnessConfig} because a reader is bound to
+   * {@code O}, and {@code O} is named here: the shape a harness answers in and how that shape is
+   * read back are one decision, and a config parameterised only on {@code I} could not state the
+   * second half of it.
+   *
+   * <p>{@code answers} still decides the schema the provider is asked to honour, so the reader is
+   * how a model that honours a shape while spelling it differently -- XML, a vendor's envelope, a
+   * format that needs binding rules the shared mapper does not have -- still lands as an {@code O}.
+   *
+   * @param reader how the model's text becomes an {@code O}; see {@link OutputReader#json} for what
+   *     the other overload uses, and {@link OutputReader#text} for the words as they came
+   */
+  <I, O> DirectHarness<I, O> create(
+      AgentType agentType,
+      TypeRef<O> answers,
+      OutputReader<O> reader,
+      Customizer<DirectHarnessConfig<I>> customizer);
+
   /** The common case: a shape with no type arguments to capture. */
   default <I, O> DirectHarness<I, O> create(
       AgentType agentType, Class<O> answers, Customizer<DirectHarnessConfig<I>> customizer) {
     return create(agentType, TypeRef.of(answers), customizer);
+  }
+
+  /** A shape with no type arguments to capture, read some way other than as JSON. */
+  default <I, O> DirectHarness<I, O> create(
+      AgentType agentType,
+      Class<O> answers,
+      OutputReader<O> reader,
+      Customizer<DirectHarnessConfig<I>> customizer) {
+    return create(agentType, TypeRef.of(answers), reader, customizer);
   }
 
   /**

@@ -35,6 +35,7 @@ import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.api.OutputReader;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.effect.ApprovalHandler;
@@ -191,31 +192,35 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
     JsonSchema shape = new JsonSchema(schemas.generate(answers.rawClass()).json());
     // Only this method knows O is what answers itself carries -- inside DefaultDirectHarness O is
     // an abstract type variable, so the parse a harness will use is decided here and handed over.
-    return build(
-        agentType,
-        customizer,
-        Optional.of(shape),
-        (agent, answered) ->
-            DefaultDirectHarness.read(backend.payloads(), mapper, agent, answered, answers));
+    return build(agentType, customizer, Optional.of(shape), OutputReader.json(mapper, answers));
+  }
+
+  @Override
+  public <I, O> DirectHarness<I, O> create(
+      AgentType agentType,
+      TypeRef<O> answers,
+      OutputReader<O> reader,
+      Customizer<DirectHarnessConfig<I>> customizer) {
+    Objects.requireNonNull(reader, "reader must not be null");
+    // The shape still reaches the provider: a caller supplying its own reader is saying how the
+    // answer is spelled, not that it may be anything.
+    JsonSchema shape = new JsonSchema(schemas.generate(answers.rawClass()).json());
+    return build(agentType, customizer, Optional.of(shape), reader);
   }
 
   @Override
   public <I> DirectHarness<I, String> create(
       AgentType agentType, Customizer<DirectHarnessConfig<I>> customizer) {
-    // Only this method knows O is String here -- the same reason the bound overload above decides
-    // its own reading rather than build() doing it for both.
-    return build(
-        agentType,
-        customizer,
-        Optional.empty(),
-        (agent, answered) -> DefaultDirectHarness.saidText(backend.payloads(), agent, answered));
+    // Only this method knows O is String here, which is why it states its own reader rather than
+    // build() stating one for both: there is nothing to parse when the shape asked for is the text.
+    return build(agentType, customizer, Optional.empty(), OutputReader.text());
   }
 
   private <I, O> DefaultDirectHarness<I, O> build(
       AgentType agentType,
       Customizer<DirectHarnessConfig<I>> customizer,
       Optional<JsonSchema> outputSchema,
-      OutcomeReader<O> reading) {
+      OutputReader<O> reading) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     DefaultDirectHarnessConfig<I> config =
         new DefaultDirectHarnessConfig<>(agentType, observations);

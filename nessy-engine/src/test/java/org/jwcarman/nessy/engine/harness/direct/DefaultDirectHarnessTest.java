@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
@@ -47,6 +48,7 @@ import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.OutputReader;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
@@ -213,6 +215,20 @@ class DefaultDirectHarnessTest {
         .<String, T>create(
             TYPE,
             type,
+            c ->
+                c.systemPrompt("You are terse.")
+                    .inputRenderer(said -> List.of(new Block.Text(said)))
+                    .inference(in -> in.model("a-model").context(ctx -> ctx.maxTail(MAX_TAIL))));
+  }
+
+  /** A harness that reads its answer some way other than parsing it as JSON. */
+  private <T> DirectHarness<String, T> shapedHarness(
+      InferenceProvider model, Class<T> type, OutputReader<T> reader) {
+    return factoryFor(model, new InMemoryLocks())
+        .<String, T>create(
+            TYPE,
+            type,
+            reader,
             c ->
                 c.systemPrompt("You are terse.")
                     .inputRenderer(said -> List.of(new Block.Text(said)))
@@ -1304,6 +1320,52 @@ class DefaultDirectHarnessTest {
         found.computeIfAbsent(ref, delegate::get);
       }
       return found;
+    }
+  }
+
+  @Nested
+  @DisplayName("An answer read some way other than as JSON")
+  class ACallersOwnReader {
+
+    /**
+     * <b>The reader supplied is the reader used.</b> A model that honours the shape while spelling
+     * it differently is the whole reason this overload exists, so the answer here is deliberately
+     * not JSON: parsing it with the default would fail, and the turn answering proves it did not.
+     */
+    @Test
+    void turns_what_the_model_said_into_the_shape_asked_for() {
+      DirectHarness<String, Lookup> harness =
+          shapedHarness(
+              (request, narrator) -> answering("id=42"),
+              Lookup.class,
+              answer -> new Lookup(answer.substring(3)));
+
+      Outcome<Lookup> outcome = harness.ask(AgentId.random(), "which one?");
+
+      assertThat(outcome).isEqualTo(new Outcome.Answered<>(new Lookup("42")));
+    }
+
+    /**
+     * <b>A reader that throws fails the turn rather than the caller.</b> The door promised a value,
+     * so an exception out of a reader becomes the same {@link Outcome.Failed} a model answering
+     * around its schema produces -- which is the framework doing the wrapping, so a reader never
+     * has to.
+     */
+    @Test
+    void fails_the_turn_when_the_answer_is_not_that_shape_after_all() {
+      DirectHarness<String, Lookup> harness =
+          shapedHarness(
+              (request, narrator) -> answering("nothing like an id"),
+              Lookup.class,
+              answer -> {
+                throw new IllegalArgumentException("no id in " + answer);
+              });
+      AgentId agent = AgentId.random();
+
+      Outcome<Lookup> outcome = harness.ask(agent, "which one?");
+
+      assertThat(outcome).isInstanceOf(Outcome.Failed.class);
+      assertThat(((Outcome.Failed<Lookup>) outcome).reason()).contains("no id in");
     }
   }
 }
