@@ -144,7 +144,7 @@ final class DefaultQueuedHarness<I>
     BacklogItem<I> arrival = new BacklogItem<>(input, clock.instant());
     log.debug("[{}] admitting input for agent {}", agentType.value(), agentId.value());
     traces.in(
-        "nessy.observe",
+        "nessy.tell",
         new Identity(agentType, agentId),
         () -> {
           String trace = traces.capture();

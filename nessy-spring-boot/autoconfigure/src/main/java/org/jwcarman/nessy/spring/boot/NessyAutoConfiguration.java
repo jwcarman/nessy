@@ -66,7 +66,20 @@ import tools.jackson.databind.ObjectMapper;
  * every store that turns a value into bytes asks this one for it, so a transform an application
  * configures reaches all of them rather than whichever substrate happened to ask.
  */
-@AutoConfiguration
+@AutoConfiguration(
+    // Ordered after Micrometer's, because nessyTokenUsageHandler is @ConditionalOnBean on a
+    // MeterRegistry and that condition is evaluated while auto-configurations are being processed
+    // -- it sees only what has been defined by the time it runs. Without this, the handler quietly
+    // did not exist in applications that had a registry, and the wiring test went on passing
+    // because a test's registry is a user bean, which is defined before any auto-configuration.
+    //
+    // By name rather than by class: every integration this module configures is optional, and
+    // naming the class would put Micrometer's metrics module on the compile path of applications
+    // that do not measure anything.
+    afterName = {
+      "org.springframework.boot.micrometer.metrics.autoconfigure.MetricsAutoConfiguration",
+      "org.springframework.boot.micrometer.metrics.autoconfigure.CompositeMeterRegistryAutoConfiguration"
+    })
 @EnableConfigurationProperties(NessyProperties.class)
 public class NessyAutoConfiguration {
 

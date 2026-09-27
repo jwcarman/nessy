@@ -231,7 +231,7 @@ class EpisodeSummarizerTest {
             .orElseThrow();
     assertThat(summary.getParentObservation()).isNotNull();
     assertThat(summary.getParentObservation().getContextView().getName())
-        .isIn("nessy.effect", "nessy.observe");
+        .isIn("nessy.effect", "nessy.tell");
   }
 
   @Test

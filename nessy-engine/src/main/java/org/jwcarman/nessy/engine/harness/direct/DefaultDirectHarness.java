@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.engine.harness.direct;
 
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -59,6 +61,8 @@ import org.jwcarman.nessy.engine.core.Decision;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
+import org.jwcarman.nessy.engine.observability.Identity;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -218,6 +222,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * real ceiling against a harness gone runaway while staying far above ordinary concurrency, and
    * on virtual threads an unused permit costs nothing.
    */
+  private final ObservationRegistry observations;
+
   private final Semaphore inFlight;
 
   public DefaultDirectHarness(
@@ -229,7 +235,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       Narrator narrator,
       EffectHandlers handlers,
       ExecutorService effects,
-      int maxInFlight) {
+      int maxInFlight,
+      ObservationRegistry observations) {
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
     this.agentType = agentType;
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
@@ -239,10 +246,41 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     this.handlers = Objects.requireNonNull(handlers, "handlers must not be null");
     this.effects = Objects.requireNonNull(effects, "effects must not be null");
     this.inFlight = new Semaphore(maxInFlight);
+    this.observations = Objects.requireNonNull(observations, "observations must not be null");
   }
 
   @Override
   public Outcome<O> ask(AgentId agent, I input) {
+    if (observations.isNoop()) {
+      return asking(agent, input);
+    }
+    // semconv's invoke_agent: the span an agent's work belongs to, named the way its model calls
+    // and tool calls already are. Identity goes on here rather than being read off a parent,
+    // because this IS the parent -- everything below inherits it from this observation.
+    Observation observation =
+        Observation.createNotStarted(ObservedInferenceProvider.DURATION, observations)
+            .contextualName("invoke_agent " + agentType.value())
+            .lowCardinalityKeyValue("gen_ai.operation.name", "invoke_agent");
+    new Identity(agentType, agent).on(observation, null);
+    return observation.observe(() -> asking(agent, input));
+  }
+
+  /**
+   * One turn, inside one observation.
+   *
+   * <p><b>The span this runs in is what makes the rest of them a tree.</b> Everything already
+   * observed here -- the model call, each tool, the context assembly -- opens its own observation
+   * and reads identity off whatever is current when it starts. With nothing enclosing them, each
+   * became a root of its own: the pieces were all there and none of them were related, and the
+   * model call carried no agent tag because there was no parent to read one from.
+   *
+   * <p>The queued door has always had this. It writes its trace context into the effect row and
+   * restores it when the effect runs, because its effects run later and possibly in another
+   * process. Here they run on this door's own virtual threads, so the executor carries the
+   * observation across instead of a column doing it -- see {@code ContextExecutorService} where
+   * that executor is made.
+   */
+  private Outcome<O> asking(AgentId agent, I input) {
     // renderer.render is pure and can run outside the lock; only the payload write it feeds has to
     // happen inside the first locked step, after the phase check, so a declined caller writes no
     // payload at all (§3, §4d).

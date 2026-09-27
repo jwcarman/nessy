@@ -168,5 +168,19 @@ class DirectHarnessObservabilityTest {
     assertThat(tag("gen_ai.client.operation.duration", "execute_tool", "gen_ai.tool.name"))
         .as("the same span the queued door's tool call makes")
         .isEqualTo("lookup");
+
+    // The span the other two hang from. Without it they were roots of their own: the model call,
+    // the tool call and the context assembly each began a separate trace, so a dashboard showed a
+    // turn as several unrelated things that happened to be near each other in time.
+    assertThat(tag("gen_ai.client.operation.duration", "invoke_agent", "gen_ai.agent.name"))
+        .as("the turn itself is a span, named the way semconv names an agent invocation")
+        .isEqualTo(TYPE.value());
+
+    // And this is the proof they are related rather than merely present: identity is put on the
+    // invoke_agent span alone, and the model call copies it off whatever observation is current
+    // when it starts. It can only read this if it started inside that one.
+    assertThat(tag("gen_ai.client.operation.duration", "chat", "gen_ai.agent.name"))
+        .as("the model call inherited the turn's identity, so it ran inside the turn's span")
+        .isEqualTo(TYPE.value());
   }
 }

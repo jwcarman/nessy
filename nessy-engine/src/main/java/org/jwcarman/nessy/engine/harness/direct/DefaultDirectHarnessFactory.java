@@ -16,6 +16,7 @@
 
 package org.jwcarman.nessy.engine.harness.direct;
 
+import io.micrometer.context.ContextExecutorService;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.util.List;
@@ -132,8 +133,9 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
    * for why it is not one each.
    */
   private final ExecutorService effects =
-      Executors.newThreadPerTaskExecutor(
-          Thread.ofVirtual().name("nessy-direct-effect-", 0).factory());
+      ContextExecutorService.wrap(
+          Executors.newThreadPerTaskExecutor(
+              Thread.ofVirtual().name("nessy-direct-effect-", 0).factory()));
 
   /**
    * Reads the config rather than holding it, so a caller that keeps a reference and changes it
@@ -300,7 +302,8 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
         narrator,
         handlers,
         effects,
-        config.maxInFlight());
+        config.maxInFlight(),
+        observations);
   }
 
   /**
