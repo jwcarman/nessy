@@ -40,6 +40,9 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  */
 public final class JdbcAgents implements Agents {
 
+  private static final String AGENT_TYPE_REQUIRED = "agentType must not be null";
+  private static final String AGENT_REQUIRED = "agent must not be null";
+
   private static final String ENSURE =
       """
       INSERT INTO nessy_agent (agent_type, agent_id)
@@ -68,15 +71,15 @@ public final class JdbcAgents implements Agents {
 
   @Override
   public void ensure(AgentType agentType, AgentId agent) {
-    Objects.requireNonNull(agentType, "agentType must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(agentType, AGENT_TYPE_REQUIRED);
+    Objects.requireNonNull(agent, AGENT_REQUIRED);
     jdbc.sql(ENSURE).params(agentType.value(), agent.value()).update();
   }
 
   @Override
   public boolean terminated(AgentType agentType, AgentId agent) {
-    Objects.requireNonNull(agentType, "agentType must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(agentType, AGENT_TYPE_REQUIRED);
+    Objects.requireNonNull(agent, AGENT_REQUIRED);
     return jdbc.sql(TERMINATED)
         .params(agentType.value(), agent.value())
         .query(Boolean.class)
@@ -86,8 +89,8 @@ public final class JdbcAgents implements Agents {
 
   @Override
   public int seal(AgentType agentType, AgentId agent) {
-    Objects.requireNonNull(agentType, "agentType must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(agentType, AGENT_TYPE_REQUIRED);
+    Objects.requireNonNull(agent, AGENT_REQUIRED);
     int abandoned = jdbc.sql(CLEAR_BACKLOG).params(agentType.value(), agent.value()).update();
     jdbc.sql(SEAL).params(agentType.value(), agent.value()).update();
     return abandoned;

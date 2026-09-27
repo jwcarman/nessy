@@ -42,6 +42,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  */
 public final class JdbcBacklog<I> implements Backlog<I> {
 
+  private static final String ITEM_REQUIRED = "item must not be null";
+
   private static final String ALL =
       """
       SELECT arrived_at, payload
@@ -139,19 +141,19 @@ public final class JdbcBacklog<I> implements Backlog<I> {
 
   @Override
   public void append(BacklogItem<I> item) {
-    Objects.requireNonNull(item, "item must not be null");
+    Objects.requireNonNull(item, ITEM_REQUIRED);
     insert(ordinalFrom(NEXT_ORDINAL), item);
   }
 
   @Override
   public void prepend(BacklogItem<I> item) {
-    Objects.requireNonNull(item, "item must not be null");
+    Objects.requireNonNull(item, ITEM_REQUIRED);
     insert(ordinalFrom(FIRST_ORDINAL), item);
   }
 
   @Override
   public void replaceAll(BacklogItem<I> item) {
-    Objects.requireNonNull(item, "item must not be null");
+    Objects.requireNonNull(item, ITEM_REQUIRED);
     clear();
     insert(1, item);
   }
@@ -210,11 +212,7 @@ public final class JdbcBacklog<I> implements Backlog<I> {
 
   /** What an agent is holding, without decoding any of it. */
   public static long size(JdbcClient jdbc, AgentType agentType, AgentId agent) {
-    return jdbc.sql(
-            "SELECT COUNT(*) FROM nessy_agent_backlog WHERE agent_type = ? AND agent_id = ?")
-        .params(agentType.value(), agent.value())
-        .query(Long.class)
-        .single();
+    return jdbc.sql(COUNT).params(agentType.value(), agent.value()).query(Long.class).single();
   }
 
   /** Everything this agent ever had waiting, gone. What forgetting an agent has to include. */

@@ -53,6 +53,8 @@ import org.jwcarman.nessy.backend.effect.Effects;
  */
 public final class InMemoryEffects implements Effects {
 
+  private static final String TYPE_REQUIRED = "type must not be null";
+
   /** Two meanings for one moment, decided by status -- exactly as the durable row has it. */
   private enum Status {
     PENDING,
@@ -124,7 +126,7 @@ public final class InMemoryEffects implements Effects {
         effectId,
         new Row(
             effectId,
-            Objects.requireNonNull(type, "type must not be null"),
+            Objects.requireNonNull(type, TYPE_REQUIRED),
             Objects.requireNonNull(agent, "agent must not be null"),
             effects.encode(Objects.requireNonNull(effect, "effect must not be null")),
             outcomes.encode(
@@ -145,7 +147,7 @@ public final class InMemoryEffects implements Effects {
    */
   @Override
   public synchronized List<Attempt> markRunning(AgentType type, Instant now, int batchSize) {
-    Objects.requireNonNull(type, "type must not be null");
+    Objects.requireNonNull(type, TYPE_REQUIRED);
     Objects.requireNonNull(now, "now must not be null");
     List<Attempt> claimed = new ArrayList<>();
     rows.values().stream()
@@ -166,7 +168,7 @@ public final class InMemoryEffects implements Effects {
 
   @Override
   public synchronized List<Attempt> runningFor(AgentType type, AgentId agent) {
-    Objects.requireNonNull(type, "type must not be null");
+    Objects.requireNonNull(type, TYPE_REQUIRED);
     Objects.requireNonNull(agent, "agent must not be null");
     return rows.values().stream()
         .filter(row -> row.status == Status.RUNNING)

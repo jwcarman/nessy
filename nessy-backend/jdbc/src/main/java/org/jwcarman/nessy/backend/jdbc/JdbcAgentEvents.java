@@ -50,6 +50,10 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  */
 public final class JdbcAgentEvents implements AgentEvents {
 
+  private static final String TYPE_REQUIRED = "type must not be null";
+  private static final String AGENT_REQUIRED = "agent must not be null";
+  private static final String PAYLOAD = "payload";
+
   private static final String APPEND =
       "INSERT INTO nessy_agent_event (agent_type, agent_id, seq, starts_turn, payload)"
           + " VALUES (?, ?, ?, ?, ?)";
@@ -92,8 +96,8 @@ public final class JdbcAgentEvents implements AgentEvents {
 
   @Override
   public void append(AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast) {
-    Objects.requireNonNull(type, "type must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(type, TYPE_REQUIRED);
+    Objects.requireNonNull(agent, AGENT_REQUIRED);
     Objects.requireNonNull(events, "events must not be null");
     for (AgentEvent event : events) {
       try {
@@ -105,7 +109,7 @@ public final class JdbcAgentEvents implements AgentEvents {
                 event instanceof AgentEvent.TurnStarted,
                 codec.encode(event))
             .update();
-      } catch (DuplicateKeyException taken) {
+      } catch (DuplicateKeyException _) {
         // Somebody else wrote this seq, which means they decided from the state this caller
         // decided from. Its recourse is to read the agent back and decide again.
         throw new Conflict(
@@ -144,43 +148,43 @@ public final class JdbcAgentEvents implements AgentEvents {
    */
   @Override
   public List<AgentEvent> readFrom(AgentType type, AgentId agent, Seq watermark) {
-    Objects.requireNonNull(type, "type must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(type, TYPE_REQUIRED);
+    Objects.requireNonNull(agent, AGENT_REQUIRED);
     Objects.requireNonNull(watermark, "watermark must not be null");
     return jdbc.sql(READ_FROM)
         .params(type.value(), agent.value(), watermark.value())
-        .query((rs, _) -> codec.decode(rs.getBytes("payload")))
+        .query((rs, _) -> codec.decode(rs.getBytes(PAYLOAD)))
         .list();
   }
 
   @Override
   public Stream<AgentEvent> streamFrom(AgentType type, AgentId agent, Seq watermark) {
-    Objects.requireNonNull(type, "type must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(type, TYPE_REQUIRED);
+    Objects.requireNonNull(agent, AGENT_REQUIRED);
     Objects.requireNonNull(watermark, "watermark must not be null");
     return jdbc
         .sql(READ_FROM)
         .param(type.value())
         .param(agent.value())
         .param(watermark.value())
-        .query((rs, _) -> codec.decode(rs.getBytes("payload")))
+        .query((rs, _) -> codec.decode(rs.getBytes(PAYLOAD)))
         .stream();
   }
 
   @Override
   public List<AgentEvent> sinceLastTurnStarted(AgentType type, AgentId agent) {
-    Objects.requireNonNull(type, "type must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(type, TYPE_REQUIRED);
+    Objects.requireNonNull(agent, AGENT_REQUIRED);
     return jdbc.sql(LAST_TURN)
         .params(type.value(), agent.value(), type.value(), agent.value())
-        .query((rs, _) -> codec.decode(rs.getBytes("payload")))
+        .query((rs, _) -> codec.decode(rs.getBytes(PAYLOAD)))
         .list();
   }
 
   @Override
   public Instant writtenAt(AgentType type, AgentId agent, Seq seq) {
-    Objects.requireNonNull(type, "type must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(type, TYPE_REQUIRED);
+    Objects.requireNonNull(agent, AGENT_REQUIRED);
     Objects.requireNonNull(seq, "seq must not be null");
     return jdbc.sql(WRITTEN_AT)
         .params(type.value(), agent.value(), seq.value())

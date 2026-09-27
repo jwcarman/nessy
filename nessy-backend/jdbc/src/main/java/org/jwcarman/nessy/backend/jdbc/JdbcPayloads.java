@@ -16,8 +16,6 @@
 
 package org.jwcarman.nessy.backend.jdbc;
 
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HexFormat;
@@ -136,14 +134,5 @@ public final class JdbcPayloads implements Payloads {
       throw new IllegalStateException("this store is not scoped to an agent; call forAgent first");
     }
     return agent;
-  }
-
-  private static byte[] sha256(byte[] bytes) {
-    try {
-      return MessageDigest.getInstance("SHA-256").digest(bytes);
-    } catch (NoSuchAlgorithmException impossible) {
-      // Every JVM ships SHA-256; the checked exception is the API's age showing.
-      throw new IllegalStateException("SHA-256 is not available", impossible);
-    }
   }
 }

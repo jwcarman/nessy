@@ -21,10 +21,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
@@ -167,7 +169,9 @@ class JdbcRowLocksTest {
             () -> locks.withLock(KIND, TYPE, agent, () -> holderFinished.getCount() == 0L));
 
     assertThat(waiter.isDone()).as("nothing to run until the holder lets go").isFalse();
-    Thread.sleep(200);
+    // Nothing to poll for here -- the point is that the window elapses without the waiter
+    // finishing, so a wait past the window is the only way to say it stayed excluded that long.
+    Awaitility.await().pollDelay(Duration.ofMillis(200)).until(() -> true);
     assertThat(waiter.isDone()).as("still waiting behind the holder").isFalse();
 
     release.countDown();

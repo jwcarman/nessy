@@ -126,13 +126,13 @@ class JdbcPayloadsTest {
     Map<PayloadRef, Payloads.Resolved> found = payloads.get(List.of(one, two, never));
 
     assertThat(found).hasSize(3);
-    assertThat(found.get(one))
-        .isEqualTo(new Payloads.Resolved.Found(List.of(new Block.Text("one"))));
-    assertThat(found.get(two))
-        .isEqualTo(new Payloads.Resolved.Found(List.of(new Block.Text("two"))));
-    assertThat(found.get(never))
+    assertThat(found)
+        .containsEntry(one, new Payloads.Resolved.Found(List.of(new Block.Text("one"))));
+    assertThat(found)
+        .containsEntry(two, new Payloads.Resolved.Found(List.of(new Block.Text("two"))));
+    assertThat(found)
         .as("asked about and not there, rather than absent from the answer")
-        .isEqualTo(new Payloads.Resolved.Missing());
+        .containsEntry(never, new Payloads.Resolved.Missing());
   }
 
   @Test
