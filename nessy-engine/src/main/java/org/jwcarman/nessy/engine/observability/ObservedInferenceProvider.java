@@ -50,6 +50,7 @@ public final class ObservedInferenceProvider implements InferenceProvider {
 
   private static final String OPERATION_NAME = "gen_ai.operation.name";
   private static final String FINISH_REASONS = "gen_ai.response.finish_reasons";
+  private static final String RESPONSE_MODEL = "gen_ai.response.model";
   private static final String ERROR_TYPE = "error.type";
 
   /** Whose call it is, read off the span this one opens under, so it reads the same as theirs. */
@@ -114,6 +115,17 @@ public final class ObservedInferenceProvider implements InferenceProvider {
     try {
       InferenceResult result = delegate.infer(request, narrator);
       observation.lowCardinalityKeyValue(FINISH_REASONS, finishReasonOf(result));
+      // What actually answered, which is not always what was asked for: a vendor resolves an alias
+      // to a dated build -- gpt-4.1-mini becomes gpt-4.1-mini-2025-04-14 -- and the counts beside
+      // this are priced against THAT. Outside the counted() guard on purpose, because a call that
+      // reported no usage still reached a model and can still say which.
+      //
+      // Low cardinality: a deployment uses a handful of models. It is absent rather than guessed
+      // when nothing answered at all -- a fault that never reached a vendor has no model to name.
+      String answered = result.usage().model();
+      if (answered != null) {
+        observation.lowCardinalityKeyValue(RESPONSE_MODEL, answered);
+      }
       if (result.usage().counted()) {
         // Semconv's attributes on the span, and the count itself in the context for a handler
         // with a meter registry to put in gen_ai.client.token.usage; a count is never a tag on

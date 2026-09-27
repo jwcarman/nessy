@@ -132,8 +132,9 @@ class DirectHarnessObservabilityTest {
                             new org.jwcarman.nessy.api.tool.CallId("c1"),
                             LOOKUP,
                             "{\"id\":\"1\"}")),
-                    Usage.unreported())
-                : new InferenceResult.Answer(List.of(new Block.Text("done")), Usage.unreported());
+                    Usage.unreported("a-model"))
+                : new InferenceResult.Answer(
+                    List.of(new Block.Text("done")), Usage.unreported("a-model"));
           }
         };
 
@@ -182,5 +183,12 @@ class DirectHarnessObservabilityTest {
     assertThat(tag("gen_ai.client.operation.duration", "chat", "gen_ai.agent.name"))
         .as("the model call inherited the turn's identity, so it ran inside the turn's span")
         .isEqualTo(TYPE.value());
+
+    // What answered, which is not always what was asked for: a vendor resolves an alias to a dated
+    // build, and the counts beside it are priced against that one. Reported even though this call
+    // counted nothing -- it still reached a model, and can still say which.
+    assertThat(tag("gen_ai.client.operation.duration", "chat", "gen_ai.response.model"))
+        .as("the model that answered is named, not only the one that was asked for")
+        .isEqualTo("a-model");
   }
 }
