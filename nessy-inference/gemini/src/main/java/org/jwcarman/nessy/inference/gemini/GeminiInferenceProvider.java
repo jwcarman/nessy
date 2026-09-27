@@ -153,24 +153,51 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
         return noReply();
       }
       GenerateContentResponse response = folded.response();
-      return read(response).withUsage(usageOf(response));
+      return read(response).withUsage(usageOf(response, request.options().modelName()));
     } catch (ApiException | GenAiIOException e) {
       return new InferenceResult.Fault(classify(e));
     }
   }
 
   /** Prompt in; candidates and thoughts out, since thinking is billed as output everywhere. */
-  private static Usage usageOf(GenerateContentResponse response) {
+  /**
+   * What the call cost, in the shape {@link Usage} defines.
+   *
+   * <p><b>Nothing is summed into the input, because {@code promptTokenCount} already includes what
+   * was served from cache.</b> What IS summed is the output: Gemini counts what it said and what it
+   * thought separately, and thinking is billed at the output rate, so the two are added and the
+   * thinking part is also kept on its own.
+   *
+   * <p><b>Cache write is unreported rather than zero, and always will be.</b> Gemini does not bill
+   * a write on the call that uses the cache -- it is charged on the separate {@code CachedContent}
+   * request that created it -- so there is no number here to report, and claiming zero would say
+   * this call wrote nothing when this call is not where writing is counted.
+   *
+   * <p>Every count Gemini reports is optional, including the input one, which is why none of them
+   * is defaulted to zero: a count it did not give is one nobody made.
+   */
+  private static Usage usageOf(GenerateContentResponse response, String requested) {
+    String model = response.modelVersion().filter(name -> !name.isBlank()).orElse(requested);
     return response
         .usageMetadata()
-        .filter(counted -> counted.promptTokenCount().isPresent())
-        .map(
+        .<Usage>map(
             counted ->
                 new Usage(
-                    counted.promptTokenCount().orElse(0),
-                    (long) counted.candidatesTokenCount().orElse(0)
-                        + counted.thoughtsTokenCount().orElse(0)))
-        .orElse(Usage.unknown());
+                    model,
+                    counted.promptTokenCount().orElse(null),
+                    outputOf(counted),
+                    counted.cachedContentTokenCount().orElse(null),
+                    null,
+                    counted.thoughtsTokenCount().orElse(null)))
+        .orElseGet(() -> Usage.unreported(model));
+  }
+
+  /** What the model produced, thinking included, or null if it counted neither part. */
+  private static Integer outputOf(GenerateContentResponseUsageMetadata counted) {
+    if (counted.candidatesTokenCount().isEmpty() && counted.thoughtsTokenCount().isEmpty()) {
+      return null;
+    }
+    return counted.candidatesTokenCount().orElse(0) + counted.thoughtsTokenCount().orElse(0);
   }
 
   private static InferenceResult noReply() {

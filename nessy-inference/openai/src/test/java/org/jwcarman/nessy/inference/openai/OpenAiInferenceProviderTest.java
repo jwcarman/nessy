@@ -341,7 +341,7 @@ class OpenAiInferenceProviderTest {
               .build()
               .infer(REQUEST);
 
-      assertThat(result.usage()).isEqualTo(new Usage(3, 5));
+      assertThat(result.usage()).isEqualTo(Usage.of("gpt-4o", 3, 5));
       assertThat(result).isInstanceOf(InferenceResult.Answer.class);
     }
 
@@ -354,7 +354,9 @@ class OpenAiInferenceProviderTest {
                   .refusal(Optional.<String>empty())
                   .build());
 
-      assertThat(result.usage()).isEqualTo(Usage.unknown());
+      // The model is still known -- the call reached gpt-4o and it answered without counting.
+      // Unreported is about the counts; what answered is never in doubt when a reply came back.
+      assertThat(result.usage()).isEqualTo(Usage.unreported("gpt-4o"));
     }
   }
 
@@ -512,9 +514,12 @@ class OpenAiInferenceProviderTest {
       assertThat(result)
           .isEqualTo(
               new InferenceResult.Actions(
-                  List.of(
-                      new Block.ToolCall(
-                          new CallId("call_1"), new ToolName("lookup"), "{\"q\":\"loch ness\"}"))));
+                      List.of(
+                          new Block.ToolCall(
+                              new CallId("call_1"),
+                              new ToolName("lookup"),
+                              "{\"q\":\"loch ness\"}")))
+                  .withUsage(Usage.unreported("gpt-4o")));
     }
 
     /**

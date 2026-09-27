@@ -85,7 +85,7 @@ class DurableDirectHarnessTest {
     return (request, narrator) ->
         new InferenceResult.Answer(
             List.of(new Block.Text(said.get(Math.min(next[0]++, said.size() - 1)))),
-            Usage.unknown());
+            Usage.unreported());
   }
 
   /** A harness that shares nothing with another but the database -- which is what a restart is. */
@@ -134,7 +134,7 @@ class DurableDirectHarnessTest {
     InferenceProvider watching =
         (request, narrator) -> {
           seen.add(request);
-          return new InferenceResult.Answer(List.of(new Block.Text("Tokyo")), Usage.unknown());
+          return new InferenceResult.Answer(List.of(new Block.Text("Tokyo")), Usage.unreported());
         };
 
     harness(watching).ask(agent, "and Japan?");

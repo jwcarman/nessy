@@ -45,17 +45,32 @@ public final class TokenUsageHandler implements ObservationHandler<Observation.C
     return ObservedInferenceProvider.DURATION.equals(context.getName());
   }
 
+  /**
+   * One sample per count the vendor actually reported.
+   *
+   * <p>Per count rather than all-or-nothing, because absence is per count: a vendor that gave input
+   * and output and no cache detail said nothing about caching, and a zero sample would put a point
+   * on a graph claiming it did. The cache and reasoning types extend semconv's {@code input}/{@code
+   * output} rather than replacing them -- they are breakdowns of those two, so summing across types
+   * would double-count and the {@code gen_ai.token.type} tag is what keeps them apart.
+   */
   @Override
   public void onStop(Observation.Context context) {
     Usage usage = context.get(Usage.class);
-    if (usage == null || !usage.known()) {
+    if (usage == null) {
       return;
     }
     sample(context, "input", usage.inputTokens());
     sample(context, "output", usage.outputTokens());
+    sample(context, "cache_read", usage.cacheReadTokens());
+    sample(context, "cache_write", usage.cacheWriteTokens());
+    sample(context, "reasoning", usage.reasoningTokens());
   }
 
-  private void sample(Observation.Context context, String type, long tokens) {
+  private void sample(Observation.Context context, String type, Integer tokens) {
+    if (tokens == null) {
+      return;
+    }
     DistributionSummary.Builder summary =
         DistributionSummary.builder(TOKEN_USAGE).baseUnit("token").tag("gen_ai.token.type", type);
     for (KeyValue tag : context.getLowCardinalityKeyValues()) {

@@ -78,7 +78,7 @@ public sealed interface InferenceResult {
     }
 
     public Answer(List<Block.AnswerContent> blocks) {
-      this(blocks, Usage.unknown());
+      this(blocks, Usage.unreported());
     }
 
     @Override
@@ -108,7 +108,7 @@ public sealed interface InferenceResult {
     }
 
     public Refusal(String category) {
-      this(category, Usage.unknown());
+      this(category, Usage.unreported());
     }
 
     @Override
@@ -140,7 +140,7 @@ public sealed interface InferenceResult {
     }
 
     public Fault(Failure failure) {
-      this(failure, Usage.unknown());
+      this(failure, Usage.unreported());
     }
 
     @Override
@@ -174,7 +174,7 @@ public sealed interface InferenceResult {
     }
 
     public Actions(List<Block.ActionRequestContent> blocks) {
-      this(blocks, Usage.unknown());
+      this(blocks, Usage.unreported());
     }
 
     @Override

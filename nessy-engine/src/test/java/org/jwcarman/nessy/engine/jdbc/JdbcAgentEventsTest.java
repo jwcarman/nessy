@@ -37,6 +37,7 @@ import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.jdbc.JdbcAgentEvents;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.engine.core.AgentState;
+import org.jwcarman.nessy.inference.Usage;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -73,7 +74,8 @@ class JdbcAgentEventsTest {
   }
 
   private AgentEvent answered(long seq, long turn) {
-    return new AgentEvent.InferenceAnswered(new Seq(seq), new TurnId(turn), somewhere);
+    return new AgentEvent.InferenceAnswered(
+        new Seq(seq), new TurnId(turn), somewhere, Usage.unreported());
   }
 
   /** Rebuilt the way a harness rebuilds it: the last turn, replayed onto idle. */

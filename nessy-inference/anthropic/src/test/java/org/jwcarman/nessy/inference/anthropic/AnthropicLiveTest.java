@@ -326,7 +326,7 @@ class AnthropicLiveTest {
               asking(
                   List.of(open(1, "How deep is Loch Ness?")), twoTools(), new ToolChoice.None()));
 
-      assertThat(result.usage().known())
+      assertThat(result.usage().counted())
           .as("the call reached the model, so what came back is behaviour and not a failed send")
           .isTrue();
       assertThat(result)

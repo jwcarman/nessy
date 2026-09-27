@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.spring.boot;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Base64;
 import java.util.List;
 import org.jwcarman.codec.Codec;
@@ -30,6 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -122,6 +124,23 @@ public class NessyAutoConfiguration {
   @ConditionalOnMissingBean
   public StorageCodecConfigurer storageCodecConfigurer() {
     return original -> original;
+  }
+
+  /**
+   * Token counts as semconv's histogram, whenever there is a meter registry to hold them.
+   *
+   * <p>A bean rather than a handler registered by hand inside another bean's factory method, which
+   * is where this used to live: Boot's {@code ObservationRegistryConfigurer} collects every {@link
+   * io.micrometer.observation.ObservationHandler} bean and registers it, so declaring one is all
+   * this takes. Registering it as a side effect of building the queued door's factory meant an
+   * application that used only the direct door got no token metric at all -- a door deciding what
+   * is observed about inference, which is not a door's business.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnBean(MeterRegistry.class)
+  public TokenUsageHandler nessyTokenUsageHandler(MeterRegistry meters) {
+    return new TokenUsageHandler(meters);
   }
 
   /** Says what will actually answer, before a single turn runs. */

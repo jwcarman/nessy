@@ -95,27 +95,28 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
     // thing the wrapper makes explicit.
     return Awaited.ready(
         switch (result) {
-          case InferenceResult.Answer(var blocks, _) -> {
+          case InferenceResult.Answer(var blocks, var usage) -> {
             log.debug("model answered agent {} with {} block(s)", agentId.value(), blocks.size());
             // Put away here, where the content exists and there is somewhere to put it. What
             // reaches the fold is where it went.
-            yield new EffectOutcome.InferenceAnswered(payloads.forAgent(agentId).put(blocks));
+            yield new EffectOutcome.InferenceAnswered(
+                payloads.forAgent(agentId).put(blocks), usage);
           }
-          case InferenceResult.Refusal(var category, _) -> {
+          case InferenceResult.Refusal(var category, var usage) -> {
             log.info("model declined for agent {} ({})", agentId.value(), category);
-            yield new EffectOutcome.InferenceRefused(category);
+            yield new EffectOutcome.InferenceRefused(category, usage);
           }
-          case InferenceResult.Actions(var blocks, _) -> {
+          case InferenceResult.Actions(var blocks, var usage) -> {
             log.debug("model asked agent {} for {} action(s)", agentId.value(), blocks.size());
             // The calls come out beside the reference: which calls are outstanding is the one
             // thing about a request the fold cannot take on trust from a claim check.
             commentary(agentId, blocks);
             yield new EffectOutcome.InferenceRequestedActions(
-                payloads.forAgent(agentId).put(blocks), requested(blocks));
+                payloads.forAgent(agentId).put(blocks), requested(blocks), usage);
           }
-          case InferenceResult.Fault(var failure, _) -> {
+          case InferenceResult.Fault(var failure, var usage) -> {
             log.warn("inference failed for agent {}: {}", agentId.value(), failure.reason());
-            yield new EffectOutcome.InferenceFailed(failure);
+            yield new EffectOutcome.InferenceFailed(failure, usage);
           }
         });
   }

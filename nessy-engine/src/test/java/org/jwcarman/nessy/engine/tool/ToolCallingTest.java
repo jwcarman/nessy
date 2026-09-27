@@ -48,6 +48,7 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.inference.Usage;
 
 /**
  * A whole round, through real Postgres: the model asks for work, the work is dispatched as its own
@@ -202,7 +203,8 @@ class ToolCallingTest {
                     List.of(
                         new Block.Commentary("Let me look."),
                         new Block.ToolCall("call_1", "lookup", "{\"q\":\"loch ness\"}"))),
-                List.of(new ActionRequest.ToolCall(new CallId("call_1"), new ToolName("lookup")))));
+                List.of(new ActionRequest.ToolCall(new CallId("call_1"), new ToolName("lookup"))),
+                Usage.unreported()));
     assertThat(story.get(2))
         .as("the grant, written before the call was dispatched")
         .isEqualTo(
@@ -220,7 +222,8 @@ class ToolCallingTest {
             new AgentEvent.InferenceAnswered(
                 new Seq(5),
                 new TurnId(1),
-                engine.ref(agentId, List.of(new Block.Text("It is Loch Ness.")))));
+                engine.ref(agentId, List.of(new Block.Text("It is Loch Ness."))),
+                Usage.unreported()));
   }
 
   /**
@@ -332,7 +335,8 @@ class ToolCallingTest {
             new AgentEvent.InferenceAnswered(
                 new Seq(4),
                 new TurnId(1),
-                engine.ref(agentId, List.of(new Block.Text("I was not allowed to look.")))));
+                engine.ref(agentId, List.of(new Block.Text("I was not allowed to look."))),
+                Usage.unreported()));
   }
 
   /** What an application configures per tool is what the tool is actually told. */

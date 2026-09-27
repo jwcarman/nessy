@@ -23,6 +23,7 @@ import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.Usage;
 
 /**
  * What performing an effect came to.
@@ -68,7 +69,11 @@ public sealed interface EffectOutcome {
    * discard whatever an answer holds that a string cannot; a message would mean a dispatcher
    * choosing where in the story the answer belongs, which only the fold can know.
    */
-  record InferenceAnswered(PayloadRef answer) implements EffectOutcome {}
+  record InferenceAnswered(PayloadRef answer, Usage usage) implements EffectOutcome {
+    public InferenceAnswered {
+      usage = usage == null ? Usage.unreported() : usage;
+    }
+  }
 
   /**
    * The model declined to answer, and said so.
@@ -78,7 +83,11 @@ public sealed interface EffectOutcome {
    * working perfectly; recording it as an answer would put words in the model's mouth, since a
    * refusal was measured to carry no content at all.
    */
-  record InferenceRefused(String category) implements EffectOutcome {}
+  record InferenceRefused(String category, Usage usage) implements EffectOutcome {
+    public InferenceRefused {
+      usage = usage == null ? Usage.unreported() : usage;
+    }
+  }
 
   /**
    * The model could not be made to answer.
@@ -92,7 +101,11 @@ public sealed interface EffectOutcome {
    * had a blip and one that can never speak again -- today those are indistinguishable, so an agent
    * whose every future turn will fail returns to idle looking perfectly healthy.
    */
-  record InferenceFailed(Failure failure) implements EffectOutcome {}
+  record InferenceFailed(Failure failure, Usage usage) implements EffectOutcome {
+    public InferenceFailed {
+      usage = usage == null ? Usage.unreported() : usage;
+    }
+  }
 
   /**
    * The model asked for work before it would answer.
@@ -101,8 +114,12 @@ public sealed interface EffectOutcome {
    * the whole of what came back rather than just the calls, because the prose and the vendor state
    * around them are part of the same message and are re-sent with it.
    */
-  record InferenceRequestedActions(PayloadRef request, List<ActionRequest> actions)
-      implements EffectOutcome {}
+  record InferenceRequestedActions(PayloadRef request, List<ActionRequest> actions, Usage usage)
+      implements EffectOutcome {
+    public InferenceRequestedActions {
+      usage = usage == null ? Usage.unreported() : usage;
+    }
+  }
 
   /**
    * A tool ran and produced content.

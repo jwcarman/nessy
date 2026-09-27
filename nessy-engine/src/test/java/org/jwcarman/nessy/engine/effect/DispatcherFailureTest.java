@@ -43,6 +43,7 @@ import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
+import org.jwcarman.nessy.inference.Usage;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.Trigger;
@@ -277,7 +278,7 @@ class DispatcherFailureTest {
 
     @Override
     public Awaited<EffectOutcome> handle(AgentId agentId, AgentEffect.Infer effect) {
-      return new Awaited.Ready<>(new EffectOutcome.InferenceRefused("stop"));
+      return new Awaited.Ready<>(new EffectOutcome.InferenceRefused("stop", Usage.unreported()));
     }
   }
 
@@ -332,12 +333,12 @@ class DispatcherFailureTest {
 
     @Override
     public EffectOutcome undispatchable() {
-      return new EffectOutcome.InferenceRefused("undispatchable");
+      return new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported());
     }
 
     @Override
     public EffectOutcome failed(RuntimeException cause) {
-      return new EffectOutcome.InferenceRefused("failed");
+      return new EffectOutcome.InferenceRefused("failed", Usage.unreported());
     }
   }
 

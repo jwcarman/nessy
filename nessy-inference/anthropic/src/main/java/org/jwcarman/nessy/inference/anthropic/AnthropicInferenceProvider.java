@@ -183,8 +183,38 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
           new Failure.Permanent(
               "the stream ended before the answer was complete: " + incomplete.getMessage()));
     }
-    return read(message)
-        .withUsage(new Usage(message.usage().inputTokens(), message.usage().outputTokens()));
+    return read(message).withUsage(usageOf(message));
+  }
+
+  /**
+   * What the call cost, in the shape {@link Usage} defines rather than the shape Anthropic reports.
+   *
+   * <p><b>The input count is summed, and that is the whole reason this method exists.</b>
+   * Anthropic's {@code input_tokens} EXCLUDES anything served from or written to the cache, which
+   * it reports separately -- so the vendor's own input figure is the uncached remainder, and
+   * passing it through would under-report every cached turn. {@code Usage.inputTokens} means all
+   * input processed, so the three are added and the cache pair is kept beside them for pricing, the
+   * three rates being an order of magnitude apart.
+   *
+   * <p>An absent cache count means nothing was cached rather than nobody counting: this provider
+   * marks a cache breakpoint on every request it sends, so the vendor is always asked and always
+   * answers. That is why zero is the right reading here and null is the right reading for a server
+   * that does not speak about caching at all.
+   *
+   * <p>A cache write is one number here even though the vendor gives two, split by how long it is
+   * kept. The two are priced differently and its invoice remains the authority on the split.
+   */
+  private static Usage usageOf(Message message) {
+    var counted = message.usage();
+    int cacheRead = counted.cacheReadInputTokens().orElse(0L).intValue();
+    int cacheWrite = counted.cacheCreationInputTokens().orElse(0L).intValue();
+    return new Usage(
+        message.model().asString(),
+        (int) counted.inputTokens() + cacheRead + cacheWrite,
+        (int) counted.outputTokens(),
+        cacheRead,
+        cacheWrite,
+        counted.outputTokensDetails().map(d -> (int) d.thinkingTokens()).orElse(null));
   }
 
   /**

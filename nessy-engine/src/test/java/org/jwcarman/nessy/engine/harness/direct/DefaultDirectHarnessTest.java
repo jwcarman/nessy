@@ -248,12 +248,13 @@ class DefaultDirectHarnessTest {
   }
 
   private static InferenceResult answering(String text) {
-    return new InferenceResult.Answer(List.of(new Block.Text(text)), Usage.unknown());
+    return new InferenceResult.Answer(List.of(new Block.Text(text)), Usage.unreported());
   }
 
   private static InferenceResult asking(String tool) {
     return new InferenceResult.Actions(
-        List.of(new Block.ToolCall(CALL, new ToolName(tool), "{\"id\":\"42\"}")), Usage.unknown());
+        List.of(new Block.ToolCall(CALL, new ToolName(tool), "{\"id\":\"42\"}")),
+        Usage.unreported());
   }
 
   record Lookup(String id) {}
@@ -772,7 +773,8 @@ class DefaultDirectHarnessTest {
             new AgentCommand.CompleteInference(
                 new TurnId(1),
                 new AgentCommand.InferenceOutcome.Answered(
-                    payloads.forAgent(agent).put(List.of(new Block.Text("too late"))))));
+                    payloads.forAgent(agent).put(List.of(new Block.Text("too late"))),
+                    Usage.unreported())));
 
     assertThat(belated.events())
         .as(
@@ -798,7 +800,8 @@ class DefaultDirectHarnessTest {
                 new Seq(2),
                 new TurnId(1),
                 abandonedRequest,
-                List.of(new ActionRequest.ToolCall(CALL, LOOKUP)))),
+                List.of(new ActionRequest.ToolCall(CALL, LOOKUP)),
+                Usage.unreported())),
         Seq.NONE);
 
     Scripted model = new Scripted().then(answering("second turn's answer"));
@@ -866,7 +869,8 @@ class DefaultDirectHarnessTest {
                 new Seq(2),
                 new TurnId(1),
                 abandonedRequest,
-                List.of(new ActionRequest.ToolCall(CALL, LOOKUP)))),
+                List.of(new ActionRequest.ToolCall(CALL, LOOKUP)),
+                Usage.unreported())),
         Seq.NONE);
 
     DirectHarness<String, String> harness =
@@ -1050,7 +1054,8 @@ class DefaultDirectHarnessTest {
               new AgentEvent.InferenceAnswered(
                   opening.next(),
                   opening.opensTurn(),
-                  payloads.forAgent(agent).put(List.of(new Block.Text("somebody else's answer"))))),
+                  payloads.forAgent(agent).put(List.of(new Block.Text("somebody else's answer"))),
+                  Usage.unreported())),
           last);
     }
   }

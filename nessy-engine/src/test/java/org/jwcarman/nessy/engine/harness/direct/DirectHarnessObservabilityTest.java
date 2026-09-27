@@ -132,8 +132,8 @@ class DirectHarnessObservabilityTest {
                             new org.jwcarman.nessy.api.tool.CallId("c1"),
                             LOOKUP,
                             "{\"id\":\"1\"}")),
-                    Usage.unknown())
-                : new InferenceResult.Answer(List.of(new Block.Text("done")), Usage.unknown());
+                    Usage.unreported())
+                : new InferenceResult.Answer(List.of(new Block.Text("done")), Usage.unreported());
           }
         };
 

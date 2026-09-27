@@ -366,7 +366,8 @@ class AnthropicInferenceProviderTest {
               new Block.Text(
                   "a lake monster")); // message_start said one token in, message_delta one token
       // out: what the fold carried.
-      assertThat(result.usage()).isEqualTo(new org.jwcarman.nessy.inference.Usage(1, 1));
+      assertThat(result.usage())
+          .isEqualTo(new org.jwcarman.nessy.inference.Usage("claude-sonnet", 1, 1, 0, 0, null));
     }
 
     @Test

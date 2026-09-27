@@ -33,6 +33,7 @@ import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.inference.Usage;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -128,7 +129,8 @@ class ValueTypeCodecTest {
                     PayloadRef.of("c7f1e2a9"),
                     List.of(
                         new ActionRequest.ToolCall(
-                            new CallId("729606640"), new ToolName("lake_depth"))))),
+                            new CallId("729606640"), new ToolName("lake_depth"))),
+                    Usage.unreported())),
             StandardCharsets.UTF_8);
 
     assertThat(written)
@@ -213,7 +215,7 @@ class ValueTypeCodecTest {
         new String(
             entries.encode(
                 new AgentEvent.InferenceAnswered(
-                    new Seq(5), new TurnId(1), PayloadRef.of("a3d9f0b1"))),
+                    new Seq(5), new TurnId(1), PayloadRef.of("a3d9f0b1"), Usage.unreported())),
             StandardCharsets.UTF_8);
 
     assertThat(written).contains("\"seq\":5").contains("\"turn\":1").doesNotContain("\"value\"");

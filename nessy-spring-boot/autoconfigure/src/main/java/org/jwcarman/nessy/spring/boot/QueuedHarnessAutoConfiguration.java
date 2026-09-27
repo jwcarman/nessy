@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.spring.boot;
 
-import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import io.micrometer.tracing.Tracer;
 import io.micrometer.tracing.propagation.Propagator;
@@ -70,15 +69,10 @@ public class QueuedHarnessAutoConfiguration {
       InferenceProvider models,
       NessyProperties properties,
       ObservationRegistry observations,
-      ObjectProvider<MeterRegistry> meters,
       ObjectProvider<Tracer> tracers,
       ObjectProvider<Propagator> propagators,
       ObjectProvider<Customizer<QueuedHarnessFactoryConfig>> customizers) {
 
-    // Token counts become semconv's histogram when there is a meter registry to hold it.
-    meters.ifAvailable(
-        registry ->
-            observations.observationConfig().observationHandler(new TokenUsageHandler(registry)));
     List<Customizer<QueuedHarnessFactoryConfig>> all = new ArrayList<>();
     all.add(
         engine -> {

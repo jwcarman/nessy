@@ -37,6 +37,7 @@ import org.jwcarman.nessy.backend.backlog.Pull;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.inference.Usage;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -113,7 +114,7 @@ class JdbcQueuedBackendTest {
             agent,
             new AgentEffect.Infer(new TurnId(1)),
             Duration.ofMinutes(1),
-            new EffectOutcome.InferenceRefused("undispatchable"),
+            new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported()),
             now.plus(Duration.ofHours(1)),
             null,
             now);

@@ -27,6 +27,7 @@ import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.inference.Usage;
 
 /**
  * A whole turn, on one thread, with no database and nothing written down.
@@ -42,7 +43,8 @@ class InlineRunnerTest {
 
   /** Answers straight away. */
   private static InlineRunner.Model answering(InlineRunner runner, String answer) {
-    return _ -> new AgentCommand.InferenceOutcome.Answered(runner.claimCheck(answer));
+    return _ ->
+        new AgentCommand.InferenceOutcome.Answered(runner.claimCheck(answer), Usage.unreported());
   }
 
   @Test
@@ -69,10 +71,12 @@ class InlineRunnerTest {
         events -> {
           boolean toolHasRun = events.stream().anyMatch(AgentEvent.ToolSucceeded.class::isInstance);
           return toolHasRun
-              ? new AgentCommand.InferenceOutcome.Answered(holder[0].claimCheck("refunded 42.00"))
+              ? new AgentCommand.InferenceOutcome.Answered(
+                  holder[0].claimCheck("refunded 42.00"), Usage.unreported())
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("please look it up"),
-                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP)));
+                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP)),
+                  Usage.unreported());
         };
     holder[0] = new InlineRunner(model, tools, _ -> true);
 
@@ -107,10 +111,12 @@ class InlineRunnerTest {
         events -> {
           boolean asked = events.stream().anyMatch(AgentEvent.ActionsRequested.class::isInstance);
           return asked
-              ? new AgentCommand.InferenceOutcome.Answered(holder[0].claimCheck("cannot help"))
+              ? new AgentCommand.InferenceOutcome.Answered(
+                  holder[0].claimCheck("cannot help"), Usage.unreported())
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("please look it up"),
-                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP)));
+                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP)),
+                  Usage.unreported());
         };
     holder[0] = new InlineRunner(model, tools, _ -> false);
 
@@ -128,7 +134,8 @@ class InlineRunnerTest {
     InlineRunner[] holder = new InlineRunner[1];
     InlineRunner.Model model =
         events ->
-            new AgentCommand.InferenceOutcome.Answered(holder[0].claimCheck("the answer itself"));
+            new AgentCommand.InferenceOutcome.Answered(
+                holder[0].claimCheck("the answer itself"), Usage.unreported());
     holder[0] = new InlineRunner(model, Map.of(), _ -> true);
 
     InlineRunner.Ran ran = holder[0].run("a question with content in it");
@@ -144,7 +151,9 @@ class InlineRunnerTest {
   void replay_agrees_with_the_run() {
     InlineRunner[] holder = new InlineRunner[1];
     InlineRunner.Model model =
-        events -> new AgentCommand.InferenceOutcome.Answered(holder[0].claimCheck("done"));
+        events ->
+            new AgentCommand.InferenceOutcome.Answered(
+                holder[0].claimCheck("done"), Usage.unreported());
     holder[0] = new InlineRunner(model, Map.of(), _ -> true);
 
     InlineRunner.Ran ran = holder[0].run("anything");
@@ -169,10 +178,12 @@ class InlineRunnerTest {
         events -> {
           boolean failed = events.stream().anyMatch(AgentEvent.ToolFailed.class::isInstance);
           return failed
-              ? new AgentCommand.InferenceOutcome.Answered(holder[0].claimCheck("sorry"))
+              ? new AgentCommand.InferenceOutcome.Answered(
+                  holder[0].claimCheck("sorry"), Usage.unreported())
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("look it up"),
-                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP)));
+                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP)),
+                  Usage.unreported());
         };
     holder[0] = new InlineRunner(model, tools, _ -> true);
 

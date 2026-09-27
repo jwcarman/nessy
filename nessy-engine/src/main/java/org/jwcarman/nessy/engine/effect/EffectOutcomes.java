@@ -41,18 +41,18 @@ public final class EffectOutcomes {
   /** An outcome, as the command it becomes. Nothing is unpacked: it already holds references. */
   public static AgentCommand command(TurnId turn, EffectOutcome outcome) {
     return switch (outcome) {
-      case EffectOutcome.InferenceAnswered(var answer) ->
+      case EffectOutcome.InferenceAnswered(var answer, var usage) ->
           new AgentCommand.CompleteInference(
-              turn, new AgentCommand.InferenceOutcome.Answered(answer));
-      case EffectOutcome.InferenceRefused(String category) ->
+              turn, new AgentCommand.InferenceOutcome.Answered(answer, usage));
+      case EffectOutcome.InferenceRefused(String category, var usage) ->
           new AgentCommand.CompleteInference(
-              turn, new AgentCommand.InferenceOutcome.Refused(category));
-      case EffectOutcome.InferenceFailed(var failure) ->
+              turn, new AgentCommand.InferenceOutcome.Refused(category, usage));
+      case EffectOutcome.InferenceFailed(var failure, var usage) ->
           new AgentCommand.CompleteInference(
-              turn, new AgentCommand.InferenceOutcome.Failed(failure));
-      case EffectOutcome.InferenceRequestedActions(var request, var calls) ->
+              turn, new AgentCommand.InferenceOutcome.Failed(failure, usage));
+      case EffectOutcome.InferenceRequestedActions(var request, var calls, var usage) ->
           new AgentCommand.CompleteInference(
-              turn, new AgentCommand.InferenceOutcome.RequestedActions(request, calls));
+              turn, new AgentCommand.InferenceOutcome.RequestedActions(request, calls, usage));
       case EffectOutcome.ToolSucceeded(var callId, var result) ->
           new AgentCommand.CompleteToolCall(
               turn, callId, new AgentCommand.ToolOutcome.Succeeded(result));

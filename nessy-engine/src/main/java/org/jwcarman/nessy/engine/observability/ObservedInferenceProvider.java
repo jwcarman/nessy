@@ -114,14 +114,19 @@ public final class ObservedInferenceProvider implements InferenceProvider {
     try {
       InferenceResult result = delegate.infer(request, narrator);
       observation.lowCardinalityKeyValue(FINISH_REASONS, finishReasonOf(result));
-      if (result.usage().known()) {
+      if (result.usage().counted()) {
         // Semconv's attributes on the span, and the count itself in the context for a handler
         // with a meter registry to put in gen_ai.client.token.usage; a count is never a tag on
         // a metric, or every distinct number would be a time series.
-        observation.highCardinalityKeyValue(
-            "gen_ai.usage.input_tokens", Long.toString(result.usage().inputTokens()));
-        observation.highCardinalityKeyValue(
-            "gen_ai.usage.output_tokens", Long.toString(result.usage().outputTokens()));
+        //
+        // Per count, because absence is per count: a vendor that reported input and output and no
+        // cache detail said nothing about caching, and an attribute reading zero would say it did.
+        attribute(observation, "gen_ai.usage.input_tokens", result.usage().inputTokens());
+        attribute(observation, "gen_ai.usage.output_tokens", result.usage().outputTokens());
+        attribute(observation, "gen_ai.usage.cache_read_tokens", result.usage().cacheReadTokens());
+        attribute(
+            observation, "gen_ai.usage.cache_write_tokens", result.usage().cacheWriteTokens());
+        attribute(observation, "gen_ai.usage.reasoning_tokens", result.usage().reasoningTokens());
         observation.getContext().put(Usage.class, result.usage());
       }
       // A provider that answers with a Fault did not throw, and the span must still say so:
@@ -180,5 +185,12 @@ public final class ObservedInferenceProvider implements InferenceProvider {
       case InferenceResult.Refusal _ -> "content_filter";
       case InferenceResult.Fault _ -> "error";
     };
+  }
+
+  /** One span attribute, or none at all when nobody counted that part. */
+  private static void attribute(Observation observation, String key, Integer count) {
+    if (count != null) {
+      observation.highCardinalityKeyValue(key, Integer.toString(count));
+    }
   }
 }

@@ -191,17 +191,24 @@ public sealed interface AgentState {
       return switch (done.outcome()) {
         case AgentCommand.InferenceOutcome.Answered answered ->
             Decision.of(
-                List.of(new AgentEvent.InferenceAnswered(at, turn, answered.answer())), List.of());
+                List.of(
+                    new AgentEvent.InferenceAnswered(
+                        at, turn, answered.answer(), answered.usage())),
+                List.of());
         case AgentCommand.InferenceOutcome.Refused refused ->
             Decision.of(
-                List.of(new AgentEvent.InferenceRefused(at, turn, refused.category())), List.of());
+                List.of(
+                    new AgentEvent.InferenceRefused(at, turn, refused.category(), refused.usage())),
+                List.of());
         case AgentCommand.InferenceOutcome.Failed failed ->
             Decision.of(
-                List.of(new AgentEvent.InferenceFailed(at, turn, failed.failure())), List.of());
+                List.of(new AgentEvent.InferenceFailed(at, turn, failed.failure(), failed.usage())),
+                List.of());
         case AgentCommand.InferenceOutcome.RequestedActions asked ->
             Decision.of(
                 List.of(
-                    new AgentEvent.ActionsRequested(at, turn, asked.request(), asked.actions())),
+                    new AgentEvent.ActionsRequested(
+                        at, turn, asked.request(), asked.actions(), asked.usage())),
                 asked.actions().stream().map(action -> approving(turn, at, action)).toList());
       };
     }

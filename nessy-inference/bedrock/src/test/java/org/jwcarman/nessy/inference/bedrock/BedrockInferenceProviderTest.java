@@ -214,9 +214,12 @@ class BedrockInferenceProviderTest {
               .usage(TokenUsage.builder().inputTokens(4).outputTokens(6).totalTokens(10).build())
               .build();
 
-      assertThat(infer(priced).usage()).isEqualTo(new Usage(4, 6));
+      // Converse names no model in its reply, so what is recorded is what was invoked. No cache
+      // pair reported means nothing was cached, which is zero rather than unreported here.
+      assertThat(infer(priced).usage())
+          .isEqualTo(new Usage("us.amazon.nova-lite", 4, 6, 0, 0, null));
       assertThat(infer(reply(StopReason.END_TURN, ContentBlock.fromText("hello"))).usage())
-          .isEqualTo(Usage.unknown());
+          .isEqualTo(Usage.unreported("us.amazon.nova-lite"));
     }
   }
 
@@ -272,7 +275,10 @@ class BedrockInferenceProviderTest {
       assertThat(result)
           .isEqualTo(
               new InferenceResult.Actions(
-                  List.of(new Block.ToolCall("tooluse_1", "depth", "{\"lake\":\"ness\"}"))));
+                      List.of(new Block.ToolCall("tooluse_1", "depth", "{\"lake\":\"ness\"}")))
+                  // This stream carried no metadata event, so nothing was counted -- but the call
+                  // was made, and Converse names no model, so what was invoked is what is recorded.
+                  .withUsage(Usage.unreported("us.amazon.nova-lite")));
     }
 
     @Test

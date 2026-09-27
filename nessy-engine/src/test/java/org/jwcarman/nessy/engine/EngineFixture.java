@@ -47,6 +47,7 @@ import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.trace.TraceCarrier;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.Usage;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -233,7 +234,10 @@ public final class EngineFixture implements AutoCloseable {
   /** The event recording an answer of {@code said}, as the fold would have written it. */
   public AgentEvent.InferenceAnswered answered(AgentId agent, long seq, long turn, String said) {
     return new AgentEvent.InferenceAnswered(
-        new Seq(seq), new TurnId(turn), ref(agent, List.of(new Block.Text(said))));
+        new Seq(seq),
+        new TurnId(turn),
+        ref(agent, List.of(new Block.Text(said))),
+        Usage.unreported());
   }
 
   /** The text of what a reference stands for, joined, for the common assertion. */

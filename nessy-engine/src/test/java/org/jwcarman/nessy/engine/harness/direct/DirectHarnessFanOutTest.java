@@ -95,11 +95,11 @@ class DirectHarnessFanOutTest {
     for (int i = 1; i <= n; i++) {
       calls.add(new Block.ToolCall(new CallId("call-" + i), LOOKUP, "{\"id\":\"" + i + "\"}"));
     }
-    return new InferenceResult.Actions(calls, Usage.unknown());
+    return new InferenceResult.Actions(calls, Usage.unreported());
   }
 
   private static InferenceResult answering(String text) {
-    return new InferenceResult.Answer(List.of(new Block.Text(text)), Usage.unknown());
+    return new InferenceResult.Answer(List.of(new Block.Text(text)), Usage.unreported());
   }
 
   /** Answers with whatever it is handed, in order, one per call. */

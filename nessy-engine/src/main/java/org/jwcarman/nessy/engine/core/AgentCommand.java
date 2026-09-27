@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.core;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.TurnId;
@@ -23,6 +24,7 @@ import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.Usage;
 
 /**
  * What the harness asks of an {@link AgentState}. Five of them, and the same five whatever the
@@ -73,18 +75,43 @@ public sealed interface AgentCommand {
   record CompleteToolCall(TurnId turn, CallId callId, ToolOutcome outcome)
       implements AgentCommand {}
 
-  /** What an inference produced. */
+  /**
+   * What an inference produced.
+   *
+   * <p>Every arm carries what the call cost, because every arm IS a call that happened: a refusal
+   * read the input before declining, a failure may have read it before timing out, and a request
+   * for tools is an answer the model will be paid for like any other. Nothing normalises a null
+   * here -- unlike the stored shapes, these never outlive the process that built them, so a missing
+   * cost is a bug rather than an old row.
+   */
   sealed interface InferenceOutcome {
-    record Answered(PayloadRef answer) implements InferenceOutcome {}
 
-    record Refused(String category) implements InferenceOutcome {}
+    /** What this inference cost, as the vendor counted it. */
+    Usage usage();
 
-    record Failed(Failure failure) implements InferenceOutcome {}
+    record Answered(PayloadRef answer, Usage usage) implements InferenceOutcome {
+      public Answered {
+        Objects.requireNonNull(usage, "usage must not be null");
+      }
+    }
 
-    record RequestedActions(PayloadRef request, List<ActionRequest> actions)
+    record Refused(String category, Usage usage) implements InferenceOutcome {
+      public Refused {
+        Objects.requireNonNull(usage, "usage must not be null");
+      }
+    }
+
+    record Failed(Failure failure, Usage usage) implements InferenceOutcome {
+      public Failed {
+        Objects.requireNonNull(usage, "usage must not be null");
+      }
+    }
+
+    record RequestedActions(PayloadRef request, List<ActionRequest> actions, Usage usage)
         implements InferenceOutcome {
       public RequestedActions {
         actions = List.copyOf(actions);
+        Objects.requireNonNull(usage, "usage must not be null");
       }
     }
   }

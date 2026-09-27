@@ -82,7 +82,8 @@ class ObservedTest {
   void what_a_call_cost_is_a_histogram_of_tokens_in_and_tokens_out() {
     observe(
         (_, _) ->
-            new InferenceResult.Answer(List.of(new Block.Text("done"))).withUsage(new Usage(3, 5)));
+            new InferenceResult.Answer(List.of(new Block.Text("done")))
+                .withUsage(Usage.of("a-model", 3, 5)));
 
     assertThat(
             meters

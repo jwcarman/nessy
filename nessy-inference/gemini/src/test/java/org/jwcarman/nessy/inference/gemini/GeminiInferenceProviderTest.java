@@ -184,9 +184,13 @@ class GeminiInferenceProviderTest {
                       .build())
               .build();
 
-      assertThat(infer(priced).usage()).isEqualTo(new Usage(5, 9));
+      // Thinking is billed at the output rate, so it is summed into the output AND kept on its own.
+      // The model falls back to what was asked for, because this reply carries no modelVersion.
+      assertThat(infer(priced).usage())
+          .isEqualTo(new Usage("gemini-3.6-flash", 5, 9, null, null, 2));
+      // No usageMetadata at all: nothing counted, but we still know what was asked.
       assertThat(infer(reply(new FinishReason("STOP"), Part.fromText("hello"))).usage())
-          .isEqualTo(Usage.unknown());
+          .isEqualTo(Usage.unreported("gemini-3.6-flash"));
     }
   }
 

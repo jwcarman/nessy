@@ -17,6 +17,8 @@ package org.jwcarman.nessy.spring.boot;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
@@ -134,6 +136,43 @@ class NessyAutoConfigurationTest {
               assertThat(context.getBean(QueuedBackend.class))
                   .isInstanceOf(InMemoryQueuedBackend.class);
             });
+  }
+
+  /**
+   * <b>Token metrics belong to neither door.</b> This handler used to be registered as a side
+   * effect of building the queued door's factory, so an application that used only the direct door
+   * got no token histogram at all and nothing said so. It is a bean now, which Boot's observation
+   * auto-configuration registers, and the condition is a meter registry rather than a door.
+   */
+  @Test
+  @DisplayName("token usage is measured whenever there is a registry, whichever door is in use")
+  void the_token_usage_handler_does_not_belong_to_a_door() {
+    runner
+        .withUserConfiguration(AMeterRegistry.class)
+        .run(context -> assertThat(context).hasSingleBean(TokenUsageHandler.class));
+
+    // The direct door alone, with no queued backend in sight: still measured.
+    new ApplicationContextRunner()
+        .withConfiguration(
+            AutoConfigurations.of(
+                JacksonAutoConfiguration.class,
+                ObservationAutoConfiguration.class,
+                NessyAutoConfiguration.class,
+                InMemoryBackendAutoConfiguration.class,
+                DirectHarnessAutoConfiguration.class))
+        .withUserConfiguration(AnInferenceProvider.class, AMeterRegistry.class)
+        .withPropertyValues(MODEL, PROMPT, NO_SCHEMA)
+        .run(
+            context -> {
+              assertThat(context).hasSingleBean(TokenUsageHandler.class);
+              assertThat(context).hasSingleBean(DirectBackend.class);
+            });
+  }
+
+  /** No meter registry, nothing to record into, so nothing is declared. */
+  @Test
+  void nothing_measures_token_usage_without_a_meter_registry() {
+    runner.run(context -> assertThat(context).doesNotHaveBean(TokenUsageHandler.class));
   }
 
   @Test
@@ -264,6 +303,15 @@ class NessyAutoConfigurationTest {
     @Bean
     NarrationListener narrator() {
       return INSTANCE;
+    }
+  }
+
+  @Configuration(proxyBeanMethods = false)
+  static class AMeterRegistry {
+
+    @Bean
+    MeterRegistry meters() {
+      return new SimpleMeterRegistry();
     }
   }
 

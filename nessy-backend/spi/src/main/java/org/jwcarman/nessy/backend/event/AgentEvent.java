@@ -24,6 +24,7 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.Usage;
 
 /**
  * What happened. Facts, in order, and the only thing that moves an {@link AgentState}.
@@ -63,30 +64,64 @@ public sealed interface AgentEvent {
   /** A turn opened on an input. Its {@link TurnId} is this event's own position. */
   record TurnStarted(Seq seq, TurnId turn, PayloadRef input) implements AgentEvent {}
 
-  /** The model answered, and the turn is over. */
-  record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer) implements AgentEvent {}
+  /**
+   * The model answered, and the turn is over.
+   *
+   * <p>Carries what the call cost, as the vendor counted it. {@link Usage#unknown()} stands for an
+   * entry written before this event recorded one, and for a vendor that did not say -- the same
+   * reading, because neither counted.
+   */
+  record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer, Usage usage)
+      implements AgentEvent {
+    public InferenceAnswered {
+      usage = usage == null ? Usage.unreported() : usage;
+    }
+  }
 
-  /** The model declined, and would decline again. */
-  record InferenceRefused(Seq seq, TurnId turn, String category) implements AgentEvent {}
+  /**
+   * The model declined, and would decline again.
+   *
+   * <p>A refusal still costs: the model read the input before deciding not to answer it.
+   */
+  record InferenceRefused(Seq seq, TurnId turn, String category, Usage usage)
+      implements AgentEvent {
+    public InferenceRefused {
+      usage = usage == null ? Usage.unreported() : usage;
+    }
+  }
 
   /**
    * The model was not reached, or did not answer.
    *
    * <p>Carries the {@link Failure} rather than a sentence: a failed inference is the engine's
    * problem and what matters is whether trying again could work.
+   *
+   * <p>It may still have cost something -- a call that timed out after the model read a long
+   * transcript is billed for reading it -- and often nothing was counted at all, because a call
+   * that never reached a vendor has no vendor's count.
    */
-  record InferenceFailed(Seq seq, TurnId turn, Failure failure) implements AgentEvent {}
+  record InferenceFailed(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {
+    public InferenceFailed {
+      usage = usage == null ? Usage.unreported() : usage;
+    }
+  }
 
   /**
    * The model asked for work before it would answer.
    *
    * <p>The calls are in the spine because the state must know what it is waiting for; their
    * arguments are behind {@code request}, because only the tool ever reads those.
+   *
+   * <p>This is an answer from the model like any other and costs like one. A turn that calls three
+   * tools before answering pays for four inferences, and an accounting that counted only the last
+   * would miss most of what a tool-using agent spends.
    */
-  record ActionsRequested(Seq seq, TurnId turn, PayloadRef request, List<ActionRequest> actions)
+  record ActionsRequested(
+      Seq seq, TurnId turn, PayloadRef request, List<ActionRequest> actions, Usage usage)
       implements AgentEvent {
     public ActionsRequested {
       actions = List.copyOf(actions);
+      usage = usage == null ? Usage.unreported() : usage;
     }
   }
 

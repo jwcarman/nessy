@@ -206,11 +206,7 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
           new Failure.Permanent(
               "the stream ended before the answer was complete: " + incomplete.getMessage()));
     }
-    Usage usage =
-        completion
-            .usage()
-            .map(counted -> new Usage(counted.promptTokens(), counted.completionTokens()))
-            .orElse(Usage.unknown());
+    Usage usage = usageOf(completion);
     if (completion.choices().isEmpty()) {
       // A 200 that carries no answer. Asking again returns the same nothing.
       return new InferenceResult.Fault(new Failure.Permanent("model returned no choices"))
@@ -230,6 +226,46 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
    * finish_reason}: the content is the thing that has to be answered, and several OpenAI-compatible
    * servers report the reason inconsistently while all of them put the calls in the same place.
    */
+  /**
+   * What the call cost, in the shape {@link Usage} defines.
+   *
+   * <p><b>Nothing is summed here, unlike the Anthropic adapter.</b> OpenAI's {@code prompt_tokens}
+   * already includes whatever was served from cache, so it IS all input processed and the cache
+   * counts are a breakdown of it.
+   *
+   * <p><b>An absent cache count is null rather than zero, and that is the opposite of the Anthropic
+   * reading.</b> This adapter reaches every OpenAI-compatible endpoint, and many of them -- LM
+   * Studio among them -- omit {@code prompt_tokens_details} entirely rather than reporting zeroes.
+   * Calling that zero would claim a server had told us nothing was cached when it had told us
+   * nothing at all.
+   */
+  private static Usage usageOf(ChatCompletion completion) {
+    return completion
+        .usage()
+        .<Usage>map(
+            counted ->
+                new Usage(
+                    completion.model(),
+                    (int) counted.promptTokens(),
+                    (int) counted.completionTokens(),
+                    counted
+                        .promptTokensDetails()
+                        .flatMap(d -> d.cachedTokens())
+                        .map(Long::intValue)
+                        .orElse(null),
+                    counted
+                        .promptTokensDetails()
+                        .flatMap(d -> d.cacheWriteTokens())
+                        .map(Long::intValue)
+                        .orElse(null),
+                    counted
+                        .completionTokensDetails()
+                        .flatMap(d -> d.reasoningTokens())
+                        .map(Long::intValue)
+                        .orElse(null)))
+        .orElseGet(() -> Usage.unreported(completion.model()));
+  }
+
   private static InferenceResult read(ChatCompletion.Choice choice) {
     ChatCompletionMessage message = choice.message();
     if (message.refusal().isPresent()) {

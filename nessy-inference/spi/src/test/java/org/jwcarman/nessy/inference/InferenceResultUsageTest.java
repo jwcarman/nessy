@@ -26,7 +26,7 @@ class InferenceResultUsageTest {
 
   @Test
   void every_result_carries_its_cost_and_can_be_given_one() {
-    Usage usage = new Usage(10, 20);
+    Usage usage = Usage.of("a-model", 10, 20);
     InferenceResult answer = new InferenceResult.Answer(List.of(new Block.Text("hi")));
     InferenceResult refusal = new InferenceResult.Refusal("bio");
     InferenceResult fault = new InferenceResult.Fault(new Failure.Permanent("no"));
@@ -34,7 +34,7 @@ class InferenceResultUsageTest {
         new InferenceResult.Actions(List.of(new Block.ToolCall("c1", "t", "{}")));
 
     for (InferenceResult result : List.of(answer, refusal, fault, actions)) {
-      assertThat(result.usage()).isEqualTo(Usage.unknown());
+      assertThat(result.usage()).isEqualTo(Usage.unreported());
       InferenceResult priced = result.withUsage(usage);
       assertThat(priced.usage()).isEqualTo(usage);
       assertThat(priced.getClass()).isEqualTo(result.getClass());

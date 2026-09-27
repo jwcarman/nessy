@@ -150,18 +150,42 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
             new Failure.Permanent("the stream ended before the answer was complete"));
       }
       ConverseResponse response = folded.response();
-      return read(response).withUsage(usageOf(response));
+      return read(response).withUsage(usageOf(response, request.options().modelName()));
     } catch (SdkException e) {
       return new InferenceResult.Fault(classify(e));
     }
   }
 
-  private static Usage usageOf(ConverseResponse response) {
+  /**
+   * What the call cost, in the shape {@link Usage} defines.
+   *
+   * <p><b>The input count is summed, as it is for Anthropic and for the same reason:</b> Converse
+   * reports cache reads and writes outside {@code inputTokens}, so the vendor's figure is the
+   * uncached remainder. An absent cache count means nothing was cached, because a model that
+   * supports caching reports the pair.
+   *
+   * <p><b>The model comes from the request, because the response does not carry one.</b> Converse
+   * answers with no model identifier at all -- the caller knows which model it invoked and the
+   * vendor does not repeat it -- so what is recorded here is what was asked for. That is the model
+   * this was billed as either way.
+   *
+   * <p>Converse reports no thinking count, so the reasoning part is left unreported rather than
+   * zero.
+   */
+  private static Usage usageOf(ConverseResponse response, String requested) {
     TokenUsage counted = response.usage();
     if (counted == null || counted.inputTokens() == null || counted.outputTokens() == null) {
-      return Usage.unknown();
+      return Usage.unreported(requested);
     }
-    return new Usage(counted.inputTokens(), counted.outputTokens());
+    int cacheRead = counted.cacheReadInputTokens() == null ? 0 : counted.cacheReadInputTokens();
+    int cacheWrite = counted.cacheWriteInputTokens() == null ? 0 : counted.cacheWriteInputTokens();
+    return new Usage(
+        requested,
+        counted.inputTokens() + cacheRead + cacheWrite,
+        counted.outputTokens(),
+        cacheRead,
+        cacheWrite,
+        null);
   }
 
   /**

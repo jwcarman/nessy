@@ -23,6 +23,7 @@ import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.Usage;
 
 /**
  * What every kind of effect is worth, resolved from {@link Tools} and the harness-wide defaults
@@ -189,15 +190,18 @@ public final class EffectTermsSource {
 
     @Override
     public EffectOutcome failed(RuntimeException cause) {
+      // Unreported rather than zero, and with no model: this failure is the engine's own account
+      // of a call it never heard back from, so there is no vendor's count and nothing to price.
       return new EffectOutcome.InferenceFailed(
-          new Failure.Unknown(String.valueOf(cause.getMessage())));
+          new Failure.Unknown(String.valueOf(cause.getMessage())), Usage.unreported());
     }
 
     @Override
     public EffectOutcome undispatchable() {
       return new EffectOutcome.InferenceFailed(
           new Failure.Unknown(
-              "the inference did not complete before its deadline; whether it ran is not known"));
+              "the inference did not complete before its deadline; whether it ran is not known"),
+          Usage.unreported());
     }
   }
 }

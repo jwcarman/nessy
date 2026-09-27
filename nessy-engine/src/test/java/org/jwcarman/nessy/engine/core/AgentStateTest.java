@@ -35,6 +35,7 @@ import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.agent.OutstandingAction;
 import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.Usage;
 
 /**
  * The pure core, on its own: no provider, no database, no clock.
@@ -71,7 +72,9 @@ class AgentStateTest {
                     new AgentCommand.CompleteInference(
                         TURN,
                         new AgentCommand.InferenceOutcome.RequestedActions(
-                            MAIL, List.of(new ActionRequest.ToolCall(CALL, TOOL)))))
+                            MAIL,
+                            List.of(new ActionRequest.ToolCall(CALL, TOOL)),
+                            Usage.unreported())))
                 .events());
     return state.applyAll(
         state
@@ -133,7 +136,8 @@ class AgentStateTest {
               inferring
                   .execute(
                       new AgentCommand.CompleteInference(
-                          TURN, new AgentCommand.InferenceOutcome.Answered(ANSWER)))
+                          TURN,
+                          new AgentCommand.InferenceOutcome.Answered(ANSWER, Usage.unreported())))
                   .events());
 
       assertThat(after).isInstanceOf(AgentState.Idle.class);
@@ -145,7 +149,8 @@ class AgentStateTest {
     void out_of_order_is_refused() {
       AgentState state = idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL)).events());
       AgentEvent stale =
-          new AgentEvent.InferenceAnswered(Seq.NONE, state.seq().opensTurn(), ANSWER);
+          new AgentEvent.InferenceAnswered(
+              Seq.NONE, state.seq().opensTurn(), ANSWER, Usage.unreported());
 
       assertThatThrownBy(() -> state.apply(stale))
           .isInstanceOf(IllegalArgumentException.class)
@@ -176,7 +181,7 @@ class AgentStateTest {
               new AgentCommand.CompleteInference(
                   TURN,
                   new AgentCommand.InferenceOutcome.RequestedActions(
-                      MAIL, List.of(new ActionRequest.ToolCall(CALL, TOOL)))));
+                      MAIL, List.of(new ActionRequest.ToolCall(CALL, TOOL)), Usage.unreported())));
 
       assertThat(decision.effects()).singleElement().isInstanceOf(AgentEffect.Approve.class);
     }
@@ -192,7 +197,9 @@ class AgentStateTest {
                       new AgentCommand.CompleteInference(
                           TURN,
                           new AgentCommand.InferenceOutcome.RequestedActions(
-                              MAIL, List.of(new ActionRequest.ToolCall(CALL, TOOL)))))
+                              MAIL,
+                              List.of(new ActionRequest.ToolCall(CALL, TOOL)),
+                              Usage.unreported())))
                   .events());
 
       Decision decision =
@@ -245,7 +252,7 @@ class AgentStateTest {
               new AgentCommand.CompleteInference(
                   TURN,
                   new AgentCommand.InferenceOutcome.RequestedActions(
-                      MAIL, List.of(new ActionRequest.ToolCall(CALL, TOOL)))));
+                      MAIL, List.of(new ActionRequest.ToolCall(CALL, TOOL)), Usage.unreported())));
       AgentState awaiting = inferring.applyAll(requested.events());
 
       AgentEvent.ActionsRequested actionsRequested =
@@ -283,7 +290,7 @@ class AgentStateTest {
       Decision decision =
           inferring.execute(
               new AgentCommand.CompleteInference(
-                  TURN, new AgentCommand.InferenceOutcome.Refused("safety")));
+                  TURN, new AgentCommand.InferenceOutcome.Refused("safety", Usage.unreported())));
 
       assertThat(decision.effects()).isEmpty();
       assertThat(inferring.applyAll(decision.events())).isInstanceOf(AgentState.Idle.class);
@@ -298,7 +305,7 @@ class AgentStateTest {
       Decision decision =
           inferring.execute(
               new AgentCommand.CompleteInference(
-                  TURN, new AgentCommand.InferenceOutcome.Failed(reason)));
+                  TURN, new AgentCommand.InferenceOutcome.Failed(reason, Usage.unreported())));
 
       assertThat(decision.events())
           .singleElement()
@@ -319,7 +326,8 @@ class AgentStateTest {
       assertThat(
               idle.execute(
                   new AgentCommand.CompleteInference(
-                      TURN, new AgentCommand.InferenceOutcome.Answered(ANSWER))))
+                      TURN,
+                      new AgentCommand.InferenceOutcome.Answered(ANSWER, Usage.unreported()))))
           .isInstanceOf(Decision.Ignore.class);
     }
 
@@ -343,7 +351,8 @@ class AgentStateTest {
       assertThat(
               running.execute(
                   new AgentCommand.CompleteInference(
-                      TURN, new AgentCommand.InferenceOutcome.Answered(ANSWER))))
+                      TURN,
+                      new AgentCommand.InferenceOutcome.Answered(ANSWER, Usage.unreported()))))
           .isInstanceOf(Decision.Ignore.class);
     }
 
@@ -353,7 +362,7 @@ class AgentStateTest {
       Decision ignored =
           idle.execute(
               new AgentCommand.CompleteInference(
-                  TURN, new AgentCommand.InferenceOutcome.Answered(ANSWER)));
+                  TURN, new AgentCommand.InferenceOutcome.Answered(ANSWER, Usage.unreported())));
 
       assertThat(ignored.events()).isEmpty();
       assertThat(ignored.effects()).isEmpty();
@@ -373,7 +382,8 @@ class AgentStateTest {
               state
                   .execute(
                       new AgentCommand.CompleteInference(
-                          TURN, new AgentCommand.InferenceOutcome.Answered(ANSWER)))
+                          TURN,
+                          new AgentCommand.InferenceOutcome.Answered(ANSWER, Usage.unreported())))
                   .events());
       return state.applyAll(state.execute(new AgentCommand.StartTurn(MAIL)).events());
     }
@@ -387,7 +397,7 @@ class AgentStateTest {
       Decision decision =
           secondTurn.execute(
               new AgentCommand.CompleteInference(
-                  TURN, new AgentCommand.InferenceOutcome.Answered(ANSWER)));
+                  TURN, new AgentCommand.InferenceOutcome.Answered(ANSWER, Usage.unreported())));
 
       assertThat(decision).isInstanceOf(Decision.Ignore.class);
       assertThat(decision.events())
@@ -405,7 +415,7 @@ class AgentStateTest {
       Decision decision =
           secondTurn.execute(
               new AgentCommand.CompleteInference(
-                  open, new AgentCommand.InferenceOutcome.Answered(ANSWER)));
+                  open, new AgentCommand.InferenceOutcome.Answered(ANSWER, Usage.unreported())));
 
       assertThat(decision.events())
           .singleElement()
@@ -424,7 +434,9 @@ class AgentStateTest {
                       new AgentCommand.CompleteInference(
                           TURN,
                           new AgentCommand.InferenceOutcome.RequestedActions(
-                              MAIL, List.of(new ActionRequest.ToolCall(CALL, TOOL)))))
+                              MAIL,
+                              List.of(new ActionRequest.ToolCall(CALL, TOOL)),
+                              Usage.unreported())))
                   .events());
 
       Decision decision =
@@ -463,7 +475,8 @@ class AgentStateTest {
     @DisplayName("an answer applied to an idle agent is refused rather than quietly absorbed")
     void an_answer_cannot_land_on_an_idle_agent() {
       AgentEvent answer =
-          new AgentEvent.InferenceAnswered(Seq.of(1), Seq.of(1).opensTurn(), ANSWER);
+          new AgentEvent.InferenceAnswered(
+              Seq.of(1), Seq.of(1).opensTurn(), ANSWER, Usage.unreported());
 
       assertThatThrownBy(() -> idle.apply(answer))
           .isInstanceOf(IllegalArgumentException.class)
@@ -525,7 +538,8 @@ class AgentStateTest {
                               List.of(
                                   new ActionRequest.ToolCall(A, TOOL),
                                   new ActionRequest.ToolCall(B, TOOL),
-                                  new ActionRequest.ToolCall(C, TOOL)))))
+                                  new ActionRequest.ToolCall(C, TOOL)),
+                              Usage.unreported())))
                   .events());
       for (CallId call : List.of(A, B, C)) {
         state =
@@ -553,8 +567,8 @@ class AgentStateTest {
                   new AgentCommand.InferenceOutcome.RequestedActions(
                       MAIL,
                       List.of(
-                          new ActionRequest.ToolCall(A, TOOL),
-                          new ActionRequest.ToolCall(B, TOOL)))));
+                          new ActionRequest.ToolCall(A, TOOL), new ActionRequest.ToolCall(B, TOOL)),
+                      Usage.unreported())));
 
       assertThat(decision.effects()).hasSize(2).allMatch(AgentEffect.Approve.class::isInstance);
     }
@@ -621,7 +635,9 @@ class AgentStateTest {
                       new AgentCommand.CompleteInference(
                           TURN,
                           new AgentCommand.InferenceOutcome.RequestedActions(
-                              MAIL, List.of(new ActionRequest.ToolCall(A, TOOL)))))
+                              MAIL,
+                              List.of(new ActionRequest.ToolCall(A, TOOL)),
+                              Usage.unreported())))
                   .events());
 
       Decision denied =
@@ -657,7 +673,9 @@ class AgentStateTest {
                       new AgentCommand.CompleteInference(
                           TURN,
                           new AgentCommand.InferenceOutcome.RequestedActions(
-                              MAIL, List.of(new ActionRequest.ToolCall(A, TOOL)))))
+                              MAIL,
+                              List.of(new ActionRequest.ToolCall(A, TOOL)),
+                              Usage.unreported())))
                   .events());
 
       assertThat(
@@ -706,7 +724,8 @@ class AgentStateTest {
               inferring
                   .execute(
                       new AgentCommand.CompleteInference(
-                          TURN, new AgentCommand.InferenceOutcome.Answered(ANSWER)))
+                          TURN,
+                          new AgentCommand.InferenceOutcome.Answered(ANSWER, Usage.unreported())))
                   .events());
 
       assertThat(after).isInstanceOf(AgentState.Idle.class);
