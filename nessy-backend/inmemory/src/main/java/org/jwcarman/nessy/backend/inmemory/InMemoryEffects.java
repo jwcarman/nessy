@@ -209,9 +209,16 @@ public final class InMemoryEffects implements Effects {
     return true;
   }
 
-  /** Kept as objects here, so there is nothing to decode and nothing that can fail to. */
+  /**
+   * Kept as objects here, so there is nothing to decode and nothing that can fail to.
+   *
+   * <p>On the monitor like every other reader of a row: the list is replaced wholesale by a
+   * reschedule, and a reader off the lock could see the one before it. Note this reads the LIVE row
+   * where the JDBC store reads the snapshot taken when the row was claimed -- a difference that
+   * only shows when two threads hold the same row, which the attempt fence then settles.
+   */
   @Override
-  public List<FailedAttempt> attemptsOf(Attempt attempt) {
+  public synchronized List<FailedAttempt> attemptsOf(Attempt attempt) {
     Objects.requireNonNull(attempt, "attempt must not be null");
     Row row = rows.get(attempt.effectId());
     return row == null ? List.of() : row.failedAttempts;

@@ -43,9 +43,14 @@ public record Attempt(
     /** The trace this effect was emitted in, or null if nothing was tracing. */
     String traceContext,
     /**
-     * What the attempts before this one learned, or null when this is the first. Encoded the same
-     * way the two blobs above are, and for the same reason: what a failed attempt knows is the
-     * engine's vocabulary, and a row that understood it would have to change when that does.
+     * A store's private carrier for what earlier attempts learned. Encoded the same way the two
+     * blobs above are, and for the same reason: what a failed attempt knows is the engine's
+     * vocabulary, and a row that understood it would have to change when that does.
+     *
+     * <p><b>Read it through {@link Effects#attemptsOf}, never directly.</b> Only a store that keeps
+     * bytes puts anything here -- one holding objects has nowhere to encode to and leaves it null
+     * while keeping the attempts itself -- so a caller reaching for this field works against one
+     * implementation and silently sees nothing on the other.
      */
     byte[] failedAttempts) {
 

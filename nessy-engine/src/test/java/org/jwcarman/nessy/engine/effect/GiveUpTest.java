@@ -33,6 +33,7 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.EngineFixture;
+import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -158,6 +159,24 @@ class GiveUpTest {
     assertThat(model.calls())
         .as("three attempts, then the turn ends -- not one, and not forever")
         .isEqualTo(3);
+
+    // What the turn cost is only recoverable if every attempt was written down. The two that
+    // were retried are facts of their own; the third is the one that ended the turn, and it is
+    // recorded once, as the failure -- not a second time as an attempt.
+    List<AgentEvent> story = story(type, agentId);
+    assertThat(story)
+        .extracting(event -> event.getClass().getSimpleName())
+        .containsExactly(
+            "TurnStarted", "InferenceAttempted", "InferenceAttempted", "InferenceFailed");
+    assertThat(story)
+        .as("consecutive, so nothing landed between an attempt and the next")
+        .extracting(AgentEvent::seq)
+        .containsExactly(new Seq(1), new Seq(2), new Seq(3), new Seq(4));
+    assertThat(story)
+        .filteredOn(AgentEvent.InferenceAttempted.class::isInstance)
+        .extracting(event -> ((AgentEvent.InferenceAttempted) event).failure())
+        .as("a call that threw is one nobody found out the fate of")
+        .allSatisfy(failure -> assertThat(failure).isInstanceOf(Failure.Unknown.class));
   }
 
   /** The state replay produces, named -- there is no state column to read. */

@@ -49,8 +49,6 @@ public interface AgentEffectCallback {
    *     whatever turn the agent is on, which is all a corrupt row can support.
    * @param traceContext the trace of the effect this answers, so whatever the outcome causes stays
    *     in the same turn's trace; null when that effect had none
-   */
-  /**
    * @param priorAttempts what the attempts before this one learned, oldest first. Empty unless the
    *     work was tried more than once, and always empty for a door that does not retry. Carried
    *     here rather than inside the outcome so that the four inference arms -- already a published

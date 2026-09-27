@@ -80,9 +80,11 @@ public sealed interface Decision {
    * tries are written down before the event that closes the work. Prepended rather than appended
    * because they happened first, and a story out of order is worse than no story.
    *
-   * <p>An {@link Ignore} stays ignored. If the command decided nothing, nothing about it is worth
-   * recording either -- a redelivered outcome would otherwise write its attempts down a second
-   * time, which is the precise shape of the bug this guards.
+   * <p>An {@link Ignore} stays ignored, so that a decision to record nothing cannot be turned into
+   * a decision to record something. <b>This is not what stops a redelivery writing its attempts
+   * twice</b> -- that is settled a level up, where every state but the one mid-inference answers a
+   * completion with {@code ignore()} before the attempts are so much as assembled. This branch is
+   * unreachable today and kept so the method's contract does not depend on that staying true.
    */
   default Decision prepend(List<AgentEvent> earlier) {
     if (earlier.isEmpty() || this instanceof Ignore) {

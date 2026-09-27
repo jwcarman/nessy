@@ -397,6 +397,10 @@ public class EffectDispatcher {
    * because repeating work that may already have run is a decision that belongs to the kind of work
    * rather than to this switch.
    */
+  private static boolean worthAnotherGo(EffectOutcome outcome) {
+    return outcome instanceof EffectOutcome.InferenceFailed(Failure.Transient _, Usage _);
+  }
+
   /**
    * What the row should remember once this attempt is written off, oldest first.
    *
@@ -405,17 +409,13 @@ public class EffectDispatcher {
    * and the story of a retried tool call is the same as it always was.
    */
   private List<FailedAttempt> accumulated(Attempt attempt, Supplier<EffectOutcome> discharge) {
-    List<FailedAttempt> so_far = effects.attemptsOf(attempt);
+    List<FailedAttempt> soFar = effects.attemptsOf(attempt);
     if (!(discharge.get() instanceof EffectOutcome.InferenceFailed(Failure failure, Usage usage))) {
-      return so_far;
+      return soFar;
     }
-    List<FailedAttempt> all = new ArrayList<>(so_far);
+    List<FailedAttempt> all = new ArrayList<>(soFar);
     all.add(new FailedAttempt(failure, usage));
     return all;
-  }
-
-  private static boolean worthAnotherGo(EffectOutcome outcome) {
-    return outcome instanceof EffectOutcome.InferenceFailed(Failure.Transient _, Usage _);
   }
 
   /**

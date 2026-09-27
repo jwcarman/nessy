@@ -66,8 +66,9 @@ public interface Effects {
   /** Retires a finished attempt. Fenced on the attempt's own status and count. */
   boolean complete(UUID effectId, int attemptsMade);
 
-  /** Puts a failed attempt back for another go, fenced the same way. */
   /**
+   * Puts a failed attempt back for another go, fenced the same way.
+   *
    * @param failedAttempts what every attempt so far has learned, this one included. The caller
    *     reads what was there, appends, and hands back the lot -- a stored list cannot be appended
    *     to in a statement. Empty for work that learned nothing worth keeping: a tool call knows
