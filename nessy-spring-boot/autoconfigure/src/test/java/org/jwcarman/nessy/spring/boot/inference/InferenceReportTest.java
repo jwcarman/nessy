@@ -73,8 +73,8 @@ class InferenceReportTest {
 
               assertThat(output)
                   .contains(
-                      "NESSY INFERENCE: providers: openai (chat-completions, the vendor's own"
-                          + " endpoint, vendor openai); xai (chat-completions,"
+                      "NESSY INFERENCE: providers: openai (openai, the vendor's own"
+                          + " endpoint, vendor openai); xai (openai,"
                           + " https://api.x.ai/v1, vendor x_ai)")
                   .doesNotContain("sk-super-secret")
                   .doesNotContain("xai-super-secret");
@@ -82,11 +82,11 @@ class InferenceReportTest {
   }
 
   @Test
-  void a_messages_wire_provider_reports_the_beans_own_vendor_not_a_vendor_override(
+  void an_anthropic_wire_provider_reports_the_beans_own_vendor_not_a_vendor_override(
       CapturedOutput output) {
     runner
         .withPropertyValues(
-            "nessy.providers.myanthropic.wire=messages",
+            "nessy.providers.myanthropic.wire=anthropic",
             "nessy.providers.myanthropic.base-url=https://proxy/v1",
             "nessy.providers.myanthropic.api-key=sk-super-secret",
             "nessy.providers.myanthropic.vendor=not-anthropic")

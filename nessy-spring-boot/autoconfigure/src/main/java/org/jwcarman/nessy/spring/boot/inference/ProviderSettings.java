@@ -21,9 +21,9 @@ import org.jspecify.annotations.Nullable;
  * What {@code nessy.providers.<id>} says. Every field optional; a preset fills the gaps, and a
  * custom provider (an id not in the catalogue) must supply {@code wire} and {@code baseUrl} itself.
  *
- * <p>{@code vendor} is ignored for the {@link Wire#MESSAGES} and {@link Wire#GENERATE_CONTENT}
- * wires: Anthropic and Gemini report their own fixed vendor, and only the chat-completions wire
- * (shared by more than one vendor) needs an override.
+ * <p>{@code vendor} is ignored for the {@link Wire#ANTHROPIC} and {@link Wire#GEMINI} wires:
+ * Anthropic and Gemini report their own fixed vendor, and only the {@code openai} wire (shared by
+ * more than one vendor) needs an override.
  */
 record ProviderSettings(
     @Nullable Wire wire,

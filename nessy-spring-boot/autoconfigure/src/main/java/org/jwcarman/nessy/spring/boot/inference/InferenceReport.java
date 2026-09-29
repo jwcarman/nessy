@@ -34,8 +34,8 @@ import org.springframework.beans.factory.SmartInitializingSingleton;
  * endpoint too; an application's own bean, which the registrar never resolved, prints only what it
  * can ask the bean itself for. Either way the vendor printed is the registered bean's own {@link
  * InferenceProvider#vendor()} -- {@code resolved.vendor()} can disagree with it for the {@code
- * messages} and {@code generate-content} wires, which ignore a vendor override, so the bean is the
- * one asked. Never the key, in either case.
+ * anthropic} and {@code gemini} wires, which ignore a vendor override, so the bean is the one
+ * asked. Never the key, in either case.
  */
 final class InferenceReport implements SmartInitializingSingleton {
 

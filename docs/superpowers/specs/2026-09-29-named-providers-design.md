@@ -604,3 +604,10 @@ None of §14 blocks step 1. (2), (5) and (6) shape step 2; (3), (4) and (8) shap
     `inference(InferenceProvider, InferenceOptions)`, which §6a and §6b split; (b) the brief said
     `ProviderId` should carry `@JsonValue`/`@JsonCreator` "if `AgentType` has them", and
     `AgentType` has neither, so §5a leaves them off and (1) is where they would come back.
+
+---
+
+**Amendment, 2026-09-29:** wire values are vendor-named (`openai`, `anthropic`,
+`gemini`) by James's ruling — a wire is the API shape a vendor defined; a
+second shape from one vendor gets a qualified name. This supersedes the
+protocol-named values in §3, §5c and §11.

@@ -176,15 +176,15 @@ for four of them the base URL too. It becomes a provider once its
 
 | id | wire | base URL | vendor | ingredient |
 |---|---|---|---|---|
-| `openai` | `chat-completions` | the vendor's own | `openai` | `openai.api-key` (`OPENAI_API_KEY`) |
-| `xai` | `chat-completions` | `https://api.x.ai/v1` | `x_ai` | `xai.api-key` (`XAI_API_KEY`) |
-| `anthropic` | `messages` | the vendor's own | `anthropic` | `anthropic.api-key` (`ANTHROPIC_API_KEY`) |
-| `gemini` | `generate-content` | the vendor's own | `gcp.gemini` | `gemini.api-key` or `google.api-key` (`GEMINI_API_KEY` / `GOOGLE_API_KEY`) |
-| `lmstudio` | `chat-completions` | `http://localhost:1234/v1` | `lmstudio` | `nessy.providers.lmstudio.enabled: true` — keyless |
+| `openai` | `openai` | the vendor's own | `openai` | `openai.api-key` (`OPENAI_API_KEY`) |
+| `xai` | `openai` | `https://api.x.ai/v1` | `x_ai` | `xai.api-key` (`XAI_API_KEY`) |
+| `anthropic` | `anthropic` | the vendor's own | `anthropic` | `anthropic.api-key` (`ANTHROPIC_API_KEY`) |
+| `gemini` | `gemini` | the vendor's own | `gcp.gemini` | `gemini.api-key` or `google.api-key` (`GEMINI_API_KEY` / `GOOGLE_API_KEY`) |
+| `lmstudio` | `openai` | `http://localhost:1234/v1` | `lmstudio` | `nessy.providers.lmstudio.enabled: true` — keyless |
 
 Every field is overridable under `nessy.providers.<id>.*`: a different
-`base-url` for `anthropic` behind a proxy, a different `vendor` tag for a
-`chat-completions` endpoint that is really somebody else, or
+`base-url` for `anthropic` behind a proxy, a different `vendor` tag for an
+`openai` endpoint that is really somebody else, or
 `nessy.providers.<id>.api-key` in place of the vendor's own environment
 variable. `openai.base-url` (`OPENAI_BASE_URL`) still overrides the
 `openai` preset's endpoint on its own, the way it always has.
@@ -219,17 +219,17 @@ provider, and must state its own `wire` and `base-url`:
 nessy:
   providers:
     my-gateway:
-      wire: chat-completions
+      wire: openai
       base-url: https://gateway.example.com/v1
       api-key: ${GATEWAY_KEY}
       vendor: openai
 ```
 
-`wire` is one of `chat-completions`, `messages` or `generate-content` — a
-typo is a binding error naming the allowed values, not a provider that
-silently fails to exist. `vendor` defaults to the wire's own (`openai` for
-`chat-completions`). Missing `wire` or `base-url` fails startup, naming the
-id and the field.
+`wire` is one of `openai`, `anthropic` or `gemini` — a typo is a binding
+error naming the allowed values, not a provider that silently fails to
+exist. `vendor` defaults to the wire's own (`openai` for the `openai`
+wire). Missing `wire` or `base-url` fails startup, naming the id and the
+field.
 
 ### Application beans
 
@@ -252,7 +252,7 @@ At startup, `InferenceReport` logs every registered provider once — id,
 wire, endpoint, vendor, never the key:
 
 ```
-NESSY INFERENCE: providers: openai (chat-completions, the vendor's own endpoint, vendor openai); xai (chat-completions, https://api.x.ai/v1, vendor x_ai)
+NESSY INFERENCE: providers: openai (openai, the vendor's own endpoint, vendor openai); xai (openai, https://api.x.ai/v1, vendor x_ai)
 ```
 
 An application bean the registrar never resolved prints only what it can
@@ -326,7 +326,7 @@ intervention and a content filter come back as a `Refusal`.
 ## The OpenAI-compatible universe
 
 The OpenAI adapter plus a base URL plus a key is, itself, an integration.
-Every service below speaks the same chat-completions wire protocol, so no
+Every service below speaks the same openai wire, so no
 service-specific module exists or is needed. Nessy validates against OpenAI
 proper; a compatible endpoint is the vendor's compatibility promise.
 

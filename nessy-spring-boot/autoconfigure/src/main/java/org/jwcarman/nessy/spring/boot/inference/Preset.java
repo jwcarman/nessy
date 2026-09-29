@@ -32,27 +32,21 @@ record Preset(
 
   static final List<Preset> CATALOGUE =
       List.of(
+          new Preset("openai", Wire.OPENAI, null, "openai", List.of("openai.api-key"), null),
           new Preset(
-              "openai", Wire.CHAT_COMPLETIONS, null, "openai", List.of("openai.api-key"), null),
+              "xai", Wire.OPENAI, "https://api.x.ai/v1", "x_ai", List.of("xai.api-key"), null),
           new Preset(
-              "xai",
-              Wire.CHAT_COMPLETIONS,
-              "https://api.x.ai/v1",
-              "x_ai",
-              List.of("xai.api-key"),
-              null),
-          new Preset(
-              "anthropic", Wire.MESSAGES, null, "anthropic", List.of("anthropic.api-key"), null),
+              "anthropic", Wire.ANTHROPIC, null, "anthropic", List.of("anthropic.api-key"), null),
           new Preset(
               "gemini",
-              Wire.GENERATE_CONTENT,
+              Wire.GEMINI,
               null,
               "gcp.gemini",
               List.of("gemini.api-key", "google.api-key"),
               null),
           new Preset(
               "lmstudio",
-              Wire.CHAT_COMPLETIONS,
+              Wire.OPENAI,
               "http://localhost:1234/v1",
               "lmstudio",
               List.of(),

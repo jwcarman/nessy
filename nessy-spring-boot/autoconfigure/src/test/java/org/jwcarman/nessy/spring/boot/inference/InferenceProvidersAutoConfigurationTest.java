@@ -103,7 +103,7 @@ class InferenceProvidersAutoConfigurationTest {
   }
 
   @Test
-  void openai_and_xai_keys_register_two_chat_completions_providers_with_their_own_vendors() {
+  void openai_and_xai_keys_register_two_openai_wire_providers_with_their_own_vendors() {
     runner
         .withPropertyValues("openai.api-key=sk-test", "xai.api-key=xai-test")
         .run(
@@ -157,7 +157,7 @@ class InferenceProvidersAutoConfigurationTest {
   void a_custom_provider_with_a_wire_url_and_key_is_registered_with_the_wires_own_vendor() {
     runner
         .withPropertyValues(
-            "nessy.providers.mine.wire=chat-completions",
+            "nessy.providers.mine.wire=openai",
             "nessy.providers.mine.base-url=https://g/v1",
             "nessy.providers.mine.api-key=k")
         .run(

@@ -49,7 +49,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Google Gemini, through the vendor's own java-genai SDK, against the Gemini Developer API.
  *
- * <p>Speaks the {@code generate-content} wire.
+ * <p>Speaks the {@code gemini} wire.
  *
  * <p>Owns the client and is the only class here that touches the network; the projection onto the
  * wire lives in {@link GeminiRequests} and can be tested without a key.

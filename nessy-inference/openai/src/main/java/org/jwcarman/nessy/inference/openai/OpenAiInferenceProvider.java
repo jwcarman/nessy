@@ -45,8 +45,8 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * OpenAI, through the vendor's own SDK.
  *
- * <p>Speaks the {@code chat-completions} wire, which xAI and any OpenAI-compatible endpoint (such
- * as LM Studio) also answer to.
+ * <p>Speaks the {@code openai} wire, which xAI and any OpenAI-compatible endpoint (such as LM
+ * Studio) also answer to.
  *
  * <p>Owns the {@link OpenAIClient} and is the only class here that touches the network; the
  * projection onto the wire lives in {@link OpenAiRequests} and can be tested without a key.

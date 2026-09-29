@@ -18,18 +18,19 @@ package org.jwcarman.nessy.spring.boot.inference;
 import java.util.Locale;
 
 /**
- * The protocol a provider speaks, named for the protocol rather than a vendor: one wire serves many
- * vendors (xAI speaks chat-completions), and one vendor may eventually speak several. Bound from
- * {@code nessy.providers.<id>.wire}'s property values ({@code chat-completions}, {@code messages},
- * {@code generate-content}) by Boot's relaxed binding, so a typo is a binding error naming the
- * allowed values rather than a provider that silently fails to exist.
+ * The API shape a provider speaks, named for the vendor that defined it: {@code openai} is OpenAI's
+ * Chat Completions shape, which other vendors (xAI, LM Studio, and any OpenAI-compatible endpoint)
+ * also serve. A second shape from the same vendor would get a qualified name (e.g. {@code
+ * openai-responses}). Bound from {@code nessy.providers.<id>.wire}'s property values ({@code
+ * openai}, {@code anthropic}, {@code gemini}) by Boot's relaxed binding, so a typo is a binding
+ * error naming the allowed values rather than a provider that silently fails to exist.
  *
  * <p>Package-private and not in the SPI: nothing outside the starter depends on it.
  */
 enum Wire {
-  CHAT_COMPLETIONS("openai"),
-  MESSAGES("anthropic"),
-  GENERATE_CONTENT("gcp.gemini");
+  OPENAI("openai"),
+  ANTHROPIC("anthropic"),
+  GEMINI("gcp.gemini");
 
   private final String defaultVendor;
 

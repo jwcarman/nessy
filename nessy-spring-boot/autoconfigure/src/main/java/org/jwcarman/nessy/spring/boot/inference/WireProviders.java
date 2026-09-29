@@ -35,11 +35,11 @@ import tools.jackson.databind.json.JsonMapper;
  */
 final class WireProviders {
 
-  private static final String CHAT_COMPLETIONS_CLASS =
+  private static final String OPENAI_CLASS =
       "org.jwcarman.nessy.inference.openai.OpenAiInferenceProvider";
-  private static final String MESSAGES_CLASS =
+  private static final String ANTHROPIC_CLASS =
       "org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider";
-  private static final String GENERATE_CONTENT_CLASS =
+  private static final String GEMINI_CLASS =
       "org.jwcarman.nessy.inference.gemini.GeminiInferenceProvider";
 
   private WireProviders() {}
@@ -58,17 +58,17 @@ final class WireProviders {
   /** The Maven artifact a lit provider needs, named for {@link ProviderRegistrar}'s skip log. */
   static String artifactId(Wire wire) {
     return switch (wire) {
-      case CHAT_COMPLETIONS -> "nessy-inference-openai";
-      case MESSAGES -> "nessy-inference-anthropic";
-      case GENERATE_CONTENT -> "nessy-inference-gemini";
+      case OPENAI -> "nessy-inference-openai";
+      case ANTHROPIC -> "nessy-inference-anthropic";
+      case GEMINI -> "nessy-inference-gemini";
     };
   }
 
   private static String adapterClassName(Wire wire) {
     return switch (wire) {
-      case CHAT_COMPLETIONS -> CHAT_COMPLETIONS_CLASS;
-      case MESSAGES -> MESSAGES_CLASS;
-      case GENERATE_CONTENT -> GENERATE_CONTENT_CLASS;
+      case OPENAI -> OPENAI_CLASS;
+      case ANTHROPIC -> ANTHROPIC_CLASS;
+      case GEMINI -> GEMINI_CLASS;
     };
   }
 
@@ -85,15 +85,15 @@ final class WireProviders {
     }
     return Optional.of(
         switch (resolved.wire()) {
-          case CHAT_COMPLETIONS -> ChatCompletions.build(resolved, mapper);
-          case MESSAGES -> Messages.build(resolved, mapper);
-          case GENERATE_CONTENT -> GenerateContent.build(resolved, mapper);
+          case OPENAI -> OpenAi.build(resolved, mapper);
+          case ANTHROPIC -> Anthropic.build(resolved, mapper);
+          case GEMINI -> Gemini.build(resolved, mapper);
         });
   }
 
-  private static final class ChatCompletions {
+  private static final class OpenAi {
 
-    private ChatCompletions() {}
+    private OpenAi() {}
 
     static InferenceProvider build(ResolvedProvider resolved, @Nullable JsonMapper mapper) {
       return OpenAiInferenceProvider.of(
@@ -111,9 +111,9 @@ final class WireProviders {
     }
   }
 
-  private static final class Messages {
+  private static final class Anthropic {
 
-    private Messages() {}
+    private Anthropic() {}
 
     static InferenceProvider build(ResolvedProvider resolved, @Nullable JsonMapper mapper) {
       return AnthropicInferenceProvider.of(
@@ -130,9 +130,9 @@ final class WireProviders {
     }
   }
 
-  private static final class GenerateContent {
+  private static final class Gemini {
 
-    private GenerateContent() {}
+    private Gemini() {}
 
     static InferenceProvider build(ResolvedProvider resolved, @Nullable JsonMapper mapper) {
       return GeminiInferenceProvider.of(
