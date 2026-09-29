@@ -307,7 +307,9 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
       this.provider = provider;
       if (defaults != null) {
         this.modelName = defaults.modelName();
-        this.maxTokens = defaults.maxTokens();
+        if (defaults.hasMaxTokens()) {
+          this.maxTokens = defaults.maxTokens();
+        }
       }
     }
 

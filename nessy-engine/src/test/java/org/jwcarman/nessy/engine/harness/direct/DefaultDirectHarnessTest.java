@@ -1664,5 +1664,31 @@ class DefaultDirectHarnessTest {
           .isInstanceOf(IllegalStateException.class)
           .hasMessage("agent type 'chat' names no model and the factory has no default");
     }
+
+    @Test
+    void a_factory_default_with_no_max_tokens_still_builds_with_the_4096_ceiling() {
+      AtomicInteger seenMaxTokens = new AtomicInteger();
+      DirectHarnessFactory factory =
+          factoryOf(
+              f ->
+                  f.provider(
+                          ProviderId.of("first"),
+                          (request, narrator) -> {
+                            seenMaxTokens.set(request.options().maxTokens());
+                            return answering("first");
+                          })
+                      .inference(ProviderId.of("first"), InferenceOptions.of("m")));
+
+      DirectHarness<String, String> harness =
+          factory.<String>create(
+              TYPE,
+              c ->
+                  c.systemPrompt("You are terse.")
+                      .inputRenderer(said -> List.of(new Block.Text(said))));
+
+      harness.ask(AgentId.random(), "hello");
+
+      assertThat(seenMaxTokens.get()).isEqualTo(4096);
+    }
   }
 }

@@ -386,7 +386,9 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
 
     private ProviderId provider;
     private String modelName;
-    private int maxTokens;
+    // Matches the direct door's default (see DefaultDirectHarnessConfig.Inference); a factory
+    // default without a max tokens still gets a real cap rather than an unbounded answer.
+    private int maxTokens = 4096;
     private final Context context = new Context();
     private Duration timeout = Duration.ofMinutes(5);
     private RetryPolicy retryPolicy = DEFAULT_INFERENCE_RETRY_POLICY;
@@ -395,7 +397,9 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
       this.provider = defaults.provider();
       if (defaults.options() != null) {
         this.modelName = defaults.options().modelName();
-        this.maxTokens = defaults.options().maxTokens();
+        if (defaults.options().hasMaxTokens()) {
+          this.maxTokens = defaults.options().maxTokens();
+        }
       }
     }
 

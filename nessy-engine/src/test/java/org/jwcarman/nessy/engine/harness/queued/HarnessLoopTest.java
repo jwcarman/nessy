@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -319,6 +320,40 @@ class HarnessLoopTest {
                       config -> config.systemPrompt("terse").inference(in -> in.provider("first"))))
           .isInstanceOf(IllegalStateException.class)
           .hasMessage("agent type 'chat-no-model' names no model and the factory has no default");
+    }
+
+    @Test
+    void a_factory_default_with_no_max_tokens_still_builds_with_the_4096_ceiling() {
+      AgentType type = type("no-max-tokens");
+      AtomicInteger seenMaxTokens = new AtomicInteger();
+      InferenceProvider recordingMaxTokens =
+          (request, narrator) -> {
+            seenMaxTokens.set(request.options().maxTokens());
+            return new InferenceResult.Answer(List.of(new Block.Text("first")));
+          };
+      try (DefaultQueuedHarnessFactory factory =
+          factoryOf(
+              config ->
+                  config
+                      .provider(ProviderId.of("first"), recordingMaxTokens)
+                      .inference(ProviderId.of("first"), InferenceOptions.of("m")))) {
+        QueuedHarness<String> harness =
+            factory.create(
+                type,
+                String.class,
+                config ->
+                    config
+                        .systemPrompt("terse")
+                        .effects(e -> e.pollInterval(Duration.ofMillis(20))));
+        AgentId agent = new AgentId(UUID.randomUUID());
+
+        harness.tell(agent, "hello");
+
+        await()
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat(answerOf(factory, type, agent)).contains("first"));
+        assertThat(seenMaxTokens.get()).isEqualTo(4096);
+      }
     }
   }
 }
