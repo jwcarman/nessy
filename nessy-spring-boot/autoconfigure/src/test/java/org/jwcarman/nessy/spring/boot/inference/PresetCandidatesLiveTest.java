@@ -125,6 +125,7 @@ class PresetCandidatesLiveTest {
               "fireworks"),
           new Candidate(
               "cerebras", "https://api.cerebras.ai/v1", "CEREBRAS_API_KEY", null, "cerebras"),
+          new Candidate("ollama", "http://localhost:11434/v1", "OLLAMA_API_KEY", null, "ollama"),
           new Candidate(
               "nvidia", "https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY", null, "nvidia"));
 
