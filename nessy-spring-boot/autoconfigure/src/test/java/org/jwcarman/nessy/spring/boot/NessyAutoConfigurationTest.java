@@ -335,7 +335,7 @@ class NessyAutoConfigurationTest {
             InferenceProvider.class,
             () -> (request, narrator) -> new InferenceResult.Refusal("never called"))
         .withUserConfiguration(ADatabase.class)
-        .withPropertyValues(MODEL, PROMPT, NO_SCHEMA)
+        .withPropertyValues(PROMPT, NO_SCHEMA)
         .run(
             context -> {
               assertThat(context).hasFailed();
