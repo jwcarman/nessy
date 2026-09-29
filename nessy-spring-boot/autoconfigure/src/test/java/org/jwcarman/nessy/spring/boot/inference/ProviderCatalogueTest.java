@@ -214,6 +214,39 @@ class ProviderCatalogueTest {
   }
 
   @Test
+  void ollama_is_off_until_enabled() {
+    List<ResolvedProvider> resolved = ProviderCatalogue.resolve(Map.of(), key -> null);
+
+    assertThat(resolved).isEmpty();
+  }
+
+  @Test
+  void ollama_lights_when_enabled() {
+    ProviderSettings ollama = new ProviderSettings(null, null, null, true, null);
+
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of("ollama", ollama), key -> null);
+
+    assertThat(resolved)
+        .containsExactly(
+            new ResolvedProvider(
+                "ollama", Wire.OPENAI, "http://localhost:11434/v1", "ollama", "ollama"));
+  }
+
+  @Test
+  void ollama_enabled_with_a_key_override_resolves_that_key() {
+    ProviderSettings ollama = new ProviderSettings(null, null, "custom-key", true, null);
+
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of("ollama", ollama), key -> null);
+
+    assertThat(resolved)
+        .containsExactly(
+            new ResolvedProvider(
+                "ollama", Wire.OPENAI, "http://localhost:11434/v1", "ollama", "custom-key"));
+  }
+
+  @Test
   void a_hosted_preset_with_its_key_set_and_enabled_false_is_absent() {
     ProviderSettings xai = new ProviderSettings(null, null, null, false, null);
 

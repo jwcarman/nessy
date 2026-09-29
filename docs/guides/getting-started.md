@@ -181,12 +181,20 @@ public static void main(String[] args) {
 ```
 
 Run it against a local model with no key and no cost, using the `lmstudio`
-preset:
+or `ollama` preset:
 
 ```bash
 export NESSY_PROVIDERS_LMSTUDIO_ENABLED=true
 export NESSY_PROVIDER=lmstudio
 export NESSY_MODEL=<a model id your endpoint serves>
+```
+
+Or with Ollama:
+
+```bash
+export NESSY_PROVIDERS_OLLAMA_ENABLED=true
+export NESSY_PROVIDER=ollama
+export NESSY_MODEL=<a model id your Ollama instance serves>
 ```
 
 `nessy-examples/chat-cli` is exactly this, with a notebook, a plan and a

@@ -222,6 +222,20 @@ class InferenceProvidersAutoConfigurationTest {
   }
 
   @Test
+  void the_ollama_preset_registers_only_when_turned_on() {
+    runner
+        .withPropertyValues("nessy.providers.ollama.enabled=true")
+        .run(
+            context -> {
+              Map<String, InferenceProvider> providers =
+                  context.getBeansOfType(InferenceProvider.class);
+              assertThat(providers).containsOnlyKeys("ollama");
+              assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
+              assertThat(providers.get("ollama").vendor()).isEqualTo("ollama");
+            });
+  }
+
+  @Test
   void an_application_bean_is_not_backed_off_beside_a_preset() {
     runner
         .withUserConfiguration(AScriptedProvider.class)

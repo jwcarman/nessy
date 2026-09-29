@@ -64,7 +64,9 @@ record Preset(
               "http://localhost:1234/v1",
               "lmstudio",
               List.of(),
-              "lm-studio"));
+              "lm-studio"),
+          new Preset(
+              "ollama", Wire.OPENAI, "http://localhost:11434/v1", "ollama", List.of(), "ollama"));
 
   boolean keyless() {
     return keylessApiKey != null;

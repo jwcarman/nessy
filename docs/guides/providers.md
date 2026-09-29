@@ -183,6 +183,7 @@ for four of them the base URL too. It becomes a provider once its
 | `openrouter` | `openai` | `https://openrouter.ai/api/v1` | `openrouter` | `openrouter.api-key` (`OPENROUTER_API_KEY`) |
 | `nvidia` | `openai` | `https://integrate.api.nvidia.com/v1` | `nvidia` | `nvidia.api-key` (`NVIDIA_API_KEY`) |
 | `lmstudio` | `openai` | `http://localhost:1234/v1` | `lmstudio` | `nessy.providers.lmstudio.enabled: true` — keyless |
+| `ollama` | `openai` | `http://localhost:11434/v1` | `ollama` | `nessy.providers.ollama.enabled: true` — keyless |
 
 Every field is overridable under `nessy.providers.<id>.*`: a different
 `base-url` for `anthropic` behind a proxy, a different `vendor` tag for an
@@ -195,8 +196,8 @@ A key set under `nessy.providers.<id>.api-key` binds from the environment
 with the property flattened, not underscore-joined at each dot: `xai`'s is
 `NESSY_PROVIDERS_XAI_APIKEY`, with no underscore inside `APIKEY`.
 
-`lmstudio` and any other keyless preset must be turned on explicitly with
-`enabled: true`. Nothing here probes `localhost:1234` at startup: a
+`lmstudio`, `ollama` and any other keyless preset must be turned on explicitly with
+`enabled: true`. Nothing here probes `localhost:1234` or `localhost:11434` at startup: a
 provider that exists because something happened to answer on a port is a
 provider that silently vanishes the next time nothing does.
 

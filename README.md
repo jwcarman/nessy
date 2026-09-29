@@ -88,7 +88,8 @@ public static void main(String[] args) {
 
 `nessy-examples` has five modules. The ones that talk to a model want an
 OpenAI-compatible endpoint, [LM Studio](https://lmstudio.ai) on `:1234`
-works and costs nothing, and a PostgreSQL to keep the agents in:
+or [Ollama](https://ollama.ai) on `:11434` works and costs nothing, and a
+PostgreSQL to keep the agents in:
 
 ```bash
 export NESSY_PROVIDERS_LMSTUDIO_ENABLED=true
