@@ -135,6 +135,16 @@ makes delegation earn its keep.
 
 ## Providers
 
+- **Named embedding providers** *(brainstorm next)* — the embedding
+  auto-configurations still build one `EmbedderFactory` bean and back off for
+  each other, so with several keys set, auto-configuration order picks the
+  embedder. That matters more than it did for inference, because stored
+  vectors carry the model that made them. The open question is whether one
+  `nessy.providers.<id>` entry serves both inference and embeddings, with each
+  preset declaring what it offers (openai, gemini and lmstudio both; anthropic
+  inference only; voyage embeddings only). Around it: who chooses the embedder
+  (a store, not an agent type) and what switching one means for vectors already
+  stored.
 - **Reasoning controls on the OpenAI adapter** — `reasoning_effort` (and the
   thinking-off switch local runtimes honour) as provider settings, as the
   Anthropic adapter already has `thinking` and `promptCaching`.
