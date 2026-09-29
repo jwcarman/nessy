@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Who closes the SDK client (ruled 2026-08-26). A gateway must close the client it BUILT — its
+ * Who closes the SDK client (ruled 2026-08-26). A provider must close the client it BUILT — its
  * OkHttp pool and dispatcher threads outlive the process otherwise — and must never close one the
  * application handed in through {@link AnthropicProviderConfig#client(AnthropicClient)}, which the
  * application still owns.

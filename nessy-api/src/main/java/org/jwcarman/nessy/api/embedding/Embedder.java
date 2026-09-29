@@ -36,7 +36,7 @@ public interface Embedder {
    * gen_ai.provider.name}: {@code openai}, {@code gcp.gemini}, {@code aws.bedrock}. Every adapter
    * says so; anything else is named for the class that wrote it.
    */
-  default String providerName() {
+  default String vendor() {
     return nameOf(getClass());
   }
 

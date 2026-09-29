@@ -56,11 +56,11 @@ public class OpenAiAutoConfiguration {
   static final String XAI_BASE_URL = "https://api.x.ai/v1";
 
   /**
-   * The OpenTelemetry GenAI semantic conventions' pinned value for xAI. The gateway class is shared
-   * with OpenAI, so the vendor identity has to be stamped here, where the key that named the vendor
-   * was read (agentic-o11y spec §1.1).
+   * The OpenTelemetry GenAI semantic conventions' pinned value for xAI. The provider class is
+   * shared with OpenAI, so the vendor identity has to be stamped here, where the key that named the
+   * vendor was read (agentic-o11y spec §1.1).
    */
-  static final String XAI_PROVIDER_NAME = "x_ai";
+  static final String XAI_VENDOR = "x_ai";
 
   @Bean
   @ConditionalOnProperty(name = "openai.api-key")
@@ -100,7 +100,7 @@ public class OpenAiAutoConfiguration {
     InferenceProvider provider =
         OpenAiInferenceProvider.of(
             c -> {
-              c.apiKey(apiKey).baseUrl(XAI_BASE_URL).provider(XAI_PROVIDER_NAME);
+              c.apiKey(apiKey).baseUrl(XAI_BASE_URL).vendor(XAI_VENDOR);
               c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
               mappers.ifAvailable(c::mapper);
             });

@@ -36,7 +36,7 @@ public final class OpenAiProviderConfig {
   private String organization;
   private OpenAIClient client;
   private boolean useEnv;
-  private String provider = OpenAiInferenceProvider.PROVIDER_NAME;
+  private String vendor = OpenAiInferenceProvider.VENDOR;
   private Duration timeout;
 
   /**
@@ -142,8 +142,8 @@ public final class OpenAiProviderConfig {
    * The vendor name this provider reports in spans ({@code gen_ai.provider.name}): {@code openai}
    * unless the same wire is being spoken to somebody else, as it is for xAI.
    */
-  public OpenAiProviderConfig provider(String provider) {
-    this.provider = Objects.requireNonNull(provider, "provider must not be null");
+  public OpenAiProviderConfig vendor(String vendor) {
+    this.vendor = Objects.requireNonNull(vendor, "vendor must not be null");
     return this;
   }
 
@@ -155,10 +155,10 @@ public final class OpenAiProviderConfig {
    */
   OpenAiInferenceProvider build() {
     if (client != null) {
-      return new OpenAiInferenceProvider(client, provider, false, mapper);
+      return new OpenAiInferenceProvider(client, vendor, false, mapper);
     }
     if (useEnv) {
-      return new OpenAiInferenceProvider(buildFromEnv(), provider, true, mapper);
+      return new OpenAiInferenceProvider(buildFromEnv(), vendor, true, mapper);
     }
     if (apiKey == null || apiKey.isBlank()) {
       throw new IllegalStateException(
@@ -175,7 +175,7 @@ public final class OpenAiProviderConfig {
     if (timeout != null) {
       clientBuilder.timeout(Timeout.builder().request(timeout).build());
     }
-    return new OpenAiInferenceProvider(clientBuilder.build(), provider, true, mapper);
+    return new OpenAiInferenceProvider(clientBuilder.build(), vendor, true, mapper);
   }
 
   /**

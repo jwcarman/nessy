@@ -55,7 +55,7 @@ class DefaultEmbedderFactoryTest {
     }
 
     @Override
-    public String providerName() {
+    public String vendor() {
       return "asked";
     }
   }

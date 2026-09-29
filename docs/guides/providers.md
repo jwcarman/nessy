@@ -236,7 +236,7 @@ actually called:
 InferenceProvider grok = OpenAiInferenceProvider.of(c -> c
         .apiKey(key)
         .baseUrl("https://api.x.ai/v1")
-        .provider("x_ai"));
+        .vendor("x_ai"));
 ```
 
 | Service | Base URL | Notes |
@@ -302,7 +302,7 @@ public interface InferenceProvider {
 - Keep vendor state whole. Anything the vendor wants back untouched, a
   thinking signature, a thought signature, travels as a `Block.Provider`
   tagged with your provider name, and you replay only your own tag. Return
-  that name from `providerName()` too, as semconv spells it, so every span
+  that name from `vendor()` too, as semconv spells it, so every span
   your calls make says which vendor they went to.
 - Catch the SDK's root exception and classify it into a `Failure`:
   `Transient` when the vendor admits retrying may work (429, 5xx),

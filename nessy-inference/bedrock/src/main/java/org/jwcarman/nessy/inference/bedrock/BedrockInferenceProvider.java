@@ -90,7 +90,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
    * The OpenTelemetry GenAI semantic conventions' value for this vendor, and the tag on every
    * {@link Block.Provider} block this adapter issues.
    */
-  static final String PROVIDER_NAME = "aws.bedrock";
+  static final String VENDOR = "aws.bedrock";
 
   private static final String NAME = "Bedrock";
   private static final int TOO_MANY_REQUESTS = 429;
@@ -131,8 +131,8 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
    * model's fault.
    */
   @Override
-  public String providerName() {
-    return PROVIDER_NAME;
+  public String vendor() {
+    return VENDOR;
   }
 
   @Override
@@ -417,7 +417,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
                   ? ""
                   : Base64.getEncoder().encodeToString(reasoning.redactedContent().asByteArray()));
     }
-    return new Block.Provider(PROVIDER_NAME, mapper.writeValueAsString(payload));
+    return new Block.Provider(VENDOR, mapper.writeValueAsString(payload));
   }
 
   /**

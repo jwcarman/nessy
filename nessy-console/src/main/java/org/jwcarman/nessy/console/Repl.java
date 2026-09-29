@@ -94,7 +94,7 @@ public final class Repl {
             config,
             io,
             narration,
-            new ReplLoop.Diagnostics(factory.providerName(), model, config.maxTokens()))
+            new ReplLoop.Diagnostics(factory.vendor(), model, config.maxTokens()))
         .run();
   }
 

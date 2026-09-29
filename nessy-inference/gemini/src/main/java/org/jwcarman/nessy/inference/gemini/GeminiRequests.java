@@ -309,7 +309,7 @@ public final class GeminiRequests {
     Map<String, byte[]> signatures = new HashMap<>();
     for (Block block : blocks) {
       if (block instanceof Block.Provider(String vendor, String payload)
-          && GeminiInferenceProvider.PROVIDER_NAME.equals(vendor)) {
+          && GeminiInferenceProvider.VENDOR.equals(vendor)) {
         Map<String, Object> data = mapper.readValue(payload, new TypeReference<>() {});
         if ("thought-signature".equals(data.get("type"))) {
           try {

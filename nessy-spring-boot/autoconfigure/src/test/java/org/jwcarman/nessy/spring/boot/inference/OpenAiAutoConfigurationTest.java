@@ -72,7 +72,7 @@ class OpenAiAutoConfigurationTest {
             context -> {
               InferenceProvider provider = context.getBean(InferenceProvider.class);
               assertThat(provider).isInstanceOf(ObservedInferenceProvider.class);
-              assertThat(provider.providerName()).isEqualTo("openai");
+              assertThat(provider.vendor()).isEqualTo("openai");
             });
   }
 
@@ -98,8 +98,7 @@ class OpenAiAutoConfigurationTest {
         .withPropertyValues("xai.api-key=xai-test")
         .run(
             context ->
-                assertThat(context.getBean(InferenceProvider.class).providerName())
-                    .isEqualTo("x_ai"));
+                assertThat(context.getBean(InferenceProvider.class).vendor()).isEqualTo("x_ai"));
   }
 
   @Test

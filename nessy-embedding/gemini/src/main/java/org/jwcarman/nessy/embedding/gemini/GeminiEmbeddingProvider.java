@@ -85,7 +85,7 @@ public final class GeminiEmbeddingProvider implements EmbeddingProvider, AutoClo
   }
 
   @Override
-  public String providerName() {
+  public String vendor() {
     return "gcp.gemini";
   }
 

@@ -80,8 +80,8 @@ public final class ObservedInferenceProvider implements InferenceProvider {
   }
 
   @Override
-  public String providerName() {
-    return delegate.providerName();
+  public String vendor() {
+    return delegate.vendor();
   }
 
   @Override
@@ -98,7 +98,7 @@ public final class ObservedInferenceProvider implements InferenceProvider {
             // be -- so the contextual name carries it and the meter keeps the histogram's name.
             .contextualName("chat " + model)
             .lowCardinalityKeyValue(OPERATION_NAME, "chat")
-            .lowCardinalityKeyValue("gen_ai.provider.name", delegate.providerName())
+            .lowCardinalityKeyValue("gen_ai.provider.name", delegate.vendor())
             .lowCardinalityKeyValue("gen_ai.request.model", model)
             // Set at START, not on outcome. Micrometer compares an observation's key set
             // against others recorded under the same name, so a chat that only sometimes

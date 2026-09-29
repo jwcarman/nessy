@@ -45,5 +45,5 @@ public interface EmbeddingProvider {
    * The vendor, as OpenTelemetry's GenAI semantic conventions name it: {@code openai}, {@code
    * gcp.gemini}, {@code aws.bedrock}. Every adapter says so.
    */
-  String providerName();
+  String vendor();
 }

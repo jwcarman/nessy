@@ -182,7 +182,7 @@ class GeminiRequestsTest {
     void a_signature_this_vendor_issued_rides_back_on_its_call() {
       Block.Provider ours =
           new Block.Provider(
-              GeminiInferenceProvider.PROVIDER_NAME,
+              GeminiInferenceProvider.VENDOR,
               MAPPER.writeValueAsString(
                   Map.of(
                       "type",
@@ -315,7 +315,7 @@ class GeminiRequestsTest {
     void a_signature_that_is_not_base64_is_replayed_unsigned() {
       Block.Provider broken =
           new Block.Provider(
-              GeminiInferenceProvider.PROVIDER_NAME,
+              GeminiInferenceProvider.VENDOR,
               "{\"type\":\"thought-signature\",\"callId\":\"c1\",\"signature\":\"not base64!\"}");
       Exchange exchange =
           new Exchange(

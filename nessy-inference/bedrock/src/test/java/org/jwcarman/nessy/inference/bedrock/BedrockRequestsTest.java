@@ -220,11 +220,11 @@ class BedrockRequestsTest {
     void signed_reasoning_this_vendor_issued_goes_back_and_another_vendors_does_not() {
       Block.Provider ours =
           new Block.Provider(
-              BedrockInferenceProvider.PROVIDER_NAME,
+              BedrockInferenceProvider.VENDOR,
               "{\"type\":\"reasoning\",\"text\":\"hmm\",\"signature\":\"sig\"}");
       Block.Provider unsigned =
           new Block.Provider(
-              BedrockInferenceProvider.PROVIDER_NAME, "{\"type\":\"reasoning\",\"text\":\"hmm\"}");
+              BedrockInferenceProvider.VENDOR, "{\"type\":\"reasoning\",\"text\":\"hmm\"}");
       Block.Provider theirs = new Block.Provider("anthropic", "{\"type\":\"thinking\"}");
       Turn turn =
           withCall(
@@ -304,9 +304,8 @@ class BedrockRequestsTest {
               List.of(),
               new TurnResult.Answered(
                   List.of(
-                      new Block.Provider(BedrockInferenceProvider.PROVIDER_NAME, redacted),
-                      new Block.Provider(
-                          BedrockInferenceProvider.PROVIDER_NAME, "{\"type\":\"other\"}"),
+                      new Block.Provider(BedrockInferenceProvider.VENDOR, redacted),
+                      new Block.Provider(BedrockInferenceProvider.VENDOR, "{\"type\":\"other\"}"),
                       new Block.Text("done"))),
               0);
 

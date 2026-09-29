@@ -75,7 +75,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
    * The OpenTelemetry GenAI semantic conventions' value for this vendor, and the tag on every
    * {@link Block.Provider} block this adapter issues.
    */
-  static final String PROVIDER_NAME = "gcp.gemini";
+  static final String VENDOR = "gcp.gemini";
 
   private static final String NAME = "Gemini";
 
@@ -135,8 +135,8 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
    * escapes rather than being recorded as the model's fault.
    */
   @Override
-  public String providerName() {
-    return PROVIDER_NAME;
+  public String vendor() {
+    return VENDOR;
   }
 
   @Override
@@ -369,7 +369,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
   /** Gemini's own continuity token, kept whole: this adapter is the only thing that reads it. */
   private Block.Provider signature(String callId, byte[] signature) {
     return new Block.Provider(
-        PROVIDER_NAME,
+        VENDOR,
         mapper.writeValueAsString(
             Map.of(
                 "type",

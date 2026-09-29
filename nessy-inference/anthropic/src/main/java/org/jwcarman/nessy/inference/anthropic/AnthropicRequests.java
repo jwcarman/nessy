@@ -482,7 +482,7 @@ public final class AnthropicRequests {
    */
   private static Optional<ContentBlockParam> ours(
       String vendor, String payload, JsonMapper mapper) {
-    if (!AnthropicInferenceProvider.PROVIDER_NAME.equals(vendor)) {
+    if (!AnthropicInferenceProvider.VENDOR.equals(vendor)) {
       return Optional.empty();
     }
     Map<String, Object> data = mapper.readValue(payload, new TypeReference<>() {});

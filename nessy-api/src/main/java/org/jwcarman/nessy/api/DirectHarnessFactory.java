@@ -103,5 +103,5 @@ public interface DirectHarnessFactory {
       AgentType agentType, Customizer<DirectHarnessConfig<I>> customizer);
 
   /** The vendor behind this, as the OpenTelemetry GenAI conventions name it. */
-  String providerName();
+  String vendor();
 }

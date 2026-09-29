@@ -24,35 +24,35 @@ import org.junit.jupiter.api.Test;
  * GenAI semantic conventions' pinned strings, so it is a compatibility surface with whatever
  * dashboard groups by vendor.
  *
- * <p>This gateway is SHARED with xAI, which reaches the same Chat Completions wire at {@code
+ * <p>This provider is SHARED with xAI, which reaches the same Chat Completions wire at {@code
  * api.x.ai} and has its own {@code x_ai} semconv value — so the vendor identity is a field given at
  * construction rather than a constant, otherwise every xAI turn would be reported, and billed in a
  * dashboard, as an OpenAI one.
  *
  * <p>The xAI half of that is UNTESTED at present: it is pinned through {@code
- * OpenAiAutoConfiguration#xaiModelProvider}, exercised by {@code OpenAiAutoConfigurationTest}'s
+ * OpenAiAutoConfiguration#xaiInferenceProvider}, exercised by {@code OpenAiAutoConfigurationTest}'s
  * bean-wiring assertions, but nothing there makes a call and inspects what got reported. When
- * something does, so should a test that an xAI-built gateway reports {@code x_ai}.
+ * something does, so should a test that an xAI-built provider reports {@code x_ai}.
  */
-class OpenAiProviderNameTest {
+class OpenAiVendorTest {
 
   @Test
-  void the_semconv_default_for_this_gateway_is_openai() {
-    assertThat(OpenAiInferenceProvider.PROVIDER_NAME).isEqualTo("openai");
+  void the_semconv_default_for_this_provider_is_openai() {
+    assertThat(OpenAiInferenceProvider.VENDOR).isEqualTo("openai");
   }
 
   /**
    * There is no model handle to ask any more: which model to call travels in {@code
    * InferenceOptions}, so one provider serves every agent type. What is still worth pinning is that
-   * the vendor a call is reported under is the one the gateway was built for.
+   * the vendor a call is reported under is the one the provider was built for.
    */
   @Test
-  void a_gateway_pointed_at_xai_reports_that_vendor_rather_than_openai() {
+  void a_provider_pointed_at_xai_reports_that_vendor_rather_than_openai() {
     OpenAiInferenceProvider provider =
         OpenAiInferenceProvider.of(
-            c -> c.apiKey("sk-test").baseUrl("https://api.x.ai/v1").provider("x_ai"));
+            c -> c.apiKey("sk-test").baseUrl("https://api.x.ai/v1").vendor("x_ai"));
 
-    assertThat(provider.providerName()).isEqualTo("x_ai");
+    assertThat(provider.vendor()).isEqualTo("x_ai");
   }
 
   @Test
@@ -61,6 +61,6 @@ class OpenAiProviderNameTest {
         OpenAiInferenceProvider.of(
             c -> c.apiKey("sk-test").baseUrl("https://openrouter.ai/api/v1"));
 
-    assertThat(provider.providerName()).isEqualTo("openai");
+    assertThat(provider.vendor()).isEqualTo("openai");
   }
 }

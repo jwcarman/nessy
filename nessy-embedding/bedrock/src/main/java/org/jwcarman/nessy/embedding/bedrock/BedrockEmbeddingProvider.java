@@ -118,7 +118,7 @@ public final class BedrockEmbeddingProvider implements EmbeddingProvider, AutoCl
   }
 
   @Override
-  public String providerName() {
+  public String vendor() {
     return "aws.bedrock";
   }
 

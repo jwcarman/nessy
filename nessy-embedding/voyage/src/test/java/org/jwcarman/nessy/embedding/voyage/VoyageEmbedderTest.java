@@ -232,7 +232,7 @@ class VoyageEmbedderTest {
                           c.fromEnv()
                               .apiKey("k")
                               .httpClient(java.net.http.HttpClient.newHttpClient()))
-                  .providerName())
+                  .vendor())
           .isEqualTo("voyage");
     }
   }

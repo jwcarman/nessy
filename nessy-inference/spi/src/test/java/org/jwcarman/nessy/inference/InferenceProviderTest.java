@@ -44,7 +44,7 @@ class InferenceProviderTest {
 
   @Test
   void a_named_provider_is_named_for_itself() {
-    assertThat(new LocalProvider().providerName()).isEqualTo("LocalProvider");
+    assertThat(new LocalProvider().vendor()).isEqualTo("LocalProvider");
   }
 
   /** A lambda's own name carries an address, so it answers for the class that wrote it. */
@@ -52,7 +52,7 @@ class InferenceProviderTest {
   void a_provider_written_as_a_lambda_is_named_for_the_class_that_wrote_it() {
     InferenceProvider lambda = (_, _) -> ANSWER;
 
-    assertThat(lambda.providerName()).isEqualTo("InferenceProviderTest");
+    assertThat(lambda.vendor()).isEqualTo("InferenceProviderTest");
   }
 
   /** An anonymous class has no simple name at all, so it answers the same way. */
@@ -60,7 +60,7 @@ class InferenceProviderTest {
   void a_provider_written_as_an_anonymous_class_is_named_the_same_way() {
     InferenceProvider anonymous = new LocalProvider() {};
 
-    assertThat(anonymous.providerName()).isEqualTo("InferenceProviderTest");
+    assertThat(anonymous.vendor()).isEqualTo("InferenceProviderTest");
   }
 
   /** An adapter says its vendor, in semconv's spelling, and the default never gets a say. */
@@ -69,12 +69,12 @@ class InferenceProviderTest {
     InferenceProvider vendor =
         new LocalProvider() {
           @Override
-          public String providerName() {
+          public String vendor() {
             return "gcp.gemini";
           }
         };
 
-    assertThat(vendor.providerName()).isEqualTo("gcp.gemini");
+    assertThat(vendor.vendor()).isEqualTo("gcp.gemini");
   }
 
   /** A caller with nobody watching gets the same answer as one who is. */

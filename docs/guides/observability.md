@@ -35,7 +35,7 @@ one to report its calls; without Boot, wrap the provider where you build
 it. The summarisers wrap the provider they are given when handed a
 registry. An already-wrapped provider is returned as it is, so wrapping
 twice never doubles a span. The provider reports its own vendor through
-`InferenceProvider.providerName()`; each adapter returns semconv's value,
+`InferenceProvider.vendor()`; each adapter returns semconv's value,
 and a provider written by hand is named for the class that wrote it. Each
 call becomes an observation with a name and tags a dashboard already
 understands, and two applications with the same tools produce the same

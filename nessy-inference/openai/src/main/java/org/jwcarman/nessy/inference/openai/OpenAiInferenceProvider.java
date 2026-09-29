@@ -70,19 +70,19 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
    * The OpenTelemetry GenAI semantic conventions' default value for this vendor (agentic-o11y spec
    * §1.1).
    *
-   * <p>Unlike the other vendor gateways, this one is SHARED: an xAI deployment builds this very
+   * <p>Unlike the other vendor providers, this one is SHARED: an xAI deployment builds this very
    * class against {@code https://api.x.ai/v1}, and semconv has a separate {@code x_ai} value for
    * that. So the provider name is a field given at construction rather than a constant -- an xAI
    * turn must not be reported as an OpenAI one. Any other OpenAI-compatible endpoint reached
    * through {@link OpenAiProviderConfig#baseUrl(String)} still answers {@code openai}, which is the
    * honest default: nothing else is known about it.
    */
-  static final String PROVIDER_NAME = "openai";
+  static final String VENDOR = "openai";
 
   private static final String NAME = "OpenAI";
 
   private final OpenAIClient client;
-  private final String provider;
+  private final String vendor;
 
   /**
    * Reads a tool's schema, which reaches an adapter as JSON text. Supplied rather than made here: a
@@ -97,9 +97,9 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
   private final boolean ownsClient;
 
   OpenAiInferenceProvider(
-      OpenAIClient client, String provider, boolean ownsClient, JsonMapper mapper) {
+      OpenAIClient client, String vendor, boolean ownsClient, JsonMapper mapper) {
     this.client = client;
-    this.provider = Objects.requireNonNull(provider, "provider must not be null");
+    this.vendor = Objects.requireNonNull(vendor, "vendor must not be null");
     this.ownsClient = ownsClient;
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
@@ -366,7 +366,7 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
 
   /** Which vendor an observability layer should report this call under. */
   @Override
-  public String providerName() {
-    return provider;
+  public String vendor() {
+    return vendor;
   }
 }

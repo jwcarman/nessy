@@ -183,8 +183,8 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
    * call.
    */
   @Override
-  public String providerName() {
-    return provider.providerName();
+  public String vendor() {
+    return provider.vendor();
   }
 
   @Override

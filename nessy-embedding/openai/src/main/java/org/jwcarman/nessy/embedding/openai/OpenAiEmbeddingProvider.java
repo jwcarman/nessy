@@ -91,7 +91,7 @@ public final class OpenAiEmbeddingProvider implements EmbeddingProvider, AutoClo
    * OpenAI, and anything that speaks its wire at another base URL: nothing more is known about it.
    */
   @Override
-  public String providerName() {
+  public String vendor() {
     return "openai";
   }
 

@@ -95,7 +95,7 @@ public final class VoyageEmbeddingProvider implements EmbeddingProvider, AutoClo
 
   /** Semconv names no value for Voyage AI, so this one is ours. */
   @Override
-  public String providerName() {
+  public String vendor() {
     return "voyage";
   }
 

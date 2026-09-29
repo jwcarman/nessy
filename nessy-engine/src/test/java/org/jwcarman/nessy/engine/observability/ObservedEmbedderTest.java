@@ -52,7 +52,7 @@ class ObservedEmbedderTest {
   private static Embedder answering() {
     return new Embedder() {
       @Override
-      public String providerName() {
+      public String vendor() {
         return "openai";
       }
 
@@ -76,7 +76,7 @@ class ObservedEmbedderTest {
   private static Embedder failing() {
     return new Embedder() {
       @Override
-      public String providerName() {
+      public String vendor() {
         return "openai";
       }
 

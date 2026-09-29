@@ -77,8 +77,8 @@ public final class ObservedEmbedder implements Embedder, AutoCloseable {
   }
 
   @Override
-  public String providerName() {
-    return delegate.providerName();
+  public String vendor() {
+    return delegate.vendor();
   }
 
   /**
@@ -135,7 +135,7 @@ public final class ObservedEmbedder implements Embedder, AutoCloseable {
         Observation.createNotStarted(DURATION, observations)
             .contextualName("embeddings " + model)
             .lowCardinalityKeyValue(OPERATION_NAME, "embeddings")
-            .lowCardinalityKeyValue("gen_ai.provider.name", delegate.providerName())
+            .lowCardinalityKeyValue("gen_ai.provider.name", delegate.vendor())
             .lowCardinalityKeyValue("gen_ai.request.model", model)
             // The same tag keys a model call carries under this name, because a meter's keys are
             // fixed: an embedding has no finish reason, and says so rather than leaving it off.

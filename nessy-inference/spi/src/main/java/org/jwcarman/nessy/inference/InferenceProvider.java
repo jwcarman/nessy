@@ -60,7 +60,7 @@ public interface InferenceProvider {
    * gen_ai.provider.name}: {@code openai}, {@code anthropic}, {@code gcp.gemini}, {@code
    * aws.bedrock}. Every adapter says so; anything else is named for the class that wrote it.
    */
-  default String providerName() {
+  default String vendor() {
     return nameOf(getClass());
   }
 

@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Who closes the SDK client (ruled 2026-08-26). A gateway must close the client it BUILT — its
+ * Who closes the SDK client (ruled 2026-08-26). A provider must close the client it BUILT — its
  * OkHttp pool and dispatcher threads outlive the process otherwise — and must never close one the
  * application handed in through {@link OpenAiProviderConfig#client(OpenAIClient)}, which the
  * application still owns.
@@ -58,9 +58,9 @@ class OpenAiCloseOwnershipTest {
     assertThat(closes).hasValue(1);
   }
 
-  /** The shared gateway serves xAI too, and ownership does not vary with the provider name. */
+  /** The shared provider serves xAI too, and ownership does not vary with the provider name. */
   @Test
-  void a_supplied_client_is_untouched_whichever_vendor_the_gateway_answers_for() {
+  void a_supplied_client_is_untouched_whichever_vendor_the_provider_answers_for() {
     AtomicInteger closes = new AtomicInteger();
     OpenAiInferenceProvider provider =
         new OpenAiInferenceProvider(

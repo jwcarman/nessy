@@ -74,7 +74,7 @@ final class InferenceReport implements SmartInitializingSingleton {
     if (log.isInfoEnabled()) {
       log.info(
           "NESSY INFERENCE: {} answering as model '{}', up to {} tokens",
-          chosen.providerName(),
+          chosen.vendor(),
           properties.model(),
           properties.maxTokens());
     }
@@ -91,7 +91,7 @@ final class InferenceReport implements SmartInitializingSingleton {
               + " decision. Unset the keys you do not mean to use.",
           configured.size(),
           configured,
-          chosen.providerName());
+          chosen.vendor());
     }
   }
 }

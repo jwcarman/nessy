@@ -39,7 +39,7 @@ final class KeywordEmbedder implements Embedder {
   }
 
   @Override
-  public String providerName() {
+  public String vendor() {
     return "keywords";
   }
 

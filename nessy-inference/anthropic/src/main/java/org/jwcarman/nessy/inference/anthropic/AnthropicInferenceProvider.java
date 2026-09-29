@@ -72,7 +72,7 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
    * and also the tag on every {@link Block.Provider} block this adapter issues -- which is what
    * stops another vendor's reasoning state being sent here, and ours being sent there.
    */
-  static final String PROVIDER_NAME = "anthropic";
+  static final String VENDOR = "anthropic";
 
   private static final String NAME = "Anthropic";
 
@@ -126,8 +126,8 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
    * times and then recorded as the model's fault.
    */
   @Override
-  public String providerName() {
-    return PROVIDER_NAME;
+  public String vendor() {
+    return VENDOR;
   }
 
   @Override
@@ -354,7 +354,7 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
   }
 
   private Block.Provider provider(Map<String, Object> payload) {
-    return new Block.Provider(PROVIDER_NAME, mapper.writeValueAsString(payload));
+    return new Block.Provider(VENDOR, mapper.writeValueAsString(payload));
   }
 
   /**

@@ -74,7 +74,7 @@ class EmbeddingAutoConfigurationTest {
               context -> {
                 assertThat(context).hasSingleBean(EmbedderFactory.class);
                 assertThat(defaultEmbedder(context).model()).isEqualTo("text-embedding-3-small");
-                assertThat(defaultEmbedder(context).providerName()).isEqualTo("openai");
+                assertThat(defaultEmbedder(context).vendor()).isEqualTo("openai");
               });
     }
 
@@ -186,7 +186,7 @@ class EmbeddingAutoConfigurationTest {
           .run(
               context -> {
                 assertThat(defaultEmbedder(context).model()).isEqualTo("gemini-embedding-001");
-                assertThat(defaultEmbedder(context).providerName()).isEqualTo("gcp.gemini");
+                assertThat(defaultEmbedder(context).vendor()).isEqualTo("gcp.gemini");
               });
     }
 
@@ -195,9 +195,7 @@ class EmbeddingAutoConfigurationTest {
     void googles_other_name_for_the_key_does_too() {
       runner
           .withPropertyValues("google.api-key=g-test")
-          .run(
-              context ->
-                  assertThat(defaultEmbedder(context).providerName()).isEqualTo("gcp.gemini"));
+          .run(context -> assertThat(defaultEmbedder(context).vendor()).isEqualTo("gcp.gemini"));
     }
 
     @Test
@@ -211,7 +209,7 @@ class EmbeddingAutoConfigurationTest {
           .run(
               context -> {
                 assertThat(context).hasSingleBean(EmbedderFactory.class);
-                assertThat(defaultEmbedder(context).providerName()).isEqualTo("voyage");
+                assertThat(defaultEmbedder(context).vendor()).isEqualTo("voyage");
               });
     }
   }

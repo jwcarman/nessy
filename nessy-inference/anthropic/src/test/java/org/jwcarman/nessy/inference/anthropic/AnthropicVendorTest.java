@@ -28,11 +28,11 @@ import org.junit.jupiter.api.Test;
  * <p>A bound model no longer REPORTS it — {@code Model} describes nothing now, it only answers to
  * an id — so this pins the constant and the id a bound handle carries, which is what survived.
  */
-class AnthropicProviderNameTest {
+class AnthropicVendorTest {
 
   @Test
   void the_semconv_value_for_this_vendor_is_pinned() {
-    assertThat(AnthropicInferenceProvider.PROVIDER_NAME).isEqualTo("anthropic");
+    assertThat(AnthropicInferenceProvider.VENDOR).isEqualTo("anthropic");
   }
 
   /**
@@ -40,7 +40,7 @@ class AnthropicProviderNameTest {
    * InferenceOptions} -- so what is left worth pinning is the name itself.
    */
   @Test
-  void the_gateway_answers_to_its_vendor() {
+  void the_provider_answers_to_its_vendor() {
     assertThat(AnthropicInferenceProvider.of(c -> c.apiKey("sk-test")).name())
         .isEqualTo("Anthropic");
   }

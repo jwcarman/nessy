@@ -57,7 +57,7 @@ class AnthropicAutoConfigurationTest {
   }
 
   @Nested
-  @DisplayName("when the application already supplies its own ModelProvider")
+  @DisplayName("when the application already supplies its own InferenceProvider")
   class WhenTheApplicationSuppliesItsOwn {
 
     @Test

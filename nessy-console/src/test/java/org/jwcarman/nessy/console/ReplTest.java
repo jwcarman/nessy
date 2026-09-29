@@ -31,8 +31,8 @@ import org.jwcarman.nessy.api.AgentId;
  * The whole application in one call, when there is nothing to talk to.
  *
  * <p>This module deliberately depends on NO provider module, so the Boot context this call raises
- * never finds a {@code @AutoConfiguration} contributing a {@code ModelProvider} bean — there is
- * never a provider to find. That makes the unhappy path the one testable here, and it is worth
+ * never finds a {@code @AutoConfiguration} contributing an {@code InferenceProvider} bean — there
+ * is never a provider to find. That makes the unhappy path the one testable here, and it is worth
  * testing: it is the first thing somebody meets when they have not set a key.
  */
 @DisplayName("A console application with no model configured")

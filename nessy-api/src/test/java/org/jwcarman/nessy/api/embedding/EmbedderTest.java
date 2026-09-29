@@ -51,7 +51,7 @@ class EmbedderTest {
 
   @Test
   void a_named_embedder_is_named_for_itself() {
-    assertThat(new OllamaEmbedder().providerName()).isEqualTo("OllamaEmbedder");
+    assertThat(new OllamaEmbedder().vendor()).isEqualTo("OllamaEmbedder");
   }
 
   /** An anonymous class has no name of its own, so it answers for the class that wrote it. */
@@ -75,7 +75,7 @@ class EmbedderTest {
           }
         };
 
-    assertThat(anonymous.providerName()).isEqualTo("EmbedderTest");
+    assertThat(anonymous.vendor()).isEqualTo("EmbedderTest");
   }
 
   /** An adapter says its vendor, and the default never gets a say. */
@@ -84,12 +84,12 @@ class EmbedderTest {
     Embedder vendor =
         new OllamaEmbedder() {
           @Override
-          public String providerName() {
+          public String vendor() {
             return "ollama";
           }
         };
 
-    assertThat(vendor.providerName()).isEqualTo("ollama");
+    assertThat(vendor.vendor()).isEqualTo("ollama");
   }
 
   /** One document is a batch of one, so an adapter never writes that method. */

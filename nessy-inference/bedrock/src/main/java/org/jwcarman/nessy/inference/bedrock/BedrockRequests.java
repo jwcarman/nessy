@@ -302,7 +302,7 @@ public final class BedrockRequests {
    * dropped rather than sent and rejected.
    */
   private static Optional<ContentBlock> ours(String vendor, String payload, JsonMapper mapper) {
-    if (!BedrockInferenceProvider.PROVIDER_NAME.equals(vendor)) {
+    if (!BedrockInferenceProvider.VENDOR.equals(vendor)) {
       return Optional.empty();
     }
     Map<String, Object> data = mapper.readValue(payload, new TypeReference<>() {});
