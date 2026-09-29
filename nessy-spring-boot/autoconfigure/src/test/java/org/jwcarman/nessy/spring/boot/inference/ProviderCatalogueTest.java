@@ -204,6 +204,36 @@ class ProviderCatalogueTest {
   }
 
   @Test
+  void a_hosted_preset_with_its_key_set_and_enabled_false_is_absent() {
+    ProviderSettings xai = new ProviderSettings(null, null, null, false, null);
+
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of("xai", xai), Map.of("xai.api-key", "k")::get);
+
+    assertThat(resolved).isEmpty();
+  }
+
+  @Test
+  void a_custom_entry_with_wire_and_base_url_and_enabled_false_is_absent() {
+    ProviderSettings mine =
+        new ProviderSettings(Wire.CHAT_COMPLETIONS, "https://g/v1", "k", false, null);
+
+    List<ResolvedProvider> resolved = ProviderCatalogue.resolve(Map.of("mine", mine), key -> null);
+
+    assertThat(resolved).isEmpty();
+  }
+
+  @Test
+  void lmstudio_with_enabled_false_is_absent() {
+    ProviderSettings lmstudio = new ProviderSettings(null, null, null, false, null);
+
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of("lmstudio", lmstudio), key -> null);
+
+    assertThat(resolved).isEmpty();
+  }
+
+  @Test
   void a_custom_vendor_defaults_to_the_wires_own() {
     ProviderSettings mine = new ProviderSettings(Wire.MESSAGES, "https://g/v1", "k", null, null);
 

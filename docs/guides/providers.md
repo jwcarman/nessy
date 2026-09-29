@@ -198,6 +198,13 @@ with the property flattened, not underscore-joined at each dot: `xai`'s is
 provider that exists because something happened to answer on a port is a
 provider that silently vanishes the next time nothing does.
 
+`nessy.providers.<id>.enabled: false` turns a provider off regardless of
+what ingredient it has — a hosted preset with its key set, a custom
+provider with its `wire` and `base-url` stated, or a keyless preset. An
+unset `enabled` means "on if its ingredient is present" for everything
+except a keyless preset, which stays off until `enabled: true` says
+otherwise.
+
 Bedrock ships no preset. AWS credentials are ambient on a large fraction of
 machines, so any mechanism that let their presence choose a provider would
 silently route an application with a stray profile to Bedrock — it joins

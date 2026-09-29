@@ -46,7 +46,16 @@ final class ProviderCatalogue {
       keys.add(own.apiKey());
       preset.keyProperties().forEach(name -> keys.add(property.apply(name)));
       String apiKey = firstNonBlank(keys);
-      boolean on = preset.keyless() ? Boolean.TRUE.equals(own.enabled()) : apiKey != null;
+      // enabled=false turns a preset off no matter what ingredient it has; unset means "on if its
+      // ingredient is present" for a hosted preset, and stays "off unless said" for a keyless one.
+      boolean on;
+      if (Boolean.FALSE.equals(own.enabled())) {
+        on = false;
+      } else if (preset.keyless()) {
+        on = Boolean.TRUE.equals(own.enabled());
+      } else {
+        on = apiKey != null;
+      }
       if (!on) {
         continue;
       }
@@ -67,6 +76,9 @@ final class ProviderCatalogue {
     }
     settings.forEach(
         (id, own) -> {
+          if (Boolean.FALSE.equals(own.enabled())) {
+            return;
+          }
           if (Preset.CATALOGUE.stream().noneMatch(p -> p.id().equals(id))) {
             lit.add(custom(id, own));
           }
