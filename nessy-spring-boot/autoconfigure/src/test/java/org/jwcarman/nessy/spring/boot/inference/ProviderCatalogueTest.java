@@ -187,6 +187,23 @@ class ProviderCatalogueTest {
   }
 
   @Test
+  void lmstudio_enabled_with_a_key_override_resolves_that_key() {
+    ProviderSettings lmstudio = new ProviderSettings(null, null, "custom-key", true, null);
+
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of("lmstudio", lmstudio), key -> null);
+
+    assertThat(resolved)
+        .containsExactly(
+            new ResolvedProvider(
+                "lmstudio",
+                Wire.CHAT_COMPLETIONS,
+                "http://localhost:1234/v1",
+                "lmstudio",
+                "custom-key"));
+  }
+
+  @Test
   void a_custom_vendor_defaults_to_the_wires_own() {
     ProviderSettings mine = new ProviderSettings(Wire.MESSAGES, "https://g/v1", "k", null, null);
 

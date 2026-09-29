@@ -63,7 +63,7 @@ final class ProviderCatalogue {
               own.wire() != null ? own.wire() : preset.wire(),
               baseUrl,
               own.vendor() != null ? own.vendor() : preset.vendor(),
-              preset.keyless() ? preset.keylessApiKey() : apiKey));
+              preset.keyless() ? keylessApiKey(own, preset) : apiKey));
     }
     settings.forEach(
         (id, own) -> {
@@ -72,6 +72,14 @@ final class ProviderCatalogue {
           }
         });
     return List.copyOf(lit);
+  }
+
+  /** A keyless preset's key: what an application overrode it to, or its placeholder. */
+  private static String keylessApiKey(ProviderSettings own, Preset preset) {
+    List<String> keys = new ArrayList<>();
+    keys.add(own.apiKey());
+    keys.add(preset.keylessApiKey());
+    return firstNonBlank(keys);
   }
 
   private static ResolvedProvider custom(String id, ProviderSettings own) {
