@@ -16,82 +16,76 @@
 package org.jwcarman.nessy.spring.boot;
 
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.spring.boot.inference.ResolvedProvider;
+import org.jwcarman.nessy.spring.boot.inference.ResolvedProviders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
-import org.springframework.core.env.Environment;
 
 /**
- * Says what will actually answer, once, at startup.
+ * Says what will actually answer, once, at startup: every registered {@link InferenceProvider}
+ * bean, by name -- there is no longer a single winner to name instead.
  *
- * <p><b>Which provider answers is decided by which key happens to be set</b>, and the model name is
- * chosen separately, so the two can disagree. The only symptom is a 404 from a vendor nobody meant
- * to call, or an answer in a style nobody recognises. This is the line that makes it visible before
- * a single turn runs.
- *
- * <p>It warns when more than one provider is configured, because that is the case where what
- * answers is decided by nothing anybody wrote down -- auto-configurations are applied in an order
- * that has no relationship to intent, and the loser is silent.
- *
- * <p>Never the key, obviously. The endpoint is the provider's own to report, and most do not, so
- * this says what it can say for certain: who, which model, and how much they are allowed to write.
+ * <p>A resolved preset or custom provider (from {@link ResolvedProviders}) prints its wire and
+ * endpoint; an application's own bean, which the registrar never resolved, prints only what it can
+ * ask the bean itself for -- its vendor. Never the key, in either case.
  */
 final class InferenceReport implements SmartInitializingSingleton {
 
   private static final Logger log = LoggerFactory.getLogger(InferenceReport.class);
 
-  /**
-   * The keys that each turn a provider on, and the property is the whole condition -- setting one
-   * is how a vendor gets chosen, which is why having two set is worth saying out loud.
-   */
-  private static final List<String> KEYS =
-      List.of("openai.api-key", "anthropic.api-key", "gemini.api-key", "xai.api-key");
+  private final ObjectProvider<ResolvedProviders> resolvedProviders;
+  private final ListableBeanFactory beans;
 
-  private final ObjectProvider<InferenceProvider> providers;
-  private final NessyProperties properties;
-  private final Environment environment;
-
-  InferenceReport(
-      ObjectProvider<InferenceProvider> providers,
-      NessyProperties properties,
-      Environment environment) {
-    this.providers = providers;
-    this.properties = properties;
-    this.environment = environment;
+  InferenceReport(ObjectProvider<ResolvedProviders> resolvedProviders, ListableBeanFactory beans) {
+    this.resolvedProviders = resolvedProviders;
+    this.beans = beans;
   }
 
   @Override
   public void afterSingletonsInstantiated() {
-    InferenceProvider chosen = providers.getIfAvailable();
-    if (chosen == null) {
+    Map<String, InferenceProvider> providers =
+        new TreeMap<>(beans.getBeansOfType(InferenceProvider.class));
+    if (providers.isEmpty()) {
       // Not this class's business to fail: whatever needs a provider will say so far more
-      // usefully, naming the bean it wanted.
+      // usefully, naming the agent type that wanted one.
       log.warn("NESSY INFERENCE: no provider is configured");
       return;
     }
     if (log.isInfoEnabled()) {
-      log.info(
-          "NESSY INFERENCE: {} answering as model '{}', up to {} tokens",
-          chosen.vendor(),
-          properties.model(),
-          properties.maxTokens());
+      Map<String, ResolvedProvider> resolved = resolvedById();
+      String line =
+          providers.keySet().stream()
+              .map(id -> describe(id, resolved.get(id), providers.get(id)))
+              .collect(Collectors.joining("; "));
+      log.info("NESSY INFERENCE: providers: {}", line);
     }
+  }
 
-    // Only ONE provider bean is ever built -- each is conditional on no other existing -- so the
-    // one that wins is the one whose auto-configuration happened to run first, and the losers say
-    // nothing at all. The keys are what the decision was actually made from, so they are what is
-    // worth reporting when there is more than one of them.
-    List<String> configured = KEYS.stream().filter(environment::containsProperty).toList();
-    if (configured.size() > 1 && log.isWarnEnabled()) {
-      log.warn(
-          "NESSY INFERENCE: {} provider keys are set ({}), and only one provider is built."
-              + " {} won by the order auto-configurations happen to run in, which is nobody's"
-              + " decision. Unset the keys you do not mean to use.",
-          configured.size(),
-          configured,
-          chosen.vendor());
+  private Map<String, ResolvedProvider> resolvedById() {
+    List<ResolvedProvider> resolved =
+        resolvedProviders.getIfAvailable(() -> new ResolvedProviders(List.of())).providers();
+    return resolved.stream().collect(Collectors.toMap(ResolvedProvider::id, r -> r));
+  }
+
+  private static String describe(String id, ResolvedProvider resolved, InferenceProvider provider) {
+    if (resolved == null) {
+      return id + " (vendor " + provider.vendor() + ")";
     }
+    String endpoint = resolved.baseUrl() != null ? resolved.baseUrl() : "the vendor's own endpoint";
+    return id
+        + " ("
+        + resolved.wireValue()
+        + ", "
+        + endpoint
+        + ", vendor "
+        + resolved.vendor()
+        + ")";
   }
 }

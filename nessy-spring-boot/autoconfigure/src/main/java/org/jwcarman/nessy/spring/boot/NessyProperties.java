@@ -31,6 +31,8 @@ import org.springframework.util.FileCopyUtils;
  * @param type what kind of agent this application runs. Bound and defaulted here, but read by no
  *     bean the starter builds: an application that wants its agents namespaced passes an {@link
  *     org.jwcarman.nessy.api.AgentType} when it creates a harness.
+ * @param provider the provider an agent type is answered by when it names none. Set with {@link
+ *     #model}, or not at all.
  * @param systemPrompt the standing instruction, inline
  * @param systemPromptFile the standing instruction, from a classpath or file resource; mutually
  *     exclusive with {@link #systemPrompt}
@@ -47,6 +49,7 @@ import org.springframework.util.FileCopyUtils;
 @ConfigurationProperties("nessy")
 public record NessyProperties(
     String type,
+    String provider,
     String systemPrompt,
     Resource systemPromptFile,
     String model,

@@ -27,15 +27,16 @@ import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.StorageCodecConfigurer;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.spring.boot.inference.ResolvedProviders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.core.env.Environment;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -160,9 +161,7 @@ public class NessyAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public InferenceReport nessyInferenceReport(
-      ObjectProvider<InferenceProvider> providers,
-      NessyProperties properties,
-      Environment environment) {
-    return new InferenceReport(providers, properties, environment);
+      ObjectProvider<ResolvedProviders> resolvedProviders, ListableBeanFactory beans) {
+    return new InferenceReport(resolvedProviders, beans);
   }
 }

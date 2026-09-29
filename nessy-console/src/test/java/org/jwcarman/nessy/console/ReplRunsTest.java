@@ -40,7 +40,7 @@ class ReplRunsTest {
       Map.of(
           "openai.api-key", "not-needed",
           "openai.base-url", "http://127.0.0.1:1/v1",
-          "nessy.provider", "openAiInferenceProvider",
+          "nessy.provider", "openai",
           "nessy.model", "a-model");
 
   @BeforeAll
@@ -111,14 +111,20 @@ class ReplRunsTest {
     assertThat(console.written()).contains("failed");
   }
 
+  /**
+   * {@code nessy.provider} and {@code nessy.model} are a both-or-neither pair (named-providers
+   * design record §7a): a provider named with no model fails at the harness factory bean itself,
+   * before this class's own "no model is configured" diagnostic ever runs, so the console reports
+   * Boot's own pair message instead.
+   */
   @Test
-  @DisplayName("says so when no model is named")
-  void it_says_when_there_is_no_model() {
+  @DisplayName("says so when a provider is named with no model")
+  void it_says_so_when_a_provider_is_named_with_no_model() {
     System.clearProperty("nessy.model");
     try {
       FakeConsole console = new FakeConsole("/exit");
       Repl.run(new ReplConfig().dataSource(database()), console);
-      assertThat(console.written()).contains("no model is configured");
+      assertThat(console.written()).contains("nessy.provider and nessy.model are a pair");
     } finally {
       System.setProperty("nessy.model", "a-model");
     }

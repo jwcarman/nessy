@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.spring.boot;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -23,6 +25,7 @@ import io.micrometer.observation.ObservationRegistry;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.tool.Replies;
@@ -38,6 +41,7 @@ import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.spring.boot.inference.InferenceProvidersAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration;
@@ -179,14 +183,11 @@ class NessyAutoConfigurationTest {
   }
 
   /**
-   * <b>Interim behaviour, pending Task 4.</b> A factory's default is set only when both {@code
-   * nessy.provider} and {@code nessy.model} are present -- the both-or-neither rule that refuses a
-   * partial default lives in {@code NessyProperties} from Task 4 on. Until then, a missing or blank
-   * model simply leaves the factory without a default, and the context starts: an agent type that
-   * names neither fails when a harness is built from it, not before.
+   * {@code nessy.provider} and {@code nessy.model} are a both-or-neither pair: exactly one set
+   * fails the context at the point the harness factory bean is built, naming both values.
    */
   @Test
-  void it_starts_without_a_model_and_defers_the_failure_to_when_a_harness_is_built() {
+  void setting_only_one_of_provider_and_model_fails_naming_both() {
     new ApplicationContextRunner()
         .withConfiguration(
             AutoConfigurations.of(
@@ -199,11 +200,17 @@ class NessyAutoConfigurationTest {
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
         .withPropertyValues(PROVIDER, PROMPT, NO_SCHEMA)
-        .run(context -> assertThat(context).hasNotFailed());
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .hasMessageContaining("nessy.provider and nessy.model are a pair");
+            });
   }
 
+  /** A factory default an agent type never names for itself still gets a harness built. */
   @Test
-  void it_starts_with_a_blank_model_and_defers_the_failure_to_when_a_harness_is_built() {
+  void nessy_provider_names_the_default_a_harness_gets() {
     new ApplicationContextRunner()
         .withConfiguration(
             AutoConfigurations.of(
@@ -213,19 +220,106 @@ class NessyAutoConfigurationTest {
                 NessyAutoConfiguration.class,
                 JdbcBackendAutoConfiguration.class,
                 InMemoryBackendAutoConfiguration.class,
+                InferenceProvidersAutoConfiguration.class,
+                QueuedHarnessAutoConfiguration.class))
+        .withUserConfiguration(ADatabase.class)
+        .withPropertyValues("xai.api-key=xai-test", "nessy.provider=xai", MODEL, PROMPT, NO_SCHEMA)
+        .run(
+            context -> {
+              assertThat(context).hasNotFailed();
+              DefaultQueuedHarnessFactory factory =
+                  context.getBean(DefaultQueuedHarnessFactory.class);
+              assertThatCode(
+                      () ->
+                          factory.create(
+                              new AgentType("chat"),
+                              config -> config.systemPrompt("you are a test assistant")))
+                  .doesNotThrowAnyException();
+            });
+  }
+
+  /** A default naming a provider nobody registered fails at harness build, listing what is. */
+  @Test
+  void a_default_that_is_not_registered_fails_listing_what_is() {
+    new ApplicationContextRunner()
+        .withConfiguration(
+            AutoConfigurations.of(
+                JacksonAutoConfiguration.class,
+                DataSourceTransactionManagerAutoConfiguration.class,
+                ObservationAutoConfiguration.class,
+                NessyAutoConfiguration.class,
+                JdbcBackendAutoConfiguration.class,
+                InMemoryBackendAutoConfiguration.class,
+                InferenceProvidersAutoConfiguration.class,
+                QueuedHarnessAutoConfiguration.class))
+        .withUserConfiguration(ADatabase.class)
+        .withPropertyValues(
+            "openai.api-key=sk-test", "nessy.provider=claude", MODEL, PROMPT, NO_SCHEMA)
+        .run(
+            context -> {
+              assertThat(context).hasNotFailed();
+              DefaultQueuedHarnessFactory factory =
+                  context.getBean(DefaultQueuedHarnessFactory.class);
+              assertThatThrownBy(
+                      () ->
+                          factory.create(
+                              new AgentType("chat"),
+                              config -> config.systemPrompt("you are a test assistant")))
+                  .isInstanceOf(IllegalStateException.class)
+                  .hasMessageContaining("registered: [openai]");
+            });
+  }
+
+  /** An application's own {@code InferenceProvider} bean is registered beside the presets. */
+  @Test
+  void an_application_bean_is_registered_beside_the_presets() {
+    new ApplicationContextRunner()
+        .withConfiguration(
+            AutoConfigurations.of(
+                JacksonAutoConfiguration.class,
+                DataSourceTransactionManagerAutoConfiguration.class,
+                ObservationAutoConfiguration.class,
+                NessyAutoConfiguration.class,
+                JdbcBackendAutoConfiguration.class,
+                InMemoryBackendAutoConfiguration.class,
+                InferenceProvidersAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
-        .withPropertyValues("nessy.model=   ", PROVIDER, PROMPT, NO_SCHEMA)
-        .run(context -> assertThat(context).hasNotFailed());
+        .withPropertyValues("openai.api-key=sk-test", PROMPT, NO_SCHEMA)
+        .run(
+            context -> {
+              assertThat(context).hasNotFailed();
+              DefaultQueuedHarnessFactory factory =
+                  context.getBean(DefaultQueuedHarnessFactory.class);
+              assertThatCode(
+                      () ->
+                          factory.create(
+                              new AgentType("chat-app"),
+                              config ->
+                                  config
+                                      .systemPrompt("you are a test assistant")
+                                      .inference(in -> in.provider("inference").model("m"))))
+                  .doesNotThrowAnyException();
+              assertThatCode(
+                      () ->
+                          factory.create(
+                              new AgentType("chat-preset"),
+                              config ->
+                                  config
+                                      .systemPrompt("you are a test assistant")
+                                      .inference(in -> in.provider("openai").model("m"))))
+                  .doesNotThrowAnyException();
+            });
   }
 
   /**
-   * <b>Interim behaviour, pending Task 4.</b> With no {@code InferenceProvider} bean there is
-   * nothing to register under any name, so the factory simply holds no providers; the context still
-   * starts, and an agent type naming one fails when a harness is built from it.
+   * A bean name that breaks {@code ProviderId}'s rule (over 64 characters; nothing else is
+   * disallowed, so a space -- as in "my provider" -- is a valid id) fails at context start, naming
+   * the bean.
    */
   @Test
-  void it_starts_without_an_inference_provider_and_defers_the_failure_to_when_a_harness_is_built() {
+  void a_bean_whose_name_is_not_a_provider_id_fails_naming_the_bean() {
+    String tooLong = "p".repeat(65);
     new ApplicationContextRunner()
         .withConfiguration(
             AutoConfigurations.of(
@@ -236,9 +330,17 @@ class NessyAutoConfigurationTest {
                 JdbcBackendAutoConfiguration.class,
                 InMemoryBackendAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class))
+        .withBean(
+            tooLong,
+            InferenceProvider.class,
+            () -> (request, narrator) -> new InferenceResult.Refusal("never called"))
         .withUserConfiguration(ADatabase.class)
-        .withPropertyValues(MODEL, PROVIDER, PROMPT, NO_SCHEMA)
-        .run(context -> assertThat(context).hasNotFailed());
+        .withPropertyValues(MODEL, PROMPT, NO_SCHEMA)
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure()).hasMessageContaining(tooLong);
+            });
   }
 
   @Test

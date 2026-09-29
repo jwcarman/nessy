@@ -38,7 +38,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.core.env.Environment;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -80,7 +79,6 @@ public class DirectHarnessAutoConfiguration {
   public DefaultDirectHarnessFactory nessyDirectHarnessFactory(
       DirectBackend backend,
       ListableBeanFactory beans,
-      Environment environment,
       NessyProperties properties,
       ObservationRegistry observations,
       JsonSchemaGenerator schemas,
@@ -94,16 +92,50 @@ public class DirectHarnessAutoConfiguration {
           config.backend(backend).schemas(schemas).mapper(mapper).observations(observations);
           beans
               .getBeansOfType(InferenceProvider.class)
-              .forEach((name, provider) -> config.provider(ProviderId.of(name), provider));
-          String provider = environment.getProperty("nessy.provider");
+              .forEach((name, provider) -> config.provider(providerId(name), provider));
+          String provider = properties.provider();
           String model = properties.model();
-          if (provider != null && !provider.isBlank() && model != null && !model.isBlank()) {
+          requireBothOrNeither(provider, model);
+          if (provider != null && !provider.isBlank()) {
             config.inference(
                 ProviderId.of(provider), new InferenceOptions(model, properties.maxTokens()));
           }
         });
     customizers.orderedStream().forEach(all::add);
     return DefaultDirectHarnessFactory.of(all);
+  }
+
+  /**
+   * A bean's Spring name, as a {@link ProviderId} -- so a bean whose name breaks the id rule (over
+   * 64 characters; nothing else is disallowed) fails naming the bean, not with {@link ProviderId}'s
+   * own message alone.
+   */
+  private static ProviderId providerId(String beanName) {
+    try {
+      return ProviderId.of(beanName);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalStateException(
+          "the InferenceProvider bean '"
+              + beanName
+              + "' cannot be a provider id: "
+              + e.getMessage(),
+          e);
+    }
+  }
+
+  /** {@code nessy.provider} and {@code nessy.model} are a pair: set both, or neither. */
+  private static void requireBothOrNeither(String provider, String model) {
+    boolean providerSet = provider != null && !provider.isBlank();
+    boolean modelSet = model != null && !model.isBlank();
+    if (providerSet != modelSet) {
+      throw new IllegalStateException(
+          "nessy.provider and nessy.model are a pair: set both, or neither and name them on each"
+              + " agent type (nessy.provider="
+              + provider
+              + ", nessy.model="
+              + model
+              + ")");
+    }
   }
 
   /**

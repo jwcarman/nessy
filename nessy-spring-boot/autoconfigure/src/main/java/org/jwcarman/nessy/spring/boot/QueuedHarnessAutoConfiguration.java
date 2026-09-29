@@ -39,7 +39,6 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
-import org.springframework.core.env.Environment;
 
 /**
  * The queued door, for work nobody is waiting on.
@@ -70,7 +69,6 @@ public class QueuedHarnessAutoConfiguration {
       QueuedBackend backend,
       ReplyTokens replyTokens,
       ListableBeanFactory beans,
-      Environment environment,
       NessyProperties properties,
       ObservationRegistry observations,
       ObjectProvider<Tracer> tracers,
@@ -83,10 +81,11 @@ public class QueuedHarnessAutoConfiguration {
           engine.backend(backend).observations(observations).replyTokens(replyTokens);
           beans
               .getBeansOfType(InferenceProvider.class)
-              .forEach((name, provider) -> engine.provider(ProviderId.of(name), provider));
-          String provider = environment.getProperty("nessy.provider");
+              .forEach((name, provider) -> engine.provider(providerId(name), provider));
+          String provider = properties.provider();
           String model = properties.model();
-          if (provider != null && !provider.isBlank() && model != null && !model.isBlank()) {
+          requireBothOrNeither(provider, model);
+          if (provider != null && !provider.isBlank()) {
             engine.inference(
                 ProviderId.of(provider), new InferenceOptions(model, properties.maxTokens()));
           }
@@ -101,6 +100,39 @@ public class QueuedHarnessAutoConfiguration {
     // Then whatever the application has to say about the engine itself.
     customizers.orderedStream().forEach(all::add);
     return DefaultQueuedHarnessFactory.of(all);
+  }
+
+  /**
+   * A bean's Spring name, as a {@link ProviderId} -- so a bean whose name breaks the id rule (over
+   * 64 characters; nothing else is disallowed) fails naming the bean, not with {@link ProviderId}'s
+   * own message alone.
+   */
+  private static ProviderId providerId(String beanName) {
+    try {
+      return ProviderId.of(beanName);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalStateException(
+          "the InferenceProvider bean '"
+              + beanName
+              + "' cannot be a provider id: "
+              + e.getMessage(),
+          e);
+    }
+  }
+
+  /** {@code nessy.provider} and {@code nessy.model} are a pair: set both, or neither. */
+  private static void requireBothOrNeither(String provider, String model) {
+    boolean providerSet = provider != null && !provider.isBlank();
+    boolean modelSet = model != null && !model.isBlank();
+    if (providerSet != modelSet) {
+      throw new IllegalStateException(
+          "nessy.provider and nessy.model are a pair: set both, or neither and name them on each"
+              + " agent type (nessy.provider="
+              + provider
+              + ", nessy.model="
+              + model
+              + ")");
+    }
   }
 
   /**

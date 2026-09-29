@@ -44,6 +44,7 @@ import org.jwcarman.nessy.planning.JdbcPlans;
 import org.jwcarman.nessy.planning.PlanTools;
 import org.jwcarman.nessy.planning.Plans;
 import org.jwcarman.nessy.spring.boot.NessyProperties;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -130,9 +131,13 @@ public class ChatConfiguration {
       TurnHistories histories,
       JdbcEpisodes episodes,
       Leases agentLeases,
-      InferenceProvider provider,
+      ListableBeanFactory beans,
       NessyProperties properties,
       ObjectProvider<ObservationRegistry> observations) {
+    // A registry can hold more than one InferenceProvider bean now, so this asks for the one
+    // nessy.provider names -- the same fact the harness's own factory default reads -- rather
+    // than for "the" InferenceProvider, which no longer exists as a single bean.
+    InferenceProvider provider = beans.getBean(properties.provider(), InferenceProvider.class);
     return EpisodeSummarizer.of(
         c ->
             c.agentType(TYPE)
