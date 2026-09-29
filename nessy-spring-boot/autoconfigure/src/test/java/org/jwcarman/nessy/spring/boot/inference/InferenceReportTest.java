@@ -82,6 +82,28 @@ class InferenceReportTest {
   }
 
   @Test
+  void a_messages_wire_provider_reports_the_beans_own_vendor_not_a_vendor_override(
+      CapturedOutput output) {
+    runner
+        .withPropertyValues(
+            "nessy.providers.myanthropic.wire=messages",
+            "nessy.providers.myanthropic.base-url=https://proxy/v1",
+            "nessy.providers.myanthropic.api-key=sk-super-secret",
+            "nessy.providers.myanthropic.vendor=not-anthropic")
+        .run(
+            context -> {
+              InferenceReport report =
+                  new InferenceReport(context.getBeanProvider(ResolvedProviders.class), context);
+              report.afterSingletonsInstantiated();
+
+              assertThat(output)
+                  .contains("vendor anthropic")
+                  .doesNotContain("vendor not-anthropic")
+                  .doesNotContain("sk-super-secret");
+            });
+  }
+
+  @Test
   void nothing_configured_warns(CapturedOutput output) {
     runner.run(
         context -> {

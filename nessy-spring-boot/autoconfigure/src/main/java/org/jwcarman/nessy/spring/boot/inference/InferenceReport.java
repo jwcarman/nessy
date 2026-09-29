@@ -31,8 +31,11 @@ import org.springframework.beans.factory.SmartInitializingSingleton;
  * bean, by name -- there is no longer a single winner to name instead.
  *
  * <p>A resolved preset or custom provider (from {@link ResolvedProviders}) prints its wire and
- * endpoint; an application's own bean, which the registrar never resolved, prints only what it can
- * ask the bean itself for -- its vendor. Never the key, in either case.
+ * endpoint too; an application's own bean, which the registrar never resolved, prints only what it
+ * can ask the bean itself for. Either way the vendor printed is the registered bean's own {@link
+ * InferenceProvider#vendor()} -- {@code resolved.vendor()} can disagree with it for the {@code
+ * messages} and {@code generate-content} wires, which ignore a vendor override, so the bean is the
+ * one asked. Never the key, in either case.
  */
 final class InferenceReport implements SmartInitializingSingleton {
 
@@ -83,7 +86,7 @@ final class InferenceReport implements SmartInitializingSingleton {
         + ", "
         + endpoint
         + ", vendor "
-        + resolved.vendor()
+        + provider.vendor()
         + ")";
   }
 }
