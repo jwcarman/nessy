@@ -117,6 +117,20 @@ class InferenceProvidersAutoConfigurationTest {
   }
 
   @Test
+  void an_openrouter_key_registers_one_provider() {
+    runner
+        .withPropertyValues("openrouter.api-key=sk-test")
+        .run(
+            context -> {
+              Map<String, InferenceProvider> providers =
+                  context.getBeansOfType(InferenceProvider.class);
+              assertThat(providers).containsOnlyKeys("openrouter");
+              assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
+              assertThat(providers.get("openrouter").vendor()).isEqualTo("openrouter");
+            });
+  }
+
+  @Test
   void gemini_and_xai_keys_register_two_providers() {
     runner
         .withPropertyValues("gemini.api-key=sk-test", "xai.api-key=xai-test")

@@ -45,6 +45,13 @@ record Preset(
               List.of("gemini.api-key", "google.api-key"),
               null),
           new Preset(
+              "openrouter",
+              Wire.OPENAI,
+              "https://openrouter.ai/api/v1",
+              "openrouter",
+              List.of("openrouter.api-key"),
+              null),
+          new Preset(
               "lmstudio",
               Wire.OPENAI,
               "http://localhost:1234/v1",

@@ -57,6 +57,17 @@ class ProviderCatalogueTest {
   }
 
   @Test
+  void an_openrouter_key_lights_openrouter_at_its_own_url() {
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of(), Map.of("openrouter.api-key", "k")::get);
+
+    assertThat(resolved)
+        .containsExactly(
+            new ResolvedProvider(
+                "openrouter", Wire.OPENAI, "https://openrouter.ai/api/v1", "openrouter", "k"));
+  }
+
+  @Test
   void every_key_lights_its_own_preset() {
     Map<String, String> properties =
         Map.of(
