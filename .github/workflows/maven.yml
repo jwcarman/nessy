@@ -72,7 +72,7 @@ jobs:
           # parent, so it inherits none of the root's plugins and the prefix cannot be found.
           # The version must match sonar.plugin.version in the root pom; nothing checks that.
           ./mvnw -Pci -B verify \
-            org.sonarsource.scanner.maven:sonar-maven-plugin:5.7.0.6970:sonar \
+            org.sonarsource.scanner.maven:sonar-maven-plugin:5.8.0.7211:sonar \
             -Dsonar.qualitygate.wait=true -Dnessy.excludedGroups=live
         else
           ./mvnw -Pci -B verify -Dnessy.excludedGroups=live
