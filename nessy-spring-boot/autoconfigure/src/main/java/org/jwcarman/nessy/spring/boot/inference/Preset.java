@@ -52,6 +52,13 @@ record Preset(
               List.of("openrouter.api-key"),
               null),
           new Preset(
+              "nvidia",
+              Wire.OPENAI,
+              "https://integrate.api.nvidia.com/v1",
+              "nvidia",
+              List.of("nvidia.api-key"),
+              null),
+          new Preset(
               "lmstudio",
               Wire.OPENAI,
               "http://localhost:1234/v1",

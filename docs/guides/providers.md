@@ -181,6 +181,7 @@ for four of them the base URL too. It becomes a provider once its
 | `anthropic` | `anthropic` | the vendor's own | `anthropic` | `anthropic.api-key` (`ANTHROPIC_API_KEY`) |
 | `gemini` | `gemini` | the vendor's own | `gcp.gemini` | `gemini.api-key` or `google.api-key` (`GEMINI_API_KEY` / `GOOGLE_API_KEY`) |
 | `openrouter` | `openai` | `https://openrouter.ai/api/v1` | `openrouter` | `openrouter.api-key` (`OPENROUTER_API_KEY`) |
+| `nvidia` | `openai` | `https://integrate.api.nvidia.com/v1` | `nvidia` | `nvidia.api-key` (`NVIDIA_API_KEY`) |
 | `lmstudio` | `openai` | `http://localhost:1234/v1` | `lmstudio` | `nessy.providers.lmstudio.enabled: true` — keyless |
 
 Every field is overridable under `nessy.providers.<id>.*`: a different

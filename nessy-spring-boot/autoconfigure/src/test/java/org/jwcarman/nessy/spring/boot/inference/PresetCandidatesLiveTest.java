@@ -71,13 +71,14 @@ import tools.jackson.databind.json.JsonMapper;
  * what its marketing page claims.
  *
  * <p>Each candidate is built the way a custom provider is today -- {@code nessy.providers.<id>.wire
- * =openai} plus a base URL, an environment-sourced key and a vendor -- then driven through a real
- * direct harness with a tool the question cannot be answered without, exactly like {@link
- * LmStudioPresetLiveTest}. A candidate with no key, or no model and no default, is skipped rather
- * than failed: this test measures what is reachable in the runner's environment, not what should
- * exist. Results land in {@code target/preset-measurements.md} for James to read after a run; no
- * key is ever written to that file, an assertion message, a log line, or an exception this test
- * constructs.
+ * =openai} plus a base URL, an environment-sourced key and a vendor -- or, for an existing preset,
+ * by its key alone, so a wire other than {@code openai} is measured too. Either is then driven
+ * through a real direct harness with a tool the question cannot be answered without, exactly like
+ * {@link LmStudioPresetLiveTest}. A candidate with no key, or no model and no default, is skipped
+ * rather than failed: this test measures what is reachable in the runner's environment, not what
+ * should exist. Results land in {@code target/preset-measurements.md} for James to read after a
+ * run; no key is ever written to that file, an assertion message, a log line, or an exception this
+ * test constructs.
  *
  * <pre>{@code
  * ./mvnw -q -pl :nessy-spring-boot-autoconfigure test -Dnessy.excludedGroups= -Dtest=PresetCandidatesLiveTest
@@ -94,6 +95,7 @@ class PresetCandidatesLiveTest {
 
   private static final List<Candidate> CANDIDATES =
       List.of(
+          Candidate.preset("anthropic", "ANTHROPIC_API_KEY", "anthropic"),
           new Candidate("openai", "https://api.openai.com/v1", "OPENAI_API_KEY", null, "openai"),
           new Candidate(
               "groq",
@@ -129,9 +131,25 @@ class PresetCandidatesLiveTest {
   /** One row of the measurement table: what was asked of the vendor, and what came back. */
   private record Row(String id, String model, String baseUrl, String status, String detail) {}
 
-  /** A vendor this test can reach if its key is exported; {@code defaultModel} may be absent. */
+  /**
+   * A vendor this test can reach if its key is exported; {@code defaultModel} may be absent. A
+   * candidate with no {@code baseUrl} is an existing preset, reached by its key alone -- which is
+   * how a wire other than {@code openai} gets measured.
+   */
   private record Candidate(
-      String id, String baseUrl, String keyEnvVar, @Nullable String defaultModel, String vendor) {
+      String id,
+      @Nullable String baseUrl,
+      String keyEnvVar,
+      @Nullable String defaultModel,
+      String vendor) {
+
+    static Candidate preset(String id, String keyEnvVar, String vendor) {
+      return new Candidate(id, null, keyEnvVar, null, vendor);
+    }
+
+    String shownUrl() {
+      return baseUrl == null ? "(the " + id + " preset)" : baseUrl;
+    }
 
     String modelEnvVar() {
       return id.toUpperCase(Locale.ROOT) + "_MODEL";
@@ -228,7 +246,8 @@ class PresetCandidatesLiveTest {
   }
 
   private void skip(Candidate candidate, String message) {
-    ROWS.put(candidate.id(), new Row(candidate.id(), "-", candidate.baseUrl(), "SKIPPED", message));
+    ROWS.put(
+        candidate.id(), new Row(candidate.id(), "-", candidate.shownUrl(), "SKIPPED", message));
     Assumptions.assumeTrue(false, message);
   }
 
@@ -275,13 +294,13 @@ class PresetCandidatesLiveTest {
   private void recordSuccess(Candidate candidate, String model) {
     ROWS.merge(
         candidate.id(),
-        new Row(candidate.id(), model, candidate.baseUrl(), "PASS", ""),
+        new Row(candidate.id(), model, candidate.shownUrl(), "PASS", ""),
         (existing, fresh) -> "FAIL".equals(existing.status()) ? existing : fresh);
   }
 
   private void recordFailure(Candidate candidate, String model, Throwable t) {
     String detail = truncate(t.getClass().getName() + ": " + t.getMessage(), 300);
-    ROWS.put(candidate.id(), new Row(candidate.id(), model, candidate.baseUrl(), "FAIL", detail));
+    ROWS.put(candidate.id(), new Row(candidate.id(), model, candidate.shownUrl(), "FAIL", detail));
   }
 
   private static String truncate(@Nullable String text, int max) {
@@ -297,10 +316,14 @@ class PresetCandidatesLiveTest {
             .withConfiguration(AutoConfigurations.of(InferenceProvidersAutoConfiguration.class))
             .withBean(ObservationRegistry.class, ObservationRegistry::create)
             .withPropertyValues(
-                "nessy.providers." + candidate.id() + ".wire=openai",
-                "nessy.providers." + candidate.id() + ".base-url=" + candidate.baseUrl(),
-                "nessy.providers." + candidate.id() + ".api-key=" + key,
-                "nessy.providers." + candidate.id() + ".vendor=" + candidate.vendor());
+                candidate.baseUrl() == null
+                    ? new String[] {"nessy.providers." + candidate.id() + ".api-key=" + key}
+                    : new String[] {
+                      "nessy.providers." + candidate.id() + ".wire=openai",
+                      "nessy.providers." + candidate.id() + ".base-url=" + candidate.baseUrl(),
+                      "nessy.providers." + candidate.id() + ".api-key=" + key,
+                      "nessy.providers." + candidate.id() + ".vendor=" + candidate.vendor()
+                    });
     InferenceProvider[] holder = new InferenceProvider[1];
     runner.run(context -> holder[0] = context.getBean(candidate.id(), InferenceProvider.class));
     return holder[0];
@@ -341,7 +364,7 @@ class PresetCandidatesLiveTest {
       Row row =
           ROWS.getOrDefault(
               candidate.id(),
-              new Row(candidate.id(), "-", candidate.baseUrl(), "SKIPPED", "not run"));
+              new Row(candidate.id(), "-", candidate.shownUrl(), "SKIPPED", "not run"));
       markdown
           .append("| ")
           .append(row.id())

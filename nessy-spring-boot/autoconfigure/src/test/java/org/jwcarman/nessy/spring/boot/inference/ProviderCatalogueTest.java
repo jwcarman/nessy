@@ -68,6 +68,17 @@ class ProviderCatalogueTest {
   }
 
   @Test
+  void an_nvidia_key_lights_nvidia_at_its_own_url() {
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of(), Map.of("nvidia.api-key", "k")::get);
+
+    assertThat(resolved)
+        .containsExactly(
+            new ResolvedProvider(
+                "nvidia", Wire.OPENAI, "https://integrate.api.nvidia.com/v1", "nvidia", "k"));
+  }
+
+  @Test
   void every_key_lights_its_own_preset() {
     Map<String, String> properties =
         Map.of(
