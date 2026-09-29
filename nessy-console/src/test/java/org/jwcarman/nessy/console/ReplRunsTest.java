@@ -131,6 +131,21 @@ class ReplRunsTest {
   }
 
   @Test
+  @DisplayName("says so when NESSY_PROVIDER names a provider nothing registered")
+  void it_says_so_when_the_provider_is_unknown() {
+    System.setProperty("nessy.provider", "oepnai");
+    try {
+      FakeConsole console = new FakeConsole("/exit");
+      Repl.run(new ReplConfig().dataSource(database()), console);
+      assertThat(console.written())
+          .contains("names provider 'oepnai', which is not registered")
+          .doesNotContain("Exception");
+    } finally {
+      System.setProperty("nessy.provider", "openai");
+    }
+  }
+
+  @Test
   @DisplayName("says so when no database can be found")
   /**
    * A terminal needs no database. The conversation lives as long as the process does, which is what

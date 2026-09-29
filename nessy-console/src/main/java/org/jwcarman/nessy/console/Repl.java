@@ -88,16 +88,25 @@ public final class Repl {
       ReplConfig config,
       ConsoleIo io) {
     ConsoleNarration narration = new ConsoleNarration(config.agentId(), io);
-    DirectHarness<String, String> harness =
-        factory.<String>create(
-            config.type(),
-            h -> {
-              h.systemPrompt(config.systemPrompt())
-                  .inputRenderer(said -> List.of(new Block.Text(said)))
-                  .inference(in -> in.model(model).maxTokens(config.maxTokens()))
-                  .listener(narration);
-              config.tools().forEach(grant -> grant.customize(h));
-            });
+    DirectHarness<String, String> harness;
+    try {
+      harness =
+          factory.<String>create(
+              config.type(),
+              h -> {
+                h.systemPrompt(config.systemPrompt())
+                    .inputRenderer(said -> List.of(new Block.Text(said)))
+                    .inference(in -> in.model(model).maxTokens(config.maxTokens()))
+                    .listener(narration);
+                config.tools().forEach(grant -> grant.customize(h));
+              });
+    } catch (IllegalStateException badProvider) {
+      // A mistyped NESSY_PROVIDER (or a provider named that nothing registered) fails here,
+      // naming what it names and what is registered -- said the same way a startup failure is,
+      // rather than a stack trace out of main.
+      say(io, String.valueOf(badProvider.getMessage()));
+      return;
+    }
     new ReplLoop(
             harness,
             config.agentId(),
