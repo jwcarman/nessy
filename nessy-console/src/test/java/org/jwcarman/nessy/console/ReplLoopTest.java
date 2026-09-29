@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -54,6 +55,11 @@ class ReplLoopTest {
   }
 
   private static void run(FakeHarness harness, FakeConsole console, ReplConfig config) {
+    run(harness, console, config, Optional.of("openai"));
+  }
+
+  private static void run(
+      FakeHarness harness, FakeConsole console, ReplConfig config, Optional<String> provider) {
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
     harness.narrateTo(narration);
     new ReplLoop(
@@ -62,7 +68,7 @@ class ReplLoopTest {
             config,
             console,
             narration,
-            new ReplLoop.Diagnostics("openai", "a-model", 4096))
+            new ReplLoop.Diagnostics(provider, "a-model", 4096))
         .run();
   }
 
@@ -302,6 +308,19 @@ class ReplLoopTest {
 
     assertThat(console.written()).contains("openai").contains("a-model").contains("days_until");
     assertThat(harness.observed()).as("asking what is configured is not a turn").isEmpty();
+  }
+
+  @Test
+  @DisplayName(
+      "when this Repl did not choose the provider itself, /config says nothing about one rather"
+          + " than claiming one")
+  void the_diagnostic_omits_the_provider_it_never_chose() {
+    FakeHarness harness = new FakeHarness();
+    FakeConsole console = new FakeConsole("/config", "/exit");
+
+    run(harness, console, config(), Optional.empty());
+
+    assertThat(console.written()).contains("a-model").doesNotContain("provider");
   }
 
   /** Just enough of a tool to have a name worth reporting. */

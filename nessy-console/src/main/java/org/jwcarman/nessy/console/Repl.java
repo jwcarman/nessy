@@ -65,8 +65,8 @@ public final class Repl {
     customizer.customize(config);
     // Which of the factory's providers answers is the factory's own business -- an application
     // handing over a factory it built itself has already chosen, and there is no id here to ask
-    // it by.
-    run(factory, "configured", model, config, ConsoleIo.standard());
+    // it by, so /config says nothing about it rather than claiming one.
+    run(factory, Optional.empty(), model, config, ConsoleIo.standard());
   }
 
   /**
@@ -84,7 +84,7 @@ public final class Repl {
 
   static void run(
       DirectHarnessFactory factory,
-      String provider,
+      Optional<String> provider,
       String model,
       ReplConfig config,
       ConsoleIo io) {
@@ -169,7 +169,7 @@ public final class Repl {
                 factory.inference(
                     providerId, new InferenceOptions(model.get(), config.maxTokens()));
               }),
-          chosen,
+          Optional.of(chosen),
           model.get(),
           config,
           io);

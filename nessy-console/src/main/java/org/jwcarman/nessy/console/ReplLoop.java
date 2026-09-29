@@ -16,6 +16,7 @@
 
 package org.jwcarman.nessy.console;
 
+import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
@@ -41,8 +42,14 @@ final class ReplLoop {
 
   private final Diagnostics diagnostics;
 
-  /** What was actually wired up, for a person who typed a model name at one vendor's key. */
-  record Diagnostics(String provider, String model, int maxTokens) {}
+  /**
+   * What was actually wired up, for a person who typed a model name at one vendor's key.
+   *
+   * <p>{@code provider} is absent when this Repl did not choose one itself -- an application that
+   * hands over a factory it already built and configured has already made that choice, and there is
+   * no id here to report truthfully.
+   */
+  record Diagnostics(Optional<String> provider, String model, int maxTokens) {}
 
   ReplLoop(
       DirectHarness<String, String> harness,
@@ -105,7 +112,7 @@ final class ReplLoop {
    */
   private void describe() {
     io.write(System.lineSeparator());
-    line("provider", diagnostics.provider());
+    diagnostics.provider().ifPresent(provider -> line("provider", provider));
     line("model", diagnostics.model());
     line("max tokens", Integer.toString(diagnostics.maxTokens()));
     line("agent", config.type().value() + " / " + agentId.value());
