@@ -247,6 +247,16 @@ class ProviderCatalogueTest {
   }
 
   @Test
+  void ollama_switched_off_stays_off_even_with_a_key() {
+    ProviderSettings ollama = new ProviderSettings(null, null, "custom-key", false, null);
+
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of("ollama", ollama), key -> null);
+
+    assertThat(resolved).isEmpty();
+  }
+
+  @Test
   void a_hosted_preset_with_its_key_set_and_enabled_false_is_absent() {
     ProviderSettings xai = new ProviderSettings(null, null, null, false, null);
 
