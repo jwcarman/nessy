@@ -231,7 +231,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
     customizer.customize(config);
     List<ToolBinding<?>> bindings = config.bindings(schemas, mapper);
     DefaultDirectHarnessConfig.Inference inference = config.inference();
-    ProviderId providerId = providers.choose(agentType, inference.provider(), null);
+    ProviderId providerId = providers.choose(agentType, inference.provider());
     if (inference.modelName() == null) {
       throw new IllegalStateException(
           "agent type '" + agentType.value() + "' names no model and the factory has no default");
@@ -286,7 +286,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
                 config.agentType(),
                 new DefaultInferenceService(
                     assembler,
-                    providers.resolve(agentType, providerId, null),
+                    providers.resolve(agentType, providerId),
                     config.systemPromptSource(),
                     tools.offers(),
                     narrator,

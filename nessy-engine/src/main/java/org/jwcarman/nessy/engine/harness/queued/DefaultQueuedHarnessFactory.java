@@ -189,7 +189,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     // Built here because it needs the store, which a caller has no handle on.
     DefaultQueuedHarnessConfig.Inference inference = config.inference();
     DefaultQueuedHarnessConfig.Inference.Context context = inference.context();
-    ProviderId providerId = providers.choose(agentType, inference.provider(), null);
+    ProviderId providerId = providers.choose(agentType, inference.provider());
     if (inference.modelName() == null) {
       throw new IllegalStateException(
           "agent type '" + agentType.value() + "' names no model and the factory has no default");
@@ -240,7 +240,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
                 agentType,
                 assembler,
                 inference,
-                providers.resolve(agentType, providerId, null),
+                providers.resolve(agentType, providerId),
                 config,
                 tools,
                 narrator,

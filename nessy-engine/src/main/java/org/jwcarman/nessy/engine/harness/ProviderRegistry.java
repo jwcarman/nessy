@@ -72,32 +72,32 @@ public final class ProviderRegistry {
       this.order = order;
     }
 
-    /** The agent type's own id if it named one, the factory default if not. */
-    public ProviderId choose(
-        AgentType agentType, @Nullable ProviderId named, @Nullable ProviderId fallback) {
-      ProviderId id = named != null ? named : fallback;
-      if (id == null) {
+    /**
+     * The agent type's own id -- already folded with the factory default by the time it reaches
+     * here.
+     */
+    public ProviderId choose(AgentType agentType, @Nullable ProviderId named) {
+      if (named == null) {
         throw new IllegalStateException(
             "agent type '"
                 + agentType.value()
                 + "' names no provider and the factory has no default; registered: "
                 + registered());
       }
-      if (!providers.containsKey(id)) {
+      if (!providers.containsKey(named)) {
         throw new IllegalStateException(
             "agent type '"
                 + agentType.value()
                 + "' names provider '"
-                + id.value()
+                + named.value()
                 + "', which is not registered; registered: "
                 + registered());
       }
-      return id;
+      return named;
     }
 
-    public InferenceProvider resolve(
-        AgentType agentType, @Nullable ProviderId named, @Nullable ProviderId fallback) {
-      return providers.get(choose(agentType, named, fallback));
+    public InferenceProvider resolve(AgentType agentType, @Nullable ProviderId named) {
+      return providers.get(choose(agentType, named));
     }
 
     private String registered() {
