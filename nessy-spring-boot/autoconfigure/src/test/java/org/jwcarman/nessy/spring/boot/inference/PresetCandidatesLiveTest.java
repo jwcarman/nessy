@@ -120,7 +120,9 @@ class PresetCandidatesLiveTest {
               null,
               "fireworks"),
           new Candidate(
-              "cerebras", "https://api.cerebras.ai/v1", "CEREBRAS_API_KEY", null, "cerebras"));
+              "cerebras", "https://api.cerebras.ai/v1", "CEREBRAS_API_KEY", null, "cerebras"),
+          new Candidate(
+              "nvidia", "https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY", null, "nvidia"));
 
   private static final Map<String, Row> ROWS = new ConcurrentHashMap<>();
 
