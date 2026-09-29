@@ -94,6 +94,7 @@ class PresetCandidatesLiveTest {
 
   private static final List<Candidate> CANDIDATES =
       List.of(
+          new Candidate("openai", "https://api.openai.com/v1", "OPENAI_API_KEY", null, "openai"),
           new Candidate(
               "groq",
               "https://api.groq.com/openai/v1",
