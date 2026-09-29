@@ -49,7 +49,14 @@ record Preset(
               null,
               "gcp.gemini",
               List.of("gemini.api-key", "google.api-key"),
-              null));
+              null),
+          new Preset(
+              "lmstudio",
+              Wire.CHAT_COMPLETIONS,
+              "http://localhost:1234/v1",
+              "lmstudio",
+              List.of(),
+              "lm-studio"));
 
   boolean keyless() {
     return keylessApiKey != null;

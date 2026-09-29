@@ -184,6 +184,16 @@ class InferenceProvidersAutoConfigurationTest {
   }
 
   @Test
+  void the_lmstudio_preset_registers_only_when_turned_on() {
+    runner
+        .withPropertyValues("nessy.providers.lmstudio.enabled=true")
+        .run(
+            context ->
+                assertThat(context.getBeansOfType(InferenceProvider.class))
+                    .containsOnlyKeys("lmstudio"));
+  }
+
+  @Test
   void an_application_bean_is_not_backed_off_beside_a_preset() {
     runner
         .withUserConfiguration(AScriptedProvider.class)

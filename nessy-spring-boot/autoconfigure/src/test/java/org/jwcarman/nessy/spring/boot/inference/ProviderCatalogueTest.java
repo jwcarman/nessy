@@ -163,6 +163,30 @@ class ProviderCatalogueTest {
   }
 
   @Test
+  void lmstudio_is_off_until_enabled() {
+    List<ResolvedProvider> resolved = ProviderCatalogue.resolve(Map.of(), key -> null);
+
+    assertThat(resolved).isEmpty();
+  }
+
+  @Test
+  void lmstudio_lights_when_enabled() {
+    ProviderSettings lmstudio = new ProviderSettings(null, null, null, true, null);
+
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of("lmstudio", lmstudio), key -> null);
+
+    assertThat(resolved)
+        .containsExactly(
+            new ResolvedProvider(
+                "lmstudio",
+                Wire.CHAT_COMPLETIONS,
+                "http://localhost:1234/v1",
+                "lmstudio",
+                "lm-studio"));
+  }
+
+  @Test
   void a_custom_vendor_defaults_to_the_wires_own() {
     ProviderSettings mine = new ProviderSettings(Wire.MESSAGES, "https://g/v1", "k", null, null);
 
