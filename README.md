@@ -51,13 +51,13 @@ class AddTool implements Tool<Add> {
 
 DirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> config
         .backend(backend)
-        .provider(AnthropicInferenceProvider.fromEnv()));
+        .provider(ProviderId.of("anthropic"), AnthropicInferenceProvider.fromEnv()));
 
 DirectHarness<String, String> harness = factory.<String>create(
         new AgentType("assistant"),
         config -> config
                 .systemPrompt("You are a terse assistant.")
-                .inference(in -> in.model("claude-sonnet-5"))
+                .inference(in -> in.provider("anthropic").model("claude-sonnet-5"))
                 .tool(new AddTool()));
 
 Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
@@ -91,8 +91,8 @@ OpenAI-compatible endpoint, [LM Studio](https://lmstudio.ai) on `:1234`
 works and costs nothing, and a PostgreSQL to keep the agents in:
 
 ```bash
-export OPENAI_API_KEY=not-needed
-export OPENAI_BASE_URL=http://localhost:1234/v1
+export NESSY_PROVIDERS_LMSTUDIO_ENABLED=true
+export NESSY_PROVIDER=lmstudio
 export NESSY_MODEL=<a model id your endpoint serves>
 export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/nessy
 export SPRING_DATASOURCE_USERNAME=nessy

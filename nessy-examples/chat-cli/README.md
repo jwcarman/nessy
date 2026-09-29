@@ -44,37 +44,38 @@ part worth outliving it. Point `chat-web` at a database to see the other half.
 
 ## Run it
 
-Which model it talks to is not written down here. Each provider module on
-this example's classpath ships its own Boot `@AutoConfiguration`, so setting
-that vendor's key is the whole choice — the same command runs against any of
-them.
+Which model it talks to is not written down here. This example's classpath
+carries the `openai` and `anthropic` inference adapters, so lighting a
+preset with that vendor's key is the whole choice — `NESSY_PROVIDER` and
+`NESSY_MODEL` say which one answers and with what.
 
 Against [LM Studio](https://lmstudio.ai) or any other OpenAI-compatible local
-runtime, which costs nothing:
+runtime, which costs nothing, using the keyless `lmstudio` preset:
 
 ```bash
-OPENAI_API_KEY=not-needed \
-OPENAI_BASE_URL=http://localhost:1234/v1 \
+NESSY_PROVIDERS_LMSTUDIO_ENABLED=true \
+NESSY_PROVIDER=lmstudio \
 NESSY_MODEL=qwen/qwen3.6-35b-a3b \
   ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
 ```
 
-Against a real vendor, it is one variable:
+Against a real vendor, name its preset and set its key:
 
 ```bash
-ANTHROPIC_API_KEY=… ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
-GEMINI_API_KEY=…    ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
-XAI_API_KEY=…       ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
-OPENAI_API_KEY=…    ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
+NESSY_PROVIDER=anthropic ANTHROPIC_API_KEY=… \
+  ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
+NESSY_PROVIDER=xai XAI_API_KEY=… \
+  ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
+NESSY_PROVIDER=openai OPENAI_API_KEY=… \
+  ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
 ```
 
-`NESSY_MODEL` names the model to use — required, since a provider's
-`@AutoConfiguration` names no default. Set no key and the Boot context finds
-no `InferenceProvider` bean at all, and the program says so instead of a stack
-trace out of `main`.
+`NESSY_PROVIDER` and `NESSY_MODEL` are a pair — set both or neither. Set no
+key and the Boot context lights no preset at all, and the program says so
+instead of a stack trace out of `main`.
 
-Bedrock ships no `@AutoConfiguration`: ambient AWS credentials mean someone
-once deployed something to AWS, not that they chose Bedrock for this. An
-application that wants it constructs it explicitly.
+Bedrock ships no preset: ambient AWS credentials mean someone once deployed
+something to AWS, not that they chose Bedrock for this. An application that
+wants it constructs it explicitly.
 
 `/quit` or Ctrl-D leaves.

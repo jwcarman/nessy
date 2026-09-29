@@ -10,11 +10,13 @@ downstream can tell the difference.
 
 ## Running it
 
-DeepWiki needs no credential. You need a model:
+DeepWiki needs no credential. You need a model — against
+[LM Studio](https://lmstudio.ai) or any other OpenAI-compatible local
+runtime, the keyless `lmstudio` preset:
 
 ```bash
-export OPENAI_API_KEY=not-needed
-export OPENAI_BASE_URL=http://localhost:1234/v1
+export NESSY_PROVIDERS_LMSTUDIO_ENABLED=true
+export NESSY_PROVIDER=lmstudio
 export NESSY_MODEL=<a model your endpoint serves>
 
 ./mvnw -q -pl :nessy-example-mcp -am compile exec:java

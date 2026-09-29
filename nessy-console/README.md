@@ -15,14 +15,15 @@ That is a complete program. `Repl` assembles everything an engine needs so an
 application does not have to:
 
 - **The provider** comes from a minimal Spring Boot context this call raises
-  and tears down around itself: `nessy-spring-boot-autoconfigure` contributes
-  an `InferenceProvider` bean, named for its vendor, once that vendor's API
-  key is in the environment. Set `ANTHROPIC_API_KEY`, `XAI_API_KEY`, or
-  `OPENAI_API_KEY` (with `OPENAI_BASE_URL` for a local runtime) to light one,
-  then say which one answers with `NESSY_PROVIDER` and which model with
-  `NESSY_MODEL` — the two are a pair, so set both or neither. With none set,
-  the console names every provider it found. Put the adapter jar you want on
-  your classpath; this module deliberately drags none of them in.
+  and tears down around itself: `nessy-spring-boot-autoconfigure` registers
+  an `InferenceProvider` bean per preset it can light, named by the preset's
+  id. Set `ANTHROPIC_API_KEY`, `XAI_API_KEY`, `OPENAI_API_KEY` (with
+  `OPENAI_BASE_URL` for a local runtime), or `GEMINI_API_KEY` to light one;
+  `NESSY_PROVIDERS_LMSTUDIO_ENABLED=true` lights the keyless `lmstudio`
+  preset. Then say which one answers with `NESSY_PROVIDER` and which model
+  with `NESSY_MODEL` — the two are a pair, so set both or neither. With none
+  set, the console names every provider it found. Put the adapter jar you
+  want on your classpath; this module deliberately drags none of them in.
 - **The conversation itself stays in memory.** The terminal is the
   conversation: a turn that has ended has ended, and a CLI that resumed
   yesterday's chat would surprise the person typing into it. A `DataSource`

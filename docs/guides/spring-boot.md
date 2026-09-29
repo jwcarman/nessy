@@ -26,14 +26,16 @@ spring:
     username: nessy
     password: secret
 nessy:
+  provider: anthropic
   model: claude-sonnet-5
 ```
 
 Set `ANTHROPIC_API_KEY` and the context has a `DirectHarnessFactory` bean,
-built from that `DataSource` and that provider. Nothing answers on its own
-yet: an agent type is a decision an application makes, not one the starter
-can make for it, so the next step is declaring a harness from the factory.
-See [The Harness](harness.md).
+built from that `DataSource` and the `anthropic` preset, registered and set
+as the factory's default provider. Nothing answers on its own yet: an agent
+type is a decision an application makes, not one the starter can make for
+it, so the next step is declaring a harness from the factory. See
+[The Harness](harness.md).
 
 ## Two doors, and a factory bean for each
 
@@ -85,8 +87,10 @@ Everything below is read from `nessy.*`, bound by `NessyProperties`.
 
 | Property | Default | Read by |
 |---|---|---|
-| `nessy.model` | *required* when read | the queued door's factory, always; the direct door only if your own configuration calls `NessyProperties.model()` |
-| `nessy.max-tokens` | 4096 | the same two places as `nessy.model` |
+| `nessy.provider` | none; paired with `nessy.model` | both doors' factories, as the default `ProviderId` an agent type falls back on when it names none |
+| `nessy.model` | none; paired with `nessy.provider` | both doors' factories, as the default model an agent type falls back on when it names none |
+| `nessy.max-tokens` | 4096 | the same factory default, alongside `nessy.model` |
+| `nessy.providers.<id>.api-key`, `.enabled`, `.wire`, `.base-url`, `.vendor` | none | `ProviderRegistrar`, to light a preset or declare a custom provider; see [Providers](providers.md#boot-auto-configuration) |
 | `nessy.system-prompt` | none | your own configuration, via `NessyProperties.resolveSystemPrompt()`; also the prompt-template auto-configuration when a prompt engine is on the classpath |
 | `nessy.system-prompt-file` | none; a `Resource`. **Setting both is an error** | the same places as `nessy.system-prompt` |
 | `nessy.type` | `agent` | bound and validated, but not read by any bean the starter builds today — an agent's type is named when you call `factory.create(agentType, ...)`, not from a property |
@@ -94,7 +98,11 @@ Everything below is read from `nessy.*`, bound by `NessyProperties`.
 | `nessy.reply-token-encryption-keys` | ephemeral; see below | the `ReplyTokens` bean, which only the queued door's factory is given |
 | `nessy.prompt.engine` | `spring`, or `mustache` | `PromptEngineAutoConfiguration` |
 | `nessy.narration.odyssey.inactivity-ttl`, `entry-ttl`, `retention-ttl` | a day, a day, an hour | `OdysseyNarrationAutoConfiguration`, when Odyssey is present |
-| `anthropic.api-key`, `openai.api-key`, `openai.base-url`, `xai.api-key`, `gemini.api-key`, `google.api-key` | pick a provider; see [Providers](providers.md#boot-auto-configuration) |
+| `anthropic.api-key`, `openai.api-key`, `openai.base-url`, `xai.api-key`, `gemini.api-key`, `google.api-key` | light the matching preset; see [Providers](providers.md#boot-auto-configuration) |
+
+`nessy.provider` and `nessy.model` are a pair: set both, or set neither and
+name a provider and a model on every agent type instead. Both doors refuse
+to start if only one is set, naming which.
 
 `nessy.type` looks like it should name an agent type the way
 `nessy.model` names a model, and it does not: it is validated at startup
@@ -114,14 +122,14 @@ a reader can find it.
 | `ReplyTokens` | from the configured keys, or ephemeral, loudly |
 | `CodecFactory` | Jackson over the context's `ObjectMapper`, with the `StorageCodecConfigurer` bean's transform appended |
 | `StorageCodecConfigurer` | nothing appended, unless you declare one |
-| `InferenceReport` | logs which provider and model will actually answer, once, at startup |
+| `InferenceReport` | logs every registered provider once, at startup |
 
 **With a `DirectBackend` bean** (`DirectHarnessAutoConfiguration`):
 
 | Bean | What it is |
 |---|---|
 | `JsonSchemaGenerator` | `VictoolsJsonSchemaGenerator`, for tool arguments and constrained answers |
-| `DefaultDirectHarnessFactory` | against the `DirectHarnessFactory` interface; built from the backend, the provider, the schema generator and the `ObjectMapper` |
+| `DefaultDirectHarnessFactory` | against the `DirectHarnessFactory` interface; built from the backend, every registered provider, the schema generator and the `ObjectMapper` |
 
 Every `NarrationListener` bean is attached to it once the context has
 started, so a listener may depend on the factory without a cycle.
@@ -130,7 +138,7 @@ started, so a listener may depend on the factory without a cycle.
 
 | Bean | What it is |
 |---|---|
-| `DefaultQueuedHarnessFactory` | against the `QueuedHarnessFactory` interface; built from the backend, the provider, `nessy.model` and `nessy.max-tokens`, and the `ReplyTokens` bean |
+| `DefaultQueuedHarnessFactory` | against the `QueuedHarnessFactory` interface; built from the backend, every registered provider, `nessy.provider`, `nessy.model` and `nessy.max-tokens`, and the `ReplyTokens` bean |
 | `TurnHistories` | the story, read-only |
 | `Replies` | the door a deferred answer comes back through |
 
@@ -261,6 +269,6 @@ rounds on a timer against a real host.
 
 - [The Harness](harness.md), building a harness from the factory the
   starter gives you
-- [Providers](providers.md#boot-auto-configuration), how an `InferenceProvider`
-  bean gets chosen
+- [Providers](providers.md#boot-auto-configuration), the presets and how an
+  `InferenceProvider` bean joins the registry
 - [Storage](../concepts/storage.md), the tables and the codec seam

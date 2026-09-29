@@ -99,24 +99,25 @@ good field names *is* the documentation. `Awaited.ready` answers now;
 
 ## The smallest harness
 
-**The factory** is one per process, built from the backend and the
-provider:
+**The factory** is one per process, built from the backend and every
+provider it registers, each under a name:
 
 ```java
 DirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> config
         .backend(backend)
-        .provider(provider));
+        .provider(ProviderId.of("anthropic"), provider));
 ```
 
-**A harness** is one per agent type, and states its own model — there is no
-factory-wide default to fall back on:
+**A harness** is one per agent type, and states its own provider and
+model — there is no factory-wide default to fall back on unless the
+factory sets one with `inference(ProviderId, InferenceOptions)`:
 
 ```java
 DirectHarness<String, String> harness = factory.<String>create(
         new AgentType("assistant"),
         config -> config
                 .systemPrompt("You are a terse assistant.")
-                .inference(in -> in.model("claude-sonnet-5"))
+                .inference(in -> in.provider("anthropic").model("claude-sonnet-5"))
                 .tool(new AddTool()));
 ```
 
@@ -131,7 +132,7 @@ DirectHarness<String, Verdict> reviewer = factory.<String, Verdict>create(
         new AgentType("reviewer"), Verdict.class,
         config -> config
                 .systemPrompt("You review a request and decide.")
-                .inference(in -> in.model("claude-sonnet-5")));
+                .inference(in -> in.provider("anthropic").model("claude-sonnet-5")));
 ```
 
 ## Asking, and getting an outcome
@@ -179,11 +180,12 @@ public static void main(String[] args) {
 }
 ```
 
-Run it against a local model with no key and no cost:
+Run it against a local model with no key and no cost, using the `lmstudio`
+preset:
 
 ```bash
-export OPENAI_API_KEY=not-needed
-export OPENAI_BASE_URL=http://localhost:1234/v1
+export NESSY_PROVIDERS_LMSTUDIO_ENABLED=true
+export NESSY_PROVIDER=lmstudio
 export NESSY_MODEL=<a model id your endpoint serves>
 ```
 
@@ -199,7 +201,8 @@ and the answer is narrated to listeners rather than returned:
 ```java
 QueuedHarnessFactory factory = DefaultQueuedHarnessFactory.of(config -> config
         .backend(new InMemoryQueuedBackend(codecs))
-        .inference(provider, InferenceOptions.of("claude-sonnet-5")));
+        .provider(ProviderId.of("anthropic"), provider)
+        .inference(ProviderId.of("anthropic"), InferenceOptions.of("claude-sonnet-5")));
 
 QueuedHarness<String> harness = factory.create(new AgentType("watchman"), config -> config
         .systemPrompt("You watch a house."));

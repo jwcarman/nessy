@@ -61,36 +61,53 @@ lot, not because it changes billing.
 reasoning counts are already inside one of those two numbers, so adding
 them again would double-count.
 
-## Which model
+## Naming providers
 
-The provider is engine-wide. The model is a setting: the engine's default,
-overridden per harness.
+A factory holds providers by name: each is registered under a `ProviderId`,
+and an agent type says which one it wants alongside its model. Both are
+required, one way or the other — an agent type that names neither and a
+factory with no default fail when the harness is built.
 
 ```java
 DirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> config
         .backend(new InMemoryDirectBackend(codecs))
-        .provider(AnthropicInferenceProvider.fromEnv()));
+        .provider(ProviderId.of("anthropic"), AnthropicInferenceProvider.fromEnv())
+        .provider(ProviderId.of("openai"), OpenAiInferenceProvider.fromEnv()));
 
 DirectHarness<String, String> triage = factory.create(
         new AgentType("triage"),
         config -> config
                 .systemPrompt(triagePrompt)
-                .inference(in -> in.model("claude-haiku-4-5").maxTokens(512)));
+                .inference(in -> in.provider("anthropic").model("claude-haiku-4-5").maxTokens(512)));
 
 DirectHarness<String, String> review = factory.create(
         new AgentType("review"),
         config -> config
                 .systemPrompt(reviewPrompt)
-                .inference(in -> in.model("claude-opus-5")));
+                .inference(in -> in.provider("openai").model("gpt-5.1")));
 ```
 
 `maxTokens` is per harness for a reason: it is how you make a model give a
 short answer. A timeout and a retry policy for the call live beside it.
 
+A factory with one provider can set it as the default for every agent type
+that names none, with the same `ProviderId` and an `InferenceOptions`:
+
+```java
+DirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> config
+        .backend(new InMemoryDirectBackend(codecs))
+        .provider(ProviderId.of("anthropic"), AnthropicInferenceProvider.fromEnv())
+        .inference(ProviderId.of("anthropic"), InferenceOptions.of("claude-haiku-4-5")));
+
+DirectHarness<String, String> triage = factory.create(
+        new AgentType("triage"),
+        config -> config.systemPrompt(triagePrompt));
+```
+
 Provider-level features such as thinking and prompt caching are settings on
 the provider, not requests a harness makes. Two agent types that need the
-provider configured differently get two factories, each with its own
-provider.
+provider configured differently get two providers, registered under two
+names, on the same factory.
 
 ## Building a provider
 
@@ -146,28 +163,105 @@ provider.
 
 ## Boot auto-configuration
 
-`nessy-spring-boot-autoconfigure` contributes an `InferenceProvider` bean
-when an adapter is on the classpath and its key is in the environment:
+`nessy-spring-boot-autoconfigure` turns `nessy.providers.<id>` into a
+registry of `InferenceProvider` beans, one per id lit by a preset or a
+custom provider, named by that id — alongside every `InferenceProvider`
+bean the application declares itself.
 
-| Property | Bean |
-|---|---|
-| `anthropic.api-key` (`ANTHROPIC_API_KEY`) | `AnthropicInferenceProvider.of(c -> c.apiKey(key))` |
-| `openai.api-key` (`OPENAI_API_KEY`), with `openai.base-url` layered on when present | `OpenAiInferenceProvider` |
-| `xai.api-key` (`XAI_API_KEY`) | the OpenAI adapter at xAI's base URL, reporting `x_ai` as its provider name |
-| `gemini.api-key` (`GEMINI_API_KEY`) or `google.api-key` (`GOOGLE_API_KEY`) | `GeminiInferenceProvider.of(c -> c.apiKey(key))` |
+### Presets
 
-Bedrock contributes no bean, deliberately. AWS credentials are ambient on a
-large fraction of machines, so any mechanism that let their presence choose
-a provider would silently route an application with a stray profile to
-Bedrock. An application that wants Bedrock says so in code.
+A preset is a catalogue entry the starter already knows the wire for, and
+for four of them the base URL too. It becomes a provider once its
+*ingredient* — a key, or an explicit `enabled` — is supplied:
 
-Every one of these is `@ConditionalOnMissingBean(InferenceProvider.class)`:
-declare your own and they all back off. Set one vendor's key, or declare the
-bean yourself; two keys at once resolve to whichever bean the container
-reaches first.
+| id | wire | base URL | vendor | ingredient |
+|---|---|---|---|---|
+| `openai` | `chat-completions` | the vendor's own | `openai` | `openai.api-key` (`OPENAI_API_KEY`) |
+| `xai` | `chat-completions` | `https://api.x.ai/v1` | `x_ai` | `xai.api-key` (`XAI_API_KEY`) |
+| `anthropic` | `messages` | the vendor's own | `anthropic` | `anthropic.api-key` (`ANTHROPIC_API_KEY`) |
+| `gemini` | `generate-content` | the vendor's own | `gcp.gemini` | `gemini.api-key` or `google.api-key` (`GEMINI_API_KEY` / `GOOGLE_API_KEY`) |
+| `lmstudio` | `chat-completions` | `http://localhost:1234/v1` | `lmstudio` | `nessy.providers.lmstudio.enabled: true` — keyless |
 
-The model id comes from `nessy.model` (`NESSY_MODEL`), the same as every
-other Boot-wired setting; see [Spring Boot](spring-boot.md).
+Every field is overridable under `nessy.providers.<id>.*`: a different
+`base-url` for `anthropic` behind a proxy, a different `vendor` tag for a
+`chat-completions` endpoint that is really somebody else, or
+`nessy.providers.<id>.api-key` in place of the vendor's own environment
+variable. `openai.base-url` (`OPENAI_BASE_URL`) still overrides the
+`openai` preset's endpoint on its own, the way it always has.
+
+A key set under `nessy.providers.<id>.api-key` binds from the environment
+with the property flattened, not underscore-joined at each dot: `xai`'s is
+`NESSY_PROVIDERS_XAI_APIKEY`, with no underscore inside `APIKEY`.
+
+`lmstudio` and any other keyless preset must be turned on explicitly with
+`enabled: true`. Nothing here probes `localhost:1234` at startup: a
+provider that exists because something happened to answer on a port is a
+provider that silently vanishes the next time nothing does.
+
+Bedrock ships no preset. AWS credentials are ambient on a large fraction of
+machines, so any mechanism that let their presence choose a provider would
+silently route an application with a stray profile to Bedrock — it joins
+the registry as an application bean instead, below.
+
+### Custom providers
+
+An id under `nessy.providers.*` that is not in the table above is a custom
+provider, and must state its own `wire` and `base-url`:
+
+```yaml
+nessy:
+  providers:
+    my-gateway:
+      wire: chat-completions
+      base-url: https://gateway.example.com/v1
+      api-key: ${GATEWAY_KEY}
+      vendor: openai
+```
+
+`wire` is one of `chat-completions`, `messages` or `generate-content` — a
+typo is a binding error naming the allowed values, not a provider that
+silently fails to exist. `vendor` defaults to the wire's own (`openai` for
+`chat-completions`). Missing `wire` or `base-url` fails startup, naming the
+id and the field.
+
+### Application beans
+
+An application's own `InferenceProvider` bean joins the registry under its
+**bean name**, beside the presets:
+
+```java
+@Bean
+InferenceProvider bedrock() {
+  return BedrockInferenceProvider.fromEnv();
+}
+```
+
+registers as `bedrock`. A bean whose name equals a lit preset's id fails
+startup, naming both — rename the bean or unset the preset's ingredient.
+
+### The report
+
+At startup, `InferenceReport` logs every registered provider once — id,
+wire, endpoint, vendor, never the key:
+
+```
+NESSY INFERENCE: providers: openai (chat-completions, the vendor's own endpoint, vendor openai); xai (chat-completions, https://api.x.ai/v1, vendor x_ai)
+```
+
+An application bean the registrar never resolved prints only what it can
+ask the bean for, its vendor: `bedrock (vendor aws.bedrock)`. No provider
+registered at all is a warning, not a failure: whatever needs one says so
+later, naming the agent type. Each harness then logs its own resolution
+once, when it is built — the moment the fact exists, since `create` is
+called by the application rather than at startup:
+
+```
+NESSY INFERENCE: agent type 'chat' -> openai / gpt-4.1-mini, up to 4096 tokens
+```
+
+`nessy.provider` and `nessy.model` are the factory-wide default a
+harness falls back on when it names neither; see
+[Spring Boot](spring-boot.md#properties).
 
 `Repl.run` in `nessy-console` uses exactly this mechanism: it raises a
 minimal Boot context around itself so these auto-configurations run, and
