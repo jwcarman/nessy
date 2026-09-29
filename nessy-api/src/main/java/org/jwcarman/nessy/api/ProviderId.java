@@ -28,9 +28,6 @@ public record ProviderId(String value) {
   private static final int MAX_LENGTH = 64;
 
   public ProviderId {
-    if (value.contains(" ")) {
-      throw new IllegalArgumentException("provider id must not contain spaces");
-    }
     value = Identifiers.require(value, "provider id", MAX_LENGTH);
   }
 

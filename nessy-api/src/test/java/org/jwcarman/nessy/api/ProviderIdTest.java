@@ -40,13 +40,6 @@ class ProviderIdTest {
   }
 
   @Test
-  void an_id_with_a_space_in_it_is_refused() {
-    assertThatThrownBy(() -> ProviderId.of("my provider"))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("provider id");
-  }
-
-  @Test
   void an_id_longer_than_sixty_four_characters_is_refused() {
     String tooLong = "p".repeat(65);
     assertThatThrownBy(() -> ProviderId.of(tooLong))
