@@ -96,6 +96,8 @@ class PresetCandidatesLiveTest {
   private static final List<Candidate> CANDIDATES =
       List.of(
           Candidate.preset("anthropic", "ANTHROPIC_API_KEY", "anthropic"),
+          Candidate.preset("xai", "XAI_API_KEY", "x_ai"),
+          Candidate.preset("gemini", "GEMINI_API_KEY", "gcp.gemini"),
           new Candidate("openai", "https://api.openai.com/v1", "OPENAI_API_KEY", null, "openai"),
           new Candidate(
               "groq",
