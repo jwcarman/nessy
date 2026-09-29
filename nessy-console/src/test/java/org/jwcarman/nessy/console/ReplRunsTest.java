@@ -113,9 +113,9 @@ class ReplRunsTest {
 
   /**
    * {@code nessy.provider} and {@code nessy.model} are a both-or-neither pair (named-providers
-   * design record §7a): a provider named with no model fails at the harness factory bean itself,
-   * before this class's own "no model is configured" diagnostic ever runs, so the console reports
-   * Boot's own pair message instead.
+   * design record §7a), enforced at the harness factory bean itself: a provider named with no model
+   * fails the context there, and {@link Repl} says Boot's own pair message verbatim rather than
+   * reaching whatever it does once a provider is chosen.
    */
   @Test
   @DisplayName("says so when a provider is named with no model")

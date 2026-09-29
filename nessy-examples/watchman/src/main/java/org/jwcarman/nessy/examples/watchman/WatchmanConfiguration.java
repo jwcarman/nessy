@@ -57,12 +57,12 @@ public class WatchmanConfiguration {
   }
 
   /**
-   * Declared only when scripted. Otherwise there is no provider bean here, and {@code
-   * nessy.provider} names the starter's {@code lmstudio} preset instead.
+   * The provider choice IS the switch: naming {@code scripted} both selects this bean over the
+   * starter's {@code lmstudio} preset and creates it -- there is nothing else to set.
    */
-  @Bean
-  @ConditionalOnProperty(name = "watchman.scripted", havingValue = "true")
-  public InferenceProvider scriptedProvider() {
+  @Bean(name = "scripted")
+  @ConditionalOnProperty(name = "nessy.provider", havingValue = "scripted")
+  public InferenceProvider scripted() {
     return new ScriptedWatchmanProvider(Duration.ofMillis(50));
   }
 

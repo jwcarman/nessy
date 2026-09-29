@@ -38,11 +38,7 @@ import org.springframework.web.client.RestClient;
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {
-      "watchman.scripted=true",
-      "watchman.round-interval=PT1H",
-      "nessy.provider=scriptedProvider"
-    })
+    properties = {"watchman.round-interval=PT1H", "nessy.provider=scripted"})
 @Import(PostgresBacked.Connection.class)
 @DisplayName("A round of the scripted watchman")
 class WatchmanRoundIntegrationTest {

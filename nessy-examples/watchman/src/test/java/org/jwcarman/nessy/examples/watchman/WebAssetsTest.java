@@ -43,11 +43,7 @@ import org.springframework.web.client.RestClient;
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {
-      "watchman.scripted=true",
-      "watchman.round-interval=PT24H",
-      "nessy.provider=scriptedProvider"
-    })
+    properties = {"watchman.round-interval=PT24H", "nessy.provider=scripted"})
 @Import(PostgresBacked.Connection.class)
 @DisplayName("The board's assets")
 class WebAssetsTest {

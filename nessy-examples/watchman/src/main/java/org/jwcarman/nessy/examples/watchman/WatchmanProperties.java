@@ -26,7 +26,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class WatchmanProperties {
 
   private Duration approvalTerm = Duration.ofDays(3);
-  private boolean scripted = false;
 
   public Duration getApprovalTerm() {
     return approvalTerm;
@@ -34,13 +33,5 @@ public class WatchmanProperties {
 
   public void setApprovalTerm(Duration approvalTerm) {
     this.approvalTerm = approvalTerm;
-  }
-
-  public boolean isScripted() {
-    return scripted;
-  }
-
-  public void setScripted(boolean scripted) {
-    this.scripted = scripted;
   }
 }

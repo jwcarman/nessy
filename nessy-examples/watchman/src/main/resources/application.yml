@@ -34,8 +34,8 @@ server:
 nessy:
   type: watchman
   # Which registered InferenceProvider answers. lmstudio is a preset the starter lights below;
-  # watchman.scripted=true declares its own provider bean and, in the profile document at the
-  # bottom of this file, names it here instead -- one property switches both.
+  # naming scripted instead both selects and creates WatchmanConfiguration's own provider bean
+  # (for soaks and tests, with no model behind it) -- the provider choice IS the switch.
   provider: ${WATCHMAN_PROVIDER:lmstudio}
   model: ${WATCHMAN_MODEL_ID:qwen/qwen3.6-35b-a3b}
   providers:
@@ -54,7 +54,6 @@ watchman:
   round-interval: ${WATCHMAN_ROUND_INTERVAL:PT30M}
   # How long a question may wait on the board before the engine denies it on the person's behalf.
   approval-term: 3d
-  scripted: ${WATCHMAN_SCRIPTED:false}
 
 management:
   endpoints:
@@ -74,15 +73,3 @@ logging:
   level:
     org.jwcarman.nessy.engine: INFO
     org.jwcarman.nessy.examples.watchman: DEBUG
-
----
-# Scripted mode names the bean WatchmanConfiguration declares (only when watchman.scripted is
-# true) instead of the lmstudio preset. This document activates on that same property, so
-# WATCHMAN_SCRIPTED is the one switch that turns scripted mode on.
-spring:
-  config:
-    activate:
-      on-property: watchman.scripted
-
-nessy:
-  provider: scriptedProvider
