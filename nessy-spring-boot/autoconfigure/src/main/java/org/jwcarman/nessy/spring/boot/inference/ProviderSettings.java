@@ -30,4 +30,21 @@ record ProviderSettings(
     @Nullable String baseUrl,
     @Nullable String apiKey,
     @Nullable Boolean enabled,
-    @Nullable String vendor) {}
+    @Nullable String vendor) {
+
+  /** Redacts the key: the generated form would otherwise print it in a log or a test failure. */
+  @Override
+  public String toString() {
+    return "ProviderSettings[wire="
+        + wire
+        + ", baseUrl="
+        + baseUrl
+        + ", apiKey="
+        + (apiKey != null ? "***" : "null")
+        + ", enabled="
+        + enabled
+        + ", vendor="
+        + vendor
+        + "]";
+  }
+}

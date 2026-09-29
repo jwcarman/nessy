@@ -23,4 +23,21 @@ import org.jspecify.annotations.Nullable;
  * registered.
  */
 record ResolvedProvider(
-    String id, Wire wire, @Nullable String baseUrl, String vendor, @Nullable String apiKey) {}
+    String id, Wire wire, @Nullable String baseUrl, String vendor, @Nullable String apiKey) {
+
+  /** Redacts the key: the generated form would otherwise print it in a log or a test failure. */
+  @Override
+  public String toString() {
+    return "ResolvedProvider[id="
+        + id
+        + ", wire="
+        + wire
+        + ", baseUrl="
+        + baseUrl
+        + ", vendor="
+        + vendor
+        + ", apiKey="
+        + (apiKey != null ? "***" : "null")
+        + "]";
+  }
+}
