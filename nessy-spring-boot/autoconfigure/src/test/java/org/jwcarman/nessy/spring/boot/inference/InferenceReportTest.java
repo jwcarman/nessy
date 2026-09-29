@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.spring.boot;
+package org.jwcarman.nessy.spring.boot.inference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -25,8 +25,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.jwcarman.nessy.spring.boot.inference.InferenceProvidersAutoConfiguration;
-import org.jwcarman.nessy.spring.boot.inference.ResolvedProviders;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;

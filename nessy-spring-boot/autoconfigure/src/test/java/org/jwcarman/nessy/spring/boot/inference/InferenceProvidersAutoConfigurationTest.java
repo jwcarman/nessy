@@ -65,6 +65,22 @@ class InferenceProvidersAutoConfigurationTest {
             });
   }
 
+  /**
+   * Observed whether or not anything is listening: with no registry bean at all in the context, the
+   * registrar's own {@code getIfAvailable(() -> ObservationRegistry.NOOP)} fallback is what wraps
+   * the provider, which costs a check per call and nothing else.
+   */
+  @Test
+  void without_an_observation_registry_a_lit_preset_is_still_observed() {
+    new ApplicationContextRunner()
+        .withConfiguration(AutoConfigurations.of(InferenceProvidersAutoConfiguration.class))
+        .withPropertyValues("openai.api-key=sk-test")
+        .run(
+            context ->
+                assertThat(context.getBean(InferenceProvider.class))
+                    .isInstanceOf(ObservedInferenceProvider.class));
+  }
+
   @Test
   void three_keys_register_three_providers_none_chosen() {
     runner

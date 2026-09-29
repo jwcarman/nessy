@@ -19,18 +19,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * A preset or a custom provider once every field has been decided: what {@link ProviderCatalogue}
- * resolves, {@link WireProviders} builds from, and the report reads to say what is registered.
- *
- * <p>Public, rather than package-private like its siblings, only because {@code InferenceReport}
- * (in the parent {@code org.jwcarman.nessy.spring.boot} package) reads {@link ResolvedProviders}'
- * list of these; {@link Wire} itself stays package-private, which is why {@link #wireValue()} hands
- * back the property spelling instead of the enum.
+ * resolves, {@link WireProviders} builds from, and {@link InferenceReport} reads to say what is
+ * registered.
  */
-public record ResolvedProvider(
-    String id, Wire wire, @Nullable String baseUrl, String vendor, @Nullable String apiKey) {
-
-  /** The wire's property spelling ({@code chat-completions}, and so on), for a report to print. */
-  public String wireValue() {
-    return wire.propertyValue();
-  }
-}
+record ResolvedProvider(
+    String id, Wire wire, @Nullable String baseUrl, String vendor, @Nullable String apiKey) {}

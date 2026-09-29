@@ -19,17 +19,14 @@ import java.util.List;
 
 /**
  * Every preset or custom provider {@link ProviderRegistrar} actually registered (never a skipped
- * one), for {@code InferenceReport} to tell a resolved provider apart from an application's own
+ * one), for {@link InferenceReport} to tell a resolved provider apart from an application's own
  * {@code InferenceProvider} bean.
  *
  * <p>Registered as the singleton bean {@code nessyResolvedProviders}.
- *
- * <p>Public, unlike its siblings in this package, because {@code InferenceReport} (in the parent
- * {@code org.jwcarman.nessy.spring.boot} package) is handed one through an {@code ObjectProvider}.
  */
-public record ResolvedProviders(List<ResolvedProvider> providers) {
+record ResolvedProviders(List<ResolvedProvider> providers) {
 
-  public ResolvedProviders {
+  ResolvedProviders {
     providers = List.copyOf(providers);
   }
 }

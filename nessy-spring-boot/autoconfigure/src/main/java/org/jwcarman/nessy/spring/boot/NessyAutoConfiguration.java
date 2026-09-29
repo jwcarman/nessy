@@ -27,11 +27,8 @@ import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.StorageCodecConfigurer;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.inference.InferenceProvider;
-import org.jwcarman.nessy.spring.boot.inference.ResolvedProviders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ListableBeanFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -155,13 +152,5 @@ public class NessyAutoConfiguration {
   @ConditionalOnBean(MeterRegistry.class)
   public TokenUsageHandler nessyTokenUsageHandler(MeterRegistry meters) {
     return new TokenUsageHandler(meters);
-  }
-
-  /** Says what will actually answer, before a single turn runs. */
-  @Bean
-  @ConditionalOnMissingBean
-  public InferenceReport nessyInferenceReport(
-      ObjectProvider<ResolvedProviders> resolvedProviders, ListableBeanFactory beans) {
-    return new InferenceReport(resolvedProviders, beans);
   }
 }

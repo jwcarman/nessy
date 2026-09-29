@@ -15,7 +15,10 @@
  */
 package org.jwcarman.nessy.spring.boot.inference;
 
+import org.springframework.beans.factory.ListableBeanFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -33,5 +36,13 @@ public class InferenceProvidersAutoConfiguration {
   @Bean
   static ProviderRegistrar nessyProviderRegistrar() {
     return new ProviderRegistrar();
+  }
+
+  /** Says what will actually answer, before a single turn runs. */
+  @Bean
+  @ConditionalOnMissingBean
+  public InferenceReport nessyInferenceReport(
+      ObjectProvider<ResolvedProviders> resolvedProviders, ListableBeanFactory beans) {
+    return new InferenceReport(resolvedProviders, beans);
   }
 }
