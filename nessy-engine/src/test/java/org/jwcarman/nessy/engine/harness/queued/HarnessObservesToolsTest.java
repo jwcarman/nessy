@@ -33,6 +33,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
@@ -46,7 +47,6 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.inference.InferenceOptions;
-import org.jwcarman.nessy.inference.InferenceResult;
 import tools.jackson.databind.json.JsonMapper;
 
 /** A tool bound on the harness by hand is observed by the harness, approver included. */
@@ -110,8 +110,7 @@ class HarnessObservesToolsTest {
             new AgentType("observed"),
             new TypeRef<String>() {},
             new DefaultQueuedHarnessConfig.Defaults(
-                (_, _) -> new InferenceResult.Answer(List.of(new Block.Text("ok"))),
-                InferenceOptions.of("m")),
+                ProviderId.of("test"), InferenceOptions.of("m")),
             JsonMapper.builder().build(),
             type -> new JsonSchema("{}"),
             observations);

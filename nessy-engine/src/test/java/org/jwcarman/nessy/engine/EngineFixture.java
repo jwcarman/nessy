@@ -31,6 +31,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
@@ -149,7 +150,8 @@ public final class EngineFixture implements AutoCloseable {
                   .backend(
                       new JdbcQueuedBackend(
                           dataSource, new JdbcTransactionManager(dataSource), codecs))
-                  .inference(provider, InferenceOptions.of("a-model"))
+                  .provider(ProviderId.of("test"), provider)
+                  .inference(ProviderId.of("test"), InferenceOptions.of("a-model"))
                   .listener(listener)
                   .observations(observations);
               carrier.ifPresent(engine::traceCarrier);

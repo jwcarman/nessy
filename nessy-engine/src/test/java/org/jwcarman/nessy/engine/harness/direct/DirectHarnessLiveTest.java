@@ -37,6 +37,7 @@ import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
@@ -83,7 +84,9 @@ class DirectHarnessLiveTest {
         config ->
             config
                 .backend(new InMemoryDirectBackend(new JacksonCodecFactory(mapper)))
-                .provider(OpenAiInferenceProvider.of(c -> c.apiKey(key()).baseUrl(BASE_URL)))
+                .provider(
+                    ProviderId.of("test"),
+                    OpenAiInferenceProvider.of(c -> c.apiKey(key()).baseUrl(BASE_URL)))
                 .schemas(new VictoolsJsonSchemaGenerator())
                 .mapper(mapper));
   }
@@ -92,7 +95,7 @@ class DirectHarnessLiveTest {
     return c ->
         c.systemPrompt("You are a terse assistant.")
             .inputRenderer(said -> List.of(new Block.Text(said)))
-            .inference(in -> in.model(MODEL).maxTokens(4096));
+            .inference(in -> in.provider("test").model(MODEL).maxTokens(4096));
   }
 
   /** Asks nothing of the answer's shape: no schema, prose back. */

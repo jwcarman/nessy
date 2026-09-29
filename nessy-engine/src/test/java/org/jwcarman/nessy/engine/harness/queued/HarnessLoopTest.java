@@ -16,27 +16,38 @@
 package org.jwcarman.nessy.engine.harness.queued;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.backend.inmemory.InMemoryQueuedBackend;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.InferenceNarrator;
+import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The whole loop, closed: an input goes in one door, and an answer the model gave comes back
@@ -171,6 +182,143 @@ class HarnessLoopTest {
 
     List<List<Turn>> asked() {
       return asked;
+    }
+  }
+
+  /**
+   * The registry, on this door -- built over an in-memory backend rather than {@link
+   * EngineFixture}'s Postgres, so a factory holding two named providers (or none) needs nothing
+   * this process does not already have.
+   */
+  @Nested
+  class AFactoryHoldsItsProvidersByName {
+
+    private static AgentType type(String suffix) {
+      return new AgentType("chat-" + suffix);
+    }
+
+    private static InferenceProvider answering(String said) {
+      return (request, narrator) -> new InferenceResult.Answer(List.of(new Block.Text(said)));
+    }
+
+    private DefaultQueuedHarnessFactory factoryOf(
+        Customizer<QueuedHarnessFactoryConfig> customizer) {
+      return DefaultQueuedHarnessFactory.of(
+          config -> {
+            config.backend(
+                new InMemoryQueuedBackend(new JacksonCodecFactory(JsonMapper.builder().build())));
+            customizer.customize(config);
+          });
+    }
+
+    /** The finished turn's own words, or empty while it is still in flight. */
+    private static Optional<String> answerOf(
+        DefaultQueuedHarnessFactory factory, AgentType type, AgentId agent) {
+      return factory.histories().forAgent(type, agent).lastTurns(1).stream()
+          .filter(Turn::complete)
+          .map(Turn::result)
+          .flatMap(
+              result ->
+                  result instanceof TurnResult.Answered answered
+                      ? answered.blocks().stream()
+                      : Stream.empty())
+          .filter(Block.Text.class::isInstance)
+          .map(Block.Text.class::cast)
+          .map(Block.Text::text)
+          .findFirst();
+    }
+
+    @Test
+    void an_agent_type_naming_a_registered_id_is_answered_by_that_provider() {
+      AgentType type = type("named");
+      try (DefaultQueuedHarnessFactory factory =
+          factoryOf(
+              config ->
+                  config
+                      .provider(ProviderId.of("first"), answering("first"))
+                      .provider(ProviderId.of("second"), answering("second")))) {
+        QueuedHarness<String> harness =
+            factory.create(
+                type,
+                String.class,
+                config ->
+                    config
+                        .systemPrompt("terse")
+                        .inference(in -> in.provider("second").model("m"))
+                        .effects(e -> e.pollInterval(Duration.ofMillis(20))));
+        AgentId agent = new AgentId(UUID.randomUUID());
+
+        harness.tell(agent, "hello");
+
+        await()
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat(answerOf(factory, type, agent)).contains("second"));
+      }
+    }
+
+    @Test
+    void an_agent_type_naming_nothing_is_answered_by_the_default() {
+      AgentType type = type("default");
+      try (DefaultQueuedHarnessFactory factory =
+          factoryOf(
+              config ->
+                  config
+                      .provider(ProviderId.of("first"), answering("first"))
+                      .provider(ProviderId.of("second"), answering("second"))
+                      .inference(ProviderId.of("first"), InferenceOptions.of("m")))) {
+        QueuedHarness<String> harness =
+            factory.create(
+                type,
+                String.class,
+                config ->
+                    config
+                        .systemPrompt("terse")
+                        .effects(e -> e.pollInterval(Duration.ofMillis(20))));
+        AgentId agent = new AgentId(UUID.randomUUID());
+
+        harness.tell(agent, "hello");
+
+        await()
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> assertThat(answerOf(factory, type, agent)).contains("first"));
+      }
+    }
+
+    @Test
+    void an_agent_type_naming_an_unknown_provider_fails_when_the_harness_is_built() {
+      AgentType type = type("unknown");
+      DefaultQueuedHarnessFactory factory =
+          factoryOf(config -> config.provider(ProviderId.of("first"), answering("first")));
+
+      assertThatThrownBy(
+              () ->
+                  factory.create(
+                      type,
+                      String.class,
+                      config ->
+                          config
+                              .systemPrompt("terse")
+                              .inference(in -> in.provider("claude").model("m"))))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage(
+              "agent type 'chat-unknown' names provider 'claude', which is not registered;"
+                  + " registered: [first]");
+    }
+
+    @Test
+    void no_model_and_no_default_fails_naming_the_agent_type() {
+      AgentType type = type("no-model");
+      DefaultQueuedHarnessFactory factory =
+          factoryOf(config -> config.provider(ProviderId.of("first"), answering("first")));
+
+      assertThatThrownBy(
+              () ->
+                  factory.create(
+                      type,
+                      String.class,
+                      config -> config.systemPrompt("terse").inference(in -> in.provider("first"))))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage("agent type 'chat-no-model' names no model and the factory has no default");
     }
   }
 }

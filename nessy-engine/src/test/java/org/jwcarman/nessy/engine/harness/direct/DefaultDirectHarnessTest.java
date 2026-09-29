@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.harness.direct;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
@@ -46,12 +47,14 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.OutputReader;
 import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TerminationOutcome;
@@ -80,6 +83,7 @@ import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceNarrator;
+import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
@@ -172,7 +176,7 @@ class DefaultDirectHarnessTest {
     return DefaultDirectHarnessFactory.of(
         c ->
             c.backend(new FixedDirectBackend(locks, events, payloads))
-                .provider(model)
+                .provider(ProviderId.of("test"), model)
                 .schemas(SCHEMAS)
                 .mapper(MAPPER)
                 .clock(clock));
@@ -207,7 +211,8 @@ class DefaultDirectHarnessTest {
                   .inputRenderer(said -> List.of(new Block.Text(said)))
                   .inference(
                       in ->
-                          in.model("a-model")
+                          in.provider("test")
+                              .model("a-model")
                               .context(
                                   ctx -> {
                                     ctx.maxTail(maxTail);
@@ -226,7 +231,11 @@ class DefaultDirectHarnessTest {
             c ->
                 c.systemPrompt("You are terse.")
                     .inputRenderer(said -> List.of(new Block.Text(said)))
-                    .inference(in -> in.model("a-model").context(ctx -> ctx.maxTail(MAX_TAIL))));
+                    .inference(
+                        in ->
+                            in.provider("test")
+                                .model("a-model")
+                                .context(ctx -> ctx.maxTail(MAX_TAIL))));
   }
 
   /** A harness that reads its answer some way other than parsing it as JSON. */
@@ -240,7 +249,11 @@ class DefaultDirectHarnessTest {
             c ->
                 c.systemPrompt("You are terse.")
                     .inputRenderer(said -> List.of(new Block.Text(said)))
-                    .inference(in -> in.model("a-model").context(ctx -> ctx.maxTail(MAX_TAIL))));
+                    .inference(
+                        in ->
+                            in.provider("test")
+                                .model("a-model")
+                                .context(ctx -> ctx.maxTail(MAX_TAIL))));
   }
 
   /** The general form, for a shape a {@code Class} cannot carry -- a generic collection. */
@@ -252,7 +265,11 @@ class DefaultDirectHarnessTest {
             c ->
                 c.systemPrompt("You are terse.")
                     .inputRenderer(said -> List.of(new Block.Text(said)))
-                    .inference(in -> in.model("a-model").context(ctx -> ctx.maxTail(MAX_TAIL))));
+                    .inference(
+                        in ->
+                            in.provider("test")
+                                .model("a-model")
+                                .context(ctx -> ctx.maxTail(MAX_TAIL))));
   }
 
   private static InferenceResult answering(String text) {
@@ -679,7 +696,7 @@ class DefaultDirectHarnessTest {
         DefaultDirectHarnessFactory.of(
                 f ->
                     f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
-                        .provider(model)
+                        .provider(ProviderId.of("test"), model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
                         .clock(clock))
@@ -690,7 +707,8 @@ class DefaultDirectHarnessTest {
                         .inputRenderer(said -> List.of(new Block.Text(said)))
                         .inference(
                             in ->
-                                in.model("a-model")
+                                in.provider("test")
+                                    .model("a-model")
                                     .timeout(Duration.ofMillis(50))
                                     // A generous policy, to prove the door does not consult it:
                                     // one call is made regardless of how many are allowed.
@@ -751,7 +769,7 @@ class DefaultDirectHarnessTest {
         DefaultDirectHarnessFactory.of(
                 f ->
                     f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
-                        .provider(model)
+                        .provider(ProviderId.of("test"), model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
                         .clock(clock))
@@ -760,7 +778,7 @@ class DefaultDirectHarnessTest {
                 c -> {
                   c.systemPrompt("You are terse.")
                       .inputRenderer(said -> List.of(new Block.Text(said)))
-                      .inference(in -> in.model("a-model"));
+                      .inference(in -> in.provider("test").model("a-model"));
                   c.tool(
                       hangingTool(),
                       t -> t.timeout(Duration.ofMillis(50)).approver(Approver.allow()));
@@ -798,7 +816,7 @@ class DefaultDirectHarnessTest {
         DefaultDirectHarnessFactory.of(
                 f ->
                     f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
-                        .provider(model)
+                        .provider(ProviderId.of("test"), model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
                         .clock(clock))
@@ -807,7 +825,7 @@ class DefaultDirectHarnessTest {
                 c -> {
                   c.systemPrompt("You are terse.")
                       .inputRenderer(said -> List.of(new Block.Text(said)))
-                      .inference(in -> in.model("a-model"));
+                      .inference(in -> in.provider("test").model("a-model"));
                   c.tool(
                       tool("should never run"),
                       t -> t.approver(hangingApprover(), a -> a.timeout(Duration.ofMillis(50))));
@@ -858,7 +876,7 @@ class DefaultDirectHarnessTest {
         DefaultDirectHarnessFactory.of(
                 f ->
                     f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
-                        .provider(model)
+                        .provider(ProviderId.of("test"), model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
                         .clock(clock))
@@ -867,7 +885,11 @@ class DefaultDirectHarnessTest {
                 c ->
                     c.systemPrompt("You are terse.")
                         .inputRenderer(said -> List.of(new Block.Text(said)))
-                        .inference(in -> in.model("a-model").timeout(Duration.ofMillis(50))));
+                        .inference(
+                            in ->
+                                in.provider("test")
+                                    .model("a-model")
+                                    .timeout(Duration.ofMillis(50))));
 
     clock.advance(AN_HOUR);
 
@@ -937,7 +959,7 @@ class DefaultDirectHarnessTest {
         DefaultDirectHarnessFactory.of(
                 f ->
                     f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
-                        .provider(model)
+                        .provider(ProviderId.of("test"), model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
                         .clock(clock))
@@ -946,7 +968,9 @@ class DefaultDirectHarnessTest {
                 c -> {
                   c.systemPrompt("You are terse.")
                       .inputRenderer(said -> List.of(new Block.Text(said)))
-                      .inference(in -> in.model("a-model").timeout(Duration.ofMillis(50)));
+                      .inference(
+                          in ->
+                              in.provider("test").model("a-model").timeout(Duration.ofMillis(50)));
                   c.tool(
                       tool("should never run"),
                       t -> t.approver(Approver.allow(), a -> a.timeout(Duration.ofMillis(50))));
@@ -1009,7 +1033,7 @@ class DefaultDirectHarnessTest {
         DefaultDirectHarnessFactory.of(
                 f ->
                     f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
-                        .provider(new Scripted())
+                        .provider(ProviderId.of("test"), new Scripted())
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
                         .clock(clock))
@@ -1018,7 +1042,8 @@ class DefaultDirectHarnessTest {
                 c -> {
                   c.systemPrompt("You are terse.")
                       .inputRenderer(said -> List.of(new Block.Text(said)))
-                      .inference(in -> in.model("a-model").timeout(Duration.ofHours(1)));
+                      .inference(
+                          in -> in.provider("test").model("a-model").timeout(Duration.ofHours(1)));
                   c.tool(
                       tool("should never run"),
                       t -> t.approver(Approver.allow(), a -> a.timeout(Duration.ofHours(1))));
@@ -1048,7 +1073,7 @@ class DefaultDirectHarnessTest {
         DefaultDirectHarnessFactory.of(
                 f ->
                     f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
-                        .provider(model)
+                        .provider(ProviderId.of("test"), model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
                         .clock(clock))
@@ -1057,7 +1082,9 @@ class DefaultDirectHarnessTest {
                 c ->
                     c.systemPrompt("You are terse.")
                         .inputRenderer(said -> List.of(new Block.Text(said)))
-                        .inference(in -> in.model("a-model").timeout(Duration.ofHours(1))));
+                        .inference(
+                            in ->
+                                in.provider("test").model("a-model").timeout(Duration.ofHours(1))));
 
     Outcome<String> first = harness.ask(agent, "first turn");
     assertThat(first)
@@ -1109,7 +1136,7 @@ class DefaultDirectHarnessTest {
         DefaultDirectHarnessFactory.of(
                 f ->
                     f.backend(new FixedDirectBackend(new InMemoryLocks(), racing, payloads))
-                        .provider(model)
+                        .provider(ProviderId.of("test"), model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
                         .clock(clock))
@@ -1118,7 +1145,7 @@ class DefaultDirectHarnessTest {
                 c ->
                     c.systemPrompt("You are terse.")
                         .inputRenderer(said -> List.of(new Block.Text(said)))
-                        .inference(in -> in.model("a-model")));
+                        .inference(in -> in.provider("test").model("a-model")));
 
     Outcome<String> outcome = harness.ask(agent, "mine, please");
 
@@ -1432,7 +1459,7 @@ class DefaultDirectHarnessTest {
         DefaultDirectHarnessFactory.of(
                 f ->
                     f.backend(new FixedDirectBackend(new InMemoryLocks(), events, counting))
-                        .provider(model)
+                        .provider(ProviderId.of("test"), model)
                         .schemas(SCHEMAS)
                         .mapper(MAPPER)
                         .clock(clock))
@@ -1441,7 +1468,7 @@ class DefaultDirectHarnessTest {
                 c ->
                     c.systemPrompt("You are terse.")
                         .inputRenderer(said -> List.of(new Block.Text(said)))
-                        .inference(in -> in.model("a-model")));
+                        .inference(in -> in.provider("test").model("a-model")));
 
     for (int i = 0; i < 4; i++) {
       harness.ask(agent, "question " + i);
@@ -1533,6 +1560,109 @@ class DefaultDirectHarnessTest {
 
       assertThat(outcome).isInstanceOf(Outcome.Failed.class);
       assertThat(((Outcome.Failed<Lookup>) outcome).reason()).contains("no id in");
+    }
+  }
+
+  @Nested
+  @DisplayName("A factory holds its providers by name, and an agent type says which")
+  class AFactoryHoldsItsProvidersByName {
+
+    private DirectHarnessFactory factoryOf(Customizer<DirectHarnessFactoryConfig> customizer) {
+      return DefaultDirectHarnessFactory.of(
+          f -> {
+            f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
+                .schemas(SCHEMAS)
+                .mapper(MAPPER)
+                .clock(clock);
+            customizer.customize(f);
+          });
+    }
+
+    @Test
+    void an_agent_type_naming_a_registered_id_is_answered_by_that_provider() {
+      DirectHarnessFactory factory =
+          factoryOf(
+              f ->
+                  f.provider(ProviderId.of("first"), (request, narrator) -> answering("first"))
+                      .provider(
+                          ProviderId.of("second"), (request, narrator) -> answering("second")));
+
+      DirectHarness<String, String> harness =
+          factory.<String>create(
+              TYPE,
+              c ->
+                  c.systemPrompt("You are terse.")
+                      .inputRenderer(said -> List.of(new Block.Text(said)))
+                      .inference(in -> in.provider("second").model("m")));
+
+      Outcome<String> outcome = harness.ask(AgentId.random(), "hello");
+
+      assertThat(outcome)
+          .usingRecursiveComparison()
+          .ignoringFields("stats")
+          .isEqualTo(new Outcome.Answered<>("second", ANY_STATS));
+    }
+
+    @Test
+    void an_agent_type_naming_nothing_is_answered_by_the_default() {
+      DirectHarnessFactory factory =
+          factoryOf(
+              f ->
+                  f.provider(ProviderId.of("first"), (request, narrator) -> answering("first"))
+                      .provider(ProviderId.of("second"), (request, narrator) -> answering("second"))
+                      .inference(ProviderId.of("first"), InferenceOptions.of("m")));
+
+      DirectHarness<String, String> harness =
+          factory.<String>create(
+              TYPE,
+              c ->
+                  c.systemPrompt("You are terse.")
+                      .inputRenderer(said -> List.of(new Block.Text(said))));
+
+      Outcome<String> outcome = harness.ask(AgentId.random(), "hello");
+
+      assertThat(outcome)
+          .usingRecursiveComparison()
+          .ignoringFields("stats")
+          .isEqualTo(new Outcome.Answered<>("first", ANY_STATS));
+    }
+
+    @Test
+    void an_agent_type_naming_an_unknown_provider_fails_when_the_harness_is_built() {
+      DirectHarnessFactory factory =
+          factoryOf(
+              f -> f.provider(ProviderId.of("first"), (request, narrator) -> answering("first")));
+
+      assertThatThrownBy(
+              () ->
+                  factory.<String>create(
+                      TYPE,
+                      c ->
+                          c.systemPrompt("You are terse.")
+                              .inputRenderer(said -> List.of(new Block.Text(said)))
+                              .inference(in -> in.provider("claude").model("m"))))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage(
+              "agent type 'chat' names provider 'claude', which is not registered;"
+                  + " registered: [first]");
+    }
+
+    @Test
+    void no_model_and_no_default_fails_naming_the_agent_type() {
+      DirectHarnessFactory factory =
+          factoryOf(
+              f -> f.provider(ProviderId.of("first"), (request, narrator) -> answering("first")));
+
+      assertThatThrownBy(
+              () ->
+                  factory.<String>create(
+                      TYPE,
+                      c ->
+                          c.systemPrompt("You are terse.")
+                              .inputRenderer(said -> List.of(new Block.Text(said)))
+                              .inference(in -> in.provider("first"))))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage("agent type 'chat' names no model and the factory has no default");
     }
   }
 }

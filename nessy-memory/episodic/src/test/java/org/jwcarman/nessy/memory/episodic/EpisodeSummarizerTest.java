@@ -36,6 +36,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.Ambient;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
@@ -119,7 +120,8 @@ class EpisodeSummarizerTest {
                             dataSource,
                             new JdbcTransactionManager(dataSource),
                             new JacksonCodecFactory(JsonMapper.builder().build())))
-                    .inference(model, InferenceOptions.of("m"))
+                    .provider(ProviderId.of("test"), model)
+                    .inference(ProviderId.of("test"), InferenceOptions.of("m"))
                     .observations(observations));
     episodes =
         JdbcEpisodes.of(

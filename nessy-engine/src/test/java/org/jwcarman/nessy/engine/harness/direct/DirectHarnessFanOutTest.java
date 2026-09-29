@@ -40,6 +40,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
@@ -234,7 +235,7 @@ class DirectHarnessFanOutTest {
     return DefaultDirectHarnessFactory.of(
         c ->
             c.backend(new FixedDirectBackend(locks, events, payloads))
-                .provider(model)
+                .provider(ProviderId.of("test"), model)
                 .schemas(new VictoolsJsonSchemaGenerator())
                 .mapper(MAPPER)
                 .clock(clock));
@@ -266,7 +267,7 @@ class DirectHarnessFanOutTest {
                 c -> {
                   c.systemPrompt("terse")
                       .inputRenderer(said -> List.of(new Block.Text(said)))
-                      .inference(in -> in.model("a-model"));
+                      .inference(in -> in.provider("test").model("a-model"));
                   c.tool(trivialTool(), t -> t.approver(approver));
                 });
 
@@ -315,7 +316,7 @@ class DirectHarnessFanOutTest {
                 c -> {
                   c.systemPrompt("terse")
                       .inputRenderer(said -> List.of(new Block.Text(said)))
-                      .inference(in -> in.model("a-model"))
+                      .inference(in -> in.provider("test").model("a-model"))
                       .maxInFlight(limit);
                   c.tool(tool, t -> t.approver(Approver.allow()));
                 });
@@ -388,7 +389,7 @@ class DirectHarnessFanOutTest {
                 c -> {
                   c.systemPrompt("terse")
                       .inputRenderer(said -> List.of(new Block.Text(said)))
-                      .inference(in -> in.model("a-model"))
+                      .inference(in -> in.provider("test").model("a-model"))
                       .maxInFlight(calls);
                   c.tool(tool, t -> t.approver(Approver.allow()));
                 });
@@ -517,7 +518,7 @@ class DirectHarnessFanOutTest {
                     c.backend(
                             new FixedDirectBackend(
                                 new InMemoryLocks(), steppedEvents, steppedPayloads))
-                        .provider(model)
+                        .provider(ProviderId.of("test"), model)
                         .schemas(new VictoolsJsonSchemaGenerator())
                         .mapper(MAPPER)
                         .clock(stepped))
@@ -526,7 +527,7 @@ class DirectHarnessFanOutTest {
                 c -> {
                   c.systemPrompt("terse")
                       .inputRenderer(said -> List.of(new Block.Text(said)))
-                      .inference(in -> in.model("a-model"))
+                      .inference(in -> in.provider("test").model("a-model"))
                       // One permit: the second CallTool effect cannot even be submitted until
                       // the first is released, which is the gap the budget fix has to survive.
                       .maxInFlight(1);

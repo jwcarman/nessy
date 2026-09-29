@@ -21,7 +21,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.backend.QueuedBackend;
+import org.jwcarman.nessy.engine.harness.ProviderRegistry;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.trace.TraceCarrier;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -46,8 +48,9 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 public final class QueuedHarnessFactoryConfig {
 
   private QueuedBackend backend;
-  private InferenceProvider provider;
-  private InferenceOptions options;
+  private final ProviderRegistry providers = new ProviderRegistry();
+  private ProviderId defaultProvider;
+  private InferenceOptions defaultOptions;
   private final List<NarrationListener> listeners = new ArrayList<>();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
   private TraceCarrier traceCarrier;
@@ -69,15 +72,21 @@ public final class QueuedHarnessFactoryConfig {
   }
 
   /**
-   * The model every agent type talks to, and the terms it is asked on.
-   *
-   * <p>One provider for the engine because a provider is a connection; which model to call travels
-   * per request, so an agent type wanting a different one overrides it on its harness.
+   * One of the providers this factory's agents may be answered by, under the name they will ask for
+   * it by. Repeatable; the same id twice fails at once.
    */
-  public QueuedHarnessFactoryConfig inference(
-      InferenceProvider provider, InferenceOptions options) {
-    this.provider = provider;
-    this.options = options;
+  public QueuedHarnessFactoryConfig provider(ProviderId id, InferenceProvider provider) {
+    providers.register(id, provider);
+    return this;
+  }
+
+  /**
+   * What an agent type gets when it says nothing: which provider, which model, how much answer.
+   * Optional; without it every agent type names both itself.
+   */
+  public QueuedHarnessFactoryConfig inference(ProviderId provider, InferenceOptions options) {
+    this.defaultProvider = Objects.requireNonNull(provider, "provider must not be null");
+    this.defaultOptions = Objects.requireNonNull(options, "options must not be null");
     return this;
   }
 
@@ -130,15 +139,16 @@ public final class QueuedHarnessFactoryConfig {
             + " rows, and there is nowhere to keep them (engine(e -> e.backend(...)))");
   }
 
-  InferenceProvider requiredProvider() {
-    return Objects.requireNonNull(
-        provider,
-        "an engine needs an InferenceProvider: it is the thing an agent asks, and there is"
-            + " nothing to ask without one");
+  ProviderRegistry providers() {
+    return providers;
   }
 
-  InferenceOptions requiredOptions() {
-    return Objects.requireNonNull(options, "inference(provider, options) needs both");
+  ProviderId defaultProvider() {
+    return defaultProvider;
+  }
+
+  InferenceOptions defaultOptions() {
+    return defaultOptions;
   }
 
   List<NarrationListener> listeners() {

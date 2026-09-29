@@ -16,21 +16,23 @@
 package org.jwcarman.nessy.console;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
+import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.spring.boot.QueuedHarnessAutoConfiguration;
 import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -43,6 +45,7 @@ import tools.jackson.databind.ObjectMapper;
 public final class Repl {
 
   private static final String MODEL_PROPERTY = "nessy.model";
+  private static final String PROVIDER_PROPERTY = "nessy.provider";
 
   private Repl() {}
 
@@ -60,7 +63,10 @@ public final class Repl {
     Objects.requireNonNull(customizer, "customizer must not be null");
     ReplConfig config = new ReplConfig();
     customizer.customize(config);
-    run(factory, model, config, ConsoleIo.standard());
+    // Which of the factory's providers answers is the factory's own business -- an application
+    // handing over a factory it built itself has already chosen, and there is no id here to ask
+    // it by.
+    run(factory, "configured", model, config, ConsoleIo.standard());
   }
 
   /**
@@ -76,7 +82,12 @@ public final class Repl {
     run(config, ConsoleIo.standard());
   }
 
-  static void run(DirectHarnessFactory factory, String model, ReplConfig config, ConsoleIo io) {
+  static void run(
+      DirectHarnessFactory factory,
+      String provider,
+      String model,
+      ReplConfig config,
+      ConsoleIo io) {
     ConsoleNarration narration = new ConsoleNarration(config.agentId(), io);
     DirectHarness<String, String> harness =
         factory.<String>create(
@@ -94,7 +105,7 @@ public final class Repl {
             config,
             io,
             narration,
-            new ReplLoop.Diagnostics(factory.vendor(), model, config.maxTokens()))
+            new ReplLoop.Diagnostics(provider, model, config.maxTokens()))
         .run();
   }
 
@@ -117,13 +128,17 @@ public final class Repl {
       return;
     }
     try (ConfigurableApplicationContext context = started) {
-      InferenceProvider provider;
-      try {
-        provider = context.getBean(InferenceProvider.class);
-      } catch (NoSuchBeanDefinitionException noProvider) {
-        // Boot's own message names the bean type it could not find, or every candidate it found --
-        // the whole useful content of this failure, and a stack trace out of a main would bury it.
-        say(io, noProvider.getMessage());
+      Map<String, InferenceProvider> providers = context.getBeansOfType(InferenceProvider.class);
+      if (providers.isEmpty()) {
+        say(io, "no provider is configured: export a vendor key such as OPENAI_API_KEY");
+        return;
+      }
+      String chosen = context.getEnvironment().getProperty(PROVIDER_PROPERTY);
+      if (chosen == null || chosen.isBlank()) {
+        say(
+            io,
+            "no provider is chosen: set NESSY_PROVIDER to one of "
+                + providers.keySet().stream().sorted().toList());
         return;
       }
       Optional<String> model = model(context.getEnvironment());
@@ -141,14 +156,20 @@ public final class Repl {
       // different rules than the rest of the process it is running in.
       ObjectMapper mapper = context.getBean(ObjectMapper.class);
       CodecFactory codecs = context.getBean(CodecFactory.class);
+      ProviderId providerId = ProviderId.of(chosen);
       run(
           DefaultDirectHarnessFactory.of(
-              factory ->
-                  factory
-                      .backend(new InMemoryDirectBackend(codecs))
-                      .provider(provider)
-                      .schemas(new VictoolsJsonSchemaGenerator())
-                      .mapper(mapper)),
+              factory -> {
+                factory
+                    .backend(new InMemoryDirectBackend(codecs))
+                    .schemas(new VictoolsJsonSchemaGenerator())
+                    .mapper(mapper);
+                providers.forEach(
+                    (name, provider) -> factory.provider(ProviderId.of(name), provider));
+                factory.inference(
+                    providerId, new InferenceOptions(model.get(), config.maxTokens()));
+              }),
+          chosen,
           model.get(),
           config,
           io);

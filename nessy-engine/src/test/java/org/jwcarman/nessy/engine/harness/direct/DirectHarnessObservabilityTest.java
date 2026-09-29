@@ -29,6 +29,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -148,7 +149,7 @@ class DirectHarnessObservabilityTest {
                                     new JacksonCodecFactory(JsonMapper.builder().build())),
                                 new InMemoryPayloads(
                                     new JacksonCodecFactory(JsonMapper.builder().build()))))
-                        .provider(model)
+                        .provider(ProviderId.of("test"), model)
                         .schemas(new VictoolsJsonSchemaGenerator())
                         .mapper(JsonMapper.builder().build())
                         .observations(observations))
@@ -157,7 +158,7 @@ class DirectHarnessObservabilityTest {
                 c -> {
                   c.systemPrompt("You are terse.")
                       .inputRenderer(said -> List.of(new Block.Text(said)))
-                      .inference(in -> in.model("a-model"));
+                      .inference(in -> in.provider("test").model("a-model"));
                   c.tool(ECHO, t -> t.approver(Approver.allow()));
                 });
 

@@ -40,6 +40,7 @@ class ReplRunsTest {
       Map.of(
           "openai.api-key", "not-needed",
           "openai.base-url", "http://127.0.0.1:1/v1",
+          "nessy.provider", "openAiInferenceProvider",
           "nessy.model", "a-model");
 
   @BeforeAll

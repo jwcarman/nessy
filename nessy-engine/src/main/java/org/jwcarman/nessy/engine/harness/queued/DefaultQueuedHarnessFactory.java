@@ -27,6 +27,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.QueuedHarnessFactory;
@@ -40,6 +41,7 @@ import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectTermsSource;
 import org.jwcarman.nessy.engine.effect.InferenceHandler;
 import org.jwcarman.nessy.engine.effect.ToolCallHandler;
+import org.jwcarman.nessy.engine.harness.ProviderRegistry;
 import org.jwcarman.nessy.engine.history.EventStreamHistory;
 import org.jwcarman.nessy.engine.history.EventStreamToolCalls;
 import org.jwcarman.nessy.engine.history.Transcript;
@@ -49,7 +51,6 @@ import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
 import org.jwcarman.nessy.engine.narration.Listeners;
 import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
-import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.engine.observability.ObservedSummarizer;
 import org.jwcarman.nessy.engine.observability.ObservedTurnHistories;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
@@ -59,6 +60,9 @@ import org.jwcarman.nessy.engine.tool.DefaultReplies;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.engine.trace.Traces;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -77,6 +81,8 @@ import tools.jackson.databind.json.JsonMapper;
  * registry here holding the harnesses this made, and nothing that iterates all of them.
  */
 public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCloseable {
+
+  private static final Logger log = LoggerFactory.getLogger(DefaultQueuedHarnessFactory.class);
 
   // The engine's own decisions, made once. A tool's arguments are described by victools, a
   // message costs about its characters, and time is UTC: none of that is an application's to
@@ -99,6 +105,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   private final ThreadPoolTaskScheduler scheduler;
   private final Traces traces;
   private final ObservationRegistry observations;
+  private final ProviderRegistry.Resolved providers;
 
   private final DefaultQueuedHarnessConfig.Defaults defaults;
   private final List<DefaultQueuedHarness<?>> harnesses = new CopyOnWriteArrayList<>();
@@ -152,11 +159,11 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
             .traceCarrier()
             .map(carrier -> new Traces(observations, carrier))
             .orElseGet(() -> new Traces(observations));
+    this.providers = config.providers().observed(observations);
     // What an agent type gets unless it says otherwise. Configured once, by the application,
     // where a provider and a model are an application-wide fact rather than an agent's.
     this.defaults =
-        new DefaultQueuedHarnessConfig.Defaults(
-            config.requiredProvider(), config.requiredOptions());
+        new DefaultQueuedHarnessConfig.Defaults(config.defaultProvider(), config.defaultOptions());
   }
 
   /**
@@ -182,6 +189,17 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     // Built here because it needs the store, which a caller has no handle on.
     DefaultQueuedHarnessConfig.Inference inference = config.inference();
     DefaultQueuedHarnessConfig.Inference.Context context = inference.context();
+    ProviderId providerId = providers.choose(agentType, inference.provider(), null);
+    if (inference.modelName() == null) {
+      throw new IllegalStateException(
+          "agent type '" + agentType.value() + "' names no model and the factory has no default");
+    }
+    log.info(
+        "NESSY INFERENCE: agent type '{}' -> {} / {}, up to {} tokens",
+        agentType.value(),
+        providerId.value(),
+        inference.modelName(),
+        inference.options().maxTokens());
     // What each kind of effect is worth, from the tools this harness bound and the harness-wide
     // defaults alone -- nothing else, so the direct door can ask the same question without
     // building a handler just to hold it.
@@ -219,7 +237,15 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     EffectHandlers handlers =
         new EffectHandlers(
             createInferenceHandler(
-                agentType, assembler, inference, config, tools, narrator, payloads, terms),
+                agentType,
+                assembler,
+                inference,
+                providers.resolve(agentType, providerId, null),
+                config,
+                tools,
+                narrator,
+                payloads,
+                terms),
             createApprovalHandler(agentType, tools, narrator, terms, payloads),
             createToolCallHandler(agentType, tools, narrator, payloads, terms));
     Outbox effects = new Outbox(agentType, handlers, backend.effects());
@@ -303,6 +329,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
       AgentType agentType,
       InferenceContextAssembler assembler,
       DefaultQueuedHarnessConfig.Inference inference,
+      InferenceProvider provider,
       DefaultQueuedHarnessConfig<I> config,
       Tools tools,
       Listeners narrator,
@@ -312,7 +339,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
         agentType,
         new DefaultInferenceService(
             assembler,
-            ObservedInferenceProvider.wrap(inference.provider(), observations),
+            provider,
             config.requiredSystemPrompt(),
             tools.offers(),
             narrator,

@@ -33,6 +33,9 @@ server:
 
 nessy:
   type: watchman
+  # Which of the starter's InferenceProvider beans answers. The OpenAI adapter's bean by default;
+  # watchman.scripted=true declares its own provider bean and overrides this to name it instead.
+  provider: ${NESSY_PROVIDER:openAiInferenceProvider}
   model: ${WATCHMAN_MODEL_ID:qwen/qwen3.6-35b-a3b}
   # A FIXED key, so a token minted before a restart can still be read after one. Without this the
   # starter warns and falls back to an ephemeral key, and every parked approval becomes

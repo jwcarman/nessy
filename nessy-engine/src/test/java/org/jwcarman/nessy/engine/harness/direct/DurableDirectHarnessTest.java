@@ -29,6 +29,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
@@ -98,7 +99,7 @@ class DurableDirectHarnessTest {
     return DefaultDirectHarnessFactory.of(
             f ->
                 f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
-                    .provider(model)
+                    .provider(ProviderId.of("test"), model)
                     .schemas(new VictoolsJsonSchemaGenerator())
                     .mapper(JsonMapper.builder().build()))
         .<String>create(
@@ -106,7 +107,7 @@ class DurableDirectHarnessTest {
             c ->
                 c.systemPrompt("You are terse.")
                     .inputRenderer(said -> List.of(new Block.Text(said)))
-                    .inference(in -> in.model("a-model")));
+                    .inference(in -> in.provider("test").model("a-model")));
   }
 
   @Test

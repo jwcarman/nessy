@@ -38,6 +38,7 @@ import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.OutputReader;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.effect.ApprovalHandler;
@@ -45,6 +46,7 @@ import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectTermsSource;
 import org.jwcarman.nessy.engine.effect.InferenceHandler;
 import org.jwcarman.nessy.engine.effect.ToolCallHandler;
+import org.jwcarman.nessy.engine.harness.ProviderRegistry;
 import org.jwcarman.nessy.engine.history.EventStreamHistory;
 import org.jwcarman.nessy.engine.history.EventStreamToolCalls;
 import org.jwcarman.nessy.engine.history.Transcript;
@@ -54,14 +56,14 @@ import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
 import org.jwcarman.nessy.engine.narration.Listeners;
 import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
-import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.engine.observability.ObservedSummarizer;
 import org.jwcarman.nessy.engine.observability.ObservedTurnHistories;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
-import org.jwcarman.nessy.inference.InferenceProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -88,6 +90,8 @@ import tools.jackson.databind.ObjectMapper;
  */
 public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, AutoCloseable {
 
+  private static final Logger log = LoggerFactory.getLogger(DefaultDirectHarnessFactory.class);
+
   /**
    * Everyone who hears every agent of every harness this factory makes.
    *
@@ -111,7 +115,9 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
    */
   private final DirectBackend backend;
 
-  private final InferenceProvider provider;
+  private final ProviderRegistry.Resolved providers;
+  private final ProviderId defaultProvider;
+  private final InferenceOptions defaultOptions;
   private final JsonSchemaGenerator schemas;
   private final ObjectMapper mapper;
   private final Clock clock;
@@ -145,11 +151,13 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
    */
   private DefaultDirectHarnessFactory(DirectHarnessFactoryConfig config) {
     this.backend = config.requiredBackend();
-    this.provider = config.requiredProvider();
     this.schemas = config.schemas();
     this.mapper = config.mapper();
     this.clock = config.clock();
     this.observations = config.observations();
+    this.providers = config.providers().observed(observations);
+    this.defaultProvider = config.defaultProvider();
+    this.defaultOptions = config.defaultOptions();
     this.listeners.addAll(config.listeners());
     this.features = config.features();
     this.harnesses = config.harnesses();
@@ -173,18 +181,6 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
   /** One customizer, for a caller that is not a container. */
   public static DefaultDirectHarnessFactory of(Customizer<DirectHarnessFactoryConfig> customizer) {
     return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
-  }
-
-  /**
-   * The vendor behind this, as the OpenTelemetry GenAI conventions name it.
-   *
-   * <p>Worth being able to ask. Which provider answers is decided by which key happens to be set,
-   * and a model name that belongs to a different vendor fails as a 404 from one nobody meant to
-   * call.
-   */
-  @Override
-  public String vendor() {
-    return provider.vendor();
   }
 
   @Override
@@ -227,7 +223,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
       OutputReader<O> reading) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     DefaultDirectHarnessConfig<I> config =
-        new DefaultDirectHarnessConfig<>(agentType, observations);
+        new DefaultDirectHarnessConfig<>(agentType, observations, defaultProvider, defaultOptions);
     // What jars installed, then what this application says about every harness, then what this
     // caller asked for -- each able to override the one before it.
     features.forEach(feature -> feature.customize(config));
@@ -235,9 +231,17 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
     customizer.customize(config);
     List<ToolBinding<?>> bindings = config.bindings(schemas, mapper);
     DefaultDirectHarnessConfig.Inference inference = config.inference();
+    ProviderId providerId = providers.choose(agentType, inference.provider(), null);
     if (inference.modelName() == null) {
-      throw new IllegalStateException("a model is required: inference(in -> in.model(...))");
+      throw new IllegalStateException(
+          "agent type '" + agentType.value() + "' names no model and the factory has no default");
     }
+    log.info(
+        "NESSY INFERENCE: agent type '{}' -> {} / {}, up to {} tokens",
+        agentType.value(),
+        providerId.value(),
+        inference.modelName(),
+        inference.maxTokens());
     Tools tools = new Tools(bindings);
     // What each kind of effect is worth, from the tools this harness bound and the harness-wide
     // defaults alone -- exactly what the queued factory builds, so the phase-to-timeout mapping
@@ -282,7 +286,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
                 config.agentType(),
                 new DefaultInferenceService(
                     assembler,
-                    ObservedInferenceProvider.wrap(provider, observations),
+                    providers.resolve(agentType, providerId, null),
                     config.systemPromptSource(),
                     tools.offers(),
                     narrator,

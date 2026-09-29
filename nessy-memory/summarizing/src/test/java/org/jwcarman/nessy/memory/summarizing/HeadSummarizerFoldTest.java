@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.jdbc.JdbcLeases;
@@ -89,7 +90,8 @@ class HeadSummarizerFoldTest {
                             dataSource,
                             new JdbcTransactionManager(dataSource),
                             new JacksonCodecFactory(JsonMapper.builder().build())))
-                    .inference(model, InferenceOptions.of("m")));
+                    .provider(ProviderId.of("test"), model)
+                    .inference(ProviderId.of("test"), InferenceOptions.of("m")));
     summaries = new JdbcSummaries(dataSource, CHAT);
     HeadSummarizer summarizer =
         HeadSummarizer.of(

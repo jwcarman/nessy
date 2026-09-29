@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.ContextConfig;
@@ -29,6 +30,7 @@ import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
 import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPrompt;
@@ -43,6 +45,7 @@ import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.engine.observability.ObservedApprover;
 import org.jwcarman.nessy.engine.observability.ObservedTool;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
+import org.jwcarman.nessy.inference.InferenceOptions;
 
 /**
  * What a caller said it wanted, collected before anything is built.
@@ -54,8 +57,17 @@ import org.jwcarman.nessy.engine.tool.ToolBinding;
 public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<I> {
 
   DefaultDirectHarnessConfig(AgentType agentType, ObservationRegistry observations) {
+    this(agentType, observations, null, null);
+  }
+
+  DefaultDirectHarnessConfig(
+      AgentType agentType,
+      ObservationRegistry observations,
+      @Nullable ProviderId defaultProvider,
+      @Nullable InferenceOptions defaultOptions) {
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
+    this.inference = new Inference(defaultProvider, defaultOptions);
   }
 
   private final AgentType agentType;
@@ -65,7 +77,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
   private InputRenderer<I> renderer = InputRenderer.asString();
   private final List<NarrationListener> listeners = new ArrayList<>();
   private final List<ToolRequest<?>> tools = new ArrayList<>();
-  private final Inference inference = new Inference();
+  private final Inference inference;
   private int maxInFlight = DEFAULT_MAX_IN_FLIGHT;
 
   /** One tool and everything said about it, kept until there is a mapper to bind it with. */
@@ -282,6 +294,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
 
   /** The model, the budget, and what it is shown. */
   static final class Inference implements InferenceConfig, ContextConfig {
+    private ProviderId provider;
     private String modelName;
     private int maxTokens = 4096;
     private int maxTail = 50;
@@ -289,6 +302,24 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     private final List<AmbientSource> ambient = new ArrayList<>();
     private Duration timeout = DEFAULT_INFERENCE_TIMEOUT;
     private RetryPolicy retryPolicy = DEFAULT_RETRY_POLICY;
+
+    Inference(@Nullable ProviderId provider, @Nullable InferenceOptions defaults) {
+      this.provider = provider;
+      if (defaults != null) {
+        this.modelName = defaults.modelName();
+        this.maxTokens = defaults.maxTokens();
+      }
+    }
+
+    @Override
+    public InferenceConfig provider(ProviderId id) {
+      this.provider = Objects.requireNonNull(id, "id must not be null");
+      return this;
+    }
+
+    ProviderId provider() {
+      return provider;
+    }
 
     @Override
     public InferenceConfig model(String modelName) {

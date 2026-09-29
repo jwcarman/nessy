@@ -18,16 +18,19 @@ package org.jwcarman.nessy.examples.chatcli;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.Repl;
 import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
+import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
@@ -45,6 +48,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -117,14 +121,23 @@ public class Chat {
    */
   @Bean
   public DirectHarnessFactory harnesses(
-      InferenceProvider provider, ObjectMapper mapper, CodecFactory codecs) {
+      Map<String, InferenceProvider> providers,
+      Environment environment,
+      @Value("${nessy.model}") String model,
+      ObjectMapper mapper,
+      CodecFactory codecs) {
     return DefaultDirectHarnessFactory.of(
-        config ->
-            config
-                .backend(new InMemoryDirectBackend(codecs))
-                .provider(provider)
-                .schemas(new VictoolsJsonSchemaGenerator())
-                .mapper(mapper));
+        config -> {
+          config
+              .backend(new InMemoryDirectBackend(codecs))
+              .schemas(new VictoolsJsonSchemaGenerator())
+              .mapper(mapper);
+          providers.forEach((name, provider) -> config.provider(ProviderId.of(name), provider));
+          String provider = environment.getProperty("nessy.provider");
+          if (provider != null && !provider.isBlank()) {
+            config.inference(ProviderId.of(provider), InferenceOptions.of(model));
+          }
+        });
   }
 
   @Bean

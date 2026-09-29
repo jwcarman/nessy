@@ -22,6 +22,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
@@ -34,6 +35,7 @@ import org.jwcarman.nessy.api.InferenceConfig;
 import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Summarizer;
@@ -51,7 +53,6 @@ import org.jwcarman.nessy.engine.observability.ObservedTool;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
-import org.jwcarman.nessy.inference.InferenceProvider;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -108,7 +109,7 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
   }
 
   /** What the factory already knows, so an agent type only states its differences. */
-  record Defaults(InferenceProvider provider, InferenceOptions options) {}
+  record Defaults(@Nullable ProviderId provider, @Nullable InferenceOptions options) {}
 
   @Override
   public DefaultQueuedHarnessConfig<I> listener(NarrationListener listener) {
@@ -383,7 +384,7 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
 
   static final class Inference implements InferenceConfig {
 
-    private InferenceProvider provider;
+    private ProviderId provider;
     private String modelName;
     private int maxTokens;
     private final Context context = new Context();
@@ -392,8 +393,16 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
 
     private Inference(Defaults defaults) {
       this.provider = defaults.provider();
-      this.modelName = defaults.options().modelName();
-      this.maxTokens = defaults.options().maxTokens();
+      if (defaults.options() != null) {
+        this.modelName = defaults.options().modelName();
+        this.maxTokens = defaults.options().maxTokens();
+      }
+    }
+
+    @Override
+    public InferenceConfig provider(ProviderId id) {
+      this.provider = Objects.requireNonNull(id, "id must not be null");
+      return this;
     }
 
     @Override
@@ -426,8 +435,12 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
       return this;
     }
 
-    InferenceProvider provider() {
+    ProviderId provider() {
       return provider;
+    }
+
+    String modelName() {
+      return modelName;
     }
 
     InferenceOptions options() {

@@ -25,8 +25,11 @@ import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.backend.DirectBackend;
+import org.jwcarman.nessy.engine.harness.ProviderRegistry;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
+import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -46,7 +49,9 @@ import tools.jackson.databind.json.JsonMapper;
 public final class DirectHarnessFactoryConfig {
 
   private DirectBackend backend;
-  private InferenceProvider provider;
+  private final ProviderRegistry providers = new ProviderRegistry();
+  private ProviderId defaultProvider;
+  private InferenceOptions defaultOptions;
   private JsonSchemaGenerator schemas = new VictoolsJsonSchemaGenerator();
   private ObjectMapper mapper = JsonMapper.builder().build();
   private Clock clock = Clock.systemUTC();
@@ -70,9 +75,22 @@ public final class DirectHarnessFactoryConfig {
     return this;
   }
 
-  /** Who answers. */
-  public DirectHarnessFactoryConfig provider(InferenceProvider provider) {
-    this.provider = provider;
+  /**
+   * One of the providers this factory's agents may be answered by, under the name they will ask for
+   * it by. Repeatable; the same id twice fails at once.
+   */
+  public DirectHarnessFactoryConfig provider(ProviderId id, InferenceProvider provider) {
+    providers.register(id, provider);
+    return this;
+  }
+
+  /**
+   * What an agent type gets when it says nothing: which provider, which model, how much answer.
+   * Optional; without it every agent type names both itself.
+   */
+  public DirectHarnessFactoryConfig inference(ProviderId provider, InferenceOptions options) {
+    this.defaultProvider = Objects.requireNonNull(provider, "provider must not be null");
+    this.defaultOptions = Objects.requireNonNull(options, "options must not be null");
     return this;
   }
 
@@ -161,8 +179,16 @@ public final class DirectHarnessFactoryConfig {
     return require(backend, "backend");
   }
 
-  InferenceProvider requiredProvider() {
-    return require(provider, "an inference provider");
+  ProviderRegistry providers() {
+    return providers;
+  }
+
+  ProviderId defaultProvider() {
+    return defaultProvider;
+  }
+
+  InferenceOptions defaultOptions() {
+    return defaultOptions;
   }
 
   JsonSchemaGenerator schemas() {

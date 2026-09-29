@@ -34,7 +34,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestClient;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = "nessy.provider=scriptedModels")
 @Import(PostgresBacked.class)
 @DisplayName("Ending a conversation")
 class EndingIntegrationTest {

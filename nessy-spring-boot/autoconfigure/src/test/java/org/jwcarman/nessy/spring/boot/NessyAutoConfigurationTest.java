@@ -63,6 +63,9 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 class NessyAutoConfigurationTest {
 
   private static final String MODEL = "nessy.model=a-test-model";
+  // The bean name Spring gives AnInferenceProvider#inference() -- registered under that name by
+  // the harness auto-configurations, so naming it here is what makes it the factory default.
+  private static final String PROVIDER = "nessy.provider=inference";
   private static final String PROMPT = "nessy.system-prompt=you are a test assistant";
 
   /**
@@ -85,7 +88,7 @@ class NessyAutoConfigurationTest {
                   InMemoryBackendAutoConfiguration.class,
                   QueuedHarnessAutoConfiguration.class))
           .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
-          .withPropertyValues(MODEL, PROMPT, NO_SCHEMA);
+          .withPropertyValues(MODEL, PROVIDER, PROMPT, NO_SCHEMA);
 
   @Test
   void it_wires_a_harness_from_a_provider_and_a_database() {
@@ -125,7 +128,7 @@ class NessyAutoConfigurationTest {
                 InMemoryBackendAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class)
-        .withPropertyValues(MODEL, PROMPT, NO_SCHEMA)
+        .withPropertyValues(MODEL, PROVIDER, PROMPT, NO_SCHEMA)
         .run(
             context -> {
               assertThat(context).hasNotFailed();
@@ -161,7 +164,7 @@ class NessyAutoConfigurationTest {
                 InMemoryBackendAutoConfiguration.class,
                 DirectHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, AMeterRegistry.class)
-        .withPropertyValues(MODEL, PROMPT, NO_SCHEMA)
+        .withPropertyValues(MODEL, PROVIDER, PROMPT, NO_SCHEMA)
         .run(
             context -> {
               assertThat(context).hasSingleBean(TokenUsageHandler.class);
@@ -175,8 +178,15 @@ class NessyAutoConfigurationTest {
     runner.run(context -> assertThat(context).doesNotHaveBean(TokenUsageHandler.class));
   }
 
+  /**
+   * <b>Interim behaviour, pending Task 4.</b> A factory's default is set only when both {@code
+   * nessy.provider} and {@code nessy.model} are present -- the both-or-neither rule that refuses a
+   * partial default lives in {@code NessyProperties} from Task 4 on. Until then, a missing or blank
+   * model simply leaves the factory without a default, and the context starts: an agent type that
+   * names neither fails when a harness is built from it, not before.
+   */
   @Test
-  void it_refuses_to_start_without_a_model() {
+  void it_starts_without_a_model_and_defers_the_failure_to_when_a_harness_is_built() {
     new ApplicationContextRunner()
         .withConfiguration(
             AutoConfigurations.of(
@@ -188,17 +198,12 @@ class NessyAutoConfigurationTest {
                 InMemoryBackendAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
-        .withPropertyValues(PROMPT, NO_SCHEMA)
-        .run(
-            context -> {
-              // Guessing a model would start cleanly and fail at the first turn.
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure()).hasMessageContaining("nessy.model");
-            });
+        .withPropertyValues(PROVIDER, PROMPT, NO_SCHEMA)
+        .run(context -> assertThat(context).hasNotFailed());
   }
 
   @Test
-  void it_refuses_to_start_with_a_blank_model() {
+  void it_starts_with_a_blank_model_and_defers_the_failure_to_when_a_harness_is_built() {
     new ApplicationContextRunner()
         .withConfiguration(
             AutoConfigurations.of(
@@ -210,16 +215,17 @@ class NessyAutoConfigurationTest {
                 InMemoryBackendAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
-        .withPropertyValues("nessy.model=   ", PROMPT, NO_SCHEMA)
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure()).hasMessageContaining("nessy.model");
-            });
+        .withPropertyValues("nessy.model=   ", PROVIDER, PROMPT, NO_SCHEMA)
+        .run(context -> assertThat(context).hasNotFailed());
   }
 
+  /**
+   * <b>Interim behaviour, pending Task 4.</b> With no {@code InferenceProvider} bean there is
+   * nothing to register under any name, so the factory simply holds no providers; the context still
+   * starts, and an agent type naming one fails when a harness is built from it.
+   */
   @Test
-  void it_refuses_to_start_without_an_inference_provider() {
+  void it_starts_without_an_inference_provider_and_defers_the_failure_to_when_a_harness_is_built() {
     new ApplicationContextRunner()
         .withConfiguration(
             AutoConfigurations.of(
@@ -231,8 +237,8 @@ class NessyAutoConfigurationTest {
                 InMemoryBackendAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(ADatabase.class)
-        .withPropertyValues(MODEL, PROMPT, NO_SCHEMA)
-        .run(context -> assertThat(context).hasFailed());
+        .withPropertyValues(MODEL, PROVIDER, PROMPT, NO_SCHEMA)
+        .run(context -> assertThat(context).hasNotFailed());
   }
 
   @Test

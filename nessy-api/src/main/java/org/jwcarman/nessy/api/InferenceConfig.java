@@ -26,7 +26,18 @@ import java.time.Duration;
  */
 public interface InferenceConfig {
 
-  /** Which model. Defaults to the factory's. */
+  /**
+   * Which of the factory's providers answers. Defaults to the factory's; an agent type that names
+   * none and a factory with no default fail when the harness is built.
+   */
+  InferenceConfig provider(ProviderId id);
+
+  /** {@link #provider(ProviderId)}, by name. */
+  default InferenceConfig provider(String id) {
+    return provider(ProviderId.of(id));
+  }
+
+  /** Which model. Defaults to the factory's; required one way or the other. */
   InferenceConfig model(String modelName);
 
   /** How much answer it may have. Zero or unset leaves it to the provider. */

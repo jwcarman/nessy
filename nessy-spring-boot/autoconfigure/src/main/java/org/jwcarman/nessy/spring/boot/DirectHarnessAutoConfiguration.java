@@ -23,11 +23,14 @@ import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
 import org.jwcarman.nessy.engine.harness.direct.DirectHarnessFactoryConfig;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
+import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -35,6 +38,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -75,7 +79,9 @@ public class DirectHarnessAutoConfiguration {
   @ConditionalOnMissingBean(DirectHarnessFactory.class)
   public DefaultDirectHarnessFactory nessyDirectHarnessFactory(
       DirectBackend backend,
-      InferenceProvider models,
+      ListableBeanFactory beans,
+      Environment environment,
+      NessyProperties properties,
       ObservationRegistry observations,
       JsonSchemaGenerator schemas,
       ObjectMapper mapper,
@@ -84,13 +90,18 @@ public class DirectHarnessAutoConfiguration {
     // adds a lease, a listener or a store of its own without declaring the whole factory.
     List<Customizer<DirectHarnessFactoryConfig>> all = new ArrayList<>();
     all.add(
-        config ->
-            config
-                .backend(backend)
-                .provider(models)
-                .schemas(schemas)
-                .mapper(mapper)
-                .observations(observations));
+        config -> {
+          config.backend(backend).schemas(schemas).mapper(mapper).observations(observations);
+          beans
+              .getBeansOfType(InferenceProvider.class)
+              .forEach((name, provider) -> config.provider(ProviderId.of(name), provider));
+          String provider = environment.getProperty("nessy.provider");
+          String model = properties.model();
+          if (provider != null && !provider.isBlank() && model != null && !model.isBlank()) {
+            config.inference(
+                ProviderId.of(provider), new InferenceOptions(model, properties.maxTokens()));
+          }
+        });
     customizers.orderedStream().forEach(all::add);
     return DefaultDirectHarnessFactory.of(all);
   }

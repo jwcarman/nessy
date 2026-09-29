@@ -34,7 +34,11 @@ import org.springframework.context.annotation.Import;
  * key and base URL this application already configured -- and the store mints its embedder from it.
  * The store is built either way.
  */
-@SpringBootTest(properties = "nessy.embedding.openai.model=text-embedding-nomic-embed-text-v1.5")
+@SpringBootTest(
+    properties = {
+      "nessy.embedding.openai.model=text-embedding-nomic-embed-text-v1.5",
+      "nessy.provider=scriptedModels"
+    })
 @Import(PostgresBacked.class)
 @DisplayName("Episodes in the chat example")
 class EpisodesWiringTest {

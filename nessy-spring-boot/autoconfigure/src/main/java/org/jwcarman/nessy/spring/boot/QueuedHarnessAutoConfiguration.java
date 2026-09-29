@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.backend.QueuedBackend;
@@ -31,12 +32,14 @@ import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
 
 /**
  * The queued door, for work nobody is waiting on.
@@ -66,7 +69,8 @@ public class QueuedHarnessAutoConfiguration {
   public DefaultQueuedHarnessFactory nessyHarnessFactory(
       QueuedBackend backend,
       ReplyTokens replyTokens,
-      InferenceProvider models,
+      ListableBeanFactory beans,
+      Environment environment,
       NessyProperties properties,
       ObservationRegistry observations,
       ObjectProvider<Tracer> tracers,
@@ -76,12 +80,16 @@ public class QueuedHarnessAutoConfiguration {
     List<Customizer<QueuedHarnessFactoryConfig>> all = new ArrayList<>();
     all.add(
         engine -> {
-          engine
-              .backend(backend)
-              .inference(
-                  models, new InferenceOptions(requireModel(properties), properties.maxTokens()))
-              .observations(observations)
-              .replyTokens(replyTokens);
+          engine.backend(backend).observations(observations).replyTokens(replyTokens);
+          beans
+              .getBeansOfType(InferenceProvider.class)
+              .forEach((name, provider) -> engine.provider(ProviderId.of(name), provider));
+          String provider = environment.getProperty("nessy.provider");
+          String model = properties.model();
+          if (provider != null && !provider.isBlank() && model != null && !model.isBlank()) {
+            engine.inference(
+                ProviderId.of(provider), new InferenceOptions(model, properties.maxTokens()));
+          }
           // With a tracer and its propagator the context is written straight into the effect
           // row; without them the engine opens a momentary span to have it written.
           Tracer tracer = tracers.getIfAvailable();
@@ -117,15 +125,5 @@ public class QueuedHarnessAutoConfiguration {
   @ConditionalOnMissingBean
   public Replies nessyReplies(DefaultQueuedHarnessFactory factory) {
     return factory.replies();
-  }
-
-  private static String requireModel(NessyProperties properties) {
-    String model = properties.model();
-    if (model == null || model.isBlank()) {
-      throw new IllegalStateException(
-          "nessy.model must name the model these agents talk to; it is sent to your"
-              + " InferenceProvider bean with every call");
-    }
-    return model;
   }
 }
