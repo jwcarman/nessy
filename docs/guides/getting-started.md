@@ -14,7 +14,7 @@ application actually needs.
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-bom</artifactId>
-      <version>0.1.1</version>
+      <version>0.2.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>

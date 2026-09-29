@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-29
+
+### Breaking changes
+
+- **`InferenceProvider.providerName()` is now `vendor()`**, and so are
+  `Embedder.providerName()` and `EmbeddingProvider.providerName()`. The value
+  is unchanged: the OpenTelemetry `gen_ai.provider.name` (`openai`, `x_ai`,
+  `gcp.gemini`, ...), which two providers can share. `OpenAiProviderConfig.provider(String)`
+  is now `vendor(String)`. Traces are byte-identical.
+- **A harness factory holds its providers by name.**
+  `DirectHarnessFactoryConfig.provider(InferenceProvider)` and
+  `QueuedHarnessFactoryConfig.inference(InferenceProvider, InferenceOptions)`
+  are replaced by a repeatable `provider(ProviderId, InferenceProvider)` on
+  both configs, plus `inference(ProviderId, InferenceOptions)` for the
+  factory's defaults. Migrate
+  `f.provider(p)` to `f.provider(ProviderId.of("openai"), p).inference(ProviderId.of("openai"), InferenceOptions.of("<model>"))`.
+- **Every agent type needs a provider and a model**, its own
+  (`inference(in -> in.provider("openai").model("..."))`) or the factory's
+  defaults. A missing or unregistered one fails when the harness is built,
+  naming the agent type and listing the registered providers.
+- **`DirectHarnessFactory.providerName()` is removed**: a factory holding
+  several providers has no single answer.
+- **Spring Boot: `nessy.provider` and `nessy.model` are a pair.** Set both,
+  or neither and name them on each agent type; setting one fails at startup.
+  Several vendor keys set no longer means one provider picked by
+  auto-configuration order: every lit provider is registered.
+- **Spring Boot: an application's own `InferenceProvider` beans no longer
+  switch the vendor presets off.** They are registered beside them under
+  their bean names. A bean named like a lit preset fails startup.
+- **Spring Boot: `OpenAiAutoConfiguration`, `AnthropicAutoConfiguration` and
+  `GeminiAutoConfiguration` are replaced by `InferenceProvidersAutoConfiguration`.**
+  Update any `spring.autoconfigure.exclude` that names them.
+
+### Added
+
+- `ProviderId`, the name an application gives a provider; `InferenceConfig.provider(ProviderId)`
+  and `provider(String)`.
+- Spring Boot presets. A hosted preset is registered when its key is set:
+  `openai` (`OPENAI_API_KEY`), `xai` (`XAI_API_KEY`), `anthropic`
+  (`ANTHROPIC_API_KEY`), `gemini` (`GEMINI_API_KEY` or `GOOGLE_API_KEY`),
+  `openrouter` (`OPENROUTER_API_KEY`), `nvidia` (`NVIDIA_API_KEY`). A local one
+  when switched on: `lmstudio` and `ollama` (`nessy.providers.<id>.enabled: true`).
+  Every preset was measured against its real endpoint before it shipped: a
+  tool call, reported usage, and a forced answer.
+- `nessy.providers.<id>.*` (`api-key`, `enabled`, `wire`, `base-url`,
+  `vendor`) overrides any preset field; an id that is not a preset declares a
+  custom provider and must set `wire` (`openai`, `anthropic` or `gemini`) and
+  `base-url`. `enabled: false` turns any provider off, key or no key.
+- The startup report lists every registered provider (id, wire, endpoint,
+  vendor, never the key), and each harness logs the provider and model its
+  agent type resolved to when it is built.
+- `PresetCandidatesLiveTest` (`@Tag("live")`) measures OpenAI-shaped vendors
+  and the existing presets against their real endpoints from the keys in the
+  environment, and writes `target/preset-measurements.md`.
+
+### Changed
+
+- An agent type built from factory defaults that carry no max-tokens gets
+  4096 on both doors.
+- The console: `NESSY_PROVIDER` and `NESSY_MODEL` are required together; a
+  mistyped `NESSY_PROVIDER` is reported, not thrown. `/config` shows the
+  provider only when the console chose it.
+- The examples name their provider: chat-web and watchman use the `lmstudio`
+  preset by default; watchman's scripted mode is `WATCHMAN_PROVIDER=scripted`.
+- `nessy-bom` keeps its parent for the build and is flattened when published:
+  it manages only Nessy's own artifacts. Every module publishes the
+  repository's own URL and SCM connection.
+- Dependencies: openai-java 4.69.2, anthropic-java 2.65.0, google-genai
+  1.73.0, AWS SDK 2.55.5, Jackson 3.2.3 and 2.22.3, Netty 4.2.18, Tomcat
+  11.0.26, HikariCP 7.1.0, SLF4J 2.0.20.
+
 ## [0.1.1] - 2026-09-27
 
 ### Fixed
@@ -91,5 +162,6 @@ Nessy is an agent harness framework for Java. This is the first release.
 - Java 25.
 - Spring Boot 4.1 (optional — only needed for `nessy-spring-boot-starter`).
 
+[0.2.0]: https://github.com/jwcarman/nessy/releases/tag/0.2.0
 [0.1.1]: https://github.com/jwcarman/nessy/releases/tag/0.1.1
 [0.1.0]: https://github.com/jwcarman/nessy/releases/tag/0.1.0
