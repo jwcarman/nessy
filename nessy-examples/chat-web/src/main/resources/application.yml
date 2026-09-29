@@ -34,10 +34,14 @@ management:
 
 nessy:
   type: chat
-  # Which of the starter's InferenceProvider beans answers -- the bean name openai's own
-  # auto-configuration gives its provider. Required now that a factory can hold more than one.
-  provider: openai
+  # Which registered InferenceProvider answers. lmstudio is a preset the starter lights below;
+  # nessy.provider names the one this agent type uses.
+  provider: ${CHAT_PROVIDER:lmstudio}
   model: ${CHAT_MODEL_ID:qwen/qwen3.6-35b-a3b}
+  providers:
+    lmstudio:
+      enabled: true
+      base-url: ${CHAT_MODEL_URL:http://localhost:1234/v1}
   # A FIXED key, so a token minted before a restart can still be read after one. Without this the
   # starter warns and falls back to an ephemeral key, and every waiting approval becomes
   # unanswerable the moment the process bounces. A DEMO key: generate your own for anything real.
@@ -71,7 +75,9 @@ nessy:
     openai:
       model: ${CHAT_EMBEDDING_MODEL:}
 
-# The OpenAI adapter's own auto-configuration reads these; a base URL points it at LM Studio.
+# Only for the optional embedder above: nessy.embedding.openai.model, when set, reads these
+# through the OpenAI-compatible embedding auto-configuration. The chat provider itself is the
+# lmstudio preset, not this block.
 openai:
   api-key: ${CHAT_MODEL_API_KEY:not-needed}
   base-url: ${CHAT_MODEL_URL:http://localhost:1234/v1}

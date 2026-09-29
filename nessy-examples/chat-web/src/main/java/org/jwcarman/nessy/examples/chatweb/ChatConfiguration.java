@@ -54,9 +54,9 @@ import org.springframework.transaction.PlatformTransactionManager;
  * The chat agent: a notebook, a plan, episodes, a date tool, and an email tool a person has to
  * approve.
  *
- * <p>The starter supplies the factory, the provider (from {@code openai.*}) and the model (from
- * {@code nessy.model}); this class declares the harness itself because the starter's free one binds
- * tool beans with defaults, and an email needs an approver.
+ * <p>The starter supplies the factory, the provider (from {@code nessy.provider}) and the model
+ * (from {@code nessy.model}); this class declares the harness itself because the starter's free one
+ * binds tool beans with defaults, and an email needs an approver.
  */
 @Configuration(proxyBeanMethods = false)
 public class ChatConfiguration {

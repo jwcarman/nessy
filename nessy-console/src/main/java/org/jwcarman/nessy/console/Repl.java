@@ -38,7 +38,6 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.env.Environment;
 import tools.jackson.databind.ObjectMapper;
 
 /** One call from a main method to a working terminal agent. */
@@ -141,11 +140,9 @@ public final class Repl {
                 + providers.keySet().stream().sorted().toList());
         return;
       }
-      Optional<String> model = model(context.getEnvironment());
-      if (model.isEmpty()) {
-        say(io, "no model is configured: set NESSY_MODEL to the name your provider should use");
-        return;
-      }
+      // nessy.provider and nessy.model are a pair (the direct door's own auto-configuration
+      // enforces that at startup), so a provider chosen here means a model is set too.
+      String model = context.getEnvironment().getProperty(MODEL_PROPERTY);
       // A database is the application's business now, not this one's. The terminal keeps the
       // conversation in memory because the process IS the conversation: a turn that has ended has
       // ended, and a CLI that resumed yesterday's chat would surprise the person typing into it.
@@ -166,19 +163,13 @@ public final class Repl {
                     .mapper(mapper);
                 providers.forEach(
                     (name, provider) -> factory.provider(ProviderId.of(name), provider));
-                factory.inference(
-                    providerId, new InferenceOptions(model.get(), config.maxTokens()));
+                factory.inference(providerId, new InferenceOptions(model, config.maxTokens()));
               }),
           Optional.of(chosen),
-          model.get(),
+          model,
           config,
           io);
     }
-  }
-
-  private static Optional<String> model(Environment environment) {
-    String name = environment.getProperty(MODEL_PROPERTY);
-    return name == null || name.isBlank() ? Optional.empty() : Optional.of(name);
   }
 
   private static void say(ConsoleIo io, String message) {

@@ -55,9 +55,11 @@ CHAT_EMBEDDING_MODEL=text-embedding-nomic-embed-text-v1.5 \
   ./mvnw -q -pl :nessy-example-chat-web -am spring-boot:run
 ```
 
-Any OpenAI-compatible endpoint works:
+OpenAI itself, or any other OpenAI-compatible endpoint, works too: name the
+`openai` provider instead of the `lmstudio` default:
 
 ```bash
+CHAT_PROVIDER=openai \
 CHAT_MODEL_URL=https://api.openai.com/v1 \
 CHAT_MODEL_API_KEY=sk-… \
 CHAT_MODEL_ID=gpt-4o-mini \

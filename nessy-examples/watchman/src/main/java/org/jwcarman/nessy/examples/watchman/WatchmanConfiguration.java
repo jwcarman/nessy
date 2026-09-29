@@ -57,8 +57,8 @@ public class WatchmanConfiguration {
   }
 
   /**
-   * Declared only when scripted. Otherwise there is no provider bean here, and the OpenAI adapter's
-   * auto-configuration builds one from {@code openai.*}.
+   * Declared only when scripted. Otherwise there is no provider bean here, and {@code
+   * nessy.provider} names the starter's {@code lmstudio} preset instead.
    */
   @Bean
   @ConditionalOnProperty(name = "watchman.scripted", havingValue = "true")

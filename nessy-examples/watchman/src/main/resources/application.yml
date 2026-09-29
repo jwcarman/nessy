@@ -33,21 +33,20 @@ server:
 
 nessy:
   type: watchman
-  # Which of the starter's InferenceProvider beans answers. The OpenAI adapter's bean by default;
-  # watchman.scripted=true declares its own provider bean and overrides this to name it instead.
-  provider: ${NESSY_PROVIDER:openai}
+  # Which registered InferenceProvider answers. lmstudio is a preset the starter lights below;
+  # watchman.scripted=true declares its own provider bean and, in the profile document at the
+  # bottom of this file, names it here instead -- one property switches both.
+  provider: ${WATCHMAN_PROVIDER:lmstudio}
   model: ${WATCHMAN_MODEL_ID:qwen/qwen3.6-35b-a3b}
+  providers:
+    lmstudio:
+      enabled: true
+      base-url: ${WATCHMAN_MODEL_URL:http://localhost:1234/v1}
   # A FIXED key, so a token minted before a restart can still be read after one. Without this the
   # starter warns and falls back to an ephemeral key, and every parked approval becomes
   # unanswerable the moment the process bounces.
   reply-token-encryption-keys:
     - ${WATCHMAN_REPLY_KEY:c2hoLXRoaXMtaXMtYS1kZW1vLWtleS0zMi1ieXRlcyE=}
-
-# The OpenAI adapter's own auto-configuration reads these; a base URL points it at LM Studio. It
-# stands down when watchman.scripted is on, because the application then declares a provider.
-openai:
-  api-key: ${WATCHMAN_MODEL_API_KEY:lm-studio}
-  base-url: ${WATCHMAN_MODEL_URL:http://localhost:1234/v1}
 
 watchman:
   # How often the watchman does its rounds. A fixed RATE, not a cron: rounds are "every so often",
@@ -75,3 +74,15 @@ logging:
   level:
     org.jwcarman.nessy.engine: INFO
     org.jwcarman.nessy.examples.watchman: DEBUG
+
+---
+# Scripted mode names the bean WatchmanConfiguration declares (only when watchman.scripted is
+# true) instead of the lmstudio preset. This document activates on that same property, so
+# WATCHMAN_SCRIPTED is the one switch that turns scripted mode on.
+spring:
+  config:
+    activate:
+      on-property: watchman.scripted
+
+nessy:
+  provider: scriptedProvider
