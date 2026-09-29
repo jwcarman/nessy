@@ -23,12 +23,6 @@ jobs:
           gpg-private-key: ${{ secrets.GPG_SIGNING_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
 
-      # processAllModules, because nessy-bom deliberately has no <parent> and versions:set
-      # otherwise walks only the modules inheritance reaches. Left out, the bom keeps its
-      # -SNAPSHOT version, routes to the snapshot repository, and the whole deployment is
-      # refused with a 403 -- which is how the 0.1.0 cut first failed. Substrate hit the same
-      # thing for the same reason.
-      #
       # The tag arrives through the environment rather than being interpolated into the script.
       # A release name is chosen by whoever cuts the release, and a value spliced straight into
       # a shell command is a command anyone able to cut one gets to run on this job -- which
@@ -39,7 +33,6 @@ jobs:
         run: >-
           ./mvnw versions:set
           -DnewVersion="$RELEASE_TAG"
-          -DprocessAllModules=true
           -DgenerateBackupPoms=false
 
       - name: Publish package

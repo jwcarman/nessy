@@ -21,55 +21,18 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <!--
-        This module deliberately has NO <parent>.
+    <parent>
+        <groupId>org.jwcarman.nessy</groupId>
+        <artifactId>nessy-parent</artifactId>
+        <version>0.2.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
 
-        A child inherits its parent's dependencyManagement, and importing a BOM pulls in that
-        BOM's *effective* dependencyManagement — after inheritance. Because nessy-parent imports
-        spring-boot-dependencies and several other BOMs for its own build, inheriting from it made
-        nessy-bom re-export all of those to every consumer: 2463 managed entries, of which 32 were
-        nessy's own. A consumer importing this BOM to align Nessy's artifacts was silently having
-        its Spring Boot, Jackson, JUnit and Netty versions decided for it too.
-
-        Measured, not assumed: guvnor pins Spring Boot 4.1.1 in its own parent, imports nessy-bom
-        above Boot's own BOM, and resolved Boot 4.0.5 — a version it never names anywhere.
-
-        A published BOM must not inherit dependencyManagement. junit-bom,
-        spring-boot-dependencies, testcontainers-bom and micrometer-bom are all parentless for the
-        same reason, and codec-bom was fixed this way before this one was.
-
-        The consequence is that everything this module needs is declared here: coordinates,
-        licence, developer, scm, and the plugins that publish it.
-    -->
-    <groupId>org.jwcarman.nessy</groupId>
     <artifactId>nessy-bom</artifactId>
-    <version>0.2.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>Nessy BOM</name>
     <description>Bill of Materials for Nessy — version alignment for consumers</description>
-    <url>https://github.com/jwcarman/nessy</url>
-    <inceptionYear>2026</inceptionYear>
-
-    <licenses>
-        <license>
-            <name>The Apache License, Version 2.0</name>
-            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
-        </license>
-    </licenses>
-
-    <developers>
-        <developer>
-            <id>jwcarman</id>
-            <name>James Carman</name>
-        </developer>
-    </developers>
-
-    <scm>
-        <url>https://github.com/jwcarman/nessy</url>
-        <connection>scm:git:git@github.com:jwcarman/nessy.git</connection>
-        <developerConnection>scm:git:git@github.com:jwcarman/nessy.git</developerConnection>
-    </scm>
 
     <dependencyManagement>
         <dependencies>
@@ -224,85 +187,45 @@
         </dependencies>
     </dependencyManagement>
 
-    <!-- Formatting and licence checks, which would otherwise have come from the parent this
-         module cannot have. Without them `spotless:check` at the reactor root fails here with an
-         unresolvable goal prefix rather than a formatting problem. -->
+    <!--
+        Flattened on the way out, and only this module is.
+
+        Importing a BOM pulls in its *effective* dependencyManagement, after inheritance, and
+        nessy-parent imports spring-boot-dependencies and several other BOMs for its own build.
+        Published as-is, this BOM re-exported all of them: 2463 managed entries, 32 of them
+        Nessy's, so a consumer importing this BOM to align Nessy's artifacts had its Spring Boot,
+        Jackson, JUnit and Netty versions decided for it too.
+
+        bom mode writes the pom that is installed and deployed without the parent and with only
+        the dependencyManagement declared here. The build still inherits normally, so
+        versions:set, the sonar: prefix and the formatting and licence checks all reach this
+        module like any other. occlude-bom is set up the same way.
+    -->
     <build>
         <plugins>
             <plugin>
-                <groupId>com.diffplug.spotless</groupId>
-                <artifactId>spotless-maven-plugin</artifactId>
-                <version>3.10.2</version>
-            </plugin>
-            <plugin>
-                <groupId>com.mycila</groupId>
-                <artifactId>license-maven-plugin</artifactId>
-                <version>5.1.2</version>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
                 <configuration>
-                    <licenseSets>
-                        <licenseSet>
-                            <inlineHeader><![CDATA[Copyright © ${project.inceptionYear} James Carman
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.]]></inlineHeader>
-                            <includes>
-                                <include>pom.xml</include>
-                            </includes>
-                        </licenseSet>
-                    </licenseSets>
+                    <flattenMode>bom</flattenMode>
                 </configuration>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>flatten-clean</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
-
-    <!-- Publishing, which would otherwise have come from the parent this module cannot have. -->
-    <profiles>
-        <profile>
-            <id>release</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.sonatype.central</groupId>
-                        <artifactId>central-publishing-maven-plugin</artifactId>
-                        <version>0.11.0</version>
-                        <extensions>true</extensions>
-                        <configuration>
-                            <publishingServerId>central</publishingServerId>
-                            <tokenAuth>true</tokenAuth>
-                            <autoPublish>true</autoPublish>
-                        </configuration>
-                    </plugin>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-gpg-plugin</artifactId>
-                        <version>3.2.8</version>
-                        <executions>
-                            <execution>
-                                <id>sign-artifacts</id>
-                                <phase>verify</phase>
-                                <goals>
-                                    <goal>sign</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                        <configuration>
-                            <gpgArguments>
-                                <arg>--pinentry-mode</arg>
-                                <arg>loopback</arg>
-                            </gpgArguments>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
 </project>

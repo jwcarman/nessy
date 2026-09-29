@@ -67,12 +67,10 @@ jobs:
       # sat at reliability D on an assertion that could never fail, uploaded and read by nobody.
       run: |
         if [ -n "$SONAR_TOKEN" ]; then
-          # Fully qualified, NOT sonar:sonar. Maven resolves a goal prefix against the first
-          # project in the reactor, which is nessy-bom -- and nessy-bom deliberately has no
-          # parent, so it inherits none of the root's plugins and the prefix cannot be found.
-          # The version must match sonar.plugin.version in the root pom; nothing checks that.
+          # The sonar: prefix resolves against the reactor root, which declares the plugin,
+          # so every module inheriting from it (nessy-bom included) reaches the goal too.
           ./mvnw -Pci -B verify \
-            org.sonarsource.scanner.maven:sonar-maven-plugin:5.8.0.7211:sonar \
+            sonar:sonar \
             -Dsonar.qualitygate.wait=true -Dnessy.excludedGroups=live
         else
           ./mvnw -Pci -B verify -Dnessy.excludedGroups=live
