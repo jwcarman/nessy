@@ -6,7 +6,7 @@ transport, and it does one thing:
 
 ```java
 public interface InferenceProvider {
-  InferenceResult infer(InferenceRequest request, AgentNarrator narrator);
+  InferenceResult infer(InferenceRequest request, InferenceNarrator narrator);
 }
 ```
 
@@ -378,7 +378,7 @@ An adapter is one method, and the four that ship are the pattern:
 
 ```java
 public interface InferenceProvider {
-  InferenceResult infer(InferenceRequest request, AgentNarrator narrator);
+  InferenceResult infer(InferenceRequest request, InferenceNarrator narrator);
 }
 ```
 
@@ -404,7 +404,7 @@ public interface InferenceProvider {
   processed, `Permanent` otherwise, and never `Rejected`, which is the one
   classification that authorises dropping something a person said. Let a
   bug in the adapter escape rather than recording it as the model's fault.
-- `AgentNarrator.narrate(event)` is how a streaming adapter reports deltas
+- `InferenceNarrator.narrate(event)` is how a streaming adapter reports deltas
   as they arrive: a `ContentDelta` per piece of the answer, a `ThinkingDelta`
   per piece of visible reasoning. All four shipped adapters use their
   vendor's streaming call and narrate this way, folding the stream back into

@@ -48,9 +48,9 @@
       <artifactId>nessy-tool-mcp</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- Speaks the OpenAI wire, which is what a local LM Studio serves. Its own @AutoConfiguration
-         is the whole provider choice: the Boot context Repl.run() raises finds OPENAI_API_KEY and
-         contributes the ModelProvider bean. -->
+    <!-- Speaks the OpenAI wire, which is what a local LM Studio serves. It lights the openai and
+         xai presets that InferenceProvidersAutoConfiguration registers as named InferenceProvider
+         beans; NESSY_PROVIDER chooses which one answers. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-inference-openai</artifactId>

@@ -36,8 +36,8 @@ import org.springframework.util.FileCopyUtils;
  * @param systemPrompt the standing instruction, inline
  * @param systemPromptFile the standing instruction, from a classpath or file resource; mutually
  *     exclusive with {@link #systemPrompt}
- * @param model which model the agents talk to, resolved against the application's {@code
- *     InferenceProvider}
+ * @param model which model the agents talk to, on whichever registered {@code InferenceProvider}
+ *     {@link #provider} names
  * @param maxTokens the longest answer to allow
  * @param replyTokenEncryptionKeys the AES keys a {@code ReplyToken}'s coordinates are sealed with,
  *     newest first — base64, and 16, 24 or 32 bytes each (use 32). Named for what they ARE: "reply

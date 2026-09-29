@@ -48,6 +48,8 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Anthropic, through the vendor's own SDK.
  *
+ * <p>Speaks the {@code messages} wire.
+ *
  * <p>Owns the {@link AnthropicClient} and is the only class here that touches the network; the
  * projection onto the wire lives in {@link AnthropicRequests} and can be tested without a key.
  *

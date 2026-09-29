@@ -25,10 +25,8 @@ import org.springframework.context.annotation.Bean;
  * Registers every {@code nessy.providers.<id>} preset (lit by a vendor key or an explicit {@code
  * enabled}) and every custom provider as an {@code InferenceProvider} bean named by its id.
  *
- * <p>Replaces the three vendor-specific auto-configurations that used to each contribute at most
- * one bean, backed off by {@code @ConditionalOnMissingBean}: with a registry rather than a single
- * slot, there is nothing to protect, and every application-declared {@code InferenceProvider} bean
- * joins the same registry beside the presets.
+ * <p>Every application-declared {@code InferenceProvider} bean joins the same registry beside the
+ * presets, keyed by its bean name; a name that collides with a preset id fails startup naming both.
  */
 @AutoConfiguration
 public class InferenceProvidersAutoConfiguration {

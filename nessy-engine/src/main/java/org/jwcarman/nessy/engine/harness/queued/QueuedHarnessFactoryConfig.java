@@ -32,10 +32,12 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 /**
  * What an engine needs from the application, and what it will assume if not told.
  *
- * <p><b>Two required things: somewhere to keep agents and something to ask.</b> The rest are
- * application facts with defaults: who hears what agents do, where spans go, which keys seal a
- * reply token. Anything an agent type might tune -- timeouts, retries, the context it is shown --
- * has its default in the engine and is overridden on the harness that wants otherwise.
+ * <p><b>One required thing: somewhere to keep agents.</b> Providers are registered here too, zero
+ * or more of them ({@link #provider(ProviderId, InferenceProvider)}), so none is required at
+ * construction -- only an agent type that actually needs one fails, and only when it is built. The
+ * rest are application facts with defaults: who hears what agents do, where spans go, which keys
+ * seal a reply token. Anything an agent type might tune -- timeouts, retries, the context it is
+ * shown -- has its default in the engine and is overridden on the harness that wants otherwise.
  *
  * <p><b>Nothing here is the engine's own plumbing.</b> How rows are encoded, how tool arguments are
  * described to a model, how tokens are estimated and which thread looks for due work are all

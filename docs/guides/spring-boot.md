@@ -90,7 +90,7 @@ Everything below is read from `nessy.*`, bound by `NessyProperties`.
 | `nessy.provider` | none; paired with `nessy.model` | both doors' factories, as the default `ProviderId` an agent type falls back on when it names none |
 | `nessy.model` | none; paired with `nessy.provider` | both doors' factories, as the default model an agent type falls back on when it names none |
 | `nessy.max-tokens` | 4096 | the same factory default, alongside `nessy.model` |
-| `nessy.providers.<id>.api-key`, `.enabled`, `.wire`, `.base-url`, `.vendor` | none | `ProviderRegistrar`, to light a preset or declare a custom provider; see [Providers](providers.md#boot-auto-configuration) |
+| `nessy.providers.<id>.api-key`, `.enabled`, `.wire`, `.base-url`, `.vendor` | none | turns a preset on or declares a custom provider, registered as an `InferenceProvider` bean named by its id; see [Providers](providers.md#boot-auto-configuration) |
 | `nessy.system-prompt` | none | your own configuration, via `NessyProperties.resolveSystemPrompt()`; also the prompt-template auto-configuration when a prompt engine is on the classpath |
 | `nessy.system-prompt-file` | none; a `Resource`. **Setting both is an error** | the same places as `nessy.system-prompt` |
 | `nessy.type` | `agent` | bound and validated, but not read by any bean the starter builds today — an agent's type is named when you call `factory.create(agentType, ...)`, not from a property |

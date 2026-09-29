@@ -106,9 +106,9 @@ final class ReplLoop {
   /**
    * What is actually configured.
    *
-   * <p>Which provider answers is decided by which key happens to be set, and the model name is
-   * chosen separately, so the two can disagree and the only sign is a 404 from a vendor nobody
-   * meant to call. This is the question that makes that visible before it happens.
+   * <p>The provider is named by {@code NESSY_PROVIDER} and the model by {@code NESSY_MODEL}, set
+   * separately, so the two can disagree and the only sign is a 404 from a vendor nobody meant to
+   * call. This is the question that makes that visible before it happens.
    */
   private void describe() {
     io.write(System.lineSeparator());

@@ -75,9 +75,10 @@ nessy:
     openai:
       model: ${CHAT_EMBEDDING_MODEL:}
 
-# Only for the optional embedder above: nessy.embedding.openai.model, when set, reads these
-# through the OpenAI-compatible embedding auto-configuration. The chat provider itself is the
-# lmstudio preset, not this block.
+# For the optional embedder above: nessy.embedding.openai.model, when set, reads these through
+# the OpenAI-compatible embedding auto-configuration. This block ALSO lights the openai preset,
+# registering an inference provider named openai that nothing here selects -- the chat provider
+# is the lmstudio preset, named by nessy.provider above.
 openai:
   api-key: ${CHAT_MODEL_API_KEY:not-needed}
   base-url: ${CHAT_MODEL_URL:http://localhost:1234/v1}

@@ -59,14 +59,15 @@ NESSY_MODEL=qwen/qwen3.6-35b-a3b \
   ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
 ```
 
-Against a real vendor, name its preset and set its key:
+Against a real vendor, name its preset, set its key, and name a model —
+`chat-cli` needs both `NESSY_PROVIDER` and `NESSY_MODEL`:
 
 ```bash
-NESSY_PROVIDER=anthropic ANTHROPIC_API_KEY=… \
+NESSY_PROVIDER=anthropic ANTHROPIC_API_KEY=… NESSY_MODEL=claude-sonnet-5 \
   ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
-NESSY_PROVIDER=xai XAI_API_KEY=… \
+NESSY_PROVIDER=xai XAI_API_KEY=… NESSY_MODEL=grok-4 \
   ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
-NESSY_PROVIDER=openai OPENAI_API_KEY=… \
+NESSY_PROVIDER=openai OPENAI_API_KEY=… NESSY_MODEL=gpt-5.1 \
   ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
 ```
 

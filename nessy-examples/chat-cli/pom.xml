@@ -80,12 +80,12 @@
       <artifactId>nessy-planning</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- Each of these ships its own @AutoConfiguration, so this is the whole provider choice: the
-         Boot context Repl.run() raises finds whichever one's API key is in the environment and
-         contributes the ModelProvider bean. Three of them, so one command runs against any of four
-         vendors (xAI rides in the OpenAI module, being that wire at a different URL). Bedrock is
-         deliberately not a Boot citizen here: ambient AWS credentials mean someone once deployed
-         something, not that they chose it. -->
+    <!-- InferenceProvidersAutoConfiguration registers a named InferenceProvider bean per lit
+         preset and per custom provider; the two dependencies below light the openai, xai and
+         anthropic presets, so one command runs against any of three vendors. NESSY_PROVIDER
+         chooses which registered provider answers. Bedrock is deliberately not a Boot citizen
+         here: ambient AWS credentials mean someone once deployed something, not that they chose
+         it. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-inference-openai</artifactId>

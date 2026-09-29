@@ -29,11 +29,9 @@ import org.junit.jupiter.api.Test;
  * construction rather than a constant, otherwise every xAI turn would be reported, and billed in a
  * dashboard, as an OpenAI one.
  *
- * <p>The xAI half of that is UNTESTED at present: it is pinned through the {@code xai} preset in
- * {@code org.jwcarman.nessy.spring.boot.inference.WireProviders}, exercised by {@code
- * InferenceProvidersAutoConfigurationTest}'s bean-wiring assertions, but nothing there makes a call
- * and inspects what got reported. When something does, so should a test that an xAI-built provider
- * reports {@code x_ai}.
+ * <p>The xAI half is tested below: a provider built for it reports {@code x_ai} rather than {@code
+ * openai}. The {@code xai} preset itself, which builds a provider this way, lives in {@code
+ * org.jwcarman.nessy.spring.boot.inference.Preset}.
  */
 class OpenAiVendorTest {
 
