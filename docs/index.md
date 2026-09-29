@@ -61,7 +61,7 @@ class AddTool implements Tool<Add> {
 
 DirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> config
         .backend(backend)
-        .provider(AnthropicInferenceProvider.fromEnv()));
+        .provider(ProviderId.of("anthropic"), AnthropicInferenceProvider.fromEnv()));
 
 DirectHarness<String, String> harness = factory.<String>create(
         new AgentType("assistant"),

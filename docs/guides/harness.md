@@ -47,7 +47,7 @@ lifecycle should.
 ```java
 DirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> config
         .backend(backend)
-        .provider(provider));
+        .provider(providerId, provider));
 
 DirectHarness<String, String> harness = factory.<String>create(
         new AgentType("assistant"),
@@ -59,9 +59,10 @@ DirectHarness<String, String> harness = factory.<String>create(
 Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
 ```
 
-A model is required on every direct harness — there is no factory-wide
-default the way the queued door has one, because nothing here has anywhere
-else to take it from.
+A harness's own `.inference(in -> in.model(...))` wins when it states one;
+otherwise it falls back to whatever the factory was given through
+`config.inference(ProviderId, InferenceOptions)`, the same fallback the
+queued door has.
 
 ### Outcome
 
@@ -141,7 +142,8 @@ that means it must ask again.
 ```java
 QueuedHarnessFactory factory = DefaultQueuedHarnessFactory.of(config -> config
         .backend(backend)
-        .inference(provider, InferenceOptions.of("claude-sonnet-5")));
+        .provider(providerId, provider)
+        .inference(providerId, InferenceOptions.of("claude-sonnet-5")));
 
 QueuedHarness<String> harness = factory.create(new AgentType("watchman"), config -> config
         .systemPrompt("You watch a house."));
@@ -156,9 +158,9 @@ gone — the answer reaches a caller through a listener instead (see
 [Narration](narration.md)).
 
 `QueuedHarnessFactory.create(agentType, customizer)` takes a model and
-token cap from the engine's own `inference(provider, options)` unless the
-harness says otherwise; the direct door has no such fallback, which is why
-a direct harness always states its own model.
+token cap from the factory's own `inference(providerId, options)` unless
+the harness says otherwise — the same fallback the direct door offers
+through `DirectHarnessFactoryConfig.inference(providerId, options)`.
 
 ### Terminating a queued harness
 

@@ -141,7 +141,8 @@ already sitting in somebody's inbox:
 DefaultQueuedHarnessFactory.of(engine -> engine
         .replyTokens(ReplyTokens.withKeys(currentKey, previousKey))     // byte[32] each
         .backend(backend)
-        .inference(provider, options));
+        .provider(providerId, provider)
+        .inference(providerId, options));
 ```
 
 Only the queued door's factory takes a `ReplyTokens`: the direct door

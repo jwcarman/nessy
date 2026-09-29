@@ -69,7 +69,8 @@ JdbcQueuedBackend backend =
 DefaultQueuedHarnessFactory factory =
     DefaultQueuedHarnessFactory.of(engine -> engine
         .backend(backend)
-        .inference(provider, InferenceOptions.of("claude-sonnet-5")));
+        .provider(providerId, provider)
+        .inference(providerId, InferenceOptions.of("claude-sonnet-5")));
 ```
 
 A Spring Boot application never builds a backend by hand: `nessy-backend-jdbc`
