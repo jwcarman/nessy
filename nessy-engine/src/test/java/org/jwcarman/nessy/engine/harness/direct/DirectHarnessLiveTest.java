@@ -19,6 +19,8 @@ package org.jwcarman.nessy.engine.harness.direct;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -26,6 +28,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -33,12 +36,17 @@ import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.openai.OpenAiChatInferenceProvider;
@@ -76,6 +84,49 @@ class DirectHarnessLiveTest {
   record Capital(String city, String country) {}
 
   record Answer(String answer, boolean confident) {}
+
+  /**
+   * A sealed vocabulary the model must choose between, so the schema comes from the real generator
+   * rather than from a hand-written string.
+   */
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = Restart.class, name = "Restart"),
+    @JsonSubTypes.Type(value = Stop.class, name = "Stop")
+  })
+  sealed interface Command permits Restart, Stop {}
+
+  record Restart(String service, boolean graceful) implements Command {}
+
+  record Stop(String service) implements Command {}
+
+  /** The tool's input: an object at the root, the vocabulary one field down. */
+  record ServerRequest(Command command) {}
+
+  private static final class ServerTool implements Tool<ServerRequest> {
+    private final AtomicReference<ServerRequest> received = new AtomicReference<>();
+
+    @Override
+    public ToolName name() {
+      return new ToolName("server_request");
+    }
+
+    @Override
+    public String description() {
+      return "restarts or stops a named service";
+    }
+
+    @Override
+    public Class<ServerRequest> inputType() {
+      return ServerRequest.class;
+    }
+
+    @Override
+    public Awaited<ToolResult> call(ToolCallRequest<ServerRequest> request) {
+      received.set(request.input());
+      return Awaited.ready(ToolResult.ok(new Block.Text("done")));
+    }
+  }
 
   private static DefaultDirectHarnessFactory factory() {
     assumeTrue(serving(), "no OpenAI-compatible endpoint at " + BASE_URL);
@@ -161,6 +212,34 @@ class DirectHarnessLiveTest {
 
     assertThat(outcome).isInstanceOf(Outcome.Answered.class);
     assertThat(((Outcome.Answered<String>) outcome).value()).containsIgnoringCase("Paris");
+  }
+
+  /**
+   * A tool whose input is a record with a sealed field: the schema is generated, sent, and the
+   * model's arguments bind back to the right subtype.
+   */
+  @Test
+  @DisplayName("a tool with a sealed field is offered, called, and its argument binds to a subtype")
+  void a_tool_with_a_sealed_field_is_called_and_binds_to_the_subtype() {
+    ServerTool tool = new ServerTool();
+    DirectHarness<String, String> harness =
+        factory()
+            .<String>create(
+                TYPE,
+                c -> {
+                  config().customize(c);
+                  c.systemPrompt("You are a terse assistant. Use the server_request tool.");
+                  c.tool(tool);
+                });
+
+    Outcome<String> outcome =
+        harness.ask(AgentId.random(), "Restart the service called billing-api, gracefully.");
+
+    assertThat(outcome).as("the turn finished: %s", outcome).isInstanceOf(Outcome.Answered.class);
+    assertThat(tool.received.get()).as("the tool was called").isNotNull();
+    assertThat(tool.received.get().command())
+        .isInstanceOfSatisfying(
+            Restart.class, restart -> assertThat(restart.service()).contains("billing-api"));
   }
 
   private static boolean serving() {
