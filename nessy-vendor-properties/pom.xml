@@ -29,19 +29,15 @@
 
   <artifactId>nessy-vendor-properties</artifactId>
   <name>Nessy Vendor Properties</name>
-  <description>How an adapter reads the vendor-prefixed properties it owns: its prefix, the names it parses, and the rest passed through</description>
+  <description>How an adapter reads the vendor-prefixed properties it owns: the entries under its prefix, and the provider's map under the agent type's</description>
 
   <!--
     Beneath both SPIs and beside nessy-api, depending on nothing of Nessy's: an embedding SPI that
     depended on the inference SPI for one class would stop being its sibling, and a copy per SPI
-    would drift. Jackson is here for the JsonMapper the literal reading takes.
+    would drift.
   -->
 
   <dependencies>
-    <dependency>
-      <groupId>tools.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
-    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

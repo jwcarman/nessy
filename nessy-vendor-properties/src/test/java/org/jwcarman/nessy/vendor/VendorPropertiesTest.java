@@ -19,18 +19,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import tools.jackson.databind.DeserializationFeature;
-import tools.jackson.databind.json.JsonMapper;
 
 @DisplayName("Vendor properties, as every adapter reads them")
 class VendorPropertiesTest {
-
-  private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
   /** Insertion order, which a Map.of would not keep. */
   private static Map<String, String> ordered(String... pairs) {
@@ -117,107 +112,7 @@ class VendorPropertiesTest {
   }
 
   @Nested
-  class ALiteral {
-
-    @Test
-    void a_whole_number_is_a_number() {
-      assertThat(VendorProperties.literal("12000", MAPPER)).isEqualTo(12000);
-    }
-
-    @Test
-    void a_decimal_is_a_number() {
-      assertThat(VendorProperties.literal("0.2", MAPPER)).isEqualTo(0.2);
-    }
-
-    @Test
-    void true_is_a_boolean() {
-      assertThat(VendorProperties.literal("true", MAPPER)).isEqualTo(true);
-    }
-
-    @Test
-    void null_is_null() {
-      assertThat(VendorProperties.literal("null", MAPPER)).isNull();
-    }
-
-    @Test
-    void braces_are_an_object() {
-      assertThat(VendorProperties.literal("{\"type\":\"enabled\",\"budget_tokens\":4096}", MAPPER))
-          .isEqualTo(Map.of("type", "enabled", "budget_tokens", 4096));
-    }
-
-    @Test
-    void brackets_are_an_array() {
-      assertThat(VendorProperties.literal("[\"\\n\\n\"]", MAPPER)).isEqualTo(List.of("\n\n"));
-    }
-
-    @Test
-    void a_bare_word_is_a_string() {
-      assertThat(VendorProperties.literal("high", MAPPER)).isEqualTo("high");
-    }
-
-    @Test
-    void a_quoted_number_is_a_string() {
-      assertThat(VendorProperties.literal("\"12345\"", MAPPER)).isEqualTo("12345");
-    }
-
-    /** Review Focus 1: the front of a value parsing as JSON does not make the value JSON. */
-    @Test
-    void a_value_that_only_starts_like_json_is_a_string() {
-      assertThat(VendorProperties.literal("12abc", MAPPER)).isEqualTo("12abc");
-      assertThat(VendorProperties.literal("true story", MAPPER)).isEqualTo("true story");
-      assertThat(VendorProperties.literal("{\"a\":1} trailing", MAPPER))
-          .isEqualTo("{\"a\":1} trailing");
-    }
-
-    /** The mapper is the application's; the whole-value rule is ours, whatever it tolerates. */
-    @Test
-    void a_tolerant_mapper_does_not_make_a_trailing_fragment_json() {
-      JsonMapper tolerant =
-          JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
-
-      assertThat(VendorProperties.literal("12abc", tolerant)).isEqualTo("12abc");
-      assertThat(VendorProperties.literal("true story", tolerant)).isEqualTo("true story");
-      assertThat(VendorProperties.literal("{\"a\":1} trailing", tolerant))
-          .isEqualTo("{\"a\":1} trailing");
-    }
-
-    @Test
-    void an_array_is_a_list_whatever_the_mapper_prefers() {
-      JsonMapper arrays =
-          JsonMapper.builder().enable(DeserializationFeature.USE_JAVA_ARRAY_FOR_JSON_ARRAY).build();
-
-      assertThat(VendorProperties.literal("[1,2]", arrays)).isEqualTo(List.of(1, 2));
-    }
-  }
-
-  @Nested
   class TypedReads {
-
-    @Test
-    void an_integer_is_read() {
-      assertThat(VendorProperties.requireInteger("anthropic.thinking.budget_tokens", "8192"))
-          .isEqualTo(8192);
-    }
-
-    @Test
-    void a_bad_integer_is_refused_naming_the_property_and_the_value() {
-      assertThatThrownBy(
-              () -> VendorProperties.requireInteger("anthropic.thinking.budget_tokens", "lots"))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessage("property 'anthropic.thinking.budget_tokens' must be an integer, was 'lots'");
-    }
-
-    @Test
-    void a_boolean_is_read() {
-      assertThat(VendorProperties.requireBoolean("openai.tools.strict", "false")).isFalse();
-    }
-
-    @Test
-    void a_bad_boolean_is_refused_naming_the_property_and_the_value() {
-      assertThatThrownBy(() -> VendorProperties.requireBoolean("openai.tools.strict", "yes"))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessage("property 'openai.tools.strict' must be true or false, was 'yes'");
-    }
 
     @Test
     void a_string_is_read() {

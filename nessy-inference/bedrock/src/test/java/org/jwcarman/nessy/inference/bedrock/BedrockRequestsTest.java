@@ -493,7 +493,7 @@ class BedrockRequestsTest {
           LogCapture.during(
               BedrockProperties.class,
               () ->
-                  BedrockProperties.warnUnsupported(
+                  BedrockPropertyReader.warnUnsupported(
                       Map.of(
                           "bedrock.thinking.type", "enabled",
                           "bedrock.inferenceConfig.topP", "0.5")));
@@ -520,6 +520,22 @@ class BedrockRequestsTest {
               MAPPER);
 
       assertThat(request.inferenceConfig().temperature()).isEqualTo(0.1f);
+    }
+
+    @Test
+    void typed_properties_set_in_code_reach_the_request_as_the_sdk_values() {
+      Map<String, String> typed =
+          Map.of(
+              BedrockProperties.TEMPERATURE.name(), BedrockProperties.TEMPERATURE.format(0.25f),
+              BedrockProperties.TOP_P.name(), BedrockProperties.TOP_P.format(0.5f),
+              BedrockProperties.STOP_SEQUENCES.name(),
+                  BedrockProperties.STOP_SEQUENCES.format(List.of("END", "STOP")));
+
+      ConverseStreamRequest request = requestFor(typed);
+
+      assertThat(request.inferenceConfig().temperature()).isEqualTo(0.25f);
+      assertThat(request.inferenceConfig().topP()).isEqualTo(0.5f);
+      assertThat(request.inferenceConfig().stopSequences()).containsExactly("END", "STOP");
     }
 
     @Test

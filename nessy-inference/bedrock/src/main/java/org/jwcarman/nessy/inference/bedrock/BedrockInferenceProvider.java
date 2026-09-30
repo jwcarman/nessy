@@ -124,9 +124,9 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
   @Override
   public void validate(InferenceOptions options) {
     Map<String, String> merged = VendorProperties.merge(properties, options.properties());
-    BedrockProperties.read(merged, mapper);
-    BedrockProperties.warnUnsupported(options.properties());
-    BedrockProperties.logIgnored(merged);
+    BedrockPropertyReader.read(merged);
+    BedrockPropertyReader.warnUnsupported(options.properties());
+    BedrockPropertyReader.logIgnored(merged);
   }
 
   public static BedrockInferenceProvider fromEnv() {

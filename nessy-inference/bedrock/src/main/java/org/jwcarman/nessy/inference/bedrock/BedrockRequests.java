@@ -84,9 +84,9 @@ public final class BedrockRequests {
    */
   static ConverseStreamRequest toRequest(
       InferenceRequest request, Map<String, String> providerProperties, JsonMapper mapper) {
-    BedrockProperties.Read read =
-        BedrockProperties.read(
-            VendorProperties.merge(providerProperties, request.options().properties()), mapper);
+    BedrockPropertyReader.Read read =
+        BedrockPropertyReader.read(
+            VendorProperties.merge(providerProperties, request.options().properties()));
     ConverseStreamRequest.Builder builder =
         ConverseStreamRequest.builder().modelId(request.options().modelName());
     if (request.options().hasMaxTokens() || read.tunesInference()) {

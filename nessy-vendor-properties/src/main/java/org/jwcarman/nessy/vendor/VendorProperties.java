@@ -19,17 +19,13 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.DeserializationFeature;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
- * How every adapter reads vendor properties: the entries under its own prefix, the provider's map
- * under the agent type's, and the typed reads of the names an adapter supports.
+ * How every adapter reads vendor properties: the entries under its own prefix, and the provider's
+ * map under the agent type's. Parsing a supported name into its type is {@code VendorProperty}'s.
  *
- * <p>One class so that eight adapters cannot come to disagree about what {@code true} means. An
- * adapter keeps its own prefix and its supported names; everything mechanical is here. Every
- * failure is an {@link IllegalArgumentException} naming the property as the user spelled it.
+ * <p>One class so that eight adapters cannot come to disagree about what a prefix is. Every failure
+ * is an {@link IllegalArgumentException} naming the property as the user spelled it.
  */
 public final class VendorProperties {
 
@@ -71,52 +67,8 @@ public final class VendorProperties {
   }
 
   /**
-   * The value as the JSON literal it spells -- a map, a list, a string, a number, a boolean or
-   * {@code null} -- or, when it is not JSON, the text itself: {@code high} is the string {@code
-   * "high"}. The whole value must parse, whatever the mapper was configured to tolerate: {@code
-   * 12abc} is a string, not the number twelve, and an array is always a {@code List}. Numbers
-   * follow the mapper's own floating-point setting.
-   */
-  public static Object literal(String value, JsonMapper mapper) {
-    Objects.requireNonNull(value, "value must not be null");
-    Objects.requireNonNull(mapper, "mapper must not be null");
-    try {
-      return mapper
-          .readerFor(Object.class)
-          .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
-          .without(DeserializationFeature.USE_JAVA_ARRAY_FOR_JSON_ARRAY)
-          .readValue(value);
-    } catch (JacksonException notJson) {
-      // Not JSON, so it is the text it says.
-      return value;
-    }
-  }
-
-  /** A supported property that takes an integer (spec §8b). */
-  public static int requireInteger(String name, String value) {
-    try {
-      return Integer.parseInt(value);
-    } catch (NumberFormatException e) {
-      throw new IllegalArgumentException(
-          "property '" + name + "' must be an integer, was '" + value + "'", e);
-    }
-  }
-
-  /** A supported property that takes a boolean, spelled as JSON spells one. */
-  public static boolean requireBoolean(String name, String value) {
-    if ("true".equals(value)) {
-      return true;
-    }
-    if ("false".equals(value)) {
-      return false;
-    }
-    throw new IllegalArgumentException(
-        "property '" + name + "' must be true or false, was '" + value + "'");
-  }
-
-  /**
-   * A supported property that takes a string: any non-blank text, because the vocabulary is the
-   * vendor's.
+   * The text a property is set to by name: any non-blank string. What it means is checked when the
+   * adapter that owns the name reads it.
    */
   public static String requireString(String name, String value) {
     if (value == null || value.isBlank()) {

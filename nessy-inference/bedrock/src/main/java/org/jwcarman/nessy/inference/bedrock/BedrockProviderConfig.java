@@ -163,9 +163,9 @@ public final class BedrockProviderConfig {
   }
 
   BedrockInferenceProvider build() {
-    BedrockProperties.requireOwn(properties);
-    BedrockProperties.read(properties, mapper);
-    BedrockProperties.warnUnsupported(properties);
+    BedrockPropertyReader.requireOwn(properties);
+    BedrockPropertyReader.read(properties);
+    BedrockPropertyReader.warnUnsupported(properties);
     return new BedrockInferenceProvider(
         resolveClient(), mapper, Collections.unmodifiableMap(new LinkedHashMap<>(properties)));
   }
