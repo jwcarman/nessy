@@ -32,6 +32,8 @@ import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider;
+import org.jwcarman.nessy.inference.openai.OpenAiProperties;
+import org.jwcarman.nessy.inference.openai.OpenAiReasoningEffort;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.env.YamlPropertySourceLoader;
@@ -463,6 +465,21 @@ class InferenceProvidersAutoConfigurationTest {
                       .containsOnly(
                           Map.entry("openai.tools.strict", "true"),
                           Map.entry("openai.reasoning.effort", "high")));
+    }
+
+    /**
+     * The YAML form of a typed property: the text binds, and the adapter's own constant reads it.
+     */
+    @Test
+    void a_bound_effort_reads_as_the_typed_enum_constant() {
+      runner
+          .withPropertyValues(
+              "openai.api-key=sk-test",
+              "nessy.providers.openai.properties.openai.reasoning.effort=high")
+          .run(
+              context ->
+                  assertThat(OpenAiProperties.REASONING_EFFORT.in(propertiesOf(context, "openai")))
+                      .contains(OpenAiReasoningEffort.HIGH));
     }
 
     /** Review Focus 4: the vendor's own spelling survives the binder. */
