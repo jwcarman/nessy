@@ -25,6 +25,22 @@ victools, and the JSON the model produces is bound back into it before
 and a tool never parses a string. `@JsonPropertyDescription` on a component
 reaches the model as that field's description.
 
+The schema must be an object at the root: every model vendor requires a
+tool's parameters to be one. Records, classes and maps qualify, and a
+hand-written schema qualifies when it says `"type": "object"`. A sealed
+interface, an enum, a `String` or a `List` as the whole input does not, and
+binding such a tool fails at once with an `IllegalArgumentException` naming
+it. Wrap the type in a record:
+
+```java
+sealed interface Command permits Restart, Stop {}
+
+record ServerRequest(Command command) {}   // the tool's input type
+```
+
+A sealed type as a field of that record is fine; the discriminator travels
+inside the object.
+
 A tool with no input still needs a type; an empty record works. A tool that
 wants to shape its own schema overrides `inputSchema(generator)`.
 

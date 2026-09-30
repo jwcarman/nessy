@@ -109,7 +109,7 @@ class ApprovalHandlerTest {
             new ToolBinding<>(
                 tool(),
                 JsonMapper.builder().build(),
-                new JsonSchema("{}"),
+                new JsonSchema("{\"type\":\"object\"}"),
                 Duration.ofSeconds(30),
                 new RetryPolicy.Never(),
                 action,

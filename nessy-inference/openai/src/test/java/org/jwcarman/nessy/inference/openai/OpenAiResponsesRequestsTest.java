@@ -143,10 +143,10 @@ class OpenAiResponsesRequestsTest {
        "properties":{"q":{"type":"string"},"reason":{"type":["string","null"]}},
        "required":["q"]}""";
 
-  private static final String SEALED_SCHEMA =
+  private static final String MAP_SCHEMA =
       """
-      {"oneOf":[{"type":"object","properties":{"type":{"const":"Restart"}},"required":["type"]},
-                {"type":"object","properties":{"type":{"const":"Shutdown"}},"required":["type"]}]}""";
+      {"type":"object","properties":{"labels":{"type":"object","additionalProperties":{"type":"string"}}},
+       "required":["labels"]}""";
 
   /** What the SDK would put on the wire for {@code value}, read back as plain maps and lists. */
   private static Map<String, Object> sent(Object value) {
@@ -670,9 +670,7 @@ class OpenAiResponsesRequestsTest {
       List<FunctionTool> tools;
       try {
         tools =
-            params(
-                    offering(
-                        List.of(offer("restart", SEALED_SCHEMA), offer("lookup", LOOKUP_SCHEMA))))
+            params(offering(List.of(offer("tagging", MAP_SCHEMA), offer("lookup", LOOKUP_SCHEMA))))
                 .tools()
                 .orElseThrow()
                 .stream()
@@ -683,14 +681,17 @@ class OpenAiResponsesRequestsTest {
       }
 
       assertThat(tools.get(0).strict()).contains(false);
-      assertThat(sent(tools.get(0).parameters().orElseThrow())).containsKey("oneOf");
+      assertThat(sent(tools.get(0).parameters().orElseThrow()))
+          .doesNotContainKey("additionalProperties");
       assertThat(tools.get(1).strict()).contains(true);
       assertThat(appender.list)
           .singleElement()
           .satisfies(
               event -> {
                 assertThat(event.getLevel()).isEqualTo(Level.WARN);
-                assertThat(event.getFormattedMessage()).contains("restart").contains("oneOf");
+                assertThat(event.getFormattedMessage())
+                    .contains("tagging")
+                    .contains("additionalProperties");
               });
     }
 

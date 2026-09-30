@@ -731,10 +731,10 @@ class OpenAiChatRequestsTest {
                            "properties":{"city":{"type":"string"},"zip":{"type":"string"}},
                            "required":["city"]}}}""";
 
-    private static final String SEALED_SCHEMA =
+    private static final String MAP_SCHEMA =
         """
-        {"oneOf":[{"type":"object","properties":{"type":{"const":"Restart"}},"required":["type"]},
-                  {"type":"object","properties":{"type":{"const":"Shutdown"}},"required":["type"]}]}""";
+        {"type":"object","properties":{"labels":{"type":"object","additionalProperties":{"type":"string"}}},
+         "required":["labels"]}""";
 
     private static ToolOffer offer(String name, String schema) {
       return new ToolOffer(new ToolName(name), "does " + name, new JsonSchema(schema));
@@ -819,20 +819,23 @@ class OpenAiChatRequestsTest {
       try {
         functions =
             functionsFor(
-                List.of(offer("restart", SEALED_SCHEMA), offer("lookup", LOOKUP_SCHEMA)), STRICT);
+                List.of(offer("tagging", MAP_SCHEMA), offer("lookup", LOOKUP_SCHEMA)), STRICT);
       } finally {
         logger.detachAppender(appender);
       }
 
       assertThat(functions.get(0).strict()).contains(false);
-      assertThat(sent(functions.get(0).parameters().orElseThrow())).containsKey("oneOf");
+      assertThat(sent(functions.get(0).parameters().orElseThrow()))
+          .doesNotContainKey("additionalProperties");
       assertThat(functions.get(1).strict()).contains(true);
       assertThat(appender.list)
           .singleElement()
           .satisfies(
               event -> {
                 assertThat(event.getLevel()).isEqualTo(Level.WARN);
-                assertThat(event.getFormattedMessage()).contains("restart").contains("oneOf");
+                assertThat(event.getFormattedMessage())
+                    .contains("tagging")
+                    .contains("additionalProperties");
               });
     }
 

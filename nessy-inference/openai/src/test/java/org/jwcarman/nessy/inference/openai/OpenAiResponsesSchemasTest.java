@@ -257,54 +257,6 @@ class OpenAiResponsesSchemasTest {
                         "required":["reason","type"],"additionalProperties":false}]"""
                       + "}},\"required\":[\"command\"],\"additionalProperties\":false}"));
     }
-
-    /** Strict mode requires the root of a tool schema to be an object, not a union. */
-    @Test
-    void a_union_at_the_root_goes_as_generated_naming_the_root() {
-      String json = "{\"oneOf\":" + SEALED_BRANCHES + "}";
-
-      OpenAiResponsesSchemas.Projected projected = project(json);
-
-      assertThat(projected.strict()).isFalse();
-      assertThat(projected.refusedKeyword())
-          .hasValueSatisfying(k -> assertThat(k).contains("root"));
-      assertThat(projected.schema()).isEqualTo(parse(json));
-    }
-
-    @Test
-    void an_any_of_at_the_root_goes_as_generated_naming_the_root() {
-      String json = "{\"anyOf\":" + SEALED_BRANCHES + "}";
-
-      OpenAiResponsesSchemas.Projected projected = project(json);
-
-      assertThat(projected.strict()).isFalse();
-      assertThat(projected.refusedKeyword()).contains("anyOf at the root");
-      assertThat(projected.schema()).isEqualTo(parse(json));
-    }
-
-    @Test
-    void a_bare_ref_at_the_root_goes_as_generated_naming_the_root() {
-      String json =
-          "{\"$ref\":\"#/$defs/Q\",\"$defs\":{\"Q\":{\"type\":\"object\","
-              + "\"properties\":{\"a\":{\"type\":\"string\"}},\"required\":[\"a\"]}}}";
-
-      OpenAiResponsesSchemas.Projected projected = project(json);
-
-      assertThat(projected.strict()).isFalse();
-      assertThat(projected.refusedKeyword()).contains("$ref at the root");
-      assertThat(projected.schema()).isEqualTo(parse(json));
-    }
-
-    @Test
-    void a_scalar_root_goes_as_generated_naming_the_root() {
-      String json = "{\"type\":\"string\"}";
-
-      OpenAiResponsesSchemas.Projected projected = project(json);
-
-      assertThat(projected.strict()).isFalse();
-      assertThat(projected.refusedKeyword()).contains("type string at the root");
-      assertThat(projected.schema()).isEqualTo(parse(json));
-    }
   }
 
   @Nested

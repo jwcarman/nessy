@@ -75,7 +75,7 @@ class HarnessObservesToolsTest {
 
         @Override
         public JsonSchema inputSchema(JsonSchemaGenerator generator) {
-          return new JsonSchema("{\"type\":\"string\"}");
+          return new JsonSchema("{\"type\":\"object\"}");
         }
 
         @Override
@@ -112,7 +112,7 @@ class HarnessObservesToolsTest {
             new DefaultQueuedHarnessConfig.Defaults(
                 ProviderId.of("test"), InferenceOptions.of("m")),
             JsonMapper.builder().build(),
-            type -> new JsonSchema("{}"),
+            type -> new JsonSchema("{\"type\":\"object\"}"),
             observations);
     config.tool(ECHO, t -> t.approver(_ -> Awaited.ready(ApprovalResult.approved()), a -> {}));
     config.tool(UNGATED, t -> {});
@@ -139,7 +139,7 @@ class HarnessObservesToolsTest {
 
         @Override
         public JsonSchema inputSchema(JsonSchemaGenerator generator) {
-          return new JsonSchema("{\"type\":\"string\"}");
+          return new JsonSchema("{\"type\":\"object\"}");
         }
 
         @Override

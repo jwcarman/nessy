@@ -92,25 +92,10 @@ final class OpenAiResponsesSchemas {
 
   static Projected project(String json, JsonMapper mapper) {
     Map<String, Object> generated = mapper.readValue(json, new TypeReference<>() {});
-    Optional<String> refused = rootUnion(generated).or(() -> refused(generated));
+    Optional<String> refused = refused(generated);
     return refused.isPresent()
         ? new Projected(generated, refused)
         : new Projected(strict(generated), Optional.empty());
-  }
-
-  /** Strict mode requires the root to be an object; anything else cannot be strict. */
-  private static Optional<String> rootUnion(Map<?, ?> root) {
-    if (root.containsKey(ANY_OF) || root.containsKey(ONE_OF)) {
-      return Optional.of((root.containsKey(ANY_OF) ? ANY_OF : ONE_OF) + " at the root");
-    }
-    if (isObject(root)) {
-      return Optional.empty();
-    }
-    if (root.containsKey("$ref")) {
-      return Optional.of("$ref at the root");
-    }
-    Object type = root.get("type");
-    return Optional.of(type == null ? "no type at the root" : "type " + type + " at the root");
   }
 
   // ---- the check ------------------------------------------------------------------------

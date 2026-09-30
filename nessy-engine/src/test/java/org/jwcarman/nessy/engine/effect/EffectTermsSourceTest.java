@@ -93,7 +93,7 @@ class EffectTermsSourceTest {
     return new ToolBinding<>(
         tool(),
         JsonMapper.builder().build(),
-        new JsonSchema("{}"),
+        new JsonSchema("{\"type\":\"object\"}"),
         timeout,
         retryPolicy,
         ActionRenderer.byToString(),

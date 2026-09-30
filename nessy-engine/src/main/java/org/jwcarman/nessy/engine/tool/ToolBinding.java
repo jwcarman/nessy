@@ -36,6 +36,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.inference.ToolOffer;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -82,7 +83,7 @@ public final class ToolBinding<I> {
       RetryPolicy approvalRetryPolicy) {
     this.tool = Objects.requireNonNull(tool, "tool must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
-    this.schema = Objects.requireNonNull(schema, "schema must not be null");
+    this.schema = requireObjectAtRoot(tool, mapper, schema);
     this.timeout = Objects.requireNonNull(timeout, "timeout must not be null");
     this.retryPolicy = Objects.requireNonNull(retryPolicy, "retry policy must not be null");
     this.action = Objects.requireNonNull(action, "action renderer must not be null");
@@ -92,6 +93,55 @@ public final class ToolBinding<I> {
         Objects.requireNonNull(approvalTimeout, "approval timeout must not be null");
     this.approvalRetryPolicy =
         Objects.requireNonNull(approvalRetryPolicy, "approval retry policy must not be null");
+  }
+
+  /**
+   * Every vendor requires tool parameters to be an object, and refuses a union at the root even
+   * when it is not asked to be strict. Checked here, once, on the schema the vendor will receive,
+   * so the mistake surfaces when the tool is bound rather than as a provider's 400 on the first
+   * call.
+   */
+  private static JsonSchema requireObjectAtRoot(
+      Tool<?> tool, ObjectMapper mapper, JsonSchema schema) {
+    Objects.requireNonNull(schema, "schema must not be null");
+    JsonNode root = mapper.readTree(schema.json());
+    String found;
+    if (root.has("oneOf")) {
+      found = "a union (oneOf)";
+    } else if (root.has("anyOf")) {
+      found = "a union (anyOf)";
+    } else if (!root.has("type")) {
+      found = "no type at all";
+    } else if (!"object".equals(root.get("type").asString())) {
+      found = "type '" + root.get("type").asString() + "'";
+    } else {
+      return schema;
+    }
+    String name = tool.name().value();
+    throw new IllegalArgumentException(
+        "tool '"
+            + name
+            + "': its input schema must be an object at the root, but it is "
+            + found
+            + "; wrap the type in an object, e.g. record "
+            + pascal(name)
+            + "Input("
+            + tool.inputType().getSimpleName()
+            + " value)");
+  }
+
+  private static String pascal(String name) {
+    StringBuilder out = new StringBuilder();
+    boolean upper = true;
+    for (char c : name.toCharArray()) {
+      if (Character.isLetterOrDigit(c)) {
+        out.append(upper ? Character.toUpperCase(c) : c);
+        upper = false;
+      } else {
+        upper = true;
+      }
+    }
+    return out.toString();
   }
 
   public ToolName name() {

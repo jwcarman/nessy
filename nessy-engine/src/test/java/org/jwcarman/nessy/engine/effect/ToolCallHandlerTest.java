@@ -109,7 +109,7 @@ class ToolCallHandlerTest {
             new ToolBinding<>(
                 tool,
                 JsonMapper.builder().build(),
-                new JsonSchema("{}"),
+                new JsonSchema("{\"type\":\"object\"}"),
                 Duration.ofSeconds(30),
                 new RetryPolicy.Never(),
                 ActionRenderer.byToString(),
@@ -258,7 +258,7 @@ class ToolCallHandlerTest {
                 new ToolBinding<>(
                     echo(),
                     JsonMapper.builder().build(),
-                    new JsonSchema("{}"),
+                    new JsonSchema("{\"type\":\"object\"}"),
                     Duration.ofSeconds(90),
                     new RetryPolicy.FixedDelay(3, Duration.ofSeconds(1), Duration.ZERO),
                     ActionRenderer.byToString(),

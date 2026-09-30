@@ -274,7 +274,7 @@ class EffectTraceCarrierTest {
 
         @Override
         public JsonSchema inputSchema(JsonSchemaGenerator generator) {
-          return new JsonSchema("{\"type\":\"string\"}");
+          return new JsonSchema("{\"type\":\"object\"}");
         }
 
         @Override
