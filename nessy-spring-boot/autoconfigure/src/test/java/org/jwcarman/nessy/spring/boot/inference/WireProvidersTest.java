@@ -18,10 +18,12 @@ package org.jwcarman.nessy.spring.boot.inference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider;
 import org.jwcarman.nessy.inference.openai.OpenAiChatInferenceProvider;
 import org.jwcarman.nessy.inference.openai.OpenAiResponsesInferenceProvider;
 
@@ -41,6 +43,37 @@ class WireProvidersTest {
         .get()
         .isInstanceOfSatisfying(
             OpenAiResponsesInferenceProvider.class, OpenAiResponsesInferenceProvider::close);
+  }
+
+  @Test
+  void the_openai_preset_told_the_responses_wire_builds_without_a_wrong_prefix_failure() {
+    ProviderSettings settings =
+        new ProviderSettings(Wire.OPENAI_RESPONSES, null, null, null, null, null);
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of("openai", settings), Map.of("openai.api-key", "k")::get);
+    assertThat(resolved).hasSize(1);
+
+    Optional<InferenceProvider> built = WireProviders.build(resolved.get(0), null, LOADER);
+
+    assertThat(built)
+        .get()
+        .isInstanceOfSatisfying(
+            OpenAiResponsesInferenceProvider.class, OpenAiResponsesInferenceProvider::close);
+  }
+
+  @Test
+  void the_openai_preset_told_the_anthropic_wire_builds_without_a_wrong_prefix_failure() {
+    ProviderSettings settings = new ProviderSettings(Wire.ANTHROPIC, null, null, null, null, null);
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of("openai", settings), Map.of("openai.api-key", "k")::get);
+    assertThat(resolved).hasSize(1);
+
+    Optional<InferenceProvider> built = WireProviders.build(resolved.get(0), null, LOADER);
+
+    assertThat(built)
+        .get()
+        .isInstanceOfSatisfying(
+            AnthropicInferenceProvider.class, AnthropicInferenceProvider::close);
   }
 
   @Test

@@ -52,8 +52,10 @@ record Preset(
               "openai",
               List.of("openai.api-key"),
               null,
-              // Measured to accept strict mode (spec section 10); every other row waits for its own
-              // measurement in PresetCandidatesLiveTest's strict column.
+              // OpenAI documents strict function tools, and the Responses wire already sends the
+              // same rewrite strict; the chat-wire row of the strict column in
+              // PresetCandidatesLiveTest is not yet measured, and every other row waits for its
+              // own (spec section 10).
               Map.of("openai.tools.strict", "true")),
           new Preset(
               "xai", Wire.OPENAI_CHAT, "https://api.x.ai/v1", "x_ai", List.of("xai.api-key"), null),

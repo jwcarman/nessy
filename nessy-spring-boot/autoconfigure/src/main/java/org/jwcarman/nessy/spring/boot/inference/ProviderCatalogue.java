@@ -68,8 +68,13 @@ final class ProviderCatalogue {
       }
       urls.add(preset.baseUrl());
       String baseUrl = firstNonBlank(urls);
-      // The preset's defaults, overlaid name by name by what the application set (spec section 11).
-      Map<String, String> properties = new LinkedHashMap<>(preset.defaultProperties());
+      // The preset's defaults belong to the wire the preset ships with; an application that moved
+      // the provider to another wire starts clean, and its own properties overlay name by name
+      // (spec section 11).
+      Map<String, String> properties = new LinkedHashMap<>();
+      if (own.wire() == null || own.wire() == preset.wire()) {
+        properties.putAll(preset.defaultProperties());
+      }
       if (own.properties() != null) {
         properties.putAll(own.properties());
       }

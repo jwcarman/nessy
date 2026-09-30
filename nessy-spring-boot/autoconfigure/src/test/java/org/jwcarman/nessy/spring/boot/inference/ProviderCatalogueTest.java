@@ -169,13 +169,33 @@ class ProviderCatalogueTest {
 
     assertThat(resolved)
         .containsExactly(
-            new ResolvedProvider(
-                "openai",
-                Wire.OPENAI_RESPONSES,
-                null,
-                "openai",
-                "k",
-                Map.of("openai.tools.strict", "true")));
+            new ResolvedProvider("openai", Wire.OPENAI_RESPONSES, null, "openai", "k", Map.of()));
+  }
+
+  @Test
+  void the_openai_preset_told_another_wire_starts_without_the_openai_default() {
+    ProviderSettings openai = new ProviderSettings(Wire.ANTHROPIC, null, null, null, null, null);
+
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of("openai", openai), Map.of("openai.api-key", "k")::get);
+
+    assertThat(resolved)
+        .singleElement()
+        .extracting(ResolvedProvider::properties)
+        .isEqualTo(Map.of());
+  }
+
+  @Test
+  void the_openai_preset_told_the_wire_it_already_has_keeps_its_default() {
+    ProviderSettings openai = new ProviderSettings(Wire.OPENAI_CHAT, null, null, null, null, null);
+
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of("openai", openai), Map.of("openai.api-key", "k")::get);
+
+    assertThat(resolved)
+        .singleElement()
+        .extracting(ResolvedProvider::properties)
+        .isEqualTo(Map.of("openai.tools.strict", "true"));
   }
 
   @Test
