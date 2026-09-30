@@ -135,19 +135,42 @@ makes delegation earn its keep.
 
 ## Providers
 
-- **Named embedding providers** *(brainstorm next)* — the embedding
-  auto-configurations still build one `EmbedderFactory` bean and back off for
-  each other, so with several keys set, auto-configuration order picks the
-  embedder. That matters more than it did for inference, because stored
-  vectors carry the model that made them. The open question is whether one
-  `nessy.providers.<id>` entry serves both inference and embeddings, with each
-  preset declaring what it offers (openai, gemini and lmstudio both; anthropic
-  inference only; voyage embeddings only). Around it: who chooses the embedder
-  (a store, not an agent type) and what switching one means for vectors already
-  stored.
-- **Reasoning controls on the OpenAI adapter** — `reasoning_effort` (and the
-  thinking-off switch local runtimes honour) as provider settings, as the
-  Anthropic adapter already has `thinking` and `promptCaching`.
+The first three ship together as `0.3.0`, in this order.
+
+- **OpenAI Responses adapter** *(designed,
+  `2026-09-29-openai-responses-design.md`)* — a second adapter in
+  `nessy-inference-openai` speaking OpenAI's Responses API, stateless
+  (`store: false`, the whole context every call, encrypted reasoning items
+  carried as `Block.Provider` and replayed within the turn), with function
+  tools, `ToolChoice.Answer`, structured output and usage at parity with the
+  Chat Completions adapter. Unblocks GPT-6 with tools, which Chat Completions
+  refuses, and Perplexity, which now answers only on `/v1/responses`. The
+  wires become `openai-chat` and `openai-responses`; the `openai` preset
+  moves to the new wire once the live tests pass through it.
+- **Reasoning effort, vendor-neutral** *(next, after the Responses adapter)*
+  — one per-agent-type setting on `InferenceConfig` that each adapter
+  translates: OpenAI's `reasoning.effort` (and the summary that rides with
+  it), Anthropic's thinking budget, Gemini's thinking budget, the thinking-off
+  switch local runtimes honour. A new public concept with its own short
+  design; targeted with the Responses adapter for `0.3.0`.
+- **Named embedding providers** *(third, for `0.3.0`)* — mirrors the
+  inference design: a preset catalogue, a `ProviderId` registry, application
+  beans joining under their bean names, and the startup report. Today the
+  embedding auto-configurations still build one `EmbedderFactory` bean and
+  back off for each other, so with several keys set, auto-configuration order
+  picks the embedder — and that matters more than it did for inference,
+  because stored vectors carry the model that made them. Open within it:
+  whether one `nessy.providers.<id>` entry serves both inference and
+  embeddings, with each preset declaring what it offers (openai, gemini and
+  lmstudio both; anthropic inference only; voyage embeddings only); who
+  chooses the embedder (a store, not an agent type); and what switching one
+  means for vectors already stored.
+- **First-class hosted tools** *(a later design)* — OpenAI's web search, file
+  search, code interpreter and remote MCP run where Nessy cannot approve or
+  gate them, so the Responses adapter offers function tools only. Enabling a
+  hosted tool per agent type and recording each call and result in the event
+  log, so the audit trail stays whole, is its own design; a passthrough was
+  rejected as a hole in that trail.
 - **Azure OpenAI** *(spike first)* — likely a base-URL-and-auth story over the
   OpenAI module; the spike decides. Any OpenAI-shaped endpoint is already the
   OpenAI provider with a base URL and a provider name.
