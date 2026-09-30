@@ -134,7 +134,8 @@ public final class GeminiProviderConfig {
 
   GeminiInferenceProvider build() {
     GeminiProperties.requireOwn(properties);
-    GeminiProperties.read(properties, mapper);
+    GeminiProperties.read(properties);
+    GeminiProperties.warnUnsupported(properties);
     return new GeminiInferenceProvider(
         resolveClient(), mapper, Collections.unmodifiableMap(new LinkedHashMap<>(properties)));
   }

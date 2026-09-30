@@ -22,7 +22,6 @@ import com.google.genai.types.FunctionCallingConfigMode;
 import com.google.genai.types.FunctionCallingConfigMode.Known;
 import com.google.genai.types.FunctionDeclaration;
 import com.google.genai.types.GenerateContentConfig;
-import com.google.genai.types.HttpOptions;
 import com.google.genai.types.Part;
 import com.google.genai.types.Tool;
 import com.google.genai.types.ToolConfig;
@@ -104,7 +103,7 @@ public final class GeminiRequests {
       InferenceRequest request, Map<String, String> providerProperties, JsonMapper mapper) {
     GeminiProperties.Read read =
         GeminiProperties.read(
-            VendorProperties.merge(providerProperties, request.options().properties()), mapper);
+            VendorProperties.merge(providerProperties, request.options().properties()));
     GenerateContentConfig.Builder builder = GenerateContentConfig.builder();
     if (request.options().hasMaxTokens()) {
       builder.maxOutputTokens(request.options().maxTokens());
@@ -133,11 +132,6 @@ public final class GeminiRequests {
     }
     request.outputSchema().ifPresent(schema -> askForShape(builder, schema, mapper));
     read.thinking().ifPresent(builder::thinkingConfig);
-    if (!read.passThrough().isEmpty()) {
-      // Per request, overlaid by the SDK on the client's own options field by field: the base URL
-      // and timeout the client was built with stay (ApiClient.mergeHttpOptions).
-      builder.httpOptions(HttpOptions.builder().extraBody(read.passThrough()).build());
-    }
     return builder.build();
   }
 

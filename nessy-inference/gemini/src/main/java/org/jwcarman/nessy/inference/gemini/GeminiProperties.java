@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.inference.gemini;
 
 import com.google.genai.types.ThinkingConfig;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,13 +23,12 @@ import java.util.Set;
 import org.jwcarman.nessy.vendor.VendorProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The {@code gemini.} vendor properties (spec §9d). Names are spelled as the Gemini REST reference
- * spells them, {@code generationConfig} included, so a known name reads like the pass-through
- * beside it. The three thinking names go through the SDK's typed config, so they cannot depend on
- * how {@code extraBody} merges; everything else under the prefix is sent through {@code extraBody}.
+ * The {@code gemini.} vendor properties (spec §9d): the three thinking names, and nothing else.
+ * Names are spelled as the Gemini REST reference spells them, {@code generationConfig} included,
+ * and go through the SDK's typed config. A name under the prefix that is not one of them is
+ * ignored, and said so once when it is checked.
  */
 final class GeminiProperties {
 
@@ -43,45 +41,18 @@ final class GeminiProperties {
   private static final Set<String> KNOWN =
       Set.of(THINKING_BUDGET, INCLUDE_THOUGHTS, THINKING_LEVEL);
 
-  private static final String SHAPE = "the answer's shape the harness asks for";
-
-  /** What the typed settings, or the adapter itself, already decide (§9d). */
-  private static final Map<String, String> CLASHES =
-      Map.of(
-          "contents", "the conversation the engine assembles",
-          "systemInstruction", "the system prompt the harness sends",
-          "tools", "the tools the harness binds",
-          "toolConfig", "the tool choice the engine makes",
-          "generationConfig.maxOutputTokens", "InferenceConfig.maxTokens",
-          "generationConfig.responseMimeType", SHAPE,
-          "generationConfig.responseJsonSchema", SHAPE,
-          "generationConfig.responseSchema", SHAPE);
-
   private static final Logger log = LoggerFactory.getLogger(GeminiProperties.class);
 
   private GeminiProperties() {}
 
-  /** The {@code gemini.} properties once read: a typed thinking config, and the extra body. */
-  record Read(Optional<ThinkingConfig> thinking, Map<String, Object> passThrough) {}
+  /** The {@code gemini.} properties once read: a typed thinking config, when any was asked for. */
+  record Read(Optional<ThinkingConfig> thinking) {}
 
-  static Read read(Map<String, String> merged, JsonMapper mapper) {
+  /** The supported names of the merged provider and agent-type map, parsed. Silent. */
+  static Read read(Map<String, String> merged) {
     Map<String, String> own = VendorProperties.under(merged, PREFIX);
-    Map<String, String> clashes = new LinkedHashMap<>(CLASHES);
-    String known = own.keySet().stream().filter(KNOWN::contains).findFirst().orElse(null);
-    if (known != null) {
-      // Plan ruling 6: the typed thinking config owns its object.
-      for (String name : own.keySet()) {
-        boolean under = name.equals(THINKING_CONFIG) || name.startsWith(THINKING_CONFIG + ".");
-        if (under && !KNOWN.contains(name)) {
-          clashes.put(name, "property '" + PREFIX + known + "'");
-        }
-      }
-    }
-    Map<String, String> rest = new LinkedHashMap<>(own);
-    rest.keySet().removeAll(KNOWN);
-    VendorProperties.refuseClashes(PREFIX, rest, clashes);
     Optional<ThinkingConfig> thinking = Optional.empty();
-    if (known != null) {
+    if (own.keySet().stream().anyMatch(KNOWN::contains)) {
       ThinkingConfig.Builder builder = ThinkingConfig.builder();
       if (own.containsKey(THINKING_BUDGET)) {
         builder.thinkingBudget(
@@ -97,7 +68,26 @@ final class GeminiProperties {
       }
       thinking = Optional.of(builder.build());
     }
-    return new Read(thinking, VendorProperties.nest(PREFIX, rest, mapper));
+    return new Read(thinking);
+  }
+
+  /**
+   * Says, once per name, that a property under this prefix is not one this adapter supports and is
+   * ignored. Called when a property set is first checked (a provider's build, a harness's
+   * validate), never per request.
+   */
+  static void warnUnsupported(Map<String, String> merged) {
+    List<String> supported = KNOWN.stream().sorted().map(name -> PREFIX + name).toList();
+    for (String name : VendorProperties.under(merged, PREFIX).keySet()) {
+      if (!KNOWN.contains(name)) {
+        log.warn(
+            "NESSY INFERENCE: property '{}{}' is not supported by gemini and is ignored;"
+                + " supported: {}",
+            PREFIX,
+            name,
+            supported);
+      }
+    }
   }
 
   /** A provider is one adapter: a provider-level entry under another prefix is a mistake (§6a). */

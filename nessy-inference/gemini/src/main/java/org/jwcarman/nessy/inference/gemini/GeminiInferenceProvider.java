@@ -128,7 +128,8 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
   @Override
   public void validate(InferenceOptions options) {
     Map<String, String> merged = VendorProperties.merge(properties, options.properties());
-    GeminiProperties.read(merged, mapper);
+    GeminiProperties.read(merged);
+    GeminiProperties.warnUnsupported(merged);
     GeminiProperties.logIgnored(merged);
   }
 

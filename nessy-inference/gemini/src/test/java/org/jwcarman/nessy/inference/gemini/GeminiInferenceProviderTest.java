@@ -18,6 +18,7 @@ package org.jwcarman.nessy.inference.gemini;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.google.genai.errors.ClientException;
 import com.google.genai.errors.GenAiIOException;
 import com.google.genai.errors.ServerException;
@@ -251,6 +252,86 @@ class GeminiInferenceProviderTest {
               InferenceResult.Fault.class,
               fault -> assertThat(fault.failure()).isInstanceOf(Failure.Permanent.class));
       assertThat(narrated.fragments()).isEmpty();
+    }
+  }
+
+  @Nested
+  class ItsVendorProperties {
+
+    private static final String BUDGET = "gemini.generationConfig.thinkingConfig.thinkingBudget";
+
+    private final List<com.google.genai.types.GenerateContentConfig> sent = new ArrayList<>();
+
+    private GeminiClient recording() {
+      return new GeminiClient() {
+        @Override
+        public Stream<GenerateContentResponse> generateContentStream(
+            String model,
+            List<Content> contents,
+            com.google.genai.types.GenerateContentConfig config) {
+          sent.add(config);
+          return partialsOf(reply(new FinishReason("STOP"), Part.fromText("ok"))).stream();
+        }
+
+        @Override
+        public void close() {
+          // Nothing to close.
+        }
+      };
+    }
+
+    private static InferenceRequest carrying(Map<String, String> agentType) {
+      InferenceRequest base = request();
+      return new InferenceRequest(
+          base.systemPrompt(),
+          base.context(),
+          base.toolset(),
+          new InferenceOptions("gemini-3.6-flash", 256, agentType));
+    }
+
+    @Test
+    void a_property_on_the_provider_reaches_every_request() {
+      GeminiInferenceProvider provider =
+          new GeminiInferenceProvider(recording(), MAPPER, Map.of(BUDGET, "1024"));
+
+      provider.infer(carrying(Map.of()));
+
+      assertThat(sent)
+          .singleElement()
+          .satisfies(
+              config ->
+                  assertThat(config.thinkingConfig().orElseThrow().thinkingBudget())
+                      .contains(1024));
+    }
+
+    @Test
+    void validate_warns_once_for_an_unsupported_agent_type_property_and_inference_stays_silent() {
+      GeminiInferenceProvider provider = new GeminiInferenceProvider(recording(), MAPPER);
+      InferenceRequest request = carrying(Map.of("gemini.generationConfig.maxOutputTokens", "9"));
+
+      List<ILoggingEvent> atValidate =
+          LogCapture.during(GeminiProperties.class, () -> provider.validate(request.options()));
+      List<ILoggingEvent> atInference =
+          LogCapture.during(
+              GeminiProperties.class,
+              () -> {
+                provider.infer(request);
+                provider.infer(request);
+              });
+
+      assertThat(LogCapture.warnings(atValidate))
+          .singleElement()
+          .asString()
+          .contains("'gemini.generationConfig.maxOutputTokens'")
+          .contains(BUDGET);
+      assertThat(atInference).isEmpty();
+      assertThat(sent)
+          .hasSize(2)
+          .allSatisfy(
+              config -> {
+                assertThat(config.httpOptions()).isEmpty();
+                assertThat(config.maxOutputTokens()).contains(256);
+              });
     }
   }
 
