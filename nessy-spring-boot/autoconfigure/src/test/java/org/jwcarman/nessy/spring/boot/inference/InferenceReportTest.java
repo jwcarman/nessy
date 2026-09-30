@@ -75,7 +75,8 @@ class InferenceReportTest {
                   .contains(
                       "NESSY INFERENCE: providers: openai (openai-chat, the vendor's own"
                           + " endpoint, vendor openai, properties [openai.tools.strict]); xai"
-                          + " (openai-chat, https://api.x.ai/v1, vendor x_ai)")
+                          + " (openai-chat, https://api.x.ai/v1, vendor x_ai, properties"
+                          + " [openai.tools.strict])")
                   .doesNotContain("sk-super-secret")
                   .doesNotContain("xai-super-secret");
             });

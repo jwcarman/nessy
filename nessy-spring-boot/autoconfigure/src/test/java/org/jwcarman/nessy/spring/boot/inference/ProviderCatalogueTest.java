@@ -60,7 +60,13 @@ class ProviderCatalogueTest {
 
     assertThat(resolved)
         .containsExactly(
-            new ResolvedProvider("xai", Wire.OPENAI_CHAT, "https://api.x.ai/v1", "x_ai", "k"));
+            new ResolvedProvider(
+                "xai",
+                Wire.OPENAI_CHAT,
+                "https://api.x.ai/v1",
+                "x_ai",
+                "k",
+                Map.of("openai.tools.strict", "true")));
   }
 
   @Test
@@ -71,7 +77,12 @@ class ProviderCatalogueTest {
     assertThat(resolved)
         .containsExactly(
             new ResolvedProvider(
-                "openrouter", Wire.OPENAI_CHAT, "https://openrouter.ai/api/v1", "openrouter", "k"));
+                "openrouter",
+                Wire.OPENAI_CHAT,
+                "https://openrouter.ai/api/v1",
+                "openrouter",
+                "k",
+                Map.of("openai.tools.strict", "true")));
   }
 
   @Test
@@ -82,7 +93,12 @@ class ProviderCatalogueTest {
     assertThat(resolved)
         .containsExactly(
             new ResolvedProvider(
-                "nvidia", Wire.OPENAI_CHAT, "https://integrate.api.nvidia.com/v1", "nvidia", "k"));
+                "nvidia",
+                Wire.OPENAI_CHAT,
+                "https://integrate.api.nvidia.com/v1",
+                "nvidia",
+                "k",
+                Map.of("openai.tools.strict", "true")));
   }
 
   @Test
@@ -93,7 +109,12 @@ class ProviderCatalogueTest {
     assertThat(resolved)
         .containsExactly(
             new ResolvedProvider(
-                "groq", Wire.OPENAI_CHAT, "https://api.groq.com/openai/v1", "groq", "k"));
+                "groq",
+                Wire.OPENAI_CHAT,
+                "https://api.groq.com/openai/v1",
+                "groq",
+                "k",
+                Map.of("openai.tools.strict", "true")));
   }
 
   @Test
@@ -120,7 +141,12 @@ class ProviderCatalogueTest {
     assertThat(resolved)
         .containsExactly(
             new ResolvedProvider(
-                "mistral", Wire.OPENAI_CHAT, "https://api.mistral.ai/v1", "mistral_ai", "k"));
+                "mistral",
+                Wire.OPENAI_CHAT,
+                "https://api.mistral.ai/v1",
+                "mistral_ai",
+                "k",
+                Map.of("openai.tools.strict", "true")));
   }
 
   @Test
@@ -172,7 +198,13 @@ class ProviderCatalogueTest {
 
     assertThat(resolved)
         .containsExactly(
-            new ResolvedProvider("xai", Wire.OPENAI_CHAT, "https://api.x.ai/v1", "x_ai", "k"));
+            new ResolvedProvider(
+                "xai",
+                Wire.OPENAI_CHAT,
+                "https://api.x.ai/v1",
+                "x_ai",
+                "k",
+                Map.of("openai.tools.strict", "true")));
   }
 
   @Test
@@ -424,7 +456,7 @@ class ProviderCatalogueTest {
   @Test
   void a_preset_without_defaults_carries_no_properties() {
     List<ResolvedProvider> resolved =
-        ProviderCatalogue.resolve(Map.of(), Map.of("xai.api-key", "k")::get);
+        ProviderCatalogue.resolve(Map.of(), Map.of("anthropic.api-key", "k")::get);
 
     assertThat(resolved)
         .singleElement()

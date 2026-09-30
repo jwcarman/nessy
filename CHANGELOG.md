@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Spring Boot: strict tools by default on the measured chat-wire presets.**
+  `xai`, `groq`, `mistral`, `openrouter`, `nvidia` and `cerebras` now send
+  strict tools by default, overridable with
+  `nessy.providers.<id>.properties.openai.tools.strict: false`.
 - **`OpenAiResponsesInferenceProvider`**, an adapter for OpenAI's Responses
   API, in `nessy-inference-openai` beside the Chat Completions one. It is
   stateless (`store: false`, the whole context on every call), keeps each

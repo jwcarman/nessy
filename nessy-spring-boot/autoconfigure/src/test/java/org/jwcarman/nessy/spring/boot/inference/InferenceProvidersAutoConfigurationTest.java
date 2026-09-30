@@ -579,8 +579,8 @@ class InferenceProvidersAutoConfigurationTest {
     @Test
     void a_preset_without_defaults_carries_none() {
       runner
-          .withPropertyValues("xai.api-key=xai-test")
-          .run(context -> assertThat(propertiesOf(context, "xai")).isEmpty());
+          .withPropertyValues("anthropic.api-key=ak-test")
+          .run(context -> assertThat(propertiesOf(context, "anthropic")).isEmpty());
     }
 
     @Test

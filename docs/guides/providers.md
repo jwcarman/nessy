@@ -361,6 +361,13 @@ A key set under `nessy.providers.<id>.api-key` binds from the environment
 with the property flattened, not underscore-joined at each dot: `xai`'s is
 `NESSY_PROVIDERS_XAI_APIKEY`, with no underscore inside `APIKEY`.
 
+The `openai`, `xai`, `groq`, `mistral`, `openrouter`, `nvidia` and `cerebras`
+presets default `openai.tools.strict` to `true`: those chat-wire endpoints
+were measured accepting strict tools. `lmstudio`, `ollama` and custom
+providers do not, and neither do `anthropic` and `gemini`, which are not on
+the OpenAI wire. Override it with
+`nessy.providers.<id>.properties.openai.tools.strict: false`.
+
 `lmstudio`, `ollama` and any other keyless preset must be turned on explicitly with
 `enabled: true`. Nothing here probes `localhost:1234` or `localhost:11434` at startup: a
 provider that exists because something happened to answer on a port is a
@@ -430,7 +437,7 @@ At startup, `InferenceReport` logs every registered provider once — id,
 wire, endpoint, vendor, never the key:
 
 ```
-NESSY INFERENCE: providers: xai (openai-chat, https://api.x.ai/v1, vendor x_ai); anthropic (anthropic, the vendor's own endpoint, vendor anthropic)
+NESSY INFERENCE: providers: anthropic (anthropic, the vendor's own endpoint, vendor anthropic); gemini (gemini, the vendor's own endpoint, vendor gcp.gemini)
 ```
 
 A provider with vendor properties names them, never their values:

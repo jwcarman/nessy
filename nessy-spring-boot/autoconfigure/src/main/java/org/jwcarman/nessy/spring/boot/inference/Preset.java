@@ -58,7 +58,14 @@ record Preset(
               // section 10).
               Map.of("openai.tools.strict", "true")),
           new Preset(
-              "xai", Wire.OPENAI_CHAT, "https://api.x.ai/v1", "x_ai", List.of("xai.api-key"), null),
+              "xai",
+              Wire.OPENAI_CHAT,
+              "https://api.x.ai/v1",
+              "x_ai",
+              List.of("xai.api-key"),
+              null,
+              // Measured 2026-09-30: grok-4.7 and grok-4.20-0309-reasoning, strict accepted.
+              Map.of("openai.tools.strict", "true")),
           new Preset(
               "anthropic", Wire.ANTHROPIC, null, "anthropic", List.of("anthropic.api-key"), null),
           new Preset(
@@ -74,28 +81,39 @@ record Preset(
               "https://openrouter.ai/api/v1",
               "openrouter",
               List.of("openrouter.api-key"),
-              null),
+              null,
+              // Measured 2026-09-30: openai/gpt-oss-20b and anthropic/claude-sonnet-4.5, strict
+              // accepted.
+              Map.of("openai.tools.strict", "true")),
           new Preset(
               "nvidia",
               Wire.OPENAI_CHAT,
               "https://integrate.api.nvidia.com/v1",
               "nvidia",
               List.of("nvidia.api-key"),
-              null),
+              null,
+              // Measured 2026-09-30: nemotron-3.5-lightning-30b-a3b and openai/gpt-oss-20b, strict
+              // accepted.
+              Map.of("openai.tools.strict", "true")),
           new Preset(
               "groq",
               Wire.OPENAI_CHAT,
               "https://api.groq.com/openai/v1",
               "groq",
               List.of("groq.api-key"),
-              null),
+              null,
+              // Measured 2026-09-30: openai/gpt-oss-120b, strict accepted.
+              Map.of("openai.tools.strict", "true")),
           new Preset(
               "mistral",
               Wire.OPENAI_CHAT,
               "https://api.mistral.ai/v1",
               "mistral_ai",
               List.of("mistral.api-key"),
-              null),
+              null,
+              // Measured 2026-09-30: mistral-large-latest and magistral-medium-latest, strict
+              // accepted.
+              Map.of("openai.tools.strict", "true")),
           new Preset(
               "cerebras",
               Wire.OPENAI_CHAT,
