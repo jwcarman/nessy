@@ -126,42 +126,29 @@ config.inference(in -> in
 ```
 
 Each adapter owns a prefix -- `openai.` (both OpenAI adapters, whatever
-vendor they report), `anthropic.`, `gemini.`, `bedrock.` -- reads the
-entries under it and ignores the rest, so the agent type above runs on
-either provider and each reads its own. A property with no prefix at all is
-refused when the harness is built. Properties are fixed when the harness is
-built, sent with every request, and never written to the event log.
+vendor they report), `anthropic.`, `gemini.`, `bedrock.` -- and supports
+exactly the names listed for it below. Properties are fixed when the harness
+is built, sent with every request, and never written to the event log.
 
-Under its prefix an adapter does one of two things with a name:
-
-- **A known name is parsed** into the SDK's typed field, and a value of the
-  wrong type fails the build naming the property and the value
+- **A supported name is parsed** into the SDK's typed field, and a value of
+  the wrong type fails the build naming the property and the value
   (`property 'anthropic.thinking.budget_tokens' must be an integer, was
   'lots'`). The adapter checks the type, never the vocabulary: an effort
-  level OpenAI adds tomorrow works today.
-- **Any other name passes through** into the request body. Every dot after
-  the prefix nests an object (`openai.metadata.team` is
-  `{"metadata": {"team": ...}}`), and the value is read as a JSON literal
-  where it parses as one: `12000` is a number, `true` a boolean, `high` a
-  string, `["\n\n"]` an array. A value that must be a string but looks like
-  a number is quoted: `"12345"`. Names are spelled exactly as the vendor's
-  REST reference spells the field, because they are sent verbatim -- a typo
-  is the vendor's own 400.
-
-A property that names something a typed setting already decides -- the
-model, the ceiling, the tools and their choice, the answer's shape, the
-conversation, or a field the adapter fixes on purpose -- fails the build
-naming the property and what decides it: `agent type 'chat': property
-'openai.max_completion_tokens' names what InferenceConfig.maxTokens already
-decides; remove the property`. The rule reaches under and over a decided
-name too: `openai.text.verbosity` sets a field inside `text`, which the
-Responses adapter fills with the answer's shape, and a property that would
-replace or override a decided field (`gemini.generationConfig`, which contains
-`generationConfig.maxOutputTokens`) is refused, saying to set the fields one
-by one. A known name the wire cannot carry also fails the build, and so does
-a pass-through under an object the adapter builds from a known name
-(`openai.reasoning.generate_summary` beside `openai.reasoning.effort` on the
-Responses wire).
+  level OpenAI adds tomorrow works today. A supported name the wire cannot
+  carry (`openai.reasoning.summary` on the chat wire, `openai.tools.strict=false`
+  on the Responses wire) also fails the build.
+- **Any other name under the adapter's own prefix is ignored.** It is not
+  sent, it fails nothing, and the request goes out without it. The adapter
+  logs a warning naming the property and the names it supports, once per
+  name, when the property is first checked: when the provider is built for a
+  provider-level property, and when the harness is built for an agent type's.
+  Never once per request. `openai.max_completion_tokens` and `openai.seed`
+  are unsupported names, so `openai.seed=42` is a warning and nothing more.
+- **A name under another adapter's prefix** is left for that adapter and
+  logged at `DEBUG`: one agent type may carry settings for several vendors,
+  and the agent type above runs on either provider, each reading its own.
+- **A name with no prefix at all** is refused when the harness is built, since
+  it can belong to no adapter.
 
 A provider carries properties of its own, set on its config
 (`OpenAiChatInferenceProvider.of(c -> c.apiKey(key).property("openai.tools.strict", "true"))`)
@@ -179,14 +166,7 @@ under another adapter's prefix fails when the provider is built.
 | `openai.service_tier` | string | `service_tier` | `service_tier` |
 
 The Responses wire's `reasoning` object is sent only when one of the two
-reasoning names is set: it is a 400 on a model that does not reason. Refused
-on the chat wire: `model`, `messages`, `max_completion_tokens`,
-`max_tokens`, `tools`, `tool_choice`, `response_format`, `stream`,
-`stream_options`, and `reasoning_effort` beside `openai.reasoning.effort`.
-Refused on the Responses wire: `model`, `input`, `instructions`,
-`max_output_tokens`, `tools`, `tool_choice`, `text`, `stream`, and -- because
-the adapter is stateless and the event log is the only conversation --
-`store`, `include`, `previous_response_id`, `conversation` and `background`.
+reasoning names is set: it is a 400 on a model that does not reason.
 
 Under `openai.tools.strict=true` a tool whose schema strict mode cannot
 express (a sealed type's `oneOf`, a map) goes out as generated with
@@ -202,12 +182,8 @@ keyword; the other tools stay strict.
 | `anthropic.cache_control.ttl` | string | the cache markers on the system prompt and the tools: `5m` or `1h`; another value is sent as written |
 | `anthropic.service_tier` | string | `service_tier` |
 
-Refused: `model`, `max_tokens`, `messages`, `system`, `tools`,
-`tool_choice`, `output_config`, `stream`, and a raw `thinking` or
-`cache_control` (or a name under either) beside the known names that build
-them. `anthropic.thinking.type=enabled` without a budget is refused, and so
-is a budget that is not below the agent type's `maxTokens`, at harness
-build.
+`anthropic.thinking.type=enabled` without a budget is refused, and so is a
+budget that is not below the agent type's `maxTokens`, at harness build.
 
 ### Gemini
 
@@ -217,48 +193,25 @@ build.
 | `gemini.generationConfig.thinkingConfig.includeThoughts` | boolean | the same; thought summaries are then narrated as thinking |
 | `gemini.generationConfig.thinkingConfig.thinkingLevel` | string | the same |
 
-Every other `gemini.` name goes into the request body through the SDK's
-`extraBody`. Refused: `contents`, `systemInstruction`, `tools`,
-`toolConfig`, `generationConfig.maxOutputTokens`,
-`generationConfig.responseMimeType`, `generationConfig.responseJsonSchema`,
-`generationConfig.responseSchema`, and a pass-through under
-`generationConfig.thinkingConfig` beside one of the three known names.
-
-!!! note "Pass-through beside the typed config"
-    The three thinking names go through the SDK's typed config and do not
-    depend on `extraBody`. The SDK deep-merges `extraBody` into the request
-    body it builds: objects merge, and a list or scalar in the property
-    replaces the one already there. A pass-through under `generationConfig`
-    therefore lands beside the fields Nessy sets, and because a name that
-    reaches under or over a field Nessy sets is refused, it cannot change
-    one.
-
 ### Bedrock
 
-`bedrock.inferenceConfig.temperature` and `bedrock.inferenceConfig.topP`
-(numbers) and `bedrock.inferenceConfig.stopSequences` (a JSON array of
-strings) land in Converse's typed inference config. Every other `bedrock.`
-name goes into `additionalModelRequestFields`, the model's own document, so
-Claude's extended thinking on Bedrock is two properties:
+| name | type | lands in |
+|---|---|---|
+| `bedrock.inferenceConfig.temperature` | number | Converse's typed inference config |
+| `bedrock.inferenceConfig.topP` | number | the same |
+| `bedrock.inferenceConfig.stopSequences` | JSON array of strings | the same |
 
-```java
-in.property("bedrock.thinking.type", "enabled")
-  .property("bedrock.thinking.budget_tokens", "4096")
-```
-
-Refused: `modelId`, `messages`, `system`, `toolConfig`, and everything under
-`inferenceConfig` that is not one of the three known names
-(`inferenceConfig.maxTokens` is the ceiling; a model-specific field such as
-`topK` goes directly under `bedrock.`, as `bedrock.topK`). Converse's other
-top-level fields are typed on the AWS request and not reachable as
-properties.
+Every other `bedrock.` name is unsupported, Claude's extended thinking on
+Bedrock (`bedrock.thinking.*`) included.
 
 ### Embedders
 
 `EmbedderConfig.property(name, value)` and the four embedder configs'
 `property`/`properties` (prefixes `openai.`, `gemini.`, `bedrock.`,
-`voyage.`) are accepted and carried; the embedding adapters do not read
-them yet. A property under another prefix fails at build.
+`voyage.`) take properties, but no embedding adapter supports one yet: each
+property under the adapter's own prefix is ignored, with a warning naming it,
+when the provider or the embedder is built. A property under another prefix
+fails at build.
 
 ## Building a provider
 
@@ -640,11 +593,12 @@ public interface InferenceProvider {
 - Own a prefix and read vendor properties through `VendorProperties`
   (`nessy-vendor-properties`): merge the provider's map under
   `request.options().properties()`, take the entries `under` your prefix,
-  refuse the names a typed setting decides with `refuseClashes`, parse your
-  known names with `requireInteger` / `requireBoolean` / `requireString`,
-  and send the rest as `nest(...)` builds them. Override
-  `InferenceProvider.validate(InferenceOptions)` to run the same reading, so
-  a mistake fails the harness build rather than its first turn.
+  and parse your supported names with `requireInteger` / `requireBoolean` /
+  `requireString` (or `literal` for a number or an array). Send only what you
+  parsed; log a warning, once per name, for every other name under your
+  prefix. Override `InferenceProvider.validate(InferenceOptions)` to run the
+  same reading, so a mistake fails the harness build rather than its first
+  turn.
 - `InferenceNarrator.narrate(event)` is how a streaming adapter reports deltas
   as they arrive: a `ContentDelta` per piece of the answer, a `ThinkingDelta`
   per piece of visible reasoning. All four shipped adapters use their

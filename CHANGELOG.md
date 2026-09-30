@@ -23,11 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   vendor-prefixed setting on an agent type (`openai.reasoning.effort`,
   `anthropic.thinking.budget_tokens`,
   `gemini.generationConfig.thinkingConfig.thinkingBudget`,
-  `bedrock.thinking.type`); each adapter parses the names it knows, passes
-  the rest through into the request body as JSON literals, and ignores
-  other prefixes. A property that names what a typed setting decides fails
-  when the harness is built. Every provider config and `EmbedderConfig`
-  take properties too.
+  `bedrock.inferenceConfig.temperature`); each adapter supports the names it
+  lists, parsed into the SDK's typed fields with a bad value refused when the
+  harness is built. Any other name under the adapter's own prefix is ignored
+  and logged at `WARN`, once, naming the property and the supported names;
+  another adapter's prefix is logged at `DEBUG`. Every provider config and
+  `EmbedderConfig` take properties too, though no embedding adapter supports
+  one yet.
 - **`InferenceProvider.validate(InferenceOptions)`** and
   **`EmbeddingProvider.validate(EmbeddingOptions)`**, default no-ops, which
   the factories call when a harness or embedder is built.
