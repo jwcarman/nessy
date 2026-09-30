@@ -348,12 +348,12 @@ class OpenAiResponsesLiveTest {
                   question,
                   List.of(LAKE_DEPTH),
                   ToolChoice.auto(),
-                  reasoning(OpenAiReasoningEffort.LOW, null)));
+                  reasoning(OpenAiReasoningEffort.MEDIUM, null)));
 
       assertThat(first).isInstanceOf(InferenceResult.Actions.class);
       InferenceResult.Actions actions = (InferenceResult.Actions) first;
       assertThat(actions.blocks())
-          .as("the reasoning item that led to the call is kept")
+          .as("the reasoning item that led to the call is kept: " + actions.blocks())
           .anyMatch(Block.Provider.class::isInstance);
 
       InferenceResult second =
@@ -368,7 +368,7 @@ class OpenAiResponsesLiveTest {
                                   new Exchange(
                                       new Seq(2), actions.blocks(), outcomesFor(actions)))))),
                   Toolset.of(List.of(LAKE_DEPTH)),
-                  reasoning(OpenAiReasoningEffort.LOW, null)));
+                  reasoning(OpenAiReasoningEffort.MEDIUM, null)));
 
       assertThat(textOf(second)).contains("230");
     }
@@ -541,6 +541,9 @@ class OpenAiResponsesLiveTest {
       assertThat(narrated.fragments())
           .as("the summary deltas arrive as thinking")
           .anyMatch(fragment -> "thinking".equals(fragment.kind()));
+      assertThat(((InferenceResult.Answer) result).blocks())
+          .as("the encrypted reasoning item is kept beside the answer: " + result)
+          .anyMatch(Block.Provider.class::isInstance);
     }
   }
 }
