@@ -246,13 +246,13 @@ class DirectHarnessLiveTest {
     try {
       HttpResponse<Void> response =
           HttpClient.newBuilder()
-              .connectTimeout(Duration.ofSeconds(2))
+              .connectTimeout(Duration.ofSeconds(10))
               .build()
               .send(
                   // With the key: a hosted endpoint answers an unauthenticated probe with 401.
                   HttpRequest.newBuilder(URI.create(BASE_URL + "/models"))
                       .header("Authorization", "Bearer " + key())
-                      .timeout(Duration.ofSeconds(2))
+                      .timeout(Duration.ofSeconds(10))
                       .GET()
                       .build(),
                   HttpResponse.BodyHandlers.discarding());
