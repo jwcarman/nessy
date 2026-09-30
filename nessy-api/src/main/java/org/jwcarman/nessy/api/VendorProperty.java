@@ -30,40 +30,55 @@ import java.util.stream.Collectors;
  * adapter to parse it, and by the warning that lists what an adapter supports. Values still travel
  * as text, so a property set with {@link InferenceConfig#property(VendorProperty, Object)} is the
  * same map entry as one set by name, and a value that does not parse fails naming the property, the
- * value and what it accepts. Text is parsed with plain Java and holds no JSON. Equal by name.
+ * value and what it accepts. Text is parsed with plain Java and holds no JSON.
+ *
+ * <p>Create one with {@link #ofInteger}, {@link #ofBoolean}, {@link #ofFloat} or {@link #ofEnum}.
  *
  * @param <T> the type the value is read as
  */
-public final class VendorProperty<T> {
+public interface VendorProperty<T> {
 
-  private final String name;
-  private final Function<String, T> parse;
-  private final Function<T, String> format;
-  private final String accepted;
+  /** The full name, prefix included: {@code openai.reasoning.effort}. */
+  String name();
 
-  private VendorProperty(
-      String name, Function<String, T> parse, Function<T, String> format, String accepted) {
-    if (name == null || name.isBlank() || name.indexOf('.') <= 0) {
-      throw new IllegalArgumentException(
-          "a vendor property is named for the adapter that reads it, as in 'openai.x'; was '"
-              + name
-              + "'");
+  /**
+   * Reads a value from its text.
+   *
+   * @throws IllegalArgumentException if the text does not parse, saying what was accepted: {@code
+   *     must be an integer, was '12abc'}
+   */
+  T parse(String text);
+
+  /** The text a value is stored as. */
+  String format(T value);
+
+  /**
+   * This property's value in {@code properties}, or empty when the map does not carry it.
+   *
+   * @throws IllegalArgumentException if the value is present and does not parse
+   */
+  default Optional<T> in(Map<String, String> properties) {
+    String text = properties.get(name());
+    if (text == null) {
+      return Optional.empty();
     }
-    this.name = name;
-    this.parse = parse;
-    this.format = format;
-    this.accepted = accepted;
+    try {
+      return Optional.of(parse(text));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("property '" + name() + "' " + e.getMessage(), e);
+    }
   }
 
   /** A property whose value is a whole number. */
-  public static VendorProperty<Integer> ofInteger(String name) {
-    return new VendorProperty<>(name, Integer::parseInt, String::valueOf, "an integer");
+  static VendorProperty<Integer> ofInteger(String name) {
+    return new TypedVendorProperty<>(
+        checked(name), Integer::parseInt, String::valueOf, "an integer");
   }
 
   /** A property whose value is exactly {@code true} or {@code false}. */
-  public static VendorProperty<Boolean> ofBoolean(String name) {
-    return new VendorProperty<>(
-        name,
+  static VendorProperty<Boolean> ofBoolean(String name) {
+    return new TypedVendorProperty<>(
+        checked(name),
         value -> {
           if ("true".equals(value)) {
             return true;
@@ -78,9 +93,9 @@ public final class VendorProperty<T> {
   }
 
   /** A property whose value is a finite number. */
-  public static VendorProperty<Float> ofFloat(String name) {
-    return new VendorProperty<>(
-        name,
+  static VendorProperty<Float> ofFloat(String name) {
+    return new TypedVendorProperty<>(
+        checked(name),
         value -> {
           float parsed = Float.parseFloat(value);
           if (!Float.isFinite(parsed)) {
@@ -97,15 +112,15 @@ public final class VendorProperty<T> {
    *
    * @param spelling the text of a constant, matched exactly when reading
    */
-  public static <E extends Enum<E>> VendorProperty<E> ofEnum(
+  static <E extends Enum<E>> VendorProperty<E> ofEnum(
       String name, Class<E> type, Function<E, String> spelling) {
     Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(spelling, "spelling must not be null");
     List<E> constants = Arrays.asList(type.getEnumConstants());
     String spellings =
         constants.stream().map(spelling).collect(Collectors.joining(", ", "one of [", "]"));
-    return new VendorProperty<>(
-        name,
+    return new TypedVendorProperty<>(
+        checked(name),
         value ->
             constants.stream()
                 .filter(constant -> spelling.apply(constant).equals(value))
@@ -115,47 +130,13 @@ public final class VendorProperty<T> {
         spellings);
   }
 
-  /** The full name, prefix included: {@code openai.reasoning.effort}. */
-  public String name() {
-    return name;
-  }
-
-  /** The text a value is stored as. */
-  public String format(T value) {
-    Objects.requireNonNull(value, "value must not be null");
-    return format.apply(value);
-  }
-
-  /**
-   * This property's value in {@code properties}, or empty when the map does not carry it.
-   *
-   * @throws IllegalArgumentException if the value is present and does not parse
-   */
-  public Optional<T> in(Map<String, String> properties) {
-    String text = properties.get(name);
-    if (text == null) {
-      return Optional.empty();
-    }
-    try {
-      return Optional.of(parse.apply(text));
-    } catch (IllegalArgumentException e) {
+  private static String checked(String name) {
+    if (name == null || name.isBlank() || name.indexOf('.') <= 0) {
       throw new IllegalArgumentException(
-          "property '" + name + "' must be " + accepted + ", was '" + text + "'", e);
+          "a vendor property is named for the adapter that reads it, as in 'openai.x'; was '"
+              + name
+              + "'");
     }
-  }
-
-  @Override
-  public boolean equals(Object other) {
-    return other instanceof VendorProperty<?> that && name.equals(that.name);
-  }
-
-  @Override
-  public int hashCode() {
-    return name.hashCode();
-  }
-
-  @Override
-  public String toString() {
     return name;
   }
 }

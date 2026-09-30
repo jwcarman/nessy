@@ -158,14 +158,18 @@ class VendorPropertyTest {
     }
 
     @Test
-    void is_equal_by_name_and_prints_as_its_name() {
-      VendorProperty<Integer> integer = VendorProperty.ofInteger("acme.count");
-      VendorProperty<Boolean> sameName = VendorProperty.ofBoolean("acme.count");
+    void carries_its_full_name() {
+      assertThat(VendorProperty.ofInteger("acme.count").name()).isEqualTo("acme.count");
+    }
 
-      assertThat(integer).isEqualTo(sameName).hasSameHashCodeAs(sameName);
-      assertThat(integer).isNotEqualTo(VendorProperty.ofInteger("acme.other"));
-      assertThat(integer).hasToString("acme.count");
-      assertThat(integer.name()).isEqualTo("acme.count");
+    @Test
+    void parses_text_directly_and_says_what_it_accepted_when_refusing() {
+      VendorProperty<Integer> property = VendorProperty.ofInteger("acme.count");
+
+      assertThat(property.parse("7")).isEqualTo(7);
+      assertThatThrownBy(() -> property.parse("seven"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("must be an integer, was 'seven'");
     }
 
     @Test
