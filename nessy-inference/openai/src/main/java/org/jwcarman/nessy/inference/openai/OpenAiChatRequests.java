@@ -33,6 +33,7 @@ import com.openai.models.chat.completions.ChatCompletionToolChoiceOption;
 import com.openai.models.chat.completions.ChatCompletionToolMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
 import org.jwcarman.nessy.api.JsonSchema;
@@ -115,11 +116,16 @@ final class OpenAiChatRequests {
     chooseTool(builder, request.toolset().offers(), request.toolset().choice());
     request.outputSchema().ifPresent(schema -> constrainAnswer(builder, schema, mapper));
     read.effort()
-        .ifPresent(effort -> builder.reasoningEffort(ReasoningEffort.of(effort.toString())));
+        .ifPresent(
+            effort ->
+                builder.reasoningEffort(
+                    ReasoningEffort.of(effort.name().toLowerCase(Locale.ROOT))));
     read.serviceTier()
         .ifPresent(
             tier ->
-                builder.serviceTier(ChatCompletionCreateParams.ServiceTier.of(tier.toString())));
+                builder.serviceTier(
+                    ChatCompletionCreateParams.ServiceTier.of(
+                        tier.name().toLowerCase(Locale.ROOT))));
     return builder.build();
   }
 

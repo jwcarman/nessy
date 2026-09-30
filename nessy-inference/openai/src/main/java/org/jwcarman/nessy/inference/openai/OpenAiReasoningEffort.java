@@ -17,23 +17,11 @@ package org.jwcarman.nessy.inference.openai;
 
 /** How hard a reasoning model thinks, as the value of {@code openai.reasoning.effort}. */
 public enum OpenAiReasoningEffort {
-  NONE("none"),
-  MINIMAL("minimal"),
-  LOW("low"),
-  MEDIUM("medium"),
-  HIGH("high"),
-  XHIGH("xhigh"),
-  MAX("max");
-
-  private final String spelling;
-
-  OpenAiReasoningEffort(String spelling) {
-    this.spelling = spelling;
-  }
-
-  /** The text the vendor spells this value as, and the text a property carries. */
-  @Override
-  public String toString() {
-    return spelling;
-  }
+  NONE,
+  MINIMAL,
+  LOW,
+  MEDIUM,
+  HIGH,
+  XHIGH,
+  MAX;
 }

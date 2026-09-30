@@ -306,6 +306,30 @@ class GeminiInferenceProviderTest {
     }
 
     @Test
+    void an_enum_set_in_code_reaches_the_sdk_as_lowercase_text() {
+      Map<String, String> typed =
+          Map.of(
+              GeminiProperties.THINKING_LEVEL.name(),
+              GeminiProperties.THINKING_LEVEL.format(GeminiThinkingLevel.HIGH));
+      GeminiInferenceProvider provider = new GeminiInferenceProvider(recording(), MAPPER, typed);
+
+      provider.infer(carrying(Map.of()));
+
+      assertThat(sent)
+          .singleElement()
+          .satisfies(
+              config ->
+                  assertThat(
+                          config
+                              .thinkingConfig()
+                              .orElseThrow()
+                              .thinkingLevel()
+                              .orElseThrow()
+                              .toString())
+                      .isEqualTo("high"));
+    }
+
+    @Test
     void typed_properties_set_in_code_reach_the_request_as_the_sdk_values() {
       Map<String, String> typed =
           Map.of(

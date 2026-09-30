@@ -569,7 +569,7 @@ class GeminiRequestsTest {
           .hasMessage(
               "property '"
                   + THINKING
-                  + "thinkingLevel' must be one of [minimal, low, medium, high], was 'extreme'");
+                  + "thinkingLevel' must be one of [MINIMAL, LOW, MEDIUM, HIGH], was 'extreme'");
     }
 
     @Test

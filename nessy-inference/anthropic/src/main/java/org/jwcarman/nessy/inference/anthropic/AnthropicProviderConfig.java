@@ -120,8 +120,8 @@ public final class AnthropicProviderConfig {
 
   /**
    * Prompt caching on every call. Off by default; see {@link PromptCaching}. The same statement as
-   * {@code anthropic.cache_control.ttl} ({@code 5m}, {@code 1h}); setting both on one provider
-   * fails at build.
+   * {@code anthropic.cache_control.ttl} ({@code FIVE_MINUTES}, {@code ONE_HOUR}); setting both on
+   * one provider fails at build.
    */
   public AnthropicProviderConfig promptCaching(PromptCaching promptCaching) {
     this.promptCaching = Objects.requireNonNull(promptCaching, "promptCaching must not be null");

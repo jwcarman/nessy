@@ -17,6 +17,7 @@ package org.jwcarman.nessy.inference.gemini;
 
 import com.google.genai.types.ThinkingConfig;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.jwcarman.nessy.api.VendorProperties;
@@ -59,7 +60,7 @@ final class GeminiPropertyReader {
     ThinkingConfig.Builder builder = ThinkingConfig.builder();
     budget.ifPresent(builder::thinkingBudget);
     includeThoughts.ifPresent(builder::includeThoughts);
-    level.ifPresent(value -> builder.thinkingLevel(value.toString()));
+    level.ifPresent(value -> builder.thinkingLevel(value.name().toLowerCase(Locale.ROOT)));
     return new Read(Optional.of(builder.build()));
   }
 

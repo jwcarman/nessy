@@ -437,7 +437,7 @@ class AnthropicLiveTest {
         new SystemPrompt(
             "You are a terse assistant. "
                 + "Background you may ignore: the loch is deep and cold. ".repeat(300));
-    Map<String, String> cached = Map.of("anthropic.cache_control.ttl", "5m");
+    Map<String, String> cached = Map.of("anthropic.cache_control.ttl", "FIVE_MINUTES");
 
     try (AnthropicInferenceProvider provider = provider()) {
       InferenceResult first =

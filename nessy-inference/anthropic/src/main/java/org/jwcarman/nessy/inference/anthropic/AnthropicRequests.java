@@ -147,10 +147,15 @@ public final class AnthropicRequests {
     } else if (read.thinking().filter(AnthropicThinkingType.ADAPTIVE::equals).isPresent()) {
       builder.thinking(ThinkingConfigAdaptive.builder().build());
     }
-    read.serviceTier()
-        .ifPresent(
-            tier -> builder.serviceTier(MessageCreateParams.ServiceTier.of(tier.toString())));
+    read.serviceTier().ifPresent(tier -> builder.serviceTier(serviceTier(tier)));
     return builder.build();
+  }
+
+  private static MessageCreateParams.ServiceTier serviceTier(AnthropicServiceTier tier) {
+    return switch (tier) {
+      case AUTO -> MessageCreateParams.ServiceTier.AUTO;
+      case STANDARD_ONLY -> MessageCreateParams.ServiceTier.STANDARD_ONLY;
+    };
   }
 
   /** The cache marker for a ttl: {@code 5m} is today's default marker, {@code 1h} the long one. */

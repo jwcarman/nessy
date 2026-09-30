@@ -862,7 +862,7 @@ class AnthropicRequestsTest {
       assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage(
-              "property 'anthropic.thinking.type' must be one of [enabled, disabled, adaptive],"
+              "property 'anthropic.thinking.type' must be one of [ENABLED, DISABLED, ADAPTIVE],"
                   + " was 'interleaved'");
     }
 
@@ -878,7 +878,7 @@ class AnthropicRequestsTest {
     @Test
     void a_one_hour_ttl_marks_the_prefix_for_an_hour() {
       CacheControlEphemeral marker =
-          paramsFor(Map.of("anthropic.cache_control.ttl", "1h"))
+          paramsFor(Map.of("anthropic.cache_control.ttl", "ONE_HOUR"))
               .system()
               .orElseThrow()
               .asTextBlockParams()
@@ -892,7 +892,7 @@ class AnthropicRequestsTest {
     @Test
     void a_five_minute_ttl_marks_the_prefix_as_today() {
       CacheControlEphemeral marker =
-          paramsFor(Map.of("anthropic.cache_control.ttl", "5m"))
+          paramsFor(Map.of("anthropic.cache_control.ttl", "FIVE_MINUTES"))
               .system()
               .orElseThrow()
               .asTextBlockParams()

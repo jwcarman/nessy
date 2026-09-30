@@ -20,19 +20,7 @@ package org.jwcarman.nessy.inference.openai;
  * Only the openai-responses wire carries it.
  */
 public enum OpenAiReasoningSummary {
-  AUTO("auto"),
-  CONCISE("concise"),
-  DETAILED("detailed");
-
-  private final String spelling;
-
-  OpenAiReasoningSummary(String spelling) {
-    this.spelling = spelling;
-  }
-
-  /** The text the vendor spells this value as, and the text a property carries. */
-  @Override
-  public String toString() {
-    return spelling;
-  }
+  AUTO,
+  CONCISE,
+  DETAILED;
 }

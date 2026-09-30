@@ -525,7 +525,7 @@ class OpenAiChatRequestsTest {
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage(
               "property 'openai.reasoning.effort' must be one of"
-                  + " [none, minimal, low, medium, high, xhigh, max], was 'ultra'");
+                  + " [NONE, MINIMAL, LOW, MEDIUM, HIGH, XHIGH, MAX], was 'ultra'");
     }
 
     @Test

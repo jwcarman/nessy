@@ -192,7 +192,7 @@ class AnthropicProviderConfigTest {
         c ->
             c.apiKey("test-key")
                 .promptCaching(PromptCaching.OFF)
-                .property("anthropic.cache_control.ttl", "5m");
+                .property("anthropic.cache_control.ttl", "FIVE_MINUTES");
 
     assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
         .isInstanceOf(IllegalArgumentException.class)
@@ -218,7 +218,7 @@ class AnthropicProviderConfigTest {
     assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage(
-            "property 'anthropic.thinking.type' must be one of [enabled, disabled, adaptive],"
+            "property 'anthropic.thinking.type' must be one of [ENABLED, DISABLED, ADAPTIVE],"
                 + " was 'interleaved'");
   }
 

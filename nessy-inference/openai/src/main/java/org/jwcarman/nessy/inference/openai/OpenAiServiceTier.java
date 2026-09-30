@@ -21,23 +21,11 @@ package org.jwcarman.nessy.inference.openai;
  * build.
  */
 public enum OpenAiServiceTier {
-  AUTO("auto"),
-  DEFAULT("default"),
-  FLEX("flex"),
-  SCALE("scale"),
-  PRIORITY("priority"),
-  FAST("fast"),
-  ULTRAFAST("ultrafast");
-
-  private final String spelling;
-
-  OpenAiServiceTier(String spelling) {
-    this.spelling = spelling;
-  }
-
-  /** The text the vendor spells this value as, and the text a property carries. */
-  @Override
-  public String toString() {
-    return spelling;
-  }
+  AUTO,
+  DEFAULT,
+  FLEX,
+  SCALE,
+  PRIORITY,
+  FAST,
+  ULTRAFAST;
 }

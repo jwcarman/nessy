@@ -118,6 +118,8 @@ above disagree with this one, this one holds.
 - **`VendorProperty` parses text with plain Java and holds no JSON; `ofStrings` and Bedrock's
   `stopSequences` were removed** (James: "We're parsing a string"). A list-valued property returns
   when one is needed, as plain text.
+- **An enum property's text is the constant's name, matched ignoring case; `ofEnum` takes an
+  optional formatter; each adapter translates the enum to its SDK's spelling** (James).
 
 ---
 

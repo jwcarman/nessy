@@ -153,6 +153,31 @@ class OpenAiResponsesProviderConfigTest {
   }
 
   @Test
+  void enums_set_in_code_reach_the_sdk_as_lowercase_text() {
+    var captured = new ResponseCreateParams[1];
+    new OpenAiResponsesProviderConfig()
+        .property(OpenAiProperties.REASONING_EFFORT, OpenAiReasoningEffort.HIGH)
+        .property(OpenAiProperties.REASONING_SUMMARY, OpenAiReasoningSummary.CONCISE)
+        .property(OpenAiProperties.SERVICE_TIER, OpenAiServiceTier.FLEX)
+        .client(
+            ResponseStreams.client(
+                params -> {
+                  captured[0] = params;
+                  return ResponseStreams.eventsOf(
+                      ResponseStreams.completed(List.of(ResponseStreams.message("msg_1", "ok"))));
+                }))
+        .build()
+        .infer(OpenAiResponsesInferenceProviderTest.REQUEST);
+
+    assertThat(captured[0].reasoning().orElseThrow().effort().map(ReasoningEffort::asString))
+        .contains("high");
+    assertThat(captured[0].reasoning().orElseThrow().summary().map(Reasoning.Summary::asString))
+        .contains("concise");
+    assertThat(captured[0].serviceTier().map(ResponseCreateParams.ServiceTier::asString))
+        .contains("flex");
+  }
+
+  @Test
   void the_ultrafast_tier_as_a_yaml_style_string_is_accepted_and_sent() {
     var captured = new ResponseCreateParams[1];
     new OpenAiResponsesProviderConfig()
@@ -180,7 +205,7 @@ class OpenAiResponsesProviderConfigTest {
     assertThatThrownBy(config::build)
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage(
-            "property 'openai.reasoning.summary' must be one of [auto, concise, detailed],"
+            "property 'openai.reasoning.summary' must be one of [AUTO, CONCISE, DETAILED],"
                 + " was 'verbose'");
   }
 

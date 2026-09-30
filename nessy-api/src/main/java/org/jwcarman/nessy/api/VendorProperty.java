@@ -15,11 +15,14 @@
  */
 package org.jwcarman.nessy.api;
 
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -107,23 +110,51 @@ public interface VendorProperty<T> {
   }
 
   /**
-   * A property whose value is one of a fixed set. Each constant is spelled as the vendor spells it,
-   * by its {@code toString()}, and text is matched to that spelling exactly.
+   * A property whose value is one of a fixed set, written as each constant's {@link Enum#name()}
+   * and read ignoring case.
    */
   static <E extends Enum<E>> VendorProperty<E> ofEnum(String name, Class<E> type) {
+    return ofEnum(name, type, Enum::name);
+  }
+
+  /**
+   * A property whose value is one of a fixed set, written as {@code formatter} says and read back
+   * from that same text ignoring case.
+   *
+   * @throws IllegalArgumentException if two constants format to the same text ignoring case
+   */
+  static <E extends Enum<E>> VendorProperty<E> ofEnum(
+      String name, Class<E> type, Function<E, String> formatter) {
     Objects.requireNonNull(type, "type must not be null");
-    List<E> constants = Arrays.asList(type.getEnumConstants());
-    String spellings =
-        constants.stream().map(Object::toString).collect(Collectors.joining(", ", "one of [", "]"));
+    Objects.requireNonNull(formatter, "formatter must not be null");
+    Map<String, E> byText = new LinkedHashMap<>();
+    List<String> texts = new ArrayList<>();
+    for (E constant : type.getEnumConstants()) {
+      String text = formatter.apply(constant);
+      texts.add(text);
+      E clash = byText.putIfAbsent(text.toLowerCase(Locale.ROOT), constant);
+      if (clash != null) {
+        throw new IllegalArgumentException(
+            "constants "
+                + clash.name()
+                + " and "
+                + constant.name()
+                + " both format as '"
+                + text
+                + "' ignoring case");
+      }
+    }
     return new TypedVendorProperty<>(
         checked(name),
-        value ->
-            constants.stream()
-                .filter(constant -> constant.toString().equals(value))
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException(value)),
-        Object::toString,
-        spellings);
+        value -> {
+          E found = byText.get(value.toLowerCase(Locale.ROOT));
+          if (found == null) {
+            throw new IllegalArgumentException(value);
+          }
+          return found;
+        },
+        formatter,
+        texts.stream().collect(Collectors.joining(", ", "one of [", "]")));
   }
 
   private static String checked(String name) {

@@ -178,7 +178,7 @@ class GeminiProviderConfigTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage(
             "property 'gemini.generationConfig.thinkingConfig.thinkingLevel' must be one of"
-                + " [minimal, low, medium, high], was 'extreme'");
+                + " [MINIMAL, LOW, MEDIUM, HIGH], was 'extreme'");
   }
 
   @Test

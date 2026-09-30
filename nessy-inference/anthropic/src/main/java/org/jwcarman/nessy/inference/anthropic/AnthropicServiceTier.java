@@ -17,18 +17,6 @@ package org.jwcarman.nessy.inference.anthropic;
 
 /** Which capacity a request may use, as the value of {@code anthropic.service_tier}. */
 public enum AnthropicServiceTier {
-  AUTO("auto"),
-  STANDARD_ONLY("standard_only");
-
-  private final String spelling;
-
-  AnthropicServiceTier(String spelling) {
-    this.spelling = spelling;
-  }
-
-  /** The text the vendor spells this value as, and the text a property carries. */
-  @Override
-  public String toString() {
-    return spelling;
-  }
+  AUTO,
+  STANDARD_ONLY;
 }

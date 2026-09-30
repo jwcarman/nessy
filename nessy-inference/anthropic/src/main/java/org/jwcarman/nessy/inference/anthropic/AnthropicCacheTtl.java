@@ -17,18 +17,6 @@ package org.jwcarman.nessy.inference.anthropic;
 
 /** How long the prompt-cache marker lasts, as the value of {@code anthropic.cache_control.ttl}. */
 public enum AnthropicCacheTtl {
-  FIVE_MINUTES("5m"),
-  ONE_HOUR("1h");
-
-  private final String spelling;
-
-  AnthropicCacheTtl(String spelling) {
-    this.spelling = spelling;
-  }
-
-  /** The text the vendor spells this value as, and the text a property carries. */
-  @Override
-  public String toString() {
-    return spelling;
-  }
+  FIVE_MINUTES,
+  ONE_HOUR;
 }

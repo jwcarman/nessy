@@ -20,19 +20,7 @@ package org.jwcarman.nessy.inference.anthropic;
  * needs {@code anthropic.thinking.budget_tokens}.
  */
 public enum AnthropicThinkingType {
-  ENABLED("enabled"),
-  DISABLED("disabled"),
-  ADAPTIVE("adaptive");
-
-  private final String spelling;
-
-  AnthropicThinkingType(String spelling) {
-    this.spelling = spelling;
-  }
-
-  /** The text the vendor spells this value as, and the text a property carries. */
-  @Override
-  public String toString() {
-    return spelling;
-  }
+  ENABLED,
+  DISABLED,
+  ADAPTIVE;
 }

@@ -600,6 +600,30 @@ class AnthropicInferenceProviderTest {
     }
 
     @Test
+    void enums_set_in_code_reach_the_sdk_as_lowercase_text() {
+      new AnthropicProviderConfig()
+          .property(AnthropicProperties.SERVICE_TIER, AnthropicServiceTier.STANDARD_ONLY)
+          .property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.ONE_HOUR)
+          .client(fakeClient(capture))
+          .build()
+          .infer(REQUEST);
+
+      assertThat(captured[0].serviceTier().map(MessageCreateParams.ServiceTier::asString))
+          .contains("standard_only");
+      assertThat(
+              captured[0]
+                  .system()
+                  .orElseThrow()
+                  .asTextBlockParams()
+                  .getFirst()
+                  .cacheControl()
+                  .orElseThrow()
+                  .ttl()
+                  .map(CacheControlEphemeral.Ttl::asString))
+          .contains("1h");
+    }
+
+    @Test
     void adaptive_thinking_set_in_code_reaches_the_request() {
       new AnthropicProviderConfig()
           .property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ADAPTIVE)
@@ -619,7 +643,8 @@ class AnthropicInferenceProviderTest {
 
       assertThatThrownBy(config::build)
           .isInstanceOf(IllegalArgumentException.class)
-          .hasMessage("property 'anthropic.cache_control.ttl' must be one of [5m, 1h], was '2h'");
+          .hasMessage(
+              "property 'anthropic.cache_control.ttl' must be one of [FIVE_MINUTES, ONE_HOUR], was '2h'");
     }
 
     @Test
@@ -632,7 +657,7 @@ class AnthropicInferenceProviderTest {
       assertThatThrownBy(config::build)
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage(
-              "property 'anthropic.service_tier' must be one of [auto, standard_only],"
+              "property 'anthropic.service_tier' must be one of [AUTO, STANDARD_ONLY],"
                   + " was 'gold'");
     }
   }
@@ -1100,7 +1125,7 @@ class AnthropicInferenceProviderTest {
               carrying(Map.of()));
       MessageCreateParams byProperty =
           sentBy(
-              new AnthropicProviderConfig().property("anthropic.cache_control.ttl", "1h"),
+              new AnthropicProviderConfig().property("anthropic.cache_control.ttl", "ONE_HOUR"),
               carrying(Map.of()));
 
       assertThat(bySetter.system()).isEqualTo(byProperty.system());

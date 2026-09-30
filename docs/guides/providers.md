@@ -150,9 +150,10 @@ is built, sent with every request, and never written to the event log.
   does not parse fails the build naming the property and the value
   (`property 'anthropic.thinking.budget_tokens' must be an integer, was
   'lots'`). A property with a fixed set of values is an enum, and a value
-  outside it fails the build listing the spellings (`property
-  'openai.reasoning.effort' must be one of [none, minimal, low, medium, high,
-  xhigh, max], was 'extreme'`). The enums are the value sets of the pinned
+  outside it fails the build listing the accepted values (`property
+  'openai.reasoning.effort' must be one of [NONE, MINIMAL, LOW, MEDIUM, HIGH,
+  XHIGH, MAX], was 'extreme'`). An enum's text is the constant's name, matched
+  ignoring case: `high` and `HIGH` both work. The enums are the value sets of the pinned
   vendor SDKs, so a value a vendor adds later needs a Nessy release before it
   can be set. A supported name the wire cannot carry
   (`openai.reasoning.summary` on the chat wire, `openai.tools.strict=false` on
@@ -184,10 +185,10 @@ adapter supports.
 
 | name | constant | accepts | chat wire | Responses wire |
 |---|---|---|---|---|
-| `openai.reasoning.effort` | `REASONING_EFFORT` | `OpenAiReasoningEffort`: `none` `minimal` `low` `medium` `high` `xhigh` `max` | `reasoning_effort` | `reasoning.effort` |
-| `openai.reasoning.summary` | `REASONING_SUMMARY` | `OpenAiReasoningSummary`: `auto` `concise` `detailed` | refused: the wire has no summary | `reasoning.summary`, narrated as thinking |
+| `openai.reasoning.effort` | `REASONING_EFFORT` | `OpenAiReasoningEffort`: `NONE` `MINIMAL` `LOW` `MEDIUM` `HIGH` `XHIGH` `MAX` | `reasoning_effort` | `reasoning.effort` |
+| `openai.reasoning.summary` | `REASONING_SUMMARY` | `OpenAiReasoningSummary`: `AUTO` `CONCISE` `DETAILED` | refused: the wire has no summary | `reasoning.summary`, narrated as thinking |
 | `openai.tools.strict` | `TOOLS_STRICT` | `true` or `false` | `true` sends every function tool strict over a rewritten schema | sent strict regardless; `false` is refused |
-| `openai.service_tier` | `SERVICE_TIER` | `OpenAiServiceTier`: `auto` `default` `flex` `scale` `priority` `fast` `ultrafast` | `service_tier`; `ultrafast` is refused | `service_tier` |
+| `openai.service_tier` | `SERVICE_TIER` | `OpenAiServiceTier`: `AUTO` `DEFAULT` `FLEX` `SCALE` `PRIORITY` `FAST` `ULTRAFAST` | `service_tier`; `ultrafast` is refused | `service_tier` |
 
 The Responses wire's `reasoning` object is sent only when one of the two
 reasoning names is set: it is a 400 on a model that does not reason.
@@ -203,10 +204,10 @@ keyword; the other tools stay strict.
 
 | name | constant | accepts | lands in |
 |---|---|---|---|
-| `anthropic.thinking.type` | `THINKING_TYPE` | `AnthropicThinkingType`: `enabled` `disabled` `adaptive` | `enabled` needs a budget; `adaptive`; `disabled` sends no thinking |
+| `anthropic.thinking.type` | `THINKING_TYPE` | `AnthropicThinkingType`: `ENABLED` `DISABLED` `ADAPTIVE` | `enabled` needs a budget; `adaptive`; `disabled` sends no thinking |
 | `anthropic.thinking.budget_tokens` | `THINKING_BUDGET` | an integer | the thinking budget; alone, it turns thinking on. Must be below the agent type's `maxTokens` |
-| `anthropic.cache_control.ttl` | `CACHE_TTL` | `AnthropicCacheTtl`: `5m` (`FIVE_MINUTES`) `1h` (`ONE_HOUR`) | the cache markers on the system prompt and the tools |
-| `anthropic.service_tier` | `SERVICE_TIER` | `AnthropicServiceTier`: `auto` `standard_only` | `service_tier` |
+| `anthropic.cache_control.ttl` | `CACHE_TTL` | `AnthropicCacheTtl`: `FIVE_MINUTES` `ONE_HOUR` | the cache markers on the system prompt and the tools |
+| `anthropic.service_tier` | `SERVICE_TIER` | `AnthropicServiceTier`: `AUTO` `STANDARD_ONLY` | `service_tier` |
 
 `anthropic.thinking.type=enabled` without a budget is refused, and so is a
 budget that is not below the agent type's `maxTokens`, at harness build.
@@ -219,7 +220,7 @@ budget that is not below the agent type's `maxTokens`, at harness build.
 |---|---|---|---|
 | `gemini.generationConfig.thinkingConfig.thinkingBudget` | `THINKING_BUDGET` | an integer | the SDK's `ThinkingConfig` |
 | `gemini.generationConfig.thinkingConfig.includeThoughts` | `INCLUDE_THOUGHTS` | `true` or `false` | the same; thought summaries are then narrated as thinking |
-| `gemini.generationConfig.thinkingConfig.thinkingLevel` | `THINKING_LEVEL` | `GeminiThinkingLevel`: `minimal` `low` `medium` `high` | the same |
+| `gemini.generationConfig.thinkingConfig.thinkingLevel` | `THINKING_LEVEL` | `GeminiThinkingLevel`: `MINIMAL` `LOW` `MEDIUM` `HIGH` | the same |
 
 ### Bedrock
 

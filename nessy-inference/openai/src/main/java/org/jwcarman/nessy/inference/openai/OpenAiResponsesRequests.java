@@ -32,6 +32,7 @@ import com.openai.models.responses.ToolChoiceFunction;
 import com.openai.models.responses.ToolChoiceOptions;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.jwcarman.nessy.api.JsonSchema;
@@ -120,14 +121,21 @@ final class OpenAiResponsesRequests {
     // and the adapter never guesses which kind it holds (Responses record §5g).
     if (read.effort().isPresent() || read.summary().isPresent()) {
       Reasoning.Builder reasoning = Reasoning.builder();
-      read.effort().ifPresent(effort -> reasoning.effort(ReasoningEffort.of(effort.toString())));
+      read.effort()
+          .ifPresent(
+              effort ->
+                  reasoning.effort(ReasoningEffort.of(effort.name().toLowerCase(Locale.ROOT))));
       read.summary()
-          .ifPresent(summary -> reasoning.summary(Reasoning.Summary.of(summary.toString())));
+          .ifPresent(
+              summary ->
+                  reasoning.summary(Reasoning.Summary.of(summary.name().toLowerCase(Locale.ROOT))));
       builder.reasoning(reasoning.build());
     }
     read.serviceTier()
         .ifPresent(
-            tier -> builder.serviceTier(ResponseCreateParams.ServiceTier.of(tier.toString())));
+            tier ->
+                builder.serviceTier(
+                    ResponseCreateParams.ServiceTier.of(tier.name().toLowerCase(Locale.ROOT))));
     return builder.build();
   }
 

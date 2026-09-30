@@ -29,19 +29,13 @@ import org.junit.jupiter.api.Test;
 class VendorPropertyTest {
 
   enum Color {
-    RED("red"),
-    DARK_BLUE("dark-blue");
+    RED,
+    DARK_BLUE
+  }
 
-    private final String spelling;
-
-    Color(String spelling) {
-      this.spelling = spelling;
-    }
-
-    @Override
-    public String toString() {
-      return spelling;
-    }
+  enum Clash {
+    Same,
+    SAME
   }
 
   @Nested
@@ -123,27 +117,53 @@ class VendorPropertyTest {
     private final VendorProperty<Color> property = VendorProperty.ofEnum("acme.color", Color.class);
 
     @Test
-    void round_trips_through_its_spelling() {
-      assertThat(property.format(Color.DARK_BLUE)).isEqualTo("dark-blue");
-      assertThat(property.in(Map.of("acme.color", "dark-blue"))).contains(Color.DARK_BLUE);
+    void is_written_as_its_constant_name() {
+      assertThat(property.format(Color.DARK_BLUE)).isEqualTo("DARK_BLUE");
     }
 
     @Test
-    void lists_its_spellings_in_declaration_order_when_refusing() {
+    void round_trips_through_its_text() {
+      for (Color color : Color.values()) {
+        assertThat(property.parse(property.format(color))).isEqualTo(color);
+      }
+    }
+
+    @Test
+    void is_read_ignoring_case() {
+      assertThat(property.in(Map.of("acme.color", "dark_blue"))).contains(Color.DARK_BLUE);
+      assertThat(property.in(Map.of("acme.color", "DARK_BLUE"))).contains(Color.DARK_BLUE);
+      assertThat(property.in(Map.of("acme.color", "Red"))).contains(Color.RED);
+    }
+
+    @Test
+    void lists_its_names_in_declaration_order_when_refusing() {
       Map<String, String> properties = Map.of("acme.color", "green");
 
       assertThatThrownBy(() -> property.in(properties))
           .isInstanceOf(IllegalArgumentException.class)
-          .hasMessage("property 'acme.color' must be one of [red, dark-blue], was 'green'");
+          .hasMessage("property 'acme.color' must be one of [RED, DARK_BLUE], was 'green'");
     }
 
     @Test
-    void matches_the_spelling_exactly() {
-      Map<String, String> properties = Map.of("acme.color", "RED");
+    void can_be_given_its_own_text() {
+      VendorProperty<Color> spelled =
+          VendorProperty.ofEnum(
+              "acme.color", Color.class, color -> color == Color.DARK_BLUE ? "dark-blue" : "red");
 
-      assertThatThrownBy(() -> property.in(properties))
+      assertThat(spelled.format(Color.DARK_BLUE)).isEqualTo("dark-blue");
+      assertThat(spelled.parse("DARK-BLUE")).isEqualTo(Color.DARK_BLUE);
+      assertThat(spelled.parse("red")).isEqualTo(Color.RED);
+      assertThatThrownBy(() -> spelled.parse("DARK_BLUE"))
           .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("was 'RED'");
+          .hasMessage("must be one of [red, dark-blue], was 'DARK_BLUE'");
+    }
+
+    @Test
+    void is_refused_at_creation_when_two_constants_share_text_ignoring_case() {
+      assertThatThrownBy(() -> VendorProperty.ofEnum("acme.clash", Clash.class))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("Same")
+          .hasMessageContaining("SAME");
     }
   }
 

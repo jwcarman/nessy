@@ -1283,6 +1283,30 @@ class OpenAiChatInferenceProviderTest {
     }
 
     @Test
+    void enums_set_in_code_reach_the_sdk_as_lowercase_text() {
+      var captured = new ChatCompletionCreateParams[1];
+      new OpenAiChatProviderConfig()
+          .property(OpenAiProperties.REASONING_EFFORT, OpenAiReasoningEffort.HIGH)
+          .property(OpenAiProperties.SERVICE_TIER, OpenAiServiceTier.FLEX)
+          .client(
+              fakeClient(
+                  params -> {
+                    captured[0] = params;
+                    return completionOf(
+                        ChatCompletionMessage.builder()
+                            .content("ok")
+                            .refusal(Optional.<String>empty())
+                            .build());
+                  }))
+          .build()
+          .infer(REQUEST);
+
+      assertThat(captured[0].reasoningEffort().map(ReasoningEffort::asString)).contains("high");
+      assertThat(captured[0].serviceTier().map(ChatCompletionCreateParams.ServiceTier::asString))
+          .contains("flex");
+    }
+
+    @Test
     void a_yaml_style_string_with_a_bad_spelling_fails_at_build_listing_the_spellings() {
       OpenAiChatProviderConfig config =
           new OpenAiChatProviderConfig().apiKey("test-key").property("openai.service_tier", "gold");
@@ -1291,7 +1315,7 @@ class OpenAiChatInferenceProviderTest {
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage(
               "property 'openai.service_tier' must be one of"
-                  + " [auto, default, flex, scale, priority, fast, ultrafast], was 'gold'");
+                  + " [AUTO, DEFAULT, FLEX, SCALE, PRIORITY, FAST, ULTRAFAST], was 'gold'");
     }
 
     @Test
