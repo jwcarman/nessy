@@ -30,9 +30,9 @@ import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 
 /**
  * Against Amazon Bedrock. Tagged {@code live}; {@code AWS_ACCESS_KEY_ID} opts it in, as the
- * inference live test's gate does, and {@code NESSY_EMBEDDING_MODEL} may name another model. The query-versus-document case needs a
- * model with an input type, so it runs only when {@code NESSY_LIVE_BEDROCK_COHERE_MODEL} names a
- * Cohere embed model (Titan, the default, has none).
+ * inference live test's gate does, and {@code NESSY_EMBEDDING_MODEL} may name another model. The
+ * query-versus-document case needs a model with an input type, so it runs only when {@code
+ * NESSY_LIVE_BEDROCK_COHERE_MODEL} names a Cohere embed model (Titan, the default, has none).
  */
 @Tag("live")
 @DisplayName("The Bedrock embedder, live")
