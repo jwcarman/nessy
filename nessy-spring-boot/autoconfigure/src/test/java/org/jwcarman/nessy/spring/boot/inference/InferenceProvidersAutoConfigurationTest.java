@@ -245,6 +245,37 @@ class InferenceProvidersAutoConfigurationTest {
   }
 
   @Test
+  void a_custom_provider_on_the_responses_wire_is_registered_and_observed() {
+    runner
+        .withPropertyValues(
+            "nessy.providers.mine.wire=openai-responses",
+            "nessy.providers.mine.base-url=https://g/v1",
+            "nessy.providers.mine.api-key=k")
+        .run(
+            context -> {
+              Map<String, InferenceProvider> providers =
+                  context.getBeansOfType(InferenceProvider.class);
+              assertThat(providers).containsOnlyKeys("mine");
+              assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
+              assertThat(providers.get("mine").vendor()).isEqualTo("openai");
+            });
+  }
+
+  /** The override §7c documents for a preset pointed at a Chat Completions server. */
+  @Test
+  void the_openai_preset_can_be_told_its_wire() {
+    runner
+        .withPropertyValues(
+            "openai.api-key=sk-test",
+            "openai.base-url=http://localhost:1234/v1",
+            "nessy.providers.openai.wire=openai-chat")
+        .run(
+            context ->
+                assertThat(context.getBeansOfType(InferenceProvider.class))
+                    .containsOnlyKeys("openai"));
+  }
+
+  @Test
   void a_custom_provider_with_no_wire_fails_to_start_naming_it() {
     runner
         .withPropertyValues("nessy.providers.mine.base-url=https://g/v1")

@@ -21,6 +21,7 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider;
 import org.jwcarman.nessy.inference.gemini.GeminiInferenceProvider;
 import org.jwcarman.nessy.inference.openai.OpenAiChatInferenceProvider;
+import org.jwcarman.nessy.inference.openai.OpenAiResponsesInferenceProvider;
 import org.springframework.util.ClassUtils;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -37,6 +38,8 @@ final class WireProviders {
 
   private static final String OPENAI_CHAT_CLASS =
       "org.jwcarman.nessy.inference.openai.OpenAiChatInferenceProvider";
+  private static final String OPENAI_RESPONSES_CLASS =
+      "org.jwcarman.nessy.inference.openai.OpenAiResponsesInferenceProvider";
   private static final String ANTHROPIC_CLASS =
       "org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider";
   private static final String GEMINI_CLASS =
@@ -67,18 +70,10 @@ final class WireProviders {
   private static String adapterClassName(Wire wire) {
     return switch (wire) {
       case OPENAI_CHAT -> OPENAI_CHAT_CLASS;
-      case OPENAI_RESPONSES -> throw unbuilt();
+      case OPENAI_RESPONSES -> OPENAI_RESPONSES_CLASS;
       case ANTHROPIC -> ANTHROPIC_CLASS;
       case GEMINI -> GEMINI_CLASS;
     };
-  }
-
-  /**
-   * The Responses adapter lands in the next commit; selecting its wire before then is an error, not
-   * a skip.
-   */
-  private static IllegalStateException unbuilt() {
-    return new IllegalStateException("the openai-responses wire has no adapter yet");
   }
 
   /**
@@ -95,7 +90,7 @@ final class WireProviders {
     return Optional.of(
         switch (resolved.wire()) {
           case OPENAI_CHAT -> OpenAiChat.build(resolved, mapper);
-          case OPENAI_RESPONSES -> throw unbuilt();
+          case OPENAI_RESPONSES -> OpenAiResponses.build(resolved, mapper);
           case ANTHROPIC -> Anthropic.build(resolved, mapper);
           case GEMINI -> Gemini.build(resolved, mapper);
         });
@@ -107,6 +102,26 @@ final class WireProviders {
 
     static InferenceProvider build(ResolvedProvider resolved, @Nullable JsonMapper mapper) {
       return OpenAiChatInferenceProvider.of(
+          c -> {
+            c.apiKey(resolved.apiKey());
+            if (resolved.baseUrl() != null) {
+              c.baseUrl(resolved.baseUrl());
+            }
+            c.vendor(resolved.vendor());
+            c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
+            if (mapper != null) {
+              c.mapper(mapper);
+            }
+          });
+    }
+  }
+
+  private static final class OpenAiResponses {
+
+    private OpenAiResponses() {}
+
+    static InferenceProvider build(ResolvedProvider resolved, @Nullable JsonMapper mapper) {
+      return OpenAiResponsesInferenceProvider.of(
           c -> {
             c.apiKey(resolved.apiKey());
             if (resolved.baseUrl() != null) {
