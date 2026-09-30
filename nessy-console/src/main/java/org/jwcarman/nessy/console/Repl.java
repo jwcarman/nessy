@@ -170,10 +170,6 @@ public final class Repl {
       // ended, and a CLI that resumed yesterday's chat would surprise the person typing into it.
       // A tool that wants to remember something still brings its own store.
       config.dataSource().ifPresent(Schemas::initialize);
-      // This path builds the in-memory backend itself, so here, and only here, it can say so.
-      if (config.history().isEmpty()) {
-        config.history("in memory; this conversation ends with this process");
-      }
       // Both taken from the context rather than built here: Boot configures the mapper, the starter
       // configures the codec factory, and a terminal that made its own would write bytes by
       // different rules than the rest of the process it is running in.

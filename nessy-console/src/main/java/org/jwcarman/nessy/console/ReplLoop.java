@@ -142,7 +142,6 @@ final class ReplLoop {
     line("max tokens", Integer.toString(diagnostics.maxTokens()));
     line("agent", config.type().value() + " / " + agentId.value());
     line("tools", config.granted().isEmpty() ? "(none)" : String.join(", ", config.granted()));
-    config.history().ifPresent(where -> line("history", where));
     io.flush();
   }
 

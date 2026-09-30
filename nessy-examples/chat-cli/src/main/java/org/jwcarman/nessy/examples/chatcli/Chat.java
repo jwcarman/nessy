@@ -143,7 +143,6 @@ public class Chat {
                           PromptVariableSource.supplied(
                               "today", () -> LocalDate.now(clock).toString())))
                   .agent(TYPE)
-                  .history("PostgreSQL; this conversation survives the process")
                   // Two sources of background: the notebook's index and the current plan. Both
                   // are ambient, so they are asked afresh every call and never written to the
                   // story -- the model sees the notes and the plan as they stand NOW.
