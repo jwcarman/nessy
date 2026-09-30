@@ -78,7 +78,9 @@ class GeminiEmbedderLiveTest {
 
   @Test
   void a_query_and_a_document_are_the_model_s_width_and_carry_the_model_asked_for() {
-    assumeTrue(System.getenv("GEMINI_API_KEY") != null || System.getenv("GOOGLE_API_KEY") != null, "GEMINI_API_KEY is not set");
+    assumeTrue(
+        System.getenv("GEMINI_API_KEY") != null || System.getenv("GOOGLE_API_KEY") != null,
+        "GEMINI_API_KEY is not set");
     try (GeminiEmbeddingProvider provider =
         GeminiEmbeddingProvider.of(GeminiEmbedderConfig::fromEnv)) {
       Embedder embedder = embedderOver(provider, MODEL, 768);
