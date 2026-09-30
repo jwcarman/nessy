@@ -134,7 +134,7 @@ See [Authorization](concepts/authorization.md).
 | `nessy-backend-jdbc` | one PostgreSQL `DataSource` behind either door, and `Schemas` |
 | `nessy-backend-inmemory` | the same stores with nothing behind them but the process |
 | `nessy-engine` | application builders: `DefaultDirectHarnessFactory`, `DefaultQueuedHarnessFactory`, and the fold behind them |
-| `nessy-inference-anthropic`, `nessy-inference-openai`, `nessy-inference-gemini`, `nessy-inference-bedrock` | the provider adapters; the OpenAI one reaches every OpenAI-compatible endpoint |
+| `nessy-inference-anthropic`, `nessy-inference-openai`, `nessy-inference-gemini`, `nessy-inference-bedrock` | the provider adapters; the OpenAI module speaks Chat Completions and the Responses API, and reaches every OpenAI-compatible endpoint |
 | `nessy-console` | terminal applications: `Repl.run` |
 | `nessy-spring-boot-starter` | Boot applications: one dependency, no code of its own |
 | `nessy-spring-boot-autoconfigure` | the beans behind it, and every optional module's auto-configuration |

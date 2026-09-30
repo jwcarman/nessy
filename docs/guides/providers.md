@@ -19,11 +19,14 @@ could help. Whichever it is, the result carries a `Usage`; the engine
 records it and puts it on the call's span. See [Usage](#usage) below for
 what it holds.
 
-Four adapters ship: `nessy-inference-anthropic` on Anthropic's Java SDK,
-`nessy-inference-openai` on OpenAI's, `nessy-inference-gemini` on Google's
-java-genai SDK, and `nessy-inference-bedrock` on the AWS SDK's Converse API.
-The OpenAI one also reaches every service that speaks OpenAI's wire protocol,
-covered [below](#the-openai-compatible-universe).
+Four adapter modules ship: `nessy-inference-anthropic` on Anthropic's Java
+SDK, `nessy-inference-openai` on OpenAI's, `nessy-inference-gemini` on
+Google's java-genai SDK, and `nessy-inference-bedrock` on the AWS SDK's
+Converse API. The OpenAI module holds two adapters, one per shape OpenAI
+defined: `OpenAiChatInferenceProvider` for Chat Completions, which every
+service in [the OpenAI-compatible universe](#the-openai-compatible-universe)
+also speaks, and `OpenAiResponsesInferenceProvider` for the
+[Responses API](#openai-responses).
 
 ## Usage
 
@@ -117,6 +120,7 @@ config, never a public builder:
 ```java
 InferenceProvider anthropic = AnthropicInferenceProvider.of(c -> c.apiKey(key));
 InferenceProvider openai = OpenAiChatInferenceProvider.of(c -> c.apiKey(key));
+InferenceProvider responses = OpenAiResponsesInferenceProvider.of(c -> c.apiKey(key));
 InferenceProvider gemini = GeminiInferenceProvider.of(c -> c.apiKey(key));
 InferenceProvider bedrock = BedrockInferenceProvider.of(c -> c.region(Region.US_EAST_1));
 ```
@@ -236,6 +240,16 @@ silently fails to exist. `vendor` defaults to the wire's own (`openai` for
 both OpenAI wires). Missing `wire` or `base-url` fails startup, naming the
 id and the field.
 
+The `openai` preset speaks `openai-chat`. To reach OpenAI over the Responses
+API instead, tell the preset its wire:
+
+```yaml
+nessy:
+  providers:
+    openai:
+      wire: openai-responses
+```
+
 ### Application beans
 
 An application's own `InferenceProvider` bean joins the registry under its
@@ -328,10 +342,45 @@ thinking on, returns signed reasoning content that must go back untouched;
 it travels as a `Block.Provider` block tagged `aws.bedrock`. A guardrail
 intervention and a content filter come back as a `Refusal`.
 
+## OpenAI Responses
+
+`OpenAiResponsesInferenceProvider` speaks OpenAI's Responses API, the
+`openai-responses` wire under Boot. A reasoning model such as GPT-6 calls
+function tools only over this API.
+
+It is stateless. Every call sends the whole context with `store: false`, and
+nothing in the adapter can name a previous response or a conversation, so
+Nessy's event log stays the only record of the conversation: replay,
+summarisers, turn policy and switching providers all work from it. The
+system prompt and ambient background go in `instructions`.
+
+A reasoning model's encrypted reasoning items are asked for on every call
+and each one is stored in the transcript as a `Block.Provider` block tagged
+with the provider's vendor, in the position it arrived. The adapter sends
+back the ones that led to the tool results it is returning, within the turn
+in flight; another vendor's blocks, and any from an earlier turn, are not
+sent. An encrypted item is kilobytes, one per inference step.
+
+Function tools go out in strict mode: the adapter rewrites each tool's
+schema so every property is required, an optional one admits `null`, and
+every object forbids properties it does not list. A tool whose schema uses
+something strict mode cannot express, such as a sealed type's `oneOf`, an
+`Optional` record or a map, is sent as generated with `strict: false`, and
+the adapter logs a warning naming the tool and the keyword. The other tools
+in the request stay strict. A structured answer's schema is rewritten the
+same way and sent as `text.format`.
+
+Only function tools are offered. OpenAI's hosted tools (web search, file
+search, code interpreter, remote MCP) run where Nessy cannot approve or
+record them, and any hosted-tool output a server sends back is dropped.
+
+Usage reads `input_tokens`, `output_tokens` and the cache and reasoning
+details; a count a server leaves out is null.
+
 ## The OpenAI-compatible universe
 
 The OpenAI adapter plus a base URL plus a key is, itself, an integration.
-Every service below speaks the same openai wire, so no
+Every service below speaks Chat Completions, the `openai-chat` wire, so no
 service-specific module exists or is needed. Nessy validates against OpenAI
 proper; a compatible endpoint is the vendor's compatibility promise. Some
 vendors (Groq, Mistral) report usage on the chunk that finishes the answer

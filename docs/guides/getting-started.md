@@ -70,8 +70,9 @@ InferenceProvider provider = AnthropicInferenceProvider.fromEnv();   // ANTHROPI
 ```
 
 Four ship: Anthropic, OpenAI, Gemini and Bedrock, one module each. The
-OpenAI one also speaks to anything with OpenAI's wire protocol, a local LM
-Studio included; see [Providers](providers.md).
+OpenAI one speaks both Chat Completions and the Responses API, and reaches
+anything that speaks OpenAI's Chat Completions protocol, a local LM Studio
+included; see [Providers](providers.md).
 
 ## A tool
 

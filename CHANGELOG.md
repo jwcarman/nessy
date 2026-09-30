@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`OpenAiResponsesInferenceProvider`**, an adapter for OpenAI's Responses
+  API, in `nessy-inference-openai` beside the Chat Completions one. It is
+  stateless (`store: false`, the whole context on every call), keeps each
+  encrypted reasoning item as a `Block.Provider` block, and sends function
+  tools in strict mode, falling back per tool with a warning when a schema
+  cannot be expressed strictly. Reasoning models such as GPT-6 call tools
+  through it.
+- **Spring Boot: the `openai-responses` wire.** A custom provider, or the
+  `openai` preset with `nessy.providers.openai.wire: openai-responses`,
+  builds the Responses adapter.
+
 ### Breaking changes
 
 - **The `openai` wire is now `openai-chat`.** A custom provider with

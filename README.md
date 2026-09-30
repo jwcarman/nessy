@@ -175,7 +175,7 @@ add `nessy-inference-spi`; an application building an agent depends on
 | `nessy-backend-jdbc` | one PostgreSQL `DataSource` behind either door, and `Schemas` |
 | `nessy-backend-inmemory` | the same stores with nothing behind them but the process |
 | `nessy-engine` | the two doors' factories, and the fold behind them |
-| `nessy-inference-anthropic`, `nessy-inference-openai`, `nessy-inference-gemini`, `nessy-inference-bedrock` | the provider adapters; the OpenAI one reaches every OpenAI-compatible endpoint |
+| `nessy-inference-anthropic`, `nessy-inference-openai`, `nessy-inference-gemini`, `nessy-inference-bedrock` | the provider adapters; the OpenAI module speaks Chat Completions and the Responses API, and reaches every OpenAI-compatible endpoint |
 | `nessy-console` | terminal applications: `Repl.run` |
 | `nessy-spring-boot-starter` | the one dependency a Boot application adds; no code of its own |
 | `nessy-spring-boot-autoconfigure` | the beans, the `nessy.*` properties, and every optional module's auto-configuration |
@@ -205,7 +205,7 @@ add `nessy-inference-spi`; an application building an agent depends on
 | Memory: summaries, the tail and ambient, and a head summariser that runs itself | [Memory](https://jwcarman.github.io/nessy/concepts/memory/) |
 | Planning: a plan the model holds, and the family of patterns to come | [Planning](https://jwcarman.github.io/nessy/concepts/planning/) |
 | Storage: a table per thing, a codec seam for encryption, every model call on record | [Storage](https://jwcarman.github.io/nessy/concepts/storage/) |
-| Providers: four adapters, every OpenAI-compatible endpoint, and thinking as a provider setting | [Providers](https://jwcarman.github.io/nessy/guides/providers/) |
+| Providers: four adapter modules, both OpenAI shapes, every OpenAI-compatible endpoint, and thinking as a provider setting | [Providers](https://jwcarman.github.io/nessy/guides/providers/) |
 | Prompts: templates with holes, and sources for the values | [Prompts](https://jwcarman.github.io/nessy/guides/prompts/) |
 | Narration: listeners, the builder, and streams a browser can resume | [Narration](https://jwcarman.github.io/nessy/guides/narration/) |
 | MCP: import a remote server's tools as ordinary tools | [MCP Clients](https://jwcarman.github.io/nessy/guides/mcp-clients/) |
