@@ -20,6 +20,7 @@ import com.openai.errors.OpenAIException;
 import com.openai.errors.OpenAIIoException;
 import com.openai.errors.OpenAIRetryableException;
 import com.openai.errors.RateLimitException;
+import com.openai.models.responses.ResponseError;
 import org.jwcarman.nessy.inference.Failure;
 
 /**
@@ -64,5 +65,20 @@ final class OpenAiFailures {
       return new Failure.Unknown("no answer from the model: " + e.getMessage());
     }
     return new Failure.Permanent("model call failed: " + e.getMessage());
+  }
+
+  /**
+   * A {@code response.failed} terminal event: an error inside a 200 stream rather than a thrown
+   * exception, classified by the same rule on its code -- worth another attempt only when the code
+   * names a rate limit or a server-side failure, and never {@link Failure.Rejected}.
+   */
+  static Failure classify(ResponseError error) {
+    String code = error._code().asKnown().map(ResponseError.Code::asString).orElse("unknown");
+    String reason = "model call failed: " + code + ": " + error._message().asKnown().orElse("");
+    if (ResponseError.Code.RATE_LIMIT_EXCEEDED.asString().equals(code)
+        || ResponseError.Code.SERVER_ERROR.asString().equals(code)) {
+      return new Failure.Transient(reason);
+    }
+    return new Failure.Permanent(reason);
   }
 }

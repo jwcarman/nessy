@@ -80,7 +80,7 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
    */
   static final String VENDOR = "openai";
 
-  private static final String NAME = "OpenAI";
+  static final String NAME = "OpenAI";
 
   private final OpenAIClient client;
   private final String vendor;
