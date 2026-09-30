@@ -18,9 +18,12 @@ package org.jwcarman.nessy.embedding.voyage;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.vendor.VendorProperties;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -36,6 +39,9 @@ public final class VoyageEmbedderConfig {
 
   private static final String API_KEY_ENV_VAR = "VOYAGE_API_KEY";
 
+  /** The prefix this embedder's properties are named under. */
+  private static final String PROPERTY_PREFIX = "voyage.";
+
   private String apiKey;
   private String baseUrl = DEFAULT_BASE_URL;
   private String model = DEFAULT_MODEL;
@@ -45,6 +51,8 @@ public final class VoyageEmbedderConfig {
   private HttpClient http;
   private JsonMapper mapper = JsonMapper.builder().build();
   private boolean useEnv;
+
+  private final Map<String, String> properties = new LinkedHashMap<>();
 
   VoyageEmbedderConfig() {}
 
@@ -105,7 +113,43 @@ public final class VoyageEmbedderConfig {
     return this;
   }
 
+  /**
+   * A vendor property for this embedder's requests, named under its prefix. Carried and not yet
+   * read: the embedding adapters read their properties from the named-embedders item on (spec §9f).
+   * Repeatable; the last value given for a name wins. A name under another prefix fails at build.
+   */
+  public VoyageEmbedderConfig property(String name, String value) {
+    Objects.requireNonNull(name, "name must not be null");
+    if (name.isBlank()) {
+      throw new IllegalArgumentException("name must not be blank");
+    }
+    properties.put(name, VendorProperties.requireString(name, value));
+    return this;
+  }
+
+  /** {@link #property(String, String)} for each entry. */
+  public VoyageEmbedderConfig properties(Map<String, String> properties) {
+    Objects.requireNonNull(properties, "properties must not be null");
+    properties.forEach(this::property);
+    return this;
+  }
+
+  /** An embedder is one adapter: a property under another prefix is a mistake. */
+  private void requireOwnProperties() {
+    for (String name : properties.keySet()) {
+      if (!name.startsWith(PROPERTY_PREFIX)) {
+        throw new IllegalArgumentException(
+            "property '"
+                + name
+                + "' is not under '"
+                + PROPERTY_PREFIX
+                + "'; an embedder reads only its own prefix");
+      }
+    }
+  }
+
   VoyageEmbeddingProvider build() {
+    requireOwnProperties();
     String key = apiKey;
     if (useEnv && key == null) {
       key = System.getenv(API_KEY_ENV_VAR);

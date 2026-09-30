@@ -15,9 +15,12 @@
  */
 package org.jwcarman.nessy.embedding.bedrock;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.vendor.VendorProperties;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -40,6 +43,9 @@ public final class BedrockEmbedderConfig {
   private static final String AWS_REGION_ENV_VAR = "AWS_REGION";
   private static final String AWS_DEFAULT_REGION_ENV_VAR = "AWS_DEFAULT_REGION";
 
+  /** The prefix this embedder's properties are named under. */
+  private static final String PROPERTY_PREFIX = "bedrock.";
+
   private Region region;
   private AwsCredentialsProvider credentialsProvider;
   private BedrockRuntimeClient client;
@@ -48,6 +54,8 @@ public final class BedrockEmbedderConfig {
   private OptionalInt dimension = OptionalInt.empty();
   private String cohereInputType = DEFAULT_COHERE_INPUT_TYPE;
   private JsonMapper mapper = JsonMapper.builder().build();
+
+  private final Map<String, String> properties = new LinkedHashMap<>();
 
   BedrockEmbedderConfig() {}
 
@@ -102,12 +110,48 @@ public final class BedrockEmbedderConfig {
     return this;
   }
 
+  /**
+   * A vendor property for this embedder's requests, named under its prefix. Carried and not yet
+   * read: the embedding adapters read their properties from the named-embedders item on (spec §9f).
+   * Repeatable; the last value given for a name wins. A name under another prefix fails at build.
+   */
+  public BedrockEmbedderConfig property(String name, String value) {
+    Objects.requireNonNull(name, "name must not be null");
+    if (name.isBlank()) {
+      throw new IllegalArgumentException("name must not be blank");
+    }
+    properties.put(name, VendorProperties.requireString(name, value));
+    return this;
+  }
+
+  /** {@link #property(String, String)} for each entry. */
+  public BedrockEmbedderConfig properties(Map<String, String> properties) {
+    Objects.requireNonNull(properties, "properties must not be null");
+    properties.forEach(this::property);
+    return this;
+  }
+
+  /** An embedder is one adapter: a property under another prefix is a mistake. */
+  private void requireOwnProperties() {
+    for (String name : properties.keySet()) {
+      if (!name.startsWith(PROPERTY_PREFIX)) {
+        throw new IllegalArgumentException(
+            "property '"
+                + name
+                + "' is not under '"
+                + PROPERTY_PREFIX
+                + "'; an embedder reads only its own prefix");
+      }
+    }
+  }
+
   /** The model a factory over this connection hands out when an embedder names none. */
   String model() {
     return model;
   }
 
   BedrockEmbeddingProvider build() {
+    requireOwnProperties();
     return new BedrockEmbeddingProvider(resolveClient(), cohereInputType, mapper, model, dimension);
   }
 
