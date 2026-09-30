@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine.embedding;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
@@ -45,12 +46,12 @@ final class DefaultEmbedder implements Embedder {
    * answering. Kept here rather than in every adapter, which is where it used to be four times
    * over.
    */
-  private volatile Optional<Dimension> dimension;
+  private final AtomicReference<Optional<Dimension>> dimension;
 
   DefaultEmbedder(EmbeddingProvider provider, EmbeddingOptions options) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
     this.options = Objects.requireNonNull(options, "options must not be null");
-    this.dimension = options.dimension();
+    this.dimension = new AtomicReference<>(options.dimension());
   }
 
   @Override
@@ -65,7 +66,7 @@ final class DefaultEmbedder implements Embedder {
 
   @Override
   public Optional<Dimension> dimension() {
-    return dimension;
+    return dimension.get();
   }
 
   @Override
@@ -104,8 +105,9 @@ final class DefaultEmbedder implements Embedder {
         }
       }
     }
-    if (dimension.isEmpty() && !embeddings.isEmpty()) {
-      dimension = Optional.of(new Dimension(embeddings.getFirst().dimension()));
+    if (!embeddings.isEmpty()) {
+      Optional<Dimension> learned = Optional.of(new Dimension(embeddings.getFirst().dimension()));
+      dimension.compareAndSet(Optional.empty(), learned);
     }
     return embeddings;
   }

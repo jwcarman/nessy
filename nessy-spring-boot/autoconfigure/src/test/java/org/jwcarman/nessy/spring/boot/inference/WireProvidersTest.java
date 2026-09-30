@@ -39,10 +39,8 @@ class WireProvidersTest {
 
     Optional<InferenceProvider> built = WireProviders.build(resolved, null, LOADER);
 
-    assertThat(built)
-        .get()
-        .isInstanceOfSatisfying(
-            OpenAiResponsesInferenceProvider.class, OpenAiResponsesInferenceProvider::close);
+    assertThat(built).get().isInstanceOf(OpenAiResponsesInferenceProvider.class);
+    ((OpenAiResponsesInferenceProvider) built.get()).close();
   }
 
   @Test
@@ -55,10 +53,8 @@ class WireProvidersTest {
 
     Optional<InferenceProvider> built = WireProviders.build(resolved.get(0), null, LOADER);
 
-    assertThat(built)
-        .get()
-        .isInstanceOfSatisfying(
-            OpenAiResponsesInferenceProvider.class, OpenAiResponsesInferenceProvider::close);
+    assertThat(built).get().isInstanceOf(OpenAiResponsesInferenceProvider.class);
+    ((OpenAiResponsesInferenceProvider) built.get()).close();
   }
 
   @Test
@@ -70,10 +66,8 @@ class WireProvidersTest {
 
     Optional<InferenceProvider> built = WireProviders.build(resolved.get(0), null, LOADER);
 
-    assertThat(built)
-        .get()
-        .isInstanceOfSatisfying(
-            AnthropicInferenceProvider.class, AnthropicInferenceProvider::close);
+    assertThat(built).get().isInstanceOf(AnthropicInferenceProvider.class);
+    ((AnthropicInferenceProvider) built.get()).close();
   }
 
   @Test
@@ -83,10 +77,8 @@ class WireProvidersTest {
 
     Optional<InferenceProvider> built = WireProviders.build(resolved, null, LOADER);
 
-    assertThat(built)
-        .get()
-        .isInstanceOfSatisfying(
-            OpenAiChatInferenceProvider.class, OpenAiChatInferenceProvider::close);
+    assertThat(built).get().isInstanceOf(OpenAiChatInferenceProvider.class);
+    ((OpenAiChatInferenceProvider) built.get()).close();
   }
 
   @Test

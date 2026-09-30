@@ -63,9 +63,8 @@ class WireEmbeddersTest {
 
     Optional<EmbeddingProvider> built = WireEmbedders.build(resolved, null, LOADER);
 
-    assertThat(built)
-        .get()
-        .isInstanceOfSatisfying(GeminiEmbeddingProvider.class, GeminiEmbeddingProvider::close);
+    assertThat(built).get().isInstanceOf(GeminiEmbeddingProvider.class);
+    ((GeminiEmbeddingProvider) built.get()).close();
   }
 
   @Test
@@ -77,9 +76,8 @@ class WireEmbeddersTest {
     Optional<EmbeddingProvider> built =
         WireEmbedders.build(resolved, JsonMapper.builder().build(), LOADER);
 
-    assertThat(built)
-        .get()
-        .isInstanceOfSatisfying(VoyageEmbeddingProvider.class, VoyageEmbeddingProvider::close);
+    assertThat(built).get().isInstanceOf(VoyageEmbeddingProvider.class);
+    ((VoyageEmbeddingProvider) built.get()).close();
   }
 
   @Test
