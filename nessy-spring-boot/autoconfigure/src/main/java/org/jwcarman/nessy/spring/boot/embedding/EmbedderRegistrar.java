@@ -82,10 +82,12 @@ class EmbedderRegistrar
                 + "'; rename the bean or unset the embedder's key");
       }
       if (!WireEmbedders.isPresent(embedder.wire(), beanFactory.getBeanClassLoader())) {
-        log.info(
-            "NESSY EMBEDDING: {} is configured but {} is not on the classpath; skipped",
-            embedder.id(),
-            WireEmbedders.artifactId(embedder.wire()));
+        if (log.isInfoEnabled()) {
+          log.info(
+              "NESSY EMBEDDING: {} is configured but {} is not on the classpath; skipped",
+              embedder.id(),
+              WireEmbedders.artifactId(embedder.wire()));
+        }
         continue;
       }
       registry.registerBeanDefinition(beanName, providerDefinition(embedder));

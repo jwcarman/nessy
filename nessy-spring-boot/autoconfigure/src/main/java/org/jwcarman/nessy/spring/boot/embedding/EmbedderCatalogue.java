@@ -19,7 +19,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -39,7 +39,7 @@ final class EmbedderCatalogue {
   private EmbedderCatalogue() {}
 
   static List<ResolvedEmbedder> resolve(
-      Map<String, EmbedderSettings> settings, Function<String, @Nullable String> property) {
+      Map<String, EmbedderSettings> settings, UnaryOperator<@Nullable String> property) {
     List<ResolvedEmbedder> lit = new ArrayList<>();
     for (EmbedderPreset preset : EmbedderPreset.CATALOGUE) {
       EmbedderSettings own = settings.getOrDefault(preset.id(), EMPTY);
@@ -48,45 +48,17 @@ final class EmbedderCatalogue {
       keys.add(own.apiKey());
       preset.keyProperties().forEach(name -> keys.add(property.apply(name)));
       String apiKey = firstNonBlank(keys);
-      // enabled=false turns a preset off no matter what ingredient it has; unset means "on if its
-      // ingredient is present" for a hosted preset, and stays "off unless said" for a keyless one.
-      boolean on;
-      if (Boolean.FALSE.equals(own.enabled())) {
-        on = false;
-      } else if (preset.keyless()) {
-        on = Boolean.TRUE.equals(own.enabled());
-      } else {
-        on = apiKey != null;
-      }
-      if (!on) {
+      if (!isOn(own, preset, apiKey)) {
         continue;
-      }
-      List<@Nullable String> urls = new ArrayList<>();
-      urls.add(own.baseUrl());
-      if ("openai".equals(preset.id())) {
-        // The same key and URL pair the inference preset of the same name reads, so the two move
-        // together.
-        urls.add(property.apply("openai.base-url"));
-      }
-      urls.add(preset.baseUrl());
-      // The preset's defaults belong to the wire the preset ships with; an application that moved
-      // the embedder to another wire starts clean, and its own properties overlay name by name
-      // (spec section 7).
-      Map<String, String> properties = new LinkedHashMap<>();
-      if (own.wire() == null || own.wire() == preset.wire()) {
-        properties.putAll(preset.defaultProperties());
-      }
-      if (own.properties() != null) {
-        properties.putAll(own.properties());
       }
       lit.add(
           new ResolvedEmbedder(
               preset.id(),
               own.wire() != null ? own.wire() : preset.wire(),
-              firstNonBlank(urls),
+              baseUrl(own, preset, property),
               own.vendor() != null ? own.vendor() : preset.vendor(),
               preset.keyless() ? keylessApiKey(own, preset) : apiKey,
-              properties));
+              properties(own, preset)));
     }
     settings.forEach(
         (id, own) -> {
@@ -98,6 +70,51 @@ final class EmbedderCatalogue {
           }
         });
     return List.copyOf(lit);
+  }
+
+  /**
+   * Whether a preset is lit. enabled=false turns a preset off no matter what ingredient it has;
+   * unset means "on if its ingredient is present" for a hosted preset, and stays "off unless said"
+   * for a keyless one.
+   */
+  private static boolean isOn(
+      EmbedderSettings own, EmbedderPreset preset, @Nullable String apiKey) {
+    if (Boolean.FALSE.equals(own.enabled())) {
+      return false;
+    }
+    if (preset.keyless()) {
+      return Boolean.TRUE.equals(own.enabled());
+    }
+    return apiKey != null;
+  }
+
+  private static @Nullable String baseUrl(
+      EmbedderSettings own, EmbedderPreset preset, UnaryOperator<@Nullable String> property) {
+    List<@Nullable String> urls = new ArrayList<>();
+    urls.add(own.baseUrl());
+    if ("openai".equals(preset.id())) {
+      // The same key and URL pair the inference preset of the same name reads, so the two move
+      // together.
+      urls.add(property.apply("openai.base-url"));
+    }
+    urls.add(preset.baseUrl());
+    return firstNonBlank(urls);
+  }
+
+  /**
+   * The preset's defaults belong to the wire the preset ships with; an application that moved the
+   * embedder to another wire starts clean, and its own properties overlay name by name (spec
+   * section 7).
+   */
+  private static Map<String, String> properties(EmbedderSettings own, EmbedderPreset preset) {
+    Map<String, String> properties = new LinkedHashMap<>();
+    if (own.wire() == null || own.wire() == preset.wire()) {
+      properties.putAll(preset.defaultProperties());
+    }
+    if (own.properties() != null) {
+      properties.putAll(own.properties());
+    }
+    return properties;
   }
 
   /** A keyless preset's key: what an application overrode it to, or its placeholder. */

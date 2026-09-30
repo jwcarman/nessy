@@ -313,7 +313,10 @@ class ProviderCatalogueTest {
 
   @Test
   void lmstudio_is_off_until_enabled() {
-    List<ResolvedProvider> resolved = ProviderCatalogue.resolve(Map.of(), key -> null);
+    ProviderSettings lmstudio = new ProviderSettings(null, null, "custom-key", null, null, null);
+
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of("lmstudio", lmstudio), key -> null);
 
     assertThat(resolved).isEmpty();
   }
@@ -350,7 +353,10 @@ class ProviderCatalogueTest {
 
   @Test
   void ollama_is_off_until_enabled() {
-    List<ResolvedProvider> resolved = ProviderCatalogue.resolve(Map.of(), key -> null);
+    ProviderSettings ollama = new ProviderSettings(null, null, "custom-key", null, null, null);
+
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of("ollama", ollama), key -> null);
 
     assertThat(resolved).isEmpty();
   }

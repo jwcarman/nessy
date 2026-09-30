@@ -117,10 +117,11 @@ class EmbeddingProvidersAutoConfigurationTest {
 
   /** §6b: every application with OPENAI_API_KEY and no embedding jar reads one line, once. */
   @Test
-  void a_key_whose_embedding_adapter_is_absent_is_skipped_with_one_line(CapturedOutput output) {
+  void a_key_whose_embedding_adapter_is_absent_is_skipped_with_one_line(CapturedOutput output)
+      throws Exception {
     Logger registrar = (Logger) LoggerFactory.getLogger(EmbedderRegistrar.class);
     registrar.setLevel(Level.INFO);
-    try {
+    try (AutoCloseable restore = () -> registrar.setLevel(null)) {
       runner
           .withClassLoader(new FilteredClassLoader(OpenAiEmbeddingProvider.class))
           .withPropertyValues("openai.api-key=sk-test")
@@ -133,8 +134,6 @@ class EmbeddingProvidersAutoConfigurationTest {
           .contains(
               "NESSY EMBEDDING: openai is configured but nessy-embedding-openai is not on the"
                   + " classpath; skipped");
-    } finally {
-      registrar.setLevel(null);
     }
   }
 

@@ -81,10 +81,12 @@ class ProviderRegistrar
                 + "'; rename the bean or unset the provider's key");
       }
       if (!WireProviders.isPresent(provider.wire(), beanFactory.getBeanClassLoader())) {
-        log.info(
-            "NESSY INFERENCE: {} is configured but {} is not on the classpath; skipped",
-            id,
-            WireProviders.artifactId(provider.wire()));
+        if (log.isInfoEnabled()) {
+          log.info(
+              "NESSY INFERENCE: {} is configured but {} is not on the classpath; skipped",
+              id,
+              WireProviders.artifactId(provider.wire()));
+        }
         continue;
       }
       registry.registerBeanDefinition(id, providerDefinition(provider));

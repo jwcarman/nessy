@@ -59,7 +59,7 @@ class LocalEmbedderLiveTest {
     try (Socket socket = new Socket()) {
       socket.connect(new InetSocketAddress("localhost", 1234), 500);
       return true;
-    } catch (IOException e) {
+    } catch (IOException _) {
       return false;
     }
   }

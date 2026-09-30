@@ -260,11 +260,11 @@ class NessyAutoConfigurationTest {
               assertThat(context).hasNotFailed();
               DefaultQueuedHarnessFactory factory =
                   context.getBean(DefaultQueuedHarnessFactory.class);
+              AgentType chat = new AgentType("chat");
               assertThatThrownBy(
                       () ->
                           factory.create(
-                              new AgentType("chat"),
-                              config -> config.systemPrompt("you are a test assistant")))
+                              chat, config -> config.systemPrompt("you are a test assistant")))
                   .isInstanceOf(IllegalStateException.class)
                   .hasMessageContaining("registered: [openai]");
             });

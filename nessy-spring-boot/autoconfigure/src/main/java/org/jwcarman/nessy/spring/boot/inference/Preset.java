@@ -43,6 +43,11 @@ record Preset(
     this(id, wire, baseUrl, vendor, keyProperties, keylessApiKey, Map.of());
   }
 
+  private static final String OLLAMA = "ollama";
+
+  /** The one default property every measured OpenAI-compatible preset ships with. */
+  private static final Map<String, String> STRICT_TOOLS = Map.of("openai.tools.strict", "true");
+
   static final List<Preset> CATALOGUE =
       List.of(
           new Preset(
@@ -56,7 +61,7 @@ record Preset(
               // tools with an Optional component and with a record holding a sealed field are
               // accepted and called. Every other row waits for its own measurement (spec
               // section 10).
-              Map.of("openai.tools.strict", "true")),
+              STRICT_TOOLS),
           new Preset(
               "xai",
               Wire.OPENAI_CHAT,
@@ -65,7 +70,7 @@ record Preset(
               List.of("xai.api-key"),
               null,
               // Measured 2026-09-30: grok-4.7 and grok-4.20-0309-reasoning, strict accepted.
-              Map.of("openai.tools.strict", "true")),
+              STRICT_TOOLS),
           new Preset(
               "anthropic", Wire.ANTHROPIC, null, "anthropic", List.of("anthropic.api-key"), null),
           new Preset(
@@ -84,7 +89,7 @@ record Preset(
               null,
               // Measured 2026-09-30: openai/gpt-oss-20b and anthropic/claude-sonnet-4.5, strict
               // accepted.
-              Map.of("openai.tools.strict", "true")),
+              STRICT_TOOLS),
           new Preset(
               "nvidia",
               Wire.OPENAI_CHAT,
@@ -94,7 +99,7 @@ record Preset(
               null,
               // Measured 2026-09-30: nemotron-3.5-lightning-30b-a3b and openai/gpt-oss-20b, strict
               // accepted.
-              Map.of("openai.tools.strict", "true")),
+              STRICT_TOOLS),
           new Preset(
               "groq",
               Wire.OPENAI_CHAT,
@@ -103,7 +108,7 @@ record Preset(
               List.of("groq.api-key"),
               null,
               // Measured 2026-09-30: openai/gpt-oss-120b, strict accepted.
-              Map.of("openai.tools.strict", "true")),
+              STRICT_TOOLS),
           new Preset(
               "mistral",
               Wire.OPENAI_CHAT,
@@ -113,7 +118,7 @@ record Preset(
               null,
               // Measured 2026-09-30: mistral-large-latest and magistral-medium-latest, strict
               // accepted.
-              Map.of("openai.tools.strict", "true")),
+              STRICT_TOOLS),
           new Preset(
               "cerebras",
               Wire.OPENAI_CHAT,
@@ -123,7 +128,7 @@ record Preset(
               null,
               // Measured 2026-09-30 (PresetCandidatesLiveTest, gpt-oss-120b): strict tools are
               // accepted and called.
-              Map.of("openai.tools.strict", "true")),
+              STRICT_TOOLS),
           new Preset(
               "lmstudio",
               Wire.OPENAI_CHAT,
@@ -132,12 +137,7 @@ record Preset(
               List.of(),
               "lm-studio"),
           new Preset(
-              "ollama",
-              Wire.OPENAI_CHAT,
-              "http://localhost:11434/v1",
-              "ollama",
-              List.of(),
-              "ollama"));
+              OLLAMA, Wire.OPENAI_CHAT, "http://localhost:11434/v1", OLLAMA, List.of(), OLLAMA));
 
   boolean keyless() {
     return keylessApiKey != null;

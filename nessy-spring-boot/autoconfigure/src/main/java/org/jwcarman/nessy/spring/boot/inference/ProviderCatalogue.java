@@ -19,7 +19,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -39,7 +39,7 @@ final class ProviderCatalogue {
   private ProviderCatalogue() {}
 
   static List<ResolvedProvider> resolve(
-      Map<String, ProviderSettings> settings, Function<String, @Nullable String> property) {
+      Map<String, ProviderSettings> settings, UnaryOperator<@Nullable String> property) {
     List<ResolvedProvider> lit = new ArrayList<>();
     for (Preset preset : Preset.CATALOGUE) {
       ProviderSettings own = settings.getOrDefault(preset.id(), EMPTY);
@@ -48,44 +48,17 @@ final class ProviderCatalogue {
       keys.add(own.apiKey());
       preset.keyProperties().forEach(name -> keys.add(property.apply(name)));
       String apiKey = firstNonBlank(keys);
-      // enabled=false turns a preset off no matter what ingredient it has; unset means "on if its
-      // ingredient is present" for a hosted preset, and stays "off unless said" for a keyless one.
-      boolean on;
-      if (Boolean.FALSE.equals(own.enabled())) {
-        on = false;
-      } else if (preset.keyless()) {
-        on = Boolean.TRUE.equals(own.enabled());
-      } else {
-        on = apiKey != null;
-      }
-      if (!on) {
+      if (!isOn(own, preset, apiKey)) {
         continue;
-      }
-      List<String> urls = new ArrayList<>();
-      urls.add(own.baseUrl());
-      if ("openai".equals(preset.id())) {
-        urls.add(property.apply("openai.base-url"));
-      }
-      urls.add(preset.baseUrl());
-      String baseUrl = firstNonBlank(urls);
-      // The preset's defaults belong to the wire the preset ships with; an application that moved
-      // the provider to another wire starts clean, and its own properties overlay name by name
-      // (spec section 11).
-      Map<String, String> properties = new LinkedHashMap<>();
-      if (own.wire() == null || own.wire() == preset.wire()) {
-        properties.putAll(preset.defaultProperties());
-      }
-      if (own.properties() != null) {
-        properties.putAll(own.properties());
       }
       lit.add(
           new ResolvedProvider(
               preset.id(),
               own.wire() != null ? own.wire() : preset.wire(),
-              baseUrl,
+              baseUrl(own, preset, property),
               own.vendor() != null ? own.vendor() : preset.vendor(),
               preset.keyless() ? keylessApiKey(own, preset) : apiKey,
-              properties));
+              properties(own, preset)));
     }
     settings.forEach(
         (id, own) -> {
@@ -97,6 +70,48 @@ final class ProviderCatalogue {
           }
         });
     return List.copyOf(lit);
+  }
+
+  /**
+   * Whether a preset is lit. enabled=false turns a preset off no matter what ingredient it has;
+   * unset means "on if its ingredient is present" for a hosted preset, and stays "off unless said"
+   * for a keyless one.
+   */
+  private static boolean isOn(ProviderSettings own, Preset preset, @Nullable String apiKey) {
+    if (Boolean.FALSE.equals(own.enabled())) {
+      return false;
+    }
+    if (preset.keyless()) {
+      return Boolean.TRUE.equals(own.enabled());
+    }
+    return apiKey != null;
+  }
+
+  private static @Nullable String baseUrl(
+      ProviderSettings own, Preset preset, UnaryOperator<@Nullable String> property) {
+    List<String> urls = new ArrayList<>();
+    urls.add(own.baseUrl());
+    if ("openai".equals(preset.id())) {
+      urls.add(property.apply("openai.base-url"));
+    }
+    urls.add(preset.baseUrl());
+    return firstNonBlank(urls);
+  }
+
+  /**
+   * The preset's defaults belong to the wire the preset ships with; an application that moved the
+   * provider to another wire starts clean, and its own properties overlay name by name (spec
+   * section 11).
+   */
+  private static Map<String, String> properties(ProviderSettings own, Preset preset) {
+    Map<String, String> properties = new LinkedHashMap<>();
+    if (own.wire() == null || own.wire() == preset.wire()) {
+      properties.putAll(preset.defaultProperties());
+    }
+    if (own.properties() != null) {
+      properties.putAll(own.properties());
+    }
+    return properties;
   }
 
   /** A keyless preset's key: what an application overrode it to, or its placeholder. */
