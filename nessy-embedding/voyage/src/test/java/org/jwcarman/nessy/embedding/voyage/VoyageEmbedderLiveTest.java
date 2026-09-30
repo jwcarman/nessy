@@ -65,4 +65,24 @@ class VoyageEmbedderLiveTest {
       assertThat(near).isGreaterThan(far);
     }
   }
+
+  @Test
+  void a_query_and_a_document_are_the_model_s_width_and_carry_the_model_asked_for() {
+    assumeTrue(System.getenv("VOYAGE_API_KEY") != null, "VOYAGE_API_KEY is not set");
+    String model =
+        System.getenv().getOrDefault("NESSY_EMBEDDING_MODEL", VoyageEmbedderConfig.DEFAULT_MODEL);
+    try (VoyageEmbeddingProvider provider =
+        VoyageEmbeddingProvider.of(VoyageEmbedderConfig::fromEnv)) {
+      Embedder embedder = embedderOver(provider, model);
+
+      Embedding document =
+          embedder.embedDocument("The Loch Ness monster is said to live in a Scottish lake.");
+      Embedding query = embedder.embedQuery("Where does Nessie live?");
+
+      assertThat(document.dimension()).isPositive().isEqualTo(embedder.dimension());
+      assertThat(query.dimension()).isEqualTo(document.dimension());
+      assertThat(document.model()).isEqualTo(model);
+      assertThat(query.model()).isEqualTo(model);
+    }
+  }
 }

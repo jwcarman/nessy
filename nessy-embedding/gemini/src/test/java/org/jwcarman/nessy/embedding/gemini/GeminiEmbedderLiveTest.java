@@ -75,4 +75,23 @@ class GeminiEmbedderLiveTest {
       assertThat(near).isGreaterThan(far);
     }
   }
+
+  @Test
+  void a_query_and_a_document_are_the_model_s_width_and_carry_the_model_asked_for() {
+    assumeTrue(System.getenv("GEMINI_API_KEY") != null || System.getenv("GOOGLE_API_KEY") != null, "GEMINI_API_KEY is not set");
+    try (GeminiEmbeddingProvider provider =
+        GeminiEmbeddingProvider.of(GeminiEmbedderConfig::fromEnv)) {
+      Embedder embedder = embedderOver(provider, MODEL, 768);
+
+      Embedding document =
+          embedder.embedDocument("The Loch Ness monster is said to live in a Scottish lake.");
+      Embedding query = embedder.embedQuery("Where does Nessie live?");
+
+      assertThat(document.dimension()).isPositive().isEqualTo(embedder.dimension());
+      assertThat(query.dimension()).isEqualTo(document.dimension());
+      assertThat(document.dimension()).isEqualTo(768);
+      assertThat(document.model()).isEqualTo(MODEL);
+      assertThat(query.model()).isEqualTo(MODEL);
+    }
+  }
 }

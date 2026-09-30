@@ -71,4 +71,24 @@ class BedrockEmbedderLiveTest {
       assertThat(near).isGreaterThan(far);
     }
   }
+
+  @Test
+  void a_query_and_a_document_are_the_model_s_width_and_carry_the_model_asked_for() {
+    assumeTrue(System.getenv("AWS_BEARER_TOKEN_BEDROCK") != null || System.getenv("AWS_ACCESS_KEY_ID") != null, "neither AWS_BEARER_TOKEN_BEDROCK nor AWS_ACCESS_KEY_ID is set");
+    String model =
+        System.getenv().getOrDefault("NESSY_EMBEDDING_MODEL", BedrockEmbedderConfig.DEFAULT_MODEL);
+    try (BedrockEmbeddingProvider provider =
+        BedrockEmbeddingProvider.of(BedrockEmbedderConfig::fromEnv)) {
+      Embedder embedder = embedderOver(provider, model);
+
+      Embedding document =
+          embedder.embedDocument("The Loch Ness monster is said to live in a Scottish lake.");
+      Embedding query = embedder.embedQuery("Where does Nessie live?");
+
+      assertThat(document.dimension()).isPositive().isEqualTo(embedder.dimension());
+      assertThat(query.dimension()).isEqualTo(document.dimension());
+      assertThat(document.model()).isEqualTo(model);
+      assertThat(query.model()).isEqualTo(model);
+    }
+  }
 }

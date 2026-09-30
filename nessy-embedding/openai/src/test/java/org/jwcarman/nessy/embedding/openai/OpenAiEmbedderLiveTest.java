@@ -83,4 +83,22 @@ class OpenAiEmbedderLiveTest {
           .isCloseTo(1.0, org.assertj.core.data.Offset.offset(1e-4));
     }
   }
+
+  @Test
+  void a_query_and_a_document_are_the_model_s_width_and_carry_the_model_asked_for() {
+    assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY is not set");
+    try (OpenAiEmbeddingProvider provider =
+        OpenAiEmbeddingProvider.of(OpenAiEmbedderConfig::fromEnv)) {
+      Embedder embedder = embedderOver(provider, MODEL);
+
+      Embedding document =
+          embedder.embedDocument("The Loch Ness monster is said to live in a Scottish lake.");
+      Embedding query = embedder.embedQuery("Where does Nessie live?");
+
+      assertThat(document.dimension()).isPositive().isEqualTo(embedder.dimension());
+      assertThat(query.dimension()).isEqualTo(document.dimension());
+      assertThat(document.model()).isEqualTo(MODEL);
+      assertThat(query.model()).isEqualTo(MODEL);
+    }
+  }
 }
