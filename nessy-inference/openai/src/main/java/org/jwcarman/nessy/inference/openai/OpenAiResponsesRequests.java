@@ -85,8 +85,8 @@ final class OpenAiResponsesRequests {
       Map<String, String> providerProperties,
       JsonMapper mapper) {
     InferenceOptions options = request.options();
-    OpenAiProperties.Read read =
-        OpenAiProperties.responses(
+    OpenAiPropertyReader.Read read =
+        OpenAiPropertyReader.responses(
             VendorProperties.merge(providerProperties, options.properties()));
     List<ResponseInputItem> input = new ArrayList<>();
     request
@@ -120,12 +120,14 @@ final class OpenAiResponsesRequests {
     // and the adapter never guesses which kind it holds (Responses record §5g).
     if (read.effort().isPresent() || read.summary().isPresent()) {
       Reasoning.Builder reasoning = Reasoning.builder();
-      read.effort().ifPresent(effort -> reasoning.effort(ReasoningEffort.of(effort)));
-      read.summary().ifPresent(summary -> reasoning.summary(Reasoning.Summary.of(summary)));
+      read.effort().ifPresent(effort -> reasoning.effort(ReasoningEffort.of(effort.spelling())));
+      read.summary()
+          .ifPresent(summary -> reasoning.summary(Reasoning.Summary.of(summary.spelling())));
       builder.reasoning(reasoning.build());
     }
     read.serviceTier()
-        .ifPresent(tier -> builder.serviceTier(ResponseCreateParams.ServiceTier.of(tier)));
+        .ifPresent(
+            tier -> builder.serviceTier(ResponseCreateParams.ServiceTier.of(tier.spelling())));
     return builder.build();
   }
 

@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.openai.client.OpenAIClient;
+import com.openai.models.Reasoning;
 import com.openai.models.ReasoningEffort;
 import com.openai.models.responses.ResponseCreateParams;
 import java.lang.reflect.Proxy;
@@ -126,6 +127,61 @@ class OpenAiResponsesProviderConfigTest {
 
     assertThat(captured[0].reasoning().orElseThrow().effort().map(ReasoningEffort::asString))
         .contains("medium");
+  }
+
+  @Test
+  void typed_properties_set_in_code_reach_the_request_as_the_sdk_values() {
+    var captured = new ResponseCreateParams[1];
+    new OpenAiResponsesProviderConfig()
+        .property(OpenAiProperties.REASONING_EFFORT, OpenAiReasoningEffort.MINIMAL)
+        .property(OpenAiProperties.REASONING_SUMMARY, OpenAiReasoningSummary.DETAILED)
+        .property(OpenAiProperties.SERVICE_TIER, OpenAiServiceTier.ULTRAFAST)
+        .client(
+            ResponseStreams.client(
+                params -> {
+                  captured[0] = params;
+                  return ResponseStreams.eventsOf(
+                      ResponseStreams.completed(List.of(ResponseStreams.message("msg_1", "ok"))));
+                }))
+        .build()
+        .infer(OpenAiResponsesInferenceProviderTest.REQUEST);
+
+    assertThat(captured[0].reasoning().orElseThrow().effort()).contains(ReasoningEffort.MINIMAL);
+    assertThat(captured[0].reasoning().orElseThrow().summary())
+        .contains(Reasoning.Summary.DETAILED);
+    assertThat(captured[0].serviceTier()).contains(ResponseCreateParams.ServiceTier.ULTRAFAST);
+  }
+
+  @Test
+  void the_ultrafast_tier_as_a_yaml_style_string_is_accepted_and_sent() {
+    var captured = new ResponseCreateParams[1];
+    new OpenAiResponsesProviderConfig()
+        .property("openai.service_tier", "ultrafast")
+        .client(
+            ResponseStreams.client(
+                params -> {
+                  captured[0] = params;
+                  return ResponseStreams.eventsOf(
+                      ResponseStreams.completed(List.of(ResponseStreams.message("msg_1", "ok"))));
+                }))
+        .build()
+        .infer(OpenAiResponsesInferenceProviderTest.REQUEST);
+
+    assertThat(captured[0].serviceTier()).contains(ResponseCreateParams.ServiceTier.ULTRAFAST);
+  }
+
+  @Test
+  void a_yaml_style_string_with_a_bad_spelling_fails_at_build_listing_the_spellings() {
+    OpenAiResponsesProviderConfig config =
+        new OpenAiResponsesProviderConfig()
+            .apiKey("test-key")
+            .property("openai.reasoning.summary", "verbose");
+
+    assertThatThrownBy(config::build)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage(
+            "property 'openai.reasoning.summary' must be one of [auto, concise, detailed],"
+                + " was 'verbose'");
   }
 
   @Test

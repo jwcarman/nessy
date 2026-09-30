@@ -38,6 +38,7 @@ import com.openai.errors.UnauthorizedException;
 import com.openai.errors.UnexpectedStatusCodeException;
 import com.openai.errors.UnprocessableEntityException;
 import com.openai.helpers.ChatCompletionAccumulator;
+import com.openai.models.ReasoningEffort;
 import com.openai.models.chat.completions.ChatCompletion;
 import com.openai.models.chat.completions.ChatCompletionChunk;
 import com.openai.models.chat.completions.ChatCompletionCreateParams;
@@ -1255,6 +1256,63 @@ class OpenAiChatInferenceProviderTest {
 
       assertThat(captured[0].serviceTier().map(ChatCompletionCreateParams.ServiceTier::asString))
           .contains("flex");
+    }
+
+    @Test
+    void typed_properties_set_in_code_reach_the_request_as_the_sdk_values() {
+      var captured = new ChatCompletionCreateParams[1];
+      new OpenAiChatProviderConfig()
+          .property(OpenAiProperties.REASONING_EFFORT, OpenAiReasoningEffort.XHIGH)
+          .property(OpenAiProperties.SERVICE_TIER, OpenAiServiceTier.PRIORITY)
+          .client(
+              fakeClient(
+                  params -> {
+                    captured[0] = params;
+                    return completionOf(
+                        ChatCompletionMessage.builder()
+                            .content("ok")
+                            .refusal(Optional.<String>empty())
+                            .build());
+                  }))
+          .build()
+          .infer(REQUEST);
+
+      assertThat(captured[0].reasoningEffort()).contains(ReasoningEffort.XHIGH);
+      assertThat(captured[0].serviceTier())
+          .contains(ChatCompletionCreateParams.ServiceTier.PRIORITY);
+    }
+
+    @Test
+    void a_yaml_style_string_with_a_bad_spelling_fails_at_build_listing_the_spellings() {
+      OpenAiChatProviderConfig config =
+          new OpenAiChatProviderConfig().apiKey("test-key").property("openai.service_tier", "gold");
+
+      assertThatThrownBy(config::build)
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage(
+              "property 'openai.service_tier' must be one of"
+                  + " [auto, default, flex, scale, priority, fast, ultrafast], was 'gold'");
+    }
+
+    @Test
+    void the_ultrafast_tier_is_refused_at_build_in_code_and_as_a_string() {
+      OpenAiChatProviderConfig typed =
+          new OpenAiChatProviderConfig()
+              .apiKey("test-key")
+              .property(OpenAiProperties.SERVICE_TIER, OpenAiServiceTier.ULTRAFAST);
+      OpenAiChatProviderConfig text =
+          new OpenAiChatProviderConfig()
+              .apiKey("test-key")
+              .property("openai.service_tier", "ultrafast");
+
+      assertThatThrownBy(typed::build)
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'openai.service_tier' cannot be 'ultrafast'")
+          .hasMessageContaining("openai-responses");
+      assertThatThrownBy(text::build)
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'openai.service_tier' cannot be 'ultrafast'")
+          .hasMessageContaining("openai-responses");
     }
 
     @Test

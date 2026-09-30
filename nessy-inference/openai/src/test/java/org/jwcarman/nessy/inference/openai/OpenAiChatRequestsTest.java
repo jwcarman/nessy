@@ -516,12 +516,27 @@ class OpenAiChatRequestsTest {
       assertThat(params._additionalBodyProperties()).isEmpty();
     }
 
-    /** The vocabulary is the vendor's: a level Nessy has never heard of is sent as written. */
+    /** Nothing goes in raw: a level outside the enum is refused, listing the levels. */
     @Test
-    void an_effort_level_nessy_does_not_know_is_sent_as_written() {
-      ChatCompletionCreateParams params = paramsFor(Map.of("openai.reasoning.effort", "ultra"));
+    void an_effort_level_outside_the_enum_is_refused_listing_the_spellings() {
+      InferenceRequest request = carrying(Map.of("openai.reasoning.effort", "ultra"));
 
-      assertThat(params.reasoningEffort().map(ReasoningEffort::asString)).contains("ultra");
+      assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage(
+              "property 'openai.reasoning.effort' must be one of"
+                  + " [none, minimal, low, medium, high, xhigh, max], was 'ultra'");
+    }
+
+    @Test
+    void the_ultrafast_tier_is_refused_because_this_wire_cannot_carry_it() {
+      InferenceRequest request = carrying(Map.of("openai.service_tier", "ultrafast"));
+
+      assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage(
+              "property 'openai.service_tier' cannot be 'ultrafast' on the openai-chat wire;"
+                  + " the openai-responses wire carries it");
     }
 
     @Test
@@ -610,7 +625,7 @@ class OpenAiChatRequestsTest {
           LogCapture.during(
               OpenAiProperties.class,
               () ->
-                  OpenAiProperties.warnUnsupported(
+                  OpenAiPropertyReader.warnUnsupported(
                       Map.of("openai.seed", "1", "openai.tools.strict", "true")));
 
       assertThat(LogCapture.warnings(events))
@@ -653,7 +668,8 @@ class OpenAiChatRequestsTest {
           LogCapture.during(
               OpenAiProperties.class,
               () ->
-                  OpenAiProperties.logIgnored(Map.of("anthropic.top_k", "5", "openai.seed", "1")));
+                  OpenAiPropertyReader.logIgnored(
+                      Map.of("anthropic.top_k", "5", "openai.seed", "1")));
 
       assertThat(events)
           .singleElement()
