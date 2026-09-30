@@ -104,16 +104,6 @@ class BedrockProviderConfigTest {
         .isInstanceOf(NullPointerException.class);
   }
 
-  /**
-   * The transport timeout setter (design record 2026-09-25-locks-as-plumbing-design.md §5). Unlike
-   * OpenAI, Anthropic and Gemini, AWS's own {@code ClientOverrideConfiguration.apiCallTimeout()} is
-   * publicly readable back off a real {@code BedrockRuntimeAsyncClient} -- but this module's {@link
-   * BedrockClient} seam intentionally never hands that raw client back out (it exists precisely so
-   * the provider need not depend on it directly), so reaching it from here would mean reflection or
-   * widening internal visibility beyond what this setter needs. Per the same "not observable
-   * without reflection or a network call" rule as the other three providers, these tests assert on
-   * the setter's own validation and that building still succeeds.
-   */
   @Test
   void a_property_under_another_prefix_is_refused_at_build_naming_the_prefix() {
     Customizer<BedrockProviderConfig> customizer =
@@ -197,6 +187,16 @@ class BedrockProviderConfigTest {
     }
   }
 
+  /**
+   * The transport timeout setter (design record 2026-09-25-locks-as-plumbing-design.md §5). Unlike
+   * OpenAI, Anthropic and Gemini, AWS's own {@code ClientOverrideConfiguration.apiCallTimeout()} is
+   * publicly readable back off a real {@code BedrockRuntimeAsyncClient} -- but this module's {@link
+   * BedrockClient} seam intentionally never hands that raw client back out (it exists precisely so
+   * the provider need not depend on it directly), so reaching it from here would mean reflection or
+   * widening internal visibility beyond what this setter needs. Per the same "not observable
+   * without reflection or a network call" rule as the other three providers, these tests assert on
+   * the setter's own validation and that building still succeeds.
+   */
   @Nested
   @DisplayName("its transport timeout")
   class Its_transport_timeout {

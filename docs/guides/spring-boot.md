@@ -119,11 +119,14 @@ nessy:
         anthropic.thinking.budget_tokens: "8192"
 ```
 
-They are a configuration-file setting. An environment variable cannot name
-one: relaxed binding turns every `_` into `.` and lower-cases the rest, which
-loses the underscore in `budget_tokens` and the case in `thinkingBudget`. To
-take a value from the environment, name the property in the file and let
-the environment supply the value: `openai.user: ${TENANT_ID}`.
+They are best set in a configuration file. An environment variable cannot
+name a property whose name contains an underscore or a capital letter
+(`anthropic.thinking.budget_tokens`,
+`gemini.generationConfig.thinkingConfig.thinkingBudget`): that follows
+Boot's relaxed binding, which turns every `_` into `.` and lower-cases the
+rest. A name with neither binds from the environment. To take any value from
+the environment, name the property in the file and let the environment
+supply the value: `openai.user: ${TENANT_ID}`.
 
 `nessy.type` looks like it should name an agent type the way
 `nessy.model` names a model, and it does not: it is validated at startup

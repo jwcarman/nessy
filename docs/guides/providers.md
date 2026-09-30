@@ -153,7 +153,12 @@ model, the ceiling, the tools and their choice, the answer's shape, the
 conversation, or a field the adapter fixes on purpose -- fails the build
 naming the property and what decides it: `agent type 'chat': property
 'openai.max_completion_tokens' names what InferenceConfig.maxTokens already
-decides; remove the property`. So does a known name the wire cannot carry,
+decides; remove the property`. The rule reaches under and over a decided
+name too: `openai.text.verbosity` sets a field inside `text`, which the
+Responses adapter fills with the answer's shape, and a property that would
+replace a decided field whole (`gemini.generationConfig`, which contains
+`generationConfig.maxOutputTokens`) is refused, saying to set the fields one
+by one. So does a known name the wire cannot carry,
 and a pass-through under an object the adapter builds from a known name
 (`openai.reasoning.generate_summary` beside `openai.reasoning.effort` on the
 Responses wire).
@@ -221,9 +226,12 @@ Every other `gemini.` name goes into the request body through the SDK's
 
 !!! note "Pass-through beside the typed config"
     The three thinking names go through the SDK's typed config and do not
-    depend on `extraBody`. Whether the SDK merges `extraBody` into, or
-    replaces, the `generationConfig` it builds has not been checked against
-    the live API, so a pass-through under `generationConfig` is untested.
+    depend on `extraBody`. The SDK deep-merges `extraBody` into the request
+    body it builds: objects merge, and a list or scalar in the property
+    replaces the one already there. A pass-through under `generationConfig`
+    therefore lands beside the fields Nessy sets, and because a name that
+    reaches under or over a field Nessy sets is refused, it cannot change
+    one.
 
 ### Bedrock
 
@@ -238,10 +246,12 @@ in.property("bedrock.thinking.type", "enabled")
   .property("bedrock.thinking.budget_tokens", "4096")
 ```
 
-Refused: `modelId`, `messages`, `system`, `toolConfig`,
-`inferenceConfig.maxTokens`. Converse's other top-level fields
-(`guardrailConfig`, `performanceConfig`, `serviceTier`, `requestMetadata`)
-are typed on the AWS request and not reachable as properties.
+Refused: `modelId`, `messages`, `system`, `toolConfig`, and everything under
+`inferenceConfig` that is not one of the three known names
+(`inferenceConfig.maxTokens` is the ceiling; a model-specific field such as
+`topK` goes directly under `bedrock.`, as `bedrock.topK`). Converse's other
+top-level fields are typed on the AWS request and not reachable as
+properties.
 
 ### Embedders
 
@@ -422,7 +432,7 @@ At startup, `InferenceReport` logs every registered provider once — id,
 wire, endpoint, vendor, never the key:
 
 ```
-NESSY INFERENCE: providers: openai (openai-chat, the vendor's own endpoint, vendor openai); xai (openai-chat, https://api.x.ai/v1, vendor x_ai)
+NESSY INFERENCE: providers: xai (openai-chat, https://api.x.ai/v1, vendor x_ai); anthropic (anthropic, the vendor's own endpoint, vendor anthropic)
 ```
 
 A provider with vendor properties names them, never their values:
