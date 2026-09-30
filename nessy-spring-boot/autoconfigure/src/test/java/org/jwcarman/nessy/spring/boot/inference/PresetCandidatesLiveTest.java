@@ -70,15 +70,16 @@ import tools.jackson.databind.json.JsonMapper;
  * real endpoints, so the promotion decision rests on what each one actually does rather than on
  * what its marketing page claims.
  *
- * <p>Each candidate is built the way a custom provider is today -- {@code nessy.providers.<id>.wire
- * =openai-chat} plus a base URL, an environment-sourced key and a vendor -- or, for an existing
- * preset, by its key alone, so a wire other than {@code openai-chat} is measured too. Either is
- * then driven through a real direct harness with a tool the question cannot be answered without,
- * exactly like {@link LmStudioPresetLiveTest}. A candidate with no key, or no model and no default,
- * is skipped rather than failed: this test measures what is reachable in the runner's environment,
- * not what should exist. Results land in {@code target/preset-measurements.md} for James to read
- * after a run; no key is ever written to that file, an assertion message, a log line, or an
- * exception this test constructs.
+ * <p>Each candidate is built the way a custom provider is today -- {@code
+ * nessy.providers.<id>.wire} ({@code openai-chat} or {@code openai-responses}) plus a base URL, an
+ * environment-sourced key and a vendor -- or, for an existing preset, by its key alone, so a wire
+ * other than {@code openai-chat} is measured too. Either is then driven through a real direct
+ * harness with a tool the question cannot be answered without, exactly like {@link
+ * LmStudioPresetLiveTest}. A candidate with no key, or no model and no default, is skipped rather
+ * than failed: this test measures what is reachable in the runner's environment, not what should
+ * exist. Results land in {@code target/preset-measurements.md}, with the wire each vendor was asked
+ * over, for James to read after a run; no key is ever written to that file, an assertion message, a
+ * log line, or an exception this test constructs.
  *
  * <pre>{@code
  * ./mvnw -q -pl :nessy-spring-boot-autoconfigure test -Dnessy.excludedGroups= -Dtest=PresetCandidatesLiveTest
@@ -98,39 +99,89 @@ class PresetCandidatesLiveTest {
           Candidate.preset("anthropic", "ANTHROPIC_API_KEY", "anthropic"),
           Candidate.preset("xai", "XAI_API_KEY", "x_ai"),
           Candidate.preset("gemini", "GEMINI_API_KEY", "gcp.gemini"),
-          new Candidate("openai", "https://api.openai.com/v1", "OPENAI_API_KEY", null, "openai"),
+          new Candidate(
+              "openai",
+              "https://api.openai.com/v1",
+              "OPENAI_API_KEY",
+              null,
+              "openai",
+              "openai-chat"),
           new Candidate(
               "groq",
               "https://api.groq.com/openai/v1",
               "GROQ_API_KEY",
               "openai/gpt-oss-20b",
-              "groq"),
+              "groq",
+              "openai-chat"),
           new Candidate(
-              "mistral", "https://api.mistral.ai/v1", "MISTRAL_API_KEY", null, "mistral_ai"),
+              "mistral",
+              "https://api.mistral.ai/v1",
+              "MISTRAL_API_KEY",
+              null,
+              "mistral_ai",
+              "openai-chat"),
           new Candidate(
               "openrouter",
               "https://openrouter.ai/api/v1",
               "OPENROUTER_API_KEY",
               null,
-              "openrouter"),
+              "openrouter",
+              "openai-chat"),
           new Candidate(
-              "together", "https://api.together.xyz/v1", "TOGETHER_API_KEY", null, "together"),
+              "together",
+              "https://api.together.xyz/v1",
+              "TOGETHER_API_KEY",
+              null,
+              "together",
+              "openai-chat"),
           new Candidate(
               "fireworks",
               "https://api.fireworks.ai/inference/v1",
               "FIREWORKS_API_KEY",
               null,
-              "fireworks"),
+              "fireworks",
+              "openai-chat"),
           new Candidate(
-              "cerebras", "https://api.cerebras.ai/v1", "CEREBRAS_API_KEY", null, "cerebras"),
-          new Candidate("ollama", "http://localhost:11434/v1", "OLLAMA_API_KEY", null, "ollama"),
+              "cerebras",
+              "https://api.cerebras.ai/v1",
+              "CEREBRAS_API_KEY",
+              null,
+              "cerebras",
+              "openai-chat"),
           new Candidate(
-              "nvidia", "https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY", null, "nvidia"));
+              "ollama",
+              "http://localhost:11434/v1",
+              "OLLAMA_API_KEY",
+              null,
+              "ollama",
+              "openai-chat"),
+          new Candidate(
+              "nvidia",
+              "https://integrate.api.nvidia.com/v1",
+              "NVIDIA_API_KEY",
+              null,
+              "nvidia",
+              "openai-chat"),
+          new Candidate(
+              "openai-responses",
+              "https://api.openai.com/v1",
+              "OPENAI_API_KEY",
+              null,
+              "openai",
+              "openai-responses"),
+          new Candidate(
+              "perplexity",
+              System.getenv().getOrDefault("PERPLEXITY_BASE_URL", "https://api.perplexity.ai/v1"),
+              "PERPLEXITY_API_KEY",
+              null,
+              "perplexity",
+              "openai-responses"));
 
   private static final Map<String, Row> ROWS = new ConcurrentHashMap<>();
 
   /** One row of the measurement table: what was asked of the vendor, and what came back. */
-  private record Row(String id, String model, String baseUrl, String status, String detail) {}
+  private record Row(
+      String id, String model, String baseUrl, String wire, String status, String detail) {}
 
   /**
    * A vendor this test can reach if its key is exported; {@code defaultModel} may be absent. A
@@ -142,10 +193,15 @@ class PresetCandidatesLiveTest {
       @Nullable String baseUrl,
       String keyEnvVar,
       @Nullable String defaultModel,
-      String vendor) {
+      String vendor,
+      @Nullable String wire) {
 
     static Candidate preset(String id, String keyEnvVar, String vendor) {
-      return new Candidate(id, null, keyEnvVar, null, vendor);
+      return new Candidate(id, null, keyEnvVar, null, vendor, null);
+    }
+
+    String shownWire() {
+      return wire == null ? "(preset)" : wire;
     }
 
     String shownUrl() {
@@ -153,7 +209,7 @@ class PresetCandidatesLiveTest {
     }
 
     String modelEnvVar() {
-      return id.toUpperCase(Locale.ROOT) + "_MODEL";
+      return id.toUpperCase(Locale.ROOT).replace('-', '_') + "_MODEL";
     }
   }
 
@@ -248,7 +304,9 @@ class PresetCandidatesLiveTest {
 
   private void skip(Candidate candidate, String message) {
     ROWS.put(
-        candidate.id(), new Row(candidate.id(), "-", candidate.shownUrl(), "SKIPPED", message));
+        candidate.id(),
+        new Row(
+            candidate.id(), "-", candidate.shownUrl(), candidate.shownWire(), "SKIPPED", message));
     Assumptions.assumeTrue(false, message);
   }
 
@@ -295,13 +353,16 @@ class PresetCandidatesLiveTest {
   private void recordSuccess(Candidate candidate, String model) {
     ROWS.merge(
         candidate.id(),
-        new Row(candidate.id(), model, candidate.shownUrl(), "PASS", ""),
+        new Row(candidate.id(), model, candidate.shownUrl(), candidate.shownWire(), "PASS", ""),
         (existing, fresh) -> "FAIL".equals(existing.status()) ? existing : fresh);
   }
 
   private void recordFailure(Candidate candidate, String model, Throwable t) {
     String detail = truncate(t.getClass().getName() + ": " + t.getMessage(), 300);
-    ROWS.put(candidate.id(), new Row(candidate.id(), model, candidate.shownUrl(), "FAIL", detail));
+    ROWS.put(
+        candidate.id(),
+        new Row(
+            candidate.id(), model, candidate.shownUrl(), candidate.shownWire(), "FAIL", detail));
   }
 
   private static String truncate(@Nullable String text, int max) {
@@ -320,7 +381,7 @@ class PresetCandidatesLiveTest {
                 candidate.baseUrl() == null
                     ? new String[] {"nessy.providers." + candidate.id() + ".api-key=" + key}
                     : new String[] {
-                      "nessy.providers." + candidate.id() + ".wire=openai-chat",
+                      "nessy.providers." + candidate.id() + ".wire=" + candidate.wire(),
                       "nessy.providers." + candidate.id() + ".base-url=" + candidate.baseUrl(),
                       "nessy.providers." + candidate.id() + ".api-key=" + key,
                       "nessy.providers." + candidate.id() + ".vendor=" + candidate.vendor()
@@ -359,13 +420,19 @@ class PresetCandidatesLiveTest {
   @AfterAll
   static void write_results_file() throws IOException {
     StringBuilder markdown = new StringBuilder();
-    markdown.append("| id | model | base url | result | detail |\n");
-    markdown.append("|---|---|---|---|---|\n");
+    markdown.append("| id | model | base url | wire | result | detail |\n");
+    markdown.append("|---|---|---|---|---|---|\n");
     for (Candidate candidate : CANDIDATES) {
       Row row =
           ROWS.getOrDefault(
               candidate.id(),
-              new Row(candidate.id(), "-", candidate.shownUrl(), "SKIPPED", "not run"));
+              new Row(
+                  candidate.id(),
+                  "-",
+                  candidate.shownUrl(),
+                  candidate.shownWire(),
+                  "SKIPPED",
+                  "not run"));
       markdown
           .append("| ")
           .append(row.id())
@@ -373,6 +440,8 @@ class PresetCandidatesLiveTest {
           .append(row.model())
           .append(" | ")
           .append(row.baseUrl())
+          .append(" | ")
+          .append(row.wire())
           .append(" | ")
           .append(row.status())
           .append(" | ")
