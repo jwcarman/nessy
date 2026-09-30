@@ -18,10 +18,13 @@ package org.jwcarman.nessy.inference.anthropic;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.anthropic.core.ObjectMappers;
+import com.anthropic.models.messages.CacheControlEphemeral;
 import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -46,6 +49,7 @@ import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.anthropic.AnthropicRequests.Features;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -776,6 +780,213 @@ class AnthropicRequestsTest {
               MAPPER);
 
       assertThat(params.toolChoice()).isEmpty();
+    }
+  }
+
+  @Nested
+  class TheVendorProperties {
+
+    private static InferenceRequest carrying(Map<String, String> agentType) {
+      return new InferenceRequest(
+          SYSTEM,
+          InferenceContext.of(List.of(open(1, "hi"))),
+          Toolset.none(),
+          new InferenceOptions("claude-sonnet", 1024, agentType));
+    }
+
+    /** The pass-through body as it goes on the wire; the SDK's accessors erase the generics. */
+    private static JsonNode additionalBody(MessageCreateParams params) throws Exception {
+      return MAPPER.readTree(
+          ObjectMappers.jsonMapper().writeValueAsString(params._additionalBodyProperties()));
+    }
+
+    private static MessageCreateParams paramsFor(
+        Map<String, String> provider, Map<String, String> agentType) {
+      return AnthropicRequests.toParams(carrying(agentType), provider, MAPPER);
+    }
+
+    private static MessageCreateParams paramsFor(Map<String, String> agentType) {
+      return paramsFor(Map.of(), agentType);
+    }
+
+    @Test
+    void a_budget_alone_turns_thinking_on_with_that_budget() {
+      MessageCreateParams params = paramsFor(Map.of("anthropic.thinking.budget_tokens", "512"));
+
+      assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(512L);
+    }
+
+    @Test
+    void enabled_with_a_budget_asks_for_that_budget() {
+      MessageCreateParams params =
+          paramsFor(
+              Map.of(
+                  "anthropic.thinking.type", "enabled", "anthropic.thinking.budget_tokens", "600"));
+
+      assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(600L);
+    }
+
+    @Test
+    void enabled_without_a_budget_is_refused_naming_both_properties() {
+      InferenceRequest request = carrying(Map.of("anthropic.thinking.type", "enabled"));
+
+      assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'anthropic.thinking.type'")
+          .hasMessageContaining("'anthropic.thinking.budget_tokens'");
+    }
+
+    /** Plan ruling 9: disabled over a provider that thinks sends no thinking object at all. */
+    @Test
+    void disabled_sends_no_thinking_object_over_a_provider_that_thinks() {
+      MessageCreateParams params =
+          paramsFor(
+              Map.of(
+                  "anthropic.thinking.type", "enabled", "anthropic.thinking.budget_tokens", "512"),
+              Map.of("anthropic.thinking.type", "disabled"));
+
+      assertThat(params.thinking()).isEmpty();
+      assertThat(params._additionalBodyProperties()).isEmpty();
+    }
+
+    @Test
+    void adaptive_sends_the_adaptive_config() {
+      MessageCreateParams params = paramsFor(Map.of("anthropic.thinking.type", "adaptive"));
+
+      assertThat(params.thinking().orElseThrow().isAdaptive()).isTrue();
+    }
+
+    /** Plan ruling 9: the type is checked, the vocabulary is the vendor's. */
+    @Test
+    void a_type_nessy_does_not_know_goes_as_a_raw_thinking_object() throws Exception {
+      MessageCreateParams params =
+          paramsFor(
+              Map.of(
+                  "anthropic.thinking.type", "interleaved",
+                  "anthropic.thinking.budget_tokens", "600"));
+
+      assertThat(params.thinking()).isEmpty();
+      JsonNode thinking = additionalBody(params).get("thinking");
+      assertThat(thinking.get("type").isString()).isTrue();
+      assertThat(thinking.get("type").asString()).isEqualTo("interleaved");
+      assertThat(thinking.get("budget_tokens").isInt()).isTrue();
+      assertThat(thinking.get("budget_tokens").intValue()).isEqualTo(600);
+    }
+
+    @Test
+    void a_budget_with_no_headroom_under_the_ceiling_is_refused() {
+      InferenceRequest request = carrying(Map.of("anthropic.thinking.budget_tokens", "1024"));
+
+      assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("maxTokens (1024) must be greater than the thinking budget (1024)");
+    }
+
+    @Test
+    void a_one_hour_ttl_marks_the_prefix_for_an_hour() {
+      CacheControlEphemeral marker =
+          paramsFor(Map.of("anthropic.cache_control.ttl", "1h"))
+              .system()
+              .orElseThrow()
+              .asTextBlockParams()
+              .getFirst()
+              .cacheControl()
+              .orElseThrow();
+
+      assertThat(marker.ttl()).contains(CacheControlEphemeral.Ttl.TTL_1H);
+    }
+
+    @Test
+    void a_five_minute_ttl_marks_the_prefix_as_today() {
+      CacheControlEphemeral marker =
+          paramsFor(Map.of("anthropic.cache_control.ttl", "5m"))
+              .system()
+              .orElseThrow()
+              .asTextBlockParams()
+              .getFirst()
+              .cacheControl()
+              .orElseThrow();
+
+      assertThat(marker.ttl()).isEmpty();
+    }
+
+    @Test
+    void a_service_tier_lands_in_its_typed_field() {
+      assertThat(
+              paramsFor(Map.of("anthropic.service_tier", "auto"))
+                  .serviceTier()
+                  .map(MessageCreateParams.ServiceTier::asString))
+          .contains("auto");
+    }
+
+    @Test
+    void an_unknown_name_passes_through_as_a_typed_literal_nested_by_path() throws Exception {
+      JsonNode body =
+          additionalBody(
+              paramsFor(
+                  Map.of(
+                      "anthropic.top_k", "5",
+                      "anthropic.metadata.user_id", "u-1",
+                      "anthropic.stop_sequences", "[\"\\n\\n\"]")));
+
+      assertThat(body.get("top_k").isInt()).isTrue();
+      assertThat(body.get("top_k").intValue()).isEqualTo(5);
+      assertThat(body.get("metadata").get("user_id").asString()).isEqualTo("u-1");
+      assertThat(body.get("stop_sequences").isArray()).isTrue();
+      assertThat(body.get("stop_sequences")).hasSize(1);
+      assertThat(body.get("stop_sequences").get(0).asString()).isEqualTo("\n\n");
+    }
+
+    @Test
+    void another_prefix_is_not_sent() {
+      MessageCreateParams params = paramsFor(Map.of("openai.reasoning.effort", "high"));
+
+      assertThat(params._additionalBodyProperties()).isEmpty();
+      assertThat(params.thinking()).isEmpty();
+    }
+
+    @Test
+    void an_agent_type_budget_overrides_the_provider_s() {
+      MessageCreateParams params =
+          paramsFor(
+              Map.of(
+                  "anthropic.thinking.type", "enabled", "anthropic.thinking.budget_tokens", "512"),
+              Map.of("anthropic.thinking.budget_tokens", "768"));
+
+      assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(768L);
+    }
+
+    @Test
+    void the_ceiling_is_refused_as_what_a_typed_setting_decides() {
+      InferenceRequest request = carrying(Map.of("anthropic.max_tokens", "10"));
+
+      assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'anthropic.max_tokens'")
+          .hasMessageContaining("InferenceConfig.maxTokens");
+    }
+
+    @Test
+    void the_raw_thinking_object_beside_a_known_thinking_name_is_refused() {
+      InferenceRequest request =
+          carrying(
+              Map.of(
+                  "anthropic.thinking.budget_tokens", "512",
+                  "anthropic.thinking", "{\"type\":\"enabled\"}"));
+
+      assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'anthropic.thinking'")
+          .hasMessageContaining("'anthropic.thinking.budget_tokens'");
+    }
+
+    @Test
+    void a_bad_budget_is_refused_naming_the_property_and_the_value() {
+      InferenceRequest request = carrying(Map.of("anthropic.thinking.budget_tokens", "lots"));
+
+      assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("property 'anthropic.thinking.budget_tokens' must be an integer, was 'lots'");
     }
   }
 }

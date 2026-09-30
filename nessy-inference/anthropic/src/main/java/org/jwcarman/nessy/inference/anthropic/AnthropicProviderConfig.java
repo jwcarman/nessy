@@ -19,8 +19,12 @@ import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.core.Timeout;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.vendor.VendorProperties;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -40,9 +44,10 @@ public final class AnthropicProviderConfig {
 
   private String apiKey;
   private String baseUrl;
-  private boolean thinking;
-  private int thinkingBudget = DEFAULT_THINKING_BUDGET;
-  private PromptCaching promptCaching = PromptCaching.OFF;
+  private Boolean thinking;
+  private Integer thinkingBudget;
+  private PromptCaching promptCaching;
+  private final Map<String, String> properties = new LinkedHashMap<>();
   private AnthropicClient client;
   private boolean useEnv;
   private Duration timeout;
@@ -93,27 +98,56 @@ public final class AnthropicProviderConfig {
 
   /**
    * Extended thinking on every call. Off by default: reasoning is spent out of each call's {@code
-   * maxTokens}, which must then exceed {@link #thinkingBudget(int) the budget}.
+   * maxTokens}, which must then exceed {@link #thinkingBudget(int) the budget}. The same statement
+   * as {@code anthropic.thinking.type=enabled}; setting both on one provider fails at build, and an
+   * agent type's {@code anthropic.thinking.*} property overrides either.
    */
   public AnthropicProviderConfig thinking(boolean thinking) {
     this.thinking = thinking;
     return this;
   }
 
-  /** The extended-thinking token budget, when {@link #thinking(boolean) thinking} is on. */
+  /**
+   * The extended-thinking token budget, when {@link #thinking(boolean) thinking} is on. The same
+   * statement as {@code anthropic.thinking.budget_tokens}; setting both on one provider fails at
+   * build. Read only when {@link #thinking(boolean) thinking} is on.
+   */
   public AnthropicProviderConfig thinkingBudget(int thinkingBudget) {
     this.thinkingBudget = thinkingBudget;
     return this;
   }
 
-  /** Prompt caching on every call. Off by default; see {@link PromptCaching}. */
+  /**
+   * Prompt caching on every call. Off by default; see {@link PromptCaching}. The same statement as
+   * {@code anthropic.cache_control.ttl} ({@code 5m}, {@code 1h}); setting both on one provider
+   * fails at build.
+   */
   public AnthropicProviderConfig promptCaching(PromptCaching promptCaching) {
     this.promptCaching = Objects.requireNonNull(promptCaching, "promptCaching must not be null");
     return this;
   }
 
-  private AnthropicRequests.Features features() {
-    return new AnthropicRequests.Features(thinking, thinkingBudget, promptCaching);
+  /**
+   * A vendor property this provider sends with every request (spec §6a) -- {@code
+   * anthropic.thinking.budget_tokens}, {@code anthropic.cache_control.ttl}, or any request field
+   * under {@code anthropic.}, passed through. An agent type's own property of the same name
+   * overrides it. Repeatable; the last value given for a name wins. A name under another prefix, or
+   * one that names what a typed setting decides, fails at build.
+   */
+  public AnthropicProviderConfig property(String name, String value) {
+    Objects.requireNonNull(name, "name must not be null");
+    if (name.isBlank()) {
+      throw new IllegalArgumentException("name must not be blank");
+    }
+    properties.put(name, VendorProperties.requireString(name, value));
+    return this;
+  }
+
+  /** {@link #property(String, String)} for each entry, as Boot binds them. */
+  public AnthropicProviderConfig properties(Map<String, String> properties) {
+    Objects.requireNonNull(properties, "properties must not be null");
+    properties.forEach(this::property);
+    return this;
   }
 
   /**
@@ -167,11 +201,12 @@ public final class AnthropicProviderConfig {
    * has returned.
    */
   AnthropicInferenceProvider build() {
+    Map<String, String> own = providerProperties();
     if (client != null) {
-      return new AnthropicInferenceProvider(client, features(), false, mapper);
+      return new AnthropicInferenceProvider(client, own, false, mapper);
     }
     if (useEnv) {
-      return new AnthropicInferenceProvider(buildFromEnv(), features(), true, mapper);
+      return new AnthropicInferenceProvider(buildFromEnv(), own, true, mapper);
     }
     if (apiKey == null || apiKey.isBlank()) {
       throw new IllegalStateException(
@@ -185,7 +220,52 @@ public final class AnthropicProviderConfig {
     if (timeout != null) {
       clientBuilder.timeout(Timeout.builder().request(timeout).build());
     }
-    return new AnthropicInferenceProvider(clientBuilder.build(), features(), true, mapper);
+    return new AnthropicInferenceProvider(clientBuilder.build(), own, true, mapper);
+  }
+
+  /**
+   * The provider's properties with its setters spelled as the properties they mean (plan ruling 8),
+   * checked before any client is made. A setter and a property for one field are two provider-level
+   * statements with no order between them, so both set is refused.
+   */
+  private Map<String, String> providerProperties() {
+    AnthropicProperties.requireOwn(properties);
+    refuseBoth(thinking != null, "thinking(boolean)", AnthropicProperties.THINKING_TYPE);
+    refuseBoth(thinkingBudget != null, "thinkingBudget(int)", AnthropicProperties.THINKING_BUDGET);
+    refuseBoth(
+        promptCaching != null, "promptCaching(PromptCaching)", AnthropicProperties.CACHE_TTL);
+    Map<String, String> merged = new LinkedHashMap<>(properties);
+    String budgetName = AnthropicProperties.PREFIX + AnthropicProperties.THINKING_BUDGET;
+    if (Boolean.TRUE.equals(thinking)) {
+      merged.put(
+          AnthropicProperties.PREFIX + AnthropicProperties.THINKING_TYPE,
+          AnthropicProperties.ENABLED);
+      if (thinkingBudget != null) {
+        merged.put(budgetName, Integer.toString(thinkingBudget));
+      } else if (!merged.containsKey(budgetName)) {
+        merged.put(budgetName, Integer.toString(DEFAULT_THINKING_BUDGET));
+      }
+    }
+    if (promptCaching == PromptCaching.FIVE_MINUTES) {
+      merged.put(AnthropicProperties.PREFIX + AnthropicProperties.CACHE_TTL, "5m");
+    } else if (promptCaching == PromptCaching.ONE_HOUR) {
+      merged.put(AnthropicProperties.PREFIX + AnthropicProperties.CACHE_TTL, "1h");
+    }
+    AnthropicProperties.read(merged, mapper);
+    return Collections.unmodifiableMap(merged);
+  }
+
+  private void refuseBoth(boolean setterCalled, String setter, String name) {
+    if (setterCalled && properties.containsKey(AnthropicProperties.PREFIX + name)) {
+      throw new IllegalArgumentException(
+          setter
+              + " and property '"
+              + AnthropicProperties.PREFIX
+              + name
+              + "' both say how this provider "
+              + (name.startsWith("thinking") ? "thinks" : "caches")
+              + "; keep one");
+    }
   }
 
   /**

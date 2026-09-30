@@ -929,4 +929,118 @@ class AnthropicInferenceProviderTest {
           .isInstanceOf(NullPointerException.class);
     }
   }
+
+  @Nested
+  class ItsVendorProperties {
+
+    private static InferenceRequest carrying(Map<String, String> agentType) {
+      return new InferenceRequest(
+          REQUEST.systemPrompt(),
+          REQUEST.context(),
+          REQUEST.toolset(),
+          new InferenceOptions("claude-sonnet", 20000, agentType));
+    }
+
+    private static MessageCreateParams sentBy(
+        AnthropicProviderConfig config, InferenceRequest request) {
+      var captured = new MessageCreateParams[1];
+      config
+          .client(
+              fakeClient(
+                  params -> {
+                    captured[0] = params;
+                    return reply().addContent(text("ok")).build();
+                  }))
+          .build()
+          .infer(request);
+      return captured[0];
+    }
+
+    /** §9c's tier rule: an agent type's property beats a setter, name by name. */
+    @Test
+    void an_agent_type_budget_overrides_the_setters() {
+      MessageCreateParams params =
+          sentBy(
+              new AnthropicProviderConfig().thinking(true).thinkingBudget(1024),
+              carrying(Map.of("anthropic.thinking.budget_tokens", "16000")));
+
+      assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(16000L);
+    }
+
+    @Test
+    void an_agent_type_that_disables_thinking_sends_none_over_a_config_that_turned_it_on() {
+      MessageCreateParams params =
+          sentBy(
+              new AnthropicProviderConfig().thinking(true),
+              carrying(Map.of("anthropic.thinking.type", "disabled")));
+
+      assertThat(params.thinking()).isEmpty();
+    }
+
+    @Test
+    void thinking_on_with_no_budget_anywhere_keeps_the_default_of_1024() {
+      MessageCreateParams params =
+          sentBy(new AnthropicProviderConfig().thinking(true), carrying(Map.of()));
+
+      assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(1024L);
+    }
+
+    @Test
+    void thinking_on_takes_a_budget_given_as_a_provider_property() {
+      MessageCreateParams params =
+          sentBy(
+              new AnthropicProviderConfig()
+                  .thinking(true)
+                  .property("anthropic.thinking.budget_tokens", "2048"),
+              carrying(Map.of()));
+
+      assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(2048L);
+    }
+
+    /** Review Focus 5: a bare budget setter stays inert, as it is today. */
+    @Test
+    void a_budget_setter_without_thinking_on_still_asks_for_no_thinking() {
+      MessageCreateParams params =
+          sentBy(new AnthropicProviderConfig().thinkingBudget(4096), carrying(Map.of()));
+
+      assertThat(params.thinking()).isEmpty();
+    }
+
+    @Test
+    void a_provider_that_does_not_think_thinks_for_an_agent_type_that_asks() {
+      MessageCreateParams params =
+          sentBy(
+              new AnthropicProviderConfig(),
+              carrying(Map.of("anthropic.thinking.budget_tokens", "1024")));
+
+      assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(1024L);
+    }
+
+    @Test
+    void the_caching_setter_and_a_ttl_property_mean_the_same_marker() {
+      MessageCreateParams bySetter =
+          sentBy(
+              new AnthropicProviderConfig().promptCaching(PromptCaching.ONE_HOUR),
+              carrying(Map.of()));
+      MessageCreateParams byProperty =
+          sentBy(
+              new AnthropicProviderConfig().property("anthropic.cache_control.ttl", "1h"),
+              carrying(Map.of()));
+
+      assertThat(bySetter.system()).isEqualTo(byProperty.system());
+    }
+
+    @Test
+    void validate_refuses_a_budget_at_or_over_the_ceiling() {
+      AnthropicInferenceProvider provider =
+          new AnthropicProviderConfig().thinking(true).client(fakeClient(params -> null)).build();
+      InferenceOptions options =
+          new InferenceOptions(
+              "claude-sonnet", 2048, Map.of("anthropic.thinking.budget_tokens", "4096"));
+
+      assertThatThrownBy(() -> provider.validate(options))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("maxTokens (2048) must be greater than the thinking budget (4096)");
+    }
+  }
 }

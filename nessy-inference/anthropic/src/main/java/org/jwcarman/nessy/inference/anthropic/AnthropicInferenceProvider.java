@@ -29,6 +29,8 @@ import com.anthropic.models.messages.RawContentBlockDelta;
 import com.anthropic.models.messages.RawMessageStreamEvent;
 import com.anthropic.models.messages.StopReason;
 import com.anthropic.models.messages.ToolUseBlock;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -43,6 +45,7 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.vendor.VendorProperties;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -79,7 +82,12 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
   private static final String NAME = "Anthropic";
 
   private final AnthropicClient client;
-  private final AnthropicRequests.Features features;
+
+  /**
+   * The provider's own {@code anthropic.} properties, its setters already spelled as properties.
+   */
+  private final Map<String, String> properties;
+
   private final boolean ownsClient;
 
   /**
@@ -94,8 +102,18 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
       AnthropicRequests.Features features,
       boolean ownsClient,
       JsonMapper mapper) {
+    this(client, AnthropicProperties.of(features), ownsClient, mapper);
+  }
+
+  AnthropicInferenceProvider(
+      AnthropicClient client,
+      Map<String, String> properties,
+      boolean ownsClient,
+      JsonMapper mapper) {
     this.client = client;
-    this.features = Objects.requireNonNull(features, "features must not be null");
+    this.properties =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(Objects.requireNonNull(properties, "properties must not be null")));
     this.ownsClient = ownsClient;
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
   }
@@ -132,11 +150,24 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
     return VENDOR;
   }
 
+  /**
+   * Reads the merged properties exactly as a request would -- including the budget's headroom under
+   * this agent type's {@code maxTokens} -- so a mistake fails the harness build, not a turn.
+   */
+  @Override
+  public void validate(InferenceOptions options) {
+    Map<String, String> merged = VendorProperties.merge(properties, options.properties());
+    AnthropicProperties.requireHeadroom(AnthropicProperties.read(merged, mapper), options);
+    AnthropicProperties.logIgnored(merged);
+  }
+
   @Override
   public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
     Objects.requireNonNull(narrator, "narrator must not be null");
     try (StreamResponse<RawMessageStreamEvent> stream =
-        client.messages().createStreaming(AnthropicRequests.toParams(request, features, mapper))) {
+        client
+            .messages()
+            .createStreaming(AnthropicRequests.toParams(request, properties, mapper))) {
       MessageAccumulator accumulator = MessageAccumulator.create();
       boolean[] any = {false};
       stream.stream()

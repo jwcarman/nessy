@@ -22,9 +22,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.anthropic.client.AnthropicClient;
 import java.lang.reflect.Proxy;
 import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Customizer;
 
 /**
  * The transport timeout setter (design record 2026-09-25-locks-as-plumbing-design.md §5).
@@ -103,5 +105,70 @@ class AnthropicProviderConfigTest {
               }
               throw new UnsupportedOperationException(method.getName());
             });
+  }
+
+  @Test
+  void a_budget_setter_and_a_budget_property_fail_at_build_naming_both() {
+    Customizer<AnthropicProviderConfig> customizer =
+        c ->
+            c.apiKey("test-key")
+                .thinking(true)
+                .thinkingBudget(4096)
+                .property("anthropic.thinking.budget_tokens", "8192");
+
+    assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("thinkingBudget(int)")
+        .hasMessageContaining("'anthropic.thinking.budget_tokens'");
+  }
+
+  /** "Whatever the values": a setter set to off still says something about the same field. */
+  @Test
+  void thinking_off_and_a_thinking_type_property_fail_at_build_naming_both() {
+    Customizer<AnthropicProviderConfig> customizer =
+        c ->
+            c.apiKey("test-key")
+                .thinking(false)
+                .properties(Map.of("anthropic.thinking.type", "adaptive"));
+
+    assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("thinking(boolean)")
+        .hasMessageContaining("'anthropic.thinking.type'");
+  }
+
+  @Test
+  void a_caching_setter_and_a_ttl_property_fail_at_build_naming_both() {
+    Customizer<AnthropicProviderConfig> customizer =
+        c ->
+            c.apiKey("test-key")
+                .promptCaching(PromptCaching.OFF)
+                .property("anthropic.cache_control.ttl", "5m");
+
+    assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("promptCaching(PromptCaching)")
+        .hasMessageContaining("'anthropic.cache_control.ttl'");
+  }
+
+  @Test
+  void enabled_without_a_budget_at_the_provider_is_refused_at_build() {
+    Customizer<AnthropicProviderConfig> customizer =
+        c -> c.apiKey("test-key").property("anthropic.thinking.type", "enabled");
+
+    assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'anthropic.thinking.budget_tokens'");
+  }
+
+  @Test
+  void a_property_under_another_prefix_is_refused_at_build_naming_the_prefix() {
+    Customizer<AnthropicProviderConfig> customizer =
+        c -> c.apiKey("test-key").property("openai.reasoning.effort", "high");
+
+    assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'openai.reasoning.effort'")
+        .hasMessageContaining("'anthropic.'");
   }
 }

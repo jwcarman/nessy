@@ -25,6 +25,7 @@ import com.anthropic.models.messages.OutputConfig;
 import com.anthropic.models.messages.RedactedThinkingBlockParam;
 import com.anthropic.models.messages.TextBlockParam;
 import com.anthropic.models.messages.ThinkingBlockParam;
+import com.anthropic.models.messages.ThinkingConfigAdaptive;
 import com.anthropic.models.messages.ThinkingConfigEnabled;
 import com.anthropic.models.messages.Tool;
 import com.anthropic.models.messages.ToolChoiceAny;
@@ -32,6 +33,7 @@ import com.anthropic.models.messages.ToolChoiceNone;
 import com.anthropic.models.messages.ToolResultBlockParam;
 import com.anthropic.models.messages.ToolUseBlockParam;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -52,6 +54,7 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.vendor.VendorProperties;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -96,17 +99,23 @@ public final class AnthropicRequests {
 
   public static MessageCreateParams toParams(
       InferenceRequest request, Features features, JsonMapper mapper) {
+    return toParams(request, AnthropicProperties.of(features), mapper);
+  }
+
+  /**
+   * @param providerProperties the provider's own {@code anthropic.} map -- its setters already
+   *     spelled as properties -- overlaid here by the agent type's (spec §7a)
+   */
+  static MessageCreateParams toParams(
+      InferenceRequest request, Map<String, String> providerProperties, JsonMapper mapper) {
     InferenceOptions options = request.options();
+    AnthropicProperties.Read read =
+        AnthropicProperties.read(
+            VendorProperties.merge(providerProperties, options.properties()), mapper);
+    // Refused here as well as at validate, for a caller that never validated (a summariser).
+    AnthropicProperties.requireHeadroom(read, options);
 
-    if (features.thinking() && options.maxTokens() <= features.thinkingBudget()) {
-      // The budget is spent out of maxTokens, so a ceiling at or below it leaves nothing to
-      // answer with. Refused here rather than at the wire, where it is a 400 with no hint.
-      throw new IllegalArgumentException(
-          "maxTokens (%d) must be greater than the thinking budget (%d)"
-              .formatted(options.maxTokens(), features.thinkingBudget()));
-    }
-
-    Optional<CacheControlEphemeral> marker = cacheMarker(features.caching());
+    Optional<CacheControlEphemeral> marker = read.cacheTtl().map(AnthropicRequests::cacheMarker);
     MessageCreateParams.Builder builder =
         MessageCreateParams.builder().model(options.modelName()).maxTokens(options.maxTokens());
 
@@ -126,21 +135,34 @@ public final class AnthropicRequests {
     }
     request.outputSchema().ifPresent(schema -> askForShape(builder, schema, mapper));
 
-    if (features.thinking()) {
+    if (read.enabled()) {
       builder.thinking(
-          ThinkingConfigEnabled.builder().budgetTokens(features.thinkingBudget()).build());
+          ThinkingConfigEnabled.builder().budgetTokens(read.budget().getAsInt()).build());
+    } else if (read.thinking().filter(AnthropicProperties.ADAPTIVE::equals).isPresent()) {
+      builder.thinking(ThinkingConfigAdaptive.builder().build());
+    } else if (read.thinking().isPresent()) {
+      // A type this adapter has no SDK class for: sent as written, for the vendor to judge.
+      Map<String, Object> raw = new LinkedHashMap<>();
+      raw.put("type", read.thinking().orElseThrow());
+      read.budget().ifPresent(budget -> raw.put("budget_tokens", budget));
+      builder.putAdditionalBodyProperty("thinking", JsonValue.from(raw));
     }
+    read.serviceTier()
+        .ifPresent(tier -> builder.serviceTier(MessageCreateParams.ServiceTier.of(tier)));
+    read.passThrough()
+        .forEach((name, value) -> builder.putAdditionalBodyProperty(name, JsonValue.from(value)));
     return builder.build();
   }
 
-  /** The cache marker this provider puts on the stable prefix, if it puts one at all. */
-  private static Optional<CacheControlEphemeral> cacheMarker(PromptCaching caching) {
-    return switch (caching) {
-      case OFF -> Optional.empty();
-      case FIVE_MINUTES -> Optional.of(CacheControlEphemeral.builder().build());
-      case ONE_HOUR ->
-          Optional.of(
-              CacheControlEphemeral.builder().ttl(CacheControlEphemeral.Ttl.TTL_1H).build());
+  /**
+   * The cache marker for a ttl, as the vendor spells ttls: {@code 5m} is today's default marker,
+   * {@code 1h} the long one, and anything else is sent as written for the vendor to judge.
+   */
+  private static CacheControlEphemeral cacheMarker(String ttl) {
+    return switch (ttl) {
+      case "5m" -> CacheControlEphemeral.builder().build();
+      case "1h" -> CacheControlEphemeral.builder().ttl(CacheControlEphemeral.Ttl.TTL_1H).build();
+      default -> CacheControlEphemeral.builder().ttl(CacheControlEphemeral.Ttl.of(ttl)).build();
     };
   }
 
