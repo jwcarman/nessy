@@ -48,6 +48,7 @@ import com.openai.services.blocking.chat.ChatCompletionService;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -1226,6 +1227,57 @@ class OpenAiChatInferenceProviderTest {
       assertThatThrownBy(() -> inferFailing(bug))
           .isInstanceOf(IllegalStateException.class)
           .hasMessage("a bug in here");
+    }
+  }
+
+  @Nested
+  class ItsVendorProperties {
+
+    @Test
+    void a_property_on_the_config_reaches_every_request() {
+      var captured = new ChatCompletionCreateParams[1];
+      new OpenAiChatProviderConfig()
+          .property("openai.seed", "42")
+          .client(
+              fakeClient(
+                  params -> {
+                    captured[0] = params;
+                    return completionOf(
+                        ChatCompletionMessage.builder()
+                            .content("ok")
+                            .refusal(Optional.<String>empty())
+                            .build());
+                  }))
+          .build()
+          .infer(REQUEST);
+
+      assertThat(captured[0]._additionalBodyProperties()).containsKey("seed");
+      assertThat(captured[0]._additionalBodyProperties().get("seed").convert(Integer.class))
+          .isEqualTo(42);
+    }
+
+    @Test
+    void validate_refuses_a_clash_between_the_agent_type_and_the_wire() {
+      OpenAiChatInferenceProvider provider =
+          new OpenAiChatProviderConfig().client(fakeClient(params -> null)).build();
+      InferenceOptions options =
+          new InferenceOptions("gpt-4o", 1024, Map.of("openai.messages", "[]"));
+
+      assertThatThrownBy(() -> provider.validate(options))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'openai.messages'");
+    }
+
+    @Test
+    void validate_accepts_other_vendors_properties() {
+      OpenAiChatInferenceProvider provider =
+          new OpenAiChatProviderConfig().client(fakeClient(params -> null)).build();
+      InferenceOptions options =
+          new InferenceOptions("gpt-4o", 1024, Map.of("anthropic.thinking.budget_tokens", "9"));
+
+      provider.validate(options);
+
+      assertThat(options.properties()).hasSize(1);
     }
   }
 }

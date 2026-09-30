@@ -16,11 +16,23 @@
 package org.jwcarman.nessy.inference.openai;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.openai.core.ObjectMappers;
+import com.openai.models.FunctionDefinition;
+import com.openai.models.ReasoningEffort;
 import com.openai.models.chat.completions.ChatCompletionCreateParams;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import com.openai.models.chat.completions.ChatCompletionToolChoiceOption;
+import java.io.UncheckedIOException;
 import java.util.List;
+import java.util.Map;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Ambient;
@@ -42,6 +54,8 @@ import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.Toolset;
+import org.slf4j.LoggerFactory;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -464,6 +478,287 @@ class OpenAiChatRequestsTest {
                   .function()
                   .name())
           .isEqualTo("lookup");
+    }
+  }
+
+  /** What the SDK would put on the wire for {@code value}, read back as plain maps and lists. */
+  private static Map<String, Object> sent(Object value) {
+    try {
+      return MAPPER.readValue(
+          ObjectMappers.jsonMapper().writeValueAsString(value), new TypeReference<>() {});
+    } catch (JsonProcessingException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  @Nested
+  class TheVendorProperties {
+
+    private static InferenceRequest carrying(Map<String, String> properties) {
+      return new InferenceRequest(
+          SYSTEM,
+          InferenceContext.of(List.of(open(1, "hi"))),
+          Toolset.none(),
+          new InferenceOptions("gpt-4o", 1024, properties));
+    }
+
+    private static ChatCompletionCreateParams paramsFor(Map<String, String> agentType) {
+      return OpenAiChatRequests.toParams(carrying(agentType), MAPPER);
+    }
+
+    @Test
+    void a_reasoning_effort_lands_in_the_flat_reasoning_effort_field() {
+      ChatCompletionCreateParams params = paramsFor(Map.of("openai.reasoning.effort", "high"));
+
+      assertThat(params.reasoningEffort().map(ReasoningEffort::asString)).contains("high");
+      assertThat(params._additionalBodyProperties()).isEmpty();
+    }
+
+    /** The vocabulary is the vendor's: a level Nessy has never heard of is sent as written. */
+    @Test
+    void an_effort_level_nessy_does_not_know_is_sent_as_written() {
+      ChatCompletionCreateParams params = paramsFor(Map.of("openai.reasoning.effort", "ultra"));
+
+      assertThat(params.reasoningEffort().map(ReasoningEffort::asString)).contains("ultra");
+    }
+
+    @Test
+    void a_service_tier_lands_in_its_typed_field() {
+      ChatCompletionCreateParams params = paramsFor(Map.of("openai.service_tier", "flex"));
+
+      assertThat(params.serviceTier().map(ChatCompletionCreateParams.ServiceTier::asString))
+          .contains("flex");
+    }
+
+    @Test
+    void an_unknown_name_passes_through_as_a_typed_literal_nested_by_path() {
+      ChatCompletionCreateParams params =
+          paramsFor(
+              Map.of(
+                  "openai.temperature", "0.2",
+                  "openai.store", "false",
+                  "openai.metadata.team", "billing"));
+
+      assertThat(sent(params._additionalBodyProperties()))
+          .containsEntry("temperature", 0.2)
+          .containsEntry("store", false)
+          .containsEntry("metadata", Map.of("team", "billing"));
+    }
+
+    /** A raw spelling alone is simply a pass-through: only beside its known name is it a clash. */
+    @Test
+    void the_raw_reasoning_effort_alone_passes_through() {
+      ChatCompletionCreateParams params = paramsFor(Map.of("openai.reasoning_effort", "low"));
+
+      assertThat(sent(params._additionalBodyProperties())).containsEntry("reasoning_effort", "low");
+    }
+
+    @Test
+    void another_prefix_is_not_sent() {
+      ChatCompletionCreateParams params = paramsFor(Map.of("anthropic.top_k", "5"));
+
+      assertThat(params._additionalBodyProperties()).isEmpty();
+      assertThat(params.reasoningEffort()).isEmpty();
+    }
+
+    @Test
+    void an_agent_type_entry_overrides_the_same_name_given_to_the_provider() {
+      ChatCompletionCreateParams params =
+          OpenAiChatRequests.toParams(
+              carrying(Map.of("openai.seed", "2")), Map.of("openai.seed", "1"), MAPPER);
+
+      assertThat(sent(params._additionalBodyProperties())).containsEntry("seed", 2);
+    }
+
+    @Test
+    void a_clash_with_a_typed_setting_is_refused_naming_both() {
+      InferenceRequest request = carrying(Map.of("openai.max_completion_tokens", "10"));
+
+      assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage(
+              "property 'openai.max_completion_tokens' names what InferenceConfig.maxTokens"
+                  + " already decides; remove the property");
+    }
+
+    @Test
+    void the_model_is_the_first_entry_of_the_clash_table() {
+      InferenceRequest request = carrying(Map.of("openai.model", "gpt-4o-mini"));
+
+      assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'openai.model'")
+          .hasMessageContaining("InferenceConfig.model");
+    }
+
+    @Test
+    void the_raw_spelling_beside_its_known_name_is_refused() {
+      InferenceRequest request =
+          carrying(Map.of("openai.reasoning.effort", "high", "openai.reasoning_effort", "low"));
+
+      assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'openai.reasoning_effort'")
+          .hasMessageContaining("'openai.reasoning.effort'");
+    }
+
+    @Test
+    void a_reasoning_summary_is_refused_because_this_wire_cannot_carry_one() {
+      InferenceRequest request = carrying(Map.of("openai.reasoning.summary", "auto"));
+
+      assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'openai.reasoning.summary'")
+          .hasMessageContaining("openai-responses");
+    }
+
+    @Test
+    void a_non_boolean_strict_is_refused_naming_the_value() {
+      InferenceRequest request = carrying(Map.of("openai.tools.strict", "yes"));
+
+      assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("property 'openai.tools.strict' must be true or false, was 'yes'");
+    }
+
+    @Test
+    void a_name_with_no_prefix_is_refused() {
+      InferenceRequest request = carrying(Map.of("temperature", "0.2"));
+
+      assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'temperature' has no prefix");
+    }
+  }
+
+  /** Spec §10: the Responses record's strict rewrite, on this wire behind openai.tools.strict. */
+  @Nested
+  class StrictTools {
+
+    private static final String LOOKUP_SCHEMA =
+        """
+        {"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",
+         "properties":{"q":{"type":"string"},"n":{"type":"integer"}},"required":["q"]}""";
+
+    private static final String NESTED_SCHEMA =
+        """
+        {"type":"object","properties":{"where":{"$ref":"#/$defs/Place"}},"required":["where"],
+         "$defs":{"Place":{"type":"object",
+                           "properties":{"city":{"type":"string"},"zip":{"type":"string"}},
+                           "required":["city"]}}}""";
+
+    private static final String SEALED_SCHEMA =
+        """
+        {"oneOf":[{"type":"object","properties":{"type":{"const":"Restart"}},"required":["type"]},
+                  {"type":"object","properties":{"type":{"const":"Shutdown"}},"required":["type"]}]}""";
+
+    private static ToolOffer offer(String name, String schema) {
+      return new ToolOffer(new ToolName(name), "does " + name, new JsonSchema(schema));
+    }
+
+    private static List<FunctionDefinition> functionsFor(
+        List<ToolOffer> offers, Map<String, String> properties) {
+      InferenceRequest request =
+          new InferenceRequest(
+              SYSTEM,
+              InferenceContext.of(List.of(open(1, "hi"))),
+              Toolset.of(offers),
+              new InferenceOptions("gpt-4o", 1024, properties));
+      return OpenAiChatRequests.toParams(request, MAPPER).tools().orElseThrow().stream()
+          .map(tool -> tool.asFunction().function())
+          .toList();
+    }
+
+    private static final Map<String, String> STRICT = Map.of("openai.tools.strict", "true");
+
+    @Test
+    void without_the_property_a_tool_goes_as_generated_and_says_nothing_about_strict() {
+      FunctionDefinition function =
+          functionsFor(List.of(offer("lookup", LOOKUP_SCHEMA)), Map.of()).getFirst();
+
+      assertThat(function.strict()).isEmpty();
+      assertThat(sent(function.parameters().orElseThrow()))
+          .containsEntry("required", List.of("q"))
+          .doesNotContainKey("additionalProperties");
+    }
+
+    @Test
+    void with_it_a_tool_is_strict_over_the_rewritten_schema() {
+      FunctionDefinition function =
+          functionsFor(List.of(offer("lookup", LOOKUP_SCHEMA)), STRICT).getFirst();
+
+      assertThat(function.strict()).contains(true);
+      Map<String, Object> schema = sent(function.parameters().orElseThrow());
+      assertThat(schema).containsEntry("required", List.of("q", "n"));
+      assertThat(schema).containsEntry("additionalProperties", false);
+    }
+
+    @Test
+    void an_optional_component_is_widened_to_admit_null() {
+      Map<String, Object> schema =
+          sent(
+              functionsFor(List.of(offer("lookup", LOOKUP_SCHEMA)), STRICT)
+                  .getFirst()
+                  .parameters()
+                  .orElseThrow());
+
+      assertThat(schema)
+          .extractingByKey("properties", InstanceOfAssertFactories.MAP)
+          .extractingByKey("n")
+          .isEqualTo(Map.of("type", List.of("integer", "null")));
+    }
+
+    @Test
+    void definitions_are_walked_too() {
+      Map<String, Object> schema =
+          sent(
+              functionsFor(List.of(offer("locate", NESTED_SCHEMA)), STRICT)
+                  .getFirst()
+                  .parameters()
+                  .orElseThrow());
+
+      assertThat(schema)
+          .extractingByKey("$defs", InstanceOfAssertFactories.MAP)
+          .extractingByKey("Place", InstanceOfAssertFactories.MAP)
+          .containsEntry("required", List.of("city", "zip"))
+          .containsEntry("additionalProperties", false);
+    }
+
+    @Test
+    void
+        a_schema_strict_mode_cannot_express_goes_as_generated_with_a_warning_and_its_neighbour_stays_strict() {
+      Logger logger = (Logger) LoggerFactory.getLogger(OpenAiChatRequests.class);
+      ListAppender<ILoggingEvent> appender = new ListAppender<>();
+      appender.start();
+      logger.addAppender(appender);
+      List<FunctionDefinition> functions;
+      try {
+        functions =
+            functionsFor(
+                List.of(offer("restart", SEALED_SCHEMA), offer("lookup", LOOKUP_SCHEMA)), STRICT);
+      } finally {
+        logger.detachAppender(appender);
+      }
+
+      assertThat(functions.get(0).strict()).contains(false);
+      assertThat(sent(functions.get(0).parameters().orElseThrow())).containsKey("oneOf");
+      assertThat(functions.get(1).strict()).contains(true);
+      assertThat(appender.list)
+          .singleElement()
+          .satisfies(
+              event -> {
+                assertThat(event.getLevel()).isEqualTo(Level.WARN);
+                assertThat(event.getFormattedMessage()).contains("restart").contains("oneOf");
+              });
+    }
+
+    @Test
+    void the_schema_the_offer_carries_is_unchanged_by_the_rewrite() {
+      ToolOffer lookup = offer("lookup", LOOKUP_SCHEMA);
+
+      functionsFor(List.of(lookup), STRICT);
+
+      assertThat(lookup.schema().json()).isEqualTo(LOOKUP_SCHEMA);
     }
   }
 }

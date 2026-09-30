@@ -26,6 +26,7 @@ import com.openai.models.chat.completions.ChatCompletionMessage;
 import com.openai.models.chat.completions.ChatCompletionMessageToolCall;
 import com.openai.models.completions.CompletionUsage;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -38,6 +39,7 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.vendor.VendorProperties;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -97,12 +99,27 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
    */
   private final boolean ownsClient;
 
+  /**
+   * The provider's own {@code openai.} properties, checked at build; the agent type's overlay them.
+   */
+  private final Map<String, String> properties;
+
   OpenAiChatInferenceProvider(
       OpenAIClient client, String vendor, boolean ownsClient, JsonMapper mapper) {
+    this(client, vendor, ownsClient, mapper, Map.of());
+  }
+
+  OpenAiChatInferenceProvider(
+      OpenAIClient client,
+      String vendor,
+      boolean ownsClient,
+      JsonMapper mapper,
+      Map<String, String> properties) {
     this.client = client;
     this.vendor = Objects.requireNonNull(vendor, "vendor must not be null");
     this.ownsClient = ownsClient;
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
+    this.properties = Map.copyOf(properties);
   }
 
   /**
@@ -133,6 +150,17 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
   }
 
   /**
+   * Reads the merged properties exactly as a request would, so a clash, a bad value or a name this
+   * wire cannot carry fails the harness build rather than its first turn (spec §7c).
+   */
+  @Override
+  public void validate(InferenceOptions options) {
+    Map<String, String> merged = VendorProperties.merge(properties, options.properties());
+    OpenAiProperties.chat(merged, mapper);
+    OpenAiProperties.logIgnored(merged);
+  }
+
+  /**
    * Total for anything the provider can do to us. A classified failure comes back as {@link
    * InferenceResult.Fault} rather than thrown, because the agent that asked for this is mid-turn
    * and only something reaching the fold ends that turn.
@@ -147,7 +175,10 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
   public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
     Objects.requireNonNull(narrator, "narrator must not be null");
     try (StreamResponse<ChatCompletionChunk> stream =
-        client.chat().completions().createStreaming(OpenAiChatRequests.toParams(request, mapper))) {
+        client
+            .chat()
+            .completions()
+            .createStreaming(OpenAiChatRequests.toParams(request, properties, mapper))) {
       ChatCompletionAccumulator accumulator = ChatCompletionAccumulator.create();
       boolean[] any = {false};
       CompletionUsage[] earlyUsage = {null};

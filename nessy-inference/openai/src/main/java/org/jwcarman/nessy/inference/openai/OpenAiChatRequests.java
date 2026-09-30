@@ -18,6 +18,7 @@ package org.jwcarman.nessy.inference.openai;
 import com.openai.core.JsonValue;
 import com.openai.models.FunctionDefinition;
 import com.openai.models.FunctionParameters;
+import com.openai.models.ReasoningEffort;
 import com.openai.models.ResponseFormatJsonSchema;
 import com.openai.models.chat.completions.ChatCompletionAssistantMessageParam;
 import com.openai.models.chat.completions.ChatCompletionCreateParams;
@@ -46,6 +47,9 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.vendor.VendorProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -58,17 +62,30 @@ import tools.jackson.databind.json.JsonMapper;
  */
 final class OpenAiChatRequests {
 
+  private static final Logger log = LoggerFactory.getLogger(OpenAiChatRequests.class);
+
   private OpenAiChatRequests() {}
 
+  /** No provider-level properties: the agent type's alone. */
+  static ChatCompletionCreateParams toParams(InferenceRequest request, JsonMapper mapper) {
+    return toParams(request, Map.of(), mapper);
+  }
+
   /**
+   * @param providerProperties the provider's own {@code openai.} map, overlaid here by the agent
+   *     type's (spec §7a)
    * @param mapper reads a tool's schema back into a document. {@link
    *     org.jwcarman.nessy.api.JsonSchema} carries JSON text on purpose -- a tree would have to be
    *     some library's tree, and this wire's is not the one this project speaks -- so the parse is
    *     the bridge between the two, not a validation step. Supplied rather than made here, because
    *     a mapper an application cannot configure is a mapper it cannot fix.
    */
-  static ChatCompletionCreateParams toParams(InferenceRequest request, JsonMapper mapper) {
+  static ChatCompletionCreateParams toParams(
+      InferenceRequest request, Map<String, String> providerProperties, JsonMapper mapper) {
     InferenceOptions options = request.options();
+    OpenAiProperties.Read read =
+        OpenAiProperties.chat(
+            VendorProperties.merge(providerProperties, options.properties()), mapper);
 
     List<ChatCompletionMessageParam> messages =
         Stream.concat(
@@ -92,9 +109,17 @@ final class OpenAiChatRequests {
     if (options.hasMaxTokens()) {
       builder.maxCompletionTokens(options.maxTokens());
     }
-    request.toolset().offers().forEach(offer -> builder.addTool(toFunctionTool(offer, mapper)));
+    request
+        .toolset()
+        .offers()
+        .forEach(offer -> builder.addTool(toFunctionTool(offer, read.strict(), mapper)));
     chooseTool(builder, request.toolset().offers(), request.toolset().choice());
     request.outputSchema().ifPresent(schema -> constrainAnswer(builder, schema, mapper));
+    read.effort().ifPresent(effort -> builder.reasoningEffort(ReasoningEffort.of(effort)));
+    read.serviceTier()
+        .ifPresent(tier -> builder.serviceTier(ChatCompletionCreateParams.ServiceTier.of(tier)));
+    read.passThrough()
+        .forEach((name, value) -> builder.putAdditionalBodyProperty(name, JsonValue.from(value)));
     return builder.build();
   }
 
@@ -277,18 +302,36 @@ final class OpenAiChatRequests {
 
   /**
    * One tool, as this wire describes one. {@code function} is the only kind this API has ever had
-   * for a described tool, and it is still required on every entry.
+   * for a described tool, and it is still required on every entry. Under {@code
+   * openai.tools.strict=true} the schema goes out rewritten for strict mode (spec §10); a schema
+   * strict mode cannot express goes as generated with {@code strict: false}, and says so.
    */
-  private static ChatCompletionTool toFunctionTool(ToolOffer offer, JsonMapper mapper) {
+  private static ChatCompletionTool toFunctionTool(
+      ToolOffer offer, boolean strict, JsonMapper mapper) {
+    FunctionDefinition.Builder function =
+        FunctionDefinition.builder().name(offer.name().value()).description(offer.description());
+    if (strict) {
+      OpenAiResponsesSchemas.Projected projected =
+          OpenAiResponsesSchemas.project(offer.schema().json(), mapper);
+      projected
+          .refusedKeyword()
+          .ifPresent(
+              keyword ->
+                  log.warn(
+                      "Tool {} is offered without strict mode: its schema uses {}, which strict"
+                          + " mode cannot express",
+                      offer.name().value(),
+                      keyword));
+      FunctionParameters.Builder parameters = FunctionParameters.builder();
+      projected
+          .schema()
+          .forEach((name, value) -> parameters.putAdditionalProperty(name, JsonValue.from(value)));
+      function.parameters(parameters.build()).strict(projected.strict());
+    } else {
+      function.parameters(toFunctionParameters(offer.schema().json(), mapper));
+    }
     return ChatCompletionTool.ofFunction(
-        ChatCompletionFunctionTool.builder()
-            .function(
-                FunctionDefinition.builder()
-                    .name(offer.name().value())
-                    .description(offer.description())
-                    .parameters(toFunctionParameters(offer.schema().json(), mapper))
-                    .build())
-            .build());
+        ChatCompletionFunctionTool.builder().function(function.build()).build());
   }
 
   /**

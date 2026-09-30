@@ -19,8 +19,12 @@ import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.Timeout;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.vendor.VendorProperties;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -36,6 +40,7 @@ public final class OpenAiChatProviderConfig {
   private boolean useEnv;
   private String vendor = OpenAiChatInferenceProvider.VENDOR;
   private Duration timeout;
+  private final Map<String, String> properties = new LinkedHashMap<>();
 
   /**
    * Reads a tool's schema back from the JSON text an {@code JsonSchema} carries.
@@ -138,15 +143,45 @@ public final class OpenAiChatProviderConfig {
   }
 
   /**
+   * A vendor property this provider sends with every request (spec §6a) -- {@code
+   * openai.tools.strict}, {@code openai.reasoning.effort}, or any request field under {@code
+   * openai.}, passed through. An agent type's own property of the same name overrides it.
+   * Repeatable; the last value given for a name wins. A name under another prefix, or one that
+   * names what a typed setting decides, fails at build.
+   */
+  public OpenAiChatProviderConfig property(String name, String value) {
+    Objects.requireNonNull(name, "name must not be null");
+    if (name.isBlank()) {
+      throw new IllegalArgumentException("name must not be blank");
+    }
+    properties.put(name, VendorProperties.requireString(name, value));
+    return this;
+  }
+
+  /** {@link #property(String, String)} for each entry, as Boot binds them. */
+  public OpenAiChatProviderConfig properties(Map<String, String> properties) {
+    Objects.requireNonNull(properties, "properties must not be null");
+    properties.forEach(this::property);
+    return this;
+  }
+
+  /**
    * Turns this config into the {@link OpenAiChatInferenceProvider} it describes — the factory's own
    * step, never a public {@code build()} (design of record 2026-08-16 §1). Reached only from {@link
    * OpenAiChatInferenceProvider#of(Customizer)}, once {@code customize} has returned.
    */
   OpenAiChatInferenceProvider build() {
+    OpenAiProperties.requireOwn(properties);
+    OpenAiProperties.chat(properties, mapper);
+    Map<String, String> own = Collections.unmodifiableMap(new LinkedHashMap<>(properties));
     if (client != null) {
-      return new OpenAiChatInferenceProvider(client, vendor, false, mapper);
+      return new OpenAiChatInferenceProvider(client, vendor, false, mapper, own);
     }
     return new OpenAiChatInferenceProvider(
-        OpenAiClients.build(useEnv, apiKey, baseUrl, organization, timeout), vendor, true, mapper);
+        OpenAiClients.build(useEnv, apiKey, baseUrl, organization, timeout),
+        vendor,
+        true,
+        mapper,
+        own);
   }
 }

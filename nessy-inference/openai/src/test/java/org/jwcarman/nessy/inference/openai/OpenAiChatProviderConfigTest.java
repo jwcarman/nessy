@@ -22,9 +22,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.openai.client.OpenAIClient;
 import java.lang.reflect.Proxy;
 import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Customizer;
 
 /**
  * The transport timeout setter (design record 2026-09-25-locks-as-plumbing-design.md §5).
@@ -104,5 +106,45 @@ class OpenAiChatProviderConfigTest {
               }
               throw new UnsupportedOperationException(method.getName());
             });
+  }
+
+  @Test
+  void a_property_under_another_prefix_is_refused_at_build_naming_the_prefix() {
+    Customizer<OpenAiChatProviderConfig> customizer =
+        c -> c.apiKey("test-key").property("anthropic.thinking.budget_tokens", "8192");
+
+    assertThatThrownBy(() -> OpenAiChatInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'anthropic.thinking.budget_tokens'")
+        .hasMessageContaining("'openai.'");
+  }
+
+  @Test
+  void a_clash_is_refused_at_build() {
+    Customizer<OpenAiChatProviderConfig> customizer =
+        c -> c.apiKey("test-key").properties(Map.of("openai.model", "gpt-4o"));
+
+    assertThatThrownBy(() -> OpenAiChatInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("InferenceConfig.model");
+  }
+
+  @Test
+  void a_blank_value_is_refused_at_once_naming_the_property() {
+    Customizer<OpenAiChatProviderConfig> customizer =
+        c -> c.apiKey("test-key").properties(Map.of("openai.store", ""));
+
+    assertThatThrownBy(() -> OpenAiChatInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'openai.store'");
+  }
+
+  @Test
+  void properties_under_its_own_prefix_build_a_provider() {
+    OpenAiChatInferenceProvider provider =
+        OpenAiChatInferenceProvider.of(
+            c -> c.apiKey("test-key").property("openai.tools.strict", "true"));
+
+    assertThatCode(provider::close).doesNotThrowAnyException();
   }
 }
