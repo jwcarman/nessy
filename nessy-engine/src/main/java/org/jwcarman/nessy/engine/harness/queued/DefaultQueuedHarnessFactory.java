@@ -20,6 +20,7 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeSet;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.NonNull;
 import org.jwcarman.codec.TypeRef;
@@ -60,6 +61,7 @@ import org.jwcarman.nessy.engine.tool.DefaultReplies;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.engine.trace.Traces;
+import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -194,12 +196,16 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
       throw new IllegalStateException(
           "agent type '" + agentType.value() + "' names no model and the factory has no default");
     }
+    InferenceOptions options = inference.options();
+    InferenceProvider provider = providers.resolve(agentType, providerId);
+    validate(agentType, provider, options);
     log.info(
-        "NESSY INFERENCE: agent type '{}' -> {} / {}, up to {} tokens",
+        "NESSY INFERENCE: agent type '{}' -> {} / {}, up to {} tokens{}",
         agentType.value(),
         providerId.value(),
-        inference.modelName(),
-        inference.options().maxTokens());
+        options.modelName(),
+        options.maxTokens(),
+        propertyNames(options));
     // What each kind of effect is worth, from the tools this harness bound and the harness-wide
     // defaults alone -- nothing else, so the direct door can ask the same question without
     // building a handler just to hold it.
@@ -237,14 +243,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     EffectHandlers handlers =
         new EffectHandlers(
             createInferenceHandler(
-                agentType,
-                assembler,
-                inference,
-                providers.resolve(agentType, providerId),
-                config,
-                tools,
-                narrator,
-                payloads,
+                agentType, assembler, inference, provider, config, tools, narrator, payloads,
                 terms),
             createApprovalHandler(agentType, tools, narrator, terms, payloads),
             createToolCallHandler(agentType, tools, narrator, payloads, terms));
@@ -395,5 +394,26 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   @Override
   public Replies replies() {
     return replies;
+  }
+
+  /**
+   * The adapter's say on the terms, before anything is built on them (spec §7c): a refusal fails
+   * the build, named for the agent type, rather than the agent's first turn.
+   */
+  private static void validate(
+      AgentType agentType, InferenceProvider provider, InferenceOptions options) {
+    try {
+      provider.validate(options);
+    } catch (IllegalArgumentException refused) {
+      throw new IllegalArgumentException(
+          "agent type '" + agentType.value() + "': " + refused.getMessage(), refused);
+    }
+  }
+
+  /** The report line's clause: names only, sorted, never a value (spec §6c). */
+  static String propertyNames(InferenceOptions options) {
+    return options.properties().isEmpty()
+        ? ""
+        : ", properties " + new TreeSet<>(options.properties().keySet());
   }
 }

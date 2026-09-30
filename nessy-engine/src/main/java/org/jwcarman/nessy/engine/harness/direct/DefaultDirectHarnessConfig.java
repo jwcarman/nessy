@@ -19,7 +19,10 @@ package org.jwcarman.nessy.engine.harness.direct;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.jwcarman.nessy.api.AgentType;
@@ -297,6 +300,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     private ProviderId provider;
     private String modelName;
     private int maxTokens = 4096;
+    private final Map<String, String> properties = new LinkedHashMap<>();
     private int maxTail = 50;
     private final List<Summarizer> summaries = new ArrayList<>();
     private final List<AmbientSource> ambient = new ArrayList<>();
@@ -310,6 +314,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
         if (defaults.hasMaxTokens()) {
           this.maxTokens = defaults.maxTokens();
         }
+        this.properties.putAll(defaults.properties());
       }
     }
 
@@ -332,6 +337,12 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     @Override
     public InferenceConfig maxTokens(int maxTokens) {
       this.maxTokens = maxTokens;
+      return this;
+    }
+
+    @Override
+    public InferenceConfig property(String name, String value) {
+      properties.put(requireNonBlank(name, "name"), requireNonBlank(value, "value"));
       return this;
     }
 
@@ -382,6 +393,18 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
 
     int maxTokens() {
       return maxTokens;
+    }
+
+    Map<String, String> properties() {
+      return Collections.unmodifiableMap(properties);
+    }
+
+    private static String requireNonBlank(String text, String argument) {
+      Objects.requireNonNull(text, argument + " must not be null");
+      if (text.isBlank()) {
+        throw new IllegalArgumentException(argument + " must not be blank");
+      }
+      return text;
     }
 
     int maxTail() {

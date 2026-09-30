@@ -16,12 +16,16 @@
 package org.jwcarman.nessy.engine.embedding;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import java.util.Map;
 import java.util.OptionalInt;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.embedding.EmbedderConfig;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.embedding.EmbeddingProvider;
@@ -58,6 +62,13 @@ class DefaultEmbedderFactoryTest {
     public String vendor() {
       return "asked";
     }
+
+    @Override
+    public void validate(EmbeddingOptions options) {
+      if (options.properties().containsKey("test.model")) {
+        throw new IllegalArgumentException("property 'test.model' is refused");
+      }
+    }
   }
 
   @Test
@@ -91,5 +102,28 @@ class DefaultEmbedderFactoryTest {
     new DefaultEmbedderFactory(provider, "a-model").create(c -> {}).embedDocument("anything");
 
     assertThat(provider.options.get().dimension()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("carry their properties to the provider")
+  void carry_their_properties_to_the_provider() {
+    Asked provider = new Asked();
+    new DefaultEmbedderFactory(provider, "a-model")
+        .create(c -> c.property("voyage.truncation", "false"))
+        .embedDocument("anything");
+
+    assertThat(provider.options.get().properties())
+        .containsExactly(Map.entry("voyage.truncation", "false"));
+  }
+
+  @Test
+  @DisplayName("are refused when the provider refuses their terms")
+  void are_refused_when_the_provider_refuses_their_terms() {
+    DefaultEmbedderFactory factory = new DefaultEmbedderFactory(new Asked(), "a-model");
+    Customizer<EmbedderConfig> refused = c -> c.property("test.model", "x");
+
+    assertThatThrownBy(() -> factory.create(refused))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("property 'test.model' is refused");
   }
 }

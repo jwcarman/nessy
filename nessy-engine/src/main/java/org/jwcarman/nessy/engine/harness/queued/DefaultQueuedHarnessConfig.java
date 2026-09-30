@@ -18,8 +18,10 @@ package org.jwcarman.nessy.engine.harness.queued;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -389,6 +391,7 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
     // Matches the direct door's default (see DefaultDirectHarnessConfig.Inference); a factory
     // default without a max tokens still gets a real cap rather than an unbounded answer.
     private int maxTokens = 4096;
+    private final Map<String, String> properties = new LinkedHashMap<>();
     private final Context context = new Context();
     private Duration timeout = Duration.ofMinutes(5);
     private RetryPolicy retryPolicy = DEFAULT_INFERENCE_RETRY_POLICY;
@@ -400,6 +403,7 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
         if (defaults.options().hasMaxTokens()) {
           this.maxTokens = defaults.options().maxTokens();
         }
+        this.properties.putAll(defaults.options().properties());
       }
     }
 
@@ -418,6 +422,12 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
     @Override
     public InferenceConfig maxTokens(int maxTokens) {
       this.maxTokens = maxTokens;
+      return this;
+    }
+
+    @Override
+    public InferenceConfig property(String name, String value) {
+      properties.put(requireNonBlank(name, "name"), requireNonBlank(value, "value"));
       return this;
     }
 
@@ -448,7 +458,15 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
     }
 
     InferenceOptions options() {
-      return new InferenceOptions(modelName, maxTokens);
+      return new InferenceOptions(modelName, maxTokens, properties);
+    }
+
+    private static String requireNonBlank(String text, String argument) {
+      Objects.requireNonNull(text, argument + " must not be null");
+      if (text.isBlank()) {
+        throw new IllegalArgumentException(argument + " must not be blank");
+      }
+      return text;
     }
 
     Context context() {

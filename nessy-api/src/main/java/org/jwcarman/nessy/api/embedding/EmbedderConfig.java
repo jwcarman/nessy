@@ -38,4 +38,12 @@ public interface EmbedderConfig {
    * telling near things apart.
    */
   EmbedderConfig dimension(int dimension);
+
+  /**
+   * A setting the vendor understands and this interface does not name, prefixed by the adapter that
+   * reads it ({@code voyage.truncation}). Repeatable; the last value given for a name wins.
+   *
+   * @throws IllegalArgumentException if either argument is blank
+   */
+  EmbedderConfig property(String name, String value);
 }

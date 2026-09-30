@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.engine.embedding;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
@@ -68,13 +70,16 @@ public final class DefaultEmbedderFactory implements EmbedderFactory {
     Objects.requireNonNull(customizer, "customizer must not be null");
     Settings settings = new Settings();
     customizer.customize(settings);
-    return new DefaultEmbedder(provider, settings.options());
+    EmbeddingOptions options = settings.options();
+    provider.validate(options);
+    return new DefaultEmbedder(provider, options);
   }
 
   private final class Settings implements EmbedderConfig {
 
     private String model = defaultModel;
     private OptionalInt dimension = defaultDimension;
+    private final Map<String, String> properties = new LinkedHashMap<>();
 
     @Override
     public EmbedderConfig model(String model) {
@@ -88,11 +93,26 @@ public final class DefaultEmbedderFactory implements EmbedderFactory {
       return this;
     }
 
+    @Override
+    public EmbedderConfig property(String name, String value) {
+      Objects.requireNonNull(name, "name must not be null");
+      Objects.requireNonNull(value, "value must not be null");
+      if (name.isBlank()) {
+        throw new IllegalArgumentException("name must not be blank");
+      }
+      if (value.isBlank()) {
+        throw new IllegalArgumentException("value must not be blank");
+      }
+      properties.put(name, value);
+      return this;
+    }
+
     private EmbeddingOptions options() {
       return new EmbeddingOptions(
           Objects.requireNonNull(
               model, "an embedder needs a model: model(...), or a factory default"),
-          dimension);
+          dimension,
+          properties);
     }
   }
 }

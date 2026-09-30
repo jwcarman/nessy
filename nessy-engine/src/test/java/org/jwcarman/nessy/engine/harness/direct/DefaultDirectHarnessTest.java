@@ -25,8 +25,10 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -49,7 +51,9 @@ import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
+import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
+import org.jwcarman.nessy.api.InferenceConfig;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.OutputReader;
@@ -1689,6 +1693,146 @@ class DefaultDirectHarnessTest {
       harness.ask(AgentId.random(), "hello");
 
       assertThat(seenMaxTokens.get()).isEqualTo(4096);
+    }
+  }
+
+  @Nested
+  @DisplayName("vendor properties")
+  class ItsVendorProperties {
+
+    /** Answers once, remembers every set of terms it was asked to validate, refuses one name. */
+    private static final class Judging implements InferenceProvider {
+      final List<InferenceOptions> validated = new ArrayList<>();
+      final Scripted answers = new Scripted().then(answering("ok"));
+
+      @Override
+      public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
+        return answers.infer(request, narrator);
+      }
+
+      @Override
+      public void validate(InferenceOptions options) {
+        if (options.properties().containsKey("test.model")) {
+          throw new IllegalArgumentException(
+              "property 'test.model' names what InferenceConfig.model already decides;"
+                  + " remove the property");
+        }
+        validated.add(options);
+      }
+    }
+
+    private DirectHarnessFactory factory(InferenceProvider model, InferenceOptions defaults) {
+      return DefaultDirectHarnessFactory.of(
+          c ->
+              c.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
+                  .provider(ProviderId.of("test"), model)
+                  .inference(ProviderId.of("test"), defaults)
+                  .schemas(SCHEMAS)
+                  .mapper(MAPPER)
+                  .clock(clock));
+    }
+
+    private static Customizer<DirectHarnessConfig<String>> agentType(
+        Customizer<InferenceConfig> inference) {
+      return c ->
+          c.systemPrompt("You are terse.")
+              .inputRenderer(said -> List.of(new Block.Text(said)))
+              .inference(inference);
+    }
+
+    @Test
+    void an_agent_type_s_properties_reach_the_provider_with_every_request() {
+      Scripted model = new Scripted().then(answering("ok"));
+
+      factory(model, InferenceOptions.of("a-model"))
+          .<String>create(TYPE, agentType(in -> in.property("openai.reasoning.effort", "high")))
+          .ask(AgentId.random(), "hi");
+
+      assertThat(model.seen).isNotEmpty();
+      assertThat(model.seen.getFirst().options().properties())
+          .containsExactly(Map.entry("openai.reasoning.effort", "high"));
+    }
+
+    @Test
+    void factory_defaults_seed_an_agent_type_and_its_own_property_overrides_one_by_name() {
+      Scripted model = new Scripted().then(answering("ok"));
+      InferenceOptions defaults =
+          new InferenceOptions("a-model", 0, Map.of("openai.seed", "1", "openai.store", "false"));
+
+      factory(model, defaults)
+          .<String>create(TYPE, agentType(in -> in.property("openai.seed", "2")))
+          .ask(AgentId.random(), "hi");
+
+      assertThat(model.seen.getFirst().options().properties())
+          .containsOnly(Map.entry("openai.seed", "2"), Map.entry("openai.store", "false"));
+    }
+
+    @Test
+    void the_provider_is_asked_to_validate_the_terms_when_the_harness_is_built() {
+      Judging model = new Judging();
+
+      factory(model, InferenceOptions.of("a-model"))
+          .<String>create(TYPE, agentType(in -> in.property("openai.seed", "7")));
+
+      assertThat(model.validated)
+          .singleElement()
+          .satisfies(options -> assertThat(options.properties()).containsKey("openai.seed"));
+    }
+
+    @Test
+    void a_refusal_fails_the_build_naming_the_agent_type() {
+      DirectHarnessFactory factory = factory(new Judging(), InferenceOptions.of("a-model"));
+      Customizer<DirectHarnessConfig<String>> clashing =
+          agentType(in -> in.property("test.model", "gpt-4o"));
+
+      assertThatThrownBy(() -> factory.<String>create(TYPE, clashing))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage(
+              "agent type 'chat': property 'test.model' names what InferenceConfig.model"
+                  + " already decides; remove the property");
+    }
+
+    /** §5c made checkable: properties are configuration, and nothing about them is written. */
+    @Test
+    void no_event_carries_a_property() {
+      AgentId agent = AgentId.random();
+
+      factory(new Scripted().then(answering("ok")), InferenceOptions.of("a-model"))
+          .<String>create(TYPE, agentType(in -> in.property("openai.user", "tenant-42-secret")))
+          .ask(agent, "hi");
+
+      assertThat(events.readAll(TYPE, agent)).isNotEmpty();
+      assertThat(events.readAll(TYPE, agent).toString())
+          .doesNotContain("tenant-42-secret")
+          .doesNotContain("openai.user");
+    }
+
+    @Test
+    void a_blank_name_or_value_is_refused_at_once() {
+      DefaultDirectHarnessConfig<String> config =
+          new DefaultDirectHarnessConfig<>(TYPE, ObservationRegistry.NOOP);
+      Customizer<InferenceConfig> blankName = in -> in.property(" ", "v");
+      Customizer<InferenceConfig> blankValue = in -> in.property("openai.seed", " ");
+
+      assertThatThrownBy(() -> config.inference(blankName))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("name must not be blank");
+      assertThatThrownBy(() -> config.inference(blankValue))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("value must not be blank");
+    }
+
+    /** The harness's report line names the properties and never prints a value (§6c). */
+    @Test
+    void the_report_line_names_properties_and_never_their_values() {
+      InferenceOptions options =
+          new InferenceOptions(
+              "a-model", 10, Map.of("openai.user", "tenant-42", "anthropic.top_k", "5"));
+
+      assertThat(DefaultDirectHarnessFactory.propertyNames(options))
+          .isEqualTo(", properties [anthropic.top_k, openai.user]");
+      assertThat(DefaultDirectHarnessFactory.propertyNames(InferenceOptions.of("a-model")))
+          .isEmpty();
     }
   }
 }

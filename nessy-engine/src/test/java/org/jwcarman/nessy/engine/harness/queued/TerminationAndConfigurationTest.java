@@ -46,6 +46,10 @@ import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceNarrator;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 
 @DisplayName("Ending an agent, and the settings a harness takes")
@@ -212,5 +216,61 @@ class TerminationAndConfigurationTest {
     assertThatThrownBy(() -> harnesses.create(tailType, noTail))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("maxTail");
+  }
+
+  /** Remembers the terms of every call, and refuses one name the way a clash table would. */
+  private static final class Judging implements InferenceProvider {
+    final List<InferenceOptions> asked = new CopyOnWriteArrayList<>();
+
+    @Override
+    public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
+      asked.add(request.options());
+      return new InferenceResult.Answer(List.of(new Block.Text("a lake monster")));
+    }
+
+    @Override
+    public void validate(InferenceOptions options) {
+      if (options.properties().containsKey("test.model")) {
+        throw new IllegalArgumentException(
+            "property 'test.model' names what InferenceConfig.model already decides;"
+                + " remove the property");
+      }
+    }
+  }
+
+  @Test
+  void a_queued_agent_type_s_properties_reach_the_provider_and_a_clash_fails_the_build() {
+    Judging provider = new Judging();
+    EngineFixture judged = new EngineFixture(provider, (type, id, event) -> events.add(event));
+    try {
+      QueuedHarness<String> harness =
+          judged
+              .harnesses()
+              .create(
+                  new AgentType("chat-properties"),
+                  config ->
+                      config
+                          .systemPrompt("You are a test assistant.")
+                          .inference(in -> in.property("openai.seed", "7"))
+                          .effects(e -> e.pollInterval(Duration.ofMillis(100))));
+      harness.tell(new AgentId(UUID.randomUUID()), "hello");
+      await().atMost(Duration.ofSeconds(20)).until(() -> !provider.asked.isEmpty());
+      assertThat(provider.asked.getFirst().properties()).containsEntry("openai.seed", "7");
+
+      var harnesses = judged.harnesses();
+      Customizer<QueuedHarnessConfig<String>> clashing =
+          config ->
+              config
+                  .systemPrompt("You are a test assistant.")
+                  .inference(in -> in.property("test.model", "gpt-4o"));
+      AgentType clashType = new AgentType("chat-properties-clash");
+      assertThatThrownBy(() -> harnesses.create(clashType, clashing))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage(
+              "agent type 'chat-properties-clash': property 'test.model' names what"
+                  + " InferenceConfig.model already decides; remove the property");
+    } finally {
+      judged.close();
+    }
   }
 }

@@ -23,6 +23,7 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeSet;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -62,6 +63,7 @@ import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
@@ -236,12 +238,17 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
       throw new IllegalStateException(
           "agent type '" + agentType.value() + "' names no model and the factory has no default");
     }
+    InferenceOptions options =
+        new InferenceOptions(inference.modelName(), inference.maxTokens(), inference.properties());
+    InferenceProvider provider = providers.resolve(agentType, providerId);
+    validate(agentType, provider, options);
     log.info(
-        "NESSY INFERENCE: agent type '{}' -> {} / {}, up to {} tokens",
+        "NESSY INFERENCE: agent type '{}' -> {} / {}, up to {} tokens{}",
         agentType.value(),
         providerId.value(),
-        inference.modelName(),
-        inference.maxTokens());
+        options.modelName(),
+        options.maxTokens(),
+        propertyNames(options));
     Tools tools = new Tools(bindings);
     // What each kind of effect is worth, from the tools this harness bound and the harness-wide
     // defaults alone -- exactly what the queued factory builds, so the phase-to-timeout mapping
@@ -286,12 +293,12 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
                 config.agentType(),
                 new DefaultInferenceService(
                     assembler,
-                    providers.resolve(agentType, providerId),
+                    provider,
                     config.systemPromptSource(),
                     tools.offers(),
                     narrator,
                     outputSchema),
-                new InferenceOptions(inference.modelName(), inference.maxTokens()),
+                options,
                 terms,
                 payloads,
                 narrator),
@@ -323,5 +330,26 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
   @Override
   public void close() {
     effects.close();
+  }
+
+  /**
+   * The adapter's say on the terms, before anything is built on them (spec §7c): a refusal fails
+   * the build, named for the agent type, rather than the agent's first turn.
+   */
+  private static void validate(
+      AgentType agentType, InferenceProvider provider, InferenceOptions options) {
+    try {
+      provider.validate(options);
+    } catch (IllegalArgumentException refused) {
+      throw new IllegalArgumentException(
+          "agent type '" + agentType.value() + "': " + refused.getMessage(), refused);
+    }
+  }
+
+  /** The report line's clause: names only, sorted, never a value (spec §6c). */
+  static String propertyNames(InferenceOptions options) {
+    return options.properties().isEmpty()
+        ? ""
+        : ", properties " + new TreeSet<>(options.properties().keySet());
   }
 }

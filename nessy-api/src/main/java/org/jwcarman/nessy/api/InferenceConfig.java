@@ -40,6 +40,16 @@ public interface InferenceConfig {
   /** Which model. Defaults to the factory's; required one way or the other. */
   InferenceConfig model(String modelName);
 
+  /**
+   * A setting the vendor understands and the neutral API does not name. The name is prefixed by the
+   * adapter that reads it ({@code openai.reasoning.effort}); an adapter ignores every other prefix,
+   * so an agent type may carry settings for several vendors at once. Repeatable; the last value
+   * given for a name wins. Fixed when the harness is built, sent with every request.
+   *
+   * @throws IllegalArgumentException if either argument is blank
+   */
+  InferenceConfig property(String name, String value);
+
   /** How much answer it may have. Zero or unset leaves it to the provider. */
   InferenceConfig maxTokens(int maxTokens);
 
