@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.vendor;
+package org.jwcarman.nessy.api;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -22,10 +22,10 @@ import java.util.Objects;
 
 /**
  * How every adapter reads vendor properties: the entries under its own prefix, and the provider's
- * map under the agent type's. Parsing a supported name into its type is {@code VendorProperty}'s.
+ * map under the agent type's. Parsing a supported name into its type is {@link VendorProperty}'s.
  *
- * <p>One class so that eight adapters cannot come to disagree about what a prefix is. Every failure
- * is an {@link IllegalArgumentException} naming the property as the user spelled it.
+ * <p>One class so that no two adapters can disagree about what a prefix is. Every failure is an
+ * {@link IllegalArgumentException} naming the property as the user spelled it.
  */
 public final class VendorProperties {
 

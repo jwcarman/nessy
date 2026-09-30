@@ -46,11 +46,6 @@
     </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-vendor-properties</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-backend-spi</artifactId>
       <version>${project.version}</version>
     </dependency>

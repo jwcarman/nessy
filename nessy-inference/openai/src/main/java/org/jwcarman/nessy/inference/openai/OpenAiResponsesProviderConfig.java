@@ -21,8 +21,8 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import org.jwcarman.nessy.api.VendorProperties;
 import org.jwcarman.nessy.api.VendorProperty;
-import org.jwcarman.nessy.vendor.VendorProperties;
 import tools.jackson.databind.json.JsonMapper;
 
 /**

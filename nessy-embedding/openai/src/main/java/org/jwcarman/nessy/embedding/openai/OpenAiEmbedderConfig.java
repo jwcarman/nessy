@@ -23,8 +23,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.VendorProperties;
 import org.jwcarman.nessy.api.VendorProperty;
-import org.jwcarman.nessy.vendor.VendorProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

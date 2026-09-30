@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`InferenceProvider.validate(InferenceOptions)`** and
   **`EmbeddingProvider.validate(EmbeddingOptions)`**, default no-ops, which
   the factories call when a harness or embedder is built.
-- **`nessy-vendor-properties`**, the module adapters read properties
+- **`VendorProperties`** in `nessy-api`, which adapters read properties
   through. The BOM now also lists `nessy-inference-spi` and
   `nessy-embedding-spi`.
 - **`openai.tools.strict`** on the chat adapter: function tools go out in

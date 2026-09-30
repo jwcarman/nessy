@@ -171,7 +171,6 @@ add `nessy-inference-spi`; an application building an agent depends on
 |---|---|
 | `nessy-api` | the shared vocabulary: `Tool`, `Approver`, `Awaited`, blocks, `NarrationListener`, `Outcome` |
 | `nessy-inference-spi` | adapter authors: `InferenceProvider` |
-| `nessy-vendor-properties` | adapter authors: `VendorProperties`, which reads the `openai.*`-style properties an adapter owns |
 | `nessy-backend-spi` | backend authors: `DirectBackend`, `QueuedBackend`, and `Leases` for work that must run once across processes |
 | `nessy-backend-jdbc` | one PostgreSQL `DataSource` behind either door, and `Schemas` |
 | `nessy-backend-inmemory` | the same stores with nothing behind them but the process |

@@ -19,8 +19,8 @@ import com.google.genai.types.ThinkingConfig;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jwcarman.nessy.api.VendorProperties;
 import org.jwcarman.nessy.api.VendorProperty;
-import org.jwcarman.nessy.vendor.VendorProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -624,7 +624,7 @@ public interface InferenceProvider {
 - Own a prefix and declare your supported properties as `VendorProperty`
   constants (`nessy-api`): `ofInteger`, `ofBoolean`, `ofFloat`, `ofStrings`,
   or `ofEnum` for a fixed value set, each carrying the full prefixed name.
-  Read them through `VendorProperties` (`nessy-vendor-properties`): merge the
+  Read them through `VendorProperties` (`nessy-api`): merge the
   provider's map under `request.options().properties()`, take the entries
   `under` your prefix, and read each constant with `in(merged)`. Publish the
   constants and a `SUPPORTED` list, as the four inference adapters do. Send
