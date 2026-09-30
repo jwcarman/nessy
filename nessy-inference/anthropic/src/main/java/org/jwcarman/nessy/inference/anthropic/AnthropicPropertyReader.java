@@ -72,9 +72,9 @@ final class AnthropicPropertyReader {
     if (thinking.filter(AnthropicThinkingType.ENABLED::equals).isPresent() && budget.isEmpty()) {
       throw new IllegalArgumentException(
           "property '"
-              + AnthropicProperties.THINKING_TYPE
+              + AnthropicProperties.THINKING_TYPE.name()
               + "' is enabled and '"
-              + AnthropicProperties.THINKING_BUDGET
+              + AnthropicProperties.THINKING_BUDGET.name()
               + "' is not set; the vendor requires a budget for enabled thinking");
     }
     return new Read(

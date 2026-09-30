@@ -282,7 +282,7 @@ public final class AnthropicProviderConfig {
       throw new IllegalArgumentException(
           setter
               + " and property '"
-              + property
+              + property.name()
               + "' both say how this provider "
               + (property.name().startsWith("anthropic.thinking") ? "thinks" : "caches")
               + "; keep one");

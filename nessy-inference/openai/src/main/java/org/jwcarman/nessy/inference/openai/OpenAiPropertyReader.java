@@ -54,14 +54,14 @@ final class OpenAiPropertyReader {
     if (read.summary().isPresent()) {
       throw new IllegalArgumentException(
           "property '"
-              + OpenAiProperties.REASONING_SUMMARY
+              + OpenAiProperties.REASONING_SUMMARY.name()
               + "' cannot be sent on the openai-chat wire, which has no reasoning summary;"
               + " the openai-responses wire carries it");
     }
     if (read.serviceTier().filter(OpenAiServiceTier.ULTRAFAST::equals).isPresent()) {
       throw new IllegalArgumentException(
           "property '"
-              + OpenAiProperties.SERVICE_TIER
+              + OpenAiProperties.SERVICE_TIER.name()
               + "' cannot be 'ultrafast' on the openai-chat wire;"
               + " the openai-responses wire carries it");
     }
@@ -74,7 +74,7 @@ final class OpenAiPropertyReader {
     if (OpenAiProperties.TOOLS_STRICT.in(merged).filter(strict -> !strict).isPresent()) {
       throw new IllegalArgumentException(
           "property '"
-              + OpenAiProperties.TOOLS_STRICT
+              + OpenAiProperties.TOOLS_STRICT.name()
               + "' is false, and the openai-responses wire sends function tools strict"
               + " regardless; remove the property, or use the openai-chat wire");
     }
