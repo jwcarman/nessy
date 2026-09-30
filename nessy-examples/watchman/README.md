@@ -11,8 +11,12 @@ example from the repository root:
 
 ```bash
 docker compose -f nessy-examples/watchman/docker-compose.yml up -d
-./mvnw -q -pl :nessy-example-watchman -am spring-boot:run
+./mvnw -q -pl :nessy-example-watchman -am install -DskipTests
+./mvnw -q -pl :nessy-example-watchman spring-boot:run
 ```
+
+The `install` builds the example and everything it depends on; `spring-boot:run`
+then runs the example alone. Run the `install` again after changing any module.
 
 By default it answers with the keyless `lmstudio` preset against
 [LM Studio](https://lmstudio.ai) on `localhost:1234`
@@ -22,11 +26,11 @@ model).
 ### Soaking against OpenAI
 
 Point the soak at OpenAI itself instead of a local model by naming the
-`openai` preset and giving it a key:
+`openai` preset, with `OPENAI_API_KEY` exported:
 
 ```bash
-WATCHMAN_PROVIDER=openai OPENAI_API_KEY=sk-… WATCHMAN_MODEL_ID=gpt-4o-mini \
-  ./mvnw -q -pl :nessy-example-watchman -am spring-boot:run
+WATCHMAN_PROVIDER=openai WATCHMAN_MODEL_ID=gpt-4o-mini \
+  ./mvnw -q -pl :nessy-example-watchman spring-boot:run
 ```
 
 `WATCHMAN_PROVIDER` selects which registered provider answers (`nessy.provider`);

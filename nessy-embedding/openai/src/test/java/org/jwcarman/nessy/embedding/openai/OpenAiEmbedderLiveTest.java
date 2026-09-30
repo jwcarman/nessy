@@ -31,7 +31,7 @@ import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 /**
  * Against OpenAI itself, through the SDK's own reading of the environment, so a local runtime is
  * reached the way it is everywhere else here: {@code OPENAI_BASE_URL} beside {@code
- * OPENAI_API_KEY}, and {@code NESSY_EMBEDDING_MODEL} naming what that endpoint serves. Tagged
+ * OPENAI_API_KEY}, and {@code NESSY_LIVE_EMBEDDING_MODEL} naming what that endpoint serves. Tagged
  * {@code live}, so CI skips it; run it with {@code -Dnessy.excludedGroups=}.
  */
 @Tag("live")
@@ -39,7 +39,7 @@ import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 class OpenAiEmbedderLiveTest {
 
   private static final String MODEL =
-      System.getenv().getOrDefault("NESSY_EMBEDDING_MODEL", OpenAiEmbedderConfig.DEFAULT_MODEL);
+      System.getenv().getOrDefault("NESSY_LIVE_EMBEDDING_MODEL", OpenAiEmbedderConfig.DEFAULT_MODEL);
 
   private static final ProviderId OPENAI = ProviderId.of("openai");
 

@@ -38,8 +38,12 @@ the example from the repository root. Defaults target
 
 ```bash
 docker compose -f nessy-examples/chat-web/docker-compose.yml up -d
-./mvnw -q -pl :nessy-example-chat-web -am spring-boot:run
+./mvnw -q -pl :nessy-example-chat-web -am install -DskipTests
+./mvnw -q -pl :nessy-example-chat-web spring-boot:run
 ```
+
+The `install` builds the example and everything it depends on; `spring-boot:run`
+then runs the example alone. Run the `install` again after changing any module.
 
 Then open <http://localhost:8080>. Ask it to email someone and watch the card
 appear.
@@ -53,7 +57,7 @@ embedding; leave them out and the most recent episodes are shown instead:
 ```bash
 CHAT_EMBEDDER=local \
 CHAT_EMBEDDING_MODEL=text-embedding-nomic-embed-text-v1.5 \
-  ./mvnw -q -pl :nessy-example-chat-web -am spring-boot:run
+  ./mvnw -q -pl :nessy-example-chat-web spring-boot:run
 ```
 
 `local` is a custom embedder in `application.yml`, at the same endpoint as the
@@ -61,14 +65,13 @@ chat model. A local server may answer any model name with whatever it has
 loaded, and the model a store records is the one it asked for, so name the
 model the server actually serves.
 
-OpenAI itself works too: set its key, which lights the starter's `openai`
+OpenAI itself works too: export `OPENAI_API_KEY`, which lights the starter's `openai`
 provider, and name that provider instead of the `lmstudio` default:
 
 ```bash
-OPENAI_API_KEY=sk-… \
 CHAT_PROVIDER=openai \
 CHAT_MODEL_ID=gpt-4o-mini \
-  ./mvnw -q -pl :nessy-example-chat-web -am spring-boot:run
+  ./mvnw -q -pl :nessy-example-chat-web spring-boot:run
 ```
 
 ## What it does not do
