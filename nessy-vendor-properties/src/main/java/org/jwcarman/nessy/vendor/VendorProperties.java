@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeSet;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
@@ -142,7 +143,13 @@ public final class VendorProperties {
 
   /**
    * Refuses any entry the adapter's table says a typed setting, or the adapter itself, already
-   * decides (spec §7b).
+   * decides (spec §7b): the clash key itself, a name inside it ({@code text.verbosity} beside
+   * {@code text}), or a name that would replace it whole ({@code generationConfig} beside {@code
+   * generationConfig.maxOutputTokens}). An exact match is checked first; the table is then scanned
+   * in sorted order so the first refusal never depends on the table's own iteration order.
+   *
+   * <p>Pass only the names the adapter passes through: a known name it parses itself, such as
+   * {@code tools.strict} under {@code tools}, is not a clash.
    *
    * @param clashTable a stripped name, and what decides it
    */
@@ -158,6 +165,34 @@ public final class VendorProperties {
                 + "' names what "
                 + decidedBy
                 + " already decides; remove the property");
+      }
+    }
+    for (String key : new TreeSet<>(clashTable.keySet())) {
+      for (String name : underPrefix.keySet()) {
+        if (name.startsWith(key + ".")) {
+          throw new IllegalArgumentException(
+              "property '"
+                  + prefix
+                  + name
+                  + "' sets a field inside '"
+                  + prefix
+                  + key
+                  + "', which "
+                  + clashTable.get(key)
+                  + " already decides; remove the property");
+        }
+        if (key.startsWith(name + ".")) {
+          throw new IllegalArgumentException(
+              "property '"
+                  + prefix
+                  + name
+                  + "' would replace '"
+                  + prefix
+                  + key
+                  + "', which "
+                  + clashTable.get(key)
+                  + " already decides; set the fields one by one");
+        }
       }
     }
   }

@@ -77,7 +77,9 @@ final class GeminiProperties {
         }
       }
     }
-    VendorProperties.refuseClashes(PREFIX, own, clashes);
+    Map<String, String> rest = new LinkedHashMap<>(own);
+    rest.keySet().removeAll(KNOWN);
+    VendorProperties.refuseClashes(PREFIX, rest, clashes);
     Optional<ThinkingConfig> thinking = Optional.empty();
     if (known != null) {
       ThinkingConfig.Builder builder = ThinkingConfig.builder();
@@ -95,8 +97,6 @@ final class GeminiProperties {
       }
       thinking = Optional.of(builder.build());
     }
-    Map<String, String> rest = new LinkedHashMap<>(own);
-    rest.keySet().removeAll(KNOWN);
     return new Read(thinking, VendorProperties.nest(PREFIX, rest, mapper));
   }
 

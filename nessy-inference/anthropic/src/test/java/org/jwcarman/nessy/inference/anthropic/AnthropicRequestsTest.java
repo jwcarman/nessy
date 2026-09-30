@@ -967,6 +967,16 @@ class AnthropicRequestsTest {
     }
 
     @Test
+    void a_field_inside_the_output_config_the_harness_decides_is_refused() {
+      InferenceRequest request = carrying(Map.of("anthropic.output_config.effort", "high"));
+
+      assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'anthropic.output_config.effort'")
+          .hasMessageContaining("'anthropic.output_config'");
+    }
+
+    @Test
     void a_pass_through_under_the_cache_control_object_is_refused_beside_the_ttl() {
       InferenceRequest request =
           carrying(

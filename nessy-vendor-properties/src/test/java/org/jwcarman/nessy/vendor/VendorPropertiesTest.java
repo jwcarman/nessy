@@ -287,6 +287,70 @@ class VendorPropertiesTest {
   }
 
   @Nested
+  class Clashes_under_and_above_a_clash_key {
+
+    private final Map<String, String> table =
+        ordered("stream_options", "the adapter, which always asks for usage", "text", "the shape");
+
+    @Test
+    void a_name_under_a_clash_key_is_refused_naming_the_property_and_the_key() {
+      Map<String, String> under = ordered("stream_options.include_obfuscation", "true");
+
+      assertThatThrownBy(() -> VendorProperties.refuseClashes("openai.", under, table))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage(
+              "property 'openai.stream_options.include_obfuscation' sets a field inside"
+                  + " 'openai.stream_options', which the adapter, which always asks for usage"
+                  + " already decides; remove the property");
+    }
+
+    @Test
+    void a_name_above_a_clash_key_is_refused_saying_to_set_the_fields_one_by_one() {
+      Map<String, String> tableBelow = ordered("generationConfig.maxOutputTokens", "the ceiling");
+      Map<String, String> under = ordered("generationConfig", "{\"maxOutputTokens\":10}");
+
+      assertThatThrownBy(() -> VendorProperties.refuseClashes("gemini.", under, tableBelow))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage(
+              "property 'gemini.generationConfig' would replace"
+                  + " 'gemini.generationConfig.maxOutputTokens', which the ceiling already"
+                  + " decides; set the fields one by one");
+    }
+
+    @Test
+    void the_first_refusal_does_not_depend_on_the_order_the_table_was_built_in() {
+      Map<String, String> forward = ordered("a", "first", "b", "second");
+      Map<String, String> backward = ordered("b", "second", "a", "first");
+      Map<String, String> under = ordered("a.x", "1", "b.y", "2");
+
+      assertThatThrownBy(() -> VendorProperties.refuseClashes("v.", under, forward))
+          .hasMessageContaining("'v.a.x'");
+      assertThatThrownBy(() -> VendorProperties.refuseClashes("v.", under, backward))
+          .hasMessageContaining("'v.a.x'");
+    }
+
+    @Test
+    void an_exact_match_still_wins_over_a_nested_one() {
+      Map<String, String> both = ordered("text", "the shape", "text.verbosity", "the verbosity");
+      Map<String, String> under = ordered("text.verbosity", "low");
+
+      assertThatThrownBy(() -> VendorProperties.refuseClashes("openai.", under, both))
+          .hasMessage(
+              "property 'openai.text.verbosity' names what the verbosity already decides;"
+                  + " remove the property");
+    }
+
+    @Test
+    void a_name_that_only_shares_a_leading_word_with_a_clash_key_passes() {
+      Map<String, String> under = ordered("text_format", "x", "stream_options_extra", "y");
+
+      assertThatCode(() -> VendorProperties.refuseClashes("openai.", under, table))
+          .doesNotThrowAnyException();
+      assertThat(under).hasSize(2);
+    }
+  }
+
+  @Nested
   class TypedReads {
 
     @Test

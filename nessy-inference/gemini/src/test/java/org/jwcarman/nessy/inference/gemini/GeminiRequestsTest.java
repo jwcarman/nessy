@@ -563,6 +563,27 @@ class GeminiRequestsTest {
     }
 
     @Test
+    void a_field_inside_the_tool_config_the_engine_decides_is_refused() {
+      InferenceRequest request =
+          carrying(Map.of("gemini.toolConfig.functionCallingConfig.mode", "ANY"));
+
+      assertThatThrownBy(() -> GeminiRequests.toConfig(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'gemini.toolConfig.functionCallingConfig.mode'")
+          .hasMessageContaining("'gemini.toolConfig'");
+    }
+
+    @Test
+    void the_whole_generation_config_would_replace_the_ceiling_and_is_refused() {
+      InferenceRequest request = carrying(Map.of("gemini.generationConfig", "{\"topK\":10}"));
+
+      assertThatThrownBy(() -> GeminiRequests.toConfig(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'gemini.generationConfig' would replace")
+          .hasMessageContaining("set the fields one by one");
+    }
+
+    @Test
     void a_pass_through_under_the_thinking_config_beside_a_known_name_is_refused() {
       InferenceRequest request =
           carrying(Map.of(THINKING + "thinkingBudget", "512", THINKING + "mode", "deep"));

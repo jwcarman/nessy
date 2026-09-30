@@ -108,7 +108,7 @@ final class OpenAiProperties {
     if (own.containsKey(EFFORT)) {
       clashes.put("reasoning_effort", "property '" + PREFIX + EFFORT + "'");
     }
-    VendorProperties.refuseClashes(PREFIX, own, clashes);
+    VendorProperties.refuseClashes(PREFIX, passedThrough(own), clashes);
     if (own.containsKey(SUMMARY)) {
       throw new IllegalArgumentException(
           "property '"
@@ -138,7 +138,7 @@ final class OpenAiProperties {
         }
       }
     }
-    VendorProperties.refuseClashes(PREFIX, own, clashes);
+    VendorProperties.refuseClashes(PREFIX, passedThrough(own), clashes);
     Read read = read(own, mapper);
     if (own.containsKey(STRICT) && !read.strict()) {
       throw new IllegalArgumentException(
@@ -159,10 +159,19 @@ final class OpenAiProperties {
     boolean strict =
         own.containsKey(STRICT)
             && VendorProperties.requireBoolean(PREFIX + STRICT, own.get(STRICT));
+    return new Read(
+        effort,
+        summary,
+        strict,
+        serviceTier,
+        VendorProperties.nest(PREFIX, passedThrough(own), mapper));
+  }
+
+  /** The names this adapter does not parse itself: the ones a clash can be about. */
+  private static Map<String, String> passedThrough(Map<String, String> own) {
     Map<String, String> rest = new LinkedHashMap<>(own);
     rest.keySet().removeAll(KNOWN);
-    return new Read(
-        effort, summary, strict, serviceTier, VendorProperties.nest(PREFIX, rest, mapper));
+    return rest;
   }
 
   /** A provider is one adapter: a provider-level entry under another prefix is a mistake (§6a). */

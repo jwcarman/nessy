@@ -584,6 +584,25 @@ class OpenAiChatRequestsTest {
     }
 
     @Test
+    void a_field_inside_the_stream_options_the_adapter_decides_is_refused() {
+      InferenceRequest request =
+          carrying(Map.of("openai.stream_options.include_obfuscation", "true"));
+
+      assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'openai.stream_options.include_obfuscation'")
+          .hasMessageContaining("'openai.stream_options'");
+    }
+
+    @Test
+    void the_strict_name_under_the_tools_the_harness_binds_is_still_accepted() {
+      ChatCompletionCreateParams params = paramsFor(Map.of("openai.tools.strict", "true"));
+
+      assertThat(params.tools()).isEmpty();
+      assertThat(params._additionalBodyProperties()).isEmpty();
+    }
+
+    @Test
     void the_model_is_the_first_entry_of_the_clash_table() {
       InferenceRequest request = carrying(Map.of("openai.model", "gpt-4o-mini"));
 

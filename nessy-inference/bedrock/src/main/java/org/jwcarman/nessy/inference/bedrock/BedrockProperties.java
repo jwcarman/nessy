@@ -39,6 +39,12 @@ final class BedrockProperties {
 
   private static final Set<String> KNOWN = Set.of(TEMPERATURE, TOP_P, STOP_SEQUENCES);
 
+  /** Why the whole {@code inferenceConfig} object is the adapter's, not a pass-through's. */
+  private static final String INFERENCE_CONFIG =
+      "Converse's typed inference settings (its known names are inferenceConfig.temperature,"
+          + " inferenceConfig.topP and inferenceConfig.stopSequences; a model-specific field goes"
+          + " under 'bedrock.<field>')";
+
   /** What the typed settings, or the adapter itself, already decide (§9e). */
   private static final Map<String, String> CLASHES =
       Map.of(
@@ -46,7 +52,8 @@ final class BedrockProperties {
           "messages", "the conversation the engine assembles",
           "system", "the system prompt the harness sends",
           "toolConfig", "the tools the harness binds",
-          "inferenceConfig.maxTokens", "InferenceConfig.maxTokens");
+          "inferenceConfig.maxTokens", "InferenceConfig.maxTokens",
+          "inferenceConfig", INFERENCE_CONFIG);
 
   private static final Logger log = LoggerFactory.getLogger(BedrockProperties.class);
 
@@ -66,14 +73,14 @@ final class BedrockProperties {
 
   static Read read(Map<String, String> merged, JsonMapper mapper) {
     Map<String, String> own = VendorProperties.under(merged, PREFIX);
-    VendorProperties.refuseClashes(PREFIX, own, CLASHES);
+    Map<String, String> rest = new LinkedHashMap<>(own);
+    rest.keySet().removeAll(KNOWN);
+    VendorProperties.refuseClashes(PREFIX, rest, CLASHES);
     Optional<Float> temperature =
         Optional.ofNullable(own.get(TEMPERATURE)).map(v -> number(TEMPERATURE, v, mapper));
     Optional<Float> topP = Optional.ofNullable(own.get(TOP_P)).map(v -> number(TOP_P, v, mapper));
     Optional<List<String>> stop =
         Optional.ofNullable(own.get(STOP_SEQUENCES)).map(v -> strings(STOP_SEQUENCES, v, mapper));
-    Map<String, String> rest = new LinkedHashMap<>(own);
-    rest.keySet().removeAll(KNOWN);
     return new Read(temperature, topP, stop, VendorProperties.nest(PREFIX, rest, mapper));
   }
 

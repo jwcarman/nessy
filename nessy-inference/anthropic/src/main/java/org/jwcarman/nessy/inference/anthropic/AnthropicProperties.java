@@ -87,7 +87,9 @@ final class AnthropicProperties {
     Map<String, String> clashes = new LinkedHashMap<>(CLASHES);
     claimRoot(own, clashes, "thinking", THINKING_TYPE, THINKING_BUDGET);
     claimRoot(own, clashes, "cache_control", CACHE_TTL);
-    VendorProperties.refuseClashes(PREFIX, own, clashes);
+    Map<String, String> rest = new LinkedHashMap<>(own);
+    rest.keySet().removeAll(KNOWN);
+    VendorProperties.refuseClashes(PREFIX, rest, clashes);
 
     OptionalInt budget =
         own.containsKey(THINKING_BUDGET)
@@ -110,8 +112,6 @@ final class AnthropicProperties {
               + THINKING_BUDGET
               + "' is not set; the vendor requires a budget for enabled thinking");
     }
-    Map<String, String> rest = new LinkedHashMap<>(own);
-    rest.keySet().removeAll(KNOWN);
     return new Read(
         thinking.filter(value -> !DISABLED.equals(value)),
         budget,

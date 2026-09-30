@@ -647,6 +647,16 @@ class OpenAiResponsesRequestsTest {
     }
 
     @Test
+    void a_field_inside_the_text_object_the_harness_decides_is_refused() {
+      InferenceRequest request = carrying(Map.of("openai.text.verbosity", "low"));
+
+      assertThatThrownBy(() -> OpenAiResponsesRequests.toParams(request, VENDOR, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'openai.text.verbosity'")
+          .hasMessageContaining("'openai.text'");
+    }
+
+    @Test
     void a_reasoning_pass_through_alone_is_sent() {
       Map<String, Object> body =
           sent(

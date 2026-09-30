@@ -500,6 +500,18 @@ class BedrockRequestsTest {
           .hasMessageContaining("InferenceConfig.maxTokens");
     }
 
+    @Test
+    void
+        an_inference_config_field_that_is_not_a_known_name_is_refused_pointing_at_the_alternative() {
+      InferenceRequest request = carrying(Map.of("bedrock.inferenceConfig.topK", "5"));
+
+      assertThatThrownBy(() -> BedrockRequests.toRequest(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'bedrock.inferenceConfig.topK'")
+          .hasMessageContaining("inferenceConfig.temperature")
+          .hasMessageContaining("bedrock.<field>");
+    }
+
     @ParameterizedTest
     @CsvSource({
       "modelId,InferenceConfig.model",
