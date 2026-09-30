@@ -17,6 +17,10 @@ package org.jwcarman.nessy.spring.boot.inference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import io.micrometer.observation.ObservationRegistry;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -28,6 +32,7 @@ import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.FilteredClassLoader;
@@ -517,18 +522,25 @@ class InferenceProvidersAutoConfigurationTest {
     }
 
     @Test
-    void a_clash_fails_startup_naming_the_property_and_the_typed_setting() {
-      runner
-          .withPropertyValues(
-              "openai.api-key=sk-test", "nessy.providers.openai.properties.openai.model=gpt-4o")
-          .run(
-              context -> {
-                assertThat(context).hasFailed();
-                assertThat(context.getStartupFailure())
-                    .rootCause()
-                    .hasMessageContaining("'openai.model'")
-                    .hasMessageContaining("InferenceConfig.model");
-              });
+    void an_unsupported_property_does_not_fail_startup_and_is_warned_once() {
+      Logger logger = (Logger) LoggerFactory.getLogger("org.jwcarman.nessy.inference.openai");
+      ListAppender<ILoggingEvent> appender = new ListAppender<>();
+      appender.start();
+      logger.addAppender(appender);
+      try {
+        runner
+            .withPropertyValues(
+                "openai.api-key=sk-test", "nessy.providers.openai.properties.openai.model=gpt-4o")
+            .run(context -> assertThat(context).hasNotFailed());
+      } finally {
+        logger.detachAppender(appender);
+      }
+
+      assertThat(appender.list)
+          .filteredOn(event -> event.getLevel() == Level.WARN)
+          .extracting(ILoggingEvent::getFormattedMessage)
+          .filteredOn(message -> message.contains("'openai.model'"))
+          .hasSize(1);
     }
 
     @Test

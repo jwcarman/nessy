@@ -110,11 +110,11 @@ class WireProvidersTest {
   void the_chat_wire_hands_its_properties_to_the_adapter() {
     ResolvedProvider resolved =
         new ResolvedProvider(
-            "openai", Wire.OPENAI_CHAT, null, "openai", "k", Map.of("openai.model", "gpt-4o"));
+            "openai", Wire.OPENAI_CHAT, null, "openai", "k", Map.of("openai.tools.strict", "yes"));
 
     assertThatThrownBy(() -> WireProviders.build(resolved, null, LOADER))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("'openai.model'");
+        .hasMessageContaining("'openai.tools.strict'");
   }
 
   @Test
@@ -126,11 +126,11 @@ class WireProvidersTest {
             "https://g/v1",
             "openai",
             "k",
-            Map.of("openai.store", "true"));
+            Map.of("openai.tools.strict", "false"));
 
     assertThatThrownBy(() -> WireProviders.build(resolved, null, LOADER))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("'openai.store'");
+        .hasMessageContaining("'openai.tools.strict'");
   }
 
   @Test
@@ -142,21 +142,26 @@ class WireProvidersTest {
             null,
             "anthropic",
             "k",
-            Map.of("anthropic.max_tokens", "9"));
+            Map.of("anthropic.thinking.budget_tokens", "lots"));
 
     assertThatThrownBy(() -> WireProviders.build(resolved, null, LOADER))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("'anthropic.max_tokens'");
+        .hasMessageContaining("'anthropic.thinking.budget_tokens'");
   }
 
   @Test
   void the_gemini_wire_hands_its_properties_to_the_adapter() {
     ResolvedProvider resolved =
         new ResolvedProvider(
-            "gemini", Wire.GEMINI, null, "gcp.gemini", "k", Map.of("gemini.contents", "[]"));
+            "gemini",
+            Wire.GEMINI,
+            null,
+            "gcp.gemini",
+            "k",
+            Map.of("gemini.generationConfig.thinkingConfig.thinkingBudget", "lots"));
 
     assertThatThrownBy(() -> WireProviders.build(resolved, null, LOADER))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("'gemini.contents'");
+        .hasMessageContaining("'gemini.generationConfig.thinkingConfig.thinkingBudget'");
   }
 }

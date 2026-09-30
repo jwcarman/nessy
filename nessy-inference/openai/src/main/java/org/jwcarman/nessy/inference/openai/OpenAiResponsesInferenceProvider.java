@@ -127,8 +127,9 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
   }
 
   /**
-   * Reads the merged properties exactly as a request would, so a clash, a bad value or {@code
-   * openai.tools.strict=false} fails the harness build rather than its first turn (spec §7c).
+   * Reads the merged properties exactly as a request would, so a bad value or {@code
+   * openai.tools.strict=false} fails the harness build rather than its first turn (spec §7c), and
+   * says once which names it does not support and will ignore.
    */
   @Override
   public void validate(InferenceOptions options) {
