@@ -69,7 +69,13 @@ final class EmbedderCatalogue {
         urls.add(property.apply("openai.base-url"));
       }
       urls.add(preset.baseUrl());
-      Map<String, String> properties = new LinkedHashMap<>(preset.defaultProperties());
+      // The preset's defaults belong to the wire the preset ships with; an application that moved
+      // the embedder to another wire starts clean, and its own properties overlay name by name
+      // (spec section 7).
+      Map<String, String> properties = new LinkedHashMap<>();
+      if (own.wire() == null || own.wire() == preset.wire()) {
+        properties.putAll(preset.defaultProperties());
+      }
       if (own.properties() != null) {
         properties.putAll(own.properties());
       }
