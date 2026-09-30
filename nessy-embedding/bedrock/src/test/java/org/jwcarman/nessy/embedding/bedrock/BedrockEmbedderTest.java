@@ -29,8 +29,10 @@ import java.util.function.Function;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.embedding.Embedder;
+import org.jwcarman.nessy.api.embedding.EmbedderConfig;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
@@ -189,23 +191,23 @@ class BedrockEmbedderTest {
   class Configuration {
 
     /**
-     * Refused when it is used, which is when the model is known.
-     *
-     * <p>It used to be refused when the embedder was built, because the model was fixed then. A
-     * provider holds a connection and is told the model per call, so this is the first moment
-     * anything can say the family is not one Bedrock embeds with. Later than it was, and still
-     * before anything reaches the wire.
+     * Refused when the embedder is built: the factory asks the provider to validate its terms, and
+     * the model -- so the family -- is known then. Nothing reaches the wire.
      */
     @Test
-    void a_model_of_an_unknown_family_is_refused_when_it_is_used() {
+    void a_model_of_an_unknown_family_is_refused_when_the_embedder_is_built() {
       Scripted client = new Scripted(body -> "{}");
-      Embedder embedder = embedder(client, "meta.llama3-8b", OptionalInt.empty());
-      List<String> texts = List.of("a");
+      BedrockEmbeddingProvider provider =
+          new BedrockEmbeddingProvider(client, "search_document", MAPPER);
+      DefaultEmbedderFactory factory =
+          DefaultEmbedderFactory.of(f -> f.provider(BEDROCK, provider));
+      Customizer<EmbedderConfig> llama = c -> c.provider(BEDROCK).model("meta.llama3-8b");
 
-      assertThatThrownBy(() -> embedder.embedDocuments(texts))
+      assertThatThrownBy(() -> factory.create(llama))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("Titan")
           .hasMessageContaining("Cohere");
+      assertThat(client.sent).isEmpty();
     }
 
     @Test

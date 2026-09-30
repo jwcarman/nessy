@@ -96,9 +96,13 @@ public final class BedrockEmbeddingProvider implements EmbeddingProvider, AutoCl
     return "aws.bedrock";
   }
 
-  /** Says once which of an embedder's properties are ignored: none is supported yet. */
+  /**
+   * Refuses, before anything reaches the wire, a model of neither family this adapter speaks, and
+   * says once which of an embedder's properties are ignored: none is supported yet.
+   */
   @Override
   public void validate(EmbeddingOptions options) {
+    Family.of(options.modelName());
     BedrockEmbedderConfig.warnUnsupported(options.properties());
   }
 
