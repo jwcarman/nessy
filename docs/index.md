@@ -146,7 +146,6 @@ See [Authorization](concepts/authorization.md).
 | `nessy-planning` | agents that write a plan and work through it |
 | `nessy-narration-odyssey` | events as resumable streams, for a browser |
 | `nessy-approval-risk` | the risk gate: two thresholds with a person in between |
-| `nessy-approval-intent` | the declared-intent claim channel |
 | `nessy-approval-policy`, `nessy-approval-policy-opa` | deciding a call by policy; asking Open Policy Agent |
 | `nessy-tool-mcp` | agents that call MCP servers |
 

@@ -187,7 +187,6 @@ add `nessy-inference-spi`; an application building an agent depends on
 | `nessy-planning` | the Planning pattern: a plan an agent writes and works through across turns |
 | `nessy-narration-odyssey` | agent events as resumable streams, for a browser |
 | `nessy-approval-risk` | the risk gate: two thresholds with a person in between |
-| `nessy-approval-intent` | the declared-intent claim channel |
 | `nessy-approval-policy` | deciding a tool call by policy: approve, deny, or delegate |
 | `nessy-approval-policy-opa` | an engine backed by Open Policy Agent |
 | `nessy-tool-mcp` | importing a remote MCP server's tools |
@@ -201,7 +200,6 @@ add `nessy-inference-spi`; an application building an agent depends on
 | Tools: structured calls, typed inputs, and deferring to the world | [Tools](https://jwcarman.github.io/nessy/concepts/tools/) |
 | Authorization: approvers, reply tokens, and describing what a person is consenting to | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/) |
 | Risk: an assessment over the NIST SP 800-30 matrix, and two thresholds with a person in between | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/#gating-on-risk) |
-| Intent: the claim channel a model states and an approver may trust | [Intent](https://jwcarman.github.io/nessy/concepts/intent/) |
 | Memory: summaries, the tail and ambient, and a head summariser that runs itself | [Memory](https://jwcarman.github.io/nessy/concepts/memory/) |
 | Planning: a plan the model holds, and the family of patterns to come | [Planning](https://jwcarman.github.io/nessy/concepts/planning/) |
 | Storage: a table per thing, a codec seam for encryption, every model call on record | [Storage](https://jwcarman.github.io/nessy/concepts/storage/) |

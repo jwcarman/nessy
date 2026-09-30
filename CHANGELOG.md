@@ -104,6 +104,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+- **`nessy-approval-intent` is removed**, with `Intent`, `Intents`,
+  `JdbcIntents`, `IntentTool`, `IntentEnricher`, `IntentPolicy` and the
+  `nessy_intent` table.
 - **`Embedder.dimension()` returns `Optional<Dimension>`,** not `int` (0 for
   not learned yet): empty until the first reply when no width was asked for.
   `Embedding.dimension()`, a vector's length, stays `int`.

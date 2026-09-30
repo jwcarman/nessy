@@ -171,11 +171,6 @@
             </dependency>
             <dependency>
                 <groupId>org.jwcarman.nessy</groupId>
-                <artifactId>nessy-approval-intent</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.jwcarman.nessy</groupId>
                 <artifactId>nessy-approval-policy</artifactId>
                 <version>${project.version}</version>
             </dependency>

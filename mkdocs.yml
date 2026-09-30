@@ -84,7 +84,6 @@ nav:
       - Cost: concepts/cost.md
       - Tools: concepts/tools.md
       - Authorization: concepts/authorization.md
-      - Intent: concepts/intent.md
       - Memory: concepts/memory.md
       - Planning: concepts/planning.md
       - Outcomes: concepts/outcomes.md

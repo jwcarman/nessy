@@ -126,11 +126,10 @@ public record ApprovalRequest(
    * enricher can chain.
    *
    * <p><b>Namespace the name</b> when the enricher is not the application's own code -- {@code
-   * "risk.score"}, {@code "quota.remaining"}, {@code "intent.declared"} -- so two modules
-   * annotating the same question cannot collide. Names rather than typed keys on purpose: a typed
-   * bag would make this package own a vocabulary of facts, which is exactly the thing it is trying
-   * not to own. The two sides agree by convention, and a module publishes its convention as a
-   * constant.
+   * "risk.score"}, {@code "quota.remaining"}, {@code "policy.term"} -- so two modules annotating
+   * the same question cannot collide. Names rather than typed keys on purpose: a typed bag would
+   * make this package own a vocabulary of facts, which is exactly the thing it is trying not to
+   * own. The two sides agree by convention, and a module publishes its convention as a constant.
    *
    * <p>A tree rather than text, unlike every other JSON on this API. The rule is what anybody does
    * with it: a schema and a call's arguments are only ever <em>moved</em> -- generated once, handed

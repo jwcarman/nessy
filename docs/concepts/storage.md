@@ -12,12 +12,12 @@ it is read, and there is no abstraction between the engine and its SQL.
 | Work offered to a busy agent, waiting its turn (queued door only) | `nessy_agent_backlog` | until it is claimed or coalesced away |
 | One rolling summary per agent | `nessy_summary` | replaced as the story grows |
 | Episodes, each with its summary and the summary's embedding | `nessy_episode` | forever, unless you prune it |
-| Notes, plan tasks, declared intent | `nessy_note`, `nessy_plan_task`, `nessy_intent` | as their modules decide |
+| Notes and plan tasks | `nessy_note`, `nessy_plan_task` | as their modules decide |
 | Background work claimed once, see [Leases](leases.md) | `nessy_lease` | its TTL |
 
 Every module that needs a table ships it in its own `nessy-schema.sql`; the
-first six come from `nessy-backend-jdbc`, the rest from `nessy-memory-*`,
-`nessy-planning` and `nessy-approval-intent`.
+first six come from `nessy-backend-jdbc`, the rest from `nessy-memory-*`
+and `nessy-planning`.
 
 ## PostgreSQL, and only PostgreSQL
 

@@ -86,8 +86,7 @@ this split exists to prevent: nobody can consent to
 
 **Something richer than a string?** Put it in `facts`. It is the channel
 for structured evidence a policy deposits or reads: the risk gate writes its
-assessment there, an intent enricher writes the model's declaration there,
-and a delegating policy writes the term it decided on there. An
+assessment there, and a delegating policy writes the term it decided on there. An
 `ApprovalEnricher` on the binding adds facts before any approver sees the
 request.
 
@@ -309,5 +308,4 @@ gets a `409`, because losing a race to another person is not an error.
 ## See also
 
 - [Tools](tools.md), `Awaited`, and how a tool defers
-- [Intent](intent.md), the claim channel an approver may weigh
 - [Durable Computation](durable-computation.md), reply tokens and deadlines
