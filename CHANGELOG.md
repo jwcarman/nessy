@@ -30,6 +30,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   another adapter's prefix is logged at `DEBUG`. Every provider config and
   `EmbedderConfig` take properties too, though no embedding adapter supports
   one yet.
+- **Typed vendor properties.** `VendorProperty<T>` in `nessy-api` declares a
+  property's name and type once (`ofInteger`, `ofBoolean`, `ofFloat`,
+  `ofStrings`, `ofEnum`), and `property(VendorProperty<T>, T)` on
+  `InferenceConfig`, `EmbedderConfig` and each provider config sets it in
+  code, stored as the same text the by-name form carries. Each inference
+  adapter publishes its constants and a `SUPPORTED` list
+  (`OpenAiProperties`, `AnthropicProperties`, `GeminiProperties`,
+  `BedrockProperties`), and every fixed value set is an enum:
+  `OpenAiReasoningEffort`, `OpenAiReasoningSummary`, `OpenAiServiceTier`,
+  `AnthropicThinkingType`, `AnthropicCacheTtl`, `AnthropicServiceTier` and
+  `GeminiThinkingLevel`. A value outside an enum fails at build listing the
+  spellings; `openai.service_tier=ultrafast` is carried by the Responses
+  wire only, and the chat wire refuses it at build. Boot binding is
+  unchanged: YAML values are still text.
 - **`InferenceProvider.validate(InferenceOptions)`** and
   **`EmbeddingProvider.validate(EmbeddingOptions)`**, default no-ops, which
   the factories call when a harness or embedder is built.

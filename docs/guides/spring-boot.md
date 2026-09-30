@@ -119,6 +119,11 @@ nessy:
         anthropic.thinking.budget_tokens: "8192"
 ```
 
+Each value is read as the adapter's typed property
+([`OpenAiProperties`, `AnthropicProperties` and the rest](providers.md#vendor-properties)):
+a value outside a property's fixed set fails at startup listing the accepted
+spellings.
+
 They are best set in a configuration file. An environment variable cannot
 name a property whose name contains an underscore or a capital letter
 (`anthropic.thinking.budget_tokens`,

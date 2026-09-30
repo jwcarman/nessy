@@ -114,29 +114,50 @@ types that want the same provider configured differently share one provider.
 
 ## Vendor properties
 
-An agent type carries string-named, string-valued properties that the
-adapter answering it reads:
+An agent type carries named properties that the adapter answering it reads.
+Each adapter declares the properties it supports as typed constants, and code
+sets them with a value of the property's type:
 
 ```java
 config.inference(in -> in
         .provider("openai")
         .model("gpt-6-sol")
-        .property("openai.reasoning.effort", "high")
-        .property("anthropic.thinking.budget_tokens", "8192"));
+        .property(OpenAiProperties.REASONING_EFFORT, OpenAiReasoningEffort.HIGH)
+        .property(AnthropicProperties.THINKING_BUDGET, 8192));
 ```
+
+The same settings in YAML, where every value is text:
+
+```yaml
+nessy:
+  providers:
+    openai:
+      properties:
+        openai.reasoning.effort: high
+```
+
+or by name in code, `.property("openai.reasoning.effort", "high")`. A typed
+property is stored as the text its constant writes it as, so the two forms
+are one map entry. `InferenceConfig`, `EmbedderConfig` and each provider
+config take both.
 
 Each adapter owns a prefix -- `openai.` (both OpenAI adapters, whatever
 vendor they report), `anthropic.`, `gemini.`, `bedrock.` -- and supports
 exactly the names listed for it below. Properties are fixed when the harness
 is built, sent with every request, and never written to the event log.
 
-- **A supported name is parsed** into the SDK's typed field, and a value of
-  the wrong type fails the build naming the property and the value
+- **A supported name is parsed** into its constant's type, and a value that
+  does not parse fails the build naming the property and the value
   (`property 'anthropic.thinking.budget_tokens' must be an integer, was
-  'lots'`). The adapter checks the type, never the vocabulary: an effort
-  level OpenAI adds tomorrow works today. A supported name the wire cannot
-  carry (`openai.reasoning.summary` on the chat wire, `openai.tools.strict=false`
-  on the Responses wire) also fails the build.
+  'lots'`). A property with a fixed set of values is an enum, and a value
+  outside it fails the build listing the spellings (`property
+  'openai.reasoning.effort' must be one of [none, minimal, low, medium, high,
+  xhigh, max], was 'extreme'`). The enums are the value sets of the pinned
+  vendor SDKs, so a value a vendor adds later needs a Nessy release before it
+  can be set. A supported name the wire cannot carry
+  (`openai.reasoning.summary` on the chat wire, `openai.tools.strict=false` on
+  the Responses wire, `openai.service_tier=ultrafast` on the chat wire) also
+  fails the build.
 - **Any other name under the adapter's own prefix is ignored.** It is not
   sent, it fails nothing, and the request goes out without it. The adapter
   logs a warning naming the property and the names it supports, once per
@@ -158,12 +179,15 @@ under another adapter's prefix fails when the provider is built.
 
 ### OpenAI
 
-| name | type | chat wire | Responses wire |
-|---|---|---|---|
-| `openai.reasoning.effort` | string | `reasoning_effort` | `reasoning.effort` |
-| `openai.reasoning.summary` | string | refused: the wire has no summary | `reasoning.summary`, narrated as thinking |
-| `openai.tools.strict` | boolean | `true` sends every function tool strict over a rewritten schema | sent strict regardless; `false` is refused |
-| `openai.service_tier` | string | `service_tier` | `service_tier` |
+`OpenAiProperties` holds the constants and `SUPPORTED`, the list the warning
+prints.
+
+| name | constant | accepts | chat wire | Responses wire |
+|---|---|---|---|---|
+| `openai.reasoning.effort` | `REASONING_EFFORT` | `OpenAiReasoningEffort`: `none` `minimal` `low` `medium` `high` `xhigh` `max` | `reasoning_effort` | `reasoning.effort` |
+| `openai.reasoning.summary` | `REASONING_SUMMARY` | `OpenAiReasoningSummary`: `auto` `concise` `detailed` | refused: the wire has no summary | `reasoning.summary`, narrated as thinking |
+| `openai.tools.strict` | `TOOLS_STRICT` | `true` or `false` | `true` sends every function tool strict over a rewritten schema | sent strict regardless; `false` is refused |
+| `openai.service_tier` | `SERVICE_TIER` | `OpenAiServiceTier`: `auto` `default` `flex` `scale` `priority` `fast` `ultrafast` | `service_tier`; `ultrafast` is refused | `service_tier` |
 
 The Responses wire's `reasoning` object is sent only when one of the two
 reasoning names is set: it is a 400 on a model that does not reason.
@@ -175,31 +199,37 @@ keyword; the other tools stay strict.
 
 ### Anthropic
 
-| name | type | lands in |
-|---|---|---|
-| `anthropic.thinking.type` | string | `enabled` (needs a budget); `adaptive`; `disabled` sends no thinking; any other value is refused at build |
-| `anthropic.thinking.budget_tokens` | integer | the thinking budget; alone, it turns thinking on. Must be below the agent type's `maxTokens` |
-| `anthropic.cache_control.ttl` | string | the cache markers on the system prompt and the tools: `5m` or `1h`; another value is sent as written |
-| `anthropic.service_tier` | string | `service_tier` |
+`AnthropicProperties` holds the constants and `SUPPORTED`.
+
+| name | constant | accepts | lands in |
+|---|---|---|---|
+| `anthropic.thinking.type` | `THINKING_TYPE` | `AnthropicThinkingType`: `enabled` `disabled` `adaptive` | `enabled` needs a budget; `adaptive`; `disabled` sends no thinking |
+| `anthropic.thinking.budget_tokens` | `THINKING_BUDGET` | an integer | the thinking budget; alone, it turns thinking on. Must be below the agent type's `maxTokens` |
+| `anthropic.cache_control.ttl` | `CACHE_TTL` | `AnthropicCacheTtl`: `5m` (`FIVE_MINUTES`) `1h` (`ONE_HOUR`) | the cache markers on the system prompt and the tools |
+| `anthropic.service_tier` | `SERVICE_TIER` | `AnthropicServiceTier`: `auto` `standard_only` | `service_tier` |
 
 `anthropic.thinking.type=enabled` without a budget is refused, and so is a
 budget that is not below the agent type's `maxTokens`, at harness build.
 
 ### Gemini
 
-| name | type | lands in |
-|---|---|---|
-| `gemini.generationConfig.thinkingConfig.thinkingBudget` | integer | the SDK's `ThinkingConfig` |
-| `gemini.generationConfig.thinkingConfig.includeThoughts` | boolean | the same; thought summaries are then narrated as thinking |
-| `gemini.generationConfig.thinkingConfig.thinkingLevel` | string | the same |
+`GeminiProperties` holds the constants and `SUPPORTED`.
+
+| name | constant | accepts | lands in |
+|---|---|---|---|
+| `gemini.generationConfig.thinkingConfig.thinkingBudget` | `THINKING_BUDGET` | an integer | the SDK's `ThinkingConfig` |
+| `gemini.generationConfig.thinkingConfig.includeThoughts` | `INCLUDE_THOUGHTS` | `true` or `false` | the same; thought summaries are then narrated as thinking |
+| `gemini.generationConfig.thinkingConfig.thinkingLevel` | `THINKING_LEVEL` | `GeminiThinkingLevel`: `minimal` `low` `medium` `high` | the same |
 
 ### Bedrock
 
-| name | type | lands in |
-|---|---|---|
-| `bedrock.inferenceConfig.temperature` | number | Converse's typed inference config |
-| `bedrock.inferenceConfig.topP` | number | the same |
-| `bedrock.inferenceConfig.stopSequences` | JSON array of strings | the same |
+`BedrockProperties` holds the constants and `SUPPORTED`.
+
+| name | constant | accepts | lands in |
+|---|---|---|---|
+| `bedrock.inferenceConfig.temperature` | `TEMPERATURE` | a finite number (`Float`) | Converse's typed inference config |
+| `bedrock.inferenceConfig.topP` | `TOP_P` | a finite number (`Float`) | the same |
+| `bedrock.inferenceConfig.stopSequences` | `STOP_SEQUENCES` | a JSON array of strings (`List<String>`) | the same |
 
 Every other `bedrock.` name is unsupported, Claude's extended thinking on
 Bedrock (`bedrock.thinking.*`) included.
@@ -261,7 +291,8 @@ tool list as cacheable.
 The same three settings are vendor properties:
 `anthropic.thinking.type=enabled` and `anthropic.thinking.budget_tokens`
 for `thinking(true)` and `thinkingBudget(...)`, `anthropic.cache_control.ttl`
-(`5m`, `1h`) for `promptCaching(...)`. A setter is a provider-level default,
+(`5m`, `1h`) for `promptCaching(...)`. The constants are `THINKING_TYPE`,
+`THINKING_BUDGET` and `CACHE_TTL` on `AnthropicProperties`. A setter is a provider-level default,
 at the same level as a provider property: setting both for one field on one
 provider fails at build, naming both. `thinking(false)` beside a budget
 property fails the same way, as does `thinkingBudget(...)` without
@@ -590,12 +621,14 @@ public interface InferenceProvider {
   processed, `Permanent` otherwise, and never `Rejected`, which is the one
   classification that authorises dropping something a person said. Let a
   bug in the adapter escape rather than recording it as the model's fault.
-- Own a prefix and read vendor properties through `VendorProperties`
-  (`nessy-vendor-properties`): merge the provider's map under
-  `request.options().properties()`, take the entries `under` your prefix,
-  and parse your supported names with `requireInteger` / `requireBoolean` /
-  `requireString` (or `literal` for a number or an array). Send only what you
-  parsed; log a warning, once per name, for every other name under your
+- Own a prefix and declare your supported properties as `VendorProperty`
+  constants (`nessy-api`): `ofInteger`, `ofBoolean`, `ofFloat`, `ofStrings`,
+  or `ofEnum` for a fixed value set, each carrying the full prefixed name.
+  Read them through `VendorProperties` (`nessy-vendor-properties`): merge the
+  provider's map under `request.options().properties()`, take the entries
+  `under` your prefix, and read each constant with `in(merged)`. Publish the
+  constants and a `SUPPORTED` list, as the four inference adapters do. Send
+  only what you parsed; log a warning, once per name, for every other name under your
   prefix. Override `InferenceProvider.validate(InferenceOptions)` to run the
   same reading, so a mistake fails the harness build rather than its first
   turn.
