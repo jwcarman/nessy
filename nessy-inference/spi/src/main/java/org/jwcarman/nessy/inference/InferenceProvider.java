@@ -50,6 +50,17 @@ public interface InferenceProvider {
    */
   InferenceResult infer(InferenceRequest request, InferenceNarrator narrator);
 
+  /**
+   * Refuses terms this provider cannot honour, before a harness is built on them: a property that
+   * clashes with a typed setting, a known name with a value of the wrong type, a known name this
+   * wire cannot carry. The default accepts everything, which is right for a provider that reads no
+   * properties.
+   *
+   * @throws IllegalArgumentException naming the property, which the engine re-throws prefixed by
+   *     the agent type
+   */
+  default void validate(InferenceOptions options) {}
+
   /** For a provider with nothing to stream, and for a caller with nobody watching. */
   default InferenceResult infer(InferenceRequest request) {
     return infer(request, InferenceNarrator.silent());

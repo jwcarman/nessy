@@ -19,11 +19,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.micrometer.observation.ObservationRegistry;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
+import org.jwcarman.nessy.inference.InferenceNarrator;
+import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceResult;
 
 class ProviderRegistryTest {
 
@@ -92,5 +99,34 @@ class ProviderRegistryTest {
     registry.register(OPENAI, openai);
 
     assertThat(registry.ids()).containsExactly(XAI, OPENAI);
+  }
+
+  /** Remembers what it was asked to validate. */
+  private static final class Validating implements InferenceProvider {
+    final List<InferenceOptions> validated = new ArrayList<>();
+
+    @Override
+    public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
+      return null;
+    }
+
+    @Override
+    public void validate(InferenceOptions options) {
+      validated.add(options);
+    }
+  }
+
+  @Test
+  void validate_reaches_the_provider_through_its_observer() {
+    Validating validating = new Validating();
+    ProviderRegistry registry = new ProviderRegistry();
+    registry.register(OPENAI, validating);
+    InferenceProvider observed = registry.observed(ObservationRegistry.NOOP).resolve(CHAT, OPENAI);
+    InferenceOptions options = new InferenceOptions("m", 10, Map.of("openai.seed", "7"));
+
+    observed.validate(options);
+
+    assertThat(observed).isInstanceOf(ObservedInferenceProvider.class);
+    assertThat(validating.validated).containsExactly(options);
   }
 }

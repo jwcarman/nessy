@@ -15,6 +15,9 @@
  */
 package org.jwcarman.nessy.embedding;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalInt;
 
@@ -28,8 +31,11 @@ import java.util.OptionalInt;
  * @param modelName the embedding model, which a store is then keyed on
  * @param dimension how many coordinates to ask for, where the vendor allows fewer than the model's
  *     own; empty for the model's
+ * @param properties vendor-prefixed settings ({@code voyage.truncation}); read by the embedding
+ *     adapters from the named-embedders item on, carried and ignored until then
  */
-public record EmbeddingOptions(String modelName, OptionalInt dimension) {
+public record EmbeddingOptions(
+    String modelName, OptionalInt dimension, Map<String, String> properties) {
 
   public EmbeddingOptions {
     Objects.requireNonNull(modelName, "modelName must not be null");
@@ -37,10 +43,40 @@ public record EmbeddingOptions(String modelName, OptionalInt dimension) {
       throw new IllegalArgumentException("modelName must not be blank");
     }
     Objects.requireNonNull(dimension, "dimension must not be null");
+    properties = copyOf(properties);
+  }
+
+  /** No properties. */
+  public EmbeddingOptions(String modelName, OptionalInt dimension) {
+    this(modelName, dimension, Map.of());
   }
 
   /** The model's own width. */
   public static EmbeddingOptions of(String modelName) {
     return new EmbeddingOptions(modelName, OptionalInt.empty());
+  }
+
+  /** Names only: a property's value may be sensitive, and this is what a log line prints. */
+  @Override
+  public String toString() {
+    return "EmbeddingOptions[modelName="
+        + modelName
+        + ", dimension="
+        + dimension
+        + ", properties="
+        + properties.keySet()
+        + "]";
+  }
+
+  /** In the order given, which {@code Map.copyOf} would not keep. */
+  private static Map<String, String> copyOf(Map<String, String> properties) {
+    Objects.requireNonNull(properties, "properties must not be null");
+    Map<String, String> copy = new LinkedHashMap<>();
+    properties.forEach(
+        (name, value) ->
+            copy.put(
+                Objects.requireNonNull(name, "a property name must not be null"),
+                Objects.requireNonNull(value, () -> "property '" + name + "' has no value")));
+    return Collections.unmodifiableMap(copy);
   }
 }

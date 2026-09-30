@@ -25,6 +25,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceNarrator;
+import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
@@ -82,6 +83,12 @@ public final class ObservedInferenceProvider implements InferenceProvider {
   @Override
   public String vendor() {
     return delegate.vendor();
+  }
+
+  /** Not observed: nothing is called, and a refusal is the build's failure, not a span's. */
+  @Override
+  public void validate(InferenceOptions options) {
+    delegate.validate(options);
   }
 
   @Override

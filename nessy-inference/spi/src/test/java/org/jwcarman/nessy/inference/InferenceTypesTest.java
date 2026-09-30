@@ -18,7 +18,9 @@ package org.jwcarman.nessy.inference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.JsonSchema;
@@ -56,5 +58,33 @@ class InferenceTypesTest {
     assertThat(bare.hasSummaries()).isFalse();
     assertThat(summarised.hasSummaries()).isTrue();
     assertThat(new Failure.Rejected("too long").reason()).isEqualTo("too long");
+  }
+
+  @Test
+  void options_carry_properties_in_the_order_given_and_two_arguments_carry_none() {
+    Map<String, String> given = new LinkedHashMap<>();
+    given.put("openai.seed", "1");
+    given.put("anthropic.top_k", "5");
+
+    InferenceOptions options = new InferenceOptions("m", 10, given);
+    given.put("openai.store", "false");
+
+    assertThat(options.properties())
+        .containsExactly(Map.entry("openai.seed", "1"), Map.entry("anthropic.top_k", "5"));
+    assertThat(new InferenceOptions("m", 10).properties()).isEmpty();
+    assertThat(InferenceOptions.of("m").properties()).isEmpty();
+    assertThat(new InferenceOptions("m", 10)).isEqualTo(new InferenceOptions("m", 10, Map.of()));
+  }
+
+  @Test
+  void options_refuse_a_null_property_value_and_never_print_one() {
+    Map<String, String> nullValue = new LinkedHashMap<>();
+    nullValue.put("openai.user", null);
+    InferenceOptions options = new InferenceOptions("m", 10, Map.of("openai.user", "tenant-42"));
+
+    assertThatThrownBy(() -> new InferenceOptions("m", 10, nullValue))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("openai.user");
+    assertThat(options.toString()).contains("openai.user").doesNotContain("tenant-42");
   }
 }

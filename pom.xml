@@ -60,6 +60,7 @@
     <module>nessy-bom</module>
     
     <module>nessy-api</module>
+    <module>nessy-vendor-properties</module>
     <module>nessy-backend</module>
     <module>nessy-engine</module>
     <module>nessy-prompt</module>
@@ -378,6 +379,11 @@
         <version>${awssdk.version}</version>
         <type>pom</type>
         <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.nessy</groupId>
+        <artifactId>nessy-vendor-properties</artifactId>
+        <version>${project.version}</version>
       </dependency>
       <dependency>
         <groupId>org.jwcarman.nessy</groupId>

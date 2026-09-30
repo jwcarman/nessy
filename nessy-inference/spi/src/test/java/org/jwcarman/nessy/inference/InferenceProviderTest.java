@@ -18,6 +18,7 @@ package org.jwcarman.nessy.inference;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.block.Block;
 
@@ -81,5 +82,16 @@ class InferenceProviderTest {
   @Test
   void a_request_without_a_narrator_is_the_same_call() {
     assertThat(new LocalProvider().infer(null)).isEqualTo(ANSWER);
+  }
+
+  /** A provider that reads no properties accepts every set of terms. */
+  @Test
+  void the_default_validate_accepts_everything() {
+    InferenceProvider provider = (request, narrator) -> null;
+    InferenceOptions options = new InferenceOptions("m", 10, Map.of("anything.at", "all"));
+
+    provider.validate(options);
+
+    assertThat(options.properties()).containsKey("anything.at");
   }
 }

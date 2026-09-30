@@ -42,6 +42,14 @@ public interface EmbeddingProvider {
   Embedding embedQuery(String query, EmbeddingOptions options);
 
   /**
+   * Refuses terms this provider cannot honour, before an embedder is built on them. The default
+   * accepts everything, which is right for a provider that reads no properties.
+   *
+   * @throws IllegalArgumentException naming the property
+   */
+  default void validate(EmbeddingOptions options) {}
+
+  /**
    * The vendor, as OpenTelemetry's GenAI semantic conventions name it: {@code openai}, {@code
    * gcp.gemini}, {@code aws.bedrock}. Every adapter says so.
    */
