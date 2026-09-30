@@ -27,6 +27,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.backend.event.AgentEventConflict;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -112,7 +113,7 @@ public final class JdbcAgentEvents implements AgentEvents {
       } catch (DuplicateKeyException _) {
         // Somebody else wrote this seq, which means they decided from the state this caller
         // decided from. Its recourse is to read the agent back and decide again.
-        throw new Conflict(
+        throw new AgentEventConflict(
             "another writer reached "
                 + event.seq()
                 + " for agent "

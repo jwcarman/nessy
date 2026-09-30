@@ -35,6 +35,7 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.backend.event.AgentEventConflict;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.jdbc.JdbcAgentEvents;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
@@ -141,7 +142,7 @@ class JdbcAgentEventsTest {
     List<AgentEvent> sameSeq = List.of(answered(1, 1));
 
     assertThatThrownBy(() -> events.append(TYPE, agent, sameSeq, Seq.NONE))
-        .isInstanceOf(AgentEvents.Conflict.class)
+        .isInstanceOf(AgentEventConflict.class)
         .hasMessageContaining("another writer reached");
   }
 

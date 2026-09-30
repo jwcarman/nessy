@@ -57,6 +57,7 @@ public interface AgentEvents {
    *     fail rather than write: the caller decided against a state that no longer holds, and its
    *     recourse is to reconstitute and decide again. Vacuous for a direct harness, load-bearing
    *     for a queued one, and the same seam serves both.
+   * @throws AgentEventConflict if {@code expectedLast} is not the agent's last seq
    */
   void append(AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast);
 
@@ -132,11 +133,4 @@ public interface AgentEvents {
    * @throws IllegalArgumentException if this agent has no event at {@code seq}
    */
   Instant writtenAt(AgentType type, AgentId agent, Seq seq);
-
-  /** Raised when {@code expectedLast} did not hold. */
-  final class Conflict extends RuntimeException {
-    public Conflict(String message) {
-      super(message);
-    }
-  }
 }

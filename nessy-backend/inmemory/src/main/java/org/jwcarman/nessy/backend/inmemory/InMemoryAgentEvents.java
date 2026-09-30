@@ -30,6 +30,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.backend.event.AgentEventConflict;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 
 /**
@@ -105,7 +106,7 @@ public final class InMemoryAgentEvents implements AgentEvents {
     List<Stored> stream = streams.computeIfAbsent(key, _ -> new ArrayList<>());
     Seq last = stream.isEmpty() ? Seq.NONE : stream.getLast().seq();
     if (!last.equals(expectedLast)) {
-      throw new Conflict("expected " + expectedLast + " but the stream is at " + last);
+      throw new AgentEventConflict("expected " + expectedLast + " but the stream is at " + last);
     }
     for (AgentEvent event : events) {
       stream.add(
