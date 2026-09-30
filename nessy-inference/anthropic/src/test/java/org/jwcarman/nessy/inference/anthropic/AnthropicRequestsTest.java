@@ -19,7 +19,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
-import com.anthropic.core.ObjectMappers;
 import com.anthropic.models.messages.CacheControlEphemeral;
 import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.MessageCreateParams;
@@ -52,7 +51,6 @@ import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.anthropic.AnthropicRequests.Features;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -797,12 +795,6 @@ class AnthropicRequestsTest {
           new InferenceOptions("claude-sonnet", 1024, agentType));
     }
 
-    /** The pass-through body as it goes on the wire; the SDK's accessors erase the generics. */
-    private static JsonNode additionalBody(MessageCreateParams params) throws Exception {
-      return MAPPER.readTree(
-          ObjectMappers.jsonMapper().writeValueAsString(params._additionalBodyProperties()));
-    }
-
     private static MessageCreateParams paramsFor(
         Map<String, String> provider, Map<String, String> agentType) {
       return AnthropicRequests.toParams(carrying(agentType), provider, MAPPER);
@@ -859,21 +851,19 @@ class AnthropicRequestsTest {
       assertThat(params.thinking().orElseThrow().isAdaptive()).isTrue();
     }
 
-    /** Plan ruling 9: the type is checked, the vocabulary is the vendor's. */
+    /** A thinking type is one of the three the wire knows; anything else is refused. */
     @Test
-    void a_type_nessy_does_not_know_goes_as_a_raw_thinking_object() throws Exception {
-      MessageCreateParams params =
-          paramsFor(
-              Map.of(
-                  "anthropic.thinking.type", "interleaved",
-                  "anthropic.thinking.budget_tokens", "600"));
+    void a_thinking_type_that_is_not_enabled_adaptive_or_disabled_is_refused() {
+      Map<String, String> properties =
+          Map.of(
+              "anthropic.thinking.type", "interleaved", "anthropic.thinking.budget_tokens", "600");
+      InferenceRequest request = carrying(properties);
 
-      assertThat(params.thinking()).isEmpty();
-      JsonNode thinking = additionalBody(params).get("thinking");
-      assertThat(thinking.get("type").isString()).isTrue();
-      assertThat(thinking.get("type").asString()).isEqualTo("interleaved");
-      assertThat(thinking.get("budget_tokens").isInt()).isTrue();
-      assertThat(thinking.get("budget_tokens").intValue()).isEqualTo(600);
+      assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage(
+              "property 'anthropic.thinking.type' must be enabled, adaptive or disabled,"
+                  + " was 'interleaved'");
     }
 
     @Test

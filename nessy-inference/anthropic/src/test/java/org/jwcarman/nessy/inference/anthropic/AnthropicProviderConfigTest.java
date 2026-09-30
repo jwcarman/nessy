@@ -210,6 +210,18 @@ class AnthropicProviderConfigTest {
   }
 
   @Test
+  void a_thinking_type_that_is_not_enabled_adaptive_or_disabled_is_refused_at_build() {
+    Customizer<AnthropicProviderConfig> customizer =
+        c -> c.apiKey("test-key").property("anthropic.thinking.type", "interleaved");
+
+    assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage(
+            "property 'anthropic.thinking.type' must be enabled, adaptive or disabled,"
+                + " was 'interleaved'");
+  }
+
+  @Test
   void a_property_under_another_prefix_is_refused_at_build_naming_the_prefix() {
     Customizer<AnthropicProviderConfig> customizer =
         c -> c.apiKey("test-key").property("openai.reasoning.effort", "high");

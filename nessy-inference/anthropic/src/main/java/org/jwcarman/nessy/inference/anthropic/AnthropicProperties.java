@@ -44,6 +44,8 @@ final class AnthropicProperties {
   static final String ADAPTIVE = "adaptive";
   private static final String DISABLED = "disabled";
 
+  private static final Set<String> THINKING_TYPES = Set.of(ENABLED, ADAPTIVE, DISABLED);
+
   private static final Set<String> KNOWN =
       Set.of(THINKING_TYPE, THINKING_BUDGET, CACHE_TTL, SERVICE_TIER);
 
@@ -55,7 +57,7 @@ final class AnthropicProperties {
    * The {@code anthropic.} properties once read.
    *
    * @param thinking empty when not thinking (absent, or {@code disabled}); otherwise {@code
-   *     enabled}, {@code adaptive}, or a value this adapter sends as written
+   *     enabled} or {@code adaptive}
    * @param budget the thinking budget; always present when {@code thinking} is {@code enabled}
    */
   record Read(
@@ -79,6 +81,15 @@ final class AnthropicProperties {
                 VendorProperties.requireInteger(PREFIX + THINKING_BUDGET, own.get(THINKING_BUDGET)))
             : OptionalInt.empty();
     Optional<String> type = string(own, THINKING_TYPE);
+    if (type.isPresent() && !THINKING_TYPES.contains(type.get())) {
+      throw new IllegalArgumentException(
+          "property '"
+              + PREFIX
+              + THINKING_TYPE
+              + "' must be enabled, adaptive or disabled, was '"
+              + type.get()
+              + "'");
+    }
     // Absent with a budget present means enabled (§9c).
     Optional<String> thinking = type;
     if (type.isEmpty() && budget.isPresent()) {

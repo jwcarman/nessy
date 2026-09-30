@@ -177,7 +177,7 @@ keyword; the other tools stay strict.
 
 | name | type | lands in |
 |---|---|---|
-| `anthropic.thinking.type` | string | `enabled` (needs a budget); `adaptive`; `disabled` sends no thinking; any other value is sent as written |
+| `anthropic.thinking.type` | string | `enabled` (needs a budget); `adaptive`; `disabled` sends no thinking; any other value is refused at build |
 | `anthropic.thinking.budget_tokens` | integer | the thinking budget; alone, it turns thinking on. Must be below the agent type's `maxTokens` |
 | `anthropic.cache_control.ttl` | string | the cache markers on the system prompt and the tools: `5m` or `1h`; another value is sent as written |
 | `anthropic.service_tier` | string | `service_tier` |

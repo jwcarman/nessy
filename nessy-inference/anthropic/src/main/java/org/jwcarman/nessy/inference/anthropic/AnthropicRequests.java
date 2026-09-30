@@ -33,7 +33,6 @@ import com.anthropic.models.messages.ToolChoiceNone;
 import com.anthropic.models.messages.ToolResultBlockParam;
 import com.anthropic.models.messages.ToolUseBlockParam;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -146,12 +145,6 @@ public final class AnthropicRequests {
           ThinkingConfigEnabled.builder().budgetTokens(read.budget().getAsInt()).build());
     } else if (read.thinking().filter(AnthropicProperties.ADAPTIVE::equals).isPresent()) {
       builder.thinking(ThinkingConfigAdaptive.builder().build());
-    } else if (read.thinking().isPresent()) {
-      // A type this adapter has no SDK class for: sent as written, for the vendor to judge.
-      Map<String, Object> raw = new LinkedHashMap<>();
-      raw.put("type", read.thinking().orElseThrow());
-      read.budget().ifPresent(budget -> raw.put("budget_tokens", budget));
-      builder.putAdditionalBodyProperty("thinking", JsonValue.from(raw));
     }
     read.serviceTier()
         .ifPresent(tier -> builder.serviceTier(MessageCreateParams.ServiceTier.of(tier)));
