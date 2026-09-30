@@ -221,25 +221,37 @@ class GeminiLiveTest {
         new InferenceOptions(MODEL, 2048, properties));
   }
 
-  private void thoughtsAreNarrated(Map<String, String> properties) {
+  private void thinkingReachesGemini(Map<String, String> properties) {
     try (GeminiInferenceProvider provider = provider()) {
       Narration narrated = new Narration();
       InferenceResult result = provider.infer(thinking(properties), narrated);
       String answer = text(result);
 
-      assertThat(narrated.fragments())
-          .as(
-              "thoughts were narrated; result: %s; fragment kinds: %s",
-              result, narrated.fragments().stream().map(Narration.Fragment::kind).toList())
-          .anyMatch(fragment -> "thinking".equals(fragment.kind()));
+      // The setting reached Gemini when it reports reasoning tokens. Whether it also returns a
+      // thought summary is the model's choice even with includeThoughts (measured 2026-09-30), so
+      // what is asserted of thoughts is only that any which arrive are narrated as thinking and
+      // never become the answer.
+      assertThat(result.usage().reasoningTokens().orZero())
+          .as("the model thought; result: %s", result)
+          .isPositive();
       assertThat(answer).as("the answer; result: %s", result).contains("391");
+      for (Narration.Fragment fragment : narrated.fragments()) {
+        if ("thinking".equals(fragment.kind()) && !fragment.text().isBlank()) {
+          assertThat(answer)
+              .as("a thought that arrived stays out of the answer; result: %s", result)
+              .doesNotContain(fragment.text().strip());
+        }
+      }
     }
   }
 
-  /** The typed thinking config reaches the vendor: thoughts come back and are narrated. */
+  /**
+   * The typed thinking budget reaches the vendor: the model thinks, and any thoughts stay out of
+   * the answer.
+   */
   @Test
-  void a_typed_thinking_config_arrives_and_thoughts_are_narrated() {
-    thoughtsAreNarrated(
+  void a_typed_thinking_config_reaches_gemini() {
+    thinkingReachesGemini(
         Map.of(
             GeminiProperties.INCLUDE_THOUGHTS.name(),
             GeminiProperties.INCLUDE_THOUGHTS.format(true),
@@ -247,10 +259,10 @@ class GeminiLiveTest {
             GeminiProperties.THINKING_BUDGET.format(512)));
   }
 
-  /** Gemini 3 is steered by a level rather than a budget; this shows which knob it honours. */
+  /** The typed thinking level reaches the vendor, the knob Gemini 3 is steered by. */
   @Test
-  void a_typed_thinking_level_arrives_and_thoughts_are_narrated() {
-    thoughtsAreNarrated(
+  void a_typed_thinking_level_reaches_gemini() {
+    thinkingReachesGemini(
         Map.of(
             GeminiProperties.INCLUDE_THOUGHTS.name(),
             GeminiProperties.INCLUDE_THOUGHTS.format(true),
