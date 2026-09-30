@@ -30,13 +30,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
 /**
- * Naming an embedding model makes a factory at the chat model's endpoint -- the starter's, from the
- * key and base URL this application already configured -- and the store mints its embedder from it.
- * The store is built either way.
+ * Naming a default embedder makes the store rank by relevance: chat-web's own custom embedder,
+ * {@code local}, at the chat model's endpoint, with the pair naming it. The store is built either
+ * way.
  */
 @SpringBootTest(
     properties = {
-      "nessy.embedding.openai.model=text-embedding-nomic-embed-text-v1.5",
+      "nessy.embedder=local",
+      "nessy.embedding-model=text-embedding-nomic-embed-text-v1.5",
       "nessy.provider=scriptedModels"
     })
 @Import(PostgresBacked.class)
@@ -61,5 +62,6 @@ class EpisodesWiringTest {
     assertThat(episodes.embedder())
         .map(Embedder::model)
         .contains("text-embedding-nomic-embed-text-v1.5");
+    assertThat(episodes.embedder()).map(Embedder::vendor).contains("lmstudio");
   }
 }

@@ -45,6 +45,12 @@ import org.springframework.util.FileCopyUtils;
  *     what to put in it. Absent means an EPHEMERAL key, which is fine for a single process that
  *     never restarts mid-approval and wrong for anything else: a token minted before a restart
  *     cannot be read after one, so every parked call becomes unanswerable.
+ * @param embedder the embedding provider a store's embedder is minted over when the store names
+ *     none. Set with {@link #embeddingModel}, or not at all; blank is unset
+ * @param embeddingModel the model a store's embedder asks for when the store names none, on
+ *     whichever registered {@code EmbeddingProvider} {@link #embedder} names; blank is unset
+ * @param embeddingDimension how many coordinates that default embedder asks for; optional, and only
+ *     beside {@link #embedder} and {@link #embeddingModel}
  */
 @ConfigurationProperties("nessy")
 public record NessyProperties(
@@ -55,7 +61,10 @@ public record NessyProperties(
     String model,
     Integer maxTokens,
     java.util.List<String> replyTokenEncryptionKeys,
-    Boolean initializeSchema) {
+    Boolean initializeSchema,
+    String embedder,
+    String embeddingModel,
+    Integer embeddingDimension) {
 
   public NessyProperties {
     type = type == null || type.isBlank() ? "agent" : type;
@@ -67,6 +76,10 @@ public record NessyProperties(
     // On by default: an application that added the starter wants the tables. An application that
     // manages its own migrations turns it off, and nothing runs a DDL file behind its back.
     initializeSchema = initializeSchema == null || initializeSchema;
+    // Blank is unset: ${CHAT_EMBEDDER:} binds as the empty string when the variable is not set, and
+    // a store asks whether a default embedder was named.
+    embedder = embedder == null || embedder.isBlank() ? null : embedder;
+    embeddingModel = embeddingModel == null || embeddingModel.isBlank() ? null : embeddingModel;
   }
 
   /**

@@ -66,19 +66,19 @@ nessy:
     happens. So say what you are about to send, send it, and expect the result to arrive
     later -- possibly much later. Never claim an email has been sent until the tool says so.
 
-  # Optional: an embedding model served at the same endpoint, and episodes are ranked by relevance
-  # to the turn being answered rather than by recency. LM Studio serves e.g.
-  # text-embedding-nomic-embed-text-v1.5. Named rather than defaulted, because an endpoint that is
-  # not OpenAI serves the models it serves. Left unset this is blank, the starter makes no
-  # embedder, and the most recent episodes are shown instead.
-  embedding:
-    openai:
-      model: ${CHAT_EMBEDDING_MODEL:}
-
-# For the optional embedder above: nessy.embedding.openai.model, when set, reads these through
-# the OpenAI-compatible embedding auto-configuration. This block ALSO lights the openai preset,
-# registering an inference provider named openai that nothing here selects -- the chat provider
-# is the lmstudio preset, named by nessy.provider above.
-openai:
-  api-key: ${CHAT_MODEL_API_KEY:not-needed}
-  base-url: ${CHAT_MODEL_URL:http://localhost:1234/v1}
+  # Optional: rank episodes by relevance to the turn being answered rather than by recency. Name
+  # the local embedder below and a model its endpoint serves -- LM Studio serves e.g.
+  # text-embedding-nomic-embed-text-v1.5 -- and every summary is embedded with it. Left unset,
+  # both are blank, the application names no default embedder, and the most recent episodes are
+  # shown instead.
+  embedder: ${CHAT_EMBEDDER:}
+  embedding-model: ${CHAT_EMBEDDING_MODEL:}
+  embedders:
+    # LM Studio's embeddings, as a custom embedder: a local server states its URL, its key and its
+    # model in the open. It may answer any model name with whatever it has loaded, and the model a
+    # store records is the one it asked for.
+    local:
+      wire: openai
+      base-url: ${CHAT_MODEL_URL:http://localhost:1234/v1}
+      api-key: not-needed
+      vendor: lmstudio

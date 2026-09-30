@@ -109,14 +109,14 @@ public class ChatConfiguration {
 
   /**
    * The store mints its own embedder, because the model the vectors were written with is a fact of
-   * the store rather than of the application. This one takes the factory's default, which is what
-   * {@code nessy.embedding.openai.model} names; with no embedding module on the classpath there is
-   * no factory, and the store ranks by recency instead.
+   * the store rather than of the application. This one takes the factory's default -- {@code
+   * nessy.embedder} and {@code nessy.embedding-model} -- when the application names one, and ranks
+   * by recency when it does not.
    */
   @Bean
-  public JdbcEpisodes episodes(DataSource dataSource, ObjectProvider<EmbedderFactory> embedders) {
-    Embedder embedder =
-        embedders.getIfAvailable() == null ? null : embedders.getObject().create(c -> {});
+  public JdbcEpisodes episodes(
+      DataSource dataSource, EmbedderFactory embedders, NessyProperties properties) {
+    Embedder embedder = properties.embedder() == null ? null : embedders.create(c -> {});
     return JdbcEpisodes.of(c -> c.dataSource(dataSource).agentType(TYPE).embedder(embedder));
   }
 

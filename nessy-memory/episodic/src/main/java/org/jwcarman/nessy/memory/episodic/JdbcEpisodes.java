@@ -129,8 +129,9 @@ public class JdbcEpisodes implements Summarizer {
 
     /**
      * What ranks episodes by relevance to the turn being answered. Without one, the most recent are
-     * shown. The embedding model belongs to the store: change it and the summaries embedded by the
-     * old one rank last until they are embedded again.
+     * shown. The embedding model belongs to the store, and the provider it is minted from is named
+     * where the embedder is minted: change either and the summaries embedded by the old one rank
+     * last until they are embedded again.
      */
     public Config embedder(Embedder embedder) {
       this.embedder = embedder;

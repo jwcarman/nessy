@@ -47,21 +47,26 @@ appear.
 The conversation is kept as episodes: the model calls `begin_episode` when
 the subject changes, each closed episode is summarised in the background, and
 the summaries that bear on the current turn are shown above the recent turns.
-Name an embedding model served at the same endpoint and "bear on" is measured
-by embedding; leave it out and the most recent episodes are shown instead:
+Name the `local` embedder and a model it serves, and "bear on" is measured by
+embedding; leave them out and the most recent episodes are shown instead:
 
 ```bash
+CHAT_EMBEDDER=local \
 CHAT_EMBEDDING_MODEL=text-embedding-nomic-embed-text-v1.5 \
   ./mvnw -q -pl :nessy-example-chat-web -am spring-boot:run
 ```
 
-OpenAI itself, or any other OpenAI-compatible endpoint, works too: name the
-`openai` provider instead of the `lmstudio` default:
+`local` is a custom embedder in `application.yml`, at the same endpoint as the
+chat model. A local server may answer any model name with whatever it has
+loaded, and the model a store records is the one it asked for, so name the
+model the server actually serves.
+
+OpenAI itself works too: set its key, which lights the starter's `openai`
+provider, and name that provider instead of the `lmstudio` default:
 
 ```bash
+OPENAI_API_KEY=sk-… \
 CHAT_PROVIDER=openai \
-CHAT_MODEL_URL=https://api.openai.com/v1 \
-CHAT_MODEL_API_KEY=sk-… \
 CHAT_MODEL_ID=gpt-4o-mini \
   ./mvnw -q -pl :nessy-example-chat-web -am spring-boot:run
 ```
