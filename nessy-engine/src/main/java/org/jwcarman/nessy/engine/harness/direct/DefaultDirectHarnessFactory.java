@@ -191,10 +191,14 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
     Objects.requireNonNull(answers, "answers must not be null");
     // The same generator the tools use: turning a Java type into a JSON schema is one job, and a
     // provider constrains an answer with the same kind of document it constrains an argument with.
-    JsonSchema shape = new JsonSchema(schemas.generate(answers.rawClass()).json());
+    AnswerShape shape = AnswerShape.of(answers.getType(), schemas, mapper);
     // Only this method knows O is what answers itself carries -- inside DefaultDirectHarness O is
     // an abstract type variable, so the parse a harness will use is decided here and handed over.
-    return build(agentType, customizer, Optional.of(shape), OutputReader.json(mapper, answers));
+    return build(
+        agentType,
+        customizer,
+        Optional.of(shape.schema()),
+        shape.reading(OutputReader.json(mapper, answers)));
   }
 
   @Override
@@ -206,8 +210,8 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
     Objects.requireNonNull(reader, "reader must not be null");
     // The shape still reaches the provider: a caller supplying its own reader is saying how the
     // answer is spelled, not that it may be anything.
-    JsonSchema shape = new JsonSchema(schemas.generate(answers.rawClass()).json());
-    return build(agentType, customizer, Optional.of(shape), reader);
+    AnswerShape shape = AnswerShape.of(answers.getType(), schemas, mapper);
+    return build(agentType, customizer, Optional.of(shape.schema()), shape.reading(reader));
   }
 
   @Override

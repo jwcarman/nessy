@@ -26,12 +26,14 @@ import com.github.victools.jsonschema.generator.SchemaVersion;
 import com.github.victools.jsonschema.module.jakarta.validation.JakartaValidationModule;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.JsonSchema;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -663,6 +665,31 @@ class VictoolsJsonSchemaGeneratorTest {
       ObjectNode schema = customized.generateNode(Contested.class);
 
       assertThat(schema.has("required")).isFalse();
+    }
+  }
+
+  @Nested
+  class AGenericType {
+
+    private final ObjectMapper mapper = JsonMapper.builder().build();
+
+    @Test
+    void a_list_of_records_describes_its_items() {
+      Type listOfTargets = new TypeRef<List<NestedTarget>>() {}.getType();
+
+      JsonNode schema = mapper.readTree(generator.generate(listOfTargets).json());
+
+      assertThat(schema.path("type").asString()).isEqualTo("array");
+      assertThat(schema.path("items").toString()).contains("name");
+      assertThat(schema.path("items").isEmpty()).isFalse();
+    }
+
+    @Test
+    void a_plain_class_is_generated_as_it_always_was() {
+      Type target = NestedTarget.class;
+
+      assertThat(generator.generate(target).json())
+          .isEqualTo(generator.generate(NestedTarget.class).json());
     }
   }
 }

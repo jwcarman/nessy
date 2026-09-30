@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`JsonSchemaGenerator.generate(Type)`**, which keeps type arguments:
+  `List<Item>` is described with typed items. The `Class` form stays.
 - **Spring Boot: strict tools by default on the measured chat-wire presets.**
   `xai`, `groq`, `mistral`, `openrouter`, `nvidia` and `cerebras` now send
   strict tools by default, overridable with
@@ -93,6 +95,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Answers whose type is a list, enum, string or sealed type work on OpenAI
+  and Azure.** A schema whose root is not an object travels wrapped as
+  `{"value": ...}` and is unwrapped before the caller sees it, and generic
+  answer types keep their generics.
 - **A width of zero or less is refused where it is set.** `dimension(0)` and
   `nessy.embedding-dimension: 0` fail at once; the property's failure names it.
 

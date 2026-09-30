@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.api;
 
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import org.jwcarman.nessy.api.tool.Tool;
 
 /**
@@ -38,4 +40,25 @@ public interface JsonSchemaGenerator {
    * @return the schema describing it
    */
   JsonSchema generate(Class<?> type);
+
+  /**
+   * The same, for a type a {@code Class} cannot carry: {@code List<Item>} is described with typed
+   * items, where its class alone would describe a list of anything.
+   *
+   * <p>The default erases to the raw class and delegates, which is all a generator that only knows
+   * classes can honestly do; a generator that understands type arguments overrides it.
+   *
+   * @param type the type to describe, type arguments included
+   * @return the schema describing it
+   */
+  default JsonSchema generate(Type type) {
+    if (type instanceof Class<?> raw) {
+      return generate(raw);
+    }
+    if (type instanceof ParameterizedType parameterized
+        && parameterized.getRawType() instanceof Class<?> raw) {
+      return generate(raw);
+    }
+    return generate(Object.class);
+  }
 }

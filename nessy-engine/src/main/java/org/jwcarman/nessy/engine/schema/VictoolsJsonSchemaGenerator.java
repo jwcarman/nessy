@@ -31,6 +31,7 @@ import com.github.victools.jsonschema.generator.SchemaKeyword;
 import com.github.victools.jsonschema.generator.SchemaVersion;
 import com.github.victools.jsonschema.module.jackson.JacksonSchemaModule;
 import java.lang.reflect.Method;
+import java.lang.reflect.Type;
 import java.util.Arrays;
 import java.util.Optional;
 import org.jwcarman.nessy.api.Customizer;
@@ -144,10 +145,20 @@ public final class VictoolsJsonSchemaGenerator implements JsonSchemaGenerator {
     return new JsonSchema(generateNode(inputType).toString());
   }
 
+  /** Type arguments survive: {@code List<Item>} is an array of {@code Item}, not of anything. */
+  @Override
+  public JsonSchema generate(Type inputType) {
+    return new JsonSchema(generateNode(inputType).toString());
+  }
+
   /** The generated schema as a tree, for callers inside this package that want one. */
   ObjectNode generateNode(Class<?> inputType) {
-    if (inputType.isInterface() && inputType.isSealed()) {
-      requireJacksonPolymorphismAnnotations(inputType);
+    return generateNode((Type) inputType);
+  }
+
+  private ObjectNode generateNode(Type inputType) {
+    if (inputType instanceof Class<?> raw && raw.isInterface() && raw.isSealed()) {
+      requireJacksonPolymorphismAnnotations(raw);
     }
     return withProperties(normalizeAnyOfToOneOf(generator.generateSchema(inputType)));
   }

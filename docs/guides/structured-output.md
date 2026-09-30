@@ -29,7 +29,15 @@ model's prose, joined, and `O` is `String`.
 
 A shape that itself takes type arguments, a list of records for instance,
 has no `Class<O>` to name — a `TypeRef<O>` does, and `create` has an
-overload that takes one instead.
+overload that takes one instead. The schema is generated from the whole
+type, so `TypeRef<List<Item>>` describes typed items.
+
+Any answer type works: a record, a list, a map, an enum, a string, a sealed
+type. Providers require an object at the root of an answer schema, so a type
+whose schema is not an object travels wrapped: the model is asked for
+`{"value": ...}`, with the type's schema under `value`, and the harness hands
+the caller what was under it. A record answer needs no wrapper and goes as
+generated. The transcript keeps the model's own text, wrapper included.
 
 ## Asking, and reading the outcome
 
@@ -74,8 +82,8 @@ rules the shared mapper does not carry.
 
 ## How a shape becomes a schema
 
-`JsonSchemaGenerator` is the seam: one method, a Java type in, a
-`JsonSchema` out. `VictoolsJsonSchemaGenerator`, in `nessy-engine`, is the
+`JsonSchemaGenerator` is the seam: a Java type in (a `Class`, or a
+`java.lang.reflect.Type` that keeps type arguments), a `JsonSchema` out. `VictoolsJsonSchemaGenerator`, in `nessy-engine`, is the
 shipped implementation, built on the [victools](https://github.com/victools/jsonschema-generator)
 generator. It walks a record's components into properties and turns
 `@JsonPropertyDescription` into the text a model reads, so a well-named

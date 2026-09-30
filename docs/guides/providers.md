@@ -543,9 +543,11 @@ as a map or a keyword outside the strict subset (`minLength`, say), is sent
 as generated with `strict: false`, and the adapter logs a warning naming the
 tool and the keyword. The other tools in the request stay strict. A structured answer's schema is rewritten
 the same way on both wires (`text.format` on the Responses wire,
-`response_format` on the chat wire). An answer whose root is not an object (a
-list, a string, a sealed type) is asked for without strict mode, sent as
-generated, and the adapter logs a warning naming the root.
+`response_format` on the chat wire). The harness sends
+every generated answer schema with an object root, so an answer is always
+strict here. A custom schema handed straight to the adapter whose root is not
+an object is asked for without strict mode, sent as generated, and the adapter
+logs a warning naming the root.
 
 Only function tools are offered. OpenAI's hosted tools (web search, file
 search, code interpreter, remote MCP) run where Nessy cannot approve or

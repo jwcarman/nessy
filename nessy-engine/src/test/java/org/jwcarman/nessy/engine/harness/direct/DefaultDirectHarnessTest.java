@@ -1309,7 +1309,7 @@ class DefaultDirectHarnessTest {
   @DisplayName("a TypeRef carries type arguments a Class cannot")
   void a_shape_with_type_arguments_is_parsed_whole() {
     Scripted model =
-        new Scripted().then(answering("[{\"city\":\"Paris\",\"country\":\"France\"}]"));
+        new Scripted().then(answering("{\"value\":[{\"city\":\"Paris\",\"country\":\"France\"}]}"));
 
     Outcome<List<Capital>> outcome =
         shapedHarness(model, new TypeRef<List<Capital>>() {}).ask(AgentId.random(), "capitals?");
@@ -1318,6 +1318,47 @@ class DefaultDirectHarnessTest {
         .usingRecursiveComparison()
         .ignoringFields("stats")
         .isEqualTo(new Outcome.Answered<>(List.of(new Capital("Paris", "France")), ANY_STATS));
+  }
+
+  @Test
+  @DisplayName("a list answer is asked for as an object whose value is the typed array")
+  void a_list_answer_is_sent_wrapped_with_typed_items() {
+    Scripted model =
+        new Scripted().then(answering("{\"value\":[{\"city\":\"Paris\",\"country\":\"France\"}]}"));
+
+    shapedHarness(model, new TypeRef<List<Capital>>() {}).ask(AgentId.random(), "capitals?");
+
+    String sent = model.seen.getFirst().outputSchema().orElseThrow().json();
+    assertThat(sent)
+        .contains("\"required\":[\"value\"]")
+        .contains("\"type\":\"array\"")
+        .contains("city")
+        .contains("country");
+  }
+
+  @Test
+  @DisplayName("a record answer is sent as generated, not wrapped")
+  void a_record_answer_is_not_wrapped() {
+    Scripted model = new Scripted().then(answering("{\"city\":\"Paris\",\"country\":\"France\"}"));
+
+    shapedHarness(model, Capital.class).ask(AgentId.random(), "capital?");
+
+    assertThat(model.seen.getFirst().outputSchema().orElseThrow().json())
+        .doesNotContain("\"value\"");
+  }
+
+  @Test
+  @DisplayName("a text answer travels wrapped and comes back as the bare text")
+  void a_string_answer_is_wrapped_and_unwrapped() {
+    Scripted model = new Scripted().then(answering("{\"value\":\"Paris\"}"));
+
+    Outcome<String> outcome =
+        shapedHarness(model, new TypeRef<String>() {}).ask(AgentId.random(), "capital?");
+
+    assertThat(outcome)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("Paris", ANY_STATS));
   }
 
   @Test

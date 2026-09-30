@@ -374,6 +374,35 @@ class OpenAiResponsesSchemasTest {
   }
 
   @Nested
+  class AListAnswerTheEngineWrapped {
+
+    @Test
+    void projects_strict_with_typed_items_under_value() {
+      String wrapped =
+          """
+          {"type":"object",
+           "properties":{"value":{"type":"array","items":{"$ref":"#/$defs/Item"}}},
+           "required":["value"],"additionalProperties":false,
+           "$defs":{"Item":{"type":"object","properties":{"name":{"type":"string"}},
+                            "required":["name"]}}}""";
+
+      OpenAiResponsesSchemas.Projected projected = project(wrapped);
+
+      assertThat(projected.strict()).isTrue();
+      assertThat(projected.refusedKeyword()).isEmpty();
+      assertThat(projected.schema())
+          .isEqualTo(
+              parse(
+                  """
+                  {"type":"object",
+                   "properties":{"value":{"type":"array","items":{"$ref":"#/$defs/Item"}}},
+                   "required":["value"],"additionalProperties":false,
+                   "$defs":{"Item":{"type":"object","properties":{"name":{"type":"string"}},
+                                    "required":["name"],"additionalProperties":false}}}"""));
+    }
+  }
+
+  @Nested
   class ARootThatIsNotAnObject {
 
     @Test
