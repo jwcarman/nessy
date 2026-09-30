@@ -755,6 +755,29 @@ class OpenAiChatInferenceProviderTest {
       assertThat(result.usage()).isEqualTo(Usage.of(MODEL, 145, 48));
     }
 
+    /**
+     * OpenRouter's shape (measured 2026-09-30, every model): the finish arrives on its own chunk,
+     * then again on the chunk that carries the usage. The accumulator refuses anything after a
+     * finish, so the second is read for its usage alone.
+     */
+    @Test
+    void a_stream_that_repeats_the_finish_on_its_usage_chunk_answers_once_with_the_usage() {
+      List<ChatCompletionChunk> chunks =
+          List.of(
+              roleChunk(),
+              toolCallChunk("fc_a9", "days_until", "{\"date\":\"2026-12-25\"}"),
+              finishChunkWithoutUsage(),
+              finishChunkCarryingUsage());
+
+      InferenceResult result =
+          new OpenAiChatProviderConfig()
+              .client(fakeStreamingClient(params -> chunks))
+              .build()
+              .infer(REQUEST);
+
+      assertAnsweredTheToolCallOnce(result);
+    }
+
     @Test
     void a_stream_that_reports_usage_on_the_finish_chunk_and_again_at_the_end_answers_once() {
       List<ChatCompletionChunk> chunks =

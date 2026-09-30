@@ -185,12 +185,20 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
             .createStreaming(OpenAiChatRequests.toParams(request, properties, mapper))) {
       ChatCompletionAccumulator accumulator = ChatCompletionAccumulator.create();
       boolean[] any = {false};
+      boolean[] finished = {false};
       CompletionUsage[] earlyUsage = {null};
       stream.stream()
           .forEach(
               chunk -> {
                 any[0] = true;
+                if (finished[0]) {
+                  // After the finish, only the usage is wanted: OpenRouter repeats the finish on
+                  // its usage chunk, and the accumulator refuses anything after a finish.
+                  chunk.usage().ifPresent(usage -> earlyUsage[0] = usage);
+                  return;
+                }
                 accumulator.accumulate(strippedOfEarlyUsage(chunk, earlyUsage));
+                finished[0] = finishes(chunk);
                 narrate(chunk, narrator);
               });
       if (!any[0]) {
@@ -201,6 +209,16 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
     } catch (OpenAIException e) {
       return new InferenceResult.Fault(OpenAiFailures.classify(e));
     }
+  }
+
+  /**
+   * Whether this chunk ends the answer: every choice it carries names a finish reason. After it the
+   * accumulator accepts only a choices-less usage chunk, so anything else a server sends is read
+   * for its usage alone.
+   */
+  private static boolean finishes(ChatCompletionChunk chunk) {
+    return !chunk.choices().isEmpty()
+        && chunk.choices().stream().allMatch(choice -> choice.finishReason().isPresent());
   }
 
   /**
