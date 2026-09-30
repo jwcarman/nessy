@@ -91,7 +91,7 @@ class AnswerShapeTest {
       JsonNode schema = schemaOf(shape);
 
       assertThat(schema.path("type").asString()).isEqualTo("object");
-      assertThat(schema.path("required").toString()).isEqualTo("[\"value\"]");
+      assertThat(schema.path("required")).hasToString("[\"value\"]");
       assertThat(schema.path("additionalProperties").asBoolean(true)).isFalse();
       assertThat(schema.at("/properties/value/type").asString()).isEqualTo("array");
       assertThat(schema.at("/properties/value/items").toString()).contains("name");

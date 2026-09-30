@@ -241,8 +241,8 @@ class TerminationAndConfigurationTest {
   @Test
   void a_queued_agent_type_s_properties_reach_the_provider_and_a_clash_fails_the_build() {
     Judging provider = new Judging();
-    EngineFixture judged = new EngineFixture(provider, (type, id, event) -> events.add(event));
-    try {
+    try (EngineFixture judged =
+        new EngineFixture(provider, (type, id, event) -> events.add(event))) {
       QueuedHarness<String> harness =
           judged
               .harnesses()
@@ -269,8 +269,6 @@ class TerminationAndConfigurationTest {
           .hasMessage(
               "agent type 'chat-properties-clash': property 'test.model' names what"
                   + " InferenceConfig.model already decides; remove the property");
-    } finally {
-      judged.close();
     }
   }
 }

@@ -160,7 +160,7 @@ public final class Repl {
       if (resumed != null && !resumed.isBlank()) {
         try {
           config.id(new AgentId(UUID.fromString(resumed.strip())));
-        } catch (IllegalArgumentException notAnId) {
+        } catch (IllegalArgumentException _) {
           say(io, AGENT_PROPERTY + " is not a conversation id (expected a UUID): " + resumed);
           return;
         }

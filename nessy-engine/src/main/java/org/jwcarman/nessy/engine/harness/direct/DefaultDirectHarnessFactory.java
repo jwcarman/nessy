@@ -246,13 +246,15 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
         new InferenceOptions(inference.modelName(), inference.maxTokens(), inference.properties());
     InferenceProvider provider = providers.resolve(agentType, providerId);
     validate(agentType, provider, options);
-    log.info(
-        "NESSY INFERENCE: agent type '{}' -> {} / {}, up to {} tokens{}",
-        agentType.value(),
-        providerId.value(),
-        options.modelName(),
-        options.maxTokens(),
-        propertyNames(options));
+    if (log.isInfoEnabled()) {
+      log.info(
+          "NESSY INFERENCE: agent type '{}' -> {} / {}, up to {} tokens{}",
+          agentType.value(),
+          providerId.value(),
+          options.modelName(),
+          options.maxTokens(),
+          propertyNames(options));
+    }
     Tools tools = new Tools(bindings);
     // What each kind of effect is worth, from the tools this harness bound and the harness-wide
     // defaults alone -- exactly what the queued factory builds, so the phase-to-timeout mapping

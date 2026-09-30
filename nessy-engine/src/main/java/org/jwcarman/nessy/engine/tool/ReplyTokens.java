@@ -19,7 +19,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
@@ -136,11 +136,8 @@ public final class ReplyTokens {
 
   /** From raw key material -- 16, 24 or 32 bytes, newest first. */
   public static ReplyTokens withKeys(byte[]... keys) {
-    List<SecretKey> secrets = new ArrayList<>(keys.length);
-    for (byte[] key : keys) {
-      secrets.add(new SecretKeySpec(key, "AES"));
-    }
-    return new ReplyTokens(secrets);
+    return new ReplyTokens(
+        Arrays.stream(keys).<SecretKey>map(key -> new SecretKeySpec(key, "AES")).toList());
   }
 
   public static ReplyTokens withKey(byte[] key) {

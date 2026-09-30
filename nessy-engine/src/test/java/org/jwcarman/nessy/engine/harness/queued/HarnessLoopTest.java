@@ -238,7 +238,7 @@ class HarnessLoopTest {
                   config
                       .provider(ProviderId.of("first"), answering("first"))
                       .provider(ProviderId.of("second"), answering("second")))) {
-        QueuedHarness<String> harness =
+        QueuedHarness<String> built =
             factory.create(
                 type,
                 String.class,
@@ -249,7 +249,7 @@ class HarnessLoopTest {
                         .effects(e -> e.pollInterval(Duration.ofMillis(20))));
         AgentId agent = new AgentId(UUID.randomUUID());
 
-        harness.tell(agent, "hello");
+        built.tell(agent, "hello");
 
         await()
             .atMost(Duration.ofSeconds(10))
@@ -267,7 +267,7 @@ class HarnessLoopTest {
                       .provider(ProviderId.of("first"), answering("first"))
                       .provider(ProviderId.of("second"), answering("second"))
                       .inference(ProviderId.of("first"), InferenceOptions.of("m")))) {
-        QueuedHarness<String> harness =
+        QueuedHarness<String> built =
             factory.create(
                 type,
                 String.class,
@@ -277,7 +277,7 @@ class HarnessLoopTest {
                         .effects(e -> e.pollInterval(Duration.ofMillis(20))));
         AgentId agent = new AgentId(UUID.randomUUID());
 
-        harness.tell(agent, "hello");
+        built.tell(agent, "hello");
 
         await()
             .atMost(Duration.ofSeconds(10))
@@ -337,7 +337,7 @@ class HarnessLoopTest {
                   config
                       .provider(ProviderId.of("first"), recordingMaxTokens)
                       .inference(ProviderId.of("first"), InferenceOptions.of("m")))) {
-        QueuedHarness<String> harness =
+        QueuedHarness<String> built =
             factory.create(
                 type,
                 String.class,
@@ -347,7 +347,7 @@ class HarnessLoopTest {
                         .effects(e -> e.pollInterval(Duration.ofMillis(20))));
         AgentId agent = new AgentId(UUID.randomUUID());
 
-        harness.tell(agent, "hello");
+        built.tell(agent, "hello");
 
         await()
             .atMost(Duration.ofSeconds(10))

@@ -199,13 +199,15 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     InferenceOptions options = inference.options();
     InferenceProvider provider = providers.resolve(agentType, providerId);
     validate(agentType, provider, options);
-    log.info(
-        "NESSY INFERENCE: agent type '{}' -> {} / {}, up to {} tokens{}",
-        agentType.value(),
-        providerId.value(),
-        options.modelName(),
-        options.maxTokens(),
-        propertyNames(options));
+    if (log.isInfoEnabled()) {
+      log.info(
+          "NESSY INFERENCE: agent type '{}' -> {} / {}, up to {} tokens{}",
+          agentType.value(),
+          providerId.value(),
+          options.modelName(),
+          options.maxTokens(),
+          propertyNames(options));
+    }
     // What each kind of effect is worth, from the tools this harness bound and the harness-wide
     // defaults alone -- nothing else, so the direct door can ask the same question without
     // building a handler just to hold it.

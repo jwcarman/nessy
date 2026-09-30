@@ -50,8 +50,9 @@ class ProviderRegistryTest {
 
     InferenceProvider resolved = observed.resolve(CHAT, XAI);
 
-    assertThat(resolved).isInstanceOf(ObservedInferenceProvider.class);
-    assertThat(resolved).isSameAs(observed.resolve(new AgentType("critic"), XAI));
+    assertThat(resolved)
+        .isInstanceOf(ObservedInferenceProvider.class)
+        .isSameAs(observed.resolve(new AgentType("critic"), XAI));
   }
 
   @Test

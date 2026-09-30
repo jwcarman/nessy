@@ -335,8 +335,7 @@ class DefaultEmbedderFactoryTest {
     String askedFirst = provider.lastAsked.get().modelName();
     episodes.embedDocument("b");
 
-    assertThat(notes).isNotSameAs(episodes);
-    assertThat(notes).isInstanceOf(ObservedEmbedder.class);
+    assertThat(notes).isNotSameAs(episodes).isInstanceOf(ObservedEmbedder.class);
     assertThat(episodes).isInstanceOf(ObservedEmbedder.class);
     assertThat(askedFirst).isEqualTo("small");
     assertThat(provider.lastAsked.get().modelName()).isEqualTo("large");

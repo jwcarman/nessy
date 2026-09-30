@@ -42,12 +42,12 @@ final class AnswerShape {
   private static final String DEFS = "$defs";
   private static final String SCHEMA = "$schema";
 
-  private final JsonSchema schema;
+  private final JsonSchema toldToProvider;
   private final boolean wrapped;
   private final ObjectMapper mapper;
 
-  private AnswerShape(JsonSchema schema, boolean wrapped, ObjectMapper mapper) {
-    this.schema = schema;
+  private AnswerShape(JsonSchema toldToProvider, boolean wrapped, ObjectMapper mapper) {
+    this.toldToProvider = toldToProvider;
     this.wrapped = wrapped;
     this.mapper = mapper;
   }
@@ -90,7 +90,7 @@ final class AnswerShape {
 
   /** What the provider is told. */
   JsonSchema schema() {
-    return schema;
+    return toldToProvider;
   }
 
   /**

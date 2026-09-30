@@ -16,7 +16,6 @@
 
 package org.jwcarman.nessy.backend.jdbc;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -113,10 +112,7 @@ public final class JdbcPayloads implements Payloads {
     if (wanted.isEmpty()) {
       return found;
     }
-    List<byte[]> hashes = new ArrayList<>(wanted.size());
-    for (PayloadRef ref : wanted) {
-      hashes.add(HexFormat.of().parseHex(ref.value()));
-    }
+    List<byte[]> hashes = wanted.stream().map(ref -> HexFormat.of().parseHex(ref.value())).toList();
     jdbc.sql(GET)
         .params(scoped().value(), hashes.toArray(byte[][]::new))
         .query(

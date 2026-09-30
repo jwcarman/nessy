@@ -72,7 +72,7 @@ final class KeywordEmbedder implements Embedder {
     String lower = text.toLowerCase(Locale.ROOT);
     float[] vector = new float[keywords.size() + 1];
     for (int i = 0; i < keywords.size(); i++) {
-      vector[i] = lower.split(keywords.get(i), -1).length - 1;
+      vector[i] = (float) (lower.split(keywords.get(i), -1).length - 1);
     }
     vector[keywords.size()] = 0.01f;
     return new Embedding(model, vector);
