@@ -156,10 +156,10 @@ naming the property and what decides it: `agent type 'chat': property
 decides; remove the property`. The rule reaches under and over a decided
 name too: `openai.text.verbosity` sets a field inside `text`, which the
 Responses adapter fills with the answer's shape, and a property that would
-replace a decided field whole (`gemini.generationConfig`, which contains
+replace or override a decided field (`gemini.generationConfig`, which contains
 `generationConfig.maxOutputTokens`) is refused, saying to set the fields one
-by one. So does a known name the wire cannot carry,
-and a pass-through under an object the adapter builds from a known name
+by one. A known name the wire cannot carry also fails the build, and so does
+a pass-through under an object the adapter builds from a known name
 (`openai.reasoning.generate_summary` beside `openai.reasoning.effort` on the
 Responses wire).
 
