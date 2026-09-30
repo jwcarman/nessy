@@ -418,6 +418,42 @@ class EmbeddingProvidersAutoConfigurationTest {
             });
   }
 
+  @Test
+  void an_application_bean_whose_name_breaks_the_provider_id_rule_fails_naming_the_bean() {
+    String longName = "x".repeat(65);
+    runner
+        .withBean(longName, EmbeddingProvider.class, Scripted::new)
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .hasStackTraceContaining("the EmbeddingProvider bean '" + longName + "'");
+            });
+  }
+
+  /** One bean namespace, two registries: an inference provider may not squat an embedder's bean. */
+  @Test
+  void an_inference_provider_named_like_an_embedder_s_bean_fails_naming_the_bean() {
+    new ApplicationContextRunner()
+        .withConfiguration(
+            AutoConfigurations.of(
+                InferenceProvidersAutoConfiguration.class,
+                EmbeddingProvidersAutoConfiguration.class))
+        .withBean(ObservationRegistry.class, ObservationRegistry::create)
+        .withPropertyValues(
+            "nessy.providers.fooEmbeddings.wire=openai-chat",
+            "nessy.providers.fooEmbeddings.base-url=https://g/v1",
+            "nessy.providers.fooEmbeddings.api-key=k",
+            "nessy.embedders.foo.wire=openai",
+            "nessy.embedders.foo.base-url=https://g/v1",
+            "nessy.embedders.foo.api-key=k")
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure()).hasStackTraceContaining("'fooEmbeddings'");
+            });
+  }
+
   // ---- the default ---------------------------------------------------------------------------
 
   @Test
@@ -521,6 +557,22 @@ class EmbeddingProvidersAutoConfigurationTest {
             });
   }
 
+  @Test
+  void a_zero_width_beside_the_pair_fails_naming_the_property() {
+    runner
+        .withPropertyValues(
+            "voyage.api-key=v-test",
+            "nessy.embedder=voyage",
+            "nessy.embedding-model=voyage-3.5",
+            "nessy.embedding-dimension=0")
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .hasStackTraceContaining("nessy.embedding-dimension must be positive: 0");
+            });
+  }
+
   // ---- vendor properties ---------------------------------------------------------------------
 
   /** §7a: a dotted key under properties binds as one entry, as it does for inference. */
@@ -534,18 +586,6 @@ class EmbeddingProvidersAutoConfigurationTest {
               assertThat(context).hasNotFailed();
               assertThat(resolved(context, "voyage").properties())
                   .containsExactly(Map.entry("voyage.truncation", "false"));
-            });
-  }
-
-  @Test
-  void a_property_naming_a_field_the_adapter_writes_fails_at_startup() {
-    runner
-        .withPropertyValues(
-            "voyage.api-key=v-test", "nessy.embedders.voyage.properties.voyage.model=voyage-3.5")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure()).hasStackTraceContaining("'voyage.model'");
             });
   }
 

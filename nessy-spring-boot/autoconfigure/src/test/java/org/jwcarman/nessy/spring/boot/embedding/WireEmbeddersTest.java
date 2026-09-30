@@ -101,7 +101,7 @@ class WireEmbeddersTest {
 
   /** Only the adapter config's own build-time check can refuse it, so it got there. */
   @Test
-  void the_resolved_properties_reach_the_adapter() {
+  void the_resolved_properties_reach_the_voyage_adapter() {
     ResolvedEmbedder resolved =
         new ResolvedEmbedder(
             "voyage",
@@ -109,37 +109,32 @@ class WireEmbeddersTest {
             "https://api.voyageai.com/v1",
             "voyage",
             "k",
-            Map.of("voyage.model", "voyage-3.5"));
+            Map.of("openai.user", "x"));
 
     assertThatThrownBy(() -> WireEmbedders.build(resolved, null, LOADER))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("'voyage.model'");
+        .hasMessageContaining("'openai.user'");
   }
 
   @Test
   void the_openai_wire_hands_its_properties_to_the_adapter() {
     ResolvedEmbedder resolved =
         new ResolvedEmbedder(
-            "openai", EmbeddingWire.OPENAI, null, "openai", "k", Map.of("openai.input", "x"));
+            "openai", EmbeddingWire.OPENAI, null, "openai", "k", Map.of("voyage.truncation", "x"));
 
     assertThatThrownBy(() -> WireEmbedders.build(resolved, null, LOADER))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("'openai.input'");
+        .hasMessageContaining("'voyage.truncation'");
   }
 
   @Test
   void the_gemini_wire_hands_its_properties_to_the_adapter() {
     ResolvedEmbedder resolved =
         new ResolvedEmbedder(
-            "gemini",
-            EmbeddingWire.GEMINI,
-            null,
-            "gcp.gemini",
-            "k",
-            Map.of("gemini.taskType", "CLUSTERING"));
+            "gemini", EmbeddingWire.GEMINI, null, "gcp.gemini", "k", Map.of("openai.user", "x"));
 
     assertThatThrownBy(() -> WireEmbedders.build(resolved, null, LOADER))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("'gemini.taskType'");
+        .hasMessageContaining("'openai.user'");
   }
 }

@@ -22,6 +22,7 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 import org.jwcarman.nessy.embedding.EmbeddingProvider;
+import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 import org.jwcarman.nessy.spring.boot.NessyProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,6 +78,9 @@ final class EmbeddingReport implements SmartInitializingSingleton {
           lines.put(id, describe(id, resolved, provider));
         });
     log.info("NESSY EMBEDDING: embedders: {}", String.join("; ", lines.values()));
+    if (!startersOwnFactory()) {
+      return;
+    }
     if (properties.embedder() == null) {
       log.info("NESSY EMBEDDING: no default embedder; every store names its own");
     } else {
@@ -88,6 +92,16 @@ final class EmbeddingReport implements SmartInitializingSingleton {
               ? ""
               : ", " + properties.embeddingDimension() + " wide");
     }
+  }
+
+  /**
+   * The default is the starter's own factory's to hold. An application's factory has its own, which
+   * these two properties do not describe, so saying "default: x / y" would be a false report.
+   */
+  private boolean startersOwnFactory() {
+    return beans.containsBean(EmbeddingProvidersAutoConfiguration.FACTORY_BEAN)
+        && beans.isTypeMatch(
+            EmbeddingProvidersAutoConfiguration.FACTORY_BEAN, DefaultEmbedderFactory.class);
   }
 
   private Map<String, ResolvedEmbedder> resolvedByBeanName() {

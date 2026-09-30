@@ -48,6 +48,9 @@ import org.springframework.context.annotation.Bean;
 @EnableConfigurationProperties(NessyProperties.class)
 public class EmbeddingProvidersAutoConfiguration {
 
+  /** The bean name of the starter's own factory. */
+  static final String FACTORY_BEAN = "nessyEmbedderFactory";
+
   @Bean
   static EmbedderRegistrar nessyEmbedderRegistrar() {
     return new EmbedderRegistrar();

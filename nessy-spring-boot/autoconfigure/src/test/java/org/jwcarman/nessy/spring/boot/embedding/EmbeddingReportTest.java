@@ -25,6 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.spring.boot.NessyProperties;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -175,6 +176,28 @@ class EmbeddingReportTest {
 
               assertThat(output)
                   .contains("local (openai, http://localhost:1234/v1, vendor lmstudio)");
+            });
+  }
+
+  /** The default is the starter's own factory's; an application's factory has its own. */
+  @Test
+  void an_application_s_own_factory_gets_no_default_line(CapturedOutput output) {
+    EmbedderFactory ours =
+        customizer -> {
+          throw new UnsupportedOperationException("ours makes nothing");
+        };
+    runner
+        .withBean(EmbedderFactory.class, () -> ours)
+        .withPropertyValues(
+            "voyage.api-key=v-test", "nessy.embedder=voyage", "nessy.embedding-model=voyage-3.5")
+        .run(
+            context -> {
+              report(context);
+
+              assertThat(output)
+                  .contains("NESSY EMBEDDING: embedders: voyage")
+                  .doesNotContain("NESSY EMBEDDING: default")
+                  .doesNotContain("no default embedder");
             });
   }
 }
