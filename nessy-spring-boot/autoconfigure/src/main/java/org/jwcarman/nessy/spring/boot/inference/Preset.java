@@ -59,6 +59,20 @@ record Preset(
               List.of("nvidia.api-key"),
               null),
           new Preset(
+              "groq",
+              Wire.OPENAI,
+              "https://api.groq.com/openai/v1",
+              "groq",
+              List.of("groq.api-key"),
+              null),
+          new Preset(
+              "mistral",
+              Wire.OPENAI,
+              "https://api.mistral.ai/v1",
+              "mistral_ai",
+              List.of("mistral.api-key"),
+              null),
+          new Preset(
               "lmstudio",
               Wire.OPENAI,
               "http://localhost:1234/v1",

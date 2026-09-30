@@ -98,7 +98,7 @@ Everything below is read from `nessy.*`, bound by `NessyProperties`.
 | `nessy.reply-token-encryption-keys` | ephemeral; see below | the `ReplyTokens` bean, which only the queued door's factory is given |
 | `nessy.prompt.engine` | `spring`, or `mustache` | `PromptEngineAutoConfiguration` |
 | `nessy.narration.odyssey.inactivity-ttl`, `entry-ttl`, `retention-ttl` | a day, a day, an hour | `OdysseyNarrationAutoConfiguration`, when Odyssey is present |
-| `anthropic.api-key`, `openai.api-key`, `openai.base-url`, `xai.api-key`, `gemini.api-key`, `google.api-key`, `openrouter.api-key`, `nvidia.api-key` | light the matching preset; see [Providers](providers.md#boot-auto-configuration) |
+| `anthropic.api-key`, `openai.api-key`, `openai.base-url`, `xai.api-key`, `gemini.api-key`, `google.api-key`, `openrouter.api-key`, `nvidia.api-key`, `groq.api-key`, `mistral.api-key` | light the matching preset; see [Providers](providers.md#boot-auto-configuration) |
 
 `nessy.provider` and `nessy.model` are a pair: set both, or set neither and
 name a provider and a model on every agent type instead. Both doors refuse

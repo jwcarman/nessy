@@ -79,6 +79,28 @@ class ProviderCatalogueTest {
   }
 
   @Test
+  void a_groq_key_lights_groq_at_its_own_url() {
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of(), Map.of("groq.api-key", "k")::get);
+
+    assertThat(resolved)
+        .containsExactly(
+            new ResolvedProvider(
+                "groq", Wire.OPENAI, "https://api.groq.com/openai/v1", "groq", "k"));
+  }
+
+  @Test
+  void a_mistral_key_lights_mistral_at_its_own_url() {
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of(), Map.of("mistral.api-key", "k")::get);
+
+    assertThat(resolved)
+        .containsExactly(
+            new ResolvedProvider(
+                "mistral", Wire.OPENAI, "https://api.mistral.ai/v1", "mistral_ai", "k"));
+  }
+
+  @Test
   void every_key_lights_its_own_preset() {
     Map<String, String> properties =
         Map.of(

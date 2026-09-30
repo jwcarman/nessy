@@ -182,6 +182,8 @@ for four of them the base URL too. It becomes a provider once its
 | `gemini` | `gemini` | the vendor's own | `gcp.gemini` | `gemini.api-key` or `google.api-key` (`GEMINI_API_KEY` / `GOOGLE_API_KEY`) |
 | `openrouter` | `openai` | `https://openrouter.ai/api/v1` | `openrouter` | `openrouter.api-key` (`OPENROUTER_API_KEY`) |
 | `nvidia` | `openai` | `https://integrate.api.nvidia.com/v1` | `nvidia` | `nvidia.api-key` (`NVIDIA_API_KEY`) |
+| `groq` | `openai` | `https://api.groq.com/openai/v1` | `groq` | `groq.api-key` (`GROQ_API_KEY`) |
+| `mistral` | `openai` | `https://api.mistral.ai/v1` | `mistral_ai` | `mistral.api-key` (`MISTRAL_API_KEY`) |
 | `lmstudio` | `openai` | `http://localhost:1234/v1` | `lmstudio` | `nessy.providers.lmstudio.enabled: true` — keyless |
 | `ollama` | `openai` | `http://localhost:11434/v1` | `ollama` | `nessy.providers.ollama.enabled: true` — keyless |
 
@@ -331,7 +333,9 @@ intervention and a content filter come back as a `Refusal`.
 The OpenAI adapter plus a base URL plus a key is, itself, an integration.
 Every service below speaks the same openai wire, so no
 service-specific module exists or is needed. Nessy validates against OpenAI
-proper; a compatible endpoint is the vendor's compatibility promise.
+proper; a compatible endpoint is the vendor's compatibility promise. Some
+vendors (Groq, Mistral) report usage on the chunk that finishes the answer
+rather than only on a final, choices-less chunk; the adapter accepts both.
 
 Name the vendor when it is not OpenAI, so spans and metrics say who was
 actually called:
@@ -348,6 +352,7 @@ InferenceProvider grok = OpenAiInferenceProvider.of(c -> c
 | xAI (Grok) | `https://api.x.ai/v1` | a first-class Boot citizen through `XAI_API_KEY` |
 | OpenRouter | `https://openrouter.ai/api/v1` | model ids are vendor-prefixed slugs |
 | Groq | `https://api.groq.com/openai/v1` | a freshly minted key can 401 for a few minutes while it propagates |
+| Mistral | `https://api.mistral.ai/v1` | vendor name `mistral_ai`, OpenTelemetry's registered value |
 | NVIDIA NIM | `https://integrate.api.nvidia.com/v1` | model ids are NVIDIA's catalog ids |
 | Ollama | `http://localhost:11434/v1` | local; any non-empty key |
 | LM Studio | `http://127.0.0.1:1234/v1` | local; any non-empty key |
