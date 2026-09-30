@@ -250,10 +250,10 @@ class OpenAiResponsesSchemasTest {
                   "{\"type\":\"object\",\"properties\":{\"command\":{\"anyOf\":"
                       + """
                       [{"type":"object","properties":{"host":{"type":"string"},
-                                                      "type":{"const":"Restart"}},
+                                                      "type":{"const":"Restart","type":"string"}},
                         "required":["host","type"],"additionalProperties":false},
                        {"type":"object","properties":{"reason":{"type":["string","null"]},
-                                                      "type":{"const":"Shutdown"}},
+                                                      "type":{"const":"Shutdown","type":"string"}},
                         "required":["reason","type"],"additionalProperties":false}]"""
                       + "}},\"required\":[\"command\"],\"additionalProperties\":false}"));
     }
@@ -304,6 +304,72 @@ class OpenAiResponsesSchemasTest {
       assertThat(projected.strict()).isFalse();
       assertThat(projected.refusedKeyword()).contains("type string at the root");
       assertThat(projected.schema()).isEqualTo(parse(json));
+    }
+  }
+
+  @Nested
+  class AConstOrEnumWithoutAType {
+
+    private Object property(String propertyJson) {
+      OpenAiResponsesSchemas.Projected projected =
+          project(
+              "{\"type\":\"object\",\"properties\":{\"p\":"
+                  + propertyJson
+                  + "},\"required\":[\"p\"]}");
+      assertThat(projected.strict()).isTrue();
+      return ((Map<?, ?>) projected.schema().get("properties")).get("p");
+    }
+
+    /** The live 400: a sealed discriminator written as a bare {@code const}. */
+    @Test
+    void a_string_const_gains_type_string() {
+      assertThat(property("{\"const\":\"restart\"}"))
+          .isEqualTo(parse("{\"const\":\"restart\",\"type\":\"string\"}"));
+    }
+
+    @Test
+    void an_integer_const_gains_type_integer() {
+      assertThat(property("{\"const\":3}")).isEqualTo(parse("{\"const\":3,\"type\":\"integer\"}"));
+    }
+
+    @Test
+    void a_decimal_const_gains_type_number() {
+      assertThat(property("{\"const\":1.5}"))
+          .isEqualTo(parse("{\"const\":1.5,\"type\":\"number\"}"));
+    }
+
+    @Test
+    void a_boolean_const_gains_type_boolean() {
+      assertThat(property("{\"const\":true}"))
+          .isEqualTo(parse("{\"const\":true,\"type\":\"boolean\"}"));
+    }
+
+    @Test
+    void an_enum_of_strings_gains_type_string() {
+      assertThat(property("{\"enum\":[\"RED\",\"GREEN\"]}"))
+          .isEqualTo(parse("{\"enum\":[\"RED\",\"GREEN\"],\"type\":\"string\"}"));
+    }
+
+    /** No single JSON type names the values, so nothing is invented; the wire will say. */
+    @Test
+    void an_enum_of_mixed_values_is_left_as_it_was() {
+      assertThat(property("{\"enum\":[\"RED\",1]}")).isEqualTo(parse("{\"enum\":[\"RED\",1]}"));
+    }
+
+    @Test
+    void a_const_that_already_has_a_type_is_left_as_it_was() {
+      assertThat(property("{\"const\":\"x\",\"type\":\"string\"}"))
+          .isEqualTo(parse("{\"const\":\"x\",\"type\":\"string\"}"));
+    }
+
+    @Test
+    void an_optional_const_is_typed_before_it_is_widened_to_admit_null() {
+      OpenAiResponsesSchemas.Projected projected =
+          project("{\"type\":\"object\",\"properties\":{\"p\":{\"const\":\"x\"}},\"required\":[]}");
+
+      assertThat(((Map<?, ?>) projected.schema().get("properties")).get("p"))
+          .isEqualTo(
+              parse("{\"anyOf\":[{\"const\":\"x\",\"type\":\"string\"},{\"type\":\"null\"}]}"));
     }
   }
 

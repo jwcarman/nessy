@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.inference.openai;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -167,6 +168,9 @@ final class OpenAiResponsesSchemas {
             default -> out.put(keyword, value);
           }
         });
+    if (!out.containsKey("type")) {
+      typeOf(out).ifPresent(type -> out.put("type", type));
+    }
     if (schema.get("properties") instanceof Map<?, ?> properties) {
       Set<String> required = names(schema.get("required"));
       Map<String, Object> rewritten = new LinkedHashMap<>();
@@ -184,6 +188,38 @@ final class OpenAiResponsesSchemas {
       out.put("additionalProperties", false);
     }
     return out;
+  }
+
+  /**
+   * The {@code type} a {@code const} or an {@code enum} implies, for a schema that names none.
+   * Strict mode rejects a schema without a {@code type}, and the generator writes a sealed
+   * vocabulary's discriminator as a bare {@code const}. An {@code enum} whose values do not share
+   * one JSON type is given none: nothing is guessed, and the vendor's own message says what is
+   * wrong.
+   */
+  private static Optional<String> typeOf(Map<String, Object> schema) {
+    if (schema.containsKey("const")) {
+      return jsonType(schema.get("const"));
+    }
+    if (schema.get("enum") instanceof List<?> values && !values.isEmpty()) {
+      Optional<String> first = jsonType(values.getFirst());
+      boolean shared =
+          first.isPresent() && values.stream().allMatch(v -> first.equals(jsonType(v)));
+      return shared ? first : Optional.empty();
+    }
+    return Optional.empty();
+  }
+
+  private static Optional<String> jsonType(Object value) {
+    return switch (value) {
+      case String ignored -> Optional.of("string");
+      case Boolean ignored -> Optional.of("boolean");
+      case Integer ignored -> Optional.of("integer");
+      case Long ignored -> Optional.of("integer");
+      case BigInteger ignored -> Optional.of("integer");
+      case Number ignored -> Optional.of("number");
+      case null, default -> Optional.empty();
+    };
   }
 
   private static Object strictBranches(Object branches) {
