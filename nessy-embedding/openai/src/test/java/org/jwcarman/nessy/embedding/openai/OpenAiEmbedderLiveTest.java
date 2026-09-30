@@ -84,8 +84,13 @@ class OpenAiEmbedderLiveTest {
     }
   }
 
+  /**
+   * OpenAI's embeddings endpoint has no query/document distinction on the wire, so this proves
+   * only that both paths yield the model's width and record the model asked for; it cannot show
+   * the two vectors differ.
+   */
   @Test
-  void a_query_and_a_document_are_the_model_s_width_and_carry_the_model_asked_for() {
+  void the_query_and_document_paths_return_the_same_width_and_the_model_asked_for() {
     assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY is not set");
     try (OpenAiEmbeddingProvider provider =
         OpenAiEmbeddingProvider.of(OpenAiEmbedderConfig::fromEnv)) {

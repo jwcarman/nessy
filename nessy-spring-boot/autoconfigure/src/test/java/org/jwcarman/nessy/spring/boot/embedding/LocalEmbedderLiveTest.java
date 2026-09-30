@@ -17,8 +17,13 @@ package org.jwcarman.nessy.spring.boot.embedding;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import io.micrometer.observation.ObservationRegistry;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -43,6 +48,20 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 class LocalEmbedderLiveTest {
 
   private static final String MODEL = "text-embedding-nomic-embed-text-v1.5";
+
+  @BeforeEach
+  void skipWithoutLmStudio() {
+    assumeTrue(lmStudioListens(), "nothing is listening on localhost:1234");
+  }
+
+  private static boolean lmStudioListens() {
+    try (Socket socket = new Socket()) {
+      socket.connect(new InetSocketAddress("localhost", 1234), 500);
+      return true;
+    } catch (IOException e) {
+      return false;
+    }
+  }
 
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()

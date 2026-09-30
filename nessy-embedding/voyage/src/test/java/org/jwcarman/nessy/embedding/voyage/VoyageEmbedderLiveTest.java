@@ -85,4 +85,33 @@ class VoyageEmbedderLiveTest {
       assertThat(query.model()).isEqualTo(model);
     }
   }
+
+  @Test
+  void a_query_is_not_the_document_s_vector_and_lands_nearer_its_answer() {
+    assumeTrue(System.getenv("VOYAGE_API_KEY") != null, "VOYAGE_API_KEY is not set");
+    String model =
+        System.getenv().getOrDefault("NESSY_EMBEDDING_MODEL", VoyageEmbedderConfig.DEFAULT_MODEL);
+    try (VoyageEmbeddingProvider provider =
+        VoyageEmbeddingProvider.of(VoyageEmbedderConfig::fromEnv)) {
+      Embedder embedder = embedderOver(provider, model);
+      String text = "Where does the Loch Ness monster live?";
+
+      Embedding asQuery = embedder.embedQuery(text);
+      Embedding asDocument = embedder.embedDocuments(List.of(text)).get(0);
+      List<Embedding> answers =
+          embedder.embedDocuments(
+              List.of(
+                  "The Loch Ness monster is said to live in a Scottish lake.",
+                  "The quarterly invoice for the office printer toner is overdue."));
+
+      double sameText = asQuery.similarity(asDocument);
+      double toAnswer = asQuery.similarity(answers.get(0));
+      double toUnrelated = asQuery.similarity(answers.get(1));
+      System.out.printf(
+          "%s: query~document(same text) %.4f, query~answer %.3f, query~unrelated %.3f%n",
+          embedder.model(), sameText, toAnswer, toUnrelated);
+      assertThat(sameText).isLessThan(0.9999);
+      assertThat(toAnswer).isGreaterThan(toUnrelated);
+    }
+  }
 }

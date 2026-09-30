@@ -30,7 +30,9 @@ import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 
 /**
  * Against Amazon Bedrock. Tagged {@code live}; {@code AWS_ACCESS_KEY_ID} opts it in, as the
- * inference live test's gate does, and {@code NESSY_EMBEDDING_MODEL} may name a Cohere model.
+ * inference live test's gate does, and {@code NESSY_EMBEDDING_MODEL} may name another model. The query-versus-document case needs a
+ * model with an input type, so it runs only when {@code NESSY_LIVE_BEDROCK_COHERE_MODEL} names a
+ * Cohere embed model (Titan, the default, has none).
  */
 @Tag("live")
 @DisplayName("The Bedrock embedder, live")
@@ -92,6 +94,39 @@ class BedrockEmbedderLiveTest {
       assertThat(query.dimension()).isEqualTo(document.dimension());
       assertThat(document.model()).isEqualTo(model);
       assertThat(query.model()).isEqualTo(model);
+    }
+  }
+
+  @Test
+  void a_query_is_not_the_document_s_vector_and_lands_nearer_its_answer() {
+    assumeTrue(
+        System.getenv("AWS_BEARER_TOKEN_BEDROCK") != null
+            || System.getenv("AWS_ACCESS_KEY_ID") != null,
+        "neither AWS_BEARER_TOKEN_BEDROCK nor AWS_ACCESS_KEY_ID is set");
+    String model = System.getenv("NESSY_LIVE_BEDROCK_COHERE_MODEL");
+    assumeTrue(
+        model != null, "NESSY_LIVE_BEDROCK_COHERE_MODEL is not set: Titan has no input type");
+    try (BedrockEmbeddingProvider provider =
+        BedrockEmbeddingProvider.of(BedrockEmbedderConfig::fromEnv)) {
+      Embedder embedder = embedderOver(provider, model);
+      String text = "Where does the Loch Ness monster live?";
+
+      Embedding asQuery = embedder.embedQuery(text);
+      Embedding asDocument = embedder.embedDocuments(List.of(text)).get(0);
+      List<Embedding> answers =
+          embedder.embedDocuments(
+              List.of(
+                  "The Loch Ness monster is said to live in a Scottish lake.",
+                  "The quarterly invoice for the office printer toner is overdue."));
+
+      double sameText = asQuery.similarity(asDocument);
+      double toAnswer = asQuery.similarity(answers.get(0));
+      double toUnrelated = asQuery.similarity(answers.get(1));
+      System.out.printf(
+          "%s: query~document(same text) %.4f, query~answer %.3f, query~unrelated %.3f%n",
+          embedder.model(), sameText, toAnswer, toUnrelated);
+      assertThat(sameText).isLessThan(0.9999);
+      assertThat(toAnswer).isGreaterThan(toUnrelated);
     }
   }
 }
