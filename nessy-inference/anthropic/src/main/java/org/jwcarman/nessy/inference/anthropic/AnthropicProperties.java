@@ -26,11 +26,11 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.vendor.VendorProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The {@code anthropic.} vendor properties (spec §9c): thinking, the cache marker's lifetime and
- * the service tier as known names, the clash table, and the rest passed through.
+ * the service tier, and nothing else. A name under the prefix that is not one of them is ignored,
+ * and said so once when it is checked.
  */
 final class AnthropicProperties {
 
@@ -47,18 +47,6 @@ final class AnthropicProperties {
   private static final Set<String> KNOWN =
       Set.of(THINKING_TYPE, THINKING_BUDGET, CACHE_TTL, SERVICE_TIER);
 
-  /** What the typed settings, or the adapter itself, already decide (§9c). */
-  private static final Map<String, String> CLASHES =
-      Map.of(
-          "model", "InferenceConfig.model",
-          "max_tokens", "InferenceConfig.maxTokens",
-          "messages", "the conversation the engine assembles",
-          "system", "the system prompt the harness sends",
-          "tools", "the tools the harness binds",
-          "tool_choice", "the tool choice the engine makes",
-          "output_config", "the answer's shape the harness asks for",
-          "stream", "the adapter, which always streams");
-
   private static final Logger log = LoggerFactory.getLogger(AnthropicProperties.class);
 
   private AnthropicProperties() {}
@@ -74,22 +62,16 @@ final class AnthropicProperties {
       Optional<String> thinking,
       OptionalInt budget,
       Optional<String> cacheTtl,
-      Optional<String> serviceTier,
-      Map<String, Object> passThrough) {
+      Optional<String> serviceTier) {
 
     boolean enabled() {
       return thinking.filter(ENABLED::equals).isPresent();
     }
   }
 
-  static Read read(Map<String, String> merged, JsonMapper mapper) {
+  /** The supported names of the merged provider and agent-type map, parsed. Silent. */
+  static Read read(Map<String, String> merged) {
     Map<String, String> own = VendorProperties.under(merged, PREFIX);
-    Map<String, String> clashes = new LinkedHashMap<>(CLASHES);
-    claimRoot(own, clashes, "thinking", THINKING_TYPE, THINKING_BUDGET);
-    claimRoot(own, clashes, "cache_control", CACHE_TTL);
-    Map<String, String> rest = new LinkedHashMap<>(own);
-    rest.keySet().removeAll(KNOWN);
-    VendorProperties.refuseClashes(PREFIX, rest, clashes);
 
     OptionalInt budget =
         own.containsKey(THINKING_BUDGET)
@@ -116,8 +98,7 @@ final class AnthropicProperties {
         thinking.filter(value -> !DISABLED.equals(value)),
         budget,
         string(own, CACHE_TTL),
-        string(own, SERVICE_TIER),
-        VendorProperties.nest(PREFIX, rest, mapper));
+        string(own, SERVICE_TIER));
   }
 
   /** The budget is spent out of maxTokens, so a ceiling at or below it leaves nothing to answer. */
@@ -139,6 +120,25 @@ final class AnthropicProperties {
                 + "' is not under '"
                 + PREFIX
                 + "'; a provider reads only its own prefix");
+      }
+    }
+  }
+
+  /**
+   * Says, once per name, that a property under this prefix is not one this adapter supports and is
+   * ignored. Called when a property set is first checked (a provider's build, a harness's
+   * validate), never per request.
+   */
+  static void warnUnsupported(Map<String, String> merged) {
+    List<String> supported = KNOWN.stream().sorted().map(name -> PREFIX + name).toList();
+    for (String name : VendorProperties.under(merged, PREFIX).keySet()) {
+      if (!KNOWN.contains(name)) {
+        log.warn(
+            "NESSY INFERENCE: property '{}{}' is not supported by anthropic and is ignored;"
+                + " supported: {}",
+            PREFIX,
+            name,
+            supported);
       }
     }
   }
@@ -167,25 +167,6 @@ final class AnthropicProperties {
       case ONE_HOUR -> properties.put(PREFIX + CACHE_TTL, "1h");
     }
     return Collections.unmodifiableMap(properties);
-  }
-
-  /**
-   * Plan ruling 6: while a known name builds {@code root}, a pass-through at or under it would be a
-   * second statement about the same object, so it joins the clash table naming that known name.
-   */
-  private static void claimRoot(
-      Map<String, String> own, Map<String, String> clashes, String root, String... known) {
-    for (String name : known) {
-      if (own.containsKey(name)) {
-        for (String candidate : own.keySet()) {
-          boolean underRoot = candidate.equals(root) || candidate.startsWith(root + ".");
-          if (underRoot && !KNOWN.contains(candidate)) {
-            clashes.put(candidate, "property '" + PREFIX + name + "'");
-          }
-        }
-        return;
-      }
-    }
   }
 
   private static Optional<String> string(Map<String, String> own, String name) {

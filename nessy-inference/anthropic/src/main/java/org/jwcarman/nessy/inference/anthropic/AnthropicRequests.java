@@ -117,8 +117,7 @@ public final class AnthropicRequests {
       InferenceRequest request, Map<String, String> providerProperties, JsonMapper mapper) {
     InferenceOptions options = request.options();
     AnthropicProperties.Read read =
-        AnthropicProperties.read(
-            VendorProperties.merge(providerProperties, options.properties()), mapper);
+        AnthropicProperties.read(VendorProperties.merge(providerProperties, options.properties()));
     // Refused here as well as at validate, for a caller that never validated (a summariser).
     AnthropicProperties.requireHeadroom(read, options);
 
@@ -156,8 +155,6 @@ public final class AnthropicRequests {
     }
     read.serviceTier()
         .ifPresent(tier -> builder.serviceTier(MessageCreateParams.ServiceTier.of(tier)));
-    read.passThrough()
-        .forEach((name, value) -> builder.putAdditionalBodyProperty(name, JsonValue.from(value)));
     return builder.build();
   }
 

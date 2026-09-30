@@ -152,12 +152,14 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
 
   /**
    * Reads the merged properties exactly as a request would -- including the budget's headroom under
-   * this agent type's {@code maxTokens} -- so a mistake fails the harness build, not a turn.
+   * this agent type's {@code maxTokens} -- so a mistake fails the harness build, not a turn, and
+   * says once which names it does not support and will ignore.
    */
   @Override
   public void validate(InferenceOptions options) {
     Map<String, String> merged = VendorProperties.merge(properties, options.properties());
-    AnthropicProperties.requireHeadroom(AnthropicProperties.read(merged, mapper), options);
+    AnthropicProperties.requireHeadroom(AnthropicProperties.read(merged), options);
+    AnthropicProperties.warnUnsupported(merged);
     AnthropicProperties.logIgnored(merged);
   }
 

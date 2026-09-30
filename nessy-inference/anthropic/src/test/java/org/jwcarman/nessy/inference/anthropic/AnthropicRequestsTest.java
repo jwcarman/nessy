@@ -18,6 +18,7 @@ package org.jwcarman.nessy.inference.anthropic;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.anthropic.core.ObjectMappers;
 import com.anthropic.models.messages.CacheControlEphemeral;
 import com.anthropic.models.messages.ContentBlockParam;
@@ -28,6 +29,8 @@ import java.util.Map;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
@@ -919,22 +922,77 @@ class AnthropicRequestsTest {
           .contains("auto");
     }
 
-    @Test
-    void an_unknown_name_passes_through_as_a_typed_literal_nested_by_path() throws Exception {
-      JsonNode body =
-          additionalBody(
-              paramsFor(
-                  Map.of(
-                      "anthropic.top_k", "5",
-                      "anthropic.metadata.user_id", "u-1",
-                      "anthropic.stop_sequences", "[\"\\n\\n\"]")));
+    /** Names that were once refused as clashes are simply unsupported now: ignored, not sent. */
+    @ParameterizedTest
+    @ValueSource(
+        strings = {
+          "model",
+          "max_tokens",
+          "messages",
+          "system",
+          "tools",
+          "tool_choice",
+          "output_config",
+          "output_config.effort",
+          "stream",
+          "thinking",
+          "cache_control.type",
+          "top_k",
+          "metadata.user_id",
+          "stop_sequences"
+        })
+    void an_unsupported_name_is_not_sent_and_the_request_is_as_if_it_were_not_given(String name) {
+      MessageCreateParams with = paramsFor(Map.of("anthropic." + name, "1"));
 
-      assertThat(body.get("top_k").isInt()).isTrue();
-      assertThat(body.get("top_k").intValue()).isEqualTo(5);
-      assertThat(body.get("metadata").get("user_id").asString()).isEqualTo("u-1");
-      assertThat(body.get("stop_sequences").isArray()).isTrue();
-      assertThat(body.get("stop_sequences")).hasSize(1);
-      assertThat(body.get("stop_sequences").get(0).asString()).isEqualTo("\n\n");
+      assertThat(with._additionalBodyProperties()).isEmpty();
+      assertThat(with).isEqualTo(paramsFor(Map.of()));
+      assertThat(with.maxTokens()).isEqualTo(1024L);
+      assertThat(with.model().asString()).isEqualTo("claude-sonnet");
+    }
+
+    @Test
+    void an_unsupported_name_beside_a_supported_one_leaves_the_supported_one_in_force() {
+      MessageCreateParams params =
+          paramsFor(
+              Map.of(
+                  "anthropic.max_tokens", "10",
+                  "anthropic.thinking", "{\"type\":\"disabled\"}",
+                  "anthropic.thinking.budget_tokens", "512"));
+
+      assertThat(params.maxTokens()).isEqualTo(1024L);
+      assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(512L);
+      assertThat(params._additionalBodyProperties()).isEmpty();
+    }
+
+    @Test
+    void reading_a_request_says_nothing_about_an_unsupported_name() {
+      InferenceRequest request = carrying(Map.of("anthropic.top_k", "5"));
+
+      List<ILoggingEvent> events =
+          LogCapture.during(
+              AnthropicProperties.class,
+              () -> {
+                AnthropicRequests.toParams(request, Map.of(), MAPPER);
+                AnthropicRequests.toParams(request, Map.of(), MAPPER);
+              });
+
+      assertThat(events).isEmpty();
+    }
+
+    @Test
+    void an_unsupported_name_is_warned_once_naming_it_and_what_is_supported() {
+      List<ILoggingEvent> events =
+          LogCapture.during(
+              AnthropicProperties.class,
+              () ->
+                  AnthropicProperties.warnUnsupported(
+                      Map.of("anthropic.top_k", "5", "anthropic.service_tier", "auto")));
+
+      assertThat(LogCapture.warnings(events))
+          .containsExactly(
+              "NESSY INFERENCE: property 'anthropic.top_k' is not supported by anthropic and is"
+                  + " ignored; supported: [anthropic.cache_control.ttl, anthropic.service_tier,"
+                  + " anthropic.thinking.budget_tokens, anthropic.thinking.type]");
     }
 
     @Test
@@ -954,54 +1012,6 @@ class AnthropicRequestsTest {
               Map.of("anthropic.thinking.budget_tokens", "768"));
 
       assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(768L);
-    }
-
-    @Test
-    void the_ceiling_is_refused_as_what_a_typed_setting_decides() {
-      InferenceRequest request = carrying(Map.of("anthropic.max_tokens", "10"));
-
-      assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'anthropic.max_tokens'")
-          .hasMessageContaining("InferenceConfig.maxTokens");
-    }
-
-    @Test
-    void a_field_inside_the_output_config_the_harness_decides_is_refused() {
-      InferenceRequest request = carrying(Map.of("anthropic.output_config.effort", "high"));
-
-      assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'anthropic.output_config.effort'")
-          .hasMessageContaining("'anthropic.output_config'");
-    }
-
-    @Test
-    void a_pass_through_under_the_cache_control_object_is_refused_beside_the_ttl() {
-      InferenceRequest request =
-          carrying(
-              Map.of(
-                  "anthropic.cache_control.ttl", "1h",
-                  "anthropic.cache_control.type", "ephemeral"));
-
-      assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'anthropic.cache_control.type'")
-          .hasMessageContaining("'anthropic.cache_control.ttl'");
-    }
-
-    @Test
-    void the_raw_thinking_object_beside_a_known_thinking_name_is_refused() {
-      InferenceRequest request =
-          carrying(
-              Map.of(
-                  "anthropic.thinking.budget_tokens", "512",
-                  "anthropic.thinking", "{\"type\":\"enabled\"}"));
-
-      assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'anthropic.thinking'")
-          .hasMessageContaining("'anthropic.thinking.budget_tokens'");
     }
 
     @Test

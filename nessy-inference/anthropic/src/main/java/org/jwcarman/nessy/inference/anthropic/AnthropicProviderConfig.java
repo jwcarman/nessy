@@ -259,7 +259,8 @@ public final class AnthropicProviderConfig {
     } else if (promptCaching == PromptCaching.ONE_HOUR) {
       merged.put(AnthropicProperties.PREFIX + AnthropicProperties.CACHE_TTL, "1h");
     }
-    AnthropicProperties.read(merged, mapper);
+    AnthropicProperties.read(merged);
+    AnthropicProperties.warnUnsupported(merged);
     return Collections.unmodifiableMap(merged);
   }
 

@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.core.JsonValue;
@@ -1039,6 +1040,41 @@ class AnthropicInferenceProviderTest {
                   .orElseThrow()
                   .ttl())
           .contains(CacheControlEphemeral.Ttl.TTL_1H);
+    }
+
+    @Test
+    void validate_warns_once_for_an_unsupported_agent_type_property_and_inference_stays_silent() {
+      AnthropicInferenceProvider provider =
+          new AnthropicProviderConfig()
+              .client(fakeClient(params -> reply().addContent(text("ok")).build()))
+              .build();
+      InferenceRequest request = carrying(Map.of("anthropic.max_tokens", "5"));
+
+      List<ILoggingEvent> atValidate =
+          LogCapture.during(AnthropicProperties.class, () -> provider.validate(request.options()));
+      List<ILoggingEvent> atInference =
+          LogCapture.during(
+              AnthropicProperties.class,
+              () -> {
+                provider.infer(request);
+                provider.infer(request);
+              });
+
+      assertThat(LogCapture.warnings(atValidate))
+          .singleElement()
+          .asString()
+          .contains("'anthropic.max_tokens'")
+          .contains("anthropic.thinking.type");
+      assertThat(atInference).isEmpty();
+    }
+
+    @Test
+    void an_unsupported_property_does_not_stop_the_request_and_is_not_in_it() {
+      MessageCreateParams params =
+          sentBy(new AnthropicProviderConfig(), carrying(Map.of("anthropic.top_k", "5")));
+
+      assertThat(params._additionalBodyProperties()).isEmpty();
+      assertThat(params.maxTokens()).isEqualTo(20000L);
     }
 
     @Test

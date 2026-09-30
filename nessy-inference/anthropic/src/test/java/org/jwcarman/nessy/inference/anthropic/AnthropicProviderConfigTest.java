@@ -19,9 +19,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.anthropic.client.AnthropicClient;
 import java.lang.reflect.Proxy;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
@@ -216,5 +218,24 @@ class AnthropicProviderConfigTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("'openai.reasoning.effort'")
         .hasMessageContaining("'anthropic.'");
+  }
+
+  @Test
+  void an_unsupported_property_is_warned_once_at_build_and_the_provider_still_builds() {
+    Customizer<AnthropicProviderConfig> customizer =
+        c -> c.apiKey("test-key").property("anthropic.max_tokens", "10");
+    var built = new AnthropicInferenceProvider[1];
+
+    List<ILoggingEvent> events =
+        LogCapture.during(
+            AnthropicProperties.class, () -> built[0] = AnthropicInferenceProvider.of(customizer));
+
+    assertThat(LogCapture.warnings(events))
+        .singleElement()
+        .asString()
+        .contains("'anthropic.max_tokens'")
+        .contains("anthropic.service_tier");
+    assertThat(built[0]).isNotNull();
+    built[0].close();
   }
 }
