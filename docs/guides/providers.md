@@ -222,6 +222,12 @@ budget that is not below the agent type's `maxTokens`, at harness build.
 | `gemini.generationConfig.thinkingConfig.includeThoughts` | `INCLUDE_THOUGHTS` | `true` or `false` | the same; thought summaries are then narrated as thinking |
 | `gemini.generationConfig.thinkingConfig.thinkingLevel` | `THINKING_LEVEL` | `GeminiThinkingLevel`: `MINIMAL` `LOW` `MEDIUM` `HIGH` | the same |
 
+Gemini counts thinking tokens against the output ceiling, so an agent type's
+`maxTokens` has to leave room for the thinking as well as the answer: a model
+that thinks by default can spend a small ceiling before it writes a word. With
+`includeThoughts`, a thought summary is narrated when the model returns one;
+on a prompt with little to work out it may think without returning any.
+
 ### Bedrock
 
 `BedrockProperties` holds the constants.
