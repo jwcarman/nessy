@@ -31,6 +31,7 @@ import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.GenerateContentResponsePromptFeedback;
 import com.google.genai.types.GenerateContentResponseUsageMetadata;
 import com.google.genai.types.Part;
+import com.google.genai.types.ThinkingLevel;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -302,6 +303,34 @@ class GeminiInferenceProviderTest {
               config ->
                   assertThat(config.thinkingConfig().orElseThrow().thinkingBudget())
                       .contains(1024));
+    }
+
+    @Test
+    void typed_properties_set_in_code_reach_the_request_as_the_sdk_values() {
+      Map<String, String> typed =
+          Map.of(
+              GeminiProperties.THINKING_LEVEL.name(),
+              GeminiProperties.THINKING_LEVEL.format(GeminiThinkingLevel.HIGH),
+              GeminiProperties.INCLUDE_THOUGHTS.name(),
+              GeminiProperties.INCLUDE_THOUGHTS.format(true));
+      GeminiInferenceProvider provider = new GeminiInferenceProvider(recording(), MAPPER, typed);
+
+      provider.infer(carrying(Map.of()));
+
+      assertThat(sent)
+          .singleElement()
+          .satisfies(
+              config -> {
+                assertThat(
+                        config
+                            .thinkingConfig()
+                            .orElseThrow()
+                            .thinkingLevel()
+                            .orElseThrow()
+                            .knownEnum())
+                    .isEqualTo(ThinkingLevel.Known.HIGH);
+                assertThat(config.thinkingConfig().orElseThrow().includeThoughts()).contains(true);
+              });
     }
 
     @Test

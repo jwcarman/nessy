@@ -15,101 +15,38 @@
  */
 package org.jwcarman.nessy.inference.gemini;
 
-import com.google.genai.types.ThinkingConfig;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import org.jwcarman.nessy.vendor.VendorProperties;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.jwcarman.nessy.api.VendorProperty;
 
 /**
- * The {@code gemini.} vendor properties (spec §9d): the three thinking names, and nothing else.
- * Names are spelled as the Gemini REST reference spells them, {@code generationConfig} included,
- * and go through the SDK's typed config. A name under the prefix that is not one of them is
- * ignored, and said so once when it is checked.
+ * The {@code gemini.} vendor properties the adapter supports, declared once: set one with {@code
+ * property(GeminiProperties.THINKING_LEVEL, GeminiThinkingLevel.HIGH)}, or by name and text, as
+ * YAML does. Names are spelled as the Gemini REST reference spells them, {@code generationConfig}
+ * included. A name under the prefix that is not one of them is ignored, and said so once when it is
+ * checked.
  */
-final class GeminiProperties {
+public final class GeminiProperties {
 
-  static final String PREFIX = "gemini.";
-  private static final String THINKING_CONFIG = "generationConfig.thinkingConfig";
-  static final String THINKING_BUDGET = THINKING_CONFIG + ".thinkingBudget";
-  static final String INCLUDE_THOUGHTS = THINKING_CONFIG + ".includeThoughts";
-  static final String THINKING_LEVEL = THINKING_CONFIG + ".thinkingLevel";
+  private static final String THINKING_CONFIG = "gemini.generationConfig.thinkingConfig";
 
-  private static final Set<String> KNOWN =
-      Set.of(THINKING_BUDGET, INCLUDE_THOUGHTS, THINKING_LEVEL);
+  /** The tokens thinking may spend. */
+  public static final VendorProperty<Integer> THINKING_BUDGET =
+      VendorProperty.ofInteger(THINKING_CONFIG + ".thinkingBudget");
 
-  private static final Logger log = LoggerFactory.getLogger(GeminiProperties.class);
+  /** Whether thought summaries come back. */
+  public static final VendorProperty<Boolean> INCLUDE_THOUGHTS =
+      VendorProperty.ofBoolean(THINKING_CONFIG + ".includeThoughts");
+
+  /** How much a model thinks. */
+  public static final VendorProperty<GeminiThinkingLevel> THINKING_LEVEL =
+      VendorProperty.ofEnum(
+          THINKING_CONFIG + ".thinkingLevel",
+          GeminiThinkingLevel.class,
+          GeminiThinkingLevel::spelling);
+
+  /** Every property this adapter supports. */
+  public static final List<VendorProperty<?>> SUPPORTED =
+      List.of(THINKING_BUDGET, INCLUDE_THOUGHTS, THINKING_LEVEL);
 
   private GeminiProperties() {}
-
-  /** The {@code gemini.} properties once read: a typed thinking config, when any was asked for. */
-  record Read(Optional<ThinkingConfig> thinking) {}
-
-  /** The supported names of the merged provider and agent-type map, parsed. Silent. */
-  static Read read(Map<String, String> merged) {
-    Map<String, String> own = VendorProperties.under(merged, PREFIX);
-    Optional<ThinkingConfig> thinking = Optional.empty();
-    if (own.keySet().stream().anyMatch(KNOWN::contains)) {
-      ThinkingConfig.Builder builder = ThinkingConfig.builder();
-      if (own.containsKey(THINKING_BUDGET)) {
-        builder.thinkingBudget(
-            VendorProperties.requireInteger(PREFIX + THINKING_BUDGET, own.get(THINKING_BUDGET)));
-      }
-      if (own.containsKey(INCLUDE_THOUGHTS)) {
-        builder.includeThoughts(
-            VendorProperties.requireBoolean(PREFIX + INCLUDE_THOUGHTS, own.get(INCLUDE_THOUGHTS)));
-      }
-      if (own.containsKey(THINKING_LEVEL)) {
-        builder.thinkingLevel(
-            VendorProperties.requireString(PREFIX + THINKING_LEVEL, own.get(THINKING_LEVEL)));
-      }
-      thinking = Optional.of(builder.build());
-    }
-    return new Read(thinking);
-  }
-
-  /**
-   * Says, once per name, that a property under this prefix is not one this adapter supports and is
-   * ignored. Called when a property set is first checked (a provider's build, a harness's
-   * validate), never per request.
-   */
-  static void warnUnsupported(Map<String, String> merged) {
-    List<String> supported = KNOWN.stream().sorted().map(name -> PREFIX + name).toList();
-    for (String name : VendorProperties.under(merged, PREFIX).keySet()) {
-      if (!KNOWN.contains(name)) {
-        log.warn(
-            "NESSY INFERENCE: property '{}{}' is not supported by gemini and is ignored;"
-                + " supported: {}",
-            PREFIX,
-            name,
-            supported);
-      }
-    }
-  }
-
-  /** A provider is one adapter: a provider-level entry under another prefix is a mistake (§6a). */
-  static void requireOwn(Map<String, String> properties) {
-    for (String name : properties.keySet()) {
-      if (!name.startsWith(PREFIX)) {
-        throw new IllegalArgumentException(
-            "property '"
-                + name
-                + "' is not under '"
-                + PREFIX
-                + "'; a provider reads only its own prefix");
-      }
-    }
-  }
-
-  static void logIgnored(Map<String, String> merged) {
-    if (log.isDebugEnabled()) {
-      List<String> others = merged.keySet().stream().filter(n -> !n.startsWith(PREFIX)).toList();
-      if (!others.isEmpty()) {
-        log.debug("NESSY INFERENCE: properties for other adapters, ignored here: {}", others);
-      }
-    }
-  }
 }

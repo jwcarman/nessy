@@ -101,8 +101,8 @@ public final class GeminiRequests {
    */
   static GenerateContentConfig toConfig(
       InferenceRequest request, Map<String, String> providerProperties, JsonMapper mapper) {
-    GeminiProperties.Read read =
-        GeminiProperties.read(
+    GeminiPropertyReader.Read read =
+        GeminiPropertyReader.read(
             VendorProperties.merge(providerProperties, request.options().properties()));
     GenerateContentConfig.Builder builder = GenerateContentConfig.builder();
     if (request.options().hasMaxTokens()) {

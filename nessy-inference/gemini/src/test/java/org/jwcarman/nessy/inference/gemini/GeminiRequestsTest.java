@@ -26,6 +26,7 @@ import com.google.genai.types.FunctionDeclaration;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.Part;
 import com.google.genai.types.ThinkingConfig;
+import com.google.genai.types.ThinkingLevel;
 import com.google.genai.types.ToolConfig;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -518,7 +519,7 @@ class GeminiRequestsTest {
           LogCapture.during(
               GeminiProperties.class,
               () ->
-                  GeminiProperties.warnUnsupported(
+                  GeminiPropertyReader.warnUnsupported(
                       Map.of(
                           "gemini.generationConfig.temperature",
                           "0.2",
@@ -557,6 +558,31 @@ class GeminiRequestsTest {
               carrying(Map.of()), Map.of(THINKING + "thinkingBudget", "4096"), MAPPER);
 
       assertThat(config.thinkingConfig().orElseThrow().thinkingBudget()).contains(4096);
+    }
+
+    @Test
+    void a_thinking_level_outside_the_enum_is_refused_listing_the_spellings() {
+      InferenceRequest request = carrying(Map.of(THINKING + "thinkingLevel", "extreme"));
+
+      assertThatThrownBy(() -> GeminiRequests.toConfig(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage(
+              "property '"
+                  + THINKING
+                  + "thinkingLevel' must be one of [minimal, low, medium, high], was 'extreme'");
+    }
+
+    @Test
+    void a_typed_thinking_level_reaches_the_config_as_the_sdk_value() {
+      Map<String, String> typed =
+          Map.of(
+              GeminiProperties.THINKING_LEVEL.name(),
+              GeminiProperties.THINKING_LEVEL.format(GeminiThinkingLevel.MINIMAL));
+
+      ThinkingConfig thinking = configFor(typed).thinkingConfig().orElseThrow();
+
+      assertThat(thinking.thinkingLevel().orElseThrow().knownEnum())
+          .isEqualTo(ThinkingLevel.Known.MINIMAL);
     }
 
     @Test

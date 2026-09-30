@@ -168,6 +168,20 @@ class GeminiProviderConfigTest {
   }
 
   @Test
+  void a_yaml_style_string_with_a_bad_spelling_fails_at_build_listing_the_spellings() {
+    GeminiProviderConfig config =
+        new GeminiProviderConfig()
+            .apiKey("test-key")
+            .property("gemini.generationConfig.thinkingConfig.thinkingLevel", "extreme");
+
+    assertThatThrownBy(config::build)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage(
+            "property 'gemini.generationConfig.thinkingConfig.thinkingLevel' must be one of"
+                + " [minimal, low, medium, high], was 'extreme'");
+  }
+
+  @Test
   void a_typed_property_is_stored_under_its_name_and_refused_like_the_string_form() {
     Customizer<GeminiProviderConfig> customizer =
         c -> c.apiKey("test-key").property(VendorProperty.ofBoolean("gcp.gemini.seed"), true);
