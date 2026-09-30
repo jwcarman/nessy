@@ -1,6 +1,6 @@
 # Named embedders: a store says who embeds
 
-**Status: DESIGN, NOTHING BUILT, then AMENDED 2026-09-30 to no embedder properties (see the Amendment below, which overrides §7 and the `nessy-vendor-properties` module decision). The rulings were made in conversation with James on 2026-09-29
+**Status: BUILT and APPROVED 2026-09-30 (James: "merge into main; if I don't like what I see, we can fix it" -- the §14 rows are approved on that basis), AMENDED 2026-09-30 to no embedder properties (see the Amendment below, which overrides §7 and the `nessy-vendor-properties` module decision). The rulings were made in conversation with James on 2026-09-29
 and this record writes them down. The proposals this record had to make to honour them -- the
 default-embedder pair among them, the one question the rulings had left open -- were ruled on
 overnight on 2026-09-30 by the controller James authorised for the run; those rulings are folded
