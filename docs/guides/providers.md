@@ -567,7 +567,7 @@ InferenceProvider grok = OpenAiChatInferenceProvider.of(c -> c
 | xAI (Grok) | `https://api.x.ai/v1` | a first-class Boot citizen through `XAI_API_KEY` |
 | OpenRouter | `https://openrouter.ai/api/v1` | model ids are vendor-prefixed slugs |
 | Groq | `https://api.groq.com/openai/v1` | a freshly minted key can 401 for a few minutes while it propagates |
-| Mistral | `https://api.mistral.ai/v1` | vendor name `mistral_ai`, OpenTelemetry's registered value |
+| Mistral | `https://api.mistral.ai/v1` | vendor name `mistral_ai`, OpenTelemetry's registered value; Z.ai's GLM models served here answer in a shape Chat Completions cannot read (`content` as a list with a `thinking` part), so the call fails |
 | NVIDIA NIM | `https://integrate.api.nvidia.com/v1` | model ids are NVIDIA's catalog ids |
 | Ollama | `http://localhost:11434/v1` | local; any non-empty key |
 | LM Studio | `http://127.0.0.1:1234/v1` | local; any non-empty key |
