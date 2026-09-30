@@ -152,6 +152,13 @@ class PresetCandidatesLiveTest {
               "ollama",
               "openai-chat"),
           new Candidate(
+              "lmstudio",
+              "http://localhost:1234/v1",
+              "LMSTUDIO_API_KEY",
+              null,
+              "lmstudio",
+              "openai-chat"),
+          new Candidate(
               "nvidia",
               "https://integrate.api.nvidia.com/v1",
               "NVIDIA_API_KEY",
@@ -438,7 +445,9 @@ class PresetCandidatesLiveTest {
               "nessy.providers." + candidate.id() + ".wire=" + candidate.wire(),
               "nessy.providers." + candidate.id() + ".base-url=" + candidate.baseUrl(),
               "nessy.providers." + candidate.id() + ".api-key=" + key,
-              "nessy.providers." + candidate.id() + ".vendor=" + candidate.vendor()
+              "nessy.providers." + candidate.id() + ".vendor=" + candidate.vendor(),
+              // A keyless preset (ollama, lmstudio) lights only when enabled; harmless elsewhere.
+              "nessy.providers." + candidate.id() + ".enabled=true"
             };
     ApplicationContextRunner runner =
         new ApplicationContextRunner()
