@@ -28,8 +28,10 @@ import com.openai.models.chat.completions.ChatCompletion;
 import com.openai.models.chat.completions.ChatCompletionChunk;
 import com.openai.models.chat.completions.ChatCompletionMessage;
 import com.openai.models.chat.completions.ChatCompletionMessageToolCall;
+import com.openai.models.completions.CompletionUsage;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Stream;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.Usage;
@@ -151,21 +153,46 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
         client.chat().completions().createStreaming(OpenAiRequests.toParams(request, mapper))) {
       ChatCompletionAccumulator accumulator = ChatCompletionAccumulator.create();
       boolean[] any = {false};
+      CompletionUsage[] earlyUsage = {null};
       stream.stream()
           .forEach(
               chunk -> {
                 any[0] = true;
-                accumulator.accumulate(chunk);
+                accumulator.accumulate(strippedOfEarlyUsage(chunk, earlyUsage));
                 narrate(chunk, narrator);
               });
       if (!any[0]) {
         // A stream that ended before it began: nothing to fold. Asking again returns the same.
         return new InferenceResult.Fault(new Failure.Permanent("model returned no choices"));
       }
-      return read(accumulator);
+      return read(accumulator, earlyUsage[0]);
     } catch (OpenAIException e) {
       return new InferenceResult.Fault(classify(e));
     }
+  }
+
+  /**
+   * OpenAI's own contract puts {@code usage} only on a final, choices-less chunk. Groq and Mistral
+   * instead send it on the {@code finish_reason} chunk that still carries choices (Groq then
+   * repeats it on a final choices-less chunk of its own). The SDK's {@link
+   * ChatCompletionAccumulator} treats ANY chunk carrying {@code usage} as that final chunk: it
+   * folds and returns immediately, before the still-unread choices on that same chunk are ever
+   * accumulated, which makes {@code build()} throw for want of a {@code choices} field.
+   *
+   * <p>So a chunk that carries both is fed to the accumulator with its usage stripped -- the
+   * accumulator then processes its choices normally -- and the usage is remembered in {@code
+   * earlyUsage} so {@link #read(ChatCompletionAccumulator, CompletionUsage)} can attach it if the
+   * folded completion never got one of its own (Mistral's shape, which sends no later chunk at
+   * all). {@code chunk.usage()} treats an explicit JSON {@code null} the same as an absent field,
+   * so this never fires on the ordinary chunks vendors pad with {@code "usage": null}.
+   */
+  private static ChatCompletionChunk strippedOfEarlyUsage(
+      ChatCompletionChunk chunk, CompletionUsage[] earlyUsage) {
+    if (chunk.choices().isEmpty() || chunk.usage().isEmpty()) {
+      return chunk;
+    }
+    earlyUsage[0] = chunk.usage().get();
+    return chunk.toBuilder().usage(Optional.<CompletionUsage>empty()).build();
   }
 
   /**
@@ -200,7 +227,8 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
    * The folded completion, read -- or the fault a stream that closed before any choice reached its
    * finish reason is: the SDK will not fold half an answer, and neither should this adapter.
    */
-  private static InferenceResult read(ChatCompletionAccumulator accumulator) {
+  private static InferenceResult read(
+      ChatCompletionAccumulator accumulator, CompletionUsage earlyUsage) {
     ChatCompletion completion;
     try {
       completion = accumulator.chatCompletion();
@@ -208,6 +236,11 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
       return new InferenceResult.Fault(
           new Failure.Permanent(
               "the stream ended before the answer was complete: " + incomplete.getMessage()));
+    }
+    if (completion.usage().isEmpty() && earlyUsage != null) {
+      // Mistral's shape: usage arrived early (see strippedOfEarlyUsage) and no later chunk ever
+      // repeated it, so the fold never picked one up on its own.
+      completion = completion.toBuilder().usage(earlyUsage).build();
     }
     Usage usage = usageOf(completion);
     if (completion.choices().isEmpty()) {

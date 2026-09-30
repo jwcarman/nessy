@@ -35,6 +35,7 @@ import com.openai.errors.RateLimitException;
 import com.openai.errors.UnauthorizedException;
 import com.openai.errors.UnexpectedStatusCodeException;
 import com.openai.errors.UnprocessableEntityException;
+import com.openai.helpers.ChatCompletionAccumulator;
 import com.openai.models.chat.completions.ChatCompletion;
 import com.openai.models.chat.completions.ChatCompletionChunk;
 import com.openai.models.chat.completions.ChatCompletionCreateParams;
@@ -640,6 +641,214 @@ class OpenAiInferenceProviderTest {
           .infer(REQUEST);
 
       assertThat(captured[0].model().asString()).isEqualTo("gpt-4o");
+    }
+  }
+
+  /**
+   * OpenAI's own contract puts {@code usage} only on a final, choices-less chunk. Groq and Mistral
+   * instead put it on the {@code finish_reason} chunk that still carries choices -- Groq then
+   * repeats it on a final {@code "choices": []} chunk. The SDK's {@link ChatCompletionAccumulator}
+   * treats ANY chunk carrying {@code usage} as that final chunk and folds immediately, dropping the
+   * choices it never got to read. These tests replay a reduced, real Groq tool-call stream (see the
+   * task brief) to pin the adapter's workaround.
+   */
+  @Nested
+  class UsageArrivesEarly {
+
+    // Matches the outer chunk() helper's hardcoded model, which roleChunk() and
+    // finishChunkWithoutUsage() reuse.
+    private static final String MODEL = "gpt-4o";
+    private static final CompletionUsage USAGE =
+        CompletionUsage.builder()
+            .promptTokens(145L)
+            .completionTokens(48L)
+            .totalTokens(193L)
+            .build();
+
+    private static ChatCompletionChunk roleChunk() {
+      return chunk(
+          ChatCompletionChunk.Choice.Delta.builder()
+              .role(ChatCompletionChunk.Choice.Delta.Role.ASSISTANT)
+              .build(),
+          null);
+    }
+
+    private static ChatCompletionChunk toolCallChunk(String id, String name, String arguments) {
+      return ChatCompletionChunk.builder()
+          .id("c1")
+          .created(1790717318L)
+          .model(MODEL)
+          .addChoice(
+              ChatCompletionChunk.Choice.builder()
+                  .index(0L)
+                  .delta(
+                      ChatCompletionChunk.Choice.Delta.builder()
+                          .addToolCall(
+                              ChatCompletionChunk.Choice.Delta.ToolCall.builder()
+                                  .index(0)
+                                  .id(id)
+                                  .type(ChatCompletionChunk.Choice.Delta.ToolCall.Type.FUNCTION)
+                                  .function(
+                                      ChatCompletionChunk.Choice.Delta.ToolCall.Function.builder()
+                                          .name(name)
+                                          .arguments(arguments)
+                                          .build())
+                                  .build())
+                          .build())
+                  .finishReason(Optional.empty())
+                  .build())
+          .build();
+    }
+
+    /**
+     * The finish chunk, still carrying the tool call's choice, with usage attached -- as Groq and
+     * Mistral send it.
+     */
+    private static ChatCompletionChunk finishChunkCarryingUsage() {
+      return ChatCompletionChunk.builder()
+          .id("c1")
+          .created(1790717318L)
+          .model(MODEL)
+          .usage(USAGE)
+          .addChoice(
+              ChatCompletionChunk.Choice.builder()
+                  .index(0L)
+                  .delta(ChatCompletionChunk.Choice.Delta.builder().build())
+                  .finishReason(ChatCompletionChunk.Choice.FinishReason.of("tool_calls"))
+                  .build())
+          .build();
+    }
+
+    /** The finish chunk with no usage -- what OpenAI itself sends. */
+    private static ChatCompletionChunk finishChunkWithoutUsage() {
+      return chunk(
+          ChatCompletionChunk.Choice.Delta.builder().build(),
+          ChatCompletionChunk.Choice.FinishReason.of("tool_calls"));
+    }
+
+    /** OpenAI's final, choices-less chunk -- which Groq also repeats after its own finish chunk. */
+    private static ChatCompletionChunk finalUsageOnlyChunk() {
+      return ChatCompletionChunk.builder()
+          .id("c1")
+          .created(1790717318L)
+          .model(MODEL)
+          .choices(List.of())
+          .usage(USAGE)
+          .build();
+    }
+
+    private static void assertAnsweredTheToolCallOnce(InferenceResult result) {
+      assertThat(result)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(
+              new InferenceResult.Actions(
+                  List.of(
+                      new Block.ToolCall(
+                          new CallId("fc_a9"),
+                          new ToolName("days_until"),
+                          "{\"date\":\"2026-12-25\"}"))));
+      assertThat(result.usage()).isEqualTo(Usage.of(MODEL, 145, 48));
+    }
+
+    @Test
+    void a_stream_that_reports_usage_on_the_finish_chunk_and_again_at_the_end_answers_once() {
+      List<ChatCompletionChunk> chunks =
+          List.of(
+              roleChunk(),
+              toolCallChunk("fc_a9", "days_until", "{\"date\":\"2026-12-25\"}"),
+              finishChunkCarryingUsage(),
+              finalUsageOnlyChunk());
+
+      InferenceResult result =
+          new OpenAiProviderConfig()
+              .client(fakeStreamingClient(params -> chunks))
+              .build()
+              .infer(REQUEST);
+
+      assertAnsweredTheToolCallOnce(result);
+    }
+
+    /**
+     * Mistral's shape (measured, {@code mistral-small-2603}): usage arrives ONLY on the finish
+     * chunk, with no final choices-less chunk after it, and ordinary chunks carry an explicit
+     * {@code "usage": null} rather than omitting the field. That explicit JSON null must be treated
+     * as absent, not as a usage worth remembering or stripping.
+     */
+    @Test
+    void a_stream_that_reports_usage_only_on_the_finish_chunk_keeps_it() {
+      ChatCompletionChunk noUsageYet =
+          ChatCompletionChunk.builder()
+              .id("c1")
+              .created(1790717318L)
+              .model("mistral-small-2603")
+              .usage((CompletionUsage) null)
+              .addChoice(
+                  ChatCompletionChunk.Choice.builder()
+                      .index(0L)
+                      .delta(
+                          ChatCompletionChunk.Choice.Delta.builder()
+                              .content(" help you today?")
+                              .build())
+                      .finishReason(Optional.empty())
+                      .build())
+              .build();
+      ChatCompletionChunk finishWithUsage =
+          ChatCompletionChunk.builder()
+              .id("c1")
+              .created(1790717318L)
+              .model("mistral-small-2603")
+              .usage(
+                  CompletionUsage.builder()
+                      .promptTokens(18L)
+                      .completionTokens(13L)
+                      .totalTokens(31L)
+                      .build())
+              .addChoice(
+                  ChatCompletionChunk.Choice.builder()
+                      .index(0L)
+                      .delta(ChatCompletionChunk.Choice.Delta.builder().content("").build())
+                      .finishReason(ChatCompletionChunk.Choice.FinishReason.of("stop"))
+                      .build())
+              .build();
+      List<ChatCompletionChunk> chunks =
+          List.of(
+              chunk(
+                  ChatCompletionChunk.Choice.Delta.builder().content(" 😊 How can I").build(),
+                  null),
+              noUsageYet,
+              finishWithUsage);
+
+      InferenceResult result =
+          new OpenAiProviderConfig()
+              .client(fakeStreamingClient(params -> chunks))
+              .build()
+              .infer(REQUEST);
+
+      assertThat(result)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(
+              new InferenceResult.Answer(List.of(new Block.Text(" 😊 How can I help you today?"))));
+      assertThat(result.usage()).isEqualTo(Usage.of("mistral-small-2603", 18, 13));
+    }
+
+    @Test
+    void an_openai_shaped_stream_is_unchanged() {
+      List<ChatCompletionChunk> chunks =
+          List.of(
+              roleChunk(),
+              toolCallChunk("fc_a9", "days_until", "{\"date\":\"2026-12-25\"}"),
+              finishChunkWithoutUsage(),
+              finalUsageOnlyChunk());
+
+      InferenceResult result =
+          new OpenAiProviderConfig()
+              .client(fakeStreamingClient(params -> chunks))
+              .build()
+              .infer(REQUEST);
+
+      assertAnsweredTheToolCallOnce(result);
     }
   }
 
