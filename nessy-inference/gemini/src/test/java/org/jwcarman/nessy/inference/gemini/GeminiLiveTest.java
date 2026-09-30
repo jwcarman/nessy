@@ -19,8 +19,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
@@ -41,6 +43,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Against the real service, when the environment carries a credential; skipped otherwise. Spends
  * real tokens, so it asks small questions of a cheap model.
  */
+@Tag("live")
 class GeminiLiveTest {
 
   /** The cheapest model that streams, because this runs on somebody's bill. */
@@ -182,5 +185,52 @@ class GeminiLiveTest {
         .map(Block.Text.class::cast)
         .map(Block.Text::text)
         .collect(Collectors.joining());
+  }
+
+  /**
+   * The one thing section 8d could not settle from bytecode: whether a pass-through under {@code
+   * generationConfig} merges into the SDK's own {@code generationConfig} or replaces it. The typed
+   * thinking config lives in that same object on the wire, so thoughts narrated means it survived,
+   * and an answer cut at the stop sequence means the pass-through arrived. Both: a merge. Record
+   * which held in the ledger.
+   */
+  @Test
+  void a_typed_thinking_config_and_a_generation_config_pass_through_both_arrive() {
+    InferenceRequest request =
+        new InferenceRequest(
+            new SystemPrompt("You are a terse assistant."),
+            InferenceContext.of(
+                List.of(
+                    new Turn(
+                        new TurnId(1),
+                        new Input(
+                            new Seq(1),
+                            List.of(
+                                new Block.Text(
+                                    "Think briefly, then reply with exactly: alpha beta gamma"))),
+                        List.of(),
+                        null,
+                        0))),
+            Toolset.none(),
+            new InferenceOptions(
+                MODEL,
+                2048,
+                Map.of(
+                    "gemini.generationConfig.thinkingConfig.includeThoughts", "true",
+                    "gemini.generationConfig.thinkingConfig.thinkingBudget", "512",
+                    "gemini.generationConfig.stopSequences", "[\"beta\"]")));
+
+    try (GeminiInferenceProvider provider = provider()) {
+      Narration narrated = new Narration();
+      String answer = text(provider.infer(request, narrated));
+
+      assertThat(narrated.fragments())
+          .as("the typed thinking config survived: thoughts were narrated")
+          .anyMatch(fragment -> "thinking".equals(fragment.kind()));
+      assertThat(answer)
+          .as("the pass-through arrived: the answer stops before the stop sequence")
+          .containsIgnoringCase("alpha")
+          .doesNotContainIgnoringCase("gamma");
+    }
   }
 }

@@ -528,4 +528,30 @@ class OpenAiResponsesLiveTest {
       logger.detachAppender(appender);
     }
   }
+
+  /**
+   * Section 13d: the case the Responses record could not run -- a summary asked for, and narrated.
+   */
+  @Test
+  void a_reasoning_summary_is_narrated_as_thinking() {
+    InferenceRequest request =
+        new InferenceRequest(
+            new SystemPrompt("You are a careful assistant."),
+            InferenceContext.of(List.of(turn("What is 17 times 23? Work it out.", List.of()))),
+            Toolset.none(),
+            new InferenceOptions(
+                REASONING_MODEL,
+                4096,
+                Map.of("openai.reasoning.effort", "medium", "openai.reasoning.summary", "auto")));
+
+    try (OpenAiResponsesInferenceProvider provider = provider()) {
+      Narration narrated = new Narration();
+      InferenceResult result = provider.infer(request, narrated);
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      assertThat(narrated.fragments())
+          .as("the summary deltas arrive as thinking")
+          .anyMatch(fragment -> "thinking".equals(fragment.kind()));
+    }
+  }
 }

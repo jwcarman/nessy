@@ -18,9 +18,14 @@ package org.jwcarman.nessy.inference.openai;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
@@ -37,6 +42,8 @@ import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.Toolset;
+import org.slf4j.LoggerFactory;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -56,6 +63,7 @@ import tools.jackson.databind.json.JsonMapper;
  * OPENAI_API_KEY=sk-... ./mvnw -pl nessy-inference/openai test -Dtest=OpenAiChatLiveTest
  * }</pre>
  */
+@Tag("live")
 class OpenAiChatLiveTest {
 
   /**
@@ -355,5 +363,148 @@ class OpenAiChatLiveTest {
         .map(Block.Text.class::cast)
         .map(Block.Text::text)
         .collect(Collectors.joining());
+  }
+
+  /** A model that reasons, for the effort case; the Responses live test's default. */
+  private static final String REASONING_MODEL =
+      System.getenv().getOrDefault("NESSY_LIVE_REASONING_MODEL", "gpt-6-sol");
+
+  private static final JsonMapper MAPPER = JsonMapper.builder().build();
+
+  private static final Map<String, String> STRICT = Map.of("openai.tools.strict", "true");
+
+  private static InferenceRequest carrying(
+      String question,
+      List<ToolOffer> tools,
+      ToolChoice choice,
+      String model,
+      Map<String, String> properties) {
+    return new InferenceRequest(
+        new SystemPrompt("You are a terse assistant. Answer in one short sentence."),
+        InferenceContext.of(
+            List.of(
+                new Turn(
+                    new TurnId(1),
+                    new Input(new Seq(1), List.of(new Block.Text(question))),
+                    List.of(),
+                    null,
+                    0))),
+        new Toolset(tools, choice),
+        new InferenceOptions(model, 1024, properties));
+  }
+
+  record LakeQuery(String name, Optional<String> unit) {}
+
+  /**
+   * Section 10 on a real wire: under strict mode the optional component is written, and still
+   * binds.
+   */
+  @Test
+  void under_strict_tools_an_optional_component_is_written_and_binds() {
+    ToolOffer lookup =
+        new ToolOffer(
+            new ToolName("lake_depth"),
+            "returns the maximum depth of a named lake",
+            new JsonSchema(
+                """
+                {"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",
+                 "properties":{"name":{"type":"string"},"unit":{"type":["string","null"]}},
+                 "required":["name"]}"""));
+
+    try (OpenAiChatInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(
+              carrying(
+                  "How deep is Loch Ness?", List.of(lookup), ToolChoice.auto(), MODEL, STRICT));
+
+      assertThat(calledIn(result)).isEqualTo(new ToolName("lake_depth"));
+      String arguments =
+          ((InferenceResult.Actions) result)
+              .blocks().stream()
+                  .filter(Block.ToolCall.class::isInstance)
+                  .map(Block.ToolCall.class::cast)
+                  .findFirst()
+                  .orElseThrow()
+                  .arguments();
+      Map<String, Object> written = MAPPER.readValue(arguments, new TypeReference<>() {});
+      assertThat(written).as("strict mode requires every property").containsKey("unit");
+      assertThat(MAPPER.readValue(arguments, LakeQuery.class).name()).containsIgnoringCase("Ness");
+    }
+  }
+
+  /** A sealed vocabulary's oneOf falls back per tool, says so, and the call still goes through. */
+  @Test
+  void under_strict_tools_a_sealed_vocabulary_falls_back_and_is_still_called() {
+    ToolOffer command =
+        new ToolOffer(
+            new ToolName("server_command"),
+            "restarts a host or shuts down, as asked",
+            new JsonSchema(
+                """
+                {"$schema":"https://json-schema.org/draft/2020-12/schema",
+                 "oneOf":[{"type":"object","properties":{"host":{"type":"string"},
+                                                         "type":{"const":"Restart"}},
+                           "required":["host","type"]},
+                          {"type":"object","properties":{"reason":{"type":["string","null"]},
+                                                         "type":{"const":"Shutdown"}},
+                           "required":["type"]}]}"""));
+    Logger logger = (Logger) LoggerFactory.getLogger(OpenAiChatRequests.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+
+    try (OpenAiChatInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(
+              carrying(
+                  "Restart the host called web-1.",
+                  List.of(command),
+                  new ToolChoice.Any(),
+                  MODEL,
+                  STRICT));
+
+      assertThat(calledIn(result)).isEqualTo(new ToolName("server_command"));
+      assertThat(appender.list).as("the fallback fired and said so").isNotEmpty();
+    } finally {
+      logger.detachAppender(appender);
+    }
+  }
+
+  @Test
+  void a_reasoning_effort_reaches_a_reasoning_model() {
+    try (OpenAiChatInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(
+              carrying(
+                  "What is 17 times 23?",
+                  List.of(),
+                  ToolChoice.auto(),
+                  REASONING_MODEL,
+                  Map.of("openai.reasoning.effort", "low")));
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+    }
+  }
+
+  /**
+   * Section 8c's promise made checkable once: a misspelled pass-through is the vendor's own 400.
+   */
+  @Test
+  void a_misspelled_pass_through_is_the_vendor_s_own_refusal() {
+    try (OpenAiChatInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(
+              carrying(
+                  "Say hello.",
+                  List.of(),
+                  ToolChoice.auto(),
+                  MODEL,
+                  Map.of("openai.temperatur", "0.2")));
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> assertThat(fault.failure().reason()).containsIgnoringCase("temperatur"));
+    }
   }
 }

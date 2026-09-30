@@ -25,6 +25,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -179,6 +181,9 @@ class PresetCandidatesLiveTest {
 
   private static final Map<String, Row> ROWS = new ConcurrentHashMap<>();
 
+  /** What each chat-wire candidate said to {@code openai.tools.strict=true}: OK, or its message. */
+  private static final Map<String, String> STRICT = new ConcurrentHashMap<>();
+
   /** One row of the measurement table: what was asked of the vendor, and what came back. */
   private record Row(
       String id, String model, String baseUrl, String wire, String status, String detail) {}
@@ -207,6 +212,15 @@ class PresetCandidatesLiveTest {
 
     String shownUrl() {
       return baseUrl == null ? "(the " + id + " preset)" : baseUrl;
+    }
+
+    /** A candidate spoken to over Chat Completions, by its own wire or by its preset's. */
+    boolean chatWire() {
+      if (wire != null) {
+        return "openai-chat".equals(wire);
+      }
+      return Preset.CATALOGUE.stream()
+          .anyMatch(preset -> preset.id().equals(id) && preset.wire() == Wire.OPENAI_CHAT);
     }
 
     String modelEnvVar() {
@@ -284,15 +298,22 @@ class PresetCandidatesLiveTest {
                               + candidate.id()
                               + " (it has no default model)"))));
     }
-    return DynamicContainer.dynamicContainer(
-        candidate.id(),
-        List.of(
-            DynamicTest.dynamicTest(
-                "a question needing the tool is answered and the tool is called",
-                () -> toolCallCheck(candidate, key, model)),
-            DynamicTest.dynamicTest(
-                "forced to answer after one call, the turn still answers",
-                () -> forcedAnswerCheck(candidate, key, model))));
+    List<DynamicTest> tests =
+        new ArrayList<>(
+            List.of(
+                DynamicTest.dynamicTest(
+                    "a question needing the tool is answered and the tool is called",
+                    () -> toolCallCheck(candidate, key, model)),
+                DynamicTest.dynamicTest(
+                    "forced to answer after one call, the turn still answers",
+                    () -> forcedAnswerCheck(candidate, key, model))));
+    if (candidate.chatWire()) {
+      tests.add(
+          DynamicTest.dynamicTest(
+              "under openai.tools.strict=true, the tool is still called",
+              () -> strictCheck(candidate, key, model)));
+    }
+    return DynamicContainer.dynamicContainer(candidate.id(), tests);
   }
 
   private static @Nullable String resolveModel(Candidate candidate) {
@@ -314,7 +335,8 @@ class PresetCandidatesLiveTest {
   private void toolCallCheck(Candidate candidate, String key, String model) {
     try {
       CountingDaysUntilTool tool = new CountingDaysUntilTool();
-      DirectHarness<String, String> harness = harness(candidate, key, model, tool, c -> {});
+      DirectHarness<String, String> harness =
+          harness(candidate, key, model, tool, c -> {}, strictOff(candidate));
 
       Outcome<String> outcome =
           harness.ask(
@@ -336,7 +358,13 @@ class PresetCandidatesLiveTest {
     try {
       CountingDaysUntilTool tool = new CountingDaysUntilTool();
       DirectHarness<String, String> harness =
-          harness(candidate, key, model, tool, c -> c.turnPolicy(TurnPolicy.calls(1, 2)));
+          harness(
+              candidate,
+              key,
+              model,
+              tool,
+              c -> c.turnPolicy(TurnPolicy.calls(1, 2)),
+              strictOff(candidate));
 
       Outcome<String> outcome =
           harness.ask(
@@ -347,6 +375,41 @@ class PresetCandidatesLiveTest {
       recordSuccess(candidate, model);
     } catch (Throwable t) {
       recordFailure(candidate, model, t);
+      throw t;
+    }
+  }
+
+  /** The baseline column is the non-strict wire, whatever a preset now defaults (ruling 15). */
+  private static String[] strictOff(Candidate candidate) {
+    return candidate.chatWire()
+        ? new String[] {
+          "nessy.providers." + candidate.id() + ".properties.openai.tools.strict=false"
+        }
+        : new String[0];
+  }
+
+  private void strictCheck(Candidate candidate, String key, String model) {
+    try {
+      CountingDaysUntilTool tool = new CountingDaysUntilTool();
+      DirectHarness<String, String> harness =
+          harness(
+              candidate,
+              key,
+              model,
+              tool,
+              c -> {},
+              "nessy.providers." + candidate.id() + ".properties.openai.tools.strict=true");
+
+      Outcome<String> outcome =
+          harness.ask(
+              AgentId.random(),
+              "How many whole days from today until 2030-01-01? Use the days_until tool.");
+
+      assertThat(outcome).isInstanceOf(Outcome.Answered.class);
+      assertThat(tool.callCount()).isGreaterThanOrEqualTo(1);
+      STRICT.put(candidate.id(), "OK");
+    } catch (Throwable t) {
+      STRICT.put(candidate.id(), truncate(t.getClass().getName() + ": " + t.getMessage(), 300));
       throw t;
     }
   }
@@ -373,20 +436,22 @@ class PresetCandidatesLiveTest {
     return text.length() <= max ? text : text.substring(0, max);
   }
 
-  private InferenceProvider provider(Candidate candidate, String key) {
+  private InferenceProvider provider(Candidate candidate, String key, String... extra) {
+    String[] base =
+        candidate.baseUrl() == null
+            ? new String[] {"nessy.providers." + candidate.id() + ".api-key=" + key}
+            : new String[] {
+              "nessy.providers." + candidate.id() + ".wire=" + candidate.wire(),
+              "nessy.providers." + candidate.id() + ".base-url=" + candidate.baseUrl(),
+              "nessy.providers." + candidate.id() + ".api-key=" + key,
+              "nessy.providers." + candidate.id() + ".vendor=" + candidate.vendor()
+            };
     ApplicationContextRunner runner =
         new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(InferenceProvidersAutoConfiguration.class))
             .withBean(ObservationRegistry.class, ObservationRegistry::create)
             .withPropertyValues(
-                candidate.baseUrl() == null
-                    ? new String[] {"nessy.providers." + candidate.id() + ".api-key=" + key}
-                    : new String[] {
-                      "nessy.providers." + candidate.id() + ".wire=" + candidate.wire(),
-                      "nessy.providers." + candidate.id() + ".base-url=" + candidate.baseUrl(),
-                      "nessy.providers." + candidate.id() + ".api-key=" + key,
-                      "nessy.providers." + candidate.id() + ".vendor=" + candidate.vendor()
-                    });
+                Stream.concat(Arrays.stream(base), Arrays.stream(extra)).toArray(String[]::new));
     InferenceProvider[] holder = new InferenceProvider[1];
     runner.run(context -> holder[0] = context.getBean(candidate.id(), InferenceProvider.class));
     return holder[0];
@@ -397,13 +462,14 @@ class PresetCandidatesLiveTest {
       String key,
       String model,
       CountingDaysUntilTool tool,
-      Customizer<DirectHarnessConfig<String>> extra) {
+      Customizer<DirectHarnessConfig<String>> extra,
+      String... properties) {
     ObjectMapper mapper = JsonMapper.builder().build();
     DefaultDirectHarnessFactory factory =
         DefaultDirectHarnessFactory.of(
             f ->
                 f.backend(new InMemoryDirectBackend(new JacksonCodecFactory(mapper)))
-                    .provider(ProviderId.of(candidate.id()), provider(candidate, key))
+                    .provider(ProviderId.of(candidate.id()), provider(candidate, key, properties))
                     .schemas(new VictoolsJsonSchemaGenerator())
                     .mapper(mapper)
                     .inference(ProviderId.of(candidate.id()), InferenceOptions.of(model)));
@@ -421,8 +487,8 @@ class PresetCandidatesLiveTest {
   @AfterAll
   static void write_results_file() throws IOException {
     StringBuilder markdown = new StringBuilder();
-    markdown.append("| id | model | base url | wire | result | detail |\n");
-    markdown.append("|---|---|---|---|---|---|\n");
+    markdown.append("| id | model | base url | wire | result | strict | detail |\n");
+    markdown.append("|---|---|---|---|---|---|---|\n");
     for (Candidate candidate : CANDIDATES) {
       Row row =
           ROWS.getOrDefault(
@@ -445,6 +511,8 @@ class PresetCandidatesLiveTest {
           .append(row.wire())
           .append(" | ")
           .append(row.status())
+          .append(" | ")
+          .append(STRICT.getOrDefault(row.id(), candidate.chatWire() ? "not run" : "n/a"))
           .append(" | ")
           .append(row.detail())
           .append(" |\n");

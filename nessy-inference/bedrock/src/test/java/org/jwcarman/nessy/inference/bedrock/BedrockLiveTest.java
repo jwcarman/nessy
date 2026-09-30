@@ -19,8 +19,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
@@ -41,6 +43,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Against the real service, when the environment carries a credential; skipped otherwise. Spends
  * real tokens, so it asks small questions of a cheap model.
  */
+@Tag("live")
 class BedrockLiveTest {
 
   /**
@@ -186,5 +189,44 @@ class BedrockLiveTest {
         .map(Block.Text.class::cast)
         .map(Block.Text::text)
         .collect(Collectors.joining());
+  }
+
+  /**
+   * Claude's extended thinking on Bedrock, as two properties and no code (section 9e). Needs a
+   * Claude model id this account can call; skipped without one rather than guessed.
+   */
+  @Test
+  void claude_thinks_on_bedrock_through_two_properties() {
+    String claude = System.getenv("NESSY_LIVE_BEDROCK_THINKING_MODEL");
+    assumeTrue(claude != null, "NESSY_LIVE_BEDROCK_THINKING_MODEL is not set");
+    InferenceRequest request =
+        new InferenceRequest(
+            new SystemPrompt("You are a terse assistant."),
+            InferenceContext.of(
+                List.of(
+                    new Turn(
+                        new TurnId(1),
+                        new Input(
+                            new Seq(1),
+                            List.of(
+                                new Block.Text("Think, then say how many continents there are."))),
+                        List.of(),
+                        null,
+                        0))),
+            Toolset.none(),
+            new InferenceOptions(
+                claude,
+                2048,
+                Map.of(
+                    "bedrock.thinking.type", "enabled", "bedrock.thinking.budget_tokens", "1024")));
+
+    try (BedrockInferenceProvider provider = provider()) {
+      InferenceResult result = provider.infer(request);
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      assertThat(((InferenceResult.Answer) result).blocks())
+          .as("a signed reasoning block comes back")
+          .anyMatch(Block.Provider.class::isInstance);
+    }
   }
 }

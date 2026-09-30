@@ -19,13 +19,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
+import org.jwcarman.nessy.api.Tokens;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -57,6 +60,7 @@ import tools.jackson.databind.json.JsonMapper;
  * ANTHROPIC_API_KEY=sk-ant-... ./mvnw -pl nessy-inference/anthropic test -Dtest=AnthropicLiveTest
  * }</pre>
  */
+@Tag("live")
 class AnthropicLiveTest {
 
   /** The cheapest model that still calls tools and thinks, because this runs on somebody's bill. */
@@ -394,5 +398,56 @@ class AnthropicLiveTest {
         .map(Block.Text.class::cast)
         .map(Block.Text::text)
         .collect(Collectors.joining());
+  }
+
+  private static InferenceRequest carrying(
+      SystemPrompt system, List<Turn> turns, Map<String, String> properties) {
+    return new InferenceRequest(
+        system,
+        InferenceContext.of(turns),
+        Toolset.none(),
+        new InferenceOptions(MODEL, 2048, properties));
+  }
+
+  /**
+   * Section 9c's tier rule on the wire: a provider that does not think, an agent type that asks it
+   * to.
+   */
+  @Test
+  void an_agent_type_s_budget_makes_a_provider_that_does_not_think_think() {
+    try (AnthropicInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(
+              carrying(
+                  SYSTEM,
+                  List.of(open(1, "Think about it, then say how many continents there are.")),
+                  Map.of("anthropic.thinking.budget_tokens", "1024")));
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      assertThat(((InferenceResult.Answer) result).blocks())
+          .as("thinking was asked for, so the reply carries this vendor's own state")
+          .anyMatch(Block.Provider.class::isInstance);
+    }
+  }
+
+  /** A prefix long enough to cache, asked twice: a write, then a read, is reported. */
+  @Test
+  void a_ttl_property_caches_the_prefix() {
+    SystemPrompt longPrompt =
+        new SystemPrompt(
+            "You are a terse assistant. "
+                + "Background you may ignore: the loch is deep and cold. ".repeat(300));
+    Map<String, String> cached = Map.of("anthropic.cache_control.ttl", "5m");
+
+    try (AnthropicInferenceProvider provider = provider()) {
+      InferenceResult first =
+          provider.infer(carrying(longPrompt, List.of(open(1, "Say hello.")), cached));
+      InferenceResult second =
+          provider.infer(carrying(longPrompt, List.of(open(1, "Say hello.")), cached));
+
+      assertThat(List.of(first.usage().cacheWriteTokens(), second.usage().cacheReadTokens()))
+          .as("the prefix was written to the cache, or read back from it")
+          .anyMatch(count -> count instanceof Tokens.Counted(int value) && value > 0);
+    }
   }
 }
