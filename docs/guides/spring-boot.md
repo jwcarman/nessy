@@ -111,8 +111,10 @@ to start if only one is set, naming which.
 
 `nessy.embedder` and `nessy.embedding-model` are the same kind of pair, for
 embeddings: set both, or neither and name a provider and a model on every
-store. The starter refuses to start if only one is set, and refuses a pair
-naming an embedder that is not registered, listing the ones that are.
+store. The starter's own embedder factory refuses to start if only one is
+set, and refuses a pair naming an embedder that is not registered, listing
+the ones that are; an application `EmbedderFactory` bean replaces it, and
+these checks with it.
 
 Vendor properties bind as a map of strings, so a dotted name stays one key:
 

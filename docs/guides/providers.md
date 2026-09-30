@@ -678,8 +678,8 @@ A preset's or custom embedder's bean is named `<id>Embeddings`
 (`openaiEmbeddings`), because the inference provider of the same id is
 already the bean `openai`; its registry id is the id. An application bean
 named `openaiEmbeddings` beside a lit `openai` preset fails startup, naming
-both. One named like a lit preset's id (`voyage`) fails too, because two
-providers would register under one id.
+both. With the starter's factory, one named like a lit preset's id
+(`voyage`) fails too, because two providers would register under one id.
 
 An application `EmbedderFactory` bean replaces the starter's factory. The
 presets are still registered as `EmbeddingProvider` beans, for it to use or
