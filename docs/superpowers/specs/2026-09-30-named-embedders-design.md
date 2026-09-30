@@ -1,6 +1,6 @@
 # Named embedders: a store says who embeds
 
-**Status: DESIGN, NOTHING BUILT. The rulings were made in conversation with James on 2026-09-29
+**Status: DESIGN, NOTHING BUILT, then AMENDED 2026-09-30 to no embedder properties (see the Amendment below, which overrides §7 and the `nessy-vendor-properties` module decision). The rulings were made in conversation with James on 2026-09-29
 and this record writes them down. The proposals this record had to make to honour them -- the
 default-embedder pair among them, the one question the rulings had left open -- were ruled on
 overnight on 2026-09-30 by the controller James authorised for the run; those rulings are folded
@@ -23,6 +23,23 @@ instance on this machine, on branch `named-embedders` at the time of writing. Th
 the two earlier `0.3.0` records as documents only: `Wire` still has three values, `InferenceOptions`
 has no `properties`, and `VendorProperties` does not exist; §15 (4) says which names below are
 cited from those records rather than from code.
+
+## Amendment, 2026-09-30: embedders support no properties yet
+
+`2026-09-30-vendor-properties-design.md` and its three amendments settled the rule this record was
+written before: nothing goes in raw. An adapter sends only the properties it enumerates, and any
+other name under its prefix is ignored with one WARN when the embedder is built (and when a store's
+terms are validated). This overrides §7 (the pass-through of `openai.*`, `gemini.*`, `bedrock.*`
+and `voyage.*` names into request bodies, the clash tables and their nested-name refusals) and the
+decision to hold the reader in a new `nessy-vendor-properties` module: that module is gone, and the
+helper is `org.jwcarman.nessy.api.VendorProperties` with `under`, `merge` and `requireString` only.
+
+The four embedding adapters enumerate no property, so each supports none: `EmbedderConfig.property`
+and `nessy.embedders.<id>.properties.*` still carry names, a name under another adapter's prefix is
+refused at build, a name with no prefix is refused, and a name under the adapter's own prefix is
+ignored with a WARN naming it and the empty list of supported names. Nothing reaches an embedding
+request. What §7 also asked for stands: Bedrock's model-family check runs in `validate`, so a store
+naming a model of neither family fails where it is built.
 
 ---
 
