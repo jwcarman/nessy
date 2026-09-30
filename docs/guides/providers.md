@@ -363,10 +363,12 @@ sent. An encrypted item is kilobytes, one per inference step.
 
 Function tools go out in strict mode: the adapter rewrites each tool's
 schema so every property is required, an optional one admits `null`, and
-every object forbids properties it does not list. A tool whose schema uses
-something strict mode cannot express, such as a sealed type's `oneOf`, an
-`Optional` record or a map, is sent as generated with `strict: false`, and
-the adapter logs a warning naming the tool and the keyword. The other tools
+every object forbids properties it does not list. A sealed type or an
+`Optional` record inside the input goes strict, its `oneOf` written as
+`anyOf`. A tool whose schema uses something strict mode cannot express, such
+as a map, a keyword outside the strict subset (`minLength`, say), or a union
+at the schema's root, is sent as generated with `strict: false`, and the
+adapter logs a warning naming the tool and the keyword. The other tools
 in the request stay strict. A structured answer's schema is rewritten the
 same way and sent as `text.format`.
 
