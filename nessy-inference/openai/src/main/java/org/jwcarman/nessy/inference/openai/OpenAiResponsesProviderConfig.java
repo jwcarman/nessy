@@ -17,7 +17,11 @@ package org.jwcarman.nessy.inference.openai;
 
 import com.openai.client.OpenAIClient;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
+import org.jwcarman.nessy.vendor.VendorProperties;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -36,6 +40,7 @@ public final class OpenAiResponsesProviderConfig {
   private String vendor = OpenAiChatInferenceProvider.VENDOR;
   private Duration timeout;
   private JsonMapper mapper = JsonMapper.builder().build();
+  private final Map<String, String> properties = new LinkedHashMap<>();
 
   OpenAiResponsesProviderConfig() {}
 
@@ -91,11 +96,41 @@ public final class OpenAiResponsesProviderConfig {
     return this;
   }
 
+  /**
+   * A vendor property this provider sends with every request (spec §6a) -- {@code
+   * openai.reasoning.effort}, {@code openai.reasoning.summary}, or any request field under {@code
+   * openai.}, passed through. An agent type's own property of the same name overrides it.
+   * Repeatable; the last value given for a name wins. A name under another prefix, or one that
+   * names what a typed setting decides, fails at build.
+   */
+  public OpenAiResponsesProviderConfig property(String name, String value) {
+    Objects.requireNonNull(name, "name must not be null");
+    if (name.isBlank()) {
+      throw new IllegalArgumentException("name must not be blank");
+    }
+    properties.put(name, VendorProperties.requireString(name, value));
+    return this;
+  }
+
+  /** {@link #property(String, String)} for each entry, as Boot binds them. */
+  public OpenAiResponsesProviderConfig properties(Map<String, String> properties) {
+    Objects.requireNonNull(properties, "properties must not be null");
+    properties.forEach(this::property);
+    return this;
+  }
+
   OpenAiResponsesInferenceProvider build() {
+    OpenAiProperties.requireOwn(properties);
+    OpenAiProperties.responses(properties, mapper);
+    Map<String, String> own = Collections.unmodifiableMap(new LinkedHashMap<>(properties));
     if (client != null) {
-      return new OpenAiResponsesInferenceProvider(client, vendor, false, mapper);
+      return new OpenAiResponsesInferenceProvider(client, vendor, false, mapper, own);
     }
     return new OpenAiResponsesInferenceProvider(
-        OpenAiClients.build(useEnv, apiKey, baseUrl, organization, timeout), vendor, true, mapper);
+        OpenAiClients.build(useEnv, apiKey, baseUrl, organization, timeout),
+        vendor,
+        true,
+        mapper,
+        own);
   }
 }

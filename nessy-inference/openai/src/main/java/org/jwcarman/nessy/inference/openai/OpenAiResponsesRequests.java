@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.inference.openai;
 
 import com.openai.core.JsonValue;
+import com.openai.models.Reasoning;
+import com.openai.models.ReasoningEffort;
 import com.openai.models.responses.EasyInputMessage;
 import com.openai.models.responses.FunctionTool;
 import com.openai.models.responses.ResponseCreateParams;
@@ -42,6 +44,7 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.vendor.VendorProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.type.TypeReference;
@@ -60,6 +63,11 @@ final class OpenAiResponsesRequests {
 
   private OpenAiResponsesRequests() {}
 
+  /** No provider-level properties: the agent type's alone. */
+  static ResponseCreateParams toParams(InferenceRequest request, String vendor, JsonMapper mapper) {
+    return toParams(request, vendor, Map.of(), mapper);
+  }
+
   /**
    * The Responses request for one inference call: stateless, the whole context projected into input
    * items, the tools offered as functions.
@@ -67,10 +75,19 @@ final class OpenAiResponsesRequests {
    * @param request what to ask, with its context, tools and options
    * @param vendor the provider's own vendor tag; only {@code Block.Provider} blocks carrying it are
    *     replayed
+   * @param providerProperties the provider's own {@code openai.} map, overlaid here by the agent
+   *     type's (spec §7a)
    * @param mapper reads a tool's schema and a stored reasoning item; supplied, never made here
    */
-  static ResponseCreateParams toParams(InferenceRequest request, String vendor, JsonMapper mapper) {
+  static ResponseCreateParams toParams(
+      InferenceRequest request,
+      String vendor,
+      Map<String, String> providerProperties,
+      JsonMapper mapper) {
     InferenceOptions options = request.options();
+    OpenAiProperties.Read read =
+        OpenAiProperties.responses(
+            VendorProperties.merge(providerProperties, options.properties()), mapper);
     List<ResponseInputItem> input = new ArrayList<>();
     request
         .context()
@@ -99,6 +116,18 @@ final class OpenAiResponsesRequests {
     request.toolset().offers().forEach(offer -> builder.addTool(toFunctionTool(offer, mapper)));
     chooseTool(builder, request.toolset().offers(), request.toolset().choice());
     request.outputSchema().ifPresent(schema -> constrainAnswer(builder, schema, mapper));
+    // Built only when asked for: a reasoning object is a 400 on a model that does not reason,
+    // and the adapter never guesses which kind it holds (Responses record §5g).
+    if (read.effort().isPresent() || read.summary().isPresent()) {
+      Reasoning.Builder reasoning = Reasoning.builder();
+      read.effort().ifPresent(effort -> reasoning.effort(ReasoningEffort.of(effort)));
+      read.summary().ifPresent(summary -> reasoning.summary(Reasoning.Summary.of(summary)));
+      builder.reasoning(reasoning.build());
+    }
+    read.serviceTier()
+        .ifPresent(tier -> builder.serviceTier(ResponseCreateParams.ServiceTier.of(tier)));
+    read.passThrough()
+        .forEach((name, value) -> builder.putAdditionalBodyProperty(name, JsonValue.from(value)));
     return builder.build();
   }
 

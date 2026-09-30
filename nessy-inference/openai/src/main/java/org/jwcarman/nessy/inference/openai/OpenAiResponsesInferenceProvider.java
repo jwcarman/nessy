@@ -32,6 +32,7 @@ import com.openai.models.responses.ResponseReasoningItem;
 import com.openai.models.responses.ResponseStatus;
 import com.openai.models.responses.ResponseStreamEvent;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +48,7 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.vendor.VendorProperties;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -76,12 +78,27 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
   private final JsonMapper mapper;
   private final boolean ownsClient;
 
+  /**
+   * The provider's own {@code openai.} properties, checked at build; the agent type's overlay them.
+   */
+  private final Map<String, String> properties;
+
   OpenAiResponsesInferenceProvider(
       OpenAIClient client, String vendor, boolean ownsClient, JsonMapper mapper) {
+    this(client, vendor, ownsClient, mapper, Map.of());
+  }
+
+  OpenAiResponsesInferenceProvider(
+      OpenAIClient client,
+      String vendor,
+      boolean ownsClient,
+      JsonMapper mapper,
+      Map<String, String> properties) {
     this.client = client;
     this.vendor = Objects.requireNonNull(vendor, "vendor must not be null");
     this.ownsClient = ownsClient;
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
+    this.properties = Collections.unmodifiableMap(new LinkedHashMap<>(properties));
   }
 
   /** Equivalent to {@code of(OpenAiResponsesProviderConfig::fromEnv)}. */
@@ -110,6 +127,17 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
   }
 
   /**
+   * Reads the merged properties exactly as a request would, so a clash, a bad value or {@code
+   * openai.tools.strict=false} fails the harness build rather than its first turn (spec §7c).
+   */
+  @Override
+  public void validate(InferenceOptions options) {
+    Map<String, String> merged = VendorProperties.merge(properties, options.properties());
+    OpenAiProperties.responses(merged, mapper);
+    OpenAiProperties.logIgnored(merged);
+  }
+
+  /**
    * Total for anything the provider can do to us, and narrow for everything else: {@link
    * OpenAIException} is the root of what the SDK throws; anything outside it is a bug here and
    * escapes rather than being recorded as the model's fault.
@@ -120,7 +148,8 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
     try (StreamResponse<ResponseStreamEvent> stream =
         client
             .responses()
-            .createStreaming(OpenAiResponsesRequests.toParams(request, vendor, mapper))) {
+            .createStreaming(
+                OpenAiResponsesRequests.toParams(request, vendor, properties, mapper))) {
       ResponseAccumulator accumulator = ResponseAccumulator.create();
       boolean[] ended = {false};
       ResponseErrorEvent[] error = {null};

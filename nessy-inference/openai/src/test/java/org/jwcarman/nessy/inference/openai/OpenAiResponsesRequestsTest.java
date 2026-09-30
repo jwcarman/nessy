@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.inference.openai;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -23,6 +25,8 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.openai.core.ObjectMappers;
+import com.openai.models.Reasoning;
+import com.openai.models.ReasoningEffort;
 import com.openai.models.responses.EasyInputMessage;
 import com.openai.models.responses.FunctionTool;
 import com.openai.models.responses.ResponseCreateParams;
@@ -468,6 +472,161 @@ class OpenAiResponsesRequestsTest {
     @Test
     void no_reasoning_object_is_sent() {
       assertThat(params(request(List.of(open(1, "hi")))).reasoning()).isEmpty();
+    }
+  }
+
+  @Nested
+  class TheVendorProperties {
+
+    private static InferenceRequest carrying(Map<String, String> agentType) {
+      return new InferenceRequest(
+          SYSTEM,
+          InferenceContext.of(List.of(open(1, "hi"))),
+          Toolset.none(),
+          new InferenceOptions("gpt-6-sol", 1024, agentType));
+    }
+
+    private static ResponseCreateParams paramsFor(Map<String, String> agentType) {
+      return params(carrying(agentType));
+    }
+
+    @Test
+    void an_effort_builds_the_reasoning_object() {
+      Reasoning reasoning =
+          paramsFor(Map.of("openai.reasoning.effort", "high")).reasoning().orElseThrow();
+
+      assertThat(reasoning.effort().map(ReasoningEffort::asString)).contains("high");
+      assertThat(reasoning.summary()).isEmpty();
+    }
+
+    @Test
+    void a_summary_joins_the_same_reasoning_object() {
+      Reasoning reasoning =
+          paramsFor(Map.of("openai.reasoning.effort", "low", "openai.reasoning.summary", "auto"))
+              .reasoning()
+              .orElseThrow();
+
+      assertThat(reasoning.effort().map(ReasoningEffort::asString)).contains("low");
+      assertThat(reasoning.summary().map(Reasoning.Summary::asString)).contains("auto");
+    }
+
+    /** §5g: no reasoning object unless one of the two names asks for it. */
+    @Test
+    void without_either_reasoning_name_no_reasoning_object_is_sent() {
+      assertThat(paramsFor(Map.of("openai.seed", "1")).reasoning()).isEmpty();
+    }
+
+    @Test
+    void a_service_tier_lands_in_its_typed_field() {
+      assertThat(
+              paramsFor(Map.of("openai.service_tier", "flex"))
+                  .serviceTier()
+                  .map(ResponseCreateParams.ServiceTier::asString))
+          .contains("flex");
+    }
+
+    /** Strict is what this wire always does, so asking for it is accepted and changes nothing. */
+    @Test
+    void strict_true_is_accepted_as_what_this_wire_already_does() {
+      InferenceRequest request = carrying(Map.of("openai.tools.strict", "true"));
+
+      assertThatCode(() -> OpenAiResponsesRequests.toParams(request, VENDOR, MAPPER))
+          .doesNotThrowAnyException();
+      assertThat(params(request)._additionalBodyProperties()).isEmpty();
+    }
+
+    @Test
+    void strict_false_is_refused_because_this_wire_is_strict_regardless() {
+      InferenceRequest request = carrying(Map.of("openai.tools.strict", "false"));
+
+      assertThatThrownBy(() -> OpenAiResponsesRequests.toParams(request, VENDOR, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'openai.tools.strict'")
+          .hasMessageContaining("strict regardless");
+    }
+
+    @Test
+    void an_unknown_name_passes_through_nested_by_path() {
+      Map<String, Object> body =
+          sent(
+              paramsFor(Map.of("openai.metadata.team", "billing", "openai.top_p", "0.9"))
+                  ._additionalBodyProperties());
+
+      assertThat(body).containsEntry("metadata", Map.of("team", "billing"));
+      assertThat(body).containsEntry("top_p", 0.9);
+    }
+
+    @Test
+    void another_prefix_is_not_sent() {
+      assertThat(paramsFor(Map.of("anthropic.top_k", "5"))._additionalBodyProperties()).isEmpty();
+    }
+
+    @Test
+    void an_agent_type_entry_overrides_the_same_name_given_to_the_provider() {
+      ResponseCreateParams params =
+          OpenAiResponsesRequests.toParams(
+              carrying(Map.of("openai.reasoning.effort", "high")),
+              VENDOR,
+              Map.of("openai.reasoning.effort", "low"),
+              MAPPER);
+
+      assertThat(params.reasoning().orElseThrow().effort().map(ReasoningEffort::asString))
+          .contains("high");
+    }
+
+    @Test
+    void the_model_is_refused_as_what_a_typed_setting_decides() {
+      InferenceRequest request = carrying(Map.of("openai.model", "gpt-4o"));
+
+      assertThatThrownBy(() -> OpenAiResponsesRequests.toParams(request, VENDOR, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'openai.model'")
+          .hasMessageContaining("InferenceConfig.model");
+    }
+
+    /** The fields the Responses record fixes on purpose are refused with its reason. */
+    @Test
+    void store_is_refused_because_the_event_log_is_the_only_conversation() {
+      InferenceRequest request = carrying(Map.of("openai.store", "true"));
+
+      assertThatThrownBy(() -> OpenAiResponsesRequests.toParams(request, VENDOR, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'openai.store'")
+          .hasMessageContaining("the event log is the only conversation");
+    }
+
+    @Test
+    void a_previous_response_is_refused_for_the_same_reason() {
+      InferenceRequest request = carrying(Map.of("openai.previous_response_id", "resp_1"));
+
+      assertThatThrownBy(() -> OpenAiResponsesRequests.toParams(request, VENDOR, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("the event log is the only conversation");
+    }
+
+    /** Review Focus 3: a typed reasoning object and a pass-through one cannot both be sent. */
+    @Test
+    void a_pass_through_under_the_reasoning_object_is_refused_beside_a_known_reasoning_name() {
+      InferenceRequest request =
+          carrying(
+              Map.of(
+                  "openai.reasoning.effort", "high",
+                  "openai.reasoning.generate_summary", "auto"));
+
+      assertThatThrownBy(() -> OpenAiResponsesRequests.toParams(request, VENDOR, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'openai.reasoning.generate_summary'")
+          .hasMessageContaining("'openai.reasoning.effort'");
+    }
+
+    @Test
+    void a_reasoning_pass_through_alone_is_sent() {
+      Map<String, Object> body =
+          sent(
+              paramsFor(Map.of("openai.reasoning.generate_summary", "auto"))
+                  ._additionalBodyProperties());
+
+      assertThat(body).containsEntry("reasoning", Map.of("generate_summary", "auto"));
     }
   }
 

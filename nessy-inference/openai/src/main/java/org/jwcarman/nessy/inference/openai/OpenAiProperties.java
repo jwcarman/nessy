@@ -59,6 +59,30 @@ final class OpenAiProperties {
           "stream", STREAMING,
           "stream_options", "the adapter, which always asks for usage on the stream");
 
+  /** Why the Responses adapter fixes a field, quoted in the refusal (Responses record §5a). */
+  private static final String STATELESS =
+      "the Responses adapter, which is stateless because the event log is the only conversation";
+
+  /** What the Responses wire's typed settings, or the adapter itself, already decide (§9b). */
+  private static final Map<String, String> RESPONSES_CLASHES =
+      Map.ofEntries(
+          Map.entry("model", "InferenceConfig.model"),
+          Map.entry("input", CONVERSATION),
+          Map.entry("instructions", "the system prompt the harness sends"),
+          Map.entry("max_output_tokens", "InferenceConfig.maxTokens"),
+          Map.entry("tools", TOOLS),
+          Map.entry("tool_choice", TOOL_CHOICE),
+          Map.entry("text", SHAPE),
+          Map.entry("stream", STREAMING),
+          Map.entry("store", STATELESS),
+          Map.entry("include", STATELESS),
+          Map.entry("previous_response_id", STATELESS),
+          Map.entry("conversation", STATELESS),
+          Map.entry("background", STATELESS));
+
+  /** The object the adapter builds when either reasoning name is set (plan ruling 6). */
+  private static final String REASONING = "reasoning";
+
   private static final Logger log = LoggerFactory.getLogger(OpenAiProperties.class);
 
   private OpenAiProperties() {}
@@ -94,6 +118,37 @@ final class OpenAiProperties {
               + " the openai-responses wire carries it");
     }
     return read(own, mapper);
+  }
+
+  /** The Responses wire's reading of the merged provider and agent-type map (§9b). */
+  static Read responses(Map<String, String> merged, JsonMapper mapper) {
+    Map<String, String> own = VendorProperties.under(merged, PREFIX);
+    Map<String, String> clashes = new LinkedHashMap<>(RESPONSES_CLASHES);
+    String known = null;
+    if (own.containsKey(EFFORT)) {
+      known = EFFORT;
+    } else if (own.containsKey(SUMMARY)) {
+      known = SUMMARY;
+    }
+    if (known != null) {
+      for (String name : own.keySet()) {
+        boolean underReasoning = name.equals(REASONING) || name.startsWith(REASONING + ".");
+        if (underReasoning && !KNOWN.contains(name)) {
+          clashes.put(name, "property '" + PREFIX + known + "'");
+        }
+      }
+    }
+    VendorProperties.refuseClashes(PREFIX, own, clashes);
+    Read read = read(own, mapper);
+    if (own.containsKey(STRICT) && !read.strict()) {
+      throw new IllegalArgumentException(
+          "property '"
+              + PREFIX
+              + STRICT
+              + "' is false, and the openai-responses wire sends function tools strict"
+              + " regardless; remove the property, or use the openai-chat wire");
+    }
+    return read;
   }
 
   /** The known names parsed, the rest nested, over a map already filtered to this prefix. */
