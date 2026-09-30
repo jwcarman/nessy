@@ -43,8 +43,9 @@ public interface InferenceConfig {
   /**
    * A setting the vendor understands and the neutral API does not name. The name is prefixed by the
    * adapter that reads it ({@code openai.reasoning.effort}); an adapter ignores every other prefix,
-   * so an agent type may carry settings for several vendors at once. Repeatable; the last value
-   * given for a name wins. Fixed when the harness is built, sent with every request.
+   * so an agent type may carry settings for several vendors at once. Only the names an adapter
+   * supports are sent: an unsupported name under its prefix is ignored, with a warning. Repeatable;
+   * the last value given for a name wins. Fixed when the harness is built, sent with every request.
    *
    * @throws IllegalArgumentException if either argument is blank
    */

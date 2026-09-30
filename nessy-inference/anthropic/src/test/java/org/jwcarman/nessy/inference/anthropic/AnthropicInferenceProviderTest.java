@@ -1069,6 +1069,25 @@ class AnthropicInferenceProviderTest {
     }
 
     @Test
+    void validate_warns_only_for_the_agent_type_name_beside_a_provider_level_one() {
+      AnthropicInferenceProvider provider =
+          new AnthropicProviderConfig()
+              .client(fakeClient(params -> reply().addContent(text("ok")).build()))
+              .property("anthropic.top_k", "5")
+              .build();
+      InferenceRequest request = carrying(Map.of("anthropic.max_tokens", "5"));
+
+      List<ILoggingEvent> atValidate =
+          LogCapture.during(AnthropicProperties.class, () -> provider.validate(request.options()));
+
+      assertThat(LogCapture.warnings(atValidate))
+          .singleElement()
+          .asString()
+          .contains("'anthropic.max_tokens'")
+          .doesNotContain("anthropic.top_k'");
+    }
+
+    @Test
     void an_unsupported_property_does_not_stop_the_request_and_is_not_in_it() {
       MessageCreateParams params =
           sentBy(new AnthropicProviderConfig(), carrying(Map.of("anthropic.top_k", "5")));

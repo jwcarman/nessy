@@ -80,4 +80,52 @@ class GeminiEmbedderConfigTest {
                 + " supported: []");
     built[0].close();
   }
+
+  @Test
+  void a_name_with_no_prefix_is_refused_at_build() {
+    Customizer<GeminiEmbedderConfig> customizer =
+        c -> c.apiKey("test-key").property("dimensions", "3");
+
+    assertThatThrownBy(() -> GeminiEmbeddingProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'dimensions'");
+  }
+
+  @Test
+  void a_name_with_no_prefix_is_refused_when_an_embedder_is_validated() {
+    Map<String, String> properties = Map.of("dimensions", "3");
+
+    assertThatThrownBy(() -> GeminiEmbedderConfig.warnUnsupported(properties))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'dimensions'")
+        .hasMessageContaining("no prefix");
+  }
+
+  @Test
+  void a_property_under_another_prefix_is_not_warned_but_named_at_debug() {
+    Map<String, String> properties = Map.of("other.thing", "x");
+
+    List<ILoggingEvent> events =
+        LogCapture.during(
+            GeminiEmbedderConfig.class, () -> GeminiEmbedderConfig.warnUnsupported(properties));
+
+    assertThat(LogCapture.warnings(events)).isEmpty();
+    assertThat(events)
+        .extracting(ILoggingEvent::getFormattedMessage)
+        .containsExactly(
+            "NESSY EMBEDDING: properties for other adapters, ignored here: [other.thing]");
+  }
+
+  @Test
+  void a_supported_prefix_warning_names_the_full_prefixed_name() {
+    Map<String, String> properties = Map.of("gemini.thing", "x");
+
+    List<ILoggingEvent> events =
+        LogCapture.during(
+            GeminiEmbedderConfig.class, () -> GeminiEmbedderConfig.warnUnsupported(properties));
+
+    assertThat(LogCapture.warnings(events))
+        .containsExactly(
+            "NESSY EMBEDDING: property 'gemini.thing' is not supported by gemini and is ignored; supported: []");
+  }
 }

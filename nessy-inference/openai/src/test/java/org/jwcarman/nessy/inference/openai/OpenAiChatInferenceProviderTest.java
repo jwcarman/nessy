@@ -1292,6 +1292,33 @@ class OpenAiChatInferenceProviderTest {
     }
 
     @Test
+    void validate_warns_only_for_the_agent_type_name_beside_a_provider_level_one() {
+      OpenAiChatInferenceProvider provider =
+          new OpenAiChatProviderConfig()
+              .client(
+                  fakeClient(
+                      params ->
+                          completionOf(
+                              ChatCompletionMessage.builder()
+                                  .content("ok")
+                                  .refusal(Optional.<String>empty())
+                                  .build())))
+              .property("openai.seed", "7")
+              .build();
+      InferenceOptions options =
+          new InferenceOptions("gpt-4o", 1024, Map.of("openai.store", "true"));
+
+      List<ILoggingEvent> atValidate =
+          LogCapture.during(OpenAiProperties.class, () -> provider.validate(options));
+
+      assertThat(LogCapture.warnings(atValidate))
+          .singleElement()
+          .asString()
+          .contains("'openai.store'")
+          .doesNotContain("'openai.seed'");
+    }
+
+    @Test
     void an_unsupported_property_does_not_stop_the_request_and_is_not_in_it() {
       var captured = new ChatCompletionCreateParams[1];
       OpenAiChatInferenceProvider provider =

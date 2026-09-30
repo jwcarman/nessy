@@ -126,7 +126,7 @@ name a property whose name contains an underscore or a capital letter
 Boot's relaxed binding, which turns every `_` into `.` and lower-cases the
 rest. A name with neither binds from the environment. To take any value from
 the environment, name the property in the file and let the environment
-supply the value: `openai.user: ${TENANT_ID}`.
+supply the value: `openai.service_tier: ${OPENAI_SERVICE_TIER}`.
 
 `nessy.type` looks like it should name an agent type the way
 `nessy.model` names a model, and it does not: it is validated at startup

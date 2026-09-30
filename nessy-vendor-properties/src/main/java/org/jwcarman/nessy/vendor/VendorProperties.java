@@ -25,8 +25,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * How every adapter reads vendor properties: the entries under its own prefix, the provider's map
- * under the agent type's, each value as a JSON literal where it parses as one, and the typed reads
- * of the names an adapter supports.
+ * under the agent type's, and the typed reads of the names an adapter supports.
  *
  * <p>One class so that eight adapters cannot come to disagree about what {@code true} means. An
  * adapter keeps its own prefix and its supported names; everything mechanical is here. Every
@@ -54,7 +53,7 @@ public final class VendorProperties {
             "property '"
                 + name
                 + "' has no prefix; a vendor property is named for the adapter that reads it,"
-                + " as in 'openai.temperature'");
+                + " as in 'openai.reasoning.effort'");
       }
       if (name.startsWith(prefix)) {
         under.put(name.substring(prefix.length()), entry.getValue());
@@ -93,7 +92,7 @@ public final class VendorProperties {
     }
   }
 
-  /** A known name that takes an integer (spec §8b). */
+  /** A supported property that takes an integer (spec §8b). */
   public static int requireInteger(String name, String value) {
     try {
       return Integer.parseInt(value);
@@ -103,7 +102,7 @@ public final class VendorProperties {
     }
   }
 
-  /** A known name that takes a boolean, spelled as JSON spells one. */
+  /** A supported property that takes a boolean, spelled as JSON spells one. */
   public static boolean requireBoolean(String name, String value) {
     if ("true".equals(value)) {
       return true;
@@ -116,7 +115,8 @@ public final class VendorProperties {
   }
 
   /**
-   * A known name that takes a string: any non-blank text, because the vocabulary is the vendor's.
+   * A supported property that takes a string: any non-blank text, because the vocabulary is the
+   * vendor's.
    */
   public static String requireString(String name, String value) {
     if (value == null || value.isBlank()) {

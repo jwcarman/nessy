@@ -41,7 +41,9 @@ public interface EmbedderConfig {
 
   /**
    * A setting the vendor understands and this interface does not name, prefixed by the adapter that
-   * reads it ({@code voyage.truncation}). Repeatable; the last value given for a name wins.
+   * reads it ({@code voyage.truncation}). Only the names an adapter supports are sent: an
+   * unsupported name under its prefix is ignored, with a warning, and the embedding adapters
+   * support none yet. Repeatable; the last value given for a name wins.
    *
    * @throws IllegalArgumentException if either argument is blank
    */

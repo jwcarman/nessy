@@ -649,20 +649,13 @@ class OpenAiChatRequestsTest {
 
     @Test
     void another_prefix_is_named_at_debug_and_no_louder() {
-      Logger logger = (Logger) LoggerFactory.getLogger(OpenAiProperties.class);
-      Level before = logger.getLevel();
-      ListAppender<ILoggingEvent> appender = new ListAppender<>();
-      appender.start();
-      logger.addAppender(appender);
-      logger.setLevel(Level.DEBUG);
-      try {
-        OpenAiProperties.logIgnored(Map.of("anthropic.top_k", "5", "openai.seed", "1"));
-      } finally {
-        logger.detachAppender(appender);
-        logger.setLevel(before);
-      }
+      List<ILoggingEvent> events =
+          LogCapture.during(
+              OpenAiProperties.class,
+              () ->
+                  OpenAiProperties.logIgnored(Map.of("anthropic.top_k", "5", "openai.seed", "1")));
 
-      assertThat(appender.list)
+      assertThat(events)
           .singleElement()
           .satisfies(
               event -> {

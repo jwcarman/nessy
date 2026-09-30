@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.embedding.bedrock;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalInt;
@@ -142,11 +143,17 @@ public final class BedrockEmbedderConfig {
    * embedder's build), never per request.
    */
   static void warnUnsupported(Map<String, String> properties) {
-    for (String name : properties.keySet()) {
-      if (name.startsWith(PROPERTY_PREFIX)) {
-        log.warn(
-            "NESSY EMBEDDING: property '{}' is not supported by bedrock and is ignored; supported: []",
-            name);
+    for (String name : VendorProperties.under(properties, PROPERTY_PREFIX).keySet()) {
+      log.warn(
+          "NESSY EMBEDDING: property '{}{}' is not supported by bedrock and is ignored; supported: []",
+          PROPERTY_PREFIX,
+          name);
+    }
+    if (log.isDebugEnabled()) {
+      List<String> others =
+          properties.keySet().stream().filter(name -> !name.startsWith(PROPERTY_PREFIX)).toList();
+      if (!others.isEmpty()) {
+        log.debug("NESSY EMBEDDING: properties for other adapters, ignored here: {}", others);
       }
     }
   }

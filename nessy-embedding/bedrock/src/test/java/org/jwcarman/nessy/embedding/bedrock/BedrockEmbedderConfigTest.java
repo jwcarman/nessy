@@ -98,4 +98,53 @@ class BedrockEmbedderConfigTest {
                 + " supported: []");
     built[0].close();
   }
+
+  @Test
+  void a_name_with_no_prefix_is_refused_at_build() {
+    Customizer<BedrockEmbedderConfig> customizer =
+        c ->
+            c.region(Region.US_EAST_1).credentialsProvider(CREDENTIALS).property("dimensions", "3");
+
+    assertThatThrownBy(() -> BedrockEmbeddingProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'dimensions'");
+  }
+
+  @Test
+  void a_name_with_no_prefix_is_refused_when_an_embedder_is_validated() {
+    Map<String, String> properties = Map.of("dimensions", "3");
+
+    assertThatThrownBy(() -> BedrockEmbedderConfig.warnUnsupported(properties))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'dimensions'")
+        .hasMessageContaining("no prefix");
+  }
+
+  @Test
+  void a_property_under_another_prefix_is_not_warned_but_named_at_debug() {
+    Map<String, String> properties = Map.of("other.thing", "x");
+
+    List<ILoggingEvent> events =
+        LogCapture.during(
+            BedrockEmbedderConfig.class, () -> BedrockEmbedderConfig.warnUnsupported(properties));
+
+    assertThat(LogCapture.warnings(events)).isEmpty();
+    assertThat(events)
+        .extracting(ILoggingEvent::getFormattedMessage)
+        .containsExactly(
+            "NESSY EMBEDDING: properties for other adapters, ignored here: [other.thing]");
+  }
+
+  @Test
+  void a_supported_prefix_warning_names_the_full_prefixed_name() {
+    Map<String, String> properties = Map.of("bedrock.thing", "x");
+
+    List<ILoggingEvent> events =
+        LogCapture.during(
+            BedrockEmbedderConfig.class, () -> BedrockEmbedderConfig.warnUnsupported(properties));
+
+    assertThat(LogCapture.warnings(events))
+        .containsExactly(
+            "NESSY EMBEDDING: property 'bedrock.thing' is not supported by bedrock and is ignored; supported: []");
+  }
 }
