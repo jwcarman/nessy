@@ -61,6 +61,10 @@ final class OpenAiResponsesRequests {
   private OpenAiResponsesRequests() {}
 
   /**
+   * The Responses request for one inference call: stateless, the whole context projected into input
+   * items, the tools offered as functions.
+   *
+   * @param request what to ask, with its context, tools and options
    * @param vendor the provider's own vendor tag; only {@code Block.Provider} blocks carrying it are
    *     replayed
    * @param mapper reads a tool's schema and a stored reasoning item; supplied, never made here

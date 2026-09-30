@@ -185,8 +185,9 @@ class PresetCandidatesLiveTest {
 
   /**
    * A vendor this test can reach if its key is exported; {@code defaultModel} may be absent. A
-   * candidate with no {@code baseUrl} is an existing preset, reached by its key alone -- which is
-   * how a wire other than {@code openai-chat} gets measured.
+   * candidate carrying a {@code wire} is measured on that wire, which is how a non-chat wire gets
+   * measured; one with neither wire nor {@code baseUrl} is an existing preset, reached by its key
+   * alone.
    */
   private record Candidate(
       String id,

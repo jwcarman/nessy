@@ -97,11 +97,19 @@ final class OpenAiResponsesSchemas {
         : new Projected(strict(generated), Optional.empty());
   }
 
-  /** Strict mode requires the root to be an object, so a union there cannot be strict. */
+  /** Strict mode requires the root to be an object; anything else cannot be strict. */
   private static Optional<String> rootUnion(Map<?, ?> root) {
-    return root.containsKey(ANY_OF) || root.containsKey(ONE_OF)
-        ? Optional.of((root.containsKey(ANY_OF) ? ANY_OF : ONE_OF) + " at the root")
-        : Optional.empty();
+    if (root.containsKey(ANY_OF) || root.containsKey(ONE_OF)) {
+      return Optional.of((root.containsKey(ANY_OF) ? ANY_OF : ONE_OF) + " at the root");
+    }
+    if (isObject(root)) {
+      return Optional.empty();
+    }
+    if (root.containsKey("$ref")) {
+      return Optional.of("$ref at the root");
+    }
+    Object type = root.get("type");
+    return Optional.of(type == null ? "no type at the root" : "type " + type + " at the root");
   }
 
   // ---- the check ------------------------------------------------------------------------

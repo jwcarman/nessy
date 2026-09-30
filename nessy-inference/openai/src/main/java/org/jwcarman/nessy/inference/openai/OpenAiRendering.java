@@ -51,10 +51,10 @@ final class OpenAiRendering {
   /**
    * The system prompt, and whatever background stands behind the conversation.
    *
-   * <p><b>Folded into the system message, and that is this adapter's decision alone.</b> This wire
-   * has one place for anything nobody said, so background goes there. Anthropic would put it in the
-   * top-level system block and Gemini in a system instruction; {@link Ambient} says what the
-   * background is and takes no view on any of that.
+   * <p><b>Where the background goes is each adapter's decision alone.</b> The chat adapter folds it
+   * into the system message; the Responses adapter decides for itself where the prompt and the
+   * background travel, as Anthropic would use its top-level system block and Gemini a system
+   * instruction. {@link Ambient} says what the background is and takes no view on any of that.
    *
    * <p>Labelled with tags so a model reading two unlabelled blobs run together can tell which is
    * the standing instruction and which is today's note. The kind is safe to interpolate without
@@ -106,11 +106,11 @@ final class OpenAiRendering {
    *
    * <p>Exhaustive, so a new block kind has to say here whether it is something a person reads.
    * Anything that is not text contributes nothing rather than being cast and thrown: a call travels
-   * in {@code tool_calls}, and another vendor's reasoning state belongs to whoever attached it --
+   * as a call, not as text, and another vendor's reasoning state belongs to whoever attached it --
    * handing those bytes to this endpoint would at best be ignored and at worst rejected.
    *
-   * <p>Commentary is re-sent beside the answer because it is part of what the assistant said, and
-   * this wire has one content field for both.
+   * <p>Commentary is re-sent beside the answer because it is part of what the assistant said; each
+   * adapter decides where the calls and the text travel, and this renders only the text.
    */
   static String text(List<? extends Block> blocks) {
     return blocks.stream()

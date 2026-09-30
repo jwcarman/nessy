@@ -147,6 +147,18 @@ class ProviderCatalogueTest {
   }
 
   @Test
+  void the_openai_preset_told_the_responses_wire_resolves_to_it() {
+    ProviderSettings openai = new ProviderSettings(Wire.OPENAI_RESPONSES, null, null, null, null);
+
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of("openai", openai), Map.of("openai.api-key", "k")::get);
+
+    assertThat(resolved)
+        .containsExactly(
+            new ResolvedProvider("openai", Wire.OPENAI_RESPONSES, null, "openai", "k"));
+  }
+
+  @Test
   void the_openai_base_url_property_overrides_the_openai_preset() {
     Map<String, String> properties =
         Map.of("openai.api-key", "k", "openai.base-url", "http://localhost:1234/v1");

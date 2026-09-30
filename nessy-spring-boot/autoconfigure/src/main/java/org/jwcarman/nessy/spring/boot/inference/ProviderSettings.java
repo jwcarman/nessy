@@ -23,7 +23,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>{@code vendor} is ignored for the {@link Wire#ANTHROPIC} and {@link Wire#GEMINI} wires:
  * Anthropic and Gemini report their own fixed vendor, and only the two OpenAI wires (shared by more
- * than one vendor) needs an override.
+ * than one vendor) need an override.
  */
 record ProviderSettings(
     @Nullable Wire wire,

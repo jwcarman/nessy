@@ -21,6 +21,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -448,6 +450,80 @@ class OpenAiResponsesLiveTest {
 
       assertThat(calledIn(result)).isEqualTo(new ToolName("server_command"));
       assertThat(appender.list).as("the fallback fired and said so").isNotEmpty();
+    } finally {
+      logger.detachAppender(appender);
+    }
+  }
+
+  /** A sealed vocabulary whose branches carry a {@code const} discriminator, nested in a record. */
+  @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+  @JsonSubTypes({
+    @JsonSubTypes.Type(value = Restart.class, name = "Restart"),
+    @JsonSubTypes.Type(value = Shutdown.class, name = "Shutdown")
+  })
+  sealed interface HostAction permits Restart, Shutdown {}
+
+  record Restart(String host) implements HostAction {}
+
+  record Shutdown(Optional<String> reason) implements HostAction {}
+
+  record Note(String text) {}
+
+  record HostRequest(HostAction action, Optional<Note> note) {}
+
+  /**
+   * F1: a nested sealed field and an optional record component, both in one tool's input, are
+   * accepted in strict mode -- no fallback warning -- and the arguments the model writes bind.
+   */
+  @Test
+  void a_nested_sealed_type_and_an_optional_record_go_strict_and_are_called() {
+    ToolOffer hostRequest =
+        new ToolOffer(
+            new ToolName("host_request"),
+            "carries out an action on a host, with an optional note",
+            new JsonSchema(
+                """
+                {"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",
+                 "properties":{
+                   "action":{"oneOf":[
+                     {"type":"object","properties":{"host":{"type":"string"},
+                                                    "type":{"const":"Restart"}},
+                      "required":["host","type"]},
+                     {"type":"object","properties":{"reason":{"type":["string","null"]},
+                                                    "type":{"const":"Shutdown"}},
+                      "required":["type"]}]},
+                   "note":{"oneOf":[{"type":"null"},
+                                    {"type":"object","properties":{"text":{"type":"string"}},
+                                     "required":["text"]}]}},
+                 "required":["action"]}"""));
+    Logger logger = (Logger) LoggerFactory.getLogger(OpenAiResponsesRequests.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+
+    try (OpenAiResponsesInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(
+              asking(
+                  "Restart the host called web-1, and note that it was unresponsive.",
+                  List.of(hostRequest),
+                  new ToolChoice.Any(),
+                  MODEL));
+
+      assertThat(calledIn(result)).isEqualTo(new ToolName("host_request"));
+      assertThat(appender.list.stream().map(ILoggingEvent::getFormattedMessage))
+          .as("no strict fallback was logged for this tool")
+          .noneMatch(message -> message.contains("host_request"));
+      String arguments =
+          ((InferenceResult.Actions) result)
+              .blocks().stream()
+                  .filter(Block.ToolCall.class::isInstance)
+                  .map(Block.ToolCall.class::cast)
+                  .findFirst()
+                  .orElseThrow()
+                  .arguments();
+      HostRequest bound = MAPPER.readValue(arguments, HostRequest.class);
+      assertThat(bound.action()).isEqualTo(new Restart("web-1"));
     } finally {
       logger.detachAppender(appender);
     }

@@ -1,6 +1,6 @@
 # An OpenAI Responses adapter: the second shape from one vendor
 
-**Status: DESIGN, NOTHING BUILT. The rulings were made in conversation with James on 2026-09-29,
+**Status: BUILT on branch responses-api; live measurement pending (GPT-6 via Responses, nested strict acceptance, Perplexity, the §5j replay rule). The rulings were made in conversation with James on 2026-09-29,
 in two rounds -- the first shaped the adapter, the second (after he read this record's summary)
 settled reasoning, strict tools and where reasoning is configured -- and this record writes them
 down. Every new public name is listed in §11; the questions in §12 are the ones still open.**

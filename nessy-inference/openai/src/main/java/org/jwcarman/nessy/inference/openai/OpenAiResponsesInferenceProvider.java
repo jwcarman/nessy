@@ -65,7 +65,7 @@ import tools.jackson.databind.json.JsonMapper;
  * <p><b>The SDK's accumulator folds nothing.</b> It keeps the whole {@code Response} the terminal
  * event carries ({@code completed}, {@code failed} or {@code incomplete}) and ignores everything
  * else, trailing events and unknown types included; the answer is read from that {@code Response}
- * in {@link #read}, and the deltas exist for narration.
+ * in {@code read}, and the deltas exist for narration.
  *
  * <p>Holds no model name: the model travels in {@link InferenceOptions}.
  */
@@ -89,6 +89,12 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
     return of(OpenAiResponsesProviderConfig::fromEnv);
   }
 
+  /**
+   * Builds a provider from a live {@link OpenAiResponsesProviderConfig}: each customizer fills it
+   * in, then this factory validates its required field and constructs the finished provider. No
+   * public {@code build()} survives here; the factory is the only place a config ever turns into a
+   * provider.
+   */
   public static OpenAiResponsesInferenceProvider of(
       List<Customizer<OpenAiResponsesProviderConfig>> customizers) {
     Objects.requireNonNull(customizers, "customizers must not be null");
@@ -97,6 +103,7 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
     return config.build();
   }
 
+  /** One customizer, for a caller that is not a container. */
   public static OpenAiResponsesInferenceProvider of(
       Customizer<OpenAiResponsesProviderConfig> customizer) {
     return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
@@ -344,7 +351,7 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
     }
   }
 
-  /** This vendor, by name. */
+  /** This vendor, by name -- not an SPI method, kept because callers and logs want it. */
   public String name() {
     return OpenAiChatInferenceProvider.NAME;
   }

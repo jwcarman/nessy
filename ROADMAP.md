@@ -147,12 +147,14 @@ The first three ship together as `0.3.0`, in this order.
   refuses, and Perplexity, which now answers only on `/v1/responses`. The
   wires become `openai-chat` and `openai-responses`; the `openai` preset
   moves to the new wire once the live tests pass through it.
-- **Reasoning effort, vendor-neutral** *(next, after the Responses adapter)*
-  — one per-agent-type setting on `InferenceConfig` that each adapter
-  translates: OpenAI's `reasoning.effort` (and the summary that rides with
-  it), Anthropic's thinking budget, Gemini's thinking budget, the thinking-off
-  switch local runtimes honour. A new public concept with its own short
-  design; targeted with the Responses adapter for `0.3.0`.
+- **Vendor properties** *(next, after the Responses adapter)* -- a
+  free-form, adapter-owned property bag instead of a typed effort concept:
+  `InferenceConfig.property(name, value)` and
+  `nessy.providers.<id>.properties.*`. Each adapter owns one prefix
+  (`openai.`, `anthropic.`, `gemini.`, `bedrock.`) and reads the names it
+  knows, such as `openai.reasoning.effort`, `openai.reasoning.summary` and
+  `openai.tools.strict`. See
+  `docs/superpowers/specs/2026-09-30-vendor-properties-design.md`.
 - **Named embedding providers** *(third, for `0.3.0`)* — mirrors the
   inference design: a preset catalogue, a `ProviderId` registry, application
   beans joining under their bean names, and the startup report. Today the
