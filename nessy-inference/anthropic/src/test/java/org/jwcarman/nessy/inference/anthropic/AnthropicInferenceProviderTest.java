@@ -555,8 +555,8 @@ class AnthropicInferenceProviderTest {
 
       new AnthropicProviderConfig()
           .client(fakeClient(capture))
-          .thinking(true)
-          .thinkingBudget(512)
+          .property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED)
+          .property(AnthropicProperties.THINKING_BUDGET, 512)
           .build()
           .infer(REQUEST);
       assertThat(captured[0].thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(512L);
@@ -755,7 +755,10 @@ class AnthropicInferenceProviderTest {
     @Test
     void a_thinking_budget_is_accepted_without_error() {
       AnthropicInferenceProvider provider =
-          new AnthropicProviderConfig().apiKey("sk-test").thinkingBudget(1024).build();
+          new AnthropicProviderConfig()
+              .apiKey("sk-test")
+              .property(AnthropicProperties.THINKING_BUDGET, 1024)
+              .build();
 
       assertThat(provider).isNotNull();
     }
@@ -1023,9 +1026,7 @@ class AnthropicInferenceProviderTest {
     }
 
     @Test
-    void a_null_caching_setting_or_mapper_is_refused_at_configuration() {
-      assertThatThrownBy(() -> AnthropicInferenceProvider.of(c -> c.promptCaching(null)))
-          .isInstanceOf(NullPointerException.class);
+    void a_null_mapper_is_refused_at_configuration() {
       assertThatThrownBy(() -> AnthropicInferenceProvider.of(c -> c.mapper(null)))
           .isInstanceOf(NullPointerException.class);
     }
@@ -1057,12 +1058,14 @@ class AnthropicInferenceProviderTest {
       return captured[0];
     }
 
-    /** §9c's tier rule: an agent type's property beats a setter, name by name. */
+    /** An agent type's property beats the provider's, name by name. */
     @Test
-    void an_agent_type_budget_overrides_the_setters() {
+    void an_agent_type_budget_overrides_the_providers() {
       MessageCreateParams params =
           sentBy(
-              new AnthropicProviderConfig().thinking(true).thinkingBudget(1024),
+              new AnthropicProviderConfig()
+                  .property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED)
+                  .property(AnthropicProperties.THINKING_BUDGET, 1024),
               carrying(Map.of("anthropic.thinking.budget_tokens", "16000")));
 
       assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(16000L);
@@ -1072,7 +1075,8 @@ class AnthropicInferenceProviderTest {
     void an_agent_type_that_disables_thinking_sends_none_over_a_config_that_turned_it_on() {
       MessageCreateParams params =
           sentBy(
-              new AnthropicProviderConfig().thinking(true),
+              new AnthropicProviderConfig()
+                  .property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED),
               carrying(Map.of("anthropic.thinking.type", "disabled")));
 
       assertThat(params.thinking()).isEmpty();
@@ -1081,9 +1085,27 @@ class AnthropicInferenceProviderTest {
     @Test
     void thinking_on_with_no_budget_anywhere_keeps_the_default_of_1024() {
       MessageCreateParams params =
-          sentBy(new AnthropicProviderConfig().thinking(true), carrying(Map.of()));
+          sentBy(
+              new AnthropicProviderConfig()
+                  .property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED),
+              carrying(Map.of()));
 
       assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(1024L);
+    }
+
+    @Test
+    void thinking_is_off_when_no_thinking_property_is_set_anywhere() {
+      MessageCreateParams params = sentBy(new AnthropicProviderConfig(), carrying(Map.of()));
+
+      assertThat(params.thinking()).isEmpty();
+    }
+
+    @Test
+    void caching_is_off_when_no_ttl_property_is_set_anywhere() {
+      MessageCreateParams params = sentBy(new AnthropicProviderConfig(), carrying(Map.of()));
+
+      assertThat(params.system().orElseThrow().asTextBlockParams().getFirst().cacheControl())
+          .isEmpty();
     }
 
     @Test
@@ -1091,20 +1113,11 @@ class AnthropicInferenceProviderTest {
       MessageCreateParams params =
           sentBy(
               new AnthropicProviderConfig()
-                  .thinking(true)
+                  .property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED)
                   .property("anthropic.thinking.budget_tokens", "2048"),
               carrying(Map.of()));
 
       assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(2048L);
-    }
-
-    /** Review Focus 5: a bare budget setter stays inert, as it is today. */
-    @Test
-    void a_budget_setter_without_thinking_on_still_asks_for_no_thinking() {
-      MessageCreateParams params =
-          sentBy(new AnthropicProviderConfig().thinkingBudget(4096), carrying(Map.of()));
-
-      assertThat(params.thinking()).isEmpty();
     }
 
     @Test
@@ -1115,30 +1128,6 @@ class AnthropicInferenceProviderTest {
               carrying(Map.of("anthropic.thinking.budget_tokens", "1024")));
 
       assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(1024L);
-    }
-
-    @Test
-    void the_caching_setter_and_a_ttl_property_mean_the_same_marker() {
-      MessageCreateParams bySetter =
-          sentBy(
-              new AnthropicProviderConfig().promptCaching(PromptCaching.ONE_HOUR),
-              carrying(Map.of()));
-      MessageCreateParams byProperty =
-          sentBy(
-              new AnthropicProviderConfig().property("anthropic.cache_control.ttl", "ONE_HOUR"),
-              carrying(Map.of()));
-
-      assertThat(bySetter.system()).isEqualTo(byProperty.system());
-      assertThat(
-              bySetter
-                  .system()
-                  .orElseThrow()
-                  .asTextBlockParams()
-                  .getFirst()
-                  .cacheControl()
-                  .orElseThrow()
-                  .ttl())
-          .contains(CacheControlEphemeral.Ttl.TTL_1H);
     }
 
     @Test
@@ -1198,7 +1187,10 @@ class AnthropicInferenceProviderTest {
     @Test
     void validate_refuses_a_budget_at_or_over_the_ceiling() {
       AnthropicInferenceProvider provider =
-          new AnthropicProviderConfig().thinking(true).client(fakeClient(params -> null)).build();
+          new AnthropicProviderConfig()
+              .property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED)
+              .client(fakeClient(params -> null))
+              .build();
       InferenceOptions options =
           new InferenceOptions(
               "claude-sonnet", 2048, Map.of("anthropic.thinking.budget_tokens", "4096"));

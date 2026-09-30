@@ -83,9 +83,7 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
 
   private final AnthropicClient client;
 
-  /**
-   * The provider's own {@code anthropic.} properties, its setters already spelled as properties.
-   */
+  /** The provider's own {@code anthropic.} properties, as configured. */
   private final Map<String, String> properties;
 
   private final boolean ownsClient;
@@ -96,14 +94,6 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
    * fix.
    */
   private final JsonMapper mapper;
-
-  AnthropicInferenceProvider(
-      AnthropicClient client,
-      AnthropicRequests.Features features,
-      boolean ownsClient,
-      JsonMapper mapper) {
-    this(client, AnthropicPropertyReader.of(features), ownsClient, mapper);
-  }
 
   AnthropicInferenceProvider(
       AnthropicClient client,

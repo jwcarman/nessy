@@ -77,9 +77,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `nessy.providers.openai.properties.openai.tools.strict: "false"` to turn
   it off, for instance when `openai.base-url` points at a server that
   rejects strict mode.
-- Anthropic's `thinking`, `thinkingBudget` and `promptCaching` setters and
-  their `anthropic.*` properties are one setting: setting both for one
-  field on one provider fails at build.
+- Anthropic `enabled` thinking with no budget sends 1024 tokens instead of
+  refusing at build; the budget must still be below `maxTokens`.
 
 ### Breaking changes
 
@@ -133,6 +132,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   decided "no embeddings" by the factory's absence now asks whether
   `nessy.embedder` is set. An application `EmbedderFactory` bean still
   replaces the starter's factory, and no longer switches the presets off.
+- **Anthropic's typed setters are removed.** `AnthropicProviderConfig`
+  `thinking(boolean)`, `thinkingBudget(int)` and `promptCaching(PromptCaching)`
+  are gone, as is the `PromptCaching` enum; so are `AnthropicRequests.Features`
+  and `AnthropicRequests.toParams(InferenceRequest, Features, JsonMapper)`. Use
+  `property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED)`,
+  `THINKING_BUDGET` and `CACHE_TTL`. Thinking and caching stay off unless a
+  property turns them on.
 
 ## [0.2.0] - 2026-09-29
 

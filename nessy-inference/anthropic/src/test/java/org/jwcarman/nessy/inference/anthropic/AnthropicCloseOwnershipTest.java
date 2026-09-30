@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.anthropic.client.AnthropicClient;
 import java.lang.reflect.Proxy;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -53,8 +54,7 @@ class AnthropicCloseOwnershipTest {
     // The apiKey path with the built client swapped in at the constructor — the same seam
     // AnthropicProviderConfig#build() reaches when it builds an AnthropicOkHttpClient itself.
     AnthropicInferenceProvider provider =
-        new AnthropicInferenceProvider(
-            built, AnthropicRequests.Features.none(), true, JsonMapper.builder().build());
+        new AnthropicInferenceProvider(built, Map.of(), true, JsonMapper.builder().build());
 
     provider.close();
 
@@ -67,10 +67,7 @@ class AnthropicCloseOwnershipTest {
     AtomicInteger closes = new AtomicInteger();
     AnthropicInferenceProvider provider =
         new AnthropicInferenceProvider(
-            recordingClient(closes),
-            AnthropicRequests.Features.none(),
-            true,
-            JsonMapper.builder().build());
+            recordingClient(closes), Map.of(), true, JsonMapper.builder().build());
 
     provider.close();
     provider.close();

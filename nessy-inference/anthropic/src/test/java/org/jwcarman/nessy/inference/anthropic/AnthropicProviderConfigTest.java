@@ -24,7 +24,6 @@ import com.anthropic.client.AnthropicClient;
 import java.lang.reflect.Proxy;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -111,103 +110,11 @@ class AnthropicProviderConfigTest {
   }
 
   @Test
-  void a_budget_setter_and_a_budget_property_fail_at_build_naming_both() {
-    Customizer<AnthropicProviderConfig> customizer =
-        c ->
-            c.apiKey("test-key")
-                .thinking(true)
-                .thinkingBudget(4096)
-                .property("anthropic.thinking.budget_tokens", "8192");
-
-    assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("thinkingBudget(int)")
-        .hasMessageContaining("'anthropic.thinking.budget_tokens'");
-  }
-
-  /** "Whatever the values": a setter set to off still says something about the same field. */
-  @Test
-  void thinking_off_and_a_thinking_type_property_fail_at_build_naming_both() {
-    Customizer<AnthropicProviderConfig> customizer =
-        c ->
-            c.apiKey("test-key")
-                .thinking(false)
-                .properties(Map.of("anthropic.thinking.type", "adaptive"));
-
-    assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("thinking(boolean)")
-        .hasMessageContaining("'anthropic.thinking.type'");
-  }
-
-  @Test
-  void thinking_off_and_a_budget_property_fail_at_build_naming_both() {
-    Customizer<AnthropicProviderConfig> customizer =
-        c ->
-            c.apiKey("test-key")
-                .thinking(false)
-                .property("anthropic.thinking.budget_tokens", "2048");
-
-    assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("thinking(boolean)")
-        .hasMessageContaining("'anthropic.thinking.budget_tokens'");
-  }
-
-  @Test
-  void a_budget_setter_and_a_thinking_type_property_fail_at_build_naming_both() {
-    Customizer<AnthropicProviderConfig> customizer =
-        c ->
-            c.apiKey("test-key")
-                .thinkingBudget(4096)
-                .property("anthropic.thinking.type", "adaptive");
-
-    assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("thinkingBudget(int)")
-        .hasMessageContaining("'anthropic.thinking.type'");
-  }
-
-  @Test
-  void a_bare_budget_setter_alone_still_builds() {
-    Customizer<AnthropicProviderConfig> customizer = c -> c.apiKey("test-key").thinkingBudget(4096);
-
-    assertThatCode(() -> AnthropicInferenceProvider.of(customizer)).doesNotThrowAnyException();
-  }
-
-  @Test
-  void thinking_on_beside_a_budget_property_still_builds() {
-    Customizer<AnthropicProviderConfig> customizer =
-        c ->
-            c.apiKey("test-key")
-                .thinking(true)
-                .property("anthropic.thinking.budget_tokens", "2048");
-
-    assertThatCode(() -> AnthropicInferenceProvider.of(customizer)).doesNotThrowAnyException();
-  }
-
-  @Test
-  void a_caching_setter_and_a_ttl_property_fail_at_build_naming_both() {
-    Customizer<AnthropicProviderConfig> customizer =
-        c ->
-            c.apiKey("test-key")
-                .promptCaching(PromptCaching.OFF)
-                .property("anthropic.cache_control.ttl", "FIVE_MINUTES");
-
-    assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("promptCaching(PromptCaching)")
-        .hasMessageContaining("'anthropic.cache_control.ttl'");
-  }
-
-  @Test
-  void enabled_without_a_budget_at_the_provider_is_refused_at_build() {
+  void enabled_without_a_budget_at_the_provider_builds() {
     Customizer<AnthropicProviderConfig> customizer =
         c -> c.apiKey("test-key").property("anthropic.thinking.type", "enabled");
 
-    assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("'anthropic.thinking.budget_tokens'");
+    assertThatCode(() -> AnthropicInferenceProvider.of(customizer)).doesNotThrowAnyException();
   }
 
   @Test

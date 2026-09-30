@@ -35,7 +35,6 @@ import com.anthropic.models.messages.ToolUseBlockParam;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -83,34 +82,8 @@ public final class AnthropicRequests {
   private AnthropicRequests() {}
 
   /**
-   * What this provider does on every call, decided where the provider was built: whether it thinks
-   * and on what budget, and whether it marks the prefix for the prompt cache.
-   */
-  public record Features(boolean thinking, int thinkingBudget, PromptCaching caching) {
-    public Features {
-      Objects.requireNonNull(caching, "caching must not be null");
-    }
-
-    public static Features none() {
-      return new Features(false, 0, PromptCaching.OFF);
-    }
-  }
-
-  /**
-   * The provider's features, read as the properties they mean.
-   *
-   * @param request what to send
-   * @param features the provider's thinking and caching settings
-   * @param mapper reads and writes the JSON text that schemas and arguments travel as
-   */
-  public static MessageCreateParams toParams(
-      InferenceRequest request, Features features, JsonMapper mapper) {
-    return toParams(request, AnthropicPropertyReader.of(features), mapper);
-  }
-
-  /**
-   * @param providerProperties the provider's own {@code anthropic.} map -- its setters already
-   *     spelled as properties -- overlaid here by the agent type's (spec §7a)
+   * @param providerProperties the provider's own {@code anthropic.} map -- overlaid here by the
+   *     agent type's (spec §7a)
    */
   static MessageCreateParams toParams(
       InferenceRequest request, Map<String, String> providerProperties, JsonMapper mapper) {

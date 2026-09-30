@@ -270,32 +270,43 @@ and arguments.
 
 ### Anthropic features
 
+Thinking and prompt caching are vendor properties, set on the provider as a
+default for every agent type it serves:
+
 ```java
 InferenceProvider provider = AnthropicInferenceProvider.of(c -> c
         .fromEnv()
-        .thinking(true)
-        .thinkingBudget(4096)
-        .promptCaching(PromptCaching.FIVE_MINUTES));
+        .property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED)
+        .property(AnthropicProperties.THINKING_BUDGET, 4096)
+        .property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.FIVE_MINUTES));
 ```
 
-Thinking is off by default. When on, the model's reasoning is spent out of
-each call's `maxTokens`, which must exceed the budget or the answer comes
-back empty. The budget defaults to 1024 tokens. Prompt caching is
-`OFF`, `FIVE_MINUTES` or `ONE_HOUR`, and marks the system prompt and the
-tool list as cacheable.
+```yaml
+nessy:
+  providers:
+    anthropic:
+      properties:
+        anthropic.thinking.type: enabled
+        anthropic.thinking.budget_tokens: "4096"
+        anthropic.cache_control.ttl: FIVE_MINUTES
+```
 
-The same three settings are vendor properties:
-`anthropic.thinking.type=enabled` and `anthropic.thinking.budget_tokens`
-for `thinking(true)` and `thinkingBudget(...)`, `anthropic.cache_control.ttl`
-(`5m`, `1h`) for `promptCaching(...)`. The constants are `THINKING_TYPE`,
-`THINKING_BUDGET` and `CACHE_TTL` on `AnthropicProperties`. A setter is a provider-level default,
-at the same level as a provider property: setting both for one field on one
-provider fails at build, naming both. `thinking(false)` beside a budget
-property fails the same way, as does `thinkingBudget(...)` without
-`thinking(true)` beside a `anthropic.thinking.type` property; a bare
-`thinkingBudget(...)` does nothing. An agent type's property overrides
-either, so one provider built with `thinking(true)` serves an agent type
-that asks for `anthropic.thinking.budget_tokens=16000` and one that asks for
+The defaults, when a property is absent:
+
+- Thinking is off unless `anthropic.thinking.type` or
+  `anthropic.thinking.budget_tokens` is set; a budget alone means `enabled`.
+- `enabled` without a budget sends 1024 tokens. The reasoning is spent out of
+  each call's `maxTokens`, which must exceed the budget or the request is
+  refused before the call.
+- `adaptive` sends no budget; `disabled` sends nothing.
+- Prompt caching is off unless `anthropic.cache_control.ttl` is set
+  (`FIVE_MINUTES` or `ONE_HOUR`); it marks the system prompt and the tool list
+  as cacheable.
+
+The constants are `THINKING_TYPE`, `THINKING_BUDGET` and `CACHE_TTL` on
+`AnthropicProperties`. An agent type's property overrides the provider's, so
+one provider with thinking enabled serves an agent type that asks for
+`anthropic.thinking.budget_tokens=16000` and one that asks for
 `anthropic.thinking.type=disabled`.
 
 ### Empty answers

@@ -34,20 +34,11 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class AnthropicProviderConfig {
 
-  // Anthropic's floor for the thinking budget. AgentConfig.DEFAULT_MAX_TOKENS is 4096, and
-  // AnthropicRequests.toParams requires maxTokens to exceed the thinking budget, so the default
-  // here must stay comfortably under that default headroom — the lowest value the API accepts
-  // is also the only one guaranteed to leave room. A caller who wants a larger default thinking
-  // budget must also raise AgentConfig.maxTokens(...) to keep the two in the same order.
-  private static final int DEFAULT_THINKING_BUDGET = 1024;
   private static final String API_KEY_ENV_VAR = "ANTHROPIC_API_KEY";
   private static final String AUTH_TOKEN_ENV_VAR = "ANTHROPIC_AUTH_TOKEN";
 
   private String apiKey;
   private String baseUrl;
-  private Boolean thinking;
-  private Integer thinkingBudget;
-  private PromptCaching promptCaching;
   private final Map<String, String> properties = new LinkedHashMap<>();
   private AnthropicClient client;
   private boolean useEnv;
@@ -94,37 +85,6 @@ public final class AnthropicProviderConfig {
   /** Overrides the API base URL — for proxies or Anthropic-compatible gateways. */
   public AnthropicProviderConfig baseUrl(String baseUrl) {
     this.baseUrl = baseUrl;
-    return this;
-  }
-
-  /**
-   * Extended thinking on every call. Off by default: reasoning is spent out of each call's {@code
-   * maxTokens}, which must then exceed {@link #thinkingBudget(int) the budget}. The same statement
-   * as {@code anthropic.thinking.type=enabled}; setting both on one provider fails at build, and an
-   * agent type's {@code anthropic.thinking.*} property overrides either.
-   */
-  public AnthropicProviderConfig thinking(boolean thinking) {
-    this.thinking = thinking;
-    return this;
-  }
-
-  /**
-   * The extended-thinking token budget, when {@link #thinking(boolean) thinking} is on. The same
-   * statement as {@code anthropic.thinking.budget_tokens}; setting both on one provider fails at
-   * build. Read only when {@link #thinking(boolean) thinking} is on.
-   */
-  public AnthropicProviderConfig thinkingBudget(int thinkingBudget) {
-    this.thinkingBudget = thinkingBudget;
-    return this;
-  }
-
-  /**
-   * Prompt caching on every call. Off by default; see {@link PromptCaching}. The same statement as
-   * {@code anthropic.cache_control.ttl} ({@code FIVE_MINUTES}, {@code ONE_HOUR}); setting both on
-   * one provider fails at build.
-   */
-  public AnthropicProviderConfig promptCaching(PromptCaching promptCaching) {
-    this.promptCaching = Objects.requireNonNull(promptCaching, "promptCaching must not be null");
     return this;
   }
 
@@ -232,61 +192,12 @@ public final class AnthropicProviderConfig {
     return new AnthropicInferenceProvider(clientBuilder.build(), own, true, mapper);
   }
 
-  /**
-   * The provider's properties with its setters spelled as the properties they mean (plan ruling 8),
-   * checked before any client is made. A setter and a property for one field are two provider-level
-   * statements with no order between them, so both set is refused.
-   */
+  /** The provider's properties, checked before any client is made. */
   private Map<String, String> providerProperties() {
     AnthropicPropertyReader.requireOwn(properties);
-    refuseBoth(thinking != null, "thinking(boolean)", AnthropicProperties.THINKING_TYPE);
-    refuseBoth(thinkingBudget != null, "thinkingBudget(int)", AnthropicProperties.THINKING_BUDGET);
-    // thinking(false) speaks for both thinking names: a lone budget property would turn it on.
-    refuseBoth(
-        Boolean.FALSE.equals(thinking), "thinking(boolean)", AnthropicProperties.THINKING_BUDGET);
-    // A budget with thinking not on is inert, but a type property beside it is a second statement.
-    refuseBoth(
-        thinkingBudget != null && !Boolean.TRUE.equals(thinking),
-        "thinkingBudget(int)",
-        AnthropicProperties.THINKING_TYPE);
-    refuseBoth(
-        promptCaching != null, "promptCaching(PromptCaching)", AnthropicProperties.CACHE_TTL);
-    Map<String, String> merged = new LinkedHashMap<>(properties);
-    String budgetName = AnthropicProperties.THINKING_BUDGET.name();
-    if (Boolean.TRUE.equals(thinking)) {
-      merged.put(
-          AnthropicProperties.THINKING_TYPE.name(),
-          AnthropicProperties.THINKING_TYPE.format(AnthropicThinkingType.ENABLED));
-      if (thinkingBudget != null) {
-        merged.put(budgetName, AnthropicProperties.THINKING_BUDGET.format(thinkingBudget));
-      } else if (!merged.containsKey(budgetName)) {
-        merged.put(budgetName, AnthropicProperties.THINKING_BUDGET.format(DEFAULT_THINKING_BUDGET));
-      }
-    }
-    if (promptCaching == PromptCaching.FIVE_MINUTES) {
-      merged.put(
-          AnthropicProperties.CACHE_TTL.name(),
-          AnthropicProperties.CACHE_TTL.format(AnthropicCacheTtl.FIVE_MINUTES));
-    } else if (promptCaching == PromptCaching.ONE_HOUR) {
-      merged.put(
-          AnthropicProperties.CACHE_TTL.name(),
-          AnthropicProperties.CACHE_TTL.format(AnthropicCacheTtl.ONE_HOUR));
-    }
-    AnthropicPropertyReader.read(merged);
-    AnthropicPropertyReader.warnUnsupported(merged);
-    return Collections.unmodifiableMap(merged);
-  }
-
-  private void refuseBoth(boolean setterCalled, String setter, VendorProperty<?> property) {
-    if (setterCalled && properties.containsKey(property.name())) {
-      throw new IllegalArgumentException(
-          setter
-              + " and property '"
-              + property.name()
-              + "' both say how this provider "
-              + (property.name().startsWith("anthropic.thinking") ? "thinks" : "caches")
-              + "; keep one");
-    }
+    AnthropicPropertyReader.read(properties);
+    AnthropicPropertyReader.warnUnsupported(properties);
+    return Collections.unmodifiableMap(new LinkedHashMap<>(properties));
   }
 
   /**

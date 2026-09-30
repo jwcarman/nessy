@@ -25,15 +25,26 @@ import org.jwcarman.nessy.api.VendorProperty;
  */
 public final class AnthropicProperties {
 
-  /** Whether and how a model thinks. A budget alone means enabled. */
+  /**
+   * Whether and how a model thinks. Thinking is off unless this or {@link #THINKING_BUDGET} is set;
+   * a budget alone means enabled. {@code enabled} without a budget sends 1024 tokens, which must
+   * stay below the request's maxTokens. {@code adaptive} sends no budget; {@code disabled} sends
+   * nothing.
+   */
   public static final VendorProperty<AnthropicThinkingType> THINKING_TYPE =
       VendorProperty.ofEnum("anthropic.thinking.type", AnthropicThinkingType.class);
 
-  /** The tokens thinking may spend, out of the request's maxTokens. */
+  /**
+   * The tokens thinking may spend, out of the request's maxTokens, which must exceed it. Setting it
+   * alone turns thinking on; absent with {@code enabled} thinking it is 1024.
+   */
   public static final VendorProperty<Integer> THINKING_BUDGET =
       VendorProperty.ofInteger("anthropic.thinking.budget_tokens");
 
-  /** How long the prompt-cache marker lasts. */
+  /**
+   * How long the prompt-cache marker lasts. Prompt caching is off unless this is set, since a cache
+   * write costs more than an ordinary token.
+   */
   public static final VendorProperty<AnthropicCacheTtl> CACHE_TTL =
       VendorProperty.ofEnum("anthropic.cache_control.ttl", AnthropicCacheTtl.class);
 

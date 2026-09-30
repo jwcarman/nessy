@@ -15,8 +15,6 @@
  */
 package org.jwcarman.nessy.inference.anthropic;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -43,6 +41,10 @@ final class AnthropicPropertyReader {
           AnthropicProperties.THINKING_TYPE.name(), AnthropicProperties.THINKING_TYPE,
           AnthropicProperties.CACHE_TTL.name(), AnthropicProperties.CACHE_TTL,
           AnthropicProperties.SERVICE_TIER.name(), AnthropicProperties.SERVICE_TIER);
+
+  // Anthropic's floor for the thinking budget: the lowest value the API accepts, so the only one
+  // guaranteed to leave room under a small maxTokens.
+  private static final int DEFAULT_THINKING_BUDGET = 1024;
 
   private static final Logger log = LoggerFactory.getLogger(AnthropicProperties.class);
 
@@ -78,12 +80,7 @@ final class AnthropicPropertyReader {
       thinking = Optional.of(AnthropicThinkingType.ENABLED);
     }
     if (thinking.filter(AnthropicThinkingType.ENABLED::equals).isPresent() && budget.isEmpty()) {
-      throw new IllegalArgumentException(
-          "property '"
-              + AnthropicProperties.THINKING_TYPE.name()
-              + "' is enabled and '"
-              + AnthropicProperties.THINKING_BUDGET.name()
-              + "' is not set; the vendor requires a budget for enabled thinking");
+      budget = Optional.of(DEFAULT_THINKING_BUDGET);
     }
     return new Read(
         thinking.filter(value -> value != AnthropicThinkingType.DISABLED),
@@ -141,32 +138,5 @@ final class AnthropicPropertyReader {
         log.debug("NESSY INFERENCE: properties for other adapters, ignored here: {}", others);
       }
     }
-  }
-
-  /** The public {@code Features} form, spelled as the properties it means (plan ruling 8). */
-  static Map<String, String> of(AnthropicRequests.Features features) {
-    Map<String, String> properties = new LinkedHashMap<>();
-    if (features.thinking()) {
-      properties.put(
-          AnthropicProperties.THINKING_TYPE.name(),
-          AnthropicProperties.THINKING_TYPE.format(AnthropicThinkingType.ENABLED));
-      properties.put(
-          AnthropicProperties.THINKING_BUDGET.name(),
-          AnthropicProperties.THINKING_BUDGET.format(features.thinkingBudget()));
-    }
-    switch (features.caching()) {
-      case OFF -> {
-        // No marker.
-      }
-      case FIVE_MINUTES ->
-          properties.put(
-              AnthropicProperties.CACHE_TTL.name(),
-              AnthropicProperties.CACHE_TTL.format(AnthropicCacheTtl.FIVE_MINUTES));
-      case ONE_HOUR ->
-          properties.put(
-              AnthropicProperties.CACHE_TTL.name(),
-              AnthropicProperties.CACHE_TTL.format(AnthropicCacheTtl.ONE_HOUR));
-    }
-    return Collections.unmodifiableMap(properties);
   }
 }

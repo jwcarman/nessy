@@ -198,7 +198,11 @@ class AnthropicLiveTest {
    */
   @Test
   void reasoning_is_replayed_intact_on_the_next_turn() {
-    try (AnthropicInferenceProvider provider = provider(config -> config.thinking(true))) {
+    try (AnthropicInferenceProvider provider =
+        provider(
+            config ->
+                config.property(
+                    AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED))) {
       InferenceResult first =
           provider.infer(
               asking(
@@ -236,7 +240,9 @@ class AnthropicLiveTest {
   @Test
   void a_cached_request_is_accepted() {
     try (AnthropicInferenceProvider provider =
-        provider(config -> config.promptCaching(PromptCaching.FIVE_MINUTES))) {
+        provider(
+            config ->
+                config.property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.FIVE_MINUTES))) {
       InferenceResult result =
           provider.infer(asking(List.of(open(1, "What is the capital of France?")), List.of()));
 

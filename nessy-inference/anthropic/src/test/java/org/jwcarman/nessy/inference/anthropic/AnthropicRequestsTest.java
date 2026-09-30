@@ -50,7 +50,6 @@ import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.Toolset;
-import org.jwcarman.nessy.inference.anthropic.AnthropicRequests.Features;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -63,7 +62,7 @@ import tools.jackson.databind.json.JsonMapper;
 class AnthropicRequestsTest {
 
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
-  private static final Features NONE = Features.none();
+  private static final Map<String, String> NONE = Map.of();
   private static final SystemPrompt SYSTEM = new SystemPrompt("you are a helpful assistant");
 
   private static InferenceOptions options() {
@@ -74,16 +73,16 @@ class AnthropicRequestsTest {
     return new InferenceRequest(SYSTEM, InferenceContext.of(turns), Toolset.none(), options());
   }
 
-  private static Features caching(PromptCaching caching) {
-    return new Features(false, 0, caching);
+  private static Map<String, String> caching(AnthropicCacheTtl ttl) {
+    return Map.of(AnthropicProperties.CACHE_TTL.name(), AnthropicProperties.CACHE_TTL.format(ttl));
   }
 
   private static MessageCreateParams params(List<Turn> turns) {
     return AnthropicRequests.toParams(request(turns), NONE, MAPPER);
   }
 
-  private static MessageCreateParams params(List<Turn> turns, PromptCaching caching) {
-    return AnthropicRequests.toParams(request(turns), caching(caching), MAPPER);
+  private static MessageCreateParams params(List<Turn> turns, AnthropicCacheTtl ttl) {
+    return AnthropicRequests.toParams(request(turns), caching(ttl), MAPPER);
   }
 
   private static Input asked(long seq, String text) {
@@ -202,7 +201,7 @@ class AnthropicRequestsTest {
                   .cacheControl())
           .isEmpty();
       assertThat(
-              params(List.of(open(1, "hi")), PromptCaching.FIVE_MINUTES)
+              params(List.of(open(1, "hi")), AnthropicCacheTtl.FIVE_MINUTES)
                   .system()
                   .orElseThrow()
                   .asTextBlockParams()
@@ -214,7 +213,7 @@ class AnthropicRequestsTest {
     @Test
     void takes_the_long_retention_when_that_is_what_was_asked_for() {
       var marker =
-          params(List.of(open(1, "hi")), PromptCaching.ONE_HOUR)
+          params(List.of(open(1, "hi")), AnthropicCacheTtl.ONE_HOUR)
               .system()
               .orElseThrow()
               .asTextBlockParams()
@@ -488,10 +487,39 @@ class AnthropicRequestsTest {
     void enabled_asks_for_a_budget_and_disabled_asks_for_nothing() {
       var thinking =
           AnthropicRequests.toParams(
-              request(List.of(open(1, "hi"))), new Features(true, 512, PromptCaching.OFF), MAPPER);
+              request(List.of(open(1, "hi"))),
+              Map.of(
+                  AnthropicProperties.THINKING_TYPE.name(), "enabled",
+                  AnthropicProperties.THINKING_BUDGET.name(), "512"),
+              MAPPER);
       assertThat(thinking.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(512L);
 
       assertThat(params(List.of(open(1, "hi"))).thinking()).isEmpty();
+    }
+
+    @Test
+    void enabled_without_a_budget_sends_the_default_of_1024() {
+      var request =
+          new InferenceRequest(
+              SYSTEM,
+              InferenceContext.of(List.of(open(1, "hi"))),
+              Toolset.none(),
+              new InferenceOptions("claude-sonnet", 4096));
+      var params =
+          AnthropicRequests.toParams(
+              request, Map.of(AnthropicProperties.THINKING_TYPE.name(), "enabled"), MAPPER);
+
+      assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(1024L);
+    }
+
+    @Test
+    void enabled_without_a_budget_under_a_ceiling_of_1024_is_refused_for_headroom() {
+      var request = request(List.of(open(1, "hi")));
+      var enabled = Map.of(AnthropicProperties.THINKING_TYPE.name(), "enabled");
+
+      assertThatThrownBy(() -> AnthropicRequests.toParams(request, enabled, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("maxTokens (1024) must be greater than the thinking budget (1024)");
     }
 
     /**
@@ -501,7 +529,10 @@ class AnthropicRequestsTest {
     @Test
     void a_budget_with_no_headroom_under_the_ceiling_is_refused_before_the_call() {
       var request = request(List.of(open(1, "hi")));
-      var noHeadroom = new Features(true, 1024, PromptCaching.OFF);
+      var noHeadroom =
+          Map.of(
+              AnthropicProperties.THINKING_TYPE.name(), "enabled",
+              AnthropicProperties.THINKING_BUDGET.name(), "1024");
       assertThatThrownBy(() -> AnthropicRequests.toParams(request, noHeadroom, MAPPER))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("1024");
@@ -519,14 +550,15 @@ class AnthropicRequestsTest {
     }
 
     private static MessageCreateParams withTools(List<ToolOffer> tools) {
-      return withTools(tools, PromptCaching.OFF);
+      return withTools(tools, NONE);
     }
 
-    private static MessageCreateParams withTools(List<ToolOffer> tools, PromptCaching caching) {
+    private static MessageCreateParams withTools(
+        List<ToolOffer> tools, Map<String, String> properties) {
       return AnthropicRequests.toParams(
           new InferenceRequest(
               SYSTEM, InferenceContext.of(List.of(open(1, "hi"))), Toolset.of(tools), options()),
-          caching(caching),
+          properties,
           MAPPER);
     }
 
@@ -548,7 +580,8 @@ class AnthropicRequestsTest {
     @Test
     void only_the_last_is_marked_for_caching_and_only_when_asked_for() {
       var cached =
-          withTools(List.of(offer("first"), offer("second")), PromptCaching.FIVE_MINUTES)
+          withTools(
+                  List.of(offer("first"), offer("second")), caching(AnthropicCacheTtl.FIVE_MINUTES))
               .tools()
               .orElseThrow();
       assertThat(cached.get(0).asTool().cacheControl()).isEmpty();
@@ -590,7 +623,7 @@ class AnthropicRequestsTest {
 
     @Test
     void a_short_conversation_is_marked_only_at_its_end() {
-      var blocks = blocksOf(params(conversation(2), PromptCaching.FIVE_MINUTES));
+      var blocks = blocksOf(params(conversation(2), AnthropicCacheTtl.FIVE_MINUTES));
 
       assertThat(markedIn(blocks)).containsExactly(blocks.size() - 1);
     }
@@ -602,7 +635,7 @@ class AnthropicRequestsTest {
      */
     @Test
     void a_long_one_is_also_marked_a_lookback_window_behind_the_end() {
-      var blocks = blocksOf(params(conversation(15), PromptCaching.FIVE_MINUTES));
+      var blocks = blocksOf(params(conversation(15), AnthropicCacheTtl.FIVE_MINUTES));
 
       int last = blocks.size() - 1;
       assertThat(markedIn(blocks)).containsExactly(last - LOOKBACK, last);
@@ -620,7 +653,7 @@ class AnthropicRequestsTest {
                   List.of(new Block.Text("1412 metres"), thinking("let me recall", "sig-abc"))),
               0);
 
-      var blocks = blocksOf(params(List.of(turn), PromptCaching.FIVE_MINUTES));
+      var blocks = blocksOf(params(List.of(turn), AnthropicCacheTtl.FIVE_MINUTES));
 
       assertThat(markedIn(blocks))
           .allSatisfy(i -> assertThat(blocks.get(i).isThinking()).isFalse());
@@ -687,7 +720,7 @@ class AnthropicRequestsTest {
               List.of());
       Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(asking), null, 0);
 
-      MessageCreateParams params = params(List.of(turn), PromptCaching.FIVE_MINUTES);
+      MessageCreateParams params = params(List.of(turn), AnthropicCacheTtl.FIVE_MINUTES);
 
       assertThat(params.messages()).hasSize(2);
       assertThat(params.messages().get(1).role()).isEqualTo(MessageParam.Role.ASSISTANT);
@@ -705,7 +738,7 @@ class AnthropicRequestsTest {
                   List.of(new Block.Provider("someone-else", "{\"type\":\"thinking\"}"))),
               0);
 
-      MessageCreateParams params = params(List.of(turn), PromptCaching.ONE_HOUR);
+      MessageCreateParams params = params(List.of(turn), AnthropicCacheTtl.ONE_HOUR);
 
       assertThat(params.messages()).hasSize(1);
     }
@@ -819,16 +852,6 @@ class AnthropicRequestsTest {
                   "anthropic.thinking.type", "enabled", "anthropic.thinking.budget_tokens", "600"));
 
       assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(600L);
-    }
-
-    @Test
-    void enabled_without_a_budget_is_refused_naming_both_properties() {
-      InferenceRequest request = carrying(Map.of("anthropic.thinking.type", "enabled"));
-
-      assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'anthropic.thinking.type'")
-          .hasMessageContaining("'anthropic.thinking.budget_tokens'");
     }
 
     /** Plan ruling 9: disabled over a provider that thinks sends no thinking object at all. */

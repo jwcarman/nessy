@@ -120,6 +120,14 @@ above disagree with this one, this one holds.
   when one is needed, as plain text.
 - **An enum property's text is the constant's name, matched ignoring case; `ofEnum` takes an
   optional formatter; each adapter translates the enum to its SDK's spelling** (James).
+- **Anthropic's typed setters are removed; §16 (4) is decided** (James: "get rid of the anthropic
+  specific things that can be replaced by properties, sensible defaults"). `thinking(boolean)`,
+  `thinkingBudget(int)`, `promptCaching(PromptCaching)`, the `PromptCaching` enum,
+  `AnthropicRequests.Features` and the public `toParams(..., Features, ...)` overload are gone, and
+  with them the setter-versus-property tier rule. The defaults live on the property constants:
+  thinking is off unless `anthropic.thinking.type` or `anthropic.thinking.budget_tokens` is set;
+  `enabled` without a budget sends 1024 (no longer a build-time refusal), with the headroom check
+  against `maxTokens` unchanged; caching is off unless `anthropic.cache_control.ttl` is set.
 
 ---
 
