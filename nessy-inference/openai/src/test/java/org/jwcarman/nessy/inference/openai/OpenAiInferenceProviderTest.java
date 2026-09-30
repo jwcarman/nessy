@@ -850,6 +850,75 @@ class OpenAiInferenceProviderTest {
 
       assertAnsweredTheToolCallOnce(result);
     }
+
+    /**
+     * Mistral's shape for a tool call (measured, {@code mistral-small-2603}): the whole call, the
+     * finish reason AND the usage all land on one chunk, and nothing follows it. The tool-call
+     * delta and finish reason on that chunk must still reach the accumulator -- only usage may be
+     * stripped from it.
+     */
+    @Test
+    void a_stream_that_carries_the_tool_call_the_finish_and_the_usage_on_one_chunk_answers_it() {
+      ChatCompletionChunk everythingAtOnce =
+          ChatCompletionChunk.builder()
+              .id("c1")
+              .created(1790717318L)
+              .model("mistral-small-2603")
+              .usage(
+                  CompletionUsage.builder()
+                      .promptTokens(96L)
+                      .completionTokens(21L)
+                      .totalTokens(117L)
+                      .build())
+              .addChoice(
+                  ChatCompletionChunk.Choice.builder()
+                      .index(0L)
+                      .delta(
+                          ChatCompletionChunk.Choice.Delta.builder()
+                              .addToolCall(
+                                  ChatCompletionChunk.Choice.Delta.ToolCall.builder()
+                                      .index(0)
+                                      .id("jhdXLipkX")
+                                      .type(ChatCompletionChunk.Choice.Delta.ToolCall.Type.FUNCTION)
+                                      .function(
+                                          ChatCompletionChunk.Choice.Delta.ToolCall.Function
+                                              .builder()
+                                              .name("days_until")
+                                              .arguments("{\"date\": \"2026-12-25\"}")
+                                              .build())
+                                      .build())
+                              .build())
+                      .finishReason(ChatCompletionChunk.Choice.FinishReason.of("tool_calls"))
+                      .build())
+              .build();
+      List<ChatCompletionChunk> chunks =
+          List.of(
+              chunk(
+                  ChatCompletionChunk.Choice.Delta.builder()
+                      .role(ChatCompletionChunk.Choice.Delta.Role.ASSISTANT)
+                      .content("")
+                      .build(),
+                  null),
+              everythingAtOnce);
+
+      InferenceResult result =
+          new OpenAiProviderConfig()
+              .client(fakeStreamingClient(params -> chunks))
+              .build()
+              .infer(REQUEST);
+
+      assertThat(result)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(
+              new InferenceResult.Actions(
+                  List.of(
+                      new Block.ToolCall(
+                          new CallId("jhdXLipkX"),
+                          new ToolName("days_until"),
+                          "{\"date\": \"2026-12-25\"}"))));
+      assertThat(result.usage()).isEqualTo(Usage.of("mistral-small-2603", 96, 21));
+    }
   }
 
   @Nested
