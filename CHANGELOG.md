@@ -99,6 +99,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and Azure.** A schema whose root is not an object travels wrapped as
   `{"value": ...}` and is unwrapped before the caller sees it, and generic
   answer types keep their generics.
+- **Episode ranking no longer fails on a stored summary of another width.**
+  A summary embedded under the same model name at a different width ranks
+  last, like another model's, instead of failing the question.
 - **A width of zero or less is refused where it is set.** `dimension(0)` and
   `nessy.embedding-dimension: 0` fail at once; the property's failure names it.
 

@@ -389,9 +389,14 @@ public class JdbcEpisodes implements Summarizer {
   /** An episode as read, with the embedding its summary was written with, if any. */
   private record Row(Episode episode, Embedding embedding) {
 
-    /** Not comparable -- no embedding, or another model's -- ranks below every real score. */
+    /**
+     * Not comparable -- no embedding, another model's, or another width under the same model's name
+     * -- ranks below every real score.
+     */
     double similarity(Embedding query) {
-      return embedding != null && embedding.model().equals(query.model())
+      return embedding != null
+              && embedding.model().equals(query.model())
+              && embedding.dimension() == query.dimension()
           ? embedding.similarity(query)
           : Double.NEGATIVE_INFINITY;
     }

@@ -299,6 +299,23 @@ class JdbcEpisodesTest {
       assertThat(shown).hasSize(3).endsWith(5);
       assertThat(Optional.of(shown.getFirst())).isPresent();
     }
+
+    /**
+     * A model name is not a promise of a width: a local server answers the same name with whatever
+     * model it has loaded. A summary whose vector is another width cannot be compared, so it ranks
+     * last like another model's, rather than failing the whole question.
+     */
+    @Test
+    void a_summary_of_another_width_under_the_same_model_name_ranks_last() {
+      KeywordEmbedder wide = new KeywordEmbedder("kw", "cats", "dogs", "birds", "fish");
+      AgentId agent = story(store(wide, 2));
+      KeywordEmbedder narrow = new KeywordEmbedder("kw", "cats", "dogs");
+      JdbcEpisodes store = store(narrow, 3);
+      store.begin(agent, new TurnId(51), "cats again", "back to it");
+      store.summarize(agent, 5, "more cats");
+
+      assertThat(numbers(store.forAgent(agent, asking("cats")))).containsExactly(1, 2, 5);
+    }
   }
 
   @Test
