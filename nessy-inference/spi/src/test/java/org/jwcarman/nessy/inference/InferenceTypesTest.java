@@ -87,4 +87,12 @@ class InferenceTypesTest {
         .hasMessageContaining("openai.user");
     assertThat(options.toString()).contains("openai.user").doesNotContain("tenant-42");
   }
+
+  @Test
+  void the_properties_of_options_cannot_be_changed() {
+    Map<String, String> properties = new InferenceOptions("m", 10, Map.of("a.b", "1")).properties();
+
+    assertThatThrownBy(() -> properties.put("x", "y"))
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
 }

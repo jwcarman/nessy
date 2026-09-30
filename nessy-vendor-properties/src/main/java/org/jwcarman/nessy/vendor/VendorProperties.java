@@ -76,7 +76,8 @@ public final class VendorProperties {
    * The value as the JSON literal it spells -- a map, a list, a string, a number, a boolean or
    * {@code null} -- or, when it is not JSON, the text itself: {@code high} is the string {@code
    * "high"}. The whole value must parse, whatever the mapper was configured to tolerate: {@code
-   * 12abc} is a string, not the number twelve.
+   * 12abc} is a string, not the number twelve, and an array is always a {@code List}. Numbers
+   * follow the mapper's own floating-point setting.
    */
   public static Object literal(String value, JsonMapper mapper) {
     Objects.requireNonNull(value, "value must not be null");
@@ -85,6 +86,7 @@ public final class VendorProperties {
       return mapper
           .readerFor(Object.class)
           .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+          .without(DeserializationFeature.USE_JAVA_ARRAY_FOR_JSON_ARRAY)
           .readValue(value);
     } catch (JacksonException notJson) {
       // Not JSON, so it is the text it says.
@@ -119,7 +121,7 @@ public final class VendorProperties {
       for (int i = 0; i < segments.length - 1; i++) {
         String path = parent.isEmpty() ? segments[i] : parent + "." + segments[i];
         if (values.containsKey(path)) {
-          throw meeting(values.get(path), property);
+          throw meeting(values.get(path), property, prefix + path);
         }
         if (!objects.containsKey(path)) {
           Map<String, Object> child = new LinkedHashMap<>();
@@ -130,7 +132,7 @@ public final class VendorProperties {
         parent = path;
       }
       if (objects.containsKey(name)) {
-        throw meeting(property, openedBy.get(name));
+        throw meeting(property, openedBy.get(name), property);
       }
       objects.get(parent).put(segments[segments.length - 1], literal(entry.getValue(), mapper));
       values.put(name, property);
@@ -201,12 +203,14 @@ public final class VendorProperties {
     }
   }
 
-  private static IllegalArgumentException meeting(String value, String object) {
+  private static IllegalArgumentException meeting(String first, String second, String path) {
     return new IllegalArgumentException(
         "properties '"
-            + value
+            + first
             + "' and '"
-            + object
-            + "' cannot both be sent: the first sets a value where the second needs an object");
+            + second
+            + "' cannot both be sent: one sets '"
+            + path
+            + "' whole and the other sets a field inside it");
   }
 }

@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.vendor;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.LinkedHashMap;
@@ -24,6 +25,7 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 @DisplayName("Vendor properties, as every adapter reads them")
@@ -53,6 +55,21 @@ class VendorPropertiesTest {
 
       assertThat(VendorProperties.under(merged, "openai."))
           .containsExactly(Map.entry("reasoning.effort", "high"), Map.entry("seed", "42"));
+    }
+
+    @Test
+    void a_longer_first_segment_is_another_prefix_not_this_one() {
+      Map<String, String> merged = ordered("openaix.seed", "1", "openai.seed", "2");
+
+      assertThat(VendorProperties.under(merged, "openai.")).containsExactly(Map.entry("seed", "2"));
+    }
+
+    @Test
+    void the_map_returned_cannot_be_changed() {
+      Map<String, String> under = VendorProperties.under(Map.of("openai.seed", "1"), "openai.");
+
+      assertThatThrownBy(() -> under.put("x", "y"))
+          .isInstanceOf(UnsupportedOperationException.class);
     }
 
     @Test
@@ -90,6 +107,14 @@ class VendorPropertiesTest {
 
     assertThat(VendorProperties.merge(provider, agentType))
         .containsExactly(Map.entry("openai.seed", "2"), Map.entry("openai.store", "false"));
+  }
+
+  @Test
+  void the_merged_map_cannot_be_changed() {
+    Map<String, String> merged = VendorProperties.merge(Map.of("a.b", "1"), Map.of("a.c", "2"));
+
+    assertThatThrownBy(() -> merged.put("x", "y"))
+        .isInstanceOf(UnsupportedOperationException.class);
   }
 
   @Nested
@@ -144,6 +169,26 @@ class VendorPropertiesTest {
       assertThat(VendorProperties.literal("{\"a\":1} trailing", MAPPER))
           .isEqualTo("{\"a\":1} trailing");
     }
+
+    /** The mapper is the application's; the whole-value rule is ours, whatever it tolerates. */
+    @Test
+    void a_tolerant_mapper_does_not_make_a_trailing_fragment_json() {
+      JsonMapper tolerant =
+          JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
+
+      assertThat(VendorProperties.literal("12abc", tolerant)).isEqualTo("12abc");
+      assertThat(VendorProperties.literal("true story", tolerant)).isEqualTo("true story");
+      assertThat(VendorProperties.literal("{\"a\":1} trailing", tolerant))
+          .isEqualTo("{\"a\":1} trailing");
+    }
+
+    @Test
+    void an_array_is_a_list_whatever_the_mapper_prefers() {
+      JsonMapper arrays =
+          JsonMapper.builder().enable(DeserializationFeature.USE_JAVA_ARRAY_FOR_JSON_ARRAY).build();
+
+      assertThat(VendorProperties.literal("[1,2]", arrays)).isEqualTo(List.of(1, 2));
+    }
   }
 
   @Nested
@@ -185,6 +230,26 @@ class VendorPropertiesTest {
           .hasMessageContaining("'x.a.b'");
     }
 
+    @Test
+    void an_object_literal_meeting_a_field_inside_it_is_refused_neutrally() {
+      Map<String, String> flat = ordered("a", "{\"b\":1}", "a.c", "2");
+
+      assertThatThrownBy(() -> VendorProperties.nest("x.", flat, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage(
+              "properties 'x.a' and 'x.a.c' cannot both be sent: one sets 'x.a' whole and the"
+                  + " other sets a field inside it");
+    }
+
+    @Test
+    void a_bare_prefix_is_an_empty_segment() {
+      Map<String, String> bare = Map.of("", "1");
+
+      assertThatThrownBy(() -> VendorProperties.nest("openai.", bare, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'openai.' has an empty segment");
+    }
+
     /** Review Focus 2. */
     @Test
     void an_empty_segment_is_refused_naming_the_property() {
@@ -214,8 +279,11 @@ class VendorPropertiesTest {
 
   @Test
   void a_name_outside_the_clash_table_passes() {
-    VendorProperties.refuseClashes(
-        "openai.", Map.of("seed", "1"), Map.of("model", "InferenceConfig.model"));
+    Map<String, String> under = Map.of("seed", "1");
+    Map<String, String> table = Map.of("model", "InferenceConfig.model");
+
+    assertThatCode(() -> VendorProperties.refuseClashes("openai.", under, table))
+        .doesNotThrowAnyException();
   }
 
   @Nested

@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.inference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.util.List;
 import java.util.Map;
@@ -90,8 +91,6 @@ class InferenceProviderTest {
     InferenceProvider provider = (request, narrator) -> null;
     InferenceOptions options = new InferenceOptions("m", 10, Map.of("anything.at", "all"));
 
-    provider.validate(options);
-
-    assertThat(options.properties()).containsKey("anything.at");
+    assertThatCode(() -> provider.validate(options)).doesNotThrowAnyException();
   }
 }

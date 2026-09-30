@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.embedding;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
@@ -58,8 +60,15 @@ class EmbeddingOptionsTest {
     EmbeddingOptions options =
         new EmbeddingOptions("m", OptionalInt.empty(), Map.of("anything.at", "all"));
 
-    provider.validate(options);
+    assertThatCode(() -> provider.validate(options)).doesNotThrowAnyException();
+  }
 
-    assertThat(options.properties()).containsKey("anything.at");
+  @Test
+  void the_properties_cannot_be_changed() {
+    Map<String, String> properties =
+        new EmbeddingOptions("m", OptionalInt.empty(), Map.of("a.b", "1")).properties();
+
+    assertThatThrownBy(() -> properties.put("x", "y"))
+        .isInstanceOf(UnsupportedOperationException.class);
   }
 }
