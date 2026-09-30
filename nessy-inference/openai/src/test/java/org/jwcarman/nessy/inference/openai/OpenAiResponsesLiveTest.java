@@ -405,7 +405,8 @@ class OpenAiResponsesLiveTest {
       assertThat(exchanges)
           .as("the calls came in sequence, one step each")
           .hasSizeGreaterThanOrEqualTo(2);
-      assertThat(textOf(result)).contains("754");
+      // 230 m is 754.6 ft; a model may round either way.
+      assertThat(textOf(result)).containsAnyOf("754", "755");
     }
   }
 
