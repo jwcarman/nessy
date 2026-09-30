@@ -192,6 +192,8 @@ public class EpisodeSummarizer {
     Objects.requireNonNull(config.provider, "inference(provider, options) is required");
     this.options =
         Objects.requireNonNull(config.options, "inference(provider, options) is required");
+    // A bad property fails when the summariser is built, not on the first summary.
+    config.provider.validate(this.options);
     this.provider = ObservedInferenceProvider.wrap(config.provider, config.observations);
     this.leaseTtl = Objects.requireNonNull(config.leaseTtl, "leaseTtl must not be null");
     if (leaseTtl.isNegative() || leaseTtl.isZero()) {

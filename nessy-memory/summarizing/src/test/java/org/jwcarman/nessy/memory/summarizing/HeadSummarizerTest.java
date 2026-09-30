@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.memory.summarizing;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 import com.zaxxer.hikari.HikariConfig;
@@ -47,6 +48,7 @@ import org.jwcarman.nessy.backend.jdbc.JdbcQueuedBackend;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -176,6 +178,37 @@ class HeadSummarizerTest {
       harness.tell(agentId, "turn " + i);
       await().atMost(Duration.ofSeconds(20)).until(() -> chatRequests.size() >= expected);
     }
+  }
+
+  @Test
+  @DisplayName("refuses a provider that will not accept its options, when it is built")
+  void a_provider_that_refuses_the_options_fails_the_build() {
+    InferenceProvider refusing =
+        new InferenceProvider() {
+          @Override
+          public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
+            return new InferenceResult.Answer(List.of(new Block.Text("unused")));
+          }
+
+          @Override
+          public void validate(InferenceOptions options) {
+            throw new IllegalArgumentException("property 'openai.bogus' is not welcome");
+          }
+        };
+    JdbcLeases leases = new JdbcLeases(dataSource);
+
+    assertThatThrownBy(
+            () ->
+                HeadSummarizer.of(
+                    c ->
+                        c.agentType(CHAT)
+                            .summaries(summaries)
+                            .histories(factory.histories())
+                            .leases(leases)
+                            .inference(refusing, InferenceOptions.of("m"))
+                            .tail(MAX_TAIL, MIN_TAIL)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("property 'openai.bogus' is not welcome");
   }
 
   @Test

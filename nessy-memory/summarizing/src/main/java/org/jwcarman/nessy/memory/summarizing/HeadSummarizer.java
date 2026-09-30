@@ -217,6 +217,8 @@ public class HeadSummarizer {
     Objects.requireNonNull(config.provider, "inference(provider, options) is required");
     this.options =
         Objects.requireNonNull(config.options, "inference(provider, options) is required");
+    // A bad property fails when the summariser is built, not on the first summary.
+    config.provider.validate(this.options);
     this.provider = ObservedInferenceProvider.wrap(config.provider, config.observations);
     this.observation = new SummaryObservation(config.observations, "head", agentType);
     if (config.minTail < 1 || config.maxTail <= config.minTail) {

@@ -47,6 +47,7 @@ import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -176,6 +177,36 @@ class EpisodeSummarizerTest {
 
   private static List<Long> turnIds(InferenceRequest request) {
     return request.context().turns().stream().map(turn -> turn.id().value()).toList();
+  }
+
+  @Test
+  @DisplayName("refuses a provider that will not accept its options, when it is built")
+  void a_provider_that_refuses_the_options_fails_the_build() {
+    InferenceProvider refusing =
+        new InferenceProvider() {
+          @Override
+          public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
+            return new InferenceResult.Answer(List.of(new Block.Text("unused")));
+          }
+
+          @Override
+          public void validate(InferenceOptions options) {
+            throw new IllegalArgumentException("property 'openai.bogus' is not welcome");
+          }
+        };
+    JdbcLeases leases = new JdbcLeases(dataSource);
+
+    assertThatThrownBy(
+            () ->
+                EpisodeSummarizer.of(
+                    c ->
+                        c.agentType(Calls.TYPE)
+                            .episodes(episodes)
+                            .histories(factory.histories())
+                            .leases(leases)
+                            .inference(refusing, InferenceOptions.of("m"))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("property 'openai.bogus' is not welcome");
   }
 
   @Test
