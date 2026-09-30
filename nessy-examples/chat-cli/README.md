@@ -39,11 +39,9 @@ that is about THIS program: what it is for, and what it can do.
   `y`/`yes` is a no, and end of input is a no — silence is not consent.
 - **Streaming.** The answer is typed out as the model writes it.
 
-**The conversation does not survive the process** — the application excludes the
-starter's JDBC backend, so the direct door keeps the conversation in memory. A terminal's chat lives as
-long as the terminal does, and a CLI that silently resumed yesterday's would
-surprise the person typing into it. What the notebook and the plan keep is the
-part worth outliving it. Point `chat-web` at a database to see the other half.
+**The conversation is kept with everything else.** The starter's JDBC backend
+stores it in the same PostgreSQL as the notebook and the plan, under one fixed
+agent id, so the next run resumes the chat where it was left.
 
 ## Run it
 

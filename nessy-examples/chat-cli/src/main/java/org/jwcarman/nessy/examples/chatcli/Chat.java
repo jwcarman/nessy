@@ -33,7 +33,6 @@ import org.jwcarman.nessy.planning.Plans;
 import org.jwcarman.nessy.prompt.PromptVariableSource;
 import org.jwcarman.nessy.prompt.TemplatedSystemPrompt;
 import org.jwcarman.nessy.prompt.spring.SpringPromptTemplateFactory;
-import org.jwcarman.nessy.spring.boot.JdbcBackendAutoConfiguration;
 import org.jwcarman.nessy.spring.boot.prompt.PromptAutoConfiguration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
@@ -49,17 +48,15 @@ import org.springframework.context.annotation.Bean;
  * registers from a preset, and the database comes up from {@code compose.yaml} when this runs and
  * goes away after. There is nothing to start first and no connection details to export.
  *
- * <p><b>The conversation is not in that database.</b> A terminal's chat lives as long as the
- * terminal does. What the notebook and the plan keep is the part worth outliving it.
+ * <p><b>The conversation is in that database too.</b> The starter's JDBC backend keeps it beside
+ * the notebook and the plan, under one fixed agent id, so the next run picks the chat up where it
+ * was left.
  */
-// The starter builds the direct-door factory and registers every InferenceProvider bean by name;
-// nessy.provider and nessy.model say which one answers. Its JDBC backend is excluded because the
-// conversation is the process: the direct door falls back to the in-memory backend, and the
-// database below holds only what the notebook and the plan keep. The prompt auto-configuration is
-// excluded because it insists on nessy.system-prompt, and this application states its prompt in
-// code, as a template filled in per call.
-@SpringBootApplication(
-    exclude = {JdbcBackendAutoConfiguration.class, PromptAutoConfiguration.class})
+// The starter builds the direct-door factory over the JDBC backend and registers every
+// InferenceProvider bean by name; nessy.provider and nessy.model say which one answers. The prompt
+// auto-configuration is excluded because it insists on nessy.system-prompt, and this application
+// states its prompt in code, as a template filled in per call.
+@SpringBootApplication(exclude = PromptAutoConfiguration.class)
 public class Chat {
 
   private static final AgentType TYPE = new AgentType("chat");

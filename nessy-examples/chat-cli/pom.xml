@@ -47,13 +47,6 @@
       <artifactId>nessy-spring-boot-starter</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- The backend this application chooses: in memory, because the conversation is the
-         process. The engine names no backend, so this is the application's to bring. -->
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-backend-inmemory</artifactId>
-      <version>${project.version}</version>
-    </dependency>
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-console</artifactId>

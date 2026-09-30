@@ -14,11 +14,11 @@
 # limitations under the License.
 #
 
-# The one thing this example needs that is not this example: somewhere for the notebook and the
-# plan to live. Started and stopped by Boot, so running the example is the whole ceremony -- there
+# The one thing this example needs that is not this example: somewhere for the notebook, the
+# plan and the conversation to live. Started and stopped by Boot, so running the example is the whole ceremony -- there
 # is nothing to bring up first and no connection details to export.
 #
-# The conversation itself is NOT in here. A terminal's chat lives as long as the terminal does.
+# The notebook, the plan and the conversation all live in here.
 services:
   postgres:
     image: postgres:17
