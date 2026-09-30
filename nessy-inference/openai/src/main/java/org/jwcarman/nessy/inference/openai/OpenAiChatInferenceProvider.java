@@ -87,7 +87,7 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
   static final String NAME = "OpenAI";
 
   private final OpenAIClient client;
-  private final String vendor;
+  private final String vendorName;
 
   /**
    * Reads a tool's schema, which reaches an adapter as JSON text. Supplied rather than made here: a
@@ -118,7 +118,7 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
       JsonMapper mapper,
       Map<String, String> properties) {
     this.client = client;
-    this.vendor = Objects.requireNonNull(vendor, "vendor must not be null");
+    this.vendorName = Objects.requireNonNull(vendor, "vendor must not be null");
     this.ownsClient = ownsClient;
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
     this.properties = Collections.unmodifiableMap(new LinkedHashMap<>(properties));
@@ -417,6 +417,6 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
   /** Which vendor an observability layer should report this call under. */
   @Override
   public String vendor() {
-    return vendor;
+    return vendorName;
   }
 }

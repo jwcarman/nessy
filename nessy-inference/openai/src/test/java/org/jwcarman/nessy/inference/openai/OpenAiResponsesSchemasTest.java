@@ -18,6 +18,7 @@ package org.jwcarman.nessy.inference.openai;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Map;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import tools.jackson.core.type.TypeReference;
@@ -319,8 +320,10 @@ class OpenAiResponsesSchemasTest {
       OpenAiResponsesSchemas.Projected projected =
           project("{\"type\":\"object\",\"properties\":{\"p\":{\"const\":\"x\"}},\"required\":[]}");
 
-      assertThat(((Map<?, ?>) projected.schema().get("properties")).get("p"))
-          .isEqualTo(
+      assertThat(projected.schema().get("properties"))
+          .asInstanceOf(InstanceOfAssertFactories.MAP)
+          .containsEntry(
+              "p",
               parse("{\"anyOf\":[{\"const\":\"x\",\"type\":\"string\"},{\"type\":\"null\"}]}"));
     }
   }

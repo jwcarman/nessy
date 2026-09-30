@@ -51,20 +51,31 @@ import tools.jackson.databind.json.JsonMapper;
  */
 final class OpenAiResponsesSchemas {
 
+  private static final String NULL = "null";
+  private static final String ANY_OF = "anyOf";
+  private static final String DEFS = "$defs";
+  private static final String PROPERTIES = "properties";
+  private static final String REQUIRED = "required";
+  private static final String ADDITIONAL_PROPERTIES = "additionalProperties";
+  private static final String ITEMS = "items";
+  private static final String CONST = "const";
+  private static final String TYPE = "type";
+  private static final String INTEGER = "integer";
+
   /** What strict mode is documented to accept, with {@code oneOf} read as {@code anyOf}. */
   static final Set<String> STRICT_KEYWORDS =
       Set.of(
           "$schema",
-          "$defs",
+          DEFS,
           "$ref",
-          "type",
-          "properties",
-          "required",
-          "additionalProperties",
-          "items",
-          "anyOf",
+          TYPE,
+          PROPERTIES,
+          REQUIRED,
+          ADDITIONAL_PROPERTIES,
+          ITEMS,
+          ANY_OF,
           "enum",
-          "const",
+          CONST,
           "description",
           "title",
           "format",
@@ -77,8 +88,6 @@ final class OpenAiResponsesSchemas {
           "minItems",
           "maxItems");
 
-  private static final String NULL = "null";
-  private static final String ANY_OF = "anyOf";
   private static final String ONE_OF = "oneOf";
 
   private OpenAiResponsesSchemas() {}
@@ -114,7 +123,7 @@ final class OpenAiResponsesSchemas {
         return Optional.of(keyword + " at the root");
       }
     }
-    Object type = schema.get("type");
+    Object type = schema.get(TYPE);
     return Optional.of((type == null ? "no type" : String.valueOf(type)) + " at the root");
   }
 
@@ -126,16 +135,16 @@ final class OpenAiResponsesSchemas {
       String keyword = String.valueOf(entry.getKey());
       Object value = entry.getValue();
       boolean known = STRICT_KEYWORDS.contains(keyword) || ONE_OF.equals(keyword);
-      if (!known || ("additionalProperties".equals(keyword) && !Boolean.FALSE.equals(value))) {
+      if (!known || (ADDITIONAL_PROPERTIES.equals(keyword) && !Boolean.FALSE.equals(value))) {
         return Optional.of(keyword);
       }
       Optional<String> nested =
           switch (keyword) {
-            case "properties", "$defs" ->
+            case PROPERTIES, DEFS ->
                 value instanceof Map<?, ?> named ? firstRefused(named.values()) : Optional.empty();
             case ANY_OF, ONE_OF ->
                 value instanceof List<?> branches ? firstRefused(branches) : Optional.empty();
-            case "items" -> value instanceof Map<?, ?> item ? refused(item) : Optional.empty();
+            case ITEMS -> value instanceof Map<?, ?> item ? refused(item) : Optional.empty();
             default -> Optional.empty();
           };
       if (nested.isPresent()) {
@@ -165,32 +174,40 @@ final class OpenAiResponsesSchemas {
         (key, value) -> {
           String keyword = String.valueOf(key);
           switch (keyword) {
-            case "$defs" -> out.put(keyword, eachStrict(value));
-            case "items" -> out.put(keyword, strictOrSelf(value));
+            case DEFS -> out.put(keyword, eachStrict(value));
+            case ITEMS -> out.put(keyword, strictOrSelf(value));
             case ANY_OF, ONE_OF -> out.put(ANY_OF, strictBranches(value));
             default -> out.put(keyword, value);
           }
         });
-    if (!out.containsKey("type")) {
-      typeOf(out).ifPresent(type -> out.put("type", type));
+    if (!out.containsKey(TYPE)) {
+      typeOf(out).ifPresent(type -> out.put(TYPE, type));
     }
-    if (schema.get("properties") instanceof Map<?, ?> properties) {
-      Set<String> required = names(schema.get("required"));
-      Map<String, Object> rewritten = new LinkedHashMap<>();
-      properties.forEach(
-          (name, property) -> {
-            Object strict = strictOrSelf(property);
-            rewritten.put(
-                String.valueOf(name),
-                required.contains(String.valueOf(name)) ? strict : admittingNull(strict));
-          });
-      out.put("properties", rewritten);
-      out.put("required", new ArrayList<>(rewritten.keySet()));
-      out.put("additionalProperties", false);
+    if (schema.get(PROPERTIES) instanceof Map<?, ?> properties) {
+      putStrictProperties(out, properties, names(schema.get(REQUIRED)));
     } else if (isObject(schema)) {
-      out.put("additionalProperties", false);
+      out.put(ADDITIONAL_PROPERTIES, false);
     }
     return out;
+  }
+
+  /**
+   * Every property named in {@code required} and closed to anything else: a property the original
+   * left optional admits null instead.
+   */
+  private static void putStrictProperties(
+      Map<String, Object> out, Map<?, ?> properties, Set<String> required) {
+    Map<String, Object> rewritten = new LinkedHashMap<>();
+    properties.forEach(
+        (name, property) -> {
+          Object strict = strictOrSelf(property);
+          rewritten.put(
+              String.valueOf(name),
+              required.contains(String.valueOf(name)) ? strict : admittingNull(strict));
+        });
+    out.put(PROPERTIES, rewritten);
+    out.put(REQUIRED, new ArrayList<>(rewritten.keySet()));
+    out.put(ADDITIONAL_PROPERTIES, false);
   }
 
   /**
@@ -201,8 +218,8 @@ final class OpenAiResponsesSchemas {
    * wrong.
    */
   private static Optional<String> typeOf(Map<String, Object> schema) {
-    if (schema.containsKey("const")) {
-      return jsonType(schema.get("const"));
+    if (schema.containsKey(CONST)) {
+      return jsonType(schema.get(CONST));
     }
     if (schema.get("enum") instanceof List<?> values && !values.isEmpty()) {
       Optional<String> first = jsonType(values.getFirst());
@@ -215,12 +232,12 @@ final class OpenAiResponsesSchemas {
 
   private static Optional<String> jsonType(Object value) {
     return switch (value) {
-      case String ignored -> Optional.of("string");
-      case Boolean ignored -> Optional.of("boolean");
-      case Integer ignored -> Optional.of("integer");
-      case Long ignored -> Optional.of("integer");
-      case BigInteger ignored -> Optional.of("integer");
-      case Number ignored -> Optional.of("number");
+      case String _ -> Optional.of("string");
+      case Boolean _ -> Optional.of("boolean");
+      case Integer _ -> Optional.of(INTEGER);
+      case Long _ -> Optional.of(INTEGER);
+      case BigInteger _ -> Optional.of(INTEGER);
+      case Number _ -> Optional.of("number");
       case null, default -> Optional.empty();
     };
   }
@@ -245,7 +262,7 @@ final class OpenAiResponsesSchemas {
   }
 
   private static boolean isObject(Map<?, ?> schema) {
-    Object type = schema.get("type");
+    Object type = schema.get(TYPE);
     return "object".equals(type) || (type instanceof List<?> types && types.contains("object"));
   }
 
@@ -279,17 +296,17 @@ final class OpenAiResponsesSchemas {
       widenType(out);
       return out;
     }
-    if (!map.containsKey("const") && !map.containsKey("$ref") && widenType(out)) {
+    if (!map.containsKey(CONST) && !map.containsKey("$ref") && widenType(out)) {
       return out;
     }
-    return Map.of(ANY_OF, List.of(schema, Map.of("type", NULL)));
+    return Map.of(ANY_OF, List.of(schema, Map.of(TYPE, NULL)));
   }
 
   /** Adds {@code "null"} to a {@code type}; false when there was no type to widen. */
   private static boolean widenType(Map<String, Object> schema) {
-    Object type = schema.get("type");
+    Object type = schema.get(TYPE);
     if (type instanceof String single) {
-      schema.put("type", NULL.equals(single) ? single : List.of(single, NULL));
+      schema.put(TYPE, NULL.equals(single) ? single : List.of(single, NULL));
       return true;
     }
     if (type instanceof List<?> types) {
@@ -297,7 +314,7 @@ final class OpenAiResponsesSchemas {
       if (!types.contains(NULL)) {
         widened.add(NULL);
       }
-      schema.put("type", widened);
+      schema.put(TYPE, widened);
       return true;
     }
     return false;
@@ -306,12 +323,12 @@ final class OpenAiResponsesSchemas {
   private static boolean admitsNull(Map<?, ?> schema) {
     if (schema.get(ANY_OF) instanceof List<?> branches) {
       return branches.stream()
-          .anyMatch(branch -> branch instanceof Map<?, ?> map && NULL.equals(map.get("type")));
+          .anyMatch(branch -> branch instanceof Map<?, ?> map && NULL.equals(map.get(TYPE)));
     }
-    Object type = schema.get("type");
+    Object type = schema.get(TYPE);
     boolean typeAdmits =
         NULL.equals(type) || (type instanceof List<?> types && types.contains(NULL));
     boolean enumAdmits = !(schema.get("enum") instanceof List<?> values) || values.contains(null);
-    return typeAdmits && enumAdmits && !schema.containsKey("const");
+    return typeAdmits && enumAdmits && !schema.containsKey(CONST);
   }
 }

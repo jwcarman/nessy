@@ -423,7 +423,9 @@ class OpenAiResponsesInferenceProviderTest {
               .asReasoning();
       assertThat(replayed.id()).isEqualTo("rs_1");
       assertThat(replayed.encryptedContent()).contains("AAAA");
-      assertThat(replayed.summary()).extracting(part -> part.text()).containsExactly("weighing it");
+      assertThat(replayed.summary())
+          .extracting(ResponseReasoningItem.Summary::text)
+          .containsExactly("weighing it");
     }
 
     @Test

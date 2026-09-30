@@ -319,14 +319,8 @@ class GeminiInferenceProviderTest {
           .singleElement()
           .satisfies(
               config ->
-                  assertThat(
-                          config
-                              .thinkingConfig()
-                              .orElseThrow()
-                              .thinkingLevel()
-                              .orElseThrow()
-                              .toString())
-                      .isEqualTo("high"));
+                  assertThat(config.thinkingConfig().orElseThrow().thinkingLevel().orElseThrow())
+                      .hasToString("high"));
     }
 
     @Test

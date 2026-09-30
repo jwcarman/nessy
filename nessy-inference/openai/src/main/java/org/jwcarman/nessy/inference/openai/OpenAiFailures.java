@@ -29,6 +29,8 @@ import org.jwcarman.nessy.inference.Failure;
  */
 final class OpenAiFailures {
 
+  private static final String MODEL_CALL_FAILED = "model call failed: ";
+
   private OpenAiFailures() {}
 
   /**
@@ -56,7 +58,7 @@ final class OpenAiFailures {
     if (e instanceof RateLimitException
         || e instanceof InternalServerException
         || e instanceof OpenAIRetryableException) {
-      return new Failure.Transient("model call failed: " + e.getMessage());
+      return new Failure.Transient(MODEL_CALL_FAILED + e.getMessage());
     }
     // Transport-level: the request may or may not have been processed before the connection
     // went. Unknown rather than transient, because repeating it is safe exactly when repeating
@@ -64,7 +66,7 @@ final class OpenAiFailures {
     if (e instanceof OpenAIIoException) {
       return new Failure.Unknown("no answer from the model: " + e.getMessage());
     }
-    return new Failure.Permanent("model call failed: " + e.getMessage());
+    return new Failure.Permanent(MODEL_CALL_FAILED + e.getMessage());
   }
 
   /**
@@ -82,7 +84,7 @@ final class OpenAiFailures {
    * The same rule for a bare code and message, as a mid-stream {@code error} event carries them.
    */
   static Failure classify(String code, String message) {
-    String reason = "model call failed: " + code + ": " + message;
+    String reason = MODEL_CALL_FAILED + code + ": " + message;
     if (ResponseError.Code.RATE_LIMIT_EXCEEDED.asString().equals(code)
         || ResponseError.Code.SERVER_ERROR.asString().equals(code)) {
       return new Failure.Transient(reason);

@@ -32,6 +32,8 @@ import com.openai.models.responses.FunctionTool;
 import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.ResponseIncludable;
 import com.openai.models.responses.ResponseInputItem;
+import com.openai.models.responses.ResponseReasoningItem;
+import com.openai.models.responses.Tool;
 import com.openai.models.responses.ToolChoiceOptions;
 import java.io.UncheckedIOException;
 import java.util.List;
@@ -351,7 +353,7 @@ class OpenAiResponsesRequestsTest {
       assertThat(items.get(1).asReasoning().id()).isEqualTo("rs_1");
       assertThat(items.get(1).asReasoning().encryptedContent()).contains("AAAA");
       assertThat(items.get(1).asReasoning().summary())
-          .extracting(part -> part.text())
+          .extracting(ResponseReasoningItem.Summary::text)
           .containsExactly("weighing it");
       assertThat(items.get(2).asFunctionCall().callId()).isEqualTo("call_1");
     }
@@ -381,8 +383,10 @@ class OpenAiResponsesRequestsTest {
 
       List<ResponseInputItem> items = itemsOf(List.of(earlier, open(3, "and now?")));
 
-      assertThat(items).isNotEmpty().noneMatch(ResponseInputItem::isReasoning);
-      assertThat(items).anyMatch(ResponseInputItem::isFunctionCall);
+      assertThat(items)
+          .isNotEmpty()
+          .noneMatch(ResponseInputItem::isReasoning)
+          .anyMatch(ResponseInputItem::isFunctionCall);
     }
 
     @Test
@@ -647,8 +651,9 @@ class OpenAiResponsesRequestsTest {
       assertThat(tool.description()).contains("does lookup");
       assertThat(tool.strict()).contains(true);
       Map<String, Object> schema = sent(tool.parameters().orElseThrow());
-      assertThat(schema).containsEntry("required", List.of("q", "reason"));
-      assertThat(schema).containsEntry("additionalProperties", false);
+      assertThat(schema)
+          .containsEntry("required", List.of("q", "reason"))
+          .containsEntry("additionalProperties", false);
     }
 
     @Test
@@ -674,7 +679,7 @@ class OpenAiResponsesRequestsTest {
                 .tools()
                 .orElseThrow()
                 .stream()
-                .map(tool -> tool.asFunction())
+                .map(Tool::asFunction)
                 .toList();
       } finally {
         logger.detachAppender(appender);

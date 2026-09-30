@@ -775,8 +775,9 @@ class OpenAiChatRequestsTest {
 
       assertThat(function.strict()).contains(true);
       Map<String, Object> schema = sent(function.parameters().orElseThrow());
-      assertThat(schema).containsEntry("required", List.of("q", "n"));
-      assertThat(schema).containsEntry("additionalProperties", false);
+      assertThat(schema)
+          .containsEntry("required", List.of("q", "n"))
+          .containsEntry("additionalProperties", false);
     }
 
     @Test
@@ -893,8 +894,9 @@ class OpenAiChatRequestsTest {
       Map<String, Object> schema = sent(format.schema().orElseThrow());
       assertThat(format.name()).isEqualTo("answer");
       assertThat(format.strict()).contains(true);
-      assertThat(schema).containsEntry("additionalProperties", false);
-      assertThat(schema).containsEntry("required", List.of("label", "note"));
+      assertThat(schema)
+          .containsEntry("additionalProperties", false)
+          .containsEntry("required", List.of("label", "note"));
     }
 
     @Test
