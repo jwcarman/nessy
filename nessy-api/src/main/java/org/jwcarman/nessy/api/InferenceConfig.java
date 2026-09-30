@@ -51,6 +51,14 @@ public interface InferenceConfig {
    */
   InferenceConfig property(String name, String value);
 
+  /**
+   * {@link #property(String, String)}, with the property declared by the adapter that reads it and
+   * the value typed: it is stored as the text {@code property} writes it as.
+   */
+  default <T> InferenceConfig property(VendorProperty<T> property, T value) {
+    return property(property.name(), property.format(value));
+  }
+
   /** How much answer it may have. Zero or unset leaves it to the provider. */
   InferenceConfig maxTokens(int maxTokens);
 

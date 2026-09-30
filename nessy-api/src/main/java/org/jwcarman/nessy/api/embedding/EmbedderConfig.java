@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.api.embedding;
 
+import org.jwcarman.nessy.api.VendorProperty;
+
 /**
  * What varies between one embedder and the next.
  *
@@ -48,4 +50,12 @@ public interface EmbedderConfig {
    * @throws IllegalArgumentException if either argument is blank
    */
   EmbedderConfig property(String name, String value);
+
+  /**
+   * {@link #property(String, String)}, with the property declared by the adapter that reads it and
+   * the value typed: it is stored as the text {@code property} writes it as.
+   */
+  default <T> EmbedderConfig property(VendorProperty<T> property, T value) {
+    return property(property.name(), property.format(value));
+  }
 }

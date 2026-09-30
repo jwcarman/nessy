@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.VendorProperty;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceRequest;
 
@@ -141,6 +142,17 @@ class OpenAiResponsesProviderConfigTest {
   void a_property_under_another_prefix_is_refused_at_build_naming_the_prefix() {
     Customizer<OpenAiResponsesProviderConfig> customizer =
         c -> c.apiKey("test-key").properties(Map.of("gemini.labels.team", "billing"));
+
+    assertThatThrownBy(() -> OpenAiResponsesInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'gemini.labels.team'")
+        .hasMessageContaining("'openai.'");
+  }
+
+  @Test
+  void a_typed_property_is_stored_under_its_name_and_refused_like_the_string_form() {
+    Customizer<OpenAiResponsesProviderConfig> customizer =
+        c -> c.apiKey("test-key").property(VendorProperty.ofBoolean("gemini.labels.team"), true);
 
     assertThatThrownBy(() -> OpenAiResponsesInferenceProvider.of(customizer))
         .isInstanceOf(IllegalArgumentException.class)

@@ -30,6 +30,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.VendorProperty;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -113,6 +114,20 @@ class BedrockProviderConfigTest {
             c.region(Region.US_EAST_1)
                 .credentialsProvider(CREDENTIALS)
                 .property("aws.bedrock.thinking.type", "enabled");
+
+    assertThatThrownBy(() -> BedrockInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'aws.bedrock.thinking.type'")
+        .hasMessageContaining("'bedrock.'");
+  }
+
+  @Test
+  void a_typed_property_is_stored_under_its_name_and_refused_like_the_string_form() {
+    Customizer<BedrockProviderConfig> customizer =
+        c ->
+            c.region(Region.US_EAST_1)
+                .credentialsProvider(CREDENTIALS)
+                .property(VendorProperty.ofBoolean("aws.bedrock.thinking.type"), true);
 
     assertThatThrownBy(() -> BedrockInferenceProvider.of(customizer))
         .isInstanceOf(IllegalArgumentException.class)

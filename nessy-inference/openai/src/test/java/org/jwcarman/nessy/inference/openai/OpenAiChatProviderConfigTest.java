@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.VendorProperty;
 
 /**
  * The transport timeout setter (design record 2026-09-25-locks-as-plumbing-design.md §5).
@@ -114,6 +115,19 @@ class OpenAiChatProviderConfigTest {
   void a_property_under_another_prefix_is_refused_at_build_naming_the_prefix() {
     Customizer<OpenAiChatProviderConfig> customizer =
         c -> c.apiKey("test-key").property("anthropic.thinking.budget_tokens", "8192");
+
+    assertThatThrownBy(() -> OpenAiChatInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'anthropic.thinking.budget_tokens'")
+        .hasMessageContaining("'openai.'");
+  }
+
+  @Test
+  void a_typed_property_is_stored_under_its_name_and_refused_like_the_string_form() {
+    Customizer<OpenAiChatProviderConfig> customizer =
+        c ->
+            c.apiKey("test-key")
+                .property(VendorProperty.ofBoolean("anthropic.thinking.budget_tokens"), true);
 
     assertThatThrownBy(() -> OpenAiChatInferenceProvider.of(customizer))
         .isInstanceOf(IllegalArgumentException.class)

@@ -66,6 +66,7 @@ import org.jwcarman.nessy.api.Tokens;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.VendorProperty;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -1751,6 +1752,20 @@ class DefaultDirectHarnessTest {
       assertThat(model.seen).isNotEmpty();
       assertThat(model.seen.getFirst().options().properties())
           .containsExactly(Map.entry("openai.reasoning.effort", "high"));
+    }
+
+    @Test
+    void a_typed_property_reaches_the_provider_as_the_text_the_string_form_carries() {
+      Scripted model = new Scripted().then(answering("ok"));
+      VendorProperty<Integer> seed = VendorProperty.ofInteger("openai.seed");
+
+      factory(model, InferenceOptions.of("a-model"))
+          .<String>create(TYPE, agentType(in -> in.property(seed, 7)))
+          .ask(AgentId.random(), "hi");
+
+      assertThat(model.seen).isNotEmpty();
+      assertThat(model.seen.getFirst().options().properties())
+          .containsExactly(Map.entry("openai.seed", "7"));
     }
 
     @Test

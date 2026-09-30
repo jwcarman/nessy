@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.VendorProperty;
 import org.jwcarman.nessy.api.embedding.EmbedderConfig;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
@@ -110,6 +111,19 @@ class DefaultEmbedderFactoryTest {
     Asked provider = new Asked();
     new DefaultEmbedderFactory(provider, "a-model")
         .create(c -> c.property("voyage.truncation", "false"))
+        .embedDocument("anything");
+
+    assertThat(provider.options.get().properties())
+        .containsExactly(Map.entry("voyage.truncation", "false"));
+  }
+
+  @Test
+  @DisplayName("carry a typed property as the text the string form carries")
+  void carry_a_typed_property_as_the_text_the_string_form_carries() {
+    Asked provider = new Asked();
+    VendorProperty<Boolean> truncation = VendorProperty.ofBoolean("voyage.truncation");
+    new DefaultEmbedderFactory(provider, "a-model")
+        .create(c -> c.property(truncation, false))
         .embedDocument("anything");
 
     assertThat(provider.options.get().properties())

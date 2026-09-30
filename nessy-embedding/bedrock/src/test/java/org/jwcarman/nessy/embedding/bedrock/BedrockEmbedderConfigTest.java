@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.VendorProperty;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -57,6 +58,20 @@ class BedrockEmbedderConfigTest {
             c.region(Region.US_EAST_1)
                 .credentialsProvider(CREDENTIALS)
                 .properties(Map.of("openai.user", "tenant-42"));
+
+    assertThatThrownBy(() -> BedrockEmbeddingProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'openai.user'")
+        .hasMessageContaining("'bedrock.'");
+  }
+
+  @Test
+  void a_typed_property_is_stored_under_its_name_and_refused_like_the_string_form() {
+    Customizer<BedrockEmbedderConfig> customizer =
+        c ->
+            c.region(Region.US_EAST_1)
+                .credentialsProvider(CREDENTIALS)
+                .property(VendorProperty.ofBoolean("openai.user"), true);
 
     assertThatThrownBy(() -> BedrockEmbeddingProvider.of(customizer))
         .isInstanceOf(IllegalArgumentException.class)

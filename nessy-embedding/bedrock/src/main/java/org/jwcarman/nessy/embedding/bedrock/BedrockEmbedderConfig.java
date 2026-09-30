@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.VendorProperty;
 import org.jwcarman.nessy.vendor.VendorProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -128,6 +129,14 @@ public final class BedrockEmbedderConfig {
     }
     properties.put(name, VendorProperties.requireString(name, value));
     return this;
+  }
+
+  /**
+   * {@link #property(String, String)}, with the value typed: it is stored as the text {@code
+   * property} writes it as.
+   */
+  public <T> BedrockEmbedderConfig property(VendorProperty<T> property, T value) {
+    return property(property.name(), property.format(value));
   }
 
   /** {@link #property(String, String)} for each entry. */

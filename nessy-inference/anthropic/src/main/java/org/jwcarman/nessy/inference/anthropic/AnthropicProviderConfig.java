@@ -24,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.VendorProperty;
 import org.jwcarman.nessy.vendor.VendorProperties;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -141,6 +142,14 @@ public final class AnthropicProviderConfig {
     }
     properties.put(name, VendorProperties.requireString(name, value));
     return this;
+  }
+
+  /**
+   * {@link #property(String, String)}, with the value typed: it is stored as the text {@code
+   * property} writes it as.
+   */
+  public <T> AnthropicProviderConfig property(VendorProperty<T> property, T value) {
+    return property(property.name(), property.format(value));
   }
 
   /** {@link #property(String, String)} for each entry, as Boot binds them. */

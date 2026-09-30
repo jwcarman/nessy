@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.VendorProperty;
 
 /**
  * No embedder property is supported yet: one under its own prefix is ignored with a warning;
@@ -45,6 +46,17 @@ class GeminiEmbedderConfigTest {
   void a_property_under_another_prefix_is_refused_at_build_naming_the_prefix() {
     Customizer<GeminiEmbedderConfig> customizer =
         c -> c.apiKey("test-key").properties(Map.of("openai.user", "tenant-42"));
+
+    assertThatThrownBy(() -> GeminiEmbeddingProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'openai.user'")
+        .hasMessageContaining("'gemini.'");
+  }
+
+  @Test
+  void a_typed_property_is_stored_under_its_name_and_refused_like_the_string_form() {
+    Customizer<GeminiEmbedderConfig> customizer =
+        c -> c.apiKey("test-key").property(VendorProperty.ofBoolean("openai.user"), true);
 
     assertThatThrownBy(() -> GeminiEmbeddingProvider.of(customizer))
         .isInstanceOf(IllegalArgumentException.class)

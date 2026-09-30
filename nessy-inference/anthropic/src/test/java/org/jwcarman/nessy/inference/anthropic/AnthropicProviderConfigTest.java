@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.VendorProperty;
 
 /**
  * The transport timeout setter (design record 2026-09-25-locks-as-plumbing-design.md §5).
@@ -225,6 +226,19 @@ class AnthropicProviderConfigTest {
   void a_property_under_another_prefix_is_refused_at_build_naming_the_prefix() {
     Customizer<AnthropicProviderConfig> customizer =
         c -> c.apiKey("test-key").property("openai.reasoning.effort", "high");
+
+    assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'openai.reasoning.effort'")
+        .hasMessageContaining("'anthropic.'");
+  }
+
+  @Test
+  void a_typed_property_is_stored_under_its_name_and_refused_like_the_string_form() {
+    Customizer<AnthropicProviderConfig> customizer =
+        c ->
+            c.apiKey("test-key")
+                .property(VendorProperty.ofBoolean("openai.reasoning.effort"), true);
 
     assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
         .isInstanceOf(IllegalArgumentException.class)

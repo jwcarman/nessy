@@ -29,6 +29,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.VendorProperty;
 import tools.jackson.databind.json.JsonMapper;
 
 /** Building a provider needs no network: the SDK client is constructed, never used. */
@@ -159,6 +160,17 @@ class GeminiProviderConfigTest {
   void a_property_under_another_prefix_is_refused_at_build_naming_the_prefix() {
     Customizer<GeminiProviderConfig> customizer =
         c -> c.apiKey("test-key").property("gcp.gemini.seed", "1");
+
+    assertThatThrownBy(() -> GeminiInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'gcp.gemini.seed'")
+        .hasMessageContaining("'gemini.'");
+  }
+
+  @Test
+  void a_typed_property_is_stored_under_its_name_and_refused_like_the_string_form() {
+    Customizer<GeminiProviderConfig> customizer =
+        c -> c.apiKey("test-key").property(VendorProperty.ofBoolean("gcp.gemini.seed"), true);
 
     assertThatThrownBy(() -> GeminiInferenceProvider.of(customizer))
         .isInstanceOf(IllegalArgumentException.class)
