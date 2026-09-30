@@ -114,21 +114,38 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
             .responses()
             .createStreaming(OpenAiResponsesRequests.toParams(request, vendor, mapper))) {
       ResponseAccumulator accumulator = ResponseAccumulator.create();
-      stream.stream().forEach(accumulator::accumulate);
-      return read(accumulator, request.options().modelName());
+      boolean[] ended = {false};
+      String[] error = {null};
+      stream.stream()
+          .forEach(
+              event -> {
+                accumulator.accumulate(event);
+                if (!ended[0]) {
+                  narrate(event, narrator);
+                }
+                event.error().ifPresent(e -> error[0] = e.message());
+                ended[0] |= event.isCompleted() || event.isFailed() || event.isIncomplete();
+              });
+      return read(accumulator, error[0], request.options().modelName());
     } catch (OpenAIException e) {
       return new InferenceResult.Fault(OpenAiFailures.classify(e));
     }
   }
 
-  private InferenceResult read(ResponseAccumulator accumulator, String asked) {
+  /**
+   * The terminal event's response, read -- or the fault a stream that closed without one is. A
+   * mid-stream {@code error} event, which the accumulator ignores, is remembered so the fault can
+   * say what the server said rather than only that the stream ended.
+   */
+  private InferenceResult read(ResponseAccumulator accumulator, String error, String asked) {
     Response response;
     try {
       response = accumulator.response();
     } catch (IllegalStateException incomplete) {
       return new InferenceResult.Fault(
           new Failure.Permanent(
-              "the stream ended before the answer was complete: " + incomplete.getMessage()));
+              "the stream ended before the answer was complete: "
+                  + (error != null ? error : incomplete.getMessage())));
     }
     Usage usage = usageOf(response, modelOf(response, asked));
     if (response.error().isPresent()) {
@@ -136,6 +153,29 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
           .withUsage(usage);
     }
     return read(response).withUsage(usage);
+  }
+
+  /**
+   * What a person watching is told as the stream lands: the answer's text, and thinking -- a
+   * reasoning summary, or raw reasoning text a compatible server streams unasked. Function-call
+   * argument fragments and refusal deltas are not narrated; empty deltas are skipped.
+   */
+  private static void narrate(ResponseStreamEvent event, InferenceNarrator narrator) {
+    event
+        .outputTextDelta()
+        .map(delta -> delta.delta())
+        .filter(text -> !text.isEmpty())
+        .ifPresent(narrator::text);
+    event
+        .reasoningSummaryTextDelta()
+        .map(delta -> delta.delta())
+        .filter(text -> !text.isEmpty())
+        .ifPresent(narrator::thinking);
+    event
+        .reasoningTextDelta()
+        .map(delta -> delta.delta())
+        .filter(text -> !text.isEmpty())
+        .ifPresent(narrator::thinking);
   }
 
   /**
