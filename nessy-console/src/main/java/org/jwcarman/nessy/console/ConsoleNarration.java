@@ -35,7 +35,7 @@ import org.jwcarman.nessy.api.NarrationListener;
  */
 final class ConsoleNarration implements NarrationListener {
 
-  private final AgentId agentId;
+  private volatile AgentId agentId;
   private final ConsoleIo io;
   private volatile boolean spoke;
 
@@ -95,6 +95,11 @@ final class ConsoleNarration implements NarrationListener {
         // Not something a person at a terminal needs told; the approver prompts for itself.
       }
     }
+  }
+
+  /** Listens for a different conversation from now on, as after {@code /clear}. */
+  void follow(AgentId next) {
+    this.agentId = next;
   }
 
   /** A new turn has nothing said in it yet. */

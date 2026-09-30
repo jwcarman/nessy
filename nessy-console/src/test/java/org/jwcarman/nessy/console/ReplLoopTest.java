@@ -131,6 +131,65 @@ class ReplLoopTest {
   }
 
   @Nested
+  @DisplayName("which conversation it is")
+  class WhichConversationItIs {
+
+    private String resumeLine(AgentId id) {
+      return "conversation %s: resume with --nessy.console.agent=%s"
+          .formatted(id.value(), id.value());
+    }
+
+    @Test
+    void the_conversation_is_named_at_startup_with_how_to_resume_it() {
+      FakeConsole console = new FakeConsole("quit");
+      run(new FakeHarness(), console, config());
+      assertThat(console.written()).contains(resumeLine(AGENT));
+    }
+
+    @Test
+    void clear_switches_the_id_the_next_question_is_put_to() {
+      FakeHarness harness = new FakeHarness();
+      FakeConsole console = new FakeConsole("before", "/clear", "after", "quit");
+      run(harness, console, config());
+      assertThat(harness.askedOf()).hasSize(2);
+      assertThat(harness.askedOf().get(0)).isEqualTo(AGENT);
+      assertThat(harness.askedOf().get(1)).isNotEqualTo(AGENT);
+    }
+
+    @Test
+    void clear_says_the_new_id_and_how_to_resume_it() {
+      FakeHarness harness = new FakeHarness();
+      FakeConsole console = new FakeConsole("/clear", "after", "quit");
+      run(harness, console, config());
+      AgentId fresh = harness.askedOf().get(0);
+      assertThat(console.written()).contains(resumeLine(fresh));
+    }
+
+    @Test
+    void clear_leaves_the_old_conversation_running_so_it_can_be_resumed() {
+      FakeHarness harness = new FakeHarness();
+      run(harness, new FakeConsole("/clear", "quit"), config());
+      assertThat(harness.terminated()).isEmpty();
+    }
+
+    @Test
+    void what_the_new_conversation_says_is_still_printed() {
+      FakeHarness harness = new FakeHarness(List.of(said("hello again"), ended()));
+      FakeConsole console = new FakeConsole("/clear", "hi", "quit");
+      run(harness, console, config());
+      assertThat(console.written()).contains("hello again");
+    }
+
+    @Test
+    void config_reports_the_current_conversation_after_clear() {
+      FakeHarness harness = new FakeHarness();
+      FakeConsole console = new FakeConsole("/clear", "ask", "/config", "quit");
+      run(harness, console, config());
+      assertThat(console.written()).contains("chat / " + harness.askedOf().get(0).value());
+    }
+  }
+
+  @Nested
   @DisplayName("leaving")
   class Leaving {
 
@@ -237,7 +296,16 @@ class ReplLoopTest {
     void is_absent_by_default() {
       FakeConsole console = new FakeConsole("quit");
       run(new FakeHarness(), console, config());
-      assertThat(console.written().strip()).isEqualTo(">");
+      // The only thing said before the first prompt is which conversation this is.
+      List<String> spoken =
+          console
+              .written()
+              .lines()
+              .filter(line -> !line.startsWith("conversation "))
+              .map(String::strip)
+              .filter(line -> !line.isEmpty())
+              .toList();
+      assertThat(spoken).containsExactly(">");
     }
   }
 

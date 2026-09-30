@@ -15,7 +15,7 @@
  */
 package org.jwcarman.nessy.console;
 
-import java.nio.charset.StandardCharsets;
+import com.fasterxml.uuid.Generators;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -23,7 +23,6 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
@@ -39,13 +38,6 @@ public final class ReplConfig {
 
   private static final List<String> DEFAULT_EXIT_WORDS = List.of("exit", "quit", "/exit", "/quit");
 
-  /**
-   * The same agent every time this program runs, so the conversation is the same one. A random id
-   * would start fresh on every launch, which is not what a person returning to a terminal expects.
-   */
-  private static final AgentId THE_TERMINAL =
-      new AgentId(UUID.nameUUIDFromBytes("nessy-console".getBytes(StandardCharsets.UTF_8)));
-
   private final List<Customizer<DirectHarnessConfig<String>>> tools = new ArrayList<>();
   private String banner = "";
   private String prompt = "> ";
@@ -59,11 +51,16 @@ public final class ReplConfig {
       SystemPromptSource.constant(
           new SystemPrompt("You are a helpful assistant in someone's terminal."));
   private AgentType type = new AgentType("chat");
-  private AgentId agentId = THE_TERMINAL;
+  private AgentId agentId = newConversation();
   private int maxTokens = 4096;
   private DataSource dataSource;
 
   ReplConfig() {}
+
+  /** A conversation nobody has had yet: a fresh, time-ordered (UUIDv7) id. */
+  static AgentId newConversation() {
+    return new AgentId(Generators.timeBasedEpochGenerator().generate());
+  }
 
   public ReplConfig banner(String banner) {
     this.banner = Objects.requireNonNull(banner, "banner must not be null");
@@ -109,6 +106,10 @@ public final class ReplConfig {
     return this;
   }
 
+  /**
+   * Resumes the conversation with this id. Left unset, every launch starts a new conversation under
+   * a freshly minted id, and the console says what it is.
+   */
   public ReplConfig id(AgentId agentId) {
     this.agentId = Objects.requireNonNull(agentId, "agentId must not be null");
     return this;

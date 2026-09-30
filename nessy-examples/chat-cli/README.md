@@ -40,8 +40,16 @@ that is about THIS program: what it is for, and what it can do.
 - **Streaming.** The answer is typed out as the model writes it.
 
 **The conversation is kept with everything else.** The starter's JDBC backend
-stores it in the same PostgreSQL as the notebook and the plan, under one fixed
-agent id, so the next run resumes the chat where it was left.
+stores it in the same PostgreSQL as the notebook and the plan. Every launch
+starts a new conversation and prints its id:
+
+```
+conversation 0198…: resume with --nessy.console.agent=0198…
+```
+
+`/clear` starts another one without leaving the program (the old one stays
+resumable). To pick a conversation back up, pass its id, as an argument
+(`-Dexec.args=--nessy.console.agent=<id>`) or as `NESSY_CONSOLE_AGENT=<id>`.
 
 ## Run it
 

@@ -19,7 +19,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
@@ -45,6 +47,7 @@ public final class Repl {
 
   private static final String MODEL_PROPERTY = "nessy.model";
   private static final String PROVIDER_PROPERTY = "nessy.provider";
+  private static final String AGENT_PROPERTY = "nessy.console.agent";
 
   private Repl() {}
 
@@ -152,6 +155,16 @@ public final class Repl {
       // nessy.provider and nessy.model are a pair (the direct door's own auto-configuration
       // enforces that at startup), so a provider chosen here means a model is set too.
       String model = context.getEnvironment().getProperty(MODEL_PROPERTY);
+      // Naming a conversation is how one is resumed; without it the console starts a new one.
+      String resumed = context.getEnvironment().getProperty(AGENT_PROPERTY);
+      if (resumed != null && !resumed.isBlank()) {
+        try {
+          config.id(new AgentId(UUID.fromString(resumed.strip())));
+        } catch (IllegalArgumentException notAnId) {
+          say(io, AGENT_PROPERTY + " is not a conversation id: " + resumed);
+          return;
+        }
+      }
       // A database is the application's business now, not this one's. The terminal keeps the
       // conversation in memory because the process IS the conversation: a turn that has ended has
       // ended, and a CLI that resumed yesterday's chat would surprise the person typing into it.

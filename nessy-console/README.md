@@ -32,6 +32,25 @@ application does not have to:
   from the same Boot context, is where that comes from. Its schema is
   applied on the way in.
 
+## Conversations
+
+Every launch starts a new conversation under a freshly minted id, and the
+console says so:
+
+```
+conversation 0198…: resume with --nessy.console.agent=0198…
+```
+
+Type `/clear` to start another one for the rest of the session; it prints
+the new id the same way. The old conversation is left as it is, not
+terminated, so its id still resumes it. `/config` shows the id in use.
+
+To resume, name the id: `id(AgentId)` on the config, or, when the console
+raises its own Boot context, the property `nessy.console.agent`
+(`--nessy.console.agent=<id>` or `NESSY_CONSOLE_AGENT=<id>`). Whether a
+resumed conversation still has its history depends on where it is kept: the
+in-memory default ends with the process; a JDBC-backed one survives.
+
 ## What it is not
 
 There is no provider override. An application that wants to name its own
@@ -52,7 +71,7 @@ prompt is a complete program.
 | `systemPrompt(String)` / `systemPrompt(SystemPromptSource)` | a generic assistant |
 | `tool(Tool)` / `tool(Tool, binding)` | none |
 | `agent(AgentType)` | `chat` |
-| `id(AgentId)` | one fixed id for the terminal, rather than a random one each run |
+| `id(AgentId)` | a freshly minted UUIDv7 each launch; pass one to resume that conversation |
 | `maxTokens(int)` | 4096 |
 | `dataSource(DataSource)` | the Boot context's |
 | `harness(customizer)` | reaches the full `DirectHarnessConfig<String>` |

@@ -34,8 +34,11 @@ final class ReplLoop {
   /** What a person types to be told what they are actually talking to. */
   private static final String DIAGNOSTIC = "/config";
 
+  /** What a person types to start another conversation, leaving this one as it is. */
+  private static final String CLEAR = "/clear";
+
   private final DirectHarness<String, String> harness;
-  private final AgentId agentId;
+  private AgentId agentId;
   private final ReplConfig config;
   private final ConsoleIo io;
   private final ConsoleNarration narration;
@@ -70,6 +73,7 @@ final class ReplLoop {
     if (!config.banner().isEmpty()) {
       io.write(config.banner() + System.lineSeparator());
     }
+    announceConversation();
     while (readAndHandleOneLine()) {
       // keeps going until told to stop, in readAndHandleOneLine()
     }
@@ -95,12 +99,33 @@ final class ReplLoop {
       describe();
       return true;
     }
+    if (CLEAR.equalsIgnoreCase(line.strip())) {
+      startAnotherConversation();
+      return true;
+    }
     if (!line.isBlank()) {
       narration.beginTurn();
       report(harness.ask(agentId, line));
       io.flush();
     }
     return true;
+  }
+
+  /**
+   * Switches to a new id for the rest of the session. The old conversation is not terminated:
+   * termination is final, and the id printed for it must stay resumable.
+   */
+  private void startAnotherConversation() {
+    agentId = ReplConfig.newConversation();
+    narration.follow(agentId);
+    announceConversation();
+  }
+
+  private void announceConversation() {
+    io.write(
+        "conversation %s: resume with --nessy.console.agent=%s%n"
+            .formatted(agentId.value(), agentId.value()));
+    io.flush();
   }
 
   /**

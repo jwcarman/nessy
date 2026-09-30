@@ -18,12 +18,16 @@ package org.jwcarman.nessy.examples.chatcli;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.Optional;
+import java.util.UUID;
 import javax.sql.DataSource;
+import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.Repl;
+import org.jwcarman.nessy.console.ReplConfig;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
@@ -49,8 +53,8 @@ import org.springframework.context.annotation.Bean;
  * goes away after. There is nothing to start first and no connection details to export.
  *
  * <p><b>The conversation is in that database too.</b> The starter's JDBC backend keeps it beside
- * the notebook and the plan, under one fixed agent id, so the next run picks the chat up where it
- * was left.
+ * the notebook and the plan. Every launch starts a new conversation and prints its id; {@code
+ * --nessy.console.agent=<id>} resumes one.
  */
 // The starter builds the direct-door factory over the JDBC backend and registers every
 // InferenceProvider bean by name; nessy.provider and nessy.model say which one answers. The prompt
@@ -113,6 +117,7 @@ public class Chat {
   public CommandLineRunner terminal(
       DirectHarnessFactory harnesses,
       @Value("${nessy.model}") String model,
+      @Value("${nessy.console.agent:}") String resume,
       Notebook notebook,
       Plans plans,
       Clock clock) {
@@ -121,7 +126,7 @@ public class Chat {
             harnesses,
             model,
             config ->
-                config
+                resuming(config, resume)
                     // No exitOn: the defaults already take exit, quit, /exit and /quit.
                     .banner("nessy chat -- type /exit or press Ctrl-D to leave")
                     .prompt("> ")
@@ -166,6 +171,22 @@ public class Chat {
                                                 input.to(),
                                                 input.subject(),
                                                 trimmed(input.body())))));
+  }
+
+  /**
+   * Resumes the conversation named by {@code nessy.console.agent}; when it is not set the console
+   * starts a new one, so the config is returned as it came.
+   */
+  static ReplConfig resuming(ReplConfig config, String resume) {
+    return resumed(resume).map(config::id).orElse(config);
+  }
+
+  /** The conversation {@code nessy.console.agent} names, if it names one. */
+  static Optional<AgentId> resumed(String resume) {
+    if (resume == null || resume.isBlank()) {
+      return Optional.empty();
+    }
+    return Optional.of(new AgentId(UUID.fromString(resume.strip())));
   }
 
   @Bean

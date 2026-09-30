@@ -43,6 +43,8 @@ final class FakeHarness implements DirectHarness<String, String> {
 
   private final List<List<Narration>> answers;
   private final List<String> asked = new ArrayList<>();
+  private final List<AgentId> askedOf = new ArrayList<>();
+  private final List<AgentId> terminated = new ArrayList<>();
   private NarrationListener narrator = NarrationListener.none();
   private Outcome<String> outcome = new Outcome.Answered<>("(already streamed)", ANY_STATS);
   private int next;
@@ -66,6 +68,7 @@ final class FakeHarness implements DirectHarness<String, String> {
   @Override
   public Outcome<String> ask(AgentId agent, String input) {
     asked.add(input);
+    askedOf.add(agent);
     if (next < answers.size()) {
       answers.get(next++).forEach(event -> narrator.on(TYPE, agent, event));
     }
@@ -74,8 +77,18 @@ final class FakeHarness implements DirectHarness<String, String> {
 
   @Override
   public TerminationOutcome terminate(AgentId agent) {
+    terminated.add(agent);
     narrator.on(TYPE, agent, new Narration.Terminated());
     return new TerminationOutcome.Ended();
+  }
+
+  /** The agent each question was put to, in order. */
+  List<AgentId> askedOf() {
+    return List.copyOf(askedOf);
+  }
+
+  List<AgentId> terminated() {
+    return List.copyOf(terminated);
   }
 
   List<String> observed() {

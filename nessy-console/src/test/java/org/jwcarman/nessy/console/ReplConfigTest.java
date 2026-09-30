@@ -129,10 +129,15 @@ class ReplConfigTest {
   @DisplayName("which agent is running")
   class WhichAgentIsRunning {
 
-    /** A random id would start a fresh conversation on every launch. */
+    /** Every launch is a new conversation; resuming one means naming it. */
     @Test
-    void the_default_id_is_the_same_every_time_this_program_runs() {
-      assertThat(config.agentId()).isEqualTo(new ReplConfig().agentId());
+    void two_configs_built_without_an_id_get_different_ids() {
+      assertThat(config.agentId()).isNotEqualTo(new ReplConfig().agentId());
+    }
+
+    @Test
+    void the_minted_id_is_time_ordered() {
+      assertThat(config.agentId().value().version()).isEqualTo(7);
     }
 
     @Test
