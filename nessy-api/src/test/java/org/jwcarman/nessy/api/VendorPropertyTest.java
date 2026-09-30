@@ -1,0 +1,221 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.api;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+/**
+ * A vendor property is a name and a type. These are the seven things one promises: it reads what it
+ * is given, writes what it reads, and says what it accepted when it refuses.
+ */
+class VendorPropertyTest {
+
+  enum Color {
+    RED("red"),
+    DARK_BLUE("dark-blue");
+
+    private final String spelling;
+
+    Color(String spelling) {
+      this.spelling = spelling;
+    }
+
+    String spelling() {
+      return spelling;
+    }
+  }
+
+  @Nested
+  class An_integer {
+
+    private final VendorProperty<Integer> property = VendorProperty.ofInteger("acme.count");
+
+    @Test
+    void round_trips_through_its_text() {
+      assertThat(property.format(1024)).isEqualTo("1024");
+      assertThat(property.in(Map.of("acme.count", "1024"))).contains(1024);
+    }
+
+    @Test
+    void is_refused_when_it_is_not_a_whole_number() {
+      Map<String, String> properties = Map.of("acme.count", "12abc");
+
+      assertThatThrownBy(() -> property.in(properties))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("property 'acme.count' must be an integer, was '12abc'");
+    }
+  }
+
+  @Nested
+  class A_boolean {
+
+    private final VendorProperty<Boolean> property = VendorProperty.ofBoolean("acme.flag");
+
+    @Test
+    void round_trips_through_its_text() {
+      assertThat(property.format(true)).isEqualTo("true");
+      assertThat(property.in(Map.of("acme.flag", "true"))).contains(true);
+      assertThat(property.in(Map.of("acme.flag", "false"))).contains(false);
+    }
+
+    @Test
+    void is_case_sensitive() {
+      Map<String, String> properties = Map.of("acme.flag", "TRUE");
+
+      assertThatThrownBy(() -> property.in(properties))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("property 'acme.flag' must be true or false, was 'TRUE'");
+    }
+  }
+
+  @Nested
+  class A_float {
+
+    private final VendorProperty<Float> property = VendorProperty.ofFloat("acme.ratio");
+
+    @Test
+    void round_trips_through_its_text() {
+      assertThat(property.format(0.5f)).isEqualTo("0.5");
+      assertThat(property.in(Map.of("acme.ratio", "0.5"))).contains(0.5f);
+    }
+
+    @Test
+    void is_refused_when_it_is_not_a_number() {
+      Map<String, String> properties = Map.of("acme.ratio", "warm");
+
+      assertThatThrownBy(() -> property.in(properties))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("property 'acme.ratio' must be a number, was 'warm'");
+    }
+
+    @Test
+    void is_refused_when_it_is_not_finite() {
+      Map<String, String> properties = Map.of("acme.ratio", "NaN");
+
+      assertThatThrownBy(() -> property.in(properties))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("property 'acme.ratio' must be a number, was 'NaN'");
+    }
+  }
+
+  @Nested
+  class A_list_of_strings {
+
+    private final VendorProperty<List<String>> property = VendorProperty.ofStrings("acme.stop");
+
+    @Test
+    void round_trips_through_a_json_array() {
+      assertThat(property.format(List.of("END", "STOP"))).isEqualTo("[\"END\",\"STOP\"]");
+      assertThat(property.in(Map.of("acme.stop", "[\"END\",\"STOP\"]")))
+          .contains(List.of("END", "STOP"));
+    }
+
+    @Test
+    void is_refused_when_it_is_not_an_array_of_strings() {
+      Map<String, String> properties = Map.of("acme.stop", "[1, 2]");
+
+      assertThatThrownBy(() -> property.in(properties))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("property 'acme.stop' must be a JSON array of strings, was '[1, 2]'");
+    }
+
+    @Test
+    void is_refused_when_only_its_front_is_an_array() {
+      Map<String, String> properties = Map.of("acme.stop", "[\"a\"] trailing");
+
+      assertThatThrownBy(() -> property.in(properties))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("must be a JSON array of strings");
+    }
+  }
+
+  @Nested
+  class An_enum {
+
+    private final VendorProperty<Color> property =
+        VendorProperty.ofEnum("acme.color", Color.class, Color::spelling);
+
+    @Test
+    void round_trips_through_its_spelling() {
+      assertThat(property.format(Color.DARK_BLUE)).isEqualTo("dark-blue");
+      assertThat(property.in(Map.of("acme.color", "dark-blue"))).contains(Color.DARK_BLUE);
+    }
+
+    @Test
+    void lists_its_spellings_in_declaration_order_when_refusing() {
+      Map<String, String> properties = Map.of("acme.color", "green");
+
+      assertThatThrownBy(() -> property.in(properties))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("property 'acme.color' must be one of [red, dark-blue], was 'green'");
+    }
+
+    @Test
+    void matches_the_spelling_exactly() {
+      Map<String, String> properties = Map.of("acme.color", "RED");
+
+      assertThatThrownBy(() -> property.in(properties))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("was 'RED'");
+    }
+  }
+
+  @Nested
+  class Any_property {
+
+    @Test
+    void is_empty_when_the_map_does_not_carry_it() {
+      VendorProperty<Integer> property = VendorProperty.ofInteger("acme.count");
+
+      assertThat(property.in(Map.of("acme.other", "1"))).isEmpty();
+    }
+
+    @Test
+    void is_equal_by_name_and_prints_as_its_name() {
+      VendorProperty<Integer> integer = VendorProperty.ofInteger("acme.count");
+      VendorProperty<Boolean> sameName = VendorProperty.ofBoolean("acme.count");
+
+      assertThat(integer).isEqualTo(sameName).hasSameHashCodeAs(sameName);
+      assertThat(integer).isNotEqualTo(VendorProperty.ofInteger("acme.other"));
+      assertThat(integer).hasToString("acme.count");
+      assertThat(integer.name()).isEqualTo("acme.count");
+    }
+
+    @Test
+    void refuses_to_format_nothing() {
+      VendorProperty<Integer> property = VendorProperty.ofInteger("acme.count");
+
+      assertThatThrownBy(() -> property.format(null)).isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void is_named_for_its_adapter() {
+      assertThatThrownBy(() -> VendorProperty.ofInteger("count"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("was 'count'");
+      assertThatThrownBy(() -> VendorProperty.ofInteger(".count"))
+          .isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(() -> VendorProperty.ofInteger(" "))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+  }
+}
