@@ -92,6 +92,10 @@ Everything below is read from `nessy.*`, bound by `NessyProperties`.
 | `nessy.max-tokens` | 4096 | the same factory default, alongside `nessy.model` |
 | `nessy.providers.<id>.api-key`, `.enabled`, `.wire`, `.base-url`, `.vendor` | none | turns a preset on or declares a custom provider, registered as an `InferenceProvider` bean named by its id; see [Providers](providers.md#boot-auto-configuration) |
 | `nessy.providers.<id>.properties.<name>` | the preset's defaults (`openai.tools.strict=true` on `openai`) | the provider's [vendor properties](providers.md#vendor-properties); overlaid on the preset's by name, and overridden by an agent type's own |
+| `nessy.embedder` | none; paired with `nessy.embedding-model` | the `EmbedderFactory` bean, as the default embedding provider a store falls back on when it names none; blank is unset |
+| `nessy.embedding-model` | none; paired with `nessy.embedder` | the same factory default: the model a store falls back on |
+| `nessy.embedding-dimension` | none; only beside the pair | the same factory default's width |
+| `nessy.embedders.<id>.api-key`, `.enabled`, `.wire`, `.base-url`, `.vendor`, `.properties.*` | none | turns an embedding preset on or declares a custom embedder, registered as an `EmbeddingProvider` bean named `<id>Embeddings`; see [Providers](providers.md#embedders) |
 | `nessy.system-prompt` | none | your own configuration, via `NessyProperties.resolveSystemPrompt()`; also the prompt-template auto-configuration when a prompt engine is on the classpath |
 | `nessy.system-prompt-file` | none; a `Resource`. **Setting both is an error** | the same places as `nessy.system-prompt` |
 | `nessy.type` | `agent` | bound and validated, but not read by any bean the starter builds today — an agent's type is named when you call `factory.create(agentType, ...)`, not from a property |
@@ -99,11 +103,16 @@ Everything below is read from `nessy.*`, bound by `NessyProperties`.
 | `nessy.reply-token-encryption-keys` | ephemeral; see below | the `ReplyTokens` bean, which only the queued door's factory is given |
 | `nessy.prompt.engine` | `spring`, or `mustache` | `PromptEngineAutoConfiguration` |
 | `nessy.narration.odyssey.inactivity-ttl`, `entry-ttl`, `retention-ttl` | a day, a day, an hour | `OdysseyNarrationAutoConfiguration`, when Odyssey is present |
-| `anthropic.api-key`, `openai.api-key`, `openai.base-url`, `xai.api-key`, `gemini.api-key`, `google.api-key`, `openrouter.api-key`, `nvidia.api-key`, `groq.api-key`, `mistral.api-key` | light the matching preset; see [Providers](providers.md#boot-auto-configuration) |
+| `anthropic.api-key`, `openai.api-key`, `openai.base-url`, `xai.api-key`, `gemini.api-key`, `google.api-key`, `openrouter.api-key`, `nvidia.api-key`, `groq.api-key`, `mistral.api-key`, `voyage.api-key` | light the matching inference or embedding preset; see [Providers](providers.md#boot-auto-configuration) |
 
 `nessy.provider` and `nessy.model` are a pair: set both, or set neither and
 name a provider and a model on every agent type instead. Both doors refuse
 to start if only one is set, naming which.
+
+`nessy.embedder` and `nessy.embedding-model` are the same kind of pair, for
+embeddings: set both, or neither and name a provider and a model on every
+store. The starter refuses to start if only one is set, and refuses a pair
+naming an embedder that is not registered, listing the ones that are.
 
 Vendor properties bind as a map of strings, so a dotted name stays one key:
 
@@ -152,6 +161,13 @@ a reader can find it.
 | `CodecFactory` | Jackson over the context's `ObjectMapper`, with the `StorageCodecConfigurer` bean's transform appended |
 | `StorageCodecConfigurer` | nothing appended, unless you declare one |
 | `InferenceReport` | logs every registered provider once, at startup |
+
+**Embeddings** (`EmbeddingProvidersAutoConfiguration`, unconditional):
+
+| Bean | What it is |
+|---|---|
+| `EmbedderFactory` | `DefaultEmbedderFactory` under the bean name `nessyEmbedderFactory`: every registered embedding provider by id, the `nessy.embedder` default, every embedder observed; present with nothing registered, and says so when a store asks |
+| `EmbeddingReport` | logs every registered embedder and the default once, at startup |
 
 **With a `DirectBackend` bean** (`DirectHarnessAutoConfiguration`):
 

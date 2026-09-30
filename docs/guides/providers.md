@@ -234,14 +234,10 @@ budget that is not below the agent type's `maxTokens`, at harness build.
 Every other `bedrock.` name is unsupported, Claude's extended thinking on
 Bedrock (`bedrock.thinking.*`) included.
 
-### Embedders
+### Embedding adapters
 
-`EmbedderConfig.property(name, value)` and the four embedder configs'
-`property`/`properties` (prefixes `openai.`, `gemini.`, `bedrock.`,
-`voyage.`) take properties, but no embedding adapter supports one yet: each
-property under the adapter's own prefix is ignored, with a warning naming it,
-when the provider or the embedder is built. A property under another prefix
-fails at build.
+No embedding adapter supports a vendor property yet; the rules for the names
+they accept and ignore are under [Embedder properties](#embedder-properties).
 
 ## Building a provider
 
@@ -588,6 +584,147 @@ InferenceProvider provider = AnthropicInferenceProvider.of(c -> c
     `/v1/messages` itself. Passing `http://127.0.0.1:1234/v1` here produces
     a `/v1/v1/messages` double path that fails. Use the bare origin for the
     Anthropic adapter, and keep the `/v1` suffix for the OpenAI one.
+
+## Embedders
+
+Embeddings have a registry of their own, beside the inference one and with
+the same mechanics: providers registered by name, presets lit by a key,
+custom entries stated in full, application beans joining under their bean
+names, and a report at startup. The namespace is `nessy.embedders.<id>`. An id
+may name an inference provider and an embedder at once (`openai`, lit by the
+one `OPENAI_API_KEY`), and the two are separate registrations.
+
+A store names the embedder it wants, or takes the factory's default:
+
+```java
+Embedder embedder = embedders.create(c -> c.provider("voyage").model("voyage-3.5").dimension(1024));
+Embedder theDefault = embedders.create(c -> {});
+```
+
+Both a provider and a model are required, from the store or from the default.
+An unknown or missing provider fails when the embedder is made, listing what
+is registered:
+
+```
+an embedder names provider 'cohere', which is not registered; registered: [openai, voyage]
+```
+
+### Presets
+
+| id | wire | base URL | vendor | ingredient |
+|---|---|---|---|---|
+| `openai` | `openai` | the vendor's own; `openai.base-url` overrides | `openai` | `openai.api-key` (`OPENAI_API_KEY`) |
+| `gemini` | `gemini` | the vendor's own | `gcp.gemini` | `gemini.api-key` or `google.api-key` (`GEMINI_API_KEY` / `GOOGLE_API_KEY`) |
+| `voyage` | `voyage` | `https://api.voyageai.com/v1` | `voyage` | `voyage.api-key` (`VOYAGE_API_KEY`) |
+
+A key lights a preset only when that vendor's embedding adapter is on the
+classpath: `nessy-embedding-openai`, `nessy-embedding-gemini` or
+`nessy-embedding-voyage`. Otherwise the starter logs one line and registers
+nothing:
+
+```
+NESSY EMBEDDING: openai is configured but nessy-embedding-openai is not on the classpath; skipped
+```
+
+`nessy.embedders.<id>.api-key` works in place of the vendor's own variable;
+from the environment it is `NESSY_EMBEDDERS_VOYAGE_APIKEY`.
+`nessy.embedders.<id>.enabled: false` turns an embedder off whatever its
+ingredient, which is the way to say "a Gemini key is set for chat, and no
+Gemini embeddings are wanted". No preset carries a default model: a store's
+vectors are keyed on its model, so the model is always written down.
+
+Bedrock ships no preset, for the reason it has none on the inference side. A
+`BedrockEmbeddingProvider` bean joins the registry like any application bean.
+
+### Custom embedders, and local servers
+
+An id that is not a preset must state `wire` (`openai`, `gemini` or
+`voyage`), `base-url` and `api-key`. `vendor` is optional, defaults to the
+wire's own, and is honoured on the `openai` wire only. A local server is a
+custom embedder; no local preset ships:
+
+```yaml
+nessy:
+  embedder: local
+  embedding-model: text-embedding-nomic-embed-text-v1.5
+  embedders:
+    local:
+      wire: openai
+      base-url: http://localhost:1234/v1
+      api-key: lm-studio
+      vendor: lmstudio
+```
+
+A missing field fails startup, naming the id and the field.
+
+A server that ignores the width it is asked for answers at its model's own.
+An embedder that asked for a width fails on every reply that differs, naming
+both numbers (`asked for 256 coordinates, the model returned 768`).
+
+!!! warning "A local server may answer any model name"
+    Some local OpenAI-compatible servers answer whatever model name they are
+    sent with the model they have loaded. The model a store records is the
+    one it asked for, so name the model the server actually serves. The
+    client cannot detect a mismatch.
+
+Two providers can serve one model name. A row records the model, not the
+provider, so vectors from the two are comparable only if both really run that
+model.
+
+### Application beans
+
+An application's own `EmbeddingProvider` bean joins under its **bean name**.
+A preset's or custom embedder's bean is named `<id>Embeddings`
+(`openaiEmbeddings`), because the inference provider of the same id is
+already the bean `openai`; its registry id is the id. An application bean
+named `openaiEmbeddings` beside a lit `openai` preset fails startup, naming
+both. One named like a lit preset's id (`voyage`) fails too, because two
+providers would register under one id.
+
+An application `EmbedderFactory` bean replaces the starter's factory. The
+presets are still registered as `EmbeddingProvider` beans, for it to use or
+ignore.
+
+### The default, and the report
+
+`nessy.embedder` and `nessy.embedding-model` name the default a store gets
+when it says nothing; set both or neither. `nessy.embedding-dimension` is its
+width, optional, and only beside the pair. Blank counts as unset. A default
+naming an unregistered embedder fails at startup, listing what is registered.
+With no default, a store names its own.
+
+At startup the report lists every embedder (id, wire, endpoint, vendor, and
+the names of any properties set; never the key or a value) and, when the
+starter's own factory is in use, the default:
+
+```
+NESSY EMBEDDING: embedders: openai (openai, the vendor's own endpoint, vendor openai); voyage (voyage, https://api.voyageai.com/v1, vendor voyage)
+NESSY EMBEDDING: default: voyage / voyage-3.5, 1024 wide
+```
+
+The default line omits `, N wide` when no width is set. With nothing
+registered the report says `NESSY EMBEDDING: no embedder is configured;
+stores rank by recency`, and with no default, `NESSY EMBEDDING: no default
+embedder; every store names its own`. All are INFO.
+
+### Embedder properties
+
+`nessy.embedders.<id>.properties.<name>` and `EmbedderConfig.property(name,
+value)` carry vendor-prefixed names (`openai.`, `gemini.`, `bedrock.`,
+`voyage.`), but no embedding adapter supports a property yet, and nothing
+reaches an embedding request.
+
+- A name under the adapter's own prefix is ignored, with one `WARN` naming it
+  and the empty list of supported names. It is logged when the provider is
+  built, and again when an embedder carrying it is made.
+- A name with no prefix is refused.
+- A name under another adapter's prefix is refused when a provider is built;
+  on an embedder's own terms it is ignored and named at `DEBUG`, so a default
+  written for one provider does not trouble a store that names another.
+
+What does run when an embedder is made is Bedrock's model-family check: a
+model that is neither Titan nor Cohere fails there rather than at the first
+call.
 
 ## Writing a provider
 

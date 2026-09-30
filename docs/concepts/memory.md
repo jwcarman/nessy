@@ -154,8 +154,10 @@ name is stored beside every vector so the store knows which.
 ```java
 AgentType SUPPORT = new AgentType("support");
 
-EmbeddingProvider connection = OpenAiEmbeddingProvider.fromEnv();
-Embedder embedder = new DefaultEmbedderFactory(connection).create(c -> c.dimension(512));
+EmbedderFactory embedders = DefaultEmbedderFactory.of(f -> f
+        .provider(ProviderId.of("openai"), OpenAiEmbeddingProvider.fromEnv())
+        .embedding(ProviderId.of("openai"), EmbeddingOptions.of("text-embedding-3-small")));
+Embedder embedder = embedders.create(c -> c.dimension(512));
 
 JdbcEpisodes episodes = JdbcEpisodes.of(c -> c
         .dataSource(dataSource)
@@ -236,24 +238,27 @@ it gets idempotence for free.
 
 Relevance is the end state for every store on this page: the episodes, notes
 and lessons that bear on what the agent is doing now, chosen by meaning, and
-the rest reachable on demand. `nessy-embedding-api` is the seam for that,
-kept apart from inference on purpose: not every inference vendor embeds, and
+the rest reachable on demand. `Embedder` (in `nessy-api`) and `EmbeddingProvider` (in
+`nessy-embedding-spi`) are the seam for that, kept apart from inference on purpose: not every inference vendor embeds, and
 the embedding model belongs to the store that holds the vectors, not to the
 agent that talks, because every vector in a table must come from one model.
 
 ```java
 public interface Embedder {
+  default String vendor() { ... }
   String model();
   int dimension();
-  Embedding embed(String text);
-  List<Embedding> embed(List<String> texts);
+  List<Embedding> embedDocuments(List<String> texts);
+  default Embedding embedDocument(String text) { ... }
+  default Embedding embedQuery(String query) { ... }
 }
 ```
 
-Four embedders ship, each one model at one dimension decided where it is
-built, because a store's index is sized by it:
+Four embedding providers ship. Each holds a connection and nothing about a
+model; the model and its width are the store's, named when its embedder is
+made, because a store's index is sized by them:
 
-| Module | Reaches | Default model |
+| Module | Reaches | `DEFAULT_MODEL`, to cite |
 |---|---|---|
 | `nessy-embedding-openai` | OpenAI, and with a base URL every OpenAI-compatible endpoint, which is how a local `nomic-embed-text` on Ollama or LM Studio is reached | `text-embedding-3-small` |
 | `nessy-embedding-gemini` | the Gemini Developer API, through java-genai | `gemini-embedding-001` |
@@ -265,15 +270,28 @@ refuses a short reply rather than padding it, and has a live test tagged
 `live` that runs when the vendor's key is in the environment.
 
 ```java
-EmbeddingProvider connection = OpenAiEmbeddingProvider.fromEnv();
-EmbedderFactory embedders = new DefaultEmbedderFactory(connection, "text-embedding-3-small");
-Embedder embedder = embedders.create(c -> c.dimension(512));
+EmbedderFactory embedders = DefaultEmbedderFactory.of(f -> f
+        .provider(ProviderId.of("openai"), OpenAiEmbeddingProvider.fromEnv())
+        .provider(ProviderId.of("local"), OpenAiEmbeddingProvider.of(c -> c
+                .apiKey("lm-studio").baseUrl("http://localhost:1234/v1").vendor("lmstudio")))
+        .embedding(ProviderId.of("openai"), EmbeddingOptions.of("text-embedding-3-small")));
+
+Embedder forEpisodes = embedders.create(c -> {});
+Embedder forNotes = embedders.create(c -> c.provider("local").model("text-embedding-nomic-embed-text-v1.5"));
 ```
 
-The provider is the vendor connection, kept once; `EmbedderFactory` mints as
-many `Embedder`s over it as there are stores, each with its own model and
-width. In a Boot application this is `EmbedderFactory`, contributed as a
-bean when an embedding module and its API key are on the classpath.
+Each provider is a vendor connection, registered once under a name.
+`EmbedderFactory` mints as many `Embedder`s over them as there are stores,
+each naming its provider, model and width or taking the factory's default.
+An embedder whose replies are not the width it asked for fails, naming both.
+In a Boot application the starter contributes the `EmbedderFactory` bean,
+with embedders registered from `nessy.embedders.<id>` and the default from
+`nessy.embedder` and `nessy.embedding-model`; see
+[Providers](../guides/providers.md#embedders).
+
+Changing a store's embedder is a ranking consequence, not a loss: the next
+summary is embedded by the new model and ranks, and every earlier summary
+ranks last.
 
 An `Embedding` carries its model's name and compares by content; its
 `similarity` is the cosine between two vectors and refuses a pair from

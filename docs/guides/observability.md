@@ -135,21 +135,21 @@ as semconv's `search_memory` (`gen_ai.operation.name=search_memory`, with
 `nessy.context ambient <kind>`, named for what it returned. Time spent in
 any of these is time the model did not take.
 
-**Embedding calls** are spans once an embedder is wrapped:
+**Embedding calls** are spans. `DefaultEmbedderFactory` wraps every embedder
+it mints in `ObservedEmbedder`, over the registry it was given:
 
 ```java
-Embedder embedder = ObservedEmbedder.wrap(embedderFactory.create(c -> ...), observationRegistry);
-
-JdbcEpisodes episodes = JdbcEpisodes.of(c -> c
-        .dataSource(dataSource)
-        .agentType(agentType)
-        .embedder(embedder));
+EmbedderFactory embedders = DefaultEmbedderFactory.of(f -> f
+        .provider(ProviderId.of("openai"), OpenAiEmbeddingProvider.fromEnv())
+        .embedding(ProviderId.of("openai"), EmbeddingOptions.of("text-embedding-3-small"))
+        .observations(observationRegistry));
 ```
 
-Wrap before handing the embedder to `JdbcEpisodes.Config.embedder(...)`; an
+Without `observations(...)` the registry is the no-op one. The Boot
+starter's factory is given the application's registry. An embedder made
+another way is wrapped with `ObservedEmbedder.wrap(embedder, registry)`; an
 already-wrapped embedder is returned as it is, so wrapping twice never
-doubles the spans. The Boot starter's `EmbedderFactory` beans wrap every
-embedder they mint this way whenever a registry is present. Each call is
+doubles the spans. Each call is
 `embeddings <model>` with
 `gen_ai.operation.name=embeddings`, `gen_ai.provider.name` (which the
 embedder reports itself), `gen_ai.request.model` and

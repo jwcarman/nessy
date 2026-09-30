@@ -39,7 +39,8 @@ summarisers; the plan lives under [Planning](#planning).
   into the agent's Notebook; the Notebook learns authorship (`source`) so an
   agent can't erase its own performance reviews.
 - **Embeddings-ranked recall** — semantic retrieval over notes, episodes and
-  lessons. The `Embedder` seam shipped 2026-09-16 as `nessy-embedding-api`,
+  lessons. The `Embedder` seam shipped 2026-09-16 (`nessy-api`, with
+  `nessy-embedding-spi` for providers),
   with OpenAI-compatible, Gemini, Bedrock and Voyage embedders beside it, and
   `Summarizer` now receives the turn being answered; episodes rank by it. What
   remains: the same for `AmbientSource` and the notebook, a `pgvector` index
@@ -147,7 +148,7 @@ The first three ship together as `0.3.0`, in this order.
   refuses, and Perplexity, which now answers only on `/v1/responses`. The
   wires become `openai-chat` and `openai-responses`; the `openai` preset
   moves to the new wire once the live tests pass through it.
-- **Vendor properties** *(next, after the Responses adapter)* -- a
+- **Vendor properties** *(built for `0.3.0`)* -- a
   free-form, adapter-owned property bag instead of a typed effort concept:
   `InferenceConfig.property(name, value)` and
   `nessy.providers.<id>.properties.*`. Each adapter owns one prefix
@@ -155,18 +156,16 @@ The first three ship together as `0.3.0`, in this order.
   knows, such as `openai.reasoning.effort`, `openai.reasoning.summary` and
   `openai.tools.strict`. See
   `docs/superpowers/specs/2026-09-30-vendor-properties-design.md`.
-- **Named embedding providers** *(third, for `0.3.0`)* — mirrors the
-  inference design: a preset catalogue, a `ProviderId` registry, application
-  beans joining under their bean names, and the startup report. Today the
-  embedding auto-configurations still build one `EmbedderFactory` bean and
-  back off for each other, so with several keys set, auto-configuration order
-  picks the embedder — and that matters more than it did for inference,
-  because stored vectors carry the model that made them. Open within it:
-  whether one `nessy.providers.<id>` entry serves both inference and
-  embeddings, with each preset declaring what it offers (openai, gemini and
-  lmstudio both; anthropic inference only; voyage embeddings only); who
-  chooses the embedder (a store, not an agent type); and what switching one
-  means for vectors already stored.
+- **Named embedders** *(built for `0.3.0`)* — the inference design mirrored
+  for embeddings under its own namespace, `nessy.embedders.<id>`: presets for
+  `openai`, `gemini` and `voyage` lit by a key when the adapter jar is
+  present, custom embedders for local servers and gateways, application
+  `EmbeddingProvider` beans joining under their bean names, a
+  `nessy.embedder` + `nessy.embedding-model` default, and a startup report. A
+  store chooses its embedder, never an agent type. Still ahead: vendor
+  properties the embedding adapters support (none does yet), and re-embedding
+  the rows a previous embedder wrote. See
+  `docs/superpowers/specs/2026-09-30-named-embedders-design.md`.
 - **First-class hosted tools** *(a later design)* — OpenAI's web search, file
   search, code interpreter and remote MCP run where Nessy cannot approve or
   gate them, so the Responses adapter offers function tools only. Enabling a

@@ -52,6 +52,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`openai.tools.strict`** on the chat adapter: function tools go out in
   strict mode over a rewritten schema.
 - **Spring Boot: `nessy.providers.<id>.properties.*`.**
+- **Named embedders.** `DefaultEmbedderFactory.of(...)` over
+  `EmbedderFactoryConfig`: `provider(ProviderId, EmbeddingProvider)`
+  registers an embedding provider by name, `embedding(ProviderId,
+  EmbeddingOptions)` sets the default, `observations(...)` gives every
+  embedder it mints its spans. `EmbedderConfig.provider(...)` names the
+  provider a store wants; an unknown or missing one fails when the embedder
+  is made, listing what is registered.
+- **Spring Boot: `nessy.embedders.<id>`.** Presets `openai`, `gemini` and
+  `voyage` light from a vendor key when the vendor's embedding module is on
+  the classpath; custom embedders state `wire` (`openai`, `gemini`,
+  `voyage`), `base-url` and `api-key`; application `EmbeddingProvider`
+  beans join under their bean names; `nessy.embedder` +
+  `nessy.embedding-model` (+ optional `nessy.embedding-dimension`) name the
+  default; `EmbeddingReport` logs what lit. `VOYAGE_API_KEY` lights the
+  `voyage` preset.
+- **`OpenAiEmbedderConfig.vendor(String)`**, for a custom `openai`-wire
+  embedder that is somebody else.
 
 ### Changed
 
@@ -78,6 +95,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same setters, same behaviour.
 - **`OpenAiRequests` is no longer public.** It was the chat adapter's
   internal projection and is now the package-private `OpenAiChatRequests`.
+- **`DefaultEmbedderFactory`'s three constructors are gone**; build it with
+  `DefaultEmbedderFactory.of(f -> f.provider(id, provider).embedding(id,
+  EmbeddingOptions.of(model)))`. Every embedder it mints is now an
+  `ObservedEmbedder`.
+- **An embedding provider holds nothing about a model.** `model(...)` and
+  `dimension(...)` are gone from `OpenAiEmbedderConfig`,
+  `GeminiEmbedderConfig`, `BedrockEmbedderConfig` and `VoyageEmbedderConfig`,
+  and `defaultModel()` / `defaultDimension()` from the four providers. The
+  `DEFAULT_MODEL` constants stay, to cite: `EmbeddingOptions.of(
+  OpenAiEmbedderConfig.DEFAULT_MODEL)`.
+- **An embedder that asked for a width and got another fails**, naming both
+  (`asked for 256 coordinates, the model returned 768`), on every call.
+- **A Bedrock embedder over a model of neither family fails when it is
+  made**, not at its first call.
+- **`nessy.embedding.*` is replaced by `nessy.embedders.*`**, with no
+  aliases:
+
+  | old | new |
+  |---|---|
+  | `nessy.embedding.openai.model` | `nessy.embedder: openai` + `nessy.embedding-model: <model>` |
+  | `nessy.embedding.openai.dimension` | `nessy.embedding-dimension: <n>` |
+  | `openai.api-key` + `openai.base-url` + `nessy.embedding.openai.model` | a custom embedder (`nessy.embedders.local.wire: openai`, `.base-url`, `.api-key`, `.vendor`) plus the pair naming it; or the `openai` preset with `openai.base-url`, plus the pair |
+  | `nessy.embedding.gemini.model` | `nessy.embedder: gemini` + `nessy.embedding-model: <model>` |
+  | `nessy.embedding.gemini.dimension` | `nessy.embedding-dimension: <n>` |
+  | `nessy.embedding.voyage.api-key` | `voyage.api-key` (`VOYAGE_API_KEY`), or `nessy.embedders.voyage.api-key` |
+  | `nessy.embedding.voyage.model` | `nessy.embedder: voyage` + `nessy.embedding-model: <model>` |
+  | `nessy.embedding.voyage.dimension` | `nessy.embedding-dimension: <n>` |
+  | a key alone, with the vendor's default model | a key registers the provider; minting an embedder needs a model, from the store or the pair |
+
+- **`VoyageEmbeddingAutoConfiguration`, `OpenAiEmbeddingAutoConfiguration`
+  and `GeminiEmbeddingAutoConfiguration` are replaced by
+  `EmbeddingProvidersAutoConfiguration`**; update any
+  `spring.autoconfigure.exclude` naming them. Several keys set now register
+  several embedders instead of the first in auto-configuration order.
+- **The starter's `EmbedderFactory` bean is always present.** A store that
+  decided "no embeddings" by the factory's absence now asks whether
+  `nessy.embedder` is set. An application `EmbedderFactory` bean still
+  replaces the starter's factory, and no longer switches the presets off.
 
 ## [0.2.0] - 2026-09-29
 
