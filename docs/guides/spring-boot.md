@@ -91,6 +91,7 @@ Everything below is read from `nessy.*`, bound by `NessyProperties`.
 | `nessy.model` | none; paired with `nessy.provider` | both doors' factories, as the default model an agent type falls back on when it names none |
 | `nessy.max-tokens` | 4096 | the same factory default, alongside `nessy.model` |
 | `nessy.providers.<id>.api-key`, `.enabled`, `.wire`, `.base-url`, `.vendor` | none | turns a preset on or declares a custom provider, registered as an `InferenceProvider` bean named by its id; see [Providers](providers.md#boot-auto-configuration) |
+| `nessy.providers.<id>.properties.<name>` | the preset's defaults (`openai.tools.strict=true` on `openai`) | the provider's [vendor properties](providers.md#vendor-properties); overlaid on the preset's by name, and overridden by an agent type's own |
 | `nessy.system-prompt` | none | your own configuration, via `NessyProperties.resolveSystemPrompt()`; also the prompt-template auto-configuration when a prompt engine is on the classpath |
 | `nessy.system-prompt-file` | none; a `Resource`. **Setting both is an error** | the same places as `nessy.system-prompt` |
 | `nessy.type` | `agent` | bound and validated, but not read by any bean the starter builds today — an agent's type is named when you call `factory.create(agentType, ...)`, not from a property |
@@ -103,6 +104,26 @@ Everything below is read from `nessy.*`, bound by `NessyProperties`.
 `nessy.provider` and `nessy.model` are a pair: set both, or set neither and
 name a provider and a model on every agent type instead. Both doors refuse
 to start if only one is set, naming which.
+
+Vendor properties bind as a map of strings, so a dotted name stays one key:
+
+```yaml
+nessy:
+  providers:
+    openai:
+      properties:
+        openai.reasoning.effort: high
+        openai.tools.strict: "false"
+    anthropic:
+      properties:
+        anthropic.thinking.budget_tokens: "8192"
+```
+
+They are a configuration-file setting. An environment variable cannot name
+one: relaxed binding turns every `_` into `.` and lower-cases the rest, which
+loses the underscore in `budget_tokens` and the case in `thinkingBudget`. To
+take a value from the environment, name the property in the file and let
+the environment supply the value: `openai.user: ${TENANT_ID}`.
 
 `nessy.type` looks like it should name an agent type the way
 `nessy.model` names a model, and it does not: it is validated at startup

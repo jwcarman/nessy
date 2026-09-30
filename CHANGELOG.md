@@ -19,9 +19,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Spring Boot: the `openai-responses` wire.** A custom provider, or the
   `openai` preset with `nessy.providers.openai.wire: openai-responses`,
   builds the Responses adapter.
+- **Vendor properties.** `InferenceConfig.property(name, value)` sets a
+  vendor-prefixed setting on an agent type (`openai.reasoning.effort`,
+  `anthropic.thinking.budget_tokens`,
+  `gemini.generationConfig.thinkingConfig.thinkingBudget`,
+  `bedrock.thinking.type`); each adapter parses the names it knows, passes
+  the rest through into the request body as JSON literals, and ignores
+  other prefixes. A property that names what a typed setting decides fails
+  when the harness is built. Every provider config and `EmbedderConfig`
+  take properties too.
+- **`InferenceProvider.validate(InferenceOptions)`** and
+  **`EmbeddingProvider.validate(EmbeddingOptions)`**, default no-ops, which
+  the factories call when a harness or embedder is built.
+- **`nessy-vendor-properties`**, the module adapters read properties
+  through. The BOM now also lists `nessy-inference-spi` and
+  `nessy-embedding-spi`.
+- **`openai.tools.strict`** on the chat adapter: function tools go out in
+  strict mode over a rewritten schema.
+- **Spring Boot: `nessy.providers.<id>.properties.*`.**
+
+### Changed
+
+- **The `openai` preset sends strict function tools**
+  (`openai.tools.strict=true` by default). Set
+  `nessy.providers.openai.properties.openai.tools.strict: "false"` to turn
+  it off, for instance when `openai.base-url` points at a server that
+  rejects strict mode.
+- Anthropic's `thinking`, `thinkingBudget` and `promptCaching` setters and
+  their `anthropic.*` properties are one setting: setting both for one
+  field on one provider fails at build.
 
 ### Breaking changes
 
+- **`InferenceOptions` and `EmbeddingOptions` gain a `properties`
+  component.** Their existing constructors and `of(...)` still work;
+  a record pattern over either (`InferenceOptions(var model, var max)`)
+  needs the third component.
 - **The `openai` wire is now `openai-chat`.** A custom provider with
   `nessy.providers.<id>.wire: openai` fails at startup; write `openai-chat`.
   Presets are unaffected, and the startup report now prints `openai-chat`.

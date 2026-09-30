@@ -107,10 +107,148 @@ DirectHarness<String, String> triage = factory.create(
         config -> config.systemPrompt(triagePrompt));
 ```
 
-Provider-level features such as thinking and prompt caching are settings on
-the provider, not requests a harness makes. Two agent types that need the
-provider configured differently get two providers, registered under two
-names, on the same factory.
+Settings a vendor has and the neutral API does not name -- OpenAI's
+reasoning effort, Anthropic's thinking budget, Gemini's thinking config --
+are [vendor properties](#vendor-properties), set per agent type, so two agent
+types that want the same provider configured differently share one provider.
+
+## Vendor properties
+
+An agent type carries string-named, string-valued properties that the
+adapter answering it reads:
+
+```java
+config.inference(in -> in
+        .provider("openai")
+        .model("gpt-6-sol")
+        .property("openai.reasoning.effort", "high")
+        .property("anthropic.thinking.budget_tokens", "8192"));
+```
+
+Each adapter owns a prefix -- `openai.` (both OpenAI adapters, whatever
+vendor they report), `anthropic.`, `gemini.`, `bedrock.` -- reads the
+entries under it and ignores the rest, so the agent type above runs on
+either provider and each reads its own. A property with no prefix at all is
+refused when the harness is built. Properties are fixed when the harness is
+built, sent with every request, and never written to the event log.
+
+Under its prefix an adapter does one of two things with a name:
+
+- **A known name is parsed** into the SDK's typed field, and a value of the
+  wrong type fails the build naming the property and the value
+  (`property 'anthropic.thinking.budget_tokens' must be an integer, was
+  'lots'`). The adapter checks the type, never the vocabulary: an effort
+  level OpenAI adds tomorrow works today.
+- **Any other name passes through** into the request body. Every dot after
+  the prefix nests an object (`openai.metadata.team` is
+  `{"metadata": {"team": ...}}`), and the value is read as a JSON literal
+  where it parses as one: `12000` is a number, `true` a boolean, `high` a
+  string, `["\n\n"]` an array. A value that must be a string but looks like
+  a number is quoted: `"12345"`. Names are spelled exactly as the vendor's
+  REST reference spells the field, because they are sent verbatim -- a typo
+  is the vendor's own 400.
+
+A property that names something a typed setting already decides -- the
+model, the ceiling, the tools and their choice, the answer's shape, the
+conversation, or a field the adapter fixes on purpose -- fails the build
+naming the property and what decides it: `agent type 'chat': property
+'openai.max_completion_tokens' names what InferenceConfig.maxTokens already
+decides; remove the property`. So does a known name the wire cannot carry,
+and a pass-through under an object the adapter builds from a known name
+(`openai.reasoning.generate_summary` beside `openai.reasoning.effort` on the
+Responses wire).
+
+A provider carries properties of its own, set on its config
+(`OpenAiChatInferenceProvider.of(c -> c.apiKey(key).property("openai.tools.strict", "true"))`)
+or under Boot with `nessy.providers.<id>.properties.*`. An agent type's
+property overrides the provider's of the same name. A provider's property
+under another adapter's prefix fails when the provider is built.
+
+### OpenAI
+
+| name | type | chat wire | Responses wire |
+|---|---|---|---|
+| `openai.reasoning.effort` | string | `reasoning_effort` | `reasoning.effort` |
+| `openai.reasoning.summary` | string | refused: the wire has no summary | `reasoning.summary`, narrated as thinking |
+| `openai.tools.strict` | boolean | `true` sends every function tool strict over a rewritten schema | sent strict regardless; `false` is refused |
+| `openai.service_tier` | string | `service_tier` | `service_tier` |
+
+The Responses wire's `reasoning` object is sent only when one of the two
+reasoning names is set: it is a 400 on a model that does not reason. Refused
+on the chat wire: `model`, `messages`, `max_completion_tokens`,
+`max_tokens`, `tools`, `tool_choice`, `response_format`, `stream`,
+`stream_options`, and `reasoning_effort` beside `openai.reasoning.effort`.
+Refused on the Responses wire: `model`, `input`, `instructions`,
+`max_output_tokens`, `tools`, `tool_choice`, `text`, `stream`, and -- because
+the adapter is stateless and the event log is the only conversation --
+`store`, `include`, `previous_response_id`, `conversation` and `background`.
+
+Under `openai.tools.strict=true` a tool whose schema strict mode cannot
+express (a sealed type's `oneOf`, a map) goes out as generated with
+`strict: false`, and the adapter logs a warning naming the tool and the
+keyword; the other tools stay strict.
+
+### Anthropic
+
+| name | type | lands in |
+|---|---|---|
+| `anthropic.thinking.type` | string | `enabled` (needs a budget); `adaptive`; `disabled` sends no thinking; any other value is sent as written |
+| `anthropic.thinking.budget_tokens` | integer | the thinking budget; alone, it turns thinking on. Must be below the agent type's `maxTokens` |
+| `anthropic.cache_control.ttl` | string | the cache markers on the system prompt and the tools: `5m` or `1h`; another value is sent as written |
+| `anthropic.service_tier` | string | `service_tier` |
+
+Refused: `model`, `max_tokens`, `messages`, `system`, `tools`,
+`tool_choice`, `output_config`, `stream`, and a raw `thinking` or
+`cache_control` (or a name under either) beside the known names that build
+them. `anthropic.thinking.type=enabled` without a budget is refused, and so
+is a budget that is not below the agent type's `maxTokens`, at harness
+build.
+
+### Gemini
+
+| name | type | lands in |
+|---|---|---|
+| `gemini.generationConfig.thinkingConfig.thinkingBudget` | integer | the SDK's `ThinkingConfig` |
+| `gemini.generationConfig.thinkingConfig.includeThoughts` | boolean | the same; thought summaries are then narrated as thinking |
+| `gemini.generationConfig.thinkingConfig.thinkingLevel` | string | the same |
+
+Every other `gemini.` name goes into the request body through the SDK's
+`extraBody`. Refused: `contents`, `systemInstruction`, `tools`,
+`toolConfig`, `generationConfig.maxOutputTokens`,
+`generationConfig.responseMimeType`, `generationConfig.responseJsonSchema`,
+`generationConfig.responseSchema`, and a pass-through under
+`generationConfig.thinkingConfig` beside one of the three known names.
+
+!!! note "Pass-through beside the typed config"
+    The three thinking names go through the SDK's typed config and do not
+    depend on `extraBody`. Whether the SDK merges `extraBody` into, or
+    replaces, the `generationConfig` it builds has not been checked against
+    the live API, so a pass-through under `generationConfig` is untested.
+
+### Bedrock
+
+`bedrock.inferenceConfig.temperature` and `bedrock.inferenceConfig.topP`
+(numbers) and `bedrock.inferenceConfig.stopSequences` (a JSON array of
+strings) land in Converse's typed inference config. Every other `bedrock.`
+name goes into `additionalModelRequestFields`, the model's own document, so
+Claude's extended thinking on Bedrock is two properties:
+
+```java
+in.property("bedrock.thinking.type", "enabled")
+  .property("bedrock.thinking.budget_tokens", "4096")
+```
+
+Refused: `modelId`, `messages`, `system`, `toolConfig`,
+`inferenceConfig.maxTokens`. Converse's other top-level fields
+(`guardrailConfig`, `performanceConfig`, `serviceTier`, `requestMetadata`)
+are typed on the AWS request and not reachable as properties.
+
+### Embedders
+
+`EmbedderConfig.property(name, value)` and the four embedder configs'
+`property`/`properties` (prefixes `openai.`, `gemini.`, `bedrock.`,
+`voyage.`) are accepted and carried; the embedding adapters do not read
+them yet. A property under another prefix fails at build.
 
 ## Building a provider
 
@@ -156,6 +294,19 @@ each call's `maxTokens`, which must exceed the budget or the answer comes
 back empty. The budget defaults to 1024 tokens. Prompt caching is
 `OFF`, `FIVE_MINUTES` or `ONE_HOUR`, and marks the system prompt and the
 tool list as cacheable.
+
+The same three settings are vendor properties:
+`anthropic.thinking.type=enabled` and `anthropic.thinking.budget_tokens`
+for `thinking(true)` and `thinkingBudget(...)`, `anthropic.cache_control.ttl`
+(`5m`, `1h`) for `promptCaching(...)`. A setter is a provider-level default,
+at the same level as a provider property: setting both for one field on one
+provider fails at build, naming both. `thinking(false)` beside a budget
+property fails the same way, as does `thinkingBudget(...)` without
+`thinking(true)` beside a `anthropic.thinking.type` property; a bare
+`thinkingBudget(...)` does nothing. An agent type's property overrides
+either, so one provider built with `thinking(true)` serves an agent type
+that asks for `anthropic.thinking.budget_tokens=16000` and one that asks for
+`anthropic.thinking.type=disabled`.
 
 ### Empty answers
 
@@ -274,6 +425,9 @@ wire, endpoint, vendor, never the key:
 NESSY INFERENCE: providers: openai (openai-chat, the vendor's own endpoint, vendor openai); xai (openai-chat, https://api.x.ai/v1, vendor x_ai)
 ```
 
+A provider with vendor properties names them, never their values:
+`openai (openai-chat, the vendor's own endpoint, vendor openai, properties [openai.tools.strict])`.
+
 An application bean the registrar never resolved prints only what it can
 ask the bean for, its vendor: `bedrock (vendor aws.bedrock)`. No provider
 registered at all is a warning, not a failure: whatever needs one says so
@@ -284,6 +438,9 @@ called by the application rather than at startup:
 ```
 NESSY INFERENCE: agent type 'chat' -> openai / gpt-4.1-mini, up to 4096 tokens
 ```
+
+The line ends `, properties [openai.reasoning.effort]` when the agent type
+carries any -- names only.
 
 `nessy.provider` and `nessy.model` are the factory-wide default a
 harness falls back on when it names neither; see
@@ -470,6 +627,14 @@ public interface InferenceProvider {
   processed, `Permanent` otherwise, and never `Rejected`, which is the one
   classification that authorises dropping something a person said. Let a
   bug in the adapter escape rather than recording it as the model's fault.
+- Own a prefix and read vendor properties through `VendorProperties`
+  (`nessy-vendor-properties`): merge the provider's map under
+  `request.options().properties()`, take the entries `under` your prefix,
+  refuse the names a typed setting decides with `refuseClashes`, parse your
+  known names with `requireInteger` / `requireBoolean` / `requireString`,
+  and send the rest as `nest(...)` builds them. Override
+  `InferenceProvider.validate(InferenceOptions)` to run the same reading, so
+  a mistake fails the harness build rather than its first turn.
 - `InferenceNarrator.narrate(event)` is how a streaming adapter reports deltas
   as they arrive: a `ContentDelta` per piece of the answer, a `ThinkingDelta`
   per piece of visible reasoning. All four shipped adapters use their
