@@ -35,8 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ofEnum`), and `property(VendorProperty<T>, T)` on
   `InferenceConfig`, `EmbedderConfig` and each provider config sets it in
   code, stored as the same text the by-name form carries. Each inference
-  adapter publishes its constants and a `SUPPORTED` list
-  (`OpenAiProperties`, `AnthropicProperties`, `GeminiProperties`,
+  adapter publishes its constants (`OpenAiProperties`, `AnthropicProperties`, `GeminiProperties`,
   `BedrockProperties`), and every fixed value set is an enum:
   `OpenAiReasoningEffort`, `OpenAiReasoningSummary`, `OpenAiServiceTier`,
   `AnthropicThinkingType`, `AnthropicCacheTtl`, `AnthropicServiceTier` and

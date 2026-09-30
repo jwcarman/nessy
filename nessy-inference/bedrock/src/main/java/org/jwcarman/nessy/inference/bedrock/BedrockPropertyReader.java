@@ -32,6 +32,12 @@ final class BedrockPropertyReader {
 
   static final String PREFIX = "bedrock.";
 
+  /** The properties this adapter supports, by full name. */
+  static final Map<String, VendorProperty<?>> SUPPORTED =
+      Map.of(
+          BedrockProperties.TEMPERATURE.name(), BedrockProperties.TEMPERATURE,
+          BedrockProperties.TOP_P.name(), BedrockProperties.TOP_P);
+
   private static final Logger log = LoggerFactory.getLogger(BedrockProperties.class);
 
   private BedrockPropertyReader() {}
@@ -70,8 +76,7 @@ final class BedrockPropertyReader {
    * validate), never per request.
    */
   static void warnUnsupported(Map<String, String> merged) {
-    List<String> supported =
-        BedrockProperties.SUPPORTED.stream().map(VendorProperty::name).sorted().toList();
+    List<String> supported = SUPPORTED.keySet().stream().sorted().toList();
     for (String name : VendorProperties.under(merged, PREFIX).keySet()) {
       if (!supported.contains(PREFIX + name)) {
         log.warn(

@@ -32,7 +32,8 @@ public enum OpenAiReasoningEffort {
   }
 
   /** The text the vendor spells this value as, and the text a property carries. */
-  public String spelling() {
+  @Override
+  public String toString() {
     return spelling;
   }
 }

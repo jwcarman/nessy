@@ -120,14 +120,14 @@ final class OpenAiResponsesRequests {
     // and the adapter never guesses which kind it holds (Responses record §5g).
     if (read.effort().isPresent() || read.summary().isPresent()) {
       Reasoning.Builder reasoning = Reasoning.builder();
-      read.effort().ifPresent(effort -> reasoning.effort(ReasoningEffort.of(effort.spelling())));
+      read.effort().ifPresent(effort -> reasoning.effort(ReasoningEffort.of(effort.toString())));
       read.summary()
-          .ifPresent(summary -> reasoning.summary(Reasoning.Summary.of(summary.spelling())));
+          .ifPresent(summary -> reasoning.summary(Reasoning.Summary.of(summary.toString())));
       builder.reasoning(reasoning.build());
     }
     read.serviceTier()
         .ifPresent(
-            tier -> builder.serviceTier(ResponseCreateParams.ServiceTier.of(tier.spelling())));
+            tier -> builder.serviceTier(ResponseCreateParams.ServiceTier.of(tier.toString())));
     return builder.build();
   }
 

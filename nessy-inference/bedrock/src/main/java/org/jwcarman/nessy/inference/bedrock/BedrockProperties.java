@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.inference.bedrock;
 
-import java.util.List;
 import org.jwcarman.nessy.api.VendorProperty;
 
 /**
@@ -33,9 +32,6 @@ public final class BedrockProperties {
   /** The nucleus sampling cutoff. */
   public static final VendorProperty<Float> TOP_P =
       VendorProperty.ofFloat("bedrock.inferenceConfig.topP");
-
-  /** Every property this adapter supports. */
-  public static final List<VendorProperty<?>> SUPPORTED = List.of(TEMPERATURE, TOP_P);
 
   private BedrockProperties() {}
 }

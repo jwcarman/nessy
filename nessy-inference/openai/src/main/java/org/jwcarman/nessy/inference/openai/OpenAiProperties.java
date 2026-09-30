@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.inference.openai;
 
-import java.util.List;
 import org.jwcarman.nessy.api.VendorProperty;
 
 /**
@@ -28,15 +27,11 @@ public final class OpenAiProperties {
 
   /** How hard a reasoning model thinks. */
   public static final VendorProperty<OpenAiReasoningEffort> REASONING_EFFORT =
-      VendorProperty.ofEnum(
-          "openai.reasoning.effort", OpenAiReasoningEffort.class, OpenAiReasoningEffort::spelling);
+      VendorProperty.ofEnum("openai.reasoning.effort", OpenAiReasoningEffort.class);
 
   /** How much of its reasoning a model summarises. The openai-responses wire only. */
   public static final VendorProperty<OpenAiReasoningSummary> REASONING_SUMMARY =
-      VendorProperty.ofEnum(
-          "openai.reasoning.summary",
-          OpenAiReasoningSummary.class,
-          OpenAiReasoningSummary::spelling);
+      VendorProperty.ofEnum("openai.reasoning.summary", OpenAiReasoningSummary.class);
 
   /**
    * Whether function tools go out strict. The openai-responses wire always sends them strict, so it
@@ -47,12 +42,7 @@ public final class OpenAiProperties {
 
   /** The processing tier a request asks for. */
   public static final VendorProperty<OpenAiServiceTier> SERVICE_TIER =
-      VendorProperty.ofEnum(
-          "openai.service_tier", OpenAiServiceTier.class, OpenAiServiceTier::spelling);
-
-  /** Every property this adapter supports. */
-  public static final List<VendorProperty<?>> SUPPORTED =
-      List.of(REASONING_EFFORT, REASONING_SUMMARY, TOOLS_STRICT, SERVICE_TIER);
+      VendorProperty.ofEnum("openai.service_tier", OpenAiServiceTier.class);
 
   private OpenAiProperties() {}
 }

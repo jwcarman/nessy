@@ -33,6 +33,13 @@ final class GeminiPropertyReader {
 
   static final String PREFIX = "gemini.";
 
+  /** The properties this adapter supports, by full name. */
+  static final Map<String, VendorProperty<?>> SUPPORTED =
+      Map.of(
+          GeminiProperties.THINKING_BUDGET.name(), GeminiProperties.THINKING_BUDGET,
+          GeminiProperties.INCLUDE_THOUGHTS.name(), GeminiProperties.INCLUDE_THOUGHTS,
+          GeminiProperties.THINKING_LEVEL.name(), GeminiProperties.THINKING_LEVEL);
+
   private static final Logger log = LoggerFactory.getLogger(GeminiProperties.class);
 
   private GeminiPropertyReader() {}
@@ -52,7 +59,7 @@ final class GeminiPropertyReader {
     ThinkingConfig.Builder builder = ThinkingConfig.builder();
     budget.ifPresent(builder::thinkingBudget);
     includeThoughts.ifPresent(builder::includeThoughts);
-    level.ifPresent(value -> builder.thinkingLevel(value.spelling()));
+    level.ifPresent(value -> builder.thinkingLevel(value.toString()));
     return new Read(Optional.of(builder.build()));
   }
 
@@ -62,8 +69,7 @@ final class GeminiPropertyReader {
    * validate), never per request.
    */
   static void warnUnsupported(Map<String, String> merged) {
-    List<String> supported =
-        GeminiProperties.SUPPORTED.stream().map(VendorProperty::name).sorted().toList();
+    List<String> supported = SUPPORTED.keySet().stream().sorted().toList();
     for (String name : VendorProperties.under(merged, PREFIX).keySet()) {
       if (!supported.contains(PREFIX + name)) {
         log.warn(

@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.inference.anthropic;
 
-import java.util.List;
 import org.jwcarman.nessy.api.VendorProperty;
 
 /**
@@ -28,8 +27,7 @@ public final class AnthropicProperties {
 
   /** Whether and how a model thinks. A budget alone means enabled. */
   public static final VendorProperty<AnthropicThinkingType> THINKING_TYPE =
-      VendorProperty.ofEnum(
-          "anthropic.thinking.type", AnthropicThinkingType.class, AnthropicThinkingType::spelling);
+      VendorProperty.ofEnum("anthropic.thinking.type", AnthropicThinkingType.class);
 
   /** The tokens thinking may spend, out of the request's maxTokens. */
   public static final VendorProperty<Integer> THINKING_BUDGET =
@@ -37,17 +35,11 @@ public final class AnthropicProperties {
 
   /** How long the prompt-cache marker lasts. */
   public static final VendorProperty<AnthropicCacheTtl> CACHE_TTL =
-      VendorProperty.ofEnum(
-          "anthropic.cache_control.ttl", AnthropicCacheTtl.class, AnthropicCacheTtl::spelling);
+      VendorProperty.ofEnum("anthropic.cache_control.ttl", AnthropicCacheTtl.class);
 
   /** Which capacity a request may use. */
   public static final VendorProperty<AnthropicServiceTier> SERVICE_TIER =
-      VendorProperty.ofEnum(
-          "anthropic.service_tier", AnthropicServiceTier.class, AnthropicServiceTier::spelling);
-
-  /** Every property this adapter supports. */
-  public static final List<VendorProperty<?>> SUPPORTED =
-      List.of(THINKING_TYPE, THINKING_BUDGET, CACHE_TTL, SERVICE_TIER);
+      VendorProperty.ofEnum("anthropic.service_tier", AnthropicServiceTier.class);
 
   private AnthropicProperties() {}
 }

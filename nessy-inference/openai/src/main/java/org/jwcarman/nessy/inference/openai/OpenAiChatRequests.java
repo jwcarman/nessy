@@ -115,11 +115,11 @@ final class OpenAiChatRequests {
     chooseTool(builder, request.toolset().offers(), request.toolset().choice());
     request.outputSchema().ifPresent(schema -> constrainAnswer(builder, schema, mapper));
     read.effort()
-        .ifPresent(effort -> builder.reasoningEffort(ReasoningEffort.of(effort.spelling())));
+        .ifPresent(effort -> builder.reasoningEffort(ReasoningEffort.of(effort.toString())));
     read.serviceTier()
         .ifPresent(
             tier ->
-                builder.serviceTier(ChatCompletionCreateParams.ServiceTier.of(tier.spelling())));
+                builder.serviceTier(ChatCompletionCreateParams.ServiceTier.of(tier.toString())));
     return builder.build();
   }
 

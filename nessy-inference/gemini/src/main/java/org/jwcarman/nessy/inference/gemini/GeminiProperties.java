@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.inference.gemini;
 
-import java.util.List;
 import org.jwcarman.nessy.api.VendorProperty;
 
 /**
@@ -39,14 +38,7 @@ public final class GeminiProperties {
 
   /** How much a model thinks. */
   public static final VendorProperty<GeminiThinkingLevel> THINKING_LEVEL =
-      VendorProperty.ofEnum(
-          THINKING_CONFIG + ".thinkingLevel",
-          GeminiThinkingLevel.class,
-          GeminiThinkingLevel::spelling);
-
-  /** Every property this adapter supports. */
-  public static final List<VendorProperty<?>> SUPPORTED =
-      List.of(THINKING_BUDGET, INCLUDE_THOUGHTS, THINKING_LEVEL);
+      VendorProperty.ofEnum(THINKING_CONFIG + ".thinkingLevel", GeminiThinkingLevel.class);
 
   private GeminiProperties() {}
 }

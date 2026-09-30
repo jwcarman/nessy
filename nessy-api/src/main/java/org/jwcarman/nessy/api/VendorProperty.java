@@ -20,7 +20,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -108,25 +107,22 @@ public interface VendorProperty<T> {
   }
 
   /**
-   * A property whose value is one of a fixed set, each spelled as the vendor spells it.
-   *
-   * @param spelling the text of a constant, matched exactly when reading
+   * A property whose value is one of a fixed set. Each constant is spelled as the vendor spells it,
+   * by its {@code toString()}, and text is matched to that spelling exactly.
    */
-  static <E extends Enum<E>> VendorProperty<E> ofEnum(
-      String name, Class<E> type, Function<E, String> spelling) {
+  static <E extends Enum<E>> VendorProperty<E> ofEnum(String name, Class<E> type) {
     Objects.requireNonNull(type, "type must not be null");
-    Objects.requireNonNull(spelling, "spelling must not be null");
     List<E> constants = Arrays.asList(type.getEnumConstants());
     String spellings =
-        constants.stream().map(spelling).collect(Collectors.joining(", ", "one of [", "]"));
+        constants.stream().map(Object::toString).collect(Collectors.joining(", ", "one of [", "]"));
     return new TypedVendorProperty<>(
         checked(name),
         value ->
             constants.stream()
-                .filter(constant -> spelling.apply(constant).equals(value))
+                .filter(constant -> constant.toString().equals(value))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(value)),
-        spelling,
+        Object::toString,
         spellings);
   }
 

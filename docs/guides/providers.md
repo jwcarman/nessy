@@ -179,8 +179,8 @@ under another adapter's prefix fails when the provider is built.
 
 ### OpenAI
 
-`OpenAiProperties` holds the constants and `SUPPORTED`, the list the warning
-prints.
+`OpenAiProperties` holds the constants; the warning lists the names the
+adapter supports.
 
 | name | constant | accepts | chat wire | Responses wire |
 |---|---|---|---|---|
@@ -199,7 +199,7 @@ keyword; the other tools stay strict.
 
 ### Anthropic
 
-`AnthropicProperties` holds the constants and `SUPPORTED`.
+`AnthropicProperties` holds the constants.
 
 | name | constant | accepts | lands in |
 |---|---|---|---|
@@ -213,7 +213,7 @@ budget that is not below the agent type's `maxTokens`, at harness build.
 
 ### Gemini
 
-`GeminiProperties` holds the constants and `SUPPORTED`.
+`GeminiProperties` holds the constants.
 
 | name | constant | accepts | lands in |
 |---|---|---|---|
@@ -223,7 +223,7 @@ budget that is not below the agent type's `maxTokens`, at harness build.
 
 ### Bedrock
 
-`BedrockProperties` holds the constants and `SUPPORTED`.
+`BedrockProperties` holds the constants.
 
 | name | constant | accepts | lands in |
 |---|---|---|---|
@@ -626,7 +626,8 @@ public interface InferenceProvider {
   Read them through `VendorProperties` (`nessy-api`): merge the
   provider's map under `request.options().properties()`, take the entries
   `under` your prefix, and read each constant with `in(merged)`. Publish the
-  constants and a `SUPPORTED` list, as the four inference adapters do. Send
+  constants, and keep the name-to-property map of what you support in your
+  package-private reader, as the four inference adapters do. Send
   only what you parsed; log a warning, once per name, for every other name under your
   prefix. Override `InferenceProvider.validate(InferenceOptions)` to run the
   same reading, so a mistake fails the harness build rather than its first

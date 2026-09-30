@@ -32,6 +32,14 @@ final class OpenAiPropertyReader {
 
   static final String PREFIX = "openai.";
 
+  /** The properties this adapter supports, by full name. */
+  static final Map<String, VendorProperty<?>> SUPPORTED =
+      Map.of(
+          OpenAiProperties.REASONING_EFFORT.name(), OpenAiProperties.REASONING_EFFORT,
+          OpenAiProperties.REASONING_SUMMARY.name(), OpenAiProperties.REASONING_SUMMARY,
+          OpenAiProperties.TOOLS_STRICT.name(), OpenAiProperties.TOOLS_STRICT,
+          OpenAiProperties.SERVICE_TIER.name(), OpenAiProperties.SERVICE_TIER);
+
   private static final Logger log = LoggerFactory.getLogger(OpenAiProperties.class);
 
   private OpenAiPropertyReader() {}
@@ -97,8 +105,7 @@ final class OpenAiPropertyReader {
    * validate), never per request.
    */
   static void warnUnsupported(Map<String, String> merged) {
-    List<String> supported =
-        OpenAiProperties.SUPPORTED.stream().map(VendorProperty::name).sorted().toList();
+    List<String> supported = SUPPORTED.keySet().stream().sorted().toList();
     for (String name : VendorProperties.under(merged, PREFIX).keySet()) {
       if (!supported.contains(PREFIX + name)) {
         log.warn(

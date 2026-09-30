@@ -149,7 +149,7 @@ public final class AnthropicRequests {
     }
     read.serviceTier()
         .ifPresent(
-            tier -> builder.serviceTier(MessageCreateParams.ServiceTier.of(tier.spelling())));
+            tier -> builder.serviceTier(MessageCreateParams.ServiceTier.of(tier.toString())));
     return builder.build();
   }
 

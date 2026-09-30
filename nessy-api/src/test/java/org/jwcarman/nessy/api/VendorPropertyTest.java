@@ -38,7 +38,8 @@ class VendorPropertyTest {
       this.spelling = spelling;
     }
 
-    String spelling() {
+    @Override
+    public String toString() {
       return spelling;
     }
   }
@@ -119,8 +120,7 @@ class VendorPropertyTest {
   @Nested
   class An_enum {
 
-    private final VendorProperty<Color> property =
-        VendorProperty.ofEnum("acme.color", Color.class, Color::spelling);
+    private final VendorProperty<Color> property = VendorProperty.ofEnum("acme.color", Color.class);
 
     @Test
     void round_trips_through_its_spelling() {

@@ -36,6 +36,14 @@ final class AnthropicPropertyReader {
 
   static final String PREFIX = "anthropic.";
 
+  /** The properties this adapter supports, by full name. */
+  static final Map<String, VendorProperty<?>> SUPPORTED =
+      Map.of(
+          AnthropicProperties.THINKING_BUDGET.name(), AnthropicProperties.THINKING_BUDGET,
+          AnthropicProperties.THINKING_TYPE.name(), AnthropicProperties.THINKING_TYPE,
+          AnthropicProperties.CACHE_TTL.name(), AnthropicProperties.CACHE_TTL,
+          AnthropicProperties.SERVICE_TIER.name(), AnthropicProperties.SERVICE_TIER);
+
   private static final Logger log = LoggerFactory.getLogger(AnthropicProperties.class);
 
   private AnthropicPropertyReader() {}
@@ -113,8 +121,7 @@ final class AnthropicPropertyReader {
    * validate), never per request.
    */
   static void warnUnsupported(Map<String, String> merged) {
-    List<String> supported =
-        AnthropicProperties.SUPPORTED.stream().map(VendorProperty::name).sorted().toList();
+    List<String> supported = SUPPORTED.keySet().stream().sorted().toList();
     for (String name : VendorProperties.under(merged, PREFIX).keySet()) {
       if (!supported.contains(PREFIX + name)) {
         log.warn(
