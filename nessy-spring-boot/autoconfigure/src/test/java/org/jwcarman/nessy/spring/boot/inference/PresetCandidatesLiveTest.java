@@ -100,6 +100,7 @@ class PresetCandidatesLiveTest {
       List.of(
           Candidate.preset("anthropic", "ANTHROPIC_API_KEY", "anthropic"),
           Candidate.preset("xai", "XAI_API_KEY", "x_ai"),
+          Candidate.preset("cerebras", "CEREBRAS_API_KEY", "cerebras"),
           Candidate.preset("gemini", "GEMINI_API_KEY", "gcp.gemini"),
           new Candidate(
               "openai",
@@ -142,13 +143,6 @@ class PresetCandidatesLiveTest {
               "FIREWORKS_API_KEY",
               null,
               "fireworks",
-              "openai-chat"),
-          new Candidate(
-              "cerebras",
-              "https://api.cerebras.ai/v1",
-              "CEREBRAS_API_KEY",
-              null,
-              "cerebras",
               "openai-chat"),
           new Candidate(
               "ollama",

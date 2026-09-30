@@ -97,6 +97,16 @@ record Preset(
               List.of("mistral.api-key"),
               null),
           new Preset(
+              "cerebras",
+              Wire.OPENAI_CHAT,
+              "https://api.cerebras.ai/v1",
+              "cerebras",
+              List.of("cerebras.api-key"),
+              null,
+              // Measured 2026-09-30 (PresetCandidatesLiveTest, gpt-oss-120b): strict tools are
+              // accepted and called.
+              Map.of("openai.tools.strict", "true")),
+          new Preset(
               "lmstudio",
               Wire.OPENAI_CHAT,
               "http://localhost:1234/v1",

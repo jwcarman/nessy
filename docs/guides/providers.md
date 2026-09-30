@@ -346,6 +346,7 @@ for four of them the base URL too. It becomes a provider once its
 | `nvidia` | `openai-chat` | `https://integrate.api.nvidia.com/v1` | `nvidia` | `nvidia.api-key` (`NVIDIA_API_KEY`) |
 | `groq` | `openai-chat` | `https://api.groq.com/openai/v1` | `groq` | `groq.api-key` (`GROQ_API_KEY`) |
 | `mistral` | `openai-chat` | `https://api.mistral.ai/v1` | `mistral_ai` | `mistral.api-key` (`MISTRAL_API_KEY`) |
+| `cerebras` | `openai-chat` | `https://api.cerebras.ai/v1` | `cerebras` | `cerebras.api-key` (`CEREBRAS_API_KEY`) |
 | `lmstudio` | `openai-chat` | `http://localhost:1234/v1` | `lmstudio` | `nessy.providers.lmstudio.enabled: true` — keyless |
 | `ollama` | `openai-chat` | `http://localhost:11434/v1` | `ollama` | `nessy.providers.ollama.enabled: true` — keyless |
 

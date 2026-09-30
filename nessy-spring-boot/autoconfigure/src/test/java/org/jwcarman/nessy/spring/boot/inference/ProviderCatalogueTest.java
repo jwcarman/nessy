@@ -97,6 +97,22 @@ class ProviderCatalogueTest {
   }
 
   @Test
+  void a_cerebras_key_lights_cerebras_at_its_own_url_with_strict_tools() {
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of(), Map.of("cerebras.api-key", "k")::get);
+
+    assertThat(resolved)
+        .containsExactly(
+            new ResolvedProvider(
+                "cerebras",
+                Wire.OPENAI_CHAT,
+                "https://api.cerebras.ai/v1",
+                "cerebras",
+                "k",
+                Map.of("openai.tools.strict", "true")));
+  }
+
+  @Test
   void a_mistral_key_lights_mistral_at_its_own_url() {
     List<ResolvedProvider> resolved =
         ProviderCatalogue.resolve(Map.of(), Map.of("mistral.api-key", "k")::get);

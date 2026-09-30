@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tools in strict mode, falling back per tool with a warning when a schema
   cannot be expressed strictly. Reasoning models such as GPT-6 call tools
   through it.
+- **Spring Boot: a `cerebras` preset**, lit by `cerebras.api-key`, at
+  `https://api.cerebras.ai/v1` on the `openai-chat` wire, sending strict tools
+  by default (`openai.tools.strict=true`).
 - **Spring Boot: the `openai-responses` wire.** A custom provider, or the
   `openai` preset with `nessy.providers.openai.wire: openai-responses`,
   builds the Responses adapter.
