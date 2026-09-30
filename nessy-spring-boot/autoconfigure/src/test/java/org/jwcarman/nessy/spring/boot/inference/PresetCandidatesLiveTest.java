@@ -106,8 +106,6 @@ class PresetCandidatesLiveTest {
               "openai/gpt-oss-20b",
               "groq"),
           new Candidate(
-              "deepseek", "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY", null, "deepseek"),
-          new Candidate(
               "mistral", "https://api.mistral.ai/v1", "MISTRAL_API_KEY", null, "mistral_ai"),
           new Candidate(
               "openrouter",

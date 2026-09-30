@@ -218,8 +218,8 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
 
   /**
    * Where OpenAI-compatible servers put a thinking model's reasoning in a chunk. Not in the SDK's
-   * grammar, because OpenAI's own API does not send it; LM Studio, Ollama, vLLM and DeepSeek do,
-   * under one of these two names.
+   * grammar, because OpenAI's own API does not send it; LM Studio, Ollama, vLLM and Groq do, under
+   * one of these two names.
    */
   private static final List<String> REASONING_FIELDS = List.of("reasoning_content", "reasoning");
 
