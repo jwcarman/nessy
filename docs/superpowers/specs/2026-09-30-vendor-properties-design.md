@@ -1,10 +1,11 @@
 # Vendor properties: the escape hatch every adapter owns
 
 **Status: DESIGN, NOTHING BUILT. The rulings were made in conversation with James on 2026-09-29
-and this record writes them down. Every new public name is listed in §15, split into what was
-agreed and what this record had to propose to make the agreed things work; the questions in §16
-are the ones still open, and the places where the code disagreed with the brief are recorded
-there rather than smoothed over.**
+and this record writes them down. The proposals this record had to make to honour them were
+ruled on overnight on 2026-09-30 by the controller James authorised for the run; those rulings
+are folded in below and marked "accepted overnight" or "changed overnight" in §15, pending his
+morning review. The questions in §16 are the ones still open, and the places where the code
+disagreed with the brief are recorded there rather than smoothed over.**
 
 Date: 2026-09-30. The second of the three `0.3.0` items named in
 `2026-09-29-openai-responses-design.md` §10: (1) the Responses adapter, (2) this record, (3) named
@@ -222,9 +223,9 @@ public XProviderConfig property(String name, String value);          // repeatab
 public XProviderConfig properties(Map<String, String> properties);   // all at once, for Boot
 ```
 
-**Decided here, not in the rulings**, because the rulings say presets carry default properties
-and Boot binds provider properties, and something has to receive them: the adapter itself is the
-right holder, because it is the thing that applies them to every request and because a non-Spring
+**Proposed here and accepted overnight**, because the rulings say presets carry default
+properties and Boot binds provider properties, and something has to receive them: the adapter
+itself is the right holder, because it is the thing that applies them to every request and because a non-Spring
 application then writes exactly what Boot writes
 (`OpenAiChatInferenceProvider.of(c -> c.apiKey(key).property("openai.tools.strict", "true"))`).
 The alternative -- the factory holding a per-provider map beside the registry and merging it into
@@ -237,7 +238,8 @@ openai.reasoning.effort` is a mistake, not a setting for a future switch. (An ag
 carry several prefixes, §8a; a provider may not.)
 
 The four embedder configs -- `OpenAiEmbedderConfig`, `GeminiEmbedderConfig`,
-`BedrockEmbedderConfig`, `VoyageEmbedderConfig` (`nessy-embedding/*`) -- gain the same pair.
+`BedrockEmbedderConfig`, `VoyageEmbedderConfig` (`nessy-embedding/*`) -- gain the same pair, with
+the adapter-side reading of the map deferred to the third `0.3.0` item (§9f).
 
 ### 6b. The Boot binding
 
@@ -290,14 +292,18 @@ only the value.
 `InferenceReport`'s provider line grows a clause when a provider has any:
 
 ```
-NESSY INFERENCE: providers: openai (openai-chat, https://api.openai.com/v1, vendor openai, properties openai.tools.strict=true); anthropic (anthropic, https://api.anthropic.com, vendor anthropic)
+NESSY INFERENCE: providers: openai (openai-chat, https://api.openai.com/v1, vendor openai, properties [openai.tools.strict]); anthropic (anthropic, https://api.anthropic.com, vendor anthropic)
 ```
 
-Values are printed, not redacted: a property is a request setting, and the one secret a provider
-holds is its key, which `ProviderSettings.toString` and `ResolvedProvider.toString` already
-redact and continue to. Each harness's own line (`agent type 'chat' -> openai / gpt-4.1-mini, up
-to 4096 tokens`) gains the agent type's properties the same way when it has any, because the
-merged result is the fact that exists at that moment (§7a) and nowhere else.
+**Names only, never values -- changed overnight from this record's first draft, which printed
+both.** A pass-through value may be sensitive (a `user` or `safety_identifier`, a `metadata`
+entry carrying a tenant), and a report cannot tell which are; the key is redacted today by
+`ProviderSettings.toString` and `ResolvedProvider.toString`, and property values join it. The
+names say what was configured, which is what a reader of the report is trying to learn; the
+values are in the file that set them. Each harness's own line (`agent type 'chat' -> openai /
+gpt-4.1-mini, up to 4096 tokens`) gains the agent type's property names the same way when it has
+any, because the merged result is the fact that exists at that moment (§7a) and nowhere else.
+`ProviderSettings.toString` and `ResolvedProvider.toString` print names only for the same reason.
 
 ### 6d. Embedders under Boot: forward reference
 
@@ -326,7 +332,13 @@ Read from the top; the first layer that says something about a name wins.
    a second place to look for why an agent behaves as it does, and the one further from the agent.
 3. **Provider properties apply otherwise** -- a preset's defaults, overlaid by the settings under
    `nessy.providers.<id>.properties.*` (§6b), or whatever `XProviderConfig.property` was called
-   with in code.
+   with in code -- **and an adapter config's own typed setters sit in this same tier.**
+   `AnthropicProviderConfig.thinking(boolean)`, `thinkingBudget(int)` and
+   `promptCaching(PromptCaching)` are provider-level defaults exactly as a config property is
+   (ruled overnight, §9c): a setter and a property for the same name both set on one provider
+   fail at `build()` naming both, because two provider-level statements about one field have no
+   order between them; an agent-type property in code overrides either, because layer 2 beats
+   layer 3 whatever spelling layer 3 used.
 
 The merge of layers 2 and 3 happens **in the adapter, per request**: the provider's own map
 overlaid by `request.options().properties()`, name by name, then filtered to the prefix (§8a).
@@ -355,7 +367,7 @@ covers it; that is the whole of what "the clash rule already covers it" in the r
 The ruling is that a clash **fails at harness build**, not on the first call. The engine cannot
 check a clash itself (it knows no prefix), and the adapter is not consulted at build today: the
 factories resolve the `ProviderId`, wrap the provider and hand it to `DefaultInferenceService`.
-So, **proposed here, not in the rulings**: one default method on the SPI,
+So, **proposed here and accepted overnight**: one default method on the SPI,
 
 ```java
 // InferenceProvider (nessy-inference-spi)
@@ -471,15 +483,21 @@ arbitrary fields say what the adapter does: known names only + a clear error for
 applies to no adapter today, and is written into the helper (§8e) as the mode an adapter selects
 if a future SDK cannot. Gemini is the one with a condition attached (§13d, §16 (5)).
 
-### 8e. One helper, so eight adapters cannot drift
+### 8e. One helper, so the adapters cannot drift
 
-**Proposed here, not in the rulings.** The filtering, the merge, the literal reading, the path
-nesting and the clash check are one piece of logic, and eight copies of it (four inference
-adapters, four embedding adapters) is how four vendors come to disagree about what `true` means.
-It lives in `nessy-api` as `org.jwcarman.nessy.api.VendorProperties`, a `final` class of static
-functions over `Map<String, String>` -- it appears in no signature, and `nessy-api` is the one
-module both SPIs already depend on (`InferenceRequest` imports `api.JsonSchema`;
-`EmbeddingProvider` imports `api.embedding.Embedding`). Its functions:
+**Proposed here; its home changed overnight.** The filtering, the merge, the literal reading, the
+path nesting and the clash check are one piece of logic, and a copy per adapter is how four
+vendors come to disagree about what `true` means. This record's first draft put it in `nessy-api`
+because both SPIs depend on that module; the overnight ruling moved it out, because `nessy-api` is
+the application-facing insulator and a helper for adapter authors does not belong on the surface
+applications read. It lives in **`nessy-inference-spi`** as
+`org.jwcarman.nessy.inference.VendorProperties`, a public `final` class of static functions over
+`Map<String, String>` -- public because four adapter modules call it, SPI-only in the sense that
+nothing in `nessy-api` or the engine's application surface names it, and it appears in no
+signature. **The embedding side is decided in the third `0.3.0` item** (named embedders): whether
+`nessy-embedding-spi` takes a dependency on the inference SPI for this one class, carries a copy,
+or the class moves to a shared support module is that record's question, and the embedding
+adapters do not read properties until it is answered (§9f). Its functions:
 
 - `under(Map<String,String> merged, String prefix)` -- the entries under a prefix, the prefix
   stripped, insertion order kept;
@@ -492,9 +510,8 @@ module both SPIs already depend on (`InferenceRequest` imports `api.JsonSchema`;
 - `requireInteger`, `requireBoolean`, `requireString` -- the typed reads of §8b, each failing with
   the message shape shown there.
 
-The alternative is a package-private copy per module. It is named in §15 as a new public type
-awaiting James's yes; if the answer is no, the copies are the fallback and the tests of §13a run
-against each.
+The alternative was a package-private copy per module; the overnight ruling took the shared class
+in the SPI, and §15 records it as accepted there pending James's review.
 
 ## 9. Each adapter's table
 
@@ -552,31 +569,40 @@ and the raw `thinking` object and `cache_control` when a known name is also pres
 Pass-through: `anthropic.temperature`, `anthropic.top_k`, `anthropic.top_p`,
 `anthropic.stop_sequences=["\n\n"]`, `anthropic.metadata.user_id=...`.
 
-**Decided here: the typed thinking and caching setters become properties, and the setters go.**
-`AnthropicProviderConfig.thinking(boolean)`, `thinkingBudget(int)` and `promptCaching(PromptCaching)`
-are deleted, `PromptCaching` with them, and `AnthropicRequests.Features` survives as the
-**parsed form** of the three known names -- built per request from the merged map rather than once
-per provider. The reasons:
+**The typed setters stay -- ruled overnight, against this record's first draft, which deleted
+them.** `AnthropicProviderConfig.thinking(boolean)`, `thinkingBudget(int)` and
+`promptCaching(PromptCaching)` are configuration of a vendor module, not of the neutral API: they
+pollute nothing this record exists to keep clean, and removing them would be a breaking change
+nobody asked for. How they relate to the `anthropic.*` properties is then one rule, the tier rule
+of §7a:
 
-- One way to say a thing. Keeping the setters beside the properties would mean two spellings of
-  "think with 8192 tokens", a precedence rule between them, and a clash table entry against our own
-  API.
-- The need is per agent type, and the setters cannot serve it. The guide's current answer -- two
-  providers on one factory -- is the workaround this record exists to remove; a triage agent and a
-  research agent on one Anthropic key now differ by one `property` line.
-- The cost is the cheap kind at `0.3.0-SNAPSHOT`: three setters, the enum, `Features.none()`'s
-  callers, one live-test line (`AnthropicLiveTest` line 197, `config.thinking(true)`), two
-  `AnthropicRequestsTest` cases (`enabled_asks_for_a_budget_and_disabled_asks_for_nothing`,
-  `a_budget_with_no_headroom_under_the_ceiling_is_refused_before_the_call`, which move to the
-  property form), `AnthropicProviderConfigTest`'s thinking cases, and the guide's "Anthropic
-  features" section. Nothing under `nessy-spring-boot` or `nessy-examples` calls any of the three
-  (searched).
-- The default budget of `1024` goes with them. It existed so that `thinking(true)` alone was
-  legal; with `budget_tokens` a required companion of `enabled`, there is nothing to default, and
-  the floor is the vendor's to state.
+- **A setter is a provider-level default, at the same tier as a config property.** `thinking(true)
+  .thinkingBudget(8192)` on the config and `anthropic.thinking.budget_tokens=8192` under
+  `nessy.providers.anthropic.properties` mean the same thing in the same place. Both set on one
+  provider -- for the same name, whatever the values -- fail at `build()` naming both (`thinkingBudget(int)`
+  and `anthropic.thinking.budget_tokens`), because two provider-level statements about one field
+  have no order between them and picking one silently is the alphabet problem again. The table of
+  correspondences: `thinking(true)` is `anthropic.thinking.type=enabled` and `thinking(false)` is
+  the absence of both thinking names; `thinkingBudget(n)` is `anthropic.thinking.budget_tokens=n`;
+  `promptCaching(FIVE_MINUTES)` is `anthropic.cache_control.ttl=5m`, `ONE_HOUR` is `1h`, `OFF` is
+  the absence of the name.
+- **An agent-type property in code overrides either**, name by name: a provider built with
+  `thinking(true).thinkingBudget(1024)` serves a research agent that says
+  `property("anthropic.thinking.budget_tokens", "16000")` at sixteen thousand and a triage agent
+  that says `property("anthropic.thinking.type", "disabled")` with none. That is the per-agent-type
+  need the guide's "two providers" answer was covering for, and it is met without touching the
+  setters.
+- `AnthropicRequests.Features` becomes the **parsed form of the merged result** -- built per
+  request from the setters' values overlaid by the agent type's properties -- rather than a
+  per-provider constant. The default budget of `1024` stays as the setters' default, for the
+  reason the code gives (headroom under `AgentConfig`'s 4096); the property form has no default,
+  because `enabled` without a budget is refused (table above) and the floor is the vendor's to
+  state. The `maxTokens`-over-budget check runs at `validate` against the merged result.
+- `Block.Provider` round-tripping of thinking blocks (`AnthropicRequests.ours`, the signature rule)
+  is untouched: it is about what comes back, not what is asked for.
 
-`Block.Provider` round-tripping of thinking blocks (`AnthropicRequests.ours`, the signature rule)
-is untouched: it is about what comes back, not what is asked for.
+Whether the setters should later fold into properties -- one spelling, the guide's "Anthropic
+features" section retired -- is recorded for James in §16 (4), not decided here.
 
 ### 9d. Gemini (`GeminiInferenceProvider`, prefix `gemini.`)
 
@@ -626,8 +652,13 @@ name would be sent to the model and rejected. Each joins the known table when so
 
 ### 9f. Embedders
 
-Same contract, smaller tables. Known names: none, to start; every embedder passes through, and the
-one typed knob beyond the model (`dimension`) is in the clash table under its wire spelling.
+Same contract, smaller tables -- **specified here, built with the third `0.3.0` item.** What lands
+now is the door (`EmbedderConfig.property`, §4b), the carrier (`EmbeddingOptions.properties`,
+§5b), the hook (`EmbeddingProvider.validate`, §7c) and the config setters (§6a); the adapters read
+none of it until the named-embedders record settles where the helper of §8e lives for them, so a
+property set on an embedder today is carried and ignored, and the guide says so. Known names:
+none, to start; every embedder passes through, and the one typed knob beyond the model
+(`dimension`) is in the clash table under its wire spelling.
 
 | adapter | prefix | clash table |
 |---|---|---|
@@ -719,7 +750,7 @@ map and the options built outside it (S5778); an emptiness assertion precedes an
 
 ### 13a. The helper and each adapter
 
-`VendorPropertiesTest` (`nessy-api`), one group per function of §8e: entries under a prefix are
+`VendorPropertiesTest` (`nessy-inference-spi`), one group per function of §8e: entries under a prefix are
 returned with the prefix stripped and other prefixes left out; a name with no prefix is refused;
 agent-type entries override provider entries by name; `12000` reads as a number, `true` as a
 boolean, `{...}` as an object, `[...]` as an array, `high` as a string, `"12345"` as a string;
@@ -755,9 +786,15 @@ owns the rewrite itself, once, on the hand-written fixtures the Responses record
 
 Each `*ProviderConfigTest` gains: `property` on the config reaches the built provider's requests;
 a property under another prefix fails at `build()` naming the prefix; a clash fails at `build()`.
-`AnthropicProviderConfigTest` and `AnthropicRequestsTest` lose their setter-based thinking cases
-and gain the property-based ones (§9c). The four embedding adapters' tests gain the same
-pass-through and clash cases against their bodies.
+`AnthropicProviderConfigTest` keeps its setter cases and gains the tier cases of §9c: a setter and
+a property for the same name fail at `build()` naming both; `thinking(true).thinkingBudget(1024)`
+on the config and `anthropic.thinking.budget_tokens=16000` on the agent type send sixteen
+thousand; `anthropic.thinking.type=disabled` on the agent type sends no `thinking` object over a
+config that turned it on. `AnthropicRequestsTest`'s existing thinking cases
+(`enabled_asks_for_a_budget_and_disabled_asks_for_nothing`,
+`a_budget_with_no_headroom_under_the_ceiling_is_refused_before_the_call`) stay as they are and
+are joined by their property-form twins. The four embedding adapters' tests wait for the third
+item (§9f); `DefaultEmbedderFactoryTest` covers the door and the carrier now.
 
 ### 13b. Boot
 
@@ -776,8 +813,10 @@ sent):
 | `nessy.providers.mine.wire=openai-chat`, `base-url`, `api-key`, `properties.openai.temperature=0.2` | the custom provider carries the one entry |
 
 `ProviderCatalogueTest` gains the overlay rows; `ProviderSettingsTest` and `ResolvedProviderTest`
-assert the new component prints and the key still does not; `InferenceReportTest`'s expected line
-gains the `properties` clause for a provider that has one and none for one that has none.
+assert the new component prints its names, not its values, and the key still prints as `***`;
+`InferenceReportTest`'s expected line gains the `properties [openai.tools.strict]` clause for a
+provider that has one, none for one that has none, and a case with `openai.user=tenant-42` set
+asserts the report contains `openai.user` and not `tenant-42`.
 
 ### 13c. The engine
 
@@ -803,9 +842,11 @@ cases.
 - `OpenAiResponsesLiveTest` runs the reasoning-summary case the Responses record's §9c could not:
   `openai.reasoning.summary=auto` on a reasoning model, and the summary deltas are narrated as
   thinking.
-- `AnthropicLiveTest`'s thinking case moves to `anthropic.thinking.budget_tokens=1024` on the
-  request's options; a second case sets `anthropic.cache_control.ttl=5m` and asserts
-  `cacheWriteTokens` or `cacheReadTokens` is reported.
+- `AnthropicLiveTest`'s thinking case (`config.thinking(true)`, line 197) stays; beside it, a case
+  with a provider that does not think and an options map carrying
+  `anthropic.thinking.budget_tokens=1024` asserts the reply carries this vendor's `Provider`
+  block, and a case with `anthropic.cache_control.ttl=5m` asserts `cacheWriteTokens` or
+  `cacheReadTokens` is reported.
 - `GeminiLiveTest` gains `thinkingBudget` through the known name **and** a pass-through under
   `generationConfig` (`temperature`), and asserts the response reflects both -- the measurement §8d
   leaves open. If `extraBody` replaces `generationConfig` rather than merging into it, the Gemini
@@ -824,17 +865,19 @@ Six steps, each a reviewable commit, each green under `./mvnw -q clean verify` w
 network before the next starts. Step 1 waits on the Responses branch beneath this one for the
 OpenAI module's names; nothing else does.
 
-1. **The helper and the SPI** (§5, §7c, §8e): `VendorProperties` in `nessy-api` with its test;
-   `InferenceOptions` and `EmbeddingOptions` gain `properties`; `InferenceProvider.validate` and
-   `EmbeddingProvider.validate` as no-op defaults; `ObservedInferenceProvider` delegates. No
-   behaviour change.
+1. **The helper and the SPI** (§5, §7c, §8e): `VendorProperties` in `nessy-inference-spi` with
+   its test; `InferenceOptions` and `EmbeddingOptions` gain `properties`;
+   `InferenceProvider.validate` and `EmbeddingProvider.validate` as no-op defaults;
+   `ObservedInferenceProvider` delegates. No behaviour change.
 2. **The API and the engine** (§4, §13c): `InferenceConfig.property`, `EmbedderConfig.property`;
    the two `Inference` classes and `DefaultEmbedderFactory.Settings` keep the map; the two
    factories pass it and call `validate`; the harness report line; the engine tests.
 3. **The adapters** (§6a, §8, §9, §13a): `property`/`properties` on the five inference configs
-   and four embedder configs; each adapter's known names, clash table and pass-through; the
-   Anthropic setters removed and `Features` rebuilt from properties; the `OpenAiStrictSchemas`
-   move and `openai.tools.strict` on the chat wire (§10); the adapter tests.
+   and four embedder configs (the embedder configs carry and ignore, §9f); each inference
+   adapter's known names, clash table and pass-through; the Anthropic setters kept and `Features`
+   built per request from the merged result, with the setter-versus-property check at `build()`;
+   the `OpenAiStrictSchemas` move and `openai.tools.strict` on the chat wire (§10); the adapter
+   tests.
 4. **Boot** (§6b, §6c, §11, §13b): `ProviderSettings.properties`, `Preset.defaultProperties` with
    the `openai` row, `ResolvedProvider.properties`, the overlay in `ProviderCatalogue`, the four
    `WireProviders` builders, the report; the Boot tests including the dotted-key case.
@@ -843,18 +886,21 @@ OpenAI module's names; nothing else does.
    settled and §8d amended if it must be; any preset whose strict row is `OK` gets its default
    property in a commit of its own.
 6. **Docs**: `docs/guides/providers.md` -- a "Vendor properties" section, the "Anthropic features"
-   section rewritten for the property form, each vendor's known names and its clash table under
-   its own heading, the "Writing a provider" section carrying the contract of §8 for a new adapter;
-   `docs/guides/spring-boot.md` for `nessy.providers.<id>.properties.*` and the environment-variable
-   limitation; `CHANGELOG.md` `[Unreleased]` with the breaking lines (the Anthropic setters, the
-   `InferenceOptions` and `EmbeddingOptions` components); describing what is
+   section extended with the property form and the tier rule (the setters stay documented), the
+   "two providers" paragraph at line 107 retired, each vendor's known names and its clash table
+   under its own heading, the "Writing a provider" section carrying the contract of §8 for a new
+   adapter; `docs/guides/spring-boot.md` for `nessy.providers.<id>.properties.*` and the
+   environment-variable limitation; `CHANGELOG.md` `[Unreleased]` with the breaking lines (the
+   `InferenceOptions` and `EmbeddingOptions` components; nothing else breaks); describing what is
    (`docs-describe-what-is`).
 
 ## 15. Design authority
 
-Listed by name, as the rule requires. "Agreed" means ruled by James on 2026-09-29; "proposed"
-means this record needed it to make an agreed thing work and it awaits a yes before anything
-lands.
+Listed by name, as the rule requires. "Agreed" means ruled by James on 2026-09-29. "Accepted
+overnight" and "changed overnight" mean this record proposed it to make an agreed thing work and
+the controller James authorised for the overnight run ruled on it on 2026-09-30, as proposed or
+with the change named; every such row awaits his morning review, and nothing lands before it.
+"Rejected overnight" rows are kept so the deletion this record first proposed is visible.
 
 | concept | where | status | § |
 |---|---|---|---|
@@ -867,15 +913,16 @@ lands.
 | `openai.reasoning.effort`, `openai.reasoning.summary`, `openai.tools.strict`, `openai.service_tier`, `anthropic.thinking.budget_tokens` as known names | property names | agreed | 9a-9c |
 | `openai.tools.strict` lighting the strict rewrite on the chat wire | adapter behaviour | agreed | 10 |
 | no typed reasoning-effort concept; the rejected shapes of §12 | design vocabulary | agreed | 12 |
-| the words **vendor property**, **prefix**, **known name**, **pass-through**, **clash** as §3 defines them | design vocabulary | proposed | 3 |
-| `InferenceOptions.properties` and `EmbeddingOptions.properties` as the third record component | public record component | proposed, decided from the code | 5 |
-| `InferenceProvider.validate(InferenceOptions)` and `EmbeddingProvider.validate(EmbeddingOptions)`, default no-op | public SPI method | proposed -- the only way to fail at harness build | 7c |
-| `XProviderConfig.property(String, String)` / `properties(Map)` on five inference and four embedder configs | public methods | proposed -- the door Boot and code share | 6a |
-| `org.jwcarman.nessy.api.VendorProperties` | public type (static helper) | proposed; fallback is a copy per module | 8e |
-| deleting `AnthropicProviderConfig.thinking`, `thinkingBudget`, `promptCaching` and `PromptCaching` | public methods and a public type, removed | proposed | 9c |
-| `anthropic.thinking.type`, `anthropic.cache_control.ttl`, `anthropic.service_tier`; the three `gemini.generationConfig.thinkingConfig.*` names; the three `bedrock.inferenceConfig.*` names; the `voyage.` prefix | known names beyond the ruled ones | proposed | 9c-9f |
-| a known name a wire cannot carry is refused at build (`openai.reasoning.summary` on chat, `openai.tools.strict=false` on Responses) | contract | proposed -- one rule for both | 8b, 9a, 9b |
-| the report printing property values | Boot report | proposed | 6c |
+| the words **vendor property**, **prefix**, **known name**, **pass-through**, **clash** as §3 defines them | design vocabulary | proposed; not ruled on overnight, for James | 3 |
+| `InferenceOptions.properties` and `EmbeddingOptions.properties` as the third record component | public record component | accepted overnight, as proposed | 5 |
+| `InferenceProvider.validate(InferenceOptions)` and `EmbeddingProvider.validate(EmbeddingOptions)`, default no-op | public SPI method | accepted overnight, as proposed | 7c |
+| `XProviderConfig.property(String, String)` / `properties(Map)` on five inference and four embedder configs | public methods | accepted overnight, as proposed | 6a |
+| `VendorProperties`, the shared parsing helper | public type (static helper) | **changed overnight**: not in `nessy-api` (the application-facing insulator); in `nessy-inference-spi` as `org.jwcarman.nessy.inference.VendorProperties`, SPI-only; the embedding side is the third item's | 8e |
+| deleting `AnthropicProviderConfig.thinking`, `thinkingBudget`, `promptCaching` and `PromptCaching` | public methods and a public type, removed | **rejected overnight**: vendor-module configuration, not neutral API; an unrequested breaking change. They stay, as a provider-level default at the config-property tier | 9c, 7a |
+| a config setter and a config property for one name on one provider fail at `build()` naming both; an agent-type property overrides either | contract | ruled overnight, in place of the deletion | 7a, 9c |
+| `anthropic.thinking.type`, `anthropic.cache_control.ttl`, `anthropic.service_tier`; the three `gemini.generationConfig.thinkingConfig.*` names; the three `bedrock.inferenceConfig.*` names; the `voyage.` prefix | known names beyond the ruled ones | accepted overnight, as proposed | 9c-9f |
+| a known name a wire cannot carry is refused at build (`openai.reasoning.summary` on chat, `openai.tools.strict=false` on Responses) | contract | accepted overnight, as proposed | 8b, 9a, 9b |
+| the report printing property names | Boot report | **changed overnight**: names only, never values -- a value may be sensitive | 6c |
 
 Not new, and needing no yes: `OpenAiStrictSchemas` (package-private), the clash tables' contents
 (each is a reading of the adapter's own request builder), the `DEBUG` line for ignored prefixes,
@@ -889,19 +936,23 @@ the test names, the live rows, the measurements column.
    the package-private `OpenAiChatRequests`, `Wire.OPENAI_CHAT`). This record uses the Responses
    names throughout, and step 1 of §14 is written to start after that branch lands. If it lands
    in a different shape, the names here follow it, not the other way round.
-2. **The `validate` hook.** It is the one new SPI method and the record's most consequential
-   proposal; without it the clash ruling cannot be honoured at build. `check` and `accept` were
-   considered and set aside (`accept` sounds like it stores something). If James would rather not
-   widen the SPI, the fallback is failing on the first request, which the record argues against
-   in §7c.
-3. **`VendorProperties` in `nessy-api`.** A helper for adapter authors in the module applications
-   see is unusual; the alternative homes were `nessy-inference-spi` (which the embedding SPI does
-   not depend on) and one copy per module. Recommendation: `nessy-api`, since the "Writing a
-   provider" guide already addresses adapter authors there.
-4. **Deleting the Anthropic setters.** §9c decides yes and says why; it is the one deletion of
-   public surface in the record. The alternative -- keeping them as sugar that writes the three
-   properties -- was set aside as two spellings of one thing, but is a one-line change if James
-   prefers a softer landing.
+2. **The `validate` hook, for the morning review.** Accepted overnight; it is the one new SPI
+   method and the record's most consequential proposal, and without it the clash ruling cannot be
+   honoured at build. `check` and `accept` were considered and set aside (`accept` sounds like it
+   stores something). If James would rather not widen the SPI, the fallback is failing on the
+   first request, which the record argues against in §7c.
+3. **`VendorProperties` for the embedding adapters.** The overnight ruling put the helper in
+   `nessy-inference-spi` and left the embedding side to the third `0.3.0` item. That item chooses
+   between `nessy-embedding-spi` depending on the inference SPI for one class, a copy, or a shared
+   support module; until it does, embedder properties are carried and ignored (§9f).
+4. **Fold the Anthropic setters into properties?** Rejected overnight for this item, and the
+   setters stay (§9c) with the tier rule relating them to `anthropic.*`. The question for James is
+   whether a later item retires them -- one spelling of "think with 8192 tokens", the guide's
+   "Anthropic features" section folded into the vendor-properties section -- or whether a
+   vendor module keeping typed sugar beside the property door is the shape every adapter should
+   have. The first draft of this record argued for retiring them; the overnight ruling's reason
+   against (vendor-module configuration is not neutral API, and the deletion was not asked for)
+   stands until he says otherwise.
 5. **Gemini's `extraBody` merge is measured in bytecode, not on the wire.** `ApiClient.mergeMaps`
    exists and is called on `extraBody`; whether a pass-through `generationConfig.temperature`
    merges into the SDK's own `generationConfig` or replaces it is §13d's first Gemini case. If it
@@ -919,10 +970,11 @@ the test names, the live rows, the measurements column.
    and the caching one is the reason `anthropic.cache_control.ttl` is a known name rather than
    pass-through. (b) The brief said embedders' Boot side would be `nessy.embedders.<id>.*`; today's
    embedding properties are `nessy.embedding.<vendor>.model` / `.dimension` (singular, per vendor,
-   `@Value`-injected), so the third item renames as well as restructures. (c) The brief's list of
-   typed settings ("model, max tokens, tool choice") is three; the request carries five (§1), and
-   the clash tables cover all five plus the fields each adapter fixes on purpose.
-9. **The report printing values.** §6c prints them on the grounds that a property is never a
-   credential. If a deployment ever puts something sensitive in a pass-through (a `user` id, say),
-   the line would show it; the alternative is names only. Recommendation: values, because a report
-   that hides what it configured is the kind the named-providers record was written to end.
+   `@Value`-injected). Ruled overnight out of scope here: the third item migrates them, and this
+   record only notes the difference. (c) The brief's list of typed settings ("model, max tokens,
+   tool choice") is three; the request carries five (§1), and the clash tables cover all five plus
+   the fields each adapter fixes on purpose.
+9. **The report printing values -- closed overnight: names only** (§6c). Recorded because the
+   first draft argued the other way (a property is never a credential); the ruling's reason -- a
+   pass-through value may be sensitive and the report cannot tell which -- is the stronger one,
+   and the names still say what was configured.
