@@ -210,8 +210,10 @@ class GeminiLiveTest {
                     new Input(
                         new Seq(1),
                         List.of(
+                            // Something to work out: on a trivial prompt the model may think
+                            // without returning a thought summary (measured 2026-09-30).
                             new Block.Text(
-                                "Think briefly, then reply with exactly: alpha beta gamma"))),
+                                "What is 17 times 23? Work it out, then give the number."))),
                     List.of(),
                     null,
                     0))),
@@ -230,7 +232,7 @@ class GeminiLiveTest {
               "thoughts were narrated; result: %s; fragment kinds: %s",
               result, narrated.fragments().stream().map(Narration.Fragment::kind).toList())
           .anyMatch(fragment -> "thinking".equals(fragment.kind()));
-      assertThat(answer).as("the answer; result: %s", result).containsIgnoringCase("alpha");
+      assertThat(answer).as("the answer; result: %s", result).contains("391");
     }
   }
 
