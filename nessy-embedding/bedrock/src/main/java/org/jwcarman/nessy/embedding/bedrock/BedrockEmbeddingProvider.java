@@ -18,7 +18,6 @@ package org.jwcarman.nessy.embedding.bedrock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
@@ -68,36 +67,11 @@ public final class BedrockEmbeddingProvider implements EmbeddingProvider, AutoCl
   private final String cohereInputType;
   private final JsonMapper mapper;
 
-  private final String defaultModel;
-  private final OptionalInt defaultDimension;
-
   BedrockEmbeddingProvider(
-      BedrockEmbeddingClient client,
-      String cohereInputType,
-      JsonMapper mapper,
-      String defaultModel,
-      OptionalInt defaultDimension) {
+      BedrockEmbeddingClient client, String cohereInputType, JsonMapper mapper) {
     this.client = Objects.requireNonNull(client, "client must not be null");
     this.cohereInputType = Objects.requireNonNull(cohereInputType, "inputType must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
-    this.defaultModel = defaultModel;
-    this.defaultDimension = defaultDimension;
-  }
-
-  /** A provider built directly rather than from a config: no connection defaults to inherit. */
-  BedrockEmbeddingProvider(
-      BedrockEmbeddingClient client, String cohereInputType, JsonMapper mapper) {
-    this(client, cohereInputType, mapper, null, OptionalInt.empty());
-  }
-
-  /** The model this connection hands an embedder that names none. */
-  public String defaultModel() {
-    return defaultModel;
-  }
-
-  /** How wide this connection's vectors are unless an embedder asks otherwise. */
-  public OptionalInt defaultDimension() {
-    return defaultDimension;
   }
 
   public static BedrockEmbeddingProvider of(List<Customizer<BedrockEmbedderConfig>> customizers) {
@@ -112,7 +86,7 @@ public final class BedrockEmbeddingProvider implements EmbeddingProvider, AutoCl
     return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
-  /** The AWS default credentials chain, the region from the environment, and the default model. */
+  /** The AWS default credentials chain, and the region from the environment. */
   public static BedrockEmbeddingProvider fromEnv() {
     return of(BedrockEmbedderConfig::fromEnv);
   }

@@ -215,10 +215,6 @@ class OpenAiEmbeddingProviderTest {
       assertThatThrownBy(() -> OpenAiEmbeddingProvider.of(c -> {}))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("apiKey");
-      assertThatThrownBy(() -> OpenAiEmbeddingProvider.of(c -> c.model(" ")))
-          .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> OpenAiEmbeddingProvider.of(c -> c.dimension(0)))
-          .isInstanceOf(IllegalArgumentException.class);
       assertThatThrownBy(() -> OpenAiEmbeddingProvider.of((Customizer<OpenAiEmbedderConfig>) null))
           .isInstanceOf(NullPointerException.class);
     }
@@ -254,7 +250,11 @@ class OpenAiEmbeddingProviderTest {
     @Test
     void is_warned_once_when_the_embedder_is_built_and_is_not_in_any_request() {
       OpenAiEmbeddingProvider provider = provider();
-      DefaultEmbedderFactory factory = new DefaultEmbedderFactory(provider, "m");
+      DefaultEmbedderFactory factory =
+          DefaultEmbedderFactory.of(
+              f ->
+                  f.provider(OPENAI, provider)
+                      .embedding(OPENAI, EmbeddingOptions.of(OpenAiEmbedderConfig.DEFAULT_MODEL)));
       var embedder = new Embedder[1];
 
       List<ILoggingEvent> atBuild =

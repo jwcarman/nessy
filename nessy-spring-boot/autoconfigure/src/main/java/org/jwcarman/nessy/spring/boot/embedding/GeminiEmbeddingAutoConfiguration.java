@@ -64,10 +64,10 @@ public class GeminiEmbeddingAutoConfiguration {
       String apiKey, String model, String dimension, ObservationRegistry observations) {
     GeminiEmbeddingProvider provider = GeminiEmbeddingProvider.of(c -> c.apiKey(apiKey));
     return factory(
-        "<built-in function id>",
+        "gemini",
         provider,
         EmbeddingModels.modelOr(model, GeminiEmbedderConfig.DEFAULT_MODEL),
-        EmbeddingModels.dimensionOr(dimension, provider.defaultDimension()),
+        EmbeddingModels.dimensionOr(dimension, OptionalInt.empty()),
         observations);
   }
 

@@ -21,7 +21,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.VendorProperties;
 import org.jwcarman.nessy.api.VendorProperty;
@@ -34,7 +33,10 @@ import org.slf4j.LoggerFactory;
  */
 public final class OpenAiEmbedderConfig {
 
-  /** OpenAI's current small model: 1536 dimensions unless asked for fewer. */
+  /**
+   * OpenAI's current small model, 1536 dimensions unless asked for fewer: a name to cite, as in
+   * {@code EmbeddingOptions.of(OpenAiEmbedderConfig.DEFAULT_MODEL)}.
+   */
   public static final String DEFAULT_MODEL = "text-embedding-3-small";
 
   private static final String API_KEY_ENV_VAR = "OPENAI_API_KEY";
@@ -47,8 +49,7 @@ public final class OpenAiEmbedderConfig {
   private String apiKey;
   private String baseUrl;
   private String organization;
-  private String model = DEFAULT_MODEL;
-  private OptionalInt dimension = OptionalInt.empty();
+  private String vendor = "openai";
   private OpenAIClient client;
   private boolean useEnv;
 
@@ -81,26 +82,13 @@ public final class OpenAiEmbedderConfig {
     return this;
   }
 
-  /** The embedding model; {@value #DEFAULT_MODEL} unless said otherwise. */
-  public OpenAiEmbedderConfig model(String model) {
-    Objects.requireNonNull(model, "model must not be null");
-    if (model.isBlank()) {
-      throw new IllegalArgumentException("model must not be blank");
-    }
-    this.model = model;
-    return this;
-  }
-
   /**
-   * Ask the model for this many coordinates rather than its full width. The {@code
-   * text-embedding-3} models honour it; older ones and most local runtimes ignore or refuse it. A
-   * store's index is sized by this, so decide it once, when the store is created.
+   * The vendor name this provider reports in spans ({@code gen_ai.provider.name}): {@code openai}
+   * unless the same wire is being spoken to somebody else -- {@code lmstudio} for a local server, a
+   * gateway's own name.
    */
-  public OpenAiEmbedderConfig dimension(int dimension) {
-    if (dimension <= 0) {
-      throw new IllegalArgumentException("dimension must be positive: " + dimension);
-    }
-    this.dimension = OptionalInt.of(dimension);
+  public OpenAiEmbedderConfig vendor(String vendor) {
+    this.vendor = Objects.requireNonNull(vendor, "vendor must not be null");
     return this;
   }
 
@@ -179,19 +167,14 @@ public final class OpenAiEmbedderConfig {
     }
   }
 
-  /** The model a factory over this connection hands out when an embedder names none. */
-  String model() {
-    return model;
-  }
-
   OpenAiEmbeddingProvider build() {
     requireOwnProperties();
     warnUnsupported(properties);
     if (client != null) {
-      return new OpenAiEmbeddingProvider(client, false, model, dimension);
+      return new OpenAiEmbeddingProvider(client, false, vendor);
     }
     if (useEnv) {
-      return new OpenAiEmbeddingProvider(buildFromEnv(), true, model, dimension);
+      return new OpenAiEmbeddingProvider(buildFromEnv(), true, vendor);
     }
     if (apiKey == null || apiKey.isBlank()) {
       throw new IllegalStateException(
@@ -205,7 +188,7 @@ public final class OpenAiEmbedderConfig {
     if (organization != null) {
       builder.organization(organization);
     }
-    return new OpenAiEmbeddingProvider(builder.build(), true, model, dimension);
+    return new OpenAiEmbeddingProvider(builder.build(), true, vendor);
   }
 
   private OpenAIClient buildFromEnv() {

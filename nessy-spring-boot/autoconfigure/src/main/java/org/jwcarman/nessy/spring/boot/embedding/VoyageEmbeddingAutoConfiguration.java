@@ -54,10 +54,10 @@ public class VoyageEmbeddingAutoConfiguration {
       ObservationRegistry observations) {
     VoyageEmbeddingProvider provider = VoyageEmbeddingProvider.of(c -> c.apiKey(apiKey));
     return factory(
-        "<built-in function id>",
+        "voyage",
         provider,
         EmbeddingModels.modelOr(model, VoyageEmbedderConfig.DEFAULT_MODEL),
-        EmbeddingModels.dimensionOr(dimension, provider.defaultDimension()),
+        EmbeddingModels.dimensionOr(dimension, OptionalInt.empty()),
         observations);
   }
 

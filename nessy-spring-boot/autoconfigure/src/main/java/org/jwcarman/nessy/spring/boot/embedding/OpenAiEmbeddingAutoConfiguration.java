@@ -54,10 +54,10 @@ public class OpenAiEmbeddingAutoConfiguration {
       ObservationRegistry observations) {
     OpenAiEmbeddingProvider provider = OpenAiEmbeddingProvider.of(c -> c.apiKey(apiKey));
     return factory(
-        "<built-in function id>",
+        "openai",
         provider,
         EmbeddingModels.modelOr(model, OpenAiEmbedderConfig.DEFAULT_MODEL),
-        EmbeddingModels.dimensionOr(dimension, provider.defaultDimension()),
+        EmbeddingModels.dimensionOr(dimension, OptionalInt.empty()),
         observations);
   }
 
@@ -80,10 +80,10 @@ public class OpenAiEmbeddingAutoConfiguration {
               }
             });
     return factory(
-        "<built-in function id>",
+        "openai",
         provider,
         model,
-        EmbeddingModels.dimensionOr(dimension, provider.defaultDimension()),
+        EmbeddingModels.dimensionOr(dimension, OptionalInt.empty()),
         observations);
   }
 

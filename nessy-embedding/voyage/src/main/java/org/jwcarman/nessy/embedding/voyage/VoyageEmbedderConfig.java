@@ -22,7 +22,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.VendorProperties;
 import org.jwcarman.nessy.api.VendorProperty;
@@ -36,7 +35,10 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class VoyageEmbedderConfig {
 
-  /** Voyage's current general model: 1024 dimensions unless asked for 256, 512 or 2048. */
+  /**
+   * Voyage's current general model, 1024 dimensions unless asked for 256, 512 or 2048: a name to
+   * cite, as in {@code EmbeddingOptions.of(VoyageEmbedderConfig.DEFAULT_MODEL)}.
+   */
   public static final String DEFAULT_MODEL = "voyage-3.5";
 
   public static final String DEFAULT_BASE_URL = "https://api.voyageai.com/v1";
@@ -50,8 +52,6 @@ public final class VoyageEmbedderConfig {
 
   private String apiKey;
   private String baseUrl = DEFAULT_BASE_URL;
-  private String model = DEFAULT_MODEL;
-  private OptionalInt dimension = OptionalInt.empty();
   private String inputType;
   private Duration timeout = Duration.ofSeconds(30);
   private HttpClient http;
@@ -76,24 +76,6 @@ public final class VoyageEmbedderConfig {
   /** The API root, {@value #DEFAULT_BASE_URL} by default; {@code /embeddings} is appended. */
   public VoyageEmbedderConfig baseUrl(String baseUrl) {
     this.baseUrl = Objects.requireNonNull(baseUrl, "baseUrl must not be null");
-    return this;
-  }
-
-  public VoyageEmbedderConfig model(String model) {
-    Objects.requireNonNull(model, "model must not be null");
-    if (model.isBlank()) {
-      throw new IllegalArgumentException("model must not be blank");
-    }
-    this.model = model;
-    return this;
-  }
-
-  /** Ask for this many coordinates; the 3.5 models honour 256, 512, 1024 and 2048. */
-  public VoyageEmbedderConfig dimension(int dimension) {
-    if (dimension <= 0) {
-      throw new IllegalArgumentException("dimension must be positive: " + dimension);
-    }
-    this.dimension = OptionalInt.of(dimension);
     return this;
   }
 
@@ -204,14 +186,6 @@ public final class VoyageEmbedderConfig {
         URI.create(root + "/embeddings"),
         key,
         this);
-  }
-
-  String model() {
-    return model;
-  }
-
-  OptionalInt dimension() {
-    return dimension;
   }
 
   String inputType() {

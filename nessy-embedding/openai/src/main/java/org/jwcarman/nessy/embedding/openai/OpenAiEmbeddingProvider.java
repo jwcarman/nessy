@@ -21,7 +21,6 @@ import com.openai.models.embeddings.EmbeddingCreateParams;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
@@ -32,42 +31,19 @@ import org.jwcarman.nessy.embedding.EmbeddingProvider;
  * that speaks the same wire: a local runtime serving {@code nomic-embed-text} is this class with a
  * different URL.
  *
- * <p>One embedder is one model at one dimension, decided where it is built: a store keyed on this
- * embedder's vectors is keyed on that model, and a second model is a second embedder.
+ * <p>Holds a connection and nothing about a model: which model, and how wide, arrive per call in
+ * {@link EmbeddingOptions}, so one provider serves every store that names it.
  */
 public final class OpenAiEmbeddingProvider implements EmbeddingProvider, AutoCloseable {
 
   private final OpenAIClient client;
   private final boolean ownsClient;
-  private final String defaultModel;
-  private final OptionalInt defaultDimension;
+  private final String vendor;
 
-  OpenAiEmbeddingProvider(
-      OpenAIClient client, boolean ownsClient, String defaultModel, OptionalInt defaultDimension) {
-    this.defaultModel = defaultModel;
-    this.defaultDimension = defaultDimension;
+  OpenAiEmbeddingProvider(OpenAIClient client, boolean ownsClient, String vendor) {
     this.client = Objects.requireNonNull(client, "client must not be null");
     this.ownsClient = ownsClient;
-  }
-
-  /** A provider built directly rather than from a config: no connection defaults to inherit. */
-  OpenAiEmbeddingProvider(OpenAIClient client, boolean ownsClient) {
-    this(client, ownsClient, null, OptionalInt.empty());
-  }
-
-  /**
-   * The model this connection hands an embedder that names none.
-   *
-   * <p>A connection decides its model and its width once. Every embedder over it inherits both, so
-   * a store whose index is sized for one width does not depend on every caller remembering it.
-   */
-  public String defaultModel() {
-    return defaultModel;
-  }
-
-  /** How wide this connection's vectors are unless an embedder asks otherwise. */
-  public OptionalInt defaultDimension() {
-    return defaultDimension;
+    this.vendor = Objects.requireNonNull(vendor, "vendor must not be null");
   }
 
   public static OpenAiEmbeddingProvider of(List<Customizer<OpenAiEmbedderConfig>> customizers) {
@@ -82,17 +58,18 @@ public final class OpenAiEmbeddingProvider implements EmbeddingProvider, AutoClo
     return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
-  /** {@code OPENAI_API_KEY} and the default model, {@value OpenAiEmbedderConfig#DEFAULT_MODEL}. */
+  /** {@code OPENAI_API_KEY}, through the SDK's own reading of the environment. */
   public static OpenAiEmbeddingProvider fromEnv() {
     return of(OpenAiEmbedderConfig::fromEnv);
   }
 
   /**
-   * OpenAI, and anything that speaks its wire at another base URL: nothing more is known about it.
+   * {@code openai}, or whatever the config's {@code vendor(...)} said: the same wire at another
+   * base URL is somebody else, and a trace should say who.
    */
   @Override
   public String vendor() {
-    return "openai";
+    return vendor;
   }
 
   /** Says once which of an embedder's properties are ignored: none is supported yet. */

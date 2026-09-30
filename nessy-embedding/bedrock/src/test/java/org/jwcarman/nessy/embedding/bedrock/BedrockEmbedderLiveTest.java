@@ -54,7 +54,7 @@ class BedrockEmbedderLiveTest {
     String model =
         System.getenv().getOrDefault("NESSY_EMBEDDING_MODEL", BedrockEmbedderConfig.DEFAULT_MODEL);
     try (BedrockEmbeddingProvider provider =
-        BedrockEmbeddingProvider.of(c -> c.fromEnv().model(model))) {
+        BedrockEmbeddingProvider.of(BedrockEmbedderConfig::fromEnv)) {
       Embedder embedder = embedderOver(provider, model);
       List<Embedding> embeddings =
           embedder.embedDocuments(

@@ -21,7 +21,6 @@ import com.google.genai.types.EmbedContentResponse;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
@@ -30,41 +29,17 @@ import org.jwcarman.nessy.embedding.EmbeddingProvider;
 /**
  * Gemini's embedding models, through the vendor's own java-genai SDK.
  *
- * <p>One embedder is one model at one dimension, decided where it is built: a store keyed on this
- * embedder's vectors is keyed on that model, and a second model is a second embedder.
+ * <p>Holds a connection and nothing about a model: which model, and how wide, arrive per call in
+ * {@link EmbeddingOptions}, so one provider serves every store that names it.
  */
 public final class GeminiEmbeddingProvider implements EmbeddingProvider, AutoCloseable {
 
   private final GeminiEmbeddingClient client;
   private final String taskType;
 
-  private final String defaultModel;
-  private final OptionalInt defaultDimension;
-
-  GeminiEmbeddingProvider(
-      GeminiEmbeddingClient client,
-      String taskType,
-      String defaultModel,
-      OptionalInt defaultDimension) {
+  GeminiEmbeddingProvider(GeminiEmbeddingClient client, String taskType) {
     this.client = Objects.requireNonNull(client, "client must not be null");
     this.taskType = taskType;
-    this.defaultModel = defaultModel;
-    this.defaultDimension = defaultDimension;
-  }
-
-  /** A provider built directly rather than from a config: no connection defaults to inherit. */
-  GeminiEmbeddingProvider(GeminiEmbeddingClient client, String taskType) {
-    this(client, taskType, null, OptionalInt.empty());
-  }
-
-  /** The model this connection hands an embedder that names none. */
-  public String defaultModel() {
-    return defaultModel;
-  }
-
-  /** How wide this connection's vectors are unless an embedder asks otherwise. */
-  public OptionalInt defaultDimension() {
-    return defaultDimension;
   }
 
   public static GeminiEmbeddingProvider of(List<Customizer<GeminiEmbedderConfig>> customizers) {
@@ -79,7 +54,7 @@ public final class GeminiEmbeddingProvider implements EmbeddingProvider, AutoClo
     return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
-  /** {@code GEMINI_API_KEY} or {@code GOOGLE_API_KEY}, and the default model. */
+  /** {@code GEMINI_API_KEY} or {@code GOOGLE_API_KEY}. */
   public static GeminiEmbeddingProvider fromEnv() {
     return of(GeminiEmbedderConfig::fromEnv);
   }

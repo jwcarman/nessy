@@ -220,10 +220,6 @@ class VoyageEmbedderTest {
       assertThatThrownBy(() -> VoyageEmbeddingProvider.of(c -> {}))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("apiKey");
-      assertThatThrownBy(() -> VoyageEmbeddingProvider.of(c -> c.model(" ")))
-          .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> VoyageEmbeddingProvider.of(c -> c.dimension(0)))
-          .isInstanceOf(IllegalArgumentException.class);
       assertThatThrownBy(() -> VoyageEmbeddingProvider.of(c -> c.mapper(null)))
           .isInstanceOf(NullPointerException.class);
     }
@@ -253,7 +249,11 @@ class VoyageEmbedderTest {
       answer = body -> reply(new float[] {1, 0});
       try (VoyageEmbeddingProvider connection = provider(c -> {})) {
         DefaultEmbedderFactory factory =
-            new DefaultEmbedderFactory(connection, VoyageEmbedderConfig.DEFAULT_MODEL);
+            DefaultEmbedderFactory.of(
+                f ->
+                    f.provider(VOYAGE, connection)
+                        .embedding(
+                            VOYAGE, EmbeddingOptions.of(VoyageEmbedderConfig.DEFAULT_MODEL)));
         var embedder = new Embedder[1];
 
         List<ILoggingEvent> atBuild =

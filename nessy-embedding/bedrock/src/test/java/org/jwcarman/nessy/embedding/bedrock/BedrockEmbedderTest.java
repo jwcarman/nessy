@@ -225,9 +225,7 @@ class BedrockEmbedderTest {
                           c ->
                               c.region(Region.US_EAST_1)
                                   .credentialsProvider(credentials)
-                                  .model("cohere.embed-english-v3")
                                   .cohereInputType("search_query")
-                                  .dimension(512)
                                   .mapper(MAPPER))
                       .close())
           .doesNotThrowAnyException();
@@ -252,10 +250,6 @@ class BedrockEmbedderTest {
 
     @Test
     void what_is_refused_at_configuration() {
-      assertThatThrownBy(() -> BedrockEmbeddingProvider.of(c -> c.model(" ")))
-          .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> BedrockEmbeddingProvider.of(c -> c.dimension(0)))
-          .isInstanceOf(IllegalArgumentException.class);
       assertThatThrownBy(() -> BedrockEmbeddingProvider.of(c -> c.mapper(null)))
           .isInstanceOf(NullPointerException.class);
       assertThatThrownBy(() -> BedrockEmbeddingProvider.of(c -> {}))
@@ -280,9 +274,11 @@ class BedrockEmbedderTest {
     void is_warned_once_when_the_embedder_is_built_and_is_not_in_any_request() {
       Scripted client = new Scripted(body -> "{\"embedding\":[1]}");
       DefaultEmbedderFactory factory =
-          new DefaultEmbedderFactory(
-              new BedrockEmbeddingProvider(client, "search_document", MAPPER),
-              "amazon.titan-embed-text-v2:0");
+          DefaultEmbedderFactory.of(
+              f ->
+                  f.provider(
+                          BEDROCK, new BedrockEmbeddingProvider(client, "search_document", MAPPER))
+                      .embedding(BEDROCK, EmbeddingOptions.of("amazon.titan-embed-text-v2:0")));
       var embedder = new Embedder[1];
 
       List<ILoggingEvent> atBuild =

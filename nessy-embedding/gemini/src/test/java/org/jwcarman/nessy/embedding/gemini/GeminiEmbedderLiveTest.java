@@ -57,7 +57,7 @@ class GeminiEmbedderLiveTest {
         System.getenv("GEMINI_API_KEY") != null || System.getenv("GOOGLE_API_KEY") != null,
         "GEMINI_API_KEY is not set");
     try (GeminiEmbeddingProvider provider =
-        GeminiEmbeddingProvider.of(c -> c.fromEnv().dimension(768))) {
+        GeminiEmbeddingProvider.of(GeminiEmbedderConfig::fromEnv)) {
       Embedder embedder = embedderOver(provider, MODEL, 768);
       List<Embedding> embeddings =
           embedder.embedDocuments(

@@ -23,7 +23,6 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
-import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
@@ -37,7 +36,8 @@ import tools.jackson.databind.node.ObjectNode;
  * Voyage AI's embeddings, over plain HTTP: the embedding partner Anthropic points to, since
  * Anthropic has no embeddings of its own. No SDK, so the client is the JDK's.
  *
- * <p>One embedder is one model at one dimension, decided where it is built.
+ * <p>Holds a connection and nothing about a model: which model, and how wide, arrive per call in
+ * {@link EmbeddingOptions}, so one provider serves every store that names it.
  */
 public final class VoyageEmbeddingProvider implements EmbeddingProvider, AutoCloseable {
 
@@ -49,8 +49,6 @@ public final class VoyageEmbeddingProvider implements EmbeddingProvider, AutoClo
   private final String inputType;
   private final Duration timeout;
   private final JsonMapper mapper;
-  private final String defaultModel;
-  private final OptionalInt defaultDimension;
 
   /** The client, endpoint and key are what the config resolved; the rest is read as configured. */
   VoyageEmbeddingProvider(
@@ -62,18 +60,6 @@ public final class VoyageEmbeddingProvider implements EmbeddingProvider, AutoClo
     this.inputType = config.inputType();
     this.timeout = Objects.requireNonNull(config.timeout(), "timeout must not be null");
     this.mapper = Objects.requireNonNull(config.mapper(), "mapper must not be null");
-    this.defaultModel = config.model();
-    this.defaultDimension = config.dimension();
-  }
-
-  /** The model this connection hands an embedder that names none. */
-  public String defaultModel() {
-    return defaultModel;
-  }
-
-  /** How wide this connection's vectors are unless an embedder asks otherwise. */
-  public OptionalInt defaultDimension() {
-    return defaultDimension;
   }
 
   public static VoyageEmbeddingProvider of(List<Customizer<VoyageEmbedderConfig>> customizers) {
@@ -88,7 +74,7 @@ public final class VoyageEmbeddingProvider implements EmbeddingProvider, AutoClo
     return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
-  /** {@code VOYAGE_API_KEY} and the default model. */
+  /** {@code VOYAGE_API_KEY}. */
   public static VoyageEmbeddingProvider fromEnv() {
     return of(VoyageEmbedderConfig::fromEnv);
   }

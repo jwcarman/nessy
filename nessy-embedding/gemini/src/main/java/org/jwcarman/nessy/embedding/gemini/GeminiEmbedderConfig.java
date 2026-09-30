@@ -21,7 +21,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.VendorProperties;
 import org.jwcarman.nessy.api.VendorProperty;
@@ -34,7 +33,10 @@ import org.slf4j.LoggerFactory;
  */
 public final class GeminiEmbedderConfig {
 
-  /** Google's current embedding model: 3072 dimensions unless asked for fewer. */
+  /**
+   * Google's current embedding model, 3072 dimensions unless asked for fewer: a name to cite, as in
+   * {@code EmbeddingOptions.of(GeminiEmbedderConfig.DEFAULT_MODEL)}.
+   */
   public static final String DEFAULT_MODEL = "gemini-embedding-001";
 
   private static final String GEMINI_API_KEY_ENV_VAR = "GEMINI_API_KEY";
@@ -47,8 +49,6 @@ public final class GeminiEmbedderConfig {
 
   private String apiKey;
   private String baseUrl;
-  private String model = DEFAULT_MODEL;
-  private OptionalInt dimension = OptionalInt.empty();
   private String taskType;
   private Client client;
   private boolean useEnv;
@@ -72,25 +72,6 @@ public final class GeminiEmbedderConfig {
 
   public GeminiEmbedderConfig baseUrl(String baseUrl) {
     this.baseUrl = baseUrl;
-    return this;
-  }
-
-  /** The embedding model; {@value #DEFAULT_MODEL} unless said otherwise. */
-  public GeminiEmbedderConfig model(String model) {
-    Objects.requireNonNull(model, "model must not be null");
-    if (model.isBlank()) {
-      throw new IllegalArgumentException("model must not be blank");
-    }
-    this.model = model;
-    return this;
-  }
-
-  /** Ask for this many coordinates rather than the model's full width; decide it once per store. */
-  public GeminiEmbedderConfig dimension(int dimension) {
-    if (dimension <= 0) {
-      throw new IllegalArgumentException("dimension must be positive: " + dimension);
-    }
-    this.dimension = OptionalInt.of(dimension);
     return this;
   }
 
@@ -174,15 +155,10 @@ public final class GeminiEmbedderConfig {
     }
   }
 
-  /** The model a factory over this connection hands out when an embedder names none. */
-  String model() {
-    return model;
-  }
-
   GeminiEmbeddingProvider build() {
     requireOwnProperties();
     warnUnsupported(properties);
-    return new GeminiEmbeddingProvider(resolveClient(), taskType, model, dimension);
+    return new GeminiEmbeddingProvider(resolveClient(), taskType);
   }
 
   private GeminiEmbeddingClient resolveClient() {

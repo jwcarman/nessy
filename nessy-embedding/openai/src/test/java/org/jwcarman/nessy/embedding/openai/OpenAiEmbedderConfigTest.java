@@ -140,4 +140,30 @@ class OpenAiEmbedderConfigTest {
         .containsExactly(
             "NESSY EMBEDDING: property 'openai.thing' is not supported by openai and is ignored; supported: []");
   }
+
+  @Test
+  void the_vendor_is_openai_unless_said_otherwise() {
+    try (OpenAiEmbeddingProvider provider = OpenAiEmbeddingProvider.of(c -> c.apiKey("test-key"))) {
+      assertThat(provider.vendor()).isEqualTo("openai");
+    }
+  }
+
+  /** A custom openai-wire embedder -- a local server, a gateway -- says who it really is. */
+  @Test
+  void a_vendor_given_is_the_vendor_reported() {
+    try (OpenAiEmbeddingProvider provider =
+        OpenAiEmbeddingProvider.of(
+            c -> c.apiKey("lm-studio").baseUrl("http://localhost:1234/v1").vendor("lmstudio"))) {
+      assertThat(provider.vendor()).isEqualTo("lmstudio");
+    }
+  }
+
+  @Test
+  void a_null_vendor_is_refused() {
+    Customizer<OpenAiEmbedderConfig> customizer = c -> c.apiKey("test-key").vendor(null);
+
+    assertThatThrownBy(() -> OpenAiEmbeddingProvider.of(customizer))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("vendor");
+  }
 }

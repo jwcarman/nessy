@@ -158,15 +158,13 @@ class GeminiEmbedderTest {
     }
 
     @Test
-    void a_key_a_base_url_a_model_and_a_dimension_build_an_embedder() {
+    void a_key_a_base_url_and_a_task_type_build_a_provider() {
       assertThatCode(
               () ->
                   GeminiEmbeddingProvider.of(
                           c ->
                               c.apiKey("k")
                                   .baseUrl("http://127.0.0.1:1")
-                                  .model("gemini-embedding-001")
-                                  .dimension(768)
                                   .taskType("RETRIEVAL_DOCUMENT"))
                       .close())
           .doesNotThrowAnyException();
@@ -176,10 +174,6 @@ class GeminiEmbedderTest {
     void what_is_refused_at_configuration() {
       assertThatThrownBy(() -> GeminiEmbeddingProvider.of(c -> {}))
           .isInstanceOf(IllegalStateException.class);
-      assertThatThrownBy(() -> GeminiEmbeddingProvider.of(c -> c.model(" ")))
-          .isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> GeminiEmbeddingProvider.of(c -> c.dimension(0)))
-          .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -217,7 +211,9 @@ class GeminiEmbedderTest {
                 }
               },
               null);
-      DefaultEmbedderFactory factory = new DefaultEmbedderFactory(provider, "m");
+      DefaultEmbedderFactory factory =
+          DefaultEmbedderFactory.of(
+              f -> f.provider(GEMINI, provider).embedding(GEMINI, EmbeddingOptions.of("m")));
       var embedder = new Embedder[1];
 
       List<ILoggingEvent> atBuild =

@@ -78,6 +78,20 @@ class EmbeddingAutoConfigurationTest {
               });
     }
 
+    /** The factory registers its provider under the vendor's id, so a store can name it. */
+    @Test
+    @DisplayName("a store that names the openai provider resolves it")
+    void a_store_that_names_the_openai_provider_resolves_it() {
+      runner
+          .withPropertyValues("openai.api-key=sk-test")
+          .run(
+              context -> {
+                Embedder mine =
+                    context.getBean(EmbedderFactory.class).create(c -> c.provider("openai"));
+                assertThat(mine.model()).isEqualTo("text-embedding-3-small");
+              });
+    }
+
     @Test
     @DisplayName("a named model is the default the factory mints with")
     void a_named_model_is_used_instead() {

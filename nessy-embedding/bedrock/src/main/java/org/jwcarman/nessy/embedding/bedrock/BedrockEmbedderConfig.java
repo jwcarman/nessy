@@ -19,7 +19,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.VendorProperties;
 import org.jwcarman.nessy.api.VendorProperty;
@@ -38,7 +37,12 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class BedrockEmbedderConfig {
 
-  /** Amazon's current embedding model: 1024 dimensions unless asked for 512 or 256. */
+  /**
+   * Amazon's current embedding model, 1024 dimensions unless asked for 512 or 256: a name to cite,
+   * as in {@code EmbeddingOptions.of(BedrockEmbedderConfig.DEFAULT_MODEL)}. Titan ({@code
+   * amazon.titan-embed-…}) and Cohere ({@code cohere.embed-…}) are the two families this adapter
+   * speaks.
+   */
   public static final String DEFAULT_MODEL = "amazon.titan-embed-text-v2:0";
 
   /** What Cohere is told the texts are for; {@code search_query} is the other common value. */
@@ -56,8 +60,6 @@ public final class BedrockEmbedderConfig {
   private AwsCredentialsProvider credentialsProvider;
   private BedrockRuntimeClient client;
   private boolean useEnv;
-  private String model = DEFAULT_MODEL;
-  private OptionalInt dimension = OptionalInt.empty();
   private String cohereInputType = DEFAULT_COHERE_INPUT_TYPE;
   private JsonMapper mapper = JsonMapper.builder().build();
 
@@ -78,25 +80,6 @@ public final class BedrockEmbedderConfig {
   /** The default credentials chain, and the region from {@value #AWS_REGION_ENV_VAR}. */
   public BedrockEmbedderConfig fromEnv() {
     this.useEnv = true;
-    return this;
-  }
-
-  /** A Titan ({@code amazon.titan-embed-…}) or Cohere ({@code cohere.embed-…}) model id. */
-  public BedrockEmbedderConfig model(String model) {
-    Objects.requireNonNull(model, "model must not be null");
-    if (model.isBlank()) {
-      throw new IllegalArgumentException("model must not be blank");
-    }
-    this.model = model;
-    return this;
-  }
-
-  /** Titan v2 honours 256, 512 or 1024; Cohere's width is fixed and this is ignored. */
-  public BedrockEmbedderConfig dimension(int dimension) {
-    if (dimension <= 0) {
-      throw new IllegalArgumentException("dimension must be positive: " + dimension);
-    }
-    this.dimension = OptionalInt.of(dimension);
     return this;
   }
 
@@ -181,15 +164,10 @@ public final class BedrockEmbedderConfig {
     }
   }
 
-  /** The model a factory over this connection hands out when an embedder names none. */
-  String model() {
-    return model;
-  }
-
   BedrockEmbeddingProvider build() {
     requireOwnProperties();
     warnUnsupported(properties);
-    return new BedrockEmbeddingProvider(resolveClient(), cohereInputType, mapper, model, dimension);
+    return new BedrockEmbeddingProvider(resolveClient(), cohereInputType, mapper);
   }
 
   private BedrockEmbeddingClient resolveClient() {
