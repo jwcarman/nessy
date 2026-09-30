@@ -1,6 +1,6 @@
 # Vendor properties: the escape hatch every adapter owns
 
-**Status: DESIGN, NOTHING BUILT. The rulings were made in conversation with James on 2026-09-29
+**Status: BUILT, then AMENDED 2026-09-30 to named properties only (see the Amendment below, which overrides §2, §3, §7b, §8, §9 and §12 where they disagree). The rulings were made in conversation with James on 2026-09-29
 and this record writes them down. The proposals this record had to make to honour them were
 ruled on overnight on 2026-09-30 by the controller James authorised for the run; those rulings
 are folded in below and marked "accepted overnight" or "changed overnight" in §15, pending his
@@ -19,6 +19,44 @@ what the code on this branch still calls them. Every other path, name, signature
 below was checked against `src/main/java`, `src/test/java` and the SDK jars in `~/.m2`
 (`openai-java-core-4.69.2`, `anthropic-java-core-2.65.0`, `google-genai-1.73.0`,
 `bedrockruntime-2.55.5`) on branch `vendor-properties` at the time of writing.
+
+---
+
+## Amendment, 2026-09-30: named properties only
+
+**Ruled by James after this record was built and merged.** An adapter enumerates the properties
+it supports and handles only those. A property it does not support is ignored: it is not sent to
+the vendor, it fails nothing, and the request goes out without it, with a warning logged. This
+replaces "unknown names pass through" (§8c) and everything that existed only to make pass-through
+safe. What changes, section by section:
+
+- **§2, §3, §8c, §8d -- pass-through is gone.** No name is sent raw. The words *pass-through* and
+  *clash* leave the vocabulary; *known name* is now simply *supported property*.
+- **§7b and the clash tables of §9 -- gone.** They existed to stop a raw name from overriding a
+  field Nessy writes; with nothing sent raw there is nothing to override. The final review's
+  under-and-above rule goes with them. A name such as `openai.max_completion_tokens` or
+  `openai.store` is now an unsupported name: ignored, with a warning.
+- **§8a -- an unsupported name under the adapter's own prefix is logged at `WARN`**, naming the
+  property and the adapter's supported names, **once per name, when it is checked** -- at the
+  provider config's `build()` for a provider-level property, and at `validate` (harness or
+  embedder build) for an agent type's -- never per request. A name under **another** adapter's
+  prefix stays at `DEBUG`: an agent type may carry settings for several vendors, and that is not a
+  mistake. A name with **no** prefix is still refused at build, since it can belong to nobody.
+- **§8b stands.** A supported name is parsed into its type, and a bad value fails at build naming
+  the property and the value. A supported name a wire cannot carry (`openai.reasoning.summary` on
+  the chat wire, `openai.tools.strict=false` on the Responses wire) is still refused at build: it
+  is a supported name used wrongly, not an unsupported one.
+- **§8e -- `VendorProperties` loses `nest` and `refuseClashes`.** `under`, `merge`, `literal`
+  (Bedrock's typed names read floats and a JSON array through it) and the `require*` reads stay.
+- **§9 -- each adapter's supported properties are its known-name table, unchanged.** What was
+  reachable only as pass-through is unreachable until it is named: `openai.temperature`,
+  `openai.seed`, `anthropic.top_k`, `gemini.generationConfig.temperature`, and Claude's extended
+  thinking on Bedrock (`bedrock.thinking.*`). Each becomes reachable the day an adapter lists it.
+- **§9f -- embedders support no properties yet.** Every property set on an embedder is unsupported:
+  ignored, with a warning, until an adapter names one.
+- **§12 -- "unknown names pass through" joins the list of things not being done**, with this
+  reason: a property Nessy does not understand should not reach the vendor, and a typo should say
+  so in the log rather than surface as the vendor's 400 or, worse, silently override a setting.
 
 ---
 
