@@ -1,7 +1,9 @@
 # Nessy Example: Chat CLI
 
-An ordinary Spring Boot application that happens to be a terminal: a
-conversation, a notebook, a plan, and one tool a person has to approve.
+An ordinary Spring Boot application that happens to be a terminal, standing on
+the Nessy starter: a conversation, a notebook, a plan, and one tool a person has
+to approve. The starter supplies the direct-door factory and registers the
+providers; `NESSY_PROVIDER` and `NESSY_MODEL` choose which one answers.
 
 Nothing to start first. `compose.yaml` beside this file is brought up when the
 example runs and stopped when it exits, so the database the notebook and the
@@ -37,7 +39,8 @@ that is about THIS program: what it is for, and what it can do.
   `y`/`yes` is a no, and end of input is a no — silence is not consent.
 - **Streaming.** The answer is typed out as the model writes it.
 
-**The conversation does not survive the process** — a terminal's chat lives as
+**The conversation does not survive the process** — the application excludes the
+starter's JDBC backend, so the direct door keeps the conversation in memory. A terminal's chat lives as
 long as the terminal does, and a CLI that silently resumed yesterday's would
 surprise the person typing into it. What the notebook and the plan keep is the
 part worth outliving it. Point `chat-web` at a database to see the other half.
@@ -78,5 +81,10 @@ instead of a stack trace out of `main`.
 Bedrock ships no preset: ambient AWS credentials mean someone once deployed
 something to AWS, not that they chose Bedrock for this. An application that
 wants it constructs it explicitly.
+
+The commands work from the repository root or from this directory: the
+`exec-maven-plugin` configuration names `compose.yaml` by absolute path, because
+`exec:java` runs inside Maven's own JVM and Boot would otherwise look for it in
+whatever directory Maven was started from.
 
 `/quit` or Ctrl-D leaves.

@@ -18,20 +18,12 @@ package org.jwcarman.nessy.examples.chatcli;
 
 import java.time.Clock;
 import java.time.LocalDate;
-import java.util.Map;
 import javax.sql.DataSource;
-import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
-import org.jwcarman.nessy.api.ProviderId;
-import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.Repl;
-import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
-import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
-import org.jwcarman.nessy.inference.InferenceOptions;
-import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
@@ -41,30 +33,33 @@ import org.jwcarman.nessy.planning.Plans;
 import org.jwcarman.nessy.prompt.PromptVariableSource;
 import org.jwcarman.nessy.prompt.TemplatedSystemPrompt;
 import org.jwcarman.nessy.prompt.spring.SpringPromptTemplateFactory;
-import org.jwcarman.nessy.spring.boot.NessyAutoConfiguration;
+import org.jwcarman.nessy.spring.boot.JdbcBackendAutoConfiguration;
 import org.jwcarman.nessy.spring.boot.prompt.PromptAutoConfiguration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
-import org.springframework.core.env.Environment;
-import tools.jackson.databind.ObjectMapper;
 
 /**
  * A terminal chat with a notebook, a plan, and one tool a person has to approve.
  *
- * <p>An ordinary Spring Boot application, which is what it always was underneath: the provider is a
- * bean its own module contributes, and the database comes up from {@code compose.yaml} when this
- * runs and goes away after. There is nothing to start first and no connection details to export.
+ * <p>An ordinary Spring Boot application on the Nessy starter: the provider is a bean the starter
+ * registers from a preset, and the database comes up from {@code compose.yaml} when this runs and
+ * goes away after. There is nothing to start first and no connection details to export.
  *
  * <p><b>The conversation is not in that database.</b> A terminal's chat lives as long as the
  * terminal does. What the notebook and the plan keep is the part worth outliving it.
  */
-// Nessy's own auto-configuration builds the QUEUED world -- a harness factory over a database,
-// with a model and a system prompt read from properties. This application builds a direct harness
-// itself and says what it is for in code, so that configuration has nothing to do here.
-@SpringBootApplication(exclude = {NessyAutoConfiguration.class, PromptAutoConfiguration.class})
+// The starter builds the direct-door factory and registers every InferenceProvider bean by name;
+// nessy.provider and nessy.model say which one answers. Its JDBC backend is excluded because the
+// conversation is the process: the direct door falls back to the in-memory backend, and the
+// database below holds only what the notebook and the plan keep. The prompt auto-configuration is
+// excluded because it insists on nessy.system-prompt, and this application states its prompt in
+// code, as a template filled in per call.
+@SpringBootApplication(
+    exclude = {JdbcBackendAutoConfiguration.class, PromptAutoConfiguration.class})
 public class Chat {
 
   private static final AgentType TYPE = new AgentType("chat");
@@ -113,34 +108,11 @@ public class Chat {
   }
 
   /**
-   * Everything an application owns once. In memory, because the conversation is the process.
-   *
-   * <p>The mapper and the codec factory are both asked for rather than built: Boot configures the
-   * one, the starter configures the other, and an application that made its own would be storing
-   * bytes by different rules than everything else in the same process.
+   * The terminal itself. {@code chat.terminal=false} leaves it out, which is how a test starts the
+   * whole application without reading a console.
    */
   @Bean
-  public DirectHarnessFactory harnesses(
-      Map<String, InferenceProvider> providers,
-      Environment environment,
-      @Value("${nessy.model}") String model,
-      ObjectMapper mapper,
-      CodecFactory codecs) {
-    return DefaultDirectHarnessFactory.of(
-        config -> {
-          config
-              .backend(new InMemoryDirectBackend(codecs))
-              .schemas(new VictoolsJsonSchemaGenerator())
-              .mapper(mapper);
-          providers.forEach((name, provider) -> config.provider(ProviderId.of(name), provider));
-          String provider = environment.getProperty("nessy.provider");
-          if (provider != null && !provider.isBlank()) {
-            config.inference(ProviderId.of(provider), InferenceOptions.of(model));
-          }
-        });
-  }
-
-  @Bean
+  @ConditionalOnProperty(name = "chat.terminal", havingValue = "true", matchIfMissing = true)
   public CommandLineRunner terminal(
       DirectHarnessFactory harnesses,
       @Value("${nessy.model}") String model,

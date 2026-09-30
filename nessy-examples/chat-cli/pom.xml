@@ -40,6 +40,13 @@
 
 
   <dependencies>
+    <!-- The starter: the direct-door factory, the provider registry (nessy.provider and
+         nessy.model choose which registered provider answers) and the codec factory. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-spring-boot-starter</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <!-- The backend this application chooses: in memory, because the conversation is the
          process. The engine names no backend, so this is the application's to bring. -->
     <dependency>
@@ -96,13 +103,6 @@
       <artifactId>nessy-inference-anthropic</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter</artifactId>
-      <!-- Already here transitively through nessy-console; declared anyway, because it is what
-           Repl.run() needs underneath it, the same way the provider adapters above are declared
-           rather than left to a transitive accident. Version from the parent's Boot BOM. -->
-    </dependency>
     <!-- The engine's schema is PostgreSQL's; the driver rides along at runtime. -->
     <!-- A pooled DataSource for Boot to hand the compose-started database over as. -->
     <dependency>
@@ -119,6 +119,22 @@
       <artifactId>postgresql</artifactId>
       <scope>runtime</scope>
     </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- The engine's schema is PostgreSQL's, so the startup test runs against one in a container. -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-testcontainers</artifactId>
+      <scope>test</scope>
+    </dependency>
 
   </dependencies>
 
@@ -129,6 +145,15 @@
         <artifactId>exec-maven-plugin</artifactId>
         <configuration>
           <mainClass>org.jwcarman.nessy.examples.chatcli.Chat</mainClass>
+          <!-- exec:java runs inside Maven's own JVM, whose working directory is wherever Maven
+               was started, so Boot would look for compose.yaml there. Named absolutely, the
+               command works from the repo root as well as from this directory. -->
+          <systemProperties>
+            <systemProperty>
+              <key>spring.docker.compose.file</key>
+              <value>${project.basedir}/compose.yaml</value>
+            </systemProperty>
+          </systemProperties>
         </configuration>
       </plugin>
     </plugins>
