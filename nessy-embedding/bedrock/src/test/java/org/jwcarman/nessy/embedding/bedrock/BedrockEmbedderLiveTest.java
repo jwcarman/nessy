@@ -30,8 +30,8 @@ import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 
 /**
  * Against Amazon Bedrock. Tagged {@code live}; {@code AWS_ACCESS_KEY_ID} opts it in, as the
- * inference live test's gate does, and {@code NESSY_LIVE_EMBEDDING_MODEL} may name another model. The
- * query-versus-document case needs a model with an input type, so it runs only when {@code
+ * inference live test's gate does, and {@code NESSY_LIVE_EMBEDDING_MODEL} may name another model.
+ * The query-versus-document case needs a model with an input type, so it runs only when {@code
  * NESSY_LIVE_BEDROCK_COHERE_MODEL} names a Cohere embed model (Titan, the default, has none).
  */
 @Tag("live")
@@ -54,7 +54,8 @@ class BedrockEmbedderLiveTest {
             || System.getenv("AWS_ACCESS_KEY_ID") != null,
         "neither AWS_BEARER_TOKEN_BEDROCK nor AWS_ACCESS_KEY_ID is set");
     String model =
-        System.getenv().getOrDefault("NESSY_LIVE_EMBEDDING_MODEL", BedrockEmbedderConfig.DEFAULT_MODEL);
+        System.getenv()
+            .getOrDefault("NESSY_LIVE_EMBEDDING_MODEL", BedrockEmbedderConfig.DEFAULT_MODEL);
     try (BedrockEmbeddingProvider provider =
         BedrockEmbeddingProvider.of(BedrockEmbedderConfig::fromEnv)) {
       Embedder embedder = embedderOver(provider, model);
@@ -81,7 +82,8 @@ class BedrockEmbedderLiveTest {
             || System.getenv("AWS_ACCESS_KEY_ID") != null,
         "neither AWS_BEARER_TOKEN_BEDROCK nor AWS_ACCESS_KEY_ID is set");
     String model =
-        System.getenv().getOrDefault("NESSY_LIVE_EMBEDDING_MODEL", BedrockEmbedderConfig.DEFAULT_MODEL);
+        System.getenv()
+            .getOrDefault("NESSY_LIVE_EMBEDDING_MODEL", BedrockEmbedderConfig.DEFAULT_MODEL);
     try (BedrockEmbeddingProvider provider =
         BedrockEmbeddingProvider.of(BedrockEmbedderConfig::fromEnv)) {
       Embedder embedder = embedderOver(provider, model);

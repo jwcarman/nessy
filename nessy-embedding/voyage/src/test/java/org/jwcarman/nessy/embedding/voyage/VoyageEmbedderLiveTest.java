@@ -46,7 +46,8 @@ class VoyageEmbedderLiveTest {
   void near_texts_are_nearer_than_far_ones() {
     assumeTrue(System.getenv("VOYAGE_API_KEY") != null, "VOYAGE_API_KEY is not set");
     String model =
-        System.getenv().getOrDefault("NESSY_LIVE_EMBEDDING_MODEL", VoyageEmbedderConfig.DEFAULT_MODEL);
+        System.getenv()
+            .getOrDefault("NESSY_LIVE_EMBEDDING_MODEL", VoyageEmbedderConfig.DEFAULT_MODEL);
     try (VoyageEmbeddingProvider provider =
         VoyageEmbeddingProvider.of(VoyageEmbedderConfig::fromEnv)) {
       Embedder embedder = embedderOver(provider, model);
@@ -70,7 +71,8 @@ class VoyageEmbedderLiveTest {
   void a_query_and_a_document_are_the_model_s_width_and_carry_the_model_asked_for() {
     assumeTrue(System.getenv("VOYAGE_API_KEY") != null, "VOYAGE_API_KEY is not set");
     String model =
-        System.getenv().getOrDefault("NESSY_LIVE_EMBEDDING_MODEL", VoyageEmbedderConfig.DEFAULT_MODEL);
+        System.getenv()
+            .getOrDefault("NESSY_LIVE_EMBEDDING_MODEL", VoyageEmbedderConfig.DEFAULT_MODEL);
     try (VoyageEmbeddingProvider provider =
         VoyageEmbeddingProvider.of(VoyageEmbedderConfig::fromEnv)) {
       Embedder embedder = embedderOver(provider, model);
@@ -90,7 +92,8 @@ class VoyageEmbedderLiveTest {
   void a_query_is_not_the_document_s_vector_and_lands_nearer_its_answer() {
     assumeTrue(System.getenv("VOYAGE_API_KEY") != null, "VOYAGE_API_KEY is not set");
     String model =
-        System.getenv().getOrDefault("NESSY_LIVE_EMBEDDING_MODEL", VoyageEmbedderConfig.DEFAULT_MODEL);
+        System.getenv()
+            .getOrDefault("NESSY_LIVE_EMBEDDING_MODEL", VoyageEmbedderConfig.DEFAULT_MODEL);
     try (VoyageEmbeddingProvider provider =
         VoyageEmbeddingProvider.of(VoyageEmbedderConfig::fromEnv)) {
       Embedder embedder = embedderOver(provider, model);

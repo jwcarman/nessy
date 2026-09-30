@@ -39,7 +39,8 @@ import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 class OpenAiEmbedderLiveTest {
 
   private static final String MODEL =
-      System.getenv().getOrDefault("NESSY_LIVE_EMBEDDING_MODEL", OpenAiEmbedderConfig.DEFAULT_MODEL);
+      System.getenv()
+          .getOrDefault("NESSY_LIVE_EMBEDDING_MODEL", OpenAiEmbedderConfig.DEFAULT_MODEL);
 
   private static final ProviderId OPENAI = ProviderId.of("openai");
 
