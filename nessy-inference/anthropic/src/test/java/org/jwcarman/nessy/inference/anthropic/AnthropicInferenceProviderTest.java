@@ -35,6 +35,7 @@ import com.anthropic.errors.RateLimitException;
 import com.anthropic.errors.UnauthorizedException;
 import com.anthropic.errors.UnexpectedStatusCodeException;
 import com.anthropic.errors.UnprocessableEntityException;
+import com.anthropic.models.messages.CacheControlEphemeral;
 import com.anthropic.models.messages.ContentBlock;
 import com.anthropic.models.messages.DirectCaller;
 import com.anthropic.models.messages.InputJsonDelta;
@@ -1028,6 +1029,16 @@ class AnthropicInferenceProviderTest {
               carrying(Map.of()));
 
       assertThat(bySetter.system()).isEqualTo(byProperty.system());
+      assertThat(
+              bySetter
+                  .system()
+                  .orElseThrow()
+                  .asTextBlockParams()
+                  .getFirst()
+                  .cacheControl()
+                  .orElseThrow()
+                  .ttl())
+          .contains(CacheControlEphemeral.Ttl.TTL_1H);
     }
 
     @Test

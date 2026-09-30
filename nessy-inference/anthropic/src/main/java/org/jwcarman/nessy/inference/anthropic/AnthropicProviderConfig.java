@@ -232,6 +232,14 @@ public final class AnthropicProviderConfig {
     AnthropicProperties.requireOwn(properties);
     refuseBoth(thinking != null, "thinking(boolean)", AnthropicProperties.THINKING_TYPE);
     refuseBoth(thinkingBudget != null, "thinkingBudget(int)", AnthropicProperties.THINKING_BUDGET);
+    // thinking(false) speaks for both thinking names: a lone budget property would turn it on.
+    refuseBoth(
+        Boolean.FALSE.equals(thinking), "thinking(boolean)", AnthropicProperties.THINKING_BUDGET);
+    // A budget with thinking not on is inert, but a type property beside it is a second statement.
+    refuseBoth(
+        thinkingBudget != null && !Boolean.TRUE.equals(thinking),
+        "thinkingBudget(int)",
+        AnthropicProperties.THINKING_TYPE);
     refuseBoth(
         promptCaching != null, "promptCaching(PromptCaching)", AnthropicProperties.CACHE_TTL);
     Map<String, String> merged = new LinkedHashMap<>(properties);

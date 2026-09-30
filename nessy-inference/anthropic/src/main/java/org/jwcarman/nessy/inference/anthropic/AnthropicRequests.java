@@ -97,6 +97,13 @@ public final class AnthropicRequests {
     }
   }
 
+  /**
+   * The provider's features, read as the properties they mean.
+   *
+   * @param request what to send
+   * @param features the provider's thinking and caching settings
+   * @param mapper reads and writes the JSON text that schemas and arguments travel as
+   */
   public static MessageCreateParams toParams(
       InferenceRequest request, Features features, JsonMapper mapper) {
     return toParams(request, AnthropicProperties.of(features), mapper);

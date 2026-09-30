@@ -967,6 +967,20 @@ class AnthropicRequestsTest {
     }
 
     @Test
+    void a_pass_through_under_the_cache_control_object_is_refused_beside_the_ttl() {
+      InferenceRequest request =
+          carrying(
+              Map.of(
+                  "anthropic.cache_control.ttl", "1h",
+                  "anthropic.cache_control.type", "ephemeral"));
+
+      assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'anthropic.cache_control.type'")
+          .hasMessageContaining("'anthropic.cache_control.ttl'");
+    }
+
+    @Test
     void the_raw_thinking_object_beside_a_known_thinking_name_is_refused() {
       InferenceRequest request =
           carrying(

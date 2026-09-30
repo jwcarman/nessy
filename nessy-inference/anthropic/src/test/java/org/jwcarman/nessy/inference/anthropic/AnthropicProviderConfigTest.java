@@ -138,6 +138,52 @@ class AnthropicProviderConfigTest {
   }
 
   @Test
+  void thinking_off_and_a_budget_property_fail_at_build_naming_both() {
+    Customizer<AnthropicProviderConfig> customizer =
+        c ->
+            c.apiKey("test-key")
+                .thinking(false)
+                .property("anthropic.thinking.budget_tokens", "2048");
+
+    assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("thinking(boolean)")
+        .hasMessageContaining("'anthropic.thinking.budget_tokens'");
+  }
+
+  @Test
+  void a_budget_setter_and_a_thinking_type_property_fail_at_build_naming_both() {
+    Customizer<AnthropicProviderConfig> customizer =
+        c ->
+            c.apiKey("test-key")
+                .thinkingBudget(4096)
+                .property("anthropic.thinking.type", "adaptive");
+
+    assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("thinkingBudget(int)")
+        .hasMessageContaining("'anthropic.thinking.type'");
+  }
+
+  @Test
+  void a_bare_budget_setter_alone_still_builds() {
+    Customizer<AnthropicProviderConfig> customizer = c -> c.apiKey("test-key").thinkingBudget(4096);
+
+    assertThatCode(() -> AnthropicInferenceProvider.of(customizer)).doesNotThrowAnyException();
+  }
+
+  @Test
+  void thinking_on_beside_a_budget_property_still_builds() {
+    Customizer<AnthropicProviderConfig> customizer =
+        c ->
+            c.apiKey("test-key")
+                .thinking(true)
+                .property("anthropic.thinking.budget_tokens", "2048");
+
+    assertThatCode(() -> AnthropicInferenceProvider.of(customizer)).doesNotThrowAnyException();
+  }
+
+  @Test
   void a_caching_setter_and_a_ttl_property_fail_at_build_naming_both() {
     Customizer<AnthropicProviderConfig> customizer =
         c ->
