@@ -25,6 +25,8 @@ import com.openai.models.chat.completions.ChatCompletionChunk;
 import com.openai.models.chat.completions.ChatCompletionMessage;
 import com.openai.models.chat.completions.ChatCompletionMessageToolCall;
 import com.openai.models.completions.CompletionUsage;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -119,7 +121,7 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
     this.vendor = Objects.requireNonNull(vendor, "vendor must not be null");
     this.ownsClient = ownsClient;
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
-    this.properties = Map.copyOf(properties);
+    this.properties = Collections.unmodifiableMap(new LinkedHashMap<>(properties));
   }
 
   /**

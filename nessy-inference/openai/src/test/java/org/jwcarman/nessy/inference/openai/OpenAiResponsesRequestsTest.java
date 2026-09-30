@@ -39,6 +39,8 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
@@ -466,8 +468,8 @@ class OpenAiResponsesRequestsTest {
     }
 
     /**
-     * Until vendor properties ask for one (§5g), a reasoning object is a 400 on a model that does
-     * not reason.
+     * No reasoning object goes out unless {@code openai.reasoning.effort} or {@code
+     * openai.reasoning.summary} is set: one is a 400 on a model that does not reason.
      */
     @Test
     void no_reasoning_object_is_sent() {
@@ -572,6 +574,31 @@ class OpenAiResponsesRequestsTest {
 
       assertThat(params.reasoning().orElseThrow().effort().map(ReasoningEffort::asString))
           .contains("high");
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = {
+          "model",
+          "input",
+          "instructions",
+          "max_output_tokens",
+          "tools",
+          "tool_choice",
+          "text",
+          "stream",
+          "store",
+          "include",
+          "previous_response_id",
+          "conversation",
+          "background"
+        })
+    void every_name_the_adapter_already_decides_is_refused(String name) {
+      InferenceRequest request = carrying(Map.of("openai." + name, "1"));
+
+      assertThatThrownBy(() -> OpenAiResponsesRequests.toParams(request, VENDOR, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'openai." + name + "'");
     }
 
     @Test

@@ -35,6 +35,8 @@ import java.util.Map;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
@@ -619,6 +621,76 @@ class OpenAiChatRequestsTest {
       assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("property 'openai.tools.strict' must be true or false, was 'yes'");
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = {
+          "model",
+          "messages",
+          "max_completion_tokens",
+          "max_tokens",
+          "tools",
+          "tool_choice",
+          "response_format",
+          "stream",
+          "stream_options"
+        })
+    void every_name_the_adapter_already_decides_is_refused(String name) {
+      InferenceRequest request = carrying(Map.of("openai." + name, "1"));
+
+      assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'openai." + name + "'");
+    }
+
+    @Test
+    void another_prefix_is_named_at_debug_and_no_louder() {
+      Logger logger = (Logger) LoggerFactory.getLogger(OpenAiProperties.class);
+      Level before = logger.getLevel();
+      ListAppender<ILoggingEvent> appender = new ListAppender<>();
+      appender.start();
+      logger.addAppender(appender);
+      logger.setLevel(Level.DEBUG);
+      try {
+        OpenAiProperties.logIgnored(Map.of("anthropic.top_k", "5", "openai.seed", "1"));
+      } finally {
+        logger.detachAppender(appender);
+        logger.setLevel(before);
+      }
+
+      assertThat(appender.list)
+          .singleElement()
+          .satisfies(
+              event -> {
+                assertThat(event.getLevel()).isEqualTo(Level.DEBUG);
+                assertThat(event.getFormattedMessage())
+                    .contains("anthropic.top_k")
+                    .doesNotContain("openai.seed");
+              });
+    }
+
+    @Test
+    void an_explicit_strict_false_sends_no_strict_field() {
+      InferenceRequest request =
+          new InferenceRequest(
+              SYSTEM,
+              InferenceContext.of(List.of(open(1, "hi"))),
+              Toolset.of(
+                  List.of(
+                      new ToolOffer(
+                          new ToolName("lookup"),
+                          "does lookup",
+                          new JsonSchema("{\"type\":\"object\",\"properties\":{}}")))),
+              new InferenceOptions("gpt-4o", 1024, Map.of("openai.tools.strict", "false")));
+
+      FunctionDefinition function =
+          OpenAiChatRequests.toParams(request, MAPPER).tools().orElseThrow().stream()
+              .map(tool -> tool.asFunction().function())
+              .findFirst()
+              .orElseThrow();
+
+      assertThat(function.strict()).isEmpty();
     }
 
     @Test

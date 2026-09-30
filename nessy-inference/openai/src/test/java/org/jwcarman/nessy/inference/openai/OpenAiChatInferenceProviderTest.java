@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.inference.openai;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -1275,9 +1276,7 @@ class OpenAiChatInferenceProviderTest {
       InferenceOptions options =
           new InferenceOptions("gpt-4o", 1024, Map.of("anthropic.thinking.budget_tokens", "9"));
 
-      provider.validate(options);
-
-      assertThat(options.properties()).hasSize(1);
+      assertThatCode(() -> provider.validate(options)).doesNotThrowAnyException();
     }
   }
 }
