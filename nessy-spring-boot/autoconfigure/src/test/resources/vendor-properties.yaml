@@ -1,0 +1,18 @@
+openai:
+  api-key: sk-test
+anthropic:
+  api-key: sk-test
+gemini:
+  api-key: sk-test
+nessy:
+  providers:
+    openai:
+      properties:
+        openai.tools.strict: "false"
+        openai.reasoning.effort: high
+    anthropic:
+      properties:
+        anthropic.thinking.budget_tokens: "2048"
+    gemini:
+      properties:
+        gemini.generationConfig.thinkingConfig.thinkingBudget: "1024"

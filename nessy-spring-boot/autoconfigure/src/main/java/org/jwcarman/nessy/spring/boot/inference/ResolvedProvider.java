@@ -15,6 +15,10 @@
  */
 package org.jwcarman.nessy.spring.boot.inference;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -23,9 +27,24 @@ import org.jspecify.annotations.Nullable;
  * registered.
  */
 record ResolvedProvider(
-    String id, Wire wire, @Nullable String baseUrl, String vendor, @Nullable String apiKey) {
+    String id,
+    Wire wire,
+    @Nullable String baseUrl,
+    String vendor,
+    @Nullable String apiKey,
+    Map<String, String> properties) {
 
-  /** Redacts the key: the generated form would otherwise print it in a log or a test failure. */
+  ResolvedProvider {
+    properties = Collections.unmodifiableMap(new LinkedHashMap<>(properties));
+  }
+
+  /** No properties. */
+  ResolvedProvider(
+      String id, Wire wire, @Nullable String baseUrl, String vendor, @Nullable String apiKey) {
+    this(id, wire, baseUrl, vendor, apiKey, Map.of());
+  }
+
+  /** Redacts the key; prints property names, never values (spec section 6c). */
   @Override
   public String toString() {
     return "ResolvedProvider[id="
@@ -38,6 +57,8 @@ record ResolvedProvider(
         + vendor
         + ", apiKey="
         + (apiKey != null ? "***" : "null")
+        + ", properties="
+        + new TreeSet<>(properties.keySet())
         + "]";
   }
 }

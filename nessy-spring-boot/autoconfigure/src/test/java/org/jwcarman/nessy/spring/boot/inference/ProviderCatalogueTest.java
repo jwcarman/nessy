@@ -43,7 +43,14 @@ class ProviderCatalogueTest {
         ProviderCatalogue.resolve(Map.of(), Map.of("openai.api-key", "k")::get);
 
     assertThat(resolved)
-        .containsExactly(new ResolvedProvider("openai", Wire.OPENAI_CHAT, null, "openai", "k"));
+        .containsExactly(
+            new ResolvedProvider(
+                "openai",
+                Wire.OPENAI_CHAT,
+                null,
+                "openai",
+                "k",
+                Map.of("openai.tools.strict", "true")));
   }
 
   @Test
@@ -112,7 +119,13 @@ class ProviderCatalogueTest {
 
     assertThat(resolved)
         .containsExactly(
-            new ResolvedProvider("openai", Wire.OPENAI_CHAT, null, "openai", "ok"),
+            new ResolvedProvider(
+                "openai",
+                Wire.OPENAI_CHAT,
+                null,
+                "openai",
+                "ok",
+                Map.of("openai.tools.strict", "true")),
             new ResolvedProvider("anthropic", Wire.ANTHROPIC, null, "anthropic", "ak"),
             new ResolvedProvider("gemini", Wire.GEMINI, null, "gcp.gemini", "gk"));
   }
@@ -137,7 +150,7 @@ class ProviderCatalogueTest {
 
   @Test
   void a_prefixed_key_lights_the_preset() {
-    ProviderSettings xai = new ProviderSettings(null, null, "k", null, null);
+    ProviderSettings xai = new ProviderSettings(null, null, "k", null, null, null);
 
     List<ResolvedProvider> resolved = ProviderCatalogue.resolve(Map.of("xai", xai), key -> null);
 
@@ -148,14 +161,21 @@ class ProviderCatalogueTest {
 
   @Test
   void the_openai_preset_told_the_responses_wire_resolves_to_it() {
-    ProviderSettings openai = new ProviderSettings(Wire.OPENAI_RESPONSES, null, null, null, null);
+    ProviderSettings openai =
+        new ProviderSettings(Wire.OPENAI_RESPONSES, null, null, null, null, null);
 
     List<ResolvedProvider> resolved =
         ProviderCatalogue.resolve(Map.of("openai", openai), Map.of("openai.api-key", "k")::get);
 
     assertThat(resolved)
         .containsExactly(
-            new ResolvedProvider("openai", Wire.OPENAI_RESPONSES, null, "openai", "k"));
+            new ResolvedProvider(
+                "openai",
+                Wire.OPENAI_RESPONSES,
+                null,
+                "openai",
+                "k",
+                Map.of("openai.tools.strict", "true")));
   }
 
   @Test
@@ -168,12 +188,18 @@ class ProviderCatalogueTest {
     assertThat(resolved)
         .containsExactly(
             new ResolvedProvider(
-                "openai", Wire.OPENAI_CHAT, "http://localhost:1234/v1", "openai", "k"));
+                "openai",
+                Wire.OPENAI_CHAT,
+                "http://localhost:1234/v1",
+                "openai",
+                "k",
+                Map.of("openai.tools.strict", "true")));
   }
 
   @Test
   void a_setting_overrides_a_preset_field() {
-    ProviderSettings anthropic = new ProviderSettings(null, "https://proxy/v1", null, null, null);
+    ProviderSettings anthropic =
+        new ProviderSettings(null, "https://proxy/v1", null, null, null, null);
 
     List<ResolvedProvider> resolved =
         ProviderCatalogue.resolve(
@@ -187,7 +213,8 @@ class ProviderCatalogueTest {
 
   @Test
   void a_custom_provider_needs_a_wire_and_a_url() {
-    ProviderSettings mine = new ProviderSettings(Wire.OPENAI_CHAT, "https://g/v1", "k", null, null);
+    ProviderSettings mine =
+        new ProviderSettings(Wire.OPENAI_CHAT, "https://g/v1", "k", null, null, null);
 
     List<ResolvedProvider> resolved = ProviderCatalogue.resolve(Map.of("mine", mine), key -> null);
 
@@ -198,7 +225,7 @@ class ProviderCatalogueTest {
 
   @Test
   void a_custom_provider_without_a_wire_fails_naming_it() {
-    ProviderSettings mine = new ProviderSettings(null, "https://g/v1", null, null, null);
+    ProviderSettings mine = new ProviderSettings(null, "https://g/v1", null, null, null, null);
     Map<String, ProviderSettings> settings = Map.of("mine", mine);
 
     assertThatThrownBy(() -> ProviderCatalogue.resolve(settings, key -> null))
@@ -208,7 +235,7 @@ class ProviderCatalogueTest {
 
   @Test
   void a_custom_provider_without_a_url_fails_naming_it() {
-    ProviderSettings mine = new ProviderSettings(Wire.OPENAI_CHAT, null, null, null, null);
+    ProviderSettings mine = new ProviderSettings(Wire.OPENAI_CHAT, null, null, null, null, null);
     Map<String, ProviderSettings> settings = Map.of("mine", mine);
 
     assertThatThrownBy(() -> ProviderCatalogue.resolve(settings, key -> null))
@@ -225,7 +252,7 @@ class ProviderCatalogueTest {
 
   @Test
   void lmstudio_lights_when_enabled() {
-    ProviderSettings lmstudio = new ProviderSettings(null, null, null, true, null);
+    ProviderSettings lmstudio = new ProviderSettings(null, null, null, true, null, null);
 
     List<ResolvedProvider> resolved =
         ProviderCatalogue.resolve(Map.of("lmstudio", lmstudio), key -> null);
@@ -238,7 +265,7 @@ class ProviderCatalogueTest {
 
   @Test
   void lmstudio_enabled_with_a_key_override_resolves_that_key() {
-    ProviderSettings lmstudio = new ProviderSettings(null, null, "custom-key", true, null);
+    ProviderSettings lmstudio = new ProviderSettings(null, null, "custom-key", true, null, null);
 
     List<ResolvedProvider> resolved =
         ProviderCatalogue.resolve(Map.of("lmstudio", lmstudio), key -> null);
@@ -262,7 +289,7 @@ class ProviderCatalogueTest {
 
   @Test
   void ollama_lights_when_enabled() {
-    ProviderSettings ollama = new ProviderSettings(null, null, null, true, null);
+    ProviderSettings ollama = new ProviderSettings(null, null, null, true, null, null);
 
     List<ResolvedProvider> resolved =
         ProviderCatalogue.resolve(Map.of("ollama", ollama), key -> null);
@@ -275,7 +302,7 @@ class ProviderCatalogueTest {
 
   @Test
   void ollama_enabled_with_a_key_override_resolves_that_key() {
-    ProviderSettings ollama = new ProviderSettings(null, null, "custom-key", true, null);
+    ProviderSettings ollama = new ProviderSettings(null, null, "custom-key", true, null, null);
 
     List<ResolvedProvider> resolved =
         ProviderCatalogue.resolve(Map.of("ollama", ollama), key -> null);
@@ -288,7 +315,7 @@ class ProviderCatalogueTest {
 
   @Test
   void ollama_switched_off_stays_off_even_with_a_key() {
-    ProviderSettings ollama = new ProviderSettings(null, null, "custom-key", false, null);
+    ProviderSettings ollama = new ProviderSettings(null, null, "custom-key", false, null, null);
 
     List<ResolvedProvider> resolved =
         ProviderCatalogue.resolve(Map.of("ollama", ollama), key -> null);
@@ -298,7 +325,7 @@ class ProviderCatalogueTest {
 
   @Test
   void a_hosted_preset_with_its_key_set_and_enabled_false_is_absent() {
-    ProviderSettings xai = new ProviderSettings(null, null, null, false, null);
+    ProviderSettings xai = new ProviderSettings(null, null, null, false, null, null);
 
     List<ResolvedProvider> resolved =
         ProviderCatalogue.resolve(Map.of("xai", xai), Map.of("xai.api-key", "k")::get);
@@ -309,7 +336,7 @@ class ProviderCatalogueTest {
   @Test
   void a_custom_entry_with_wire_and_base_url_and_enabled_false_is_absent() {
     ProviderSettings mine =
-        new ProviderSettings(Wire.OPENAI_CHAT, "https://g/v1", "k", false, null);
+        new ProviderSettings(Wire.OPENAI_CHAT, "https://g/v1", "k", false, null, null);
 
     List<ResolvedProvider> resolved = ProviderCatalogue.resolve(Map.of("mine", mine), key -> null);
 
@@ -318,7 +345,7 @@ class ProviderCatalogueTest {
 
   @Test
   void lmstudio_with_enabled_false_is_absent() {
-    ProviderSettings lmstudio = new ProviderSettings(null, null, null, false, null);
+    ProviderSettings lmstudio = new ProviderSettings(null, null, null, false, null, null);
 
     List<ResolvedProvider> resolved =
         ProviderCatalogue.resolve(Map.of("lmstudio", lmstudio), key -> null);
@@ -328,12 +355,58 @@ class ProviderCatalogueTest {
 
   @Test
   void a_custom_vendor_defaults_to_the_wires_own() {
-    ProviderSettings mine = new ProviderSettings(Wire.ANTHROPIC, "https://g/v1", "k", null, null);
+    ProviderSettings mine =
+        new ProviderSettings(Wire.ANTHROPIC, "https://g/v1", "k", null, null, null);
 
     List<ResolvedProvider> resolved = ProviderCatalogue.resolve(Map.of("mine", mine), key -> null);
 
     assertThat(resolved)
         .containsExactly(
             new ResolvedProvider("mine", Wire.ANTHROPIC, "https://g/v1", "anthropic", "k"));
+  }
+
+  @Test
+  void settings_overlay_a_preset_s_default_properties_name_by_name() {
+    ProviderSettings openai =
+        new ProviderSettings(
+            null,
+            null,
+            null,
+            null,
+            null,
+            Map.of("openai.tools.strict", "false", "openai.reasoning.effort", "high"));
+
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of("openai", openai), Map.of("openai.api-key", "k")::get);
+
+    assertThat(resolved)
+        .singleElement()
+        .extracting(ResolvedProvider::properties)
+        .isEqualTo(Map.of("openai.tools.strict", "false", "openai.reasoning.effort", "high"));
+  }
+
+  @Test
+  void a_preset_without_defaults_carries_no_properties() {
+    List<ResolvedProvider> resolved =
+        ProviderCatalogue.resolve(Map.of(), Map.of("xai.api-key", "k")::get);
+
+    assertThat(resolved)
+        .singleElement()
+        .extracting(ResolvedProvider::properties)
+        .isEqualTo(Map.of());
+  }
+
+  @Test
+  void a_custom_provider_carries_only_its_own_properties() {
+    ProviderSettings mine =
+        new ProviderSettings(
+            Wire.OPENAI_CHAT, "https://g/v1", "k", null, null, Map.of("openai.temperature", "0.2"));
+
+    List<ResolvedProvider> resolved = ProviderCatalogue.resolve(Map.of("mine", mine), key -> null);
+
+    assertThat(resolved)
+        .singleElement()
+        .extracting(ResolvedProvider::properties)
+        .isEqualTo(Map.of("openai.temperature", "0.2"));
   }
 }

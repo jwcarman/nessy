@@ -109,6 +109,7 @@ final class WireProviders {
             }
             c.vendor(resolved.vendor());
             c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
+            c.properties(resolved.properties());
             if (mapper != null) {
               c.mapper(mapper);
             }
@@ -129,6 +130,7 @@ final class WireProviders {
             }
             c.vendor(resolved.vendor());
             c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
+            c.properties(resolved.properties());
             if (mapper != null) {
               c.mapper(mapper);
             }
@@ -148,6 +150,7 @@ final class WireProviders {
               c.baseUrl(resolved.baseUrl());
             }
             c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
+            c.properties(resolved.properties());
             if (mapper != null) {
               c.mapper(mapper);
             }
@@ -167,6 +170,7 @@ final class WireProviders {
               c.baseUrl(resolved.baseUrl());
             }
             c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
+            c.properties(resolved.properties());
             if (mapper != null) {
               c.mapper(mapper);
             }

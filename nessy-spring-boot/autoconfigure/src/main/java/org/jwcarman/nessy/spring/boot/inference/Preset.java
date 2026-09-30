@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spring.boot.inference;
 
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -28,11 +29,32 @@ record Preset(
     @Nullable String baseUrl,
     String vendor,
     List<String> keyProperties,
-    @Nullable String keylessApiKey) {
+    @Nullable String keylessApiKey,
+    Map<String, String> defaultProperties) {
+
+  /** No default properties: every preset whose strict row has not been measured. */
+  Preset(
+      String id,
+      Wire wire,
+      @Nullable String baseUrl,
+      String vendor,
+      List<String> keyProperties,
+      @Nullable String keylessApiKey) {
+    this(id, wire, baseUrl, vendor, keyProperties, keylessApiKey, Map.of());
+  }
 
   static final List<Preset> CATALOGUE =
       List.of(
-          new Preset("openai", Wire.OPENAI_CHAT, null, "openai", List.of("openai.api-key"), null),
+          new Preset(
+              "openai",
+              Wire.OPENAI_CHAT,
+              null,
+              "openai",
+              List.of("openai.api-key"),
+              null,
+              // Measured to accept strict mode (spec section 10); every other row waits for its own
+              // measurement in PresetCandidatesLiveTest's strict column.
+              Map.of("openai.tools.strict", "true")),
           new Preset(
               "xai", Wire.OPENAI_CHAT, "https://api.x.ai/v1", "x_ai", List.of("xai.api-key"), null),
           new Preset(

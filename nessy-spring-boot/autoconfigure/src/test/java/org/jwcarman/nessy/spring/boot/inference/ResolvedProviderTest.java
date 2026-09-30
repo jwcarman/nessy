@@ -17,6 +17,7 @@ package org.jwcarman.nessy.spring.boot.inference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -30,5 +31,17 @@ class ResolvedProviderTest {
         new ResolvedProvider("openai", Wire.OPENAI_CHAT, null, "openai", "sk-super-secret");
 
     assertThat(resolved.toString()).doesNotContain("sk-super-secret").contains("apiKey=***");
+  }
+
+  @Test
+  void tostring_prints_property_names_never_values() {
+    ResolvedProvider resolved =
+        new ResolvedProvider(
+            "openai", Wire.OPENAI_CHAT, null, "openai", "sk", Map.of("openai.user", "tenant-42"));
+
+    assertThat(resolved.toString())
+        .contains("openai.user")
+        .doesNotContain("tenant-42")
+        .contains("apiKey=***");
   }
 }

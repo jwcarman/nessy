@@ -16,7 +16,9 @@
 package org.jwcarman.nessy.spring.boot.inference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -69,5 +71,59 @@ class WireProvidersTest {
 
     assertThat(built.vendor()).isEqualTo("perplexity");
     ((OpenAiResponsesInferenceProvider) built).close();
+  }
+
+  @Test
+  void the_chat_wire_hands_its_properties_to_the_adapter() {
+    ResolvedProvider resolved =
+        new ResolvedProvider(
+            "openai", Wire.OPENAI_CHAT, null, "openai", "k", Map.of("openai.model", "gpt-4o"));
+
+    assertThatThrownBy(() -> WireProviders.build(resolved, null, LOADER))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'openai.model'");
+  }
+
+  @Test
+  void the_responses_wire_hands_its_properties_to_the_adapter() {
+    ResolvedProvider resolved =
+        new ResolvedProvider(
+            "mine",
+            Wire.OPENAI_RESPONSES,
+            "https://g/v1",
+            "openai",
+            "k",
+            Map.of("openai.store", "true"));
+
+    assertThatThrownBy(() -> WireProviders.build(resolved, null, LOADER))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'openai.store'");
+  }
+
+  @Test
+  void the_anthropic_wire_hands_its_properties_to_the_adapter() {
+    ResolvedProvider resolved =
+        new ResolvedProvider(
+            "anthropic",
+            Wire.ANTHROPIC,
+            null,
+            "anthropic",
+            "k",
+            Map.of("anthropic.max_tokens", "9"));
+
+    assertThatThrownBy(() -> WireProviders.build(resolved, null, LOADER))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'anthropic.max_tokens'");
+  }
+
+  @Test
+  void the_gemini_wire_hands_its_properties_to_the_adapter() {
+    ResolvedProvider resolved =
+        new ResolvedProvider(
+            "gemini", Wire.GEMINI, null, "gcp.gemini", "k", Map.of("gemini.contents", "[]"));
+
+    assertThatThrownBy(() -> WireProviders.build(resolved, null, LOADER))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'gemini.contents'");
   }
 }

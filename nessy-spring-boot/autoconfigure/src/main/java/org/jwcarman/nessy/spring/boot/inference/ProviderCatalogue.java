@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spring.boot.inference;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -32,7 +33,8 @@ import org.jspecify.annotations.Nullable;
  */
 final class ProviderCatalogue {
 
-  private static final ProviderSettings EMPTY = new ProviderSettings(null, null, null, null, null);
+  private static final ProviderSettings EMPTY =
+      new ProviderSettings(null, null, null, null, null, null);
 
   private ProviderCatalogue() {}
 
@@ -66,13 +68,19 @@ final class ProviderCatalogue {
       }
       urls.add(preset.baseUrl());
       String baseUrl = firstNonBlank(urls);
+      // The preset's defaults, overlaid name by name by what the application set (spec section 11).
+      Map<String, String> properties = new LinkedHashMap<>(preset.defaultProperties());
+      if (own.properties() != null) {
+        properties.putAll(own.properties());
+      }
       lit.add(
           new ResolvedProvider(
               preset.id(),
               own.wire() != null ? own.wire() : preset.wire(),
               baseUrl,
               own.vendor() != null ? own.vendor() : preset.vendor(),
-              preset.keyless() ? keylessApiKey(own, preset) : apiKey));
+              preset.keyless() ? keylessApiKey(own, preset) : apiKey,
+              properties));
     }
     settings.forEach(
         (id, own) -> {
@@ -104,7 +112,13 @@ final class ProviderCatalogue {
           "nessy.providers." + id + ".base-url is required: " + id + " is not a preset");
     }
     String vendor = own.vendor() != null ? own.vendor() : own.wire().defaultVendor();
-    return new ResolvedProvider(id, own.wire(), own.baseUrl(), vendor, own.apiKey());
+    return new ResolvedProvider(
+        id,
+        own.wire(),
+        own.baseUrl(),
+        vendor,
+        own.apiKey(),
+        own.properties() != null ? own.properties() : Map.of());
   }
 
   /** The first candidate that is non-null and non-blank, or {@code null} when none is. */

@@ -18,6 +18,7 @@ package org.jwcarman.nessy.spring.boot.inference;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.slf4j.Logger;
@@ -35,7 +36,7 @@ import org.springframework.beans.factory.SmartInitializingSingleton;
  * can ask the bean itself for. Either way the vendor printed is the registered bean's own {@link
  * InferenceProvider#vendor()} -- {@code resolved.vendor()} can disagree with it for the {@code
  * anthropic} and {@code gemini} wires, which ignore a vendor override, so the bean is the one
- * asked. Never the key, in either case.
+ * asked. Never the key, in either case, and never a property's value -- only its name.
  */
 final class InferenceReport implements SmartInitializingSingleton {
 
@@ -87,6 +88,9 @@ final class InferenceReport implements SmartInitializingSingleton {
         + endpoint
         + ", vendor "
         + provider.vendor()
+        + (resolved.properties().isEmpty()
+            ? ""
+            : ", properties " + new TreeSet<>(resolved.properties().keySet()))
         + ")";
   }
 }

@@ -17,6 +17,7 @@ package org.jwcarman.nessy.spring.boot.inference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -27,8 +28,17 @@ class ProviderSettingsTest {
   @Test
   void tostring_does_not_print_the_key() {
     ProviderSettings settings =
-        new ProviderSettings(Wire.OPENAI_CHAT, "https://g/v1", "sk-super-secret", null, null);
+        new ProviderSettings(Wire.OPENAI_CHAT, "https://g/v1", "sk-super-secret", null, null, null);
 
     assertThat(settings.toString()).doesNotContain("sk-super-secret").contains("apiKey=***");
+  }
+
+  @Test
+  void tostring_prints_property_names_never_values() {
+    ProviderSettings settings =
+        new ProviderSettings(
+            Wire.OPENAI_CHAT, "https://g/v1", null, null, null, Map.of("openai.user", "tenant-42"));
+
+    assertThat(settings.toString()).contains("openai.user").doesNotContain("tenant-42");
   }
 }

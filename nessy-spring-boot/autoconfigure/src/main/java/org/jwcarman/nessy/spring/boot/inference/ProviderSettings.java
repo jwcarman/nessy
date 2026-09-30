@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.spring.boot.inference;
 
+import java.util.Map;
+import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -24,15 +26,24 @@ import org.jspecify.annotations.Nullable;
  * <p>{@code vendor} is ignored for the {@link Wire#ANTHROPIC} and {@link Wire#GEMINI} wires:
  * Anthropic and Gemini report their own fixed vendor, and only the two OpenAI wires (shared by more
  * than one vendor) need an override.
+ *
+ * <p>{@code properties} are vendor properties for this provider (spec section 6b), bound as {@code
+ * Map<String, String>} so a dotted key stays one entry; a preset's defaults are overlaid by them,
+ * name by name.
  */
 record ProviderSettings(
     @Nullable Wire wire,
     @Nullable String baseUrl,
     @Nullable String apiKey,
     @Nullable Boolean enabled,
-    @Nullable String vendor) {
+    @Nullable String vendor,
+    @Nullable Map<String, String> properties) {
 
-  /** Redacts the key: the generated form would otherwise print it in a log or a test failure. */
+  /**
+   * Redacts the key, and prints property names but never their values: the generated form would
+   * otherwise print both in a log or a test failure, and a value may be sensitive (spec section
+   * 6c).
+   */
   @Override
   public String toString() {
     return "ProviderSettings[wire="
@@ -45,6 +56,8 @@ record ProviderSettings(
         + enabled
         + ", vendor="
         + vendor
+        + ", properties="
+        + (properties != null ? new TreeSet<>(properties.keySet()) : "null")
         + "]";
   }
 }

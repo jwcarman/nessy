@@ -18,20 +18,26 @@ package org.jwcarman.nessy.spring.boot.inference;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.micrometer.observation.ObservationRegistry;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.FilteredClassLoader;
+import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
+import org.springframework.core.io.ClassPathResource;
 
 /**
  * What {@code nessy.providers.*} -- a vendor key, a prefixed key, an explicit {@code enabled}, or a
@@ -401,6 +407,165 @@ class InferenceProvidersAutoConfigurationTest {
     @Bean
     InferenceProvider openai() {
       return (request, narrator) -> new InferenceResult.Refusal("never called");
+    }
+  }
+
+  @Nested
+  @DisplayName("vendor properties")
+  class TheVendorProperties {
+
+    private static Map<String, String> propertiesOf(
+        AssertableApplicationContext context, String id) {
+      return context.getBean(ResolvedProviders.class).providers().stream()
+          .filter(provider -> provider.id().equals(id))
+          .findFirst()
+          .orElseThrow()
+          .properties();
+    }
+
+    @Test
+    void the_openai_preset_carries_strict_tools_by_default() {
+      runner
+          .withPropertyValues("openai.api-key=sk-test")
+          .run(
+              context ->
+                  assertThat(propertiesOf(context, "openai"))
+                      .containsExactly(Map.entry("openai.tools.strict", "true")));
+    }
+
+    @Test
+    void settings_override_the_preset_s_default() {
+      runner
+          .withPropertyValues(
+              "openai.api-key=sk-test",
+              "nessy.providers.openai.properties.openai.tools.strict=false")
+          .run(
+              context ->
+                  assertThat(propertiesOf(context, "openai"))
+                      .containsExactly(Map.entry("openai.tools.strict", "false")));
+    }
+
+    /** Section 6b's measurement pinned: a Map<String, String> keeps a dotted key whole. */
+    @Test
+    void a_dotted_key_binds_as_one_entry() {
+      runner
+          .withPropertyValues(
+              "openai.api-key=sk-test",
+              "nessy.providers.openai.properties.openai.reasoning.effort=high")
+          .run(
+              context ->
+                  assertThat(propertiesOf(context, "openai"))
+                      .containsOnly(
+                          Map.entry("openai.tools.strict", "true"),
+                          Map.entry("openai.reasoning.effort", "high")));
+    }
+
+    /** Review Focus 4: the vendor's own spelling survives the binder. */
+    @Test
+    void an_underscored_key_keeps_its_underscore() {
+      runner
+          .withPropertyValues(
+              "anthropic.api-key=sk-test",
+              "nessy.providers.anthropic.properties.anthropic.thinking.budget_tokens=2048")
+          .run(
+              context ->
+                  assertThat(propertiesOf(context, "anthropic"))
+                      .containsExactly(Map.entry("anthropic.thinking.budget_tokens", "2048")));
+    }
+
+    /** Review Focus 4. */
+    @Test
+    void a_camel_case_key_keeps_its_case() {
+      runner
+          .withPropertyValues(
+              "gemini.api-key=sk-test",
+              "nessy.providers.gemini.properties.gemini.generationConfig.thinkingConfig.thinkingBudget=1024")
+          .run(
+              context ->
+                  assertThat(propertiesOf(context, "gemini"))
+                      .containsExactly(
+                          Map.entry(
+                              "gemini.generationConfig.thinkingConfig.thinkingBudget", "1024")));
+    }
+
+    @Test
+    void the_same_keys_given_as_yaml_bind_to_the_same_maps() {
+      runner
+          .withInitializer(
+              context -> {
+                try {
+                  new YamlPropertySourceLoader()
+                      .load("vendor-properties", new ClassPathResource("vendor-properties.yaml"))
+                      .forEach(
+                          source -> context.getEnvironment().getPropertySources().addFirst(source));
+                } catch (IOException e) {
+                  throw new UncheckedIOException(e);
+                }
+              })
+          .run(
+              context -> {
+                assertThat(propertiesOf(context, "openai"))
+                    .containsOnly(
+                        Map.entry("openai.tools.strict", "false"),
+                        Map.entry("openai.reasoning.effort", "high"));
+                assertThat(propertiesOf(context, "anthropic"))
+                    .containsExactly(Map.entry("anthropic.thinking.budget_tokens", "2048"));
+                assertThat(propertiesOf(context, "gemini"))
+                    .containsExactly(
+                        Map.entry("gemini.generationConfig.thinkingConfig.thinkingBudget", "1024"));
+              });
+    }
+
+    @Test
+    void a_clash_fails_startup_naming_the_property_and_the_typed_setting() {
+      runner
+          .withPropertyValues(
+              "openai.api-key=sk-test", "nessy.providers.openai.properties.openai.model=gpt-4o")
+          .run(
+              context -> {
+                assertThat(context).hasFailed();
+                assertThat(context.getStartupFailure())
+                    .rootCause()
+                    .hasMessageContaining("'openai.model'")
+                    .hasMessageContaining("InferenceConfig.model");
+              });
+    }
+
+    @Test
+    void another_adapter_s_property_on_a_provider_fails_startup_naming_the_prefix() {
+      runner
+          .withPropertyValues(
+              "anthropic.api-key=sk-test",
+              "nessy.providers.anthropic.properties.openai.reasoning.effort=high")
+          .run(
+              context -> {
+                assertThat(context).hasFailed();
+                assertThat(context.getStartupFailure())
+                    .rootCause()
+                    .hasMessageContaining("'openai.reasoning.effort'")
+                    .hasMessageContaining("'anthropic.'");
+              });
+    }
+
+    @Test
+    void a_preset_without_defaults_carries_none() {
+      runner
+          .withPropertyValues("xai.api-key=xai-test")
+          .run(context -> assertThat(propertiesOf(context, "xai")).isEmpty());
+    }
+
+    @Test
+    void a_custom_provider_carries_its_one_entry() {
+      runner
+          .withPropertyValues(
+              "nessy.providers.mine.wire=openai-chat",
+              "nessy.providers.mine.base-url=https://g/v1",
+              "nessy.providers.mine.api-key=k",
+              "nessy.providers.mine.properties.openai.temperature=0.2")
+          .run(
+              context ->
+                  assertThat(propertiesOf(context, "mine"))
+                      .containsExactly(Map.entry("openai.temperature", "0.2")));
     }
   }
 }

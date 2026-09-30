@@ -74,8 +74,8 @@ class InferenceReportTest {
               assertThat(output)
                   .contains(
                       "NESSY INFERENCE: providers: openai (openai-chat, the vendor's own"
-                          + " endpoint, vendor openai); xai (openai-chat,"
-                          + " https://api.x.ai/v1, vendor x_ai)")
+                          + " endpoint, vendor openai, properties [openai.tools.strict]); xai"
+                          + " (openai-chat, https://api.x.ai/v1, vendor x_ai)")
                   .doesNotContain("sk-super-secret")
                   .doesNotContain("xai-super-secret");
             });
@@ -113,5 +113,24 @@ class InferenceReportTest {
 
           assertThat(output).contains("NESSY INFERENCE: no provider is configured");
         });
+  }
+
+  @Test
+  void a_property_s_name_is_reported_and_its_value_never_is(CapturedOutput output) {
+    runner
+        .withPropertyValues(
+            "openai.api-key=sk-super-secret",
+            "nessy.providers.openai.properties.openai.user=tenant-42")
+        .run(
+            context -> {
+              InferenceReport report =
+                  new InferenceReport(context.getBeanProvider(ResolvedProviders.class), context);
+              report.afterSingletonsInstantiated();
+
+              assertThat(output)
+                  .contains("properties [openai.tools.strict, openai.user]")
+                  .doesNotContain("tenant-42")
+                  .doesNotContain("sk-super-secret");
+            });
   }
 }
