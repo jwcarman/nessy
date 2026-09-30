@@ -58,6 +58,40 @@ safe. What changes, section by section:
   reason: a property Nessy does not understand should not reach the vendor, and a typo should say
   so in the log rather than surface as the vendor's 400 or, worse, silently override a setting.
 
+## Amendment, 2026-09-30: typed properties
+
+**Ruled by James the same day.** A supported property is declared once, with its name and its
+type, and that declaration is what application code, the adapter's parser, the warning and the
+docs all use. Values still travel as text: `InferenceOptions.properties` and
+`EmbeddingOptions.properties` stay `Map<String, String>`, the Boot binding is untouched, and
+`property(String, String)` stays.
+
+- **`VendorProperty<T>`** -- one public final class in `nessy-api` (`org.jwcarman.nessy.api`),
+  equal by name, `toString()` the name. Factories `ofInteger`, `ofBoolean`, `ofFloat`,
+  `ofStrings` (a JSON array of strings) and `ofEnum(String name, Class<E> type,
+  Function<E, String> spelling)`. `name()`, `format(T)` to the stored text, and
+  `in(Map<String, String>)` returning `Optional<T>` -- a value that does not parse fails naming
+  the property, the value and what it accepts (for an enum, its spellings).
+- **`<T> property(VendorProperty<T>, T)`** -- a default method on `InferenceConfig` and
+  `EmbedderConfig` delegating to `property(name, format(value))`, and the same overload on each
+  provider config.
+- **One public `XxxProperties` class per adapter module** holding `public static final
+  VendorProperty<?>` constants carrying the full prefixed name, and a `SUPPORTED` list the
+  unsupported-name warning prints: `OpenAiProperties`, `AnthropicProperties`, `GeminiProperties`,
+  `BedrockProperties`. Embedding modules publish none until they support a property.
+- **Enums for every fixed value set**, one public enum per property in its adapter module, each
+  constant carrying its wire spelling: OpenAI reasoning effort (`none` `minimal` `low` `medium`
+  `high` `xhigh` `max`), reasoning summary (`auto` `concise` `detailed`), service tier (`auto`
+  `default` `flex` `scale` `priority` `fast`); Anthropic thinking type (`enabled` `disabled`
+  `adaptive`), cache ttl (`5m` `1h`), service tier (`auto` `standard_only`); Gemini thinking level
+  (`minimal` `low` `medium` `high`). The value sets are the ones the pinned SDKs define
+  (openai-java 4.69.2, anthropic-java 2.65.0, google-genai 1.73.0). The rest are `Integer`,
+  `Boolean`, `Float` or `List<String>`. `PromptCaching` stays for the Anthropic setter.
+- **§8b's "the type, never the vocabulary" is reversed.** A value outside an enum fails at build.
+  The cost, accepted: a value the vendor adds after the pinned SDK needs a Nessy release before it
+  can be set. It follows from "nothing goes in raw": the SDKs' open `of(String)` constructors are
+  no longer reached with a caller's text, only with an enum constant's spelling.
+
 ---
 
 ## 1. The problem
