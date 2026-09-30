@@ -131,10 +131,11 @@ public final class BedrockProviderConfig {
   }
 
   /**
-   * One vendor property for every agent type on this provider, spelled as the model's own request
-   * spells it: {@code bedrock.thinking.budget_tokens}. An agent type's entry of the same name
-   * overrides it. Repeatable; the last value given for a name wins. A name outside {@code
-   * bedrock.}, a name the adapter already decides, or a bad value fails at build.
+   * One vendor property for every agent type on this provider, spelled as the Converse request
+   * spells it: {@code bedrock.inferenceConfig.temperature}. An agent type's entry of the same name
+   * overrides it. Repeatable; the last value given for a name wins. A name outside {@code bedrock.}
+   * or a bad value fails at build; an unsupported name under {@code bedrock.} is ignored, with a
+   * warning naming it.
    */
   public BedrockProviderConfig property(String name, String value) {
     Objects.requireNonNull(name, "name must not be null");

@@ -486,11 +486,9 @@ class OpenAiChatLiveTest {
     }
   }
 
-  /**
-   * Section 8c's promise made checkable once: a misspelled pass-through is the vendor's own 400.
-   */
+  /** A name the adapter does not support is not sent, so the vendor has nothing to refuse. */
   @Test
-  void a_misspelled_pass_through_is_the_vendor_s_own_refusal() {
+  void an_unsupported_property_is_ignored_and_the_request_still_goes_through() {
     try (OpenAiChatInferenceProvider provider = provider()) {
       InferenceResult result =
           provider.infer(
@@ -501,10 +499,7 @@ class OpenAiChatLiveTest {
                   MODEL,
                   Map.of("openai.temperatur", "0.2")));
 
-      assertThat(result)
-          .isInstanceOfSatisfying(
-              InferenceResult.Fault.class,
-              fault -> assertThat(fault.failure().reason()).containsIgnoringCase("temperatur"));
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
     }
   }
 }

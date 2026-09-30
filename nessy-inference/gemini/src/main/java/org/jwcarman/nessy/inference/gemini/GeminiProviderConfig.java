@@ -114,7 +114,8 @@ public final class GeminiProviderConfig {
    * One vendor property for every agent type on this provider, spelled as the Gemini REST reference
    * spells it: {@code gemini.generationConfig.thinkingConfig.thinkingBudget}. An agent type's entry
    * of the same name overrides it. Repeatable; the last value given for a name wins. A name outside
-   * {@code gemini.}, a name the adapter already decides, or a bad value fails at build.
+   * {@code gemini.} or a bad value fails at build; an unsupported name under {@code gemini.} is
+   * ignored, with a warning naming it.
    */
   public GeminiProviderConfig property(String name, String value) {
     Objects.requireNonNull(name, "name must not be null");

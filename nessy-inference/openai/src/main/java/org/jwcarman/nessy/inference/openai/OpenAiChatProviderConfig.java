@@ -144,10 +144,10 @@ public final class OpenAiChatProviderConfig {
 
   /**
    * A vendor property this provider sends with every request (spec §6a) -- {@code
-   * openai.tools.strict}, {@code openai.reasoning.effort}, or any request field under {@code
-   * openai.}, passed through. An agent type's own property of the same name overrides it.
-   * Repeatable; the last value given for a name wins. A name under another prefix, or one that
-   * names what a typed setting decides, fails at build.
+   * openai.tools.strict}, {@code openai.reasoning.effort} or another name the adapter supports. An
+   * agent type's own property of the same name overrides it. Repeatable; the last value given for a
+   * name wins. A name under another prefix, or a bad value, fails at build; an unsupported name
+   * under {@code openai.} is ignored, with a warning naming it.
    */
   public OpenAiChatProviderConfig property(String name, String value) {
     Objects.requireNonNull(name, "name must not be null");

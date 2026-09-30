@@ -187,15 +187,9 @@ class GeminiLiveTest {
         .collect(Collectors.joining());
   }
 
-  /**
-   * The one thing section 8d could not settle from bytecode: whether a pass-through under {@code
-   * generationConfig} merges into the SDK's own {@code generationConfig} or replaces it. The typed
-   * thinking config lives in that same object on the wire, so thoughts narrated means it survived,
-   * and an answer cut at the stop sequence means the pass-through arrived. Both: a merge. Record
-   * which held in the ledger.
-   */
+  /** The typed thinking config reaches the vendor: thoughts come back and are narrated. */
   @Test
-  void a_typed_thinking_config_and_a_generation_config_pass_through_both_arrive() {
+  void a_typed_thinking_config_arrives_and_thoughts_are_narrated() {
     InferenceRequest request =
         new InferenceRequest(
             new SystemPrompt("You are a terse assistant."),
@@ -217,20 +211,16 @@ class GeminiLiveTest {
                 2048,
                 Map.of(
                     "gemini.generationConfig.thinkingConfig.includeThoughts", "true",
-                    "gemini.generationConfig.thinkingConfig.thinkingBudget", "512",
-                    "gemini.generationConfig.stopSequences", "[\"beta\"]")));
+                    "gemini.generationConfig.thinkingConfig.thinkingBudget", "512")));
 
     try (GeminiInferenceProvider provider = provider()) {
       Narration narrated = new Narration();
       String answer = text(provider.infer(request, narrated));
 
       assertThat(narrated.fragments())
-          .as("the typed thinking config survived: thoughts were narrated")
+          .as("the typed thinking config arrived: thoughts were narrated")
           .anyMatch(fragment -> "thinking".equals(fragment.kind()));
-      assertThat(answer)
-          .as("the pass-through arrived: the answer stops before the stop sequence")
-          .containsIgnoringCase("alpha")
-          .doesNotContainIgnoringCase("gamma");
+      assertThat(answer).containsIgnoringCase("alpha");
     }
   }
 }
