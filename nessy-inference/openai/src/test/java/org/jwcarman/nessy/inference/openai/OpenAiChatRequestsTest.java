@@ -533,29 +533,6 @@ class OpenAiChatRequestsTest {
     }
 
     @Test
-    void an_unknown_name_passes_through_as_a_typed_literal_nested_by_path() {
-      ChatCompletionCreateParams params =
-          paramsFor(
-              Map.of(
-                  "openai.temperature", "0.2",
-                  "openai.store", "false",
-                  "openai.metadata.team", "billing"));
-
-      assertThat(sent(params._additionalBodyProperties()))
-          .containsEntry("temperature", 0.2)
-          .containsEntry("store", false)
-          .containsEntry("metadata", Map.of("team", "billing"));
-    }
-
-    /** A raw spelling alone is simply a pass-through: only beside its known name is it a clash. */
-    @Test
-    void the_raw_reasoning_effort_alone_passes_through() {
-      ChatCompletionCreateParams params = paramsFor(Map.of("openai.reasoning_effort", "low"));
-
-      assertThat(sent(params._additionalBodyProperties())).containsEntry("reasoning_effort", "low");
-    }
-
-    @Test
     void another_prefix_is_not_sent() {
       ChatCompletionCreateParams params = paramsFor(Map.of("anthropic.top_k", "5"));
 
@@ -567,31 +544,80 @@ class OpenAiChatRequestsTest {
     void an_agent_type_entry_overrides_the_same_name_given_to_the_provider() {
       ChatCompletionCreateParams params =
           OpenAiChatRequests.toParams(
-              carrying(Map.of("openai.seed", "2")), Map.of("openai.seed", "1"), MAPPER);
+              carrying(Map.of("openai.reasoning.effort", "high")),
+              Map.of("openai.reasoning.effort", "low"),
+              MAPPER);
 
-      assertThat(sent(params._additionalBodyProperties())).containsEntry("seed", 2);
+      assertThat(params.reasoningEffort().map(ReasoningEffort::asString)).contains("high");
+    }
+
+    /** Names that were once refused as clashes are simply unsupported now: ignored, not sent. */
+    @ParameterizedTest
+    @ValueSource(
+        strings = {
+          "model",
+          "messages",
+          "max_completion_tokens",
+          "max_tokens",
+          "tools",
+          "tool_choice",
+          "response_format",
+          "stream",
+          "stream_options",
+          "stream_options.include_obfuscation",
+          "store",
+          "seed",
+          "temperature",
+          "metadata.team",
+          "reasoning_effort"
+        })
+    void an_unsupported_name_is_not_sent_and_the_request_is_as_if_it_were_not_given(String name) {
+      ChatCompletionCreateParams with = paramsFor(Map.of("openai." + name, "1"));
+
+      assertThat(with._additionalBodyProperties()).isEmpty();
+      assertThat(with).isEqualTo(paramsFor(Map.of()));
+      assertThat(with.model().asString()).isEqualTo("gpt-4o");
+      assertThat(with.maxCompletionTokens()).contains(1024L);
     }
 
     @Test
-    void a_clash_with_a_typed_setting_is_refused_naming_both() {
-      InferenceRequest request = carrying(Map.of("openai.max_completion_tokens", "10"));
+    void an_unsupported_name_beside_a_supported_one_leaves_the_supported_one_in_force() {
+      ChatCompletionCreateParams params =
+          paramsFor(Map.of("openai.max_completion_tokens", "10", "openai.reasoning.effort", "low"));
 
-      assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessage(
-              "property 'openai.max_completion_tokens' names what InferenceConfig.maxTokens"
-                  + " already decides; remove the property");
+      assertThat(params.maxCompletionTokens()).contains(1024L);
+      assertThat(params.reasoningEffort().map(ReasoningEffort::asString)).contains("low");
     }
 
     @Test
-    void a_field_inside_the_stream_options_the_adapter_decides_is_refused() {
-      InferenceRequest request =
-          carrying(Map.of("openai.stream_options.include_obfuscation", "true"));
+    void reading_a_request_says_nothing_about_an_unsupported_name() {
+      InferenceRequest request = carrying(Map.of("openai.seed", "1"));
 
-      assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'openai.stream_options.include_obfuscation'")
-          .hasMessageContaining("'openai.stream_options'");
+      List<ILoggingEvent> events =
+          LogCapture.during(
+              OpenAiProperties.class,
+              () -> {
+                OpenAiChatRequests.toParams(request, MAPPER);
+                OpenAiChatRequests.toParams(request, MAPPER);
+              });
+
+      assertThat(events).isEmpty();
+    }
+
+    @Test
+    void an_unsupported_name_is_warned_once_naming_it_and_what_is_supported() {
+      List<ILoggingEvent> events =
+          LogCapture.during(
+              OpenAiProperties.class,
+              () ->
+                  OpenAiProperties.warnUnsupported(
+                      Map.of("openai.seed", "1", "openai.tools.strict", "true")));
+
+      assertThat(LogCapture.warnings(events))
+          .containsExactly(
+              "NESSY INFERENCE: property 'openai.seed' is not supported by openai and is ignored; supported:"
+                  + " [openai.reasoning.effort, openai.reasoning.summary, openai.service_tier,"
+                  + " openai.tools.strict]");
     }
 
     @Test
@@ -600,27 +626,6 @@ class OpenAiChatRequestsTest {
 
       assertThat(params.tools()).isEmpty();
       assertThat(params._additionalBodyProperties()).isEmpty();
-    }
-
-    @Test
-    void the_model_is_the_first_entry_of_the_clash_table() {
-      InferenceRequest request = carrying(Map.of("openai.model", "gpt-4o-mini"));
-
-      assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'openai.model'")
-          .hasMessageContaining("InferenceConfig.model");
-    }
-
-    @Test
-    void the_raw_spelling_beside_its_known_name_is_refused() {
-      InferenceRequest request =
-          carrying(Map.of("openai.reasoning.effort", "high", "openai.reasoning_effort", "low"));
-
-      assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'openai.reasoning_effort'")
-          .hasMessageContaining("'openai.reasoning.effort'");
     }
 
     @Test
@@ -640,27 +645,6 @@ class OpenAiChatRequestsTest {
       assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("property 'openai.tools.strict' must be true or false, was 'yes'");
-    }
-
-    @ParameterizedTest
-    @ValueSource(
-        strings = {
-          "model",
-          "messages",
-          "max_completion_tokens",
-          "max_tokens",
-          "tools",
-          "tool_choice",
-          "response_format",
-          "stream",
-          "stream_options"
-        })
-    void every_name_the_adapter_already_decides_is_refused(String name) {
-      InferenceRequest request = carrying(Map.of("openai." + name, "1"));
-
-      assertThatThrownBy(() -> OpenAiChatRequests.toParams(request, MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'openai." + name + "'");
     }
 
     @Test

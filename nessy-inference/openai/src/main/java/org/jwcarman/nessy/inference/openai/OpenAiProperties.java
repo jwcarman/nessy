@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.inference.openai;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,12 +22,12 @@ import java.util.Set;
 import org.jwcarman.nessy.vendor.VendorProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The {@code openai.} vendor properties (spec §9a, §9b): the names both OpenAI wires parse, each
- * wire's clash table, and everything else passed through into the request body. One reading for
- * both wires, so an agent type switching between them keeps its settings.
+ * The {@code openai.} vendor properties (spec §9a, §9b): the names both OpenAI wires support, and
+ * nothing else. A name under the prefix that is not one of them is ignored, and said so once when
+ * it is checked. One reading for both wires, so an agent type switching between them keeps its
+ * settings.
  */
 final class OpenAiProperties {
 
@@ -40,75 +39,25 @@ final class OpenAiProperties {
 
   static final Set<String> KNOWN = Set.of(EFFORT, SUMMARY, STRICT, SERVICE_TIER);
 
-  static final String CONVERSATION = "the conversation the engine assembles";
-  static final String TOOLS = "the tools the harness binds";
-  static final String TOOL_CHOICE = "the tool choice the engine makes";
-  static final String SHAPE = "the answer's shape the harness asks for";
-  static final String STREAMING = "the adapter, which always streams";
-
-  /** What the chat wire's typed settings, or the adapter itself, already decide (§9a). */
-  private static final Map<String, String> CHAT_CLASHES =
-      Map.of(
-          "model", "InferenceConfig.model",
-          "messages", CONVERSATION,
-          "max_completion_tokens", "InferenceConfig.maxTokens",
-          "max_tokens", "InferenceConfig.maxTokens",
-          "tools", TOOLS,
-          "tool_choice", TOOL_CHOICE,
-          "response_format", SHAPE,
-          "stream", STREAMING,
-          "stream_options", "the adapter, which always asks for usage on the stream");
-
-  /** Why the Responses adapter fixes a field, quoted in the refusal (Responses record §5a). */
-  private static final String STATELESS =
-      "the Responses adapter, which is stateless because the event log is the only conversation";
-
-  /** What the Responses wire's typed settings, or the adapter itself, already decide (§9b). */
-  private static final Map<String, String> RESPONSES_CLASHES =
-      Map.ofEntries(
-          Map.entry("model", "InferenceConfig.model"),
-          Map.entry("input", CONVERSATION),
-          Map.entry("instructions", "the system prompt the harness sends"),
-          Map.entry("max_output_tokens", "InferenceConfig.maxTokens"),
-          Map.entry("tools", TOOLS),
-          Map.entry("tool_choice", TOOL_CHOICE),
-          Map.entry("text", SHAPE),
-          Map.entry("stream", STREAMING),
-          Map.entry("store", STATELESS),
-          Map.entry("include", STATELESS),
-          Map.entry("previous_response_id", STATELESS),
-          Map.entry("conversation", STATELESS),
-          Map.entry("background", STATELESS));
-
-  /** The object the adapter builds when either reasoning name is set (plan ruling 6). */
-  private static final String REASONING = "reasoning";
-
   private static final Logger log = LoggerFactory.getLogger(OpenAiProperties.class);
 
   private OpenAiProperties() {}
 
   /**
-   * The {@code openai.} properties once read.
+   * The supported {@code openai.} properties once read.
    *
    * @param strict whether function tools go out strict; always false on the chat wire unless asked
    *     for
-   * @param passThrough every other name under the prefix, nested by path, values as JSON literals
    */
   record Read(
       Optional<String> effort,
       Optional<String> summary,
       boolean strict,
-      Optional<String> serviceTier,
-      Map<String, Object> passThrough) {}
+      Optional<String> serviceTier) {}
 
   /** The chat wire's reading of the merged provider and agent-type map (§9a). */
-  static Read chat(Map<String, String> merged, JsonMapper mapper) {
+  static Read chat(Map<String, String> merged) {
     Map<String, String> own = VendorProperties.under(merged, PREFIX);
-    Map<String, String> clashes = new LinkedHashMap<>(CHAT_CLASHES);
-    if (own.containsKey(EFFORT)) {
-      clashes.put("reasoning_effort", "property '" + PREFIX + EFFORT + "'");
-    }
-    VendorProperties.refuseClashes(PREFIX, passedThrough(own), clashes);
     if (own.containsKey(SUMMARY)) {
       throw new IllegalArgumentException(
           "property '"
@@ -117,29 +66,13 @@ final class OpenAiProperties {
               + "' cannot be sent on the openai-chat wire, which has no reasoning summary;"
               + " the openai-responses wire carries it");
     }
-    return read(own, mapper);
+    return read(own);
   }
 
   /** The Responses wire's reading of the merged provider and agent-type map (§9b). */
-  static Read responses(Map<String, String> merged, JsonMapper mapper) {
+  static Read responses(Map<String, String> merged) {
     Map<String, String> own = VendorProperties.under(merged, PREFIX);
-    Map<String, String> clashes = new LinkedHashMap<>(RESPONSES_CLASHES);
-    String known = null;
-    if (own.containsKey(EFFORT)) {
-      known = EFFORT;
-    } else if (own.containsKey(SUMMARY)) {
-      known = SUMMARY;
-    }
-    if (known != null) {
-      for (String name : own.keySet()) {
-        boolean underReasoning = name.equals(REASONING) || name.startsWith(REASONING + ".");
-        if (underReasoning && !KNOWN.contains(name)) {
-          clashes.put(name, "property '" + PREFIX + known + "'");
-        }
-      }
-    }
-    VendorProperties.refuseClashes(PREFIX, passedThrough(own), clashes);
-    Read read = read(own, mapper);
+    Read read = read(own);
     if (own.containsKey(STRICT) && !read.strict()) {
       throw new IllegalArgumentException(
           "property '"
@@ -151,27 +84,31 @@ final class OpenAiProperties {
     return read;
   }
 
-  /** The known names parsed, the rest nested, over a map already filtered to this prefix. */
-  static Read read(Map<String, String> own, JsonMapper mapper) {
-    Optional<String> effort = string(own, EFFORT);
-    Optional<String> summary = string(own, SUMMARY);
-    Optional<String> serviceTier = string(own, SERVICE_TIER);
+  /** The supported names parsed, over a map already filtered to this prefix. Silent. */
+  private static Read read(Map<String, String> own) {
     boolean strict =
         own.containsKey(STRICT)
             && VendorProperties.requireBoolean(PREFIX + STRICT, own.get(STRICT));
-    return new Read(
-        effort,
-        summary,
-        strict,
-        serviceTier,
-        VendorProperties.nest(PREFIX, passedThrough(own), mapper));
+    return new Read(string(own, EFFORT), string(own, SUMMARY), strict, string(own, SERVICE_TIER));
   }
 
-  /** The names this adapter does not parse itself: the ones a clash can be about. */
-  private static Map<String, String> passedThrough(Map<String, String> own) {
-    Map<String, String> rest = new LinkedHashMap<>(own);
-    rest.keySet().removeAll(KNOWN);
-    return rest;
+  /**
+   * Says, once per name, that a property under this prefix is not one this adapter supports and is
+   * ignored. Called when a property set is first checked (a provider's build, a harness's
+   * validate), never per request.
+   */
+  static void warnUnsupported(Map<String, String> merged) {
+    List<String> supported = KNOWN.stream().sorted().map(name -> PREFIX + name).toList();
+    for (String name : VendorProperties.under(merged, PREFIX).keySet()) {
+      if (!KNOWN.contains(name)) {
+        log.warn(
+            "NESSY INFERENCE: property '{}{}' is not supported by openai and is ignored;"
+                + " supported: {}",
+            PREFIX,
+            name,
+            supported);
+      }
+    }
   }
 
   /** A provider is one adapter: a provider-level entry under another prefix is a mistake (§6a). */

@@ -121,7 +121,8 @@ public final class OpenAiResponsesProviderConfig {
 
   OpenAiResponsesInferenceProvider build() {
     OpenAiProperties.requireOwn(properties);
-    OpenAiProperties.responses(properties, mapper);
+    OpenAiProperties.responses(properties);
+    OpenAiProperties.warnUnsupported(properties);
     Map<String, String> own = Collections.unmodifiableMap(new LinkedHashMap<>(properties));
     if (client != null) {
       return new OpenAiResponsesInferenceProvider(client, vendor, false, mapper, own);

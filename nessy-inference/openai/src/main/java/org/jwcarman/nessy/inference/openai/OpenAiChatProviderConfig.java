@@ -172,7 +172,8 @@ public final class OpenAiChatProviderConfig {
    */
   OpenAiChatInferenceProvider build() {
     OpenAiProperties.requireOwn(properties);
-    OpenAiProperties.chat(properties, mapper);
+    OpenAiProperties.chat(properties);
+    OpenAiProperties.warnUnsupported(properties);
     Map<String, String> own = Collections.unmodifiableMap(new LinkedHashMap<>(properties));
     if (client != null) {
       return new OpenAiChatInferenceProvider(client, vendor, false, mapper, own);

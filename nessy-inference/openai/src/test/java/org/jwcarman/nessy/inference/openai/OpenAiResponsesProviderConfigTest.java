@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.openai.client.OpenAIClient;
 import com.openai.models.ReasoningEffort;
 import com.openai.models.responses.ResponseCreateParams;
@@ -31,6 +32,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceRequest;
 
 /** Building a Responses provider needs no network: the SDK client is constructed, never used. */
 @DisplayName("The OpenAI Responses provider config")
@@ -147,16 +149,60 @@ class OpenAiResponsesProviderConfigTest {
   }
 
   @Test
-  void validate_refuses_the_fixed_fields_an_agent_type_names() {
+  void validate_warns_once_for_an_unsupported_agent_type_property_and_inference_stays_silent() {
     OpenAiResponsesInferenceProvider provider =
         new OpenAiResponsesProviderConfig()
-            .client(ResponseStreams.client(params -> List.of()))
+            .client(
+                ResponseStreams.client(
+                    params ->
+                        ResponseStreams.eventsOf(
+                            ResponseStreams.completed(
+                                List.of(ResponseStreams.message("msg_1", "ok"))))))
             .build();
     InferenceOptions options =
         new InferenceOptions("gpt-6-sol", 1024, Map.of("openai.background", "true"));
+    InferenceRequest request =
+        new InferenceRequest(
+            OpenAiResponsesInferenceProviderTest.REQUEST.systemPrompt(),
+            OpenAiResponsesInferenceProviderTest.REQUEST.context(),
+            OpenAiResponsesInferenceProviderTest.REQUEST.toolset(),
+            options);
 
-    assertThatThrownBy(() -> provider.validate(options))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("'openai.background'");
+    List<ILoggingEvent> atValidate =
+        LogCapture.during(OpenAiProperties.class, () -> provider.validate(options));
+    List<ILoggingEvent> atInference =
+        LogCapture.during(
+            OpenAiProperties.class,
+            () -> {
+              provider.infer(request);
+              provider.infer(request);
+            });
+
+    assertThat(LogCapture.warnings(atValidate))
+        .singleElement()
+        .asString()
+        .contains("'openai.background'")
+        .contains("openai.reasoning.effort");
+    assertThat(atInference).isEmpty();
+  }
+
+  @Test
+  void an_unsupported_property_is_warned_once_at_build_and_the_provider_still_builds() {
+    Customizer<OpenAiResponsesProviderConfig> customizer =
+        c -> c.apiKey("test-key").property("openai.store", "true");
+    var built = new OpenAiResponsesInferenceProvider[1];
+
+    List<ILoggingEvent> events =
+        LogCapture.during(
+            OpenAiProperties.class,
+            () -> built[0] = OpenAiResponsesInferenceProvider.of(customizer));
+
+    assertThat(LogCapture.warnings(events))
+        .singleElement()
+        .asString()
+        .contains("'openai.store'")
+        .contains("openai.service_tier");
+    assertThat(built[0]).isNotNull();
+    built[0].close();
   }
 }

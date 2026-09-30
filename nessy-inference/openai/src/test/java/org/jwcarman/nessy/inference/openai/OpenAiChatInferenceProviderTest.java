@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.JsonValue;
@@ -1238,7 +1239,7 @@ class OpenAiChatInferenceProviderTest {
     void a_property_on_the_config_reaches_every_request() {
       var captured = new ChatCompletionCreateParams[1];
       new OpenAiChatProviderConfig()
-          .property("openai.seed", "42")
+          .property("openai.service_tier", "flex")
           .client(
               fakeClient(
                   params -> {
@@ -1252,21 +1253,70 @@ class OpenAiChatInferenceProviderTest {
           .build()
           .infer(REQUEST);
 
-      assertThat(captured[0]._additionalBodyProperties()).containsKey("seed");
-      assertThat(captured[0]._additionalBodyProperties().get("seed").convert(Integer.class))
-          .isEqualTo(42);
+      assertThat(captured[0].serviceTier().map(ChatCompletionCreateParams.ServiceTier::asString))
+          .contains("flex");
     }
 
     @Test
-    void validate_refuses_a_clash_between_the_agent_type_and_the_wire() {
+    void validate_warns_once_for_an_unsupported_agent_type_property_and_inference_stays_silent() {
       OpenAiChatInferenceProvider provider =
-          new OpenAiChatProviderConfig().client(fakeClient(params -> null)).build();
+          new OpenAiChatProviderConfig()
+              .client(
+                  fakeClient(
+                      params ->
+                          completionOf(
+                              ChatCompletionMessage.builder()
+                                  .content("ok")
+                                  .refusal(Optional.<String>empty())
+                                  .build())))
+              .build();
       InferenceOptions options =
-          new InferenceOptions("gpt-4o", 1024, Map.of("openai.messages", "[]"));
+          new InferenceOptions("gpt-4o", 1024, Map.of("openai.max_completion_tokens", "5"));
 
-      assertThatThrownBy(() -> provider.validate(options))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'openai.messages'");
+      List<ILoggingEvent> atValidate =
+          LogCapture.during(OpenAiProperties.class, () -> provider.validate(options));
+      List<ILoggingEvent> atInference =
+          LogCapture.during(
+              OpenAiProperties.class,
+              () -> {
+                provider.infer(requestWith(options));
+                provider.infer(requestWith(options));
+              });
+
+      assertThat(LogCapture.warnings(atValidate))
+          .singleElement()
+          .asString()
+          .contains("'openai.max_completion_tokens'")
+          .contains("openai.reasoning.effort");
+      assertThat(atInference).isEmpty();
+    }
+
+    @Test
+    void an_unsupported_property_does_not_stop_the_request_and_is_not_in_it() {
+      var captured = new ChatCompletionCreateParams[1];
+      OpenAiChatInferenceProvider provider =
+          new OpenAiChatProviderConfig()
+              .client(
+                  fakeClient(
+                      params -> {
+                        captured[0] = params;
+                        return completionOf(
+                            ChatCompletionMessage.builder()
+                                .content("ok")
+                                .refusal(Optional.<String>empty())
+                                .build());
+                      }))
+              .build();
+
+      provider.infer(requestWith(new InferenceOptions("gpt-4o", 1024, Map.of("openai.seed", "3"))));
+
+      assertThat(captured[0]._additionalBodyProperties()).isEmpty();
+      assertThat(captured[0].maxCompletionTokens()).contains(1024L);
+    }
+
+    private static InferenceRequest requestWith(InferenceOptions options) {
+      return new InferenceRequest(
+          REQUEST.systemPrompt(), REQUEST.context(), REQUEST.toolset(), options);
     }
 
     @Test

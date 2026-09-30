@@ -87,7 +87,7 @@ final class OpenAiResponsesRequests {
     InferenceOptions options = request.options();
     OpenAiProperties.Read read =
         OpenAiProperties.responses(
-            VendorProperties.merge(providerProperties, options.properties()), mapper);
+            VendorProperties.merge(providerProperties, options.properties()));
     List<ResponseInputItem> input = new ArrayList<>();
     request
         .context()
@@ -126,8 +126,6 @@ final class OpenAiResponsesRequests {
     }
     read.serviceTier()
         .ifPresent(tier -> builder.serviceTier(ResponseCreateParams.ServiceTier.of(tier)));
-    read.passThrough()
-        .forEach((name, value) -> builder.putAdditionalBodyProperty(name, JsonValue.from(value)));
     return builder.build();
   }
 

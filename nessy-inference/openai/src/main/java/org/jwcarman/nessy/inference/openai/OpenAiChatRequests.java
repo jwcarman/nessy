@@ -84,8 +84,7 @@ final class OpenAiChatRequests {
       InferenceRequest request, Map<String, String> providerProperties, JsonMapper mapper) {
     InferenceOptions options = request.options();
     OpenAiProperties.Read read =
-        OpenAiProperties.chat(
-            VendorProperties.merge(providerProperties, options.properties()), mapper);
+        OpenAiProperties.chat(VendorProperties.merge(providerProperties, options.properties()));
 
     List<ChatCompletionMessageParam> messages =
         Stream.concat(
@@ -118,8 +117,6 @@ final class OpenAiChatRequests {
     read.effort().ifPresent(effort -> builder.reasoningEffort(ReasoningEffort.of(effort)));
     read.serviceTier()
         .ifPresent(tier -> builder.serviceTier(ChatCompletionCreateParams.ServiceTier.of(tier)));
-    read.passThrough()
-        .forEach((name, value) -> builder.putAdditionalBodyProperty(name, JsonValue.from(value)));
     return builder.build();
   }
 

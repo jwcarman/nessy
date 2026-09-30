@@ -19,9 +19,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.openai.client.OpenAIClient;
 import java.lang.reflect.Proxy;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
@@ -120,23 +122,32 @@ class OpenAiChatProviderConfigTest {
   }
 
   @Test
-  void a_clash_is_refused_at_build() {
+  void an_unsupported_property_is_warned_once_at_build_and_the_provider_still_builds() {
     Customizer<OpenAiChatProviderConfig> customizer =
         c -> c.apiKey("test-key").properties(Map.of("openai.model", "gpt-4o"));
+    var built = new OpenAiChatInferenceProvider[1];
 
-    assertThatThrownBy(() -> OpenAiChatInferenceProvider.of(customizer))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("InferenceConfig.model");
+    List<ILoggingEvent> events =
+        LogCapture.during(
+            OpenAiProperties.class, () -> built[0] = OpenAiChatInferenceProvider.of(customizer));
+
+    assertThat(LogCapture.warnings(events))
+        .singleElement()
+        .asString()
+        .contains("'openai.model'")
+        .contains("openai.service_tier");
+    assertThat(built[0]).isNotNull();
+    built[0].close();
   }
 
   @Test
   void a_blank_value_is_refused_at_once_naming_the_property() {
     Customizer<OpenAiChatProviderConfig> customizer =
-        c -> c.apiKey("test-key").properties(Map.of("openai.store", ""));
+        c -> c.apiKey("test-key").properties(Map.of("openai.service_tier", ""));
 
     assertThatThrownBy(() -> OpenAiChatInferenceProvider.of(customizer))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("'openai.store'");
+        .hasMessageContaining("'openai.service_tier'");
   }
 
   @Test

@@ -547,15 +547,64 @@ class OpenAiResponsesRequestsTest {
           .hasMessageContaining("strict regardless");
     }
 
-    @Test
-    void an_unknown_name_passes_through_nested_by_path() {
-      Map<String, Object> body =
-          sent(
-              paramsFor(Map.of("openai.metadata.team", "billing", "openai.top_p", "0.9"))
-                  ._additionalBodyProperties());
+    /** Names that were once refused as clashes are simply unsupported now: ignored, not sent. */
+    @ParameterizedTest
+    @ValueSource(
+        strings = {
+          "model",
+          "input",
+          "instructions",
+          "max_output_tokens",
+          "tools",
+          "tool_choice",
+          "text",
+          "text.verbosity",
+          "stream",
+          "store",
+          "include",
+          "previous_response_id",
+          "conversation",
+          "background",
+          "top_p",
+          "metadata.team",
+          "reasoning.generate_summary"
+        })
+    void an_unsupported_name_is_not_sent_and_the_request_is_as_if_it_were_not_given(String name) {
+      ResponseCreateParams with = paramsFor(Map.of("openai." + name, "true"));
 
-      assertThat(body).containsEntry("metadata", Map.of("team", "billing"));
-      assertThat(body).containsEntry("top_p", 0.9);
+      assertThat(with._additionalBodyProperties()).isEmpty();
+      assertThat(with).isEqualTo(paramsFor(Map.of()));
+      assertThat(with.store()).contains(false);
+      assertThat(with.maxOutputTokens()).contains(1024L);
+    }
+
+    @Test
+    void an_unsupported_reasoning_name_beside_a_supported_one_is_dropped_and_the_object_is_typed() {
+      Reasoning reasoning =
+          paramsFor(
+                  Map.of(
+                      "openai.reasoning.effort", "high",
+                      "openai.reasoning.generate_summary", "auto"))
+              .reasoning()
+              .orElseThrow();
+
+      assertThat(reasoning.effort().map(ReasoningEffort::asString)).contains("high");
+      assertThat(reasoning._additionalProperties()).isEmpty();
+    }
+
+    @Test
+    void reading_a_request_says_nothing_about_an_unsupported_name() {
+      InferenceRequest request = carrying(Map.of("openai.store", "true"));
+
+      List<ILoggingEvent> events =
+          LogCapture.during(
+              OpenAiProperties.class,
+              () -> {
+                params(request);
+                params(request);
+              });
+
+      assertThat(events).isEmpty();
     }
 
     @Test
@@ -574,96 +623,6 @@ class OpenAiResponsesRequestsTest {
 
       assertThat(params.reasoning().orElseThrow().effort().map(ReasoningEffort::asString))
           .contains("high");
-    }
-
-    @ParameterizedTest
-    @ValueSource(
-        strings = {
-          "model",
-          "input",
-          "instructions",
-          "max_output_tokens",
-          "tools",
-          "tool_choice",
-          "text",
-          "stream",
-          "store",
-          "include",
-          "previous_response_id",
-          "conversation",
-          "background"
-        })
-    void every_name_the_adapter_already_decides_is_refused(String name) {
-      InferenceRequest request = carrying(Map.of("openai." + name, "1"));
-
-      assertThatThrownBy(() -> OpenAiResponsesRequests.toParams(request, VENDOR, MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'openai." + name + "'");
-    }
-
-    @Test
-    void the_model_is_refused_as_what_a_typed_setting_decides() {
-      InferenceRequest request = carrying(Map.of("openai.model", "gpt-4o"));
-
-      assertThatThrownBy(() -> OpenAiResponsesRequests.toParams(request, VENDOR, MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'openai.model'")
-          .hasMessageContaining("InferenceConfig.model");
-    }
-
-    /** The fields the Responses record fixes on purpose are refused with its reason. */
-    @Test
-    void store_is_refused_because_the_event_log_is_the_only_conversation() {
-      InferenceRequest request = carrying(Map.of("openai.store", "true"));
-
-      assertThatThrownBy(() -> OpenAiResponsesRequests.toParams(request, VENDOR, MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'openai.store'")
-          .hasMessageContaining("the event log is the only conversation");
-    }
-
-    @Test
-    void a_previous_response_is_refused_for_the_same_reason() {
-      InferenceRequest request = carrying(Map.of("openai.previous_response_id", "resp_1"));
-
-      assertThatThrownBy(() -> OpenAiResponsesRequests.toParams(request, VENDOR, MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("the event log is the only conversation");
-    }
-
-    /** Review Focus 3: a typed reasoning object and a pass-through one cannot both be sent. */
-    @Test
-    void a_pass_through_under_the_reasoning_object_is_refused_beside_a_known_reasoning_name() {
-      InferenceRequest request =
-          carrying(
-              Map.of(
-                  "openai.reasoning.effort", "high",
-                  "openai.reasoning.generate_summary", "auto"));
-
-      assertThatThrownBy(() -> OpenAiResponsesRequests.toParams(request, VENDOR, MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'openai.reasoning.generate_summary'")
-          .hasMessageContaining("'openai.reasoning.effort'");
-    }
-
-    @Test
-    void a_field_inside_the_text_object_the_harness_decides_is_refused() {
-      InferenceRequest request = carrying(Map.of("openai.text.verbosity", "low"));
-
-      assertThatThrownBy(() -> OpenAiResponsesRequests.toParams(request, VENDOR, MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'openai.text.verbosity'")
-          .hasMessageContaining("'openai.text'");
-    }
-
-    @Test
-    void a_reasoning_pass_through_alone_is_sent() {
-      Map<String, Object> body =
-          sent(
-              paramsFor(Map.of("openai.reasoning.generate_summary", "auto"))
-                  ._additionalBodyProperties());
-
-      assertThat(body).containsEntry("reasoning", Map.of("generate_summary", "auto"));
     }
   }
 
