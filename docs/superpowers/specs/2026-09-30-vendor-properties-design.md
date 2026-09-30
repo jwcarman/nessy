@@ -1,6 +1,6 @@
 # Vendor properties: the escape hatch every adapter owns
 
-**Status: BUILT, then AMENDED 2026-09-30 to named properties only (see the Amendment below, which overrides §2, §3, §7b, §8, §9 and §12 where they disagree). The rulings were made in conversation with James on 2026-09-29
+**Status: BUILT, then AMENDED 2026-09-30 to named properties only (see the Amendment below, which overrides §2, §3, §7b, §8, §9 and §12 where they disagree), then TYPED and SETTLED by the two amendments after it (which override §8e, §14, §15 and §16 (3) as well). The rulings were made in conversation with James on 2026-09-29
 and this record writes them down. The proposals this record had to make to honour them were
 ruled on overnight on 2026-09-30 by the controller James authorised for the run; those rulings
 are folded in below and marked "accepted overnight" or "changed overnight" in §15, pending his
@@ -91,6 +91,30 @@ docs all use. Values still travel as text: `InferenceOptions.properties` and
   The cost, accepted: a value the vendor adds after the pinned SDK needs a Nessy release before it
   can be set. It follows from "nothing goes in raw": the SDKs' open `of(String)` constructors are
   no longer reached with a caller's text, only with an enum constant's spelling.
+
+## Amendment, 2026-09-30: what the typed build settled
+
+Recorded after the typed build, so this record says what was built. Where the two amendments
+above disagree with this one, this one holds.
+
+- **The helper lives in `nessy-api`; the `nessy-vendor-properties` module is gone** (James's yes).
+  `org.jwcarman.nessy.api.VendorProperties` is a `public final class` with a private constructor,
+  in the house pattern of `org.jwcarman.nessy.api.Identifiers`, holding `under`, `merge` and
+  `requireString`. §8e's module, the `org.jwcarman.nessy.vendor` package and the §14/§15/§16 (3)
+  rows that describe them are history. Both SPIs reach the helper through `nessy-api`, which they
+  already depended on.
+- **`literal`, `requireInteger` and `requireBoolean` are gone too**, not kept as the first
+  amendment said: every typed read now goes through its `VendorProperty<T>`, so nothing called
+  them. `nest` and `refuseClashes` went with the first amendment.
+- **OpenAI's service tier has seven values, and the chat wire refuses one.** openai-java 4.69.2
+  gives the Responses wire `ultrafast` beside the six the chat wire has. One `OpenAiServiceTier`
+  carries all seven; the chat adapter refuses `ultrafast` at build ("cannot be 'ultrafast' on the
+  openai-chat wire; the openai-responses wire carries it"), the same shape as
+  `openai.reasoning.summary` on chat. Ruled by the controller as fitting the approved concepts; a
+  second enum was the alternative.
+- **The parsing lives in package-private `XxxPropertyReader` classes**, so each public
+  `XxxProperties` class holds only its `VendorProperty` constants and `SUPPORTED`. The readers log
+  under the `XxxProperties` class's name, so a log line reads as it did.
 
 ---
 
