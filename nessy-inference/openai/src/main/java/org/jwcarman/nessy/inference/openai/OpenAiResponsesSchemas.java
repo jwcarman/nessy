@@ -138,20 +138,24 @@ final class OpenAiResponsesSchemas {
       if (!known || (ADDITIONAL_PROPERTIES.equals(keyword) && !Boolean.FALSE.equals(value))) {
         return Optional.of(keyword);
       }
-      Optional<String> nested =
-          switch (keyword) {
-            case PROPERTIES, DEFS ->
-                value instanceof Map<?, ?> named ? firstRefused(named.values()) : Optional.empty();
-            case ANY_OF, ONE_OF ->
-                value instanceof List<?> branches ? firstRefused(branches) : Optional.empty();
-            case ITEMS -> value instanceof Map<?, ?> item ? refused(item) : Optional.empty();
-            default -> Optional.empty();
-          };
+      Optional<String> nested = refusedWithin(keyword, value);
       if (nested.isPresent()) {
         return nested;
       }
     }
     return Optional.empty();
+  }
+
+  /** What a keyword's own subschemas refuse, for the keywords that hold any. */
+  private static Optional<String> refusedWithin(String keyword, Object value) {
+    return switch (keyword) {
+      case PROPERTIES, DEFS ->
+          value instanceof Map<?, ?> named ? firstRefused(named.values()) : Optional.empty();
+      case ANY_OF, ONE_OF ->
+          value instanceof List<?> branches ? firstRefused(branches) : Optional.empty();
+      case ITEMS -> value instanceof Map<?, ?> item ? refused(item) : Optional.empty();
+      default -> Optional.empty();
+    };
   }
 
   private static Optional<String> firstRefused(Iterable<?> schemas) {
