@@ -18,6 +18,7 @@ package org.jwcarman.nessy.inference.bedrock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -201,6 +202,81 @@ class BedrockInferenceProviderTest {
     @Override
     public void close() {
       closed.set(true);
+    }
+  }
+
+  @Nested
+  class ItsVendorProperties {
+
+    private final List<ConverseStreamRequest> sent = new ArrayList<>();
+
+    private BedrockClient recording() {
+      return new BedrockClient() {
+        @Override
+        public void converseStream(
+            ConverseStreamRequest request, Consumer<ConverseStreamOutput> onEvent) {
+          sent.add(request);
+          eventsOf(reply(StopReason.END_TURN, ContentBlock.fromText("ok"))).forEach(onEvent);
+        }
+
+        @Override
+        public void close() {
+          // Nothing to close.
+        }
+      };
+    }
+
+    private static InferenceRequest carrying(Map<String, String> agentType) {
+      InferenceRequest base = request();
+      return new InferenceRequest(
+          base.systemPrompt(),
+          base.context(),
+          base.toolset(),
+          new InferenceOptions("us.amazon.nova-lite", 256, agentType));
+    }
+
+    @Test
+    void a_property_on_the_provider_reaches_every_request() {
+      BedrockInferenceProvider provider =
+          new BedrockInferenceProvider(
+              recording(), MAPPER, Map.of("bedrock.inferenceConfig.temperature", "0.4"));
+
+      provider.infer(carrying(Map.of()));
+
+      assertThat(sent)
+          .singleElement()
+          .satisfies(
+              request -> assertThat(request.inferenceConfig().temperature()).isEqualTo(0.4f));
+    }
+
+    @Test
+    void validate_warns_once_for_an_unsupported_agent_type_property_and_inference_stays_silent() {
+      BedrockInferenceProvider provider = new BedrockInferenceProvider(recording(), MAPPER);
+      InferenceRequest request = carrying(Map.of("bedrock.inferenceConfig.maxTokens", "9"));
+
+      List<ILoggingEvent> atValidate =
+          LogCapture.during(BedrockProperties.class, () -> provider.validate(request.options()));
+      List<ILoggingEvent> atInference =
+          LogCapture.during(
+              BedrockProperties.class,
+              () -> {
+                provider.infer(request);
+                provider.infer(request);
+              });
+
+      assertThat(LogCapture.warnings(atValidate))
+          .singleElement()
+          .asString()
+          .contains("'bedrock.inferenceConfig.maxTokens'")
+          .contains("bedrock.inferenceConfig.temperature");
+      assertThat(atInference).isEmpty();
+      assertThat(sent)
+          .hasSize(2)
+          .allSatisfy(
+              sentRequest -> {
+                assertThat(sentRequest.additionalModelRequestFields()).isNull();
+                assertThat(sentRequest.inferenceConfig().maxTokens()).isEqualTo(256);
+              });
     }
   }
 

@@ -18,13 +18,14 @@ package org.jwcarman.nessy.inference.bedrock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
@@ -45,7 +46,6 @@ import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.Toolset;
-import software.amazon.awssdk.core.document.Document;
 import software.amazon.awssdk.services.bedrockruntime.model.ContentBlock;
 import software.amazon.awssdk.services.bedrockruntime.model.ConversationRole;
 import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamRequest;
@@ -429,22 +429,80 @@ class BedrockRequestsTest {
       assertThat(request.additionalModelRequestFields()).isNull();
     }
 
-    /** Claude's extended thinking on Bedrock is two properties and no code (§9e). */
-    @Test
-    void every_other_name_goes_into_the_model_s_own_document_nested_by_path() {
-      ConverseStreamRequest request =
-          requestFor(
-              Map.of("bedrock.thinking.type", "enabled", "bedrock.thinking.budget_tokens", "4096"));
-
-      Document thinking = request.additionalModelRequestFields().asMap().get("thinking");
-      assertThat(thinking.asMap().get("type").asString()).isEqualTo("enabled");
-      assertThat(thinking.asMap().get("budget_tokens").asNumber().intValue()).isEqualTo(4096);
-      assertThat(request.inferenceConfig().temperature()).isNull();
-    }
-
     @Test
     void without_properties_no_model_document_is_sent() {
       assertThat(requestFor(Map.of()).additionalModelRequestFields()).isNull();
+    }
+
+    /** Names that were once refused or passed through are simply unsupported now: ignored. */
+    @ParameterizedTest
+    @ValueSource(
+        strings = {
+          "modelId",
+          "messages",
+          "system",
+          "toolConfig",
+          "inferenceConfig",
+          "inferenceConfig.maxTokens",
+          "inferenceConfig.topK",
+          "thinking.type",
+          "thinking.budget_tokens",
+          "top_k"
+        })
+    void an_unsupported_name_is_not_sent_and_the_request_is_as_if_it_were_not_given(String name) {
+      ConverseStreamRequest with = requestFor(Map.of("bedrock." + name, "5"));
+
+      assertThat(with.additionalModelRequestFields()).isNull();
+      assertThat(with).isEqualTo(requestFor(Map.of()));
+      assertThat(with.modelId()).isEqualTo("us.anthropic.claude-haiku");
+      assertThat(with.inferenceConfig().maxTokens()).isEqualTo(1024);
+      assertThat(with.inferenceConfig().temperature()).isNull();
+    }
+
+    @Test
+    void an_unsupported_name_beside_a_supported_one_leaves_the_supported_one_in_force() {
+      ConverseStreamRequest request =
+          requestFor(
+              Map.of(
+                  "bedrock.inferenceConfig.maxTokens", "9",
+                  "bedrock.inferenceConfig.temperature", "0.3"));
+
+      assertThat(request.inferenceConfig().maxTokens()).isEqualTo(1024);
+      assertThat(request.inferenceConfig().temperature()).isEqualTo(0.3f);
+      assertThat(request.additionalModelRequestFields()).isNull();
+    }
+
+    @Test
+    void reading_a_request_says_nothing_about_an_unsupported_name() {
+      InferenceRequest request = carrying(Map.of("bedrock.thinking.type", "enabled"));
+
+      List<ILoggingEvent> events =
+          LogCapture.during(
+              BedrockProperties.class,
+              () -> {
+                BedrockRequests.toRequest(request, Map.of(), MAPPER);
+                BedrockRequests.toRequest(request, Map.of(), MAPPER);
+              });
+
+      assertThat(events).isEmpty();
+    }
+
+    @Test
+    void an_unsupported_name_is_warned_once_naming_it_and_what_is_supported() {
+      List<ILoggingEvent> events =
+          LogCapture.during(
+              BedrockProperties.class,
+              () ->
+                  BedrockProperties.warnUnsupported(
+                      Map.of(
+                          "bedrock.thinking.type", "enabled",
+                          "bedrock.inferenceConfig.topP", "0.5")));
+
+      assertThat(LogCapture.warnings(events))
+          .containsExactly(
+              "NESSY INFERENCE: property 'bedrock.thinking.type' is not supported by bedrock and"
+                  + " is ignored; supported: [bedrock.inferenceConfig.stopSequences,"
+                  + " bedrock.inferenceConfig.temperature, bedrock.inferenceConfig.topP]");
     }
 
     @Test
@@ -462,72 +520,6 @@ class BedrockRequestsTest {
               MAPPER);
 
       assertThat(request.inferenceConfig().temperature()).isEqualTo(0.1f);
-    }
-
-    @Test
-    void a_provider_entry_reaches_the_request_when_the_agent_type_is_silent() {
-      ConverseStreamRequest request =
-          BedrockRequests.toRequest(
-              carrying(Map.of()), Map.of("bedrock.thinking.type", "enabled"), MAPPER);
-
-      assertThat(
-              request
-                  .additionalModelRequestFields()
-                  .asMap()
-                  .get("thinking")
-                  .asMap()
-                  .get("type")
-                  .asString())
-          .isEqualTo("enabled");
-    }
-
-    @Test
-    void the_model_is_refused_under_its_converse_spelling() {
-      InferenceRequest request = carrying(Map.of("bedrock.modelId", "x"));
-
-      assertThatThrownBy(() -> BedrockRequests.toRequest(request, Map.of(), MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'bedrock.modelId'")
-          .hasMessageContaining("InferenceConfig.model");
-    }
-
-    @Test
-    void the_ceiling_is_refused_under_its_converse_spelling() {
-      InferenceRequest request = carrying(Map.of("bedrock.inferenceConfig.maxTokens", "9"));
-
-      assertThatThrownBy(() -> BedrockRequests.toRequest(request, Map.of(), MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("InferenceConfig.maxTokens");
-    }
-
-    @Test
-    void
-        an_inference_config_field_that_is_not_a_known_name_is_refused_pointing_at_the_alternative() {
-      InferenceRequest request = carrying(Map.of("bedrock.inferenceConfig.topK", "5"));
-
-      assertThatThrownBy(() -> BedrockRequests.toRequest(request, Map.of(), MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'bedrock.inferenceConfig.topK'")
-          .hasMessageContaining("inferenceConfig.temperature")
-          .hasMessageContaining("bedrock.<field>");
-    }
-
-    @ParameterizedTest
-    @CsvSource({
-      "modelId,InferenceConfig.model",
-      "messages,conversation",
-      "system,system prompt",
-      "toolConfig,tools the harness binds",
-      "inferenceConfig.maxTokens,InferenceConfig.maxTokens"
-    })
-    void every_name_the_adapter_decides_is_refused_naming_what_decides_it(
-        String name, String decidedBy) {
-      InferenceRequest request = carrying(Map.of("bedrock." + name, "x"));
-
-      assertThatThrownBy(() -> BedrockRequests.toRequest(request, Map.of(), MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("'bedrock." + name + "'")
-          .hasMessageContaining(decidedBy);
     }
 
     @Test

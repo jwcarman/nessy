@@ -133,9 +133,6 @@ public final class BedrockRequests {
       builder.toolConfig(tools.build());
     }
     request.outputSchema().ifPresent(schema -> askForShape(builder, schema));
-    if (!read.passThrough().isEmpty()) {
-      builder.additionalModelRequestFields(document(read.passThrough()));
-    }
     return builder.build();
   }
 
