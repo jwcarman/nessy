@@ -485,19 +485,33 @@ if a future SDK cannot. Gemini is the one with a condition attached (§13d, §16
 
 ### 8e. One helper, so the adapters cannot drift
 
-**Proposed here; its home changed overnight.** The filtering, the merge, the literal reading, the
-path nesting and the clash check are one piece of logic, and a copy per adapter is how four
-vendors come to disagree about what `true` means. This record's first draft put it in `nessy-api`
-because both SPIs depend on that module; the overnight ruling moved it out, because `nessy-api` is
-the application-facing insulator and a helper for adapter authors does not belong on the surface
-applications read. It lives in **`nessy-inference-spi`** as
-`org.jwcarman.nessy.inference.VendorProperties`, a public `final` class of static functions over
-`Map<String, String>` -- public because four adapter modules call it, SPI-only in the sense that
-nothing in `nessy-api` or the engine's application surface names it, and it appears in no
-signature. **The embedding side is decided in the third `0.3.0` item** (named embedders): whether
-`nessy-embedding-spi` takes a dependency on the inference SPI for this one class, carries a copy,
-or the class moves to a shared support module is that record's question, and the embedding
-adapters do not read properties until it is answered (§9f). Its functions:
+**Proposed here; its home changed overnight, twice.** The filtering, the merge, the literal
+reading, the path nesting and the clash check are one piece of logic, and a copy per adapter is
+how four vendors come to disagree about what `true` means. This record's first draft put it in
+`nessy-api` because both SPIs depend on that module; the first overnight ruling moved it out,
+because `nessy-api` is the application-facing insulator and a helper for adapter authors does not
+belong on the surface applications read, and into `nessy-inference-spi`. The second overnight
+ruling, made while the named-embedders record was being written, moved it again: an embedding SPI
+depending on the inference SPI for one class was rejected (the two are siblings by design --
+`nessy-embedding/spi/pom.xml` line 37 says so -- and a sibling that depends on the other is no
+longer one), and a copy would drift. So it gets **a module of its own**:
+
+- **`nessy-vendor-properties`**, a one-class module at the reactor root beside `nessy-api`,
+  artifactId `nessy-vendor-properties`, that **both** `nessy-inference-spi` and
+  `nessy-embedding-spi` depend on. Its only dependency is `jackson-databind` (Jackson 3, for the
+  `JsonMapper` the literal reading takes); it depends on nothing of Nessy's, so it sits beneath
+  both SPIs without pulling either toward the other, and beneath `nessy-api` without touching it.
+- **Package `org.jwcarman.nessy.vendor`**, class `VendorProperties`. Chosen over
+  `org.jwcarman.nessy.properties` (which reads as Boot's `@ConfigurationProperties`, a different
+  thing in the same tree) and over `org.jwcarman.nessy.vendor.properties` (a package for one class
+  named after the class is a directory with nothing else in it). The package names what the
+  properties are about -- the vendor -- and the class names what they are, which is how
+  `org.jwcarman.nessy.api.embedding.Embedding` already reads.
+
+`VendorProperties` is a public `final` class of static functions over `Map<String, String>` --
+public because eight adapter modules call it, and appearing in no signature of `nessy-api`, the
+engine or either SPI. It is not the module a new adapter author needs to learn: the "Writing a
+provider" guide names it in one line as the thing that reads properties for you. Its functions:
 
 - `under(Map<String,String> merged, String prefix)` -- the entries under a prefix, the prefix
   stripped, insertion order kept;
@@ -510,8 +524,16 @@ adapters do not read properties until it is answered (§9f). Its functions:
 - `requireInteger`, `requireBoolean`, `requireString` -- the typed reads of §8b, each failing with
   the message shape shown there.
 
-The alternative was a package-private copy per module; the overnight ruling took the shared class
-in the SPI, and §15 records it as accepted there pending James's review.
+The alternatives were a package-private copy per module (drift) and the inference SPI as the
+home (a sibling depending on a sibling); the overnight ruling took the module of its own, and §15
+records it there pending James's review. What creating a module costs, so the sequencing (§14)
+can say it once: a `pom.xml` in the house shape (`nessy-inference/spi/pom.xml` is the model --
+parent `nessy-parent`, a `<name>` and a `<description>`, the Apache header), a `<module>` line in
+the root reactor beside `nessy-api`, a managed version in the root `<dependencyManagement>` beside
+the two SPIs' entries (root `pom.xml` lines 382-391), a row in `nessy-bom`, a row in
+`nessy-coverage`'s aggregation, a row in the README's module table beside `nessy-inference-spi`
+(line 173), and **nothing** in the release profile's `excludeArtifacts`: a library module is
+published by not being named there, and this one is a library.
 
 ## 9. Each adapter's table
 
@@ -654,11 +676,13 @@ name would be sent to the model and rejected. Each joins the known table when so
 
 Same contract, smaller tables -- **specified here, built with the third `0.3.0` item.** What lands
 now is the door (`EmbedderConfig.property`, §4b), the carrier (`EmbeddingOptions.properties`,
-§5b), the hook (`EmbeddingProvider.validate`, §7c) and the config setters (§6a); the adapters read
-none of it until the named-embedders record settles where the helper of §8e lives for them, so a
-property set on an embedder today is carried and ignored, and the guide says so. Known names:
-none, to start; every embedder passes through, and the one typed knob beyond the model
-(`dimension`) is in the clash table under its wire spelling.
+§5b), the hook (`EmbeddingProvider.validate`, §7c), the config setters (§6a) and the helper's
+home, since `nessy-embedding-spi` takes its dependency on `nessy-vendor-properties` in step 1
+(§14). The embedding adapters' reading of the map -- the tables below made real -- is the
+named-embedders record's to build alongside its registry, so a property set on an embedder before
+that item lands is carried and ignored, and the guide says so. Known names: none, to start; every
+embedder passes through, and the one typed knob beyond the model (`dimension`) is in the clash
+table under its wire spelling.
 
 | adapter | prefix | clash table |
 |---|---|---|
@@ -750,7 +774,7 @@ map and the options built outside it (S5778); an emptiness assertion precedes an
 
 ### 13a. The helper and each adapter
 
-`VendorPropertiesTest` (`nessy-inference-spi`), one group per function of §8e: entries under a prefix are
+`VendorPropertiesTest` (`nessy-vendor-properties`), one group per function of §8e: entries under a prefix are
 returned with the prefix stripped and other prefixes left out; a name with no prefix is refused;
 agent-type entries override provider entries by name; `12000` reads as a number, `true` as a
 boolean, `{...}` as an object, `[...]` as an array, `high` as a string, `"12345"` as a string;
@@ -865,10 +889,15 @@ Six steps, each a reviewable commit, each green under `./mvnw -q clean verify` w
 network before the next starts. Step 1 waits on the Responses branch beneath this one for the
 OpenAI module's names; nothing else does.
 
-1. **The helper and the SPI** (§5, §7c, §8e): `VendorProperties` in `nessy-inference-spi` with
-   its test; `InferenceOptions` and `EmbeddingOptions` gain `properties`;
-   `InferenceProvider.validate` and `EmbeddingProvider.validate` as no-op defaults;
-   `ObservedInferenceProvider` delegates. No behaviour change.
+1. **The module, the helper and the SPIs** (§5, §7c, §8e): the `nessy-vendor-properties` module
+   created -- its `pom.xml`, the root reactor `<module>` line, the root `<dependencyManagement>`
+   entry, the `nessy-bom` row, the `nessy-coverage` row, the README module row; not named in
+   `excludeArtifacts`, so the release profile publishes it -- with `VendorProperties` and its
+   test; `nessy-inference-spi` and `nessy-embedding-spi` each take the dependency;
+   `InferenceOptions` and `EmbeddingOptions` gain `properties`; `InferenceProvider.validate` and
+   `EmbeddingProvider.validate` as no-op defaults; `ObservedInferenceProvider` delegates. No
+   behaviour change. A clean `./mvnw -q clean verify` proves the reactor order, since a warm
+   build would not (`maven-stale-incremental-compile`).
 2. **The API and the engine** (§4, §13c): `InferenceConfig.property`, `EmbedderConfig.property`;
    the two `Inference` classes and `DefaultEmbedderFactory.Settings` keep the map; the two
    factories pass it and call `validate`; the harness report line; the engine tests.
@@ -917,7 +946,8 @@ with the change named; every such row awaits his morning review, and nothing lan
 | `InferenceOptions.properties` and `EmbeddingOptions.properties` as the third record component | public record component | accepted overnight, as proposed | 5 |
 | `InferenceProvider.validate(InferenceOptions)` and `EmbeddingProvider.validate(EmbeddingOptions)`, default no-op | public SPI method | accepted overnight, as proposed | 7c |
 | `XProviderConfig.property(String, String)` / `properties(Map)` on five inference and four embedder configs | public methods | accepted overnight, as proposed | 6a |
-| `VendorProperties`, the shared parsing helper | public type (static helper) | **changed overnight**: not in `nessy-api` (the application-facing insulator); in `nessy-inference-spi` as `org.jwcarman.nessy.inference.VendorProperties`, SPI-only; the embedding side is the third item's | 8e |
+| `VendorProperties`, the shared parsing helper | public type (static helper) | **changed overnight, twice**: not in `nessy-api` (the application-facing insulator); not in `nessy-inference-spi` (an embedding SPI depending on the inference SPI was rejected, and a copy would drift); in a **new one-class module `nessy-vendor-properties`**, package `org.jwcarman.nessy.vendor`, that both SPIs depend on | 8e |
+| the module `nessy-vendor-properties` itself -- a reactor module, a BOM row, a published artifact | build surface | ruled overnight with the helper's home; the package name `org.jwcarman.nessy.vendor` is this record's choice, justified in §8e, for James | 8e, 14 |
 | deleting `AnthropicProviderConfig.thinking`, `thinkingBudget`, `promptCaching` and `PromptCaching` | public methods and a public type, removed | **rejected overnight**: vendor-module configuration, not neutral API; an unrequested breaking change. They stay, as a provider-level default at the config-property tier | 9c, 7a |
 | a config setter and a config property for one name on one provider fail at `build()` naming both; an agent-type property overrides either | contract | ruled overnight, in place of the deletion | 7a, 9c |
 | `anthropic.thinking.type`, `anthropic.cache_control.ttl`, `anthropic.service_tier`; the three `gemini.generationConfig.thinkingConfig.*` names; the three `bedrock.inferenceConfig.*` names; the `voyage.` prefix | known names beyond the ruled ones | accepted overnight, as proposed | 9c-9f |
@@ -941,10 +971,16 @@ the test names, the live rows, the measurements column.
    honoured at build. `check` and `accept` were considered and set aside (`accept` sounds like it
    stores something). If James would rather not widen the SPI, the fallback is failing on the
    first request, which the record argues against in §7c.
-3. **`VendorProperties` for the embedding adapters.** The overnight ruling put the helper in
-   `nessy-inference-spi` and left the embedding side to the third `0.3.0` item. That item chooses
-   between `nessy-embedding-spi` depending on the inference SPI for one class, a copy, or a shared
-   support module; until it does, embedder properties are carried and ignored (§9f).
+3. **The helper's package name, and a gap found on the way.** `nessy-vendor-properties` and
+   "both SPIs depend on it" are ruled; `org.jwcarman.nessy.vendor` is this record's pick (§8e) and
+   `org.jwcarman.nessy.vendor.properties` the alternative if James prefers a package that spells
+   the artifact. Found while listing what a new module touches: `nessy-bom` lists
+   `nessy-backend-spi` and every adapter, but **neither `nessy-inference-spi` nor
+   `nessy-embedding-spi`** (verified: `nessy-bom/pom.xml` has one `spi` row, line 49), although the
+   README (line 173) tells adapter authors to depend on the inference SPI. The new module's BOM row
+   is written in §14 step 1; whether the two SPIs join the BOM in the same commit is James's call,
+   and the recommendation is yes, since a BOM that omits the artifact its README names is a
+   version an adapter author has to guess.
 4. **Fold the Anthropic setters into properties?** Rejected overnight for this item, and the
    setters stay (§9c) with the tier rule relating them to `anthropic.*`. The question for James is
    whether a later item retires them -- one spelling of "think with 8192 tokens", the guide's
