@@ -24,6 +24,7 @@ import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -117,11 +118,30 @@ class OpenAiResponsesLiveTest {
 
   private static InferenceRequest asking(
       String question, List<ToolOffer> tools, ToolChoice choice, String model) {
+    return asking(question, tools, choice, InferenceOptions.of(model));
+  }
+
+  private static InferenceRequest asking(
+      String question, List<ToolOffer> tools, ToolChoice choice, InferenceOptions options) {
     return new InferenceRequest(
         new SystemPrompt("You are a terse assistant. Answer in one short sentence."),
         InferenceContext.of(List.of(turn(question, List.of()))),
         new Toolset(tools, choice),
-        InferenceOptions.of(model));
+        options);
+  }
+
+  /** The reasoning model asked to reason, so its encrypted reasoning items are really produced. */
+  private static InferenceOptions reasoning(
+      OpenAiReasoningEffort effort, OpenAiReasoningSummary summary) {
+    Map<String, String> properties = new LinkedHashMap<>();
+    properties.put(
+        OpenAiProperties.REASONING_EFFORT.name(), OpenAiProperties.REASONING_EFFORT.format(effort));
+    if (summary != null) {
+      properties.put(
+          OpenAiProperties.REASONING_SUMMARY.name(),
+          OpenAiProperties.REASONING_SUMMARY.format(summary));
+    }
+    return new InferenceOptions(REASONING_MODEL, 4096, properties);
   }
 
   private static InferenceRequest asking(String question, List<ToolOffer> tools) {
@@ -323,7 +343,12 @@ class OpenAiResponsesLiveTest {
     try (OpenAiResponsesInferenceProvider provider = provider()) {
       String question = "How deep is Loch Ness? Use the lake_depth tool.";
       InferenceResult first =
-          provider.infer(asking(question, List.of(LAKE_DEPTH), ToolChoice.auto(), REASONING_MODEL));
+          provider.infer(
+              asking(
+                  question,
+                  List.of(LAKE_DEPTH),
+                  ToolChoice.auto(),
+                  reasoning(OpenAiReasoningEffort.LOW, null)));
 
       assertThat(first).isInstanceOf(InferenceResult.Actions.class);
       InferenceResult.Actions actions = (InferenceResult.Actions) first;
@@ -343,7 +368,7 @@ class OpenAiResponsesLiveTest {
                                   new Exchange(
                                       new Seq(2), actions.blocks(), outcomesFor(actions)))))),
                   Toolset.of(List.of(LAKE_DEPTH)),
-                  InferenceOptions.of(REASONING_MODEL)));
+                  reasoning(OpenAiReasoningEffort.LOW, null)));
 
       assertThat(textOf(second)).contains("230");
     }
@@ -420,40 +445,6 @@ class OpenAiResponsesLiveTest {
   }
 
   record LakeQuery(String name, Optional<String> unit) {}
-
-  /** §5d: a sealed vocabulary's oneOf falls back to non-strict, and the call still goes through. */
-  @Test
-  void a_sealed_vocabulary_falls_back_to_non_strict_and_is_still_called() {
-    ToolOffer command =
-        new ToolOffer(
-            new ToolName("server_command"),
-            "restarts a host or shuts down, as asked",
-            new JsonSchema(
-                """
-                {"$schema":"https://json-schema.org/draft/2020-12/schema",
-                 "oneOf":[{"type":"object","properties":{"host":{"type":"string"},
-                                                         "type":{"const":"Restart"}},
-                           "required":["host","type"]},
-                          {"type":"object","properties":{"reason":{"type":["string","null"]},
-                                                         "type":{"const":"Shutdown"}},
-                           "required":["type"]}]}"""));
-    Logger logger = (Logger) LoggerFactory.getLogger(OpenAiResponsesRequests.class);
-    ListAppender<ILoggingEvent> appender = new ListAppender<>();
-    appender.start();
-    logger.addAppender(appender);
-
-    try (OpenAiResponsesInferenceProvider provider = provider()) {
-      InferenceResult result =
-          provider.infer(
-              asking(
-                  "Restart the host called web-1.", List.of(command), new ToolChoice.Any(), MODEL));
-
-      assertThat(calledIn(result)).isEqualTo(new ToolName("server_command"));
-      assertThat(appender.list).as("the fallback fired and said so").isNotEmpty();
-    } finally {
-      logger.detachAppender(appender);
-    }
-  }
 
   /** A sealed vocabulary whose branches carry a {@code const} discriminator, nested in a record. */
   @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
@@ -539,10 +530,7 @@ class OpenAiResponsesLiveTest {
             new SystemPrompt("You are a careful assistant."),
             InferenceContext.of(List.of(turn("What is 17 times 23? Work it out.", List.of()))),
             Toolset.none(),
-            new InferenceOptions(
-                REASONING_MODEL,
-                4096,
-                Map.of("openai.reasoning.effort", "medium", "openai.reasoning.summary", "auto")));
+            reasoning(OpenAiReasoningEffort.MEDIUM, OpenAiReasoningSummary.DETAILED));
 
     try (OpenAiResponsesInferenceProvider provider = provider()) {
       Narration narrated = new Narration();

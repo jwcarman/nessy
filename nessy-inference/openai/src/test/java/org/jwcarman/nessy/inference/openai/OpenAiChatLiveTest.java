@@ -432,22 +432,27 @@ class OpenAiChatLiveTest {
     }
   }
 
-  /** A sealed vocabulary's oneOf falls back per tool, says so, and the call still goes through. */
+  /**
+   * A record whose field is a sealed vocabulary, as the generator writes it (a bare {@code const}
+   * discriminator): strict accepts it, no fallback is logged, and the call goes through.
+   */
   @Test
-  void under_strict_tools_a_sealed_vocabulary_falls_back_and_is_still_called() {
+  void under_strict_tools_a_record_with_a_sealed_field_stays_strict_and_is_called() {
     ToolOffer command =
         new ToolOffer(
             new ToolName("server_command"),
             "restarts a host or shuts down, as asked",
             new JsonSchema(
                 """
-                {"$schema":"https://json-schema.org/draft/2020-12/schema",
-                 "oneOf":[{"type":"object","properties":{"host":{"type":"string"},
-                                                         "type":{"const":"Restart"}},
-                           "required":["host","type"]},
-                          {"type":"object","properties":{"reason":{"type":["string","null"]},
-                                                         "type":{"const":"Shutdown"}},
-                           "required":["type"]}]}"""));
+                {"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",
+                 "properties":{"command":{"oneOf":[
+                   {"type":"object","properties":{"host":{"type":"string"},
+                                                  "type":{"const":"Restart"}},
+                    "required":["host","type"]},
+                   {"type":"object","properties":{"reason":{"type":["string","null"]},
+                                                  "type":{"const":"Shutdown"}},
+                    "required":["type"]}]}},
+                 "required":["command"]}"""));
     Logger logger = (Logger) LoggerFactory.getLogger(OpenAiChatRequests.class);
     ListAppender<ILoggingEvent> appender = new ListAppender<>();
     appender.start();
@@ -464,7 +469,9 @@ class OpenAiChatLiveTest {
                   STRICT));
 
       assertThat(calledIn(result)).isEqualTo(new ToolName("server_command"));
-      assertThat(appender.list).as("the fallback fired and said so").isNotEmpty();
+      assertThat(appender.list.stream().map(ILoggingEvent::getFormattedMessage))
+          .as("no strict fallback was logged for this tool")
+          .noneMatch(message -> message.contains("server_command"));
     } finally {
       logger.detachAppender(appender);
     }
