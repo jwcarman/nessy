@@ -223,35 +223,52 @@ class OpenAiResponsesSchemasTest {
                    "required":["first","second","tags"],"additionalProperties":false}"""));
     }
 
+    private static final String SEALED_BRANCHES =
+        """
+        [{"type":"object","properties":{"host":{"type":"string"},"type":{"const":"Restart"}},
+          "required":["host","type"]},
+         {"type":"object","properties":{"reason":{"type":["string","null"]},
+                                        "type":{"const":"Shutdown"}},
+          "required":["type"]}]""";
+
     /**
      * A sealed {@code Command} with {@code Restart(String host)} and {@code
-     * Shutdown(Optional<String> reason)}, as generated.
+     * Shutdown(Optional<String> reason)}, as generated, held in a property of a record.
      */
     @Test
-    void a_sealed_vocabulary_becomes_an_any_of_and_stays_strict() {
+    void a_nested_sealed_vocabulary_becomes_an_any_of_and_stays_strict() {
       OpenAiResponsesSchemas.Projected projected =
           project(
-              """
-              {"$schema":"https://json-schema.org/draft/2020-12/schema",
-               "oneOf":[{"type":"object","properties":{"host":{"type":"string"},
-                                                       "type":{"const":"Restart"}},
-                         "required":["host","type"]},
-                        {"type":"object","properties":{"reason":{"type":["string","null"]},
-                                                       "type":{"const":"Shutdown"}},
-                         "required":["type"]}]}""");
+              "{\"type\":\"object\",\"properties\":{\"command\":{\"oneOf\":"
+                  + SEALED_BRANCHES
+                  + "}},\"required\":[\"command\"]}");
 
       assertThat(projected.strict()).isTrue();
       assertThat(projected.schema())
           .isEqualTo(
               parse(
-                  """
-                  {"$schema":"https://json-schema.org/draft/2020-12/schema",
-                   "anyOf":[{"type":"object","properties":{"host":{"type":"string"},
-                                                           "type":{"const":"Restart"}},
-                             "required":["host","type"],"additionalProperties":false},
-                            {"type":"object","properties":{"reason":{"type":["string","null"]},
-                                                           "type":{"const":"Shutdown"}},
-                             "required":["reason","type"],"additionalProperties":false}]}"""));
+                  "{\"type\":\"object\",\"properties\":{\"command\":{\"anyOf\":"
+                      + """
+                      [{"type":"object","properties":{"host":{"type":"string"},
+                                                      "type":{"const":"Restart"}},
+                        "required":["host","type"],"additionalProperties":false},
+                       {"type":"object","properties":{"reason":{"type":["string","null"]},
+                                                      "type":{"const":"Shutdown"}},
+                        "required":["reason","type"],"additionalProperties":false}]"""
+                      + "}},\"required\":[\"command\"],\"additionalProperties\":false}"));
+    }
+
+    /** Strict mode requires the root of a tool schema to be an object, not a union. */
+    @Test
+    void a_union_at_the_root_goes_as_generated_naming_the_root() {
+      String json = "{\"oneOf\":" + SEALED_BRANCHES + "}";
+
+      OpenAiResponsesSchemas.Projected projected = project(json);
+
+      assertThat(projected.strict()).isFalse();
+      assertThat(projected.refusedKeyword())
+          .hasValueSatisfying(k -> assertThat(k).contains("root"));
+      assertThat(projected.schema()).isEqualTo(parse(json));
     }
   }
 
@@ -292,9 +309,9 @@ class OpenAiResponsesSchemasTest {
     void an_unsupported_keyword_inside_a_one_of_branch_still_falls_back_as_generated() {
       String json =
           """
-          {"oneOf":[{"type":"object","properties":{"n":{"type":"string","minLength":1}},
-                     "required":["n"]},
-                    {"type":"null"}]}""";
+          {"type":"object","properties":{"either":{"oneOf":[{"type":"object",
+             "properties":{"n":{"type":"string","minLength":1}},"required":["n"]},
+             {"type":"null"}]}},"required":["either"]}""";
 
       OpenAiResponsesSchemas.Projected projected = project(json);
 
