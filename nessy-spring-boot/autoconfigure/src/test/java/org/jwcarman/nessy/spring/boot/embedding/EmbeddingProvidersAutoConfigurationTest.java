@@ -121,7 +121,7 @@ class EmbeddingProvidersAutoConfigurationTest {
       throws Exception {
     Logger registrar = (Logger) LoggerFactory.getLogger(EmbedderRegistrar.class);
     registrar.setLevel(Level.INFO);
-    try (AutoCloseable _ = () -> registrar.setLevel(null)) {
+    try (var _ = (AutoCloseable) () -> registrar.setLevel(null)) {
       runner
           .withClassLoader(new FilteredClassLoader(OpenAiEmbeddingProvider.class))
           .withPropertyValues("openai.api-key=sk-test")
