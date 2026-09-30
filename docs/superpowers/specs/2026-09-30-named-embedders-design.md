@@ -1,11 +1,12 @@
 # Named embedders: a store says who embeds
 
 **Status: DESIGN, NOTHING BUILT. The rulings were made in conversation with James on 2026-09-29
-and this record writes them down. The proposals this record had to make to honour them are marked
-as proposals, listed by name in §14, and await his yes; the one question the rulings left open --
-how the default embedder is named under Boot -- is §15 (1), asked with a recommendation and not
-answered. The places where the code, the earlier records and the brief disagree are in §15
-rather than smoothed over.**
+and this record writes them down. The proposals this record had to make to honour them -- the
+default-embedder pair among them, the one question the rulings had left open -- were ruled on
+overnight on 2026-09-30 by the controller James authorised for the run; those rulings are folded
+in below and marked "accepted overnight" or "ruled overnight" in §14, pending his morning review.
+The questions in §15 are the ones still open, and the places where the code, the earlier records
+and the brief disagreed are recorded there rather than smoothed over.**
 
 Date: 2026-09-30. The third of the three `0.3.0` items named in
 `2026-09-29-openai-responses-design.md` §10: (1) the Responses adapter, (2) vendor properties, (3)
@@ -20,7 +21,7 @@ facade, observability wrapping the embedder -- standing. Every path, name, signa
 below was checked against `src/main/java`, `src/test/java`, the module poms and the LM Studio
 instance on this machine, on branch `named-embedders` at the time of writing. This branch carries
 the two earlier `0.3.0` records as documents only: `Wire` still has three values, `InferenceOptions`
-has no `properties`, and `VendorProperties` does not exist; §15 (9) says which names below are
+has no `properties`, and `VendorProperties` does not exist; §15 (4) says which names below are
 cited from those records rather than from code.
 
 ---
@@ -126,8 +127,8 @@ An embedding provider is registered under a `ProviderId` (`nessy-api`, `org.jwca
 Its javadoc says "one of its inference providers" and is widened to "one of its providers,
 inference or embedding". The two registries are two maps; an id in one never meets an id in the
 other, so nothing is gained by a second type, and an `EmbedderId` would be a new public concept
-with no rule inside it that `ProviderId` lacks. **Proposed here** (§14): reuse, with the javadoc
-amended.
+with no rule inside it that `ProviderId` lacks. Proposed here and **accepted overnight** (§14):
+reuse, with the javadoc amended.
 
 ### 4b. The model name stays `String`
 
@@ -185,8 +186,8 @@ current constructor takes as its third argument arrives inside the options, and 
 `defaultDimension` field goes. The registry is `ProviderRegistry` (`engine.harness`) generified
 over the provider type, or a twin of it beside `DefaultEmbedder`; either is a mechanical internal
 and the implementer's call, with the one constraint that the observation wrap stays where §5e
-puts it. **`EmbedderFactoryConfig` is proposed here** (§14): a public type, because
-`DefaultEmbedderFactory` is public and non-Spring applications build it.
+puts it. **`EmbedderFactoryConfig` was proposed here and accepted overnight** (§14): a public
+type, because `DefaultEmbedderFactory` is public and non-Spring applications build it.
 
 This is a breaking change to every caller of the three constructors: the three auto-configurations
 (replaced anyway, §6), `docs/concepts/memory.md` lines 158 and 269, and the tests in
@@ -236,7 +237,8 @@ All four providers carry `defaultModel()` and `defaultDimension()`, read from `m
 same on Gemini, Bedrock and Voyage), and the three auto-configurations fold them into the factory
 through `EmbeddingModels.modelOr` / `dimensionOr`. The decision record of 2026-09-20 says the
 provider "holds credentials and an endpoint and nothing about a model", and the code disagrees
-with it (§15 (5)). This record sides with the decision record, **proposed** (§14): the four
+with it (§15 (1)). This record sides with the decision record, proposed and **accepted
+overnight** (§14), with a `CHANGELOG.md` breaking-change line of its own: the four
 `model(...)` / `dimension(...)` config setters and the two getters are deleted, the `DEFAULT_MODEL`
 constants stay as the vendor's documented default a caller may cite (`EmbeddingOptions.of
 (OpenAiEmbedderConfig.DEFAULT_MODEL)`; the live tests do), and the only default is the factory's
@@ -259,7 +261,19 @@ the decision record gives: the span says which model was asked and how wide its 
 of the embedder. Two stores minted over one provider share the provider and have their own
 wrappers, which is right, because they are two models.
 
-### 5f. Closing
+### 5f. A width asked for is a width received -- ruled overnight
+
+`DefaultEmbedder.learn` learns the width from the first reply only when none was asked for
+(`dimension == 0`), so an embedder built with `dimension(256)` at a server that ignores
+`dimensions` (§6d measured one) would *report* 256 and *produce* 768, and a store that sized an
+index from `dimension()` would be wrong in a way nothing says. **Ruled overnight:** every reply's
+width is compared with the requested one, and a difference fails at once naming both --
+`asked for 256 coordinates, the model returned 768` -- on every call rather than the first,
+because the check is one comparison and the failure it prevents is an index full of vectors of
+the wrong shape. A reply to an embedder that asked for no width still teaches it its width, as
+today.
+
+### 5g. Closing
 
 Unchanged: a provider is `AutoCloseable` and owns its client; an embedder owns nothing. Under Boot
 every registered provider is a bean and the container closes it (§6f); in code, whoever built it
@@ -271,22 +285,24 @@ closes it. `DefaultEmbedderFactory` closes nothing, as today.
 
 ```yaml
 nessy:
-  embedder: voyage                     # the factory default ProviderId (§6i; the name is §15 (1))
+  embedder: voyage                     # the factory default ProviderId (§6i)
   embedding-model: voyage-3.5          # the factory default model; paired with the above
   embedding-dimension: 1024            # optional; the factory default width
   embedders:
     voyage:
       api-key: ${VOYAGE_API_KEY}       # or just export VOYAGE_API_KEY (§6b)
-    lmstudio:
-      enabled: true                    # keyless: must be turned on (§6c)
     gemini:
       enabled: false                   # a Gemini key is set for chat; no Gemini embedder wanted
-    my-gateway:                        # not in the catalogue: a custom embedder (§6e)
+    local:                             # not in the catalogue: a custom embedder (§6c, §6e)
+      wire: openai
+      base-url: http://localhost:1234/v1
+      api-key: lm-studio
+      vendor: lmstudio
+    my-gateway:                        # another, carrying vendor properties (§7)
       wire: openai
       base-url: https://gateway.example.com/v1
       api-key: ${GATEWAY_KEY}
-      vendor: openai
-      properties:                      # vendor properties, §7
+      properties:
         openai.user: episodes
 ```
 
@@ -328,14 +344,21 @@ same reason it does on the inference side: the getting-started guide teaches it 
 `application.yml` relies on it. It is the same key and the same URL pair, so the two presets
 named `openai` move together.
 
-### 6c. Keyless presets must be turned on
+### 6c. `enabled`, and why no keyless preset ships
 
-`lmstudio` (`http://localhost:1234/v1`) and -- pending measurement, §6d -- `ollama`
-(`http://localhost:11434/v1`) have no key, so their ingredient is `nessy.embedders.<id>.enabled=
-true`. No startup probing of a port, for the reason the named-providers record gives (§7c there).
-`enabled: false` turns any embedder off whatever its ingredient: a Gemini key set for chat with no
-Gemini embeddings wanted is `nessy.embedders.gemini.enabled: false`, and that is the only way to
-say it, since the key is shared.
+The mechanics are the inference ones: `enabled: false` turns any embedder off whatever its
+ingredient, and a keyless preset would need `enabled: true`. The first matters at once -- a Gemini
+key set for chat with no Gemini embeddings wanted is `nessy.embedders.gemini.enabled: false`, and
+that is the only way to say it, since the key is shared. The second has nothing to act on in
+`0.3.0`: **ruled overnight, no `lmstudio` and no `ollama` embedding preset ships**, on the
+strength of §6d's measurement. A local server that ignores the width asked for, reports no usage
+and answers any model name with whatever it has loaded is not something a catalogue row can vouch
+for the way the inference rows vouch for a tool call and a forced answer; a preset is a promise
+that the row works, and this one would be a promise that it answers. A local embedder is a custom
+embedder (§6e), which states its URL, its key and its model in the open, and the providers guide
+says so beside the findings. `EmbedderCatalogue` keeps the keyless branch so a measured row can
+join later without a code shape changing; no startup probing of a port, for the reason the
+named-providers record gives (§7c there).
 
 ### 6d. The catalogue
 
@@ -348,8 +371,11 @@ an existing embedding adapter are in it, and no row ships unmeasured.
 | `openai` | `openai` | the vendor's own; `openai.base-url` overrides | `openai` | `openai.api-key` | in: measured by `OpenAiEmbedderLiveTest` |
 | `gemini` | `gemini` | the vendor's own | `gcp.gemini` | `gemini.api-key` or `google.api-key` | in: measured by `GeminiEmbedderLiveTest` |
 | `voyage` | `voyage` | `https://api.voyageai.com/v1` | `voyage` | `voyage.api-key` | in: measured by `VoyageEmbedderLiveTest` |
-| `lmstudio` | `openai` | `http://localhost:1234/v1` | `lmstudio` | `enabled: true`; key `lm-studio` | candidate, measured once by hand (below); ships when the live row of §11d passes through the adapter |
-| `ollama` | `openai` | `http://localhost:11434/v1` | `ollama` | `enabled: true`; key `ollama` | candidate, unmeasured: nothing answered on `:11434` on this machine on 2026-09-30 |
+
+Three rows, and no local one. `lmstudio` and `ollama` were candidates in this record's first
+draft, `lmstudio` on the strength of the measurement below; **ruled overnight, neither ships in
+`0.3.0`** (§6c). Ollama was not measured at all -- nothing answered on `:11434` on this machine on
+2026-09-30 -- and LM Studio measured as a server the catalogue cannot vouch for.
 
 **LM Studio, measured on 2026-09-30 against the instance on this machine** (`/v1/models` listed
 `text-embedding-nomic-embed-text-v1.5` and `text-embedding-qwen3-embedding-4b` beside the chat
@@ -360,22 +386,25 @@ models), with `curl` against our request shape (`model`, `input` as an array, `d
   (`OpenAiEmbeddingProvider.embedDocuments`, ordered by `index`) fits it.
 - `usage` is `{prompt_tokens: 0, total_tokens: 0}`. Nothing here reads embedding usage, so nothing
   breaks; recorded so nobody later takes zero for a count.
-- **`dimensions: 256` is silently ignored**: the reply is 768 wide. `DefaultEmbedder` learns its
-  width from the first reply only when none was asked for (`dimension == 0`), so an embedder built
-  with `dimension(256)` at LM Studio would *report* 256 and *produce* 768, and a store that sized
-  an index from `dimension()` would be wrong. §15 (3) proposes the guard.
+- **`dimensions: 256` is silently ignored**: the reply is 768 wide. §5f's width check, ruled
+  overnight, turns that into a failure naming both numbers instead of an index of the wrong
+  shape.
 - **Any model name is answered.** `model: text-embedding-3-small` -- OpenAI's name, not loaded
   here -- and `model: definitely-not-a-model` both return a 768-wide vector, and the reply's
   `model` field names `text-embedding-nomic-embed-text-v1.5`, the loaded model, not the one
   asked for. The adapter stamps `options.modelName()` on every `Embedding` it returns
-  (`OpenAiEmbeddingProvider` line 120), never the reply's `model`, so a store at LM Studio with a
-  mistyped model name records vectors under a name that no model made. This is the sharpest
-  finding of the measurement and it is §15 (2), because the fix is an adapter behaviour and not a
-  catalogue row.
+  (`OpenAiEmbeddingProvider` line 120), so a store at such a server with a mistyped model name
+  records vectors under a name no model made. **Ruled overnight: this is a documented limitation
+  of OpenAI-compatible local servers, not something the client detects.** The reply's `model`
+  field is the server's to fill, and a server that answers the wrong model is under no obligation
+  to say so; a comparison in the adapter would catch LM Studio's candour and miss the next
+  server's silence, a guard that teaches a false sense of safety and makes the stored model a
+  fact of the server rather than of the store. The providers guide states the limitation beside
+  the custom-embedder example, in these words: a local server may answer any model name with
+  whatever it has loaded, and the model a store records is the one it asked for.
 
-Neither finding stops the row: they are facts about what the preset serves, and the guide's row
-says them. What stops it until §11d is that a `curl` is not the adapter, and the
-named-providers rule is measurement through our code.
+These findings are why no local row ships (§6c). They hold for any custom `openai`-wire embedder
+pointed at a local server, and the guide says them there.
 
 **Bedrock is not a preset -- ruled.** AWS credentials are ambient, and `GeminiAutoConfiguration`'s
 old javadoc and the providers guide both record why a mechanism that let their presence register
@@ -395,9 +424,9 @@ vendor and the setting is ignored for them, and `EmbedderSettings`' javadoc says
 
 The `openai` embedding adapter has no `vendor(String)` setter today (`vendor()` returns the
 constant `"openai"`, line 95). It gains one, `OpenAiEmbedderConfig.vendor(String)`, the
-mirror of `OpenAiProviderConfig.vendor(String)`, so the `lmstudio` and `ollama` presets and a
-custom `openai`-wire embedder can report who they really are -- **proposed** (§14), a public
-method on a vendor module.
+mirror of `OpenAiProviderConfig.vendor(String)`, so a custom `openai`-wire embedder -- a local
+server, a gateway -- can report who it really is. Proposed and **accepted overnight** (§14), a
+public method on a vendor module.
 
 ### 6f. Application beans join the registry, and what they are called
 
@@ -414,7 +443,7 @@ namespace across types, and `ProviderRegistrar` already registers an `InferenceP
 named `openai` when `OPENAI_API_KEY` is set (and refuses any other definition of that name, line
 73). The embedding preset lit by the same key cannot also be the bean `openai`. So a preset's
 `EmbeddingProvider` bean is named **`<id>Embeddings`** -- `openaiEmbeddings`, `geminiEmbeddings`,
-`voyageEmbeddings`, `lmstudioEmbeddings` -- while its **registry id is the id**: the registrar
+`voyageEmbeddings` -- while its **registry id is the id**: the registrar
 publishes a `ResolvedEmbedders` bean (id, bean name, wire, endpoint, vendor, property names) and
 the factory bean (§6i) reads it to register each preset under its id, then sweeps every other
 `EmbeddingProvider` bean under its bean name verbatim. No stripping of a suffix, no guessing:
@@ -423,9 +452,16 @@ an application bean called `bedrock` joins as `bedrock`, one called `bedrockEmbe
 preset fails at the registrar with the same message the inference registrar uses (`a bean named
 'openaiEmbeddings' and the openai embedder would both be registered as 'openaiEmbeddings'`).
 An application bean called `openai` collides with the *inference* preset's bean, and Spring says
-so before this record's code runs. **Proposed** (§14), because "named by its id" was the ruling
-and this is the nearest a second registry in one bean namespace can come to it; §15 (4) records
-the alternative that was set aside.
+so before this record's code runs. Proposed and **accepted overnight** (§14), because "named by
+its id" was the ruling and this is the nearest a second registry in one bean namespace can come
+to it. It is also what resolves the contradiction this record's first draft found in the brief:
+"one bean per lit preset named by id" and "application beans join by bean name" cannot both hold
+literally across two registries in one Spring namespace, and the resolution is that the
+*registry* id is the id, a *preset's* bean name carries the suffix, and an application's bean
+name is taken verbatim. The alternative set aside: no per-preset beans, with the factory owning
+and closing what it built; rejected because the container closing what it created is the shape
+everything else in the starter has, and because a report that enumerates beans of a type is
+simpler than one that asks a factory.
 
 ### 6g. The report
 
@@ -458,7 +494,8 @@ for the `CHANGELOG.md` `[Unreleased]` breaking-change entry:
 |---|---|
 | `nessy.embedding.openai.model` | `nessy.embedder: openai` + `nessy.embedding-model: <model>` (the pair, §6i) |
 | `nessy.embedding.openai.dimension` | `nessy.embedding-dimension: <n>` |
-| `openai.api-key` + `openai.base-url` + `nessy.embedding.openai.model` (the OpenAI-compatible bean) | `nessy.embedders.lmstudio.enabled: true` (or `ollama`, once measured) + the pair naming `lmstudio`; or the `openai` preset with `openai.base-url` overriding its endpoint, as before, plus the pair |
+| `openai.api-key` + `openai.base-url` + `nessy.embedding.openai.model` (the OpenAI-compatible bean) | a custom embedder -- `nessy.embedders.local.wire: openai`, `.base-url`, `.api-key`, `.vendor: lmstudio` -- plus the pair naming `local`; or the `openai` preset with `openai.base-url` overriding its endpoint, as before, plus the pair |
+| `*EmbedderConfig.model(...)` / `.dimension(...)` and `*EmbeddingProvider.defaultModel()` / `.defaultDimension()` (§5d) | gone; the factory default `embedding(ProviderId, EmbeddingOptions)`, or the store's own `create(...)` |
 | `nessy.embedding.gemini.model` | `nessy.embedder: gemini` + `nessy.embedding-model: <model>` |
 | `nessy.embedding.gemini.dimension` | `nessy.embedding-dimension: <n>` |
 | `nessy.embedding.voyage.api-key` | `voyage.api-key` (`VOYAGE_API_KEY`), or `nessy.embedders.voyage.api-key` |
@@ -490,12 +527,19 @@ anything is registered, because `@ConditionalOnBean` cannot see definitions a re
 post-processor added (Boot's own caveat), and a factory with nothing registered says so at
 `create` by listing `[]`.
 
-**The default embedder is a both-or-neither pair -- proposed, for James's ruling, §15 (1).**
-`NessyProperties` gains `embedder` (the default `ProviderId`), `embeddingModel` and
-`embeddingDimension`; the first two are a pair (`requireBothOrNeither`, the message naming both),
-the third is optional and needs the pair. The reason is the one `nessy.provider` / `nessy.model`
-have: a default model with no provider is a model sent to whoever comes first, and a default
-provider with no model is the vendor-default behaviour §6h retires.
+**The default embedder is a both-or-neither pair -- proposed here as the one question the
+rulings had left open, and accepted overnight as proposed (§14).** `NessyProperties` gains
+`embedder` (the default `ProviderId`, in the shape of `nessy.provider`), `embeddingModel` (the
+default model, keeping `nessy.model` as inference's) and `embeddingDimension`; the first two are a
+pair (`requireBothOrNeither`, the message naming both), the third is optional and needs the pair.
+The reason is the one `nessy.provider` / `nessy.model` have: a default model with no provider is
+a model sent to whoever comes first, and a default provider with no model is the vendor-default
+behaviour §6h retires. The alternatives weighed before the ruling, so the choice reads as one:
+`nessy.embedder` / `nessy.embedder-model` (true, but "embedding model" is the phrase every vendor
+and the schema column use); `nessy.embedding.provider` / `nessy.embedding.model` (nested and tidy,
+but the prefix is the one §6h deletes, so a stale `nessy.embedding.openai.model` would sit one
+line from a live sibling and look current); `nessy.embedders.default` (an id named `default`
+would then be unnameable).
 
 A store then asks the factory. chat-web's `ChatConfiguration.episodes` today takes
 `ObjectProvider<EmbedderFactory>` and mints from it when a factory exists, because "no factory"
@@ -518,12 +562,14 @@ becomes:
 
 ```yaml
 nessy:
-  embedder: ${CHAT_EMBEDDER:}            # set to lmstudio for relevance ranking; blank for recency
+  embedder: ${CHAT_EMBEDDER:}            # set to local for relevance ranking; blank for recency
   embedding-model: ${CHAT_EMBEDDING_MODEL:}
   embedders:
-    lmstudio:
-      enabled: true
+    local:                               # LM Studio's embeddings, a custom embedder (§6c, §6e)
+      wire: openai
       base-url: ${CHAT_MODEL_URL:http://localhost:1234/v1}
+      api-key: not-needed
+      vendor: lmstudio
 ```
 
 and the `openai:` block that lit an inference provider nobody selected goes, which is the
@@ -560,17 +606,18 @@ inference SPI for one class, a copy, or a shared support module. Read against th
   for the reason that record gave against per-adapter copies.
 - `nessy-api` was rejected overnight as the application-facing insulator, and that ruling stands.
 
-**Chosen: a new module, `nessy-vendor-properties`**, holding the one public class
-`org.jwcarman.nessy.vendor.VendorProperties` and depending on `jackson-databind` alone (the
-`literal` and `nest` functions take a `JsonMapper`). The inference adapters and the embedding
-adapters depend on it; neither SPI does, because the class appears in no SPI signature (that
-record's §8e: "it appears in no signature"). It is the smallest module in the reactor and it says
-exactly what it holds. Since the vendor-properties item is unbuilt on every branch, this is an
-amendment to that record's §8e made before a line of it exists: `VendorProperties` is written in
-the new module from the start, and step 1 of that record's sequencing creates the module. **A new
-module is public surface and is proposed here** (§14). The alternative kept on the table is the
+**Chosen, and ruled overnight: a new module, `nessy-vendor-properties`**, holding the one public
+class `org.jwcarman.nessy.vendor.VendorProperties` and depending on `jackson-databind` alone (the
+`literal` and `nest` functions take a `JsonMapper`). **Both SPIs depend on it** -- the ruling's
+shape, so that an adapter of either family gets the helper by depending on its SPI and nothing
+else, and so that the `validate` hooks' javadoc can cite the class they expect an adapter to use.
+It is the smallest module in the reactor and it says exactly what it holds. **This amends the
+vendor-properties record's §8e**, which placed the class in `nessy-inference-spi` and left the
+embedding side to this record: since that item is unbuilt on every branch, `VendorProperties` is
+written in the new module from the start, and step 1 of that record's sequencing creates the
+module rather than adding the class to the inference SPI. The alternative set aside was the
 adapters -- not the SPI -- depending on `nessy-inference-spi` for the class, which costs no new
-module and puts an inference jar on every embedding adapter's classpath; §15 (6).
+module and puts an inference jar on every embedding adapter's classpath.
 
 ### 7c. The adapters' tables
 
@@ -621,8 +668,8 @@ of which a registry provides.
 One consequence is new. Two registered providers can serve one model name -- `openai` and a
 custom `openai`-wire gateway both offering `text-embedding-3-small` -- and a row records the model,
 not the provider. Vectors from the two are comparable if the gateway is honest and silently not if
-it is LM Studio answering a name it does not serve (§6d). The stored model is the contract, and
-§15 (2) is where the adapter is asked to hold the vendor to it.
+it is a local server answering a name it does not serve (§6d). The stored model is the contract,
+the client cannot police it, and the guide says so where a local embedder is configured.
 
 ## 9. Non-Spring applications
 
@@ -663,6 +710,11 @@ Each of these was raised and set aside, with the reason:
   none is a registry concern. An in-process embedder, when it comes, joins as an
   `EmbeddingProvider` bean under its bean name and needs nothing here.
 - **Startup probing of local ports.** Named-providers §7c; the same rejection.
+- **`lmstudio` and `ollama` embedding presets.** Ruled out overnight for `0.3.0` (§6c, §6d): a
+  custom embedder reaches either, and a preset would vouch for behaviour the measurement showed
+  the server does not have.
+- **Detecting a model-name mismatch in the adapter.** Ruled out overnight (§6d): a documented
+  limitation of OpenAI-compatible local servers, not a client-side check.
 - **Aliases for `nessy.embedding.*`.** Ruled out; §6h.
 - **Timeout setters on the OpenAI and Gemini embedder configs.** `WireProviders` sets
   `TransportTimeouts.PROVIDER_TRANSPORT` on every inference provider; `OpenAiEmbedderConfig` and
@@ -697,9 +749,9 @@ a test; the point is that every outcome is decided by something written down.
 | `nessy.embedders.voyage.api-key` with no `voyage.api-key` | `voyage` registered from the prefixed form |
 | `NESSY_EMBEDDERS_VOYAGE_APIKEY` in a system-environment source | the same |
 | `openai.api-key`, `openai.base-url=http://localhost:1234/v1` | `openai` at the overridden endpoint; **no** requirement that a model be named, unlike today |
-| `nessy.embedders.lmstudio.enabled=true` | `lmstudio` registered, key `lm-studio`, vendor `lmstudio` |
-| nothing about lmstudio | absent |
-| `nessy.embedders.lmstudio.enabled=` (blank, the `${VAR:}` shape) | absent, and the context starts -- the binder fact §6h left open, pinned here |
+| `nessy.embedders.lmstudio.enabled=true` | nothing registered: `lmstudio` is not a preset, and an id with `enabled` and no `wire` fails to start naming `lmstudio` and `wire` -- the §6c ruling made checkable |
+| `nessy.embedders.local.wire=openai`, `base-url=http://localhost:1234/v1`, `api-key`, `vendor=lmstudio` | `local` registered, vendor `lmstudio` |
+| `nessy.embedders.gemini.enabled=` (blank, the `${VAR:}` shape) with `gemini.api-key` | `gemini` registered and the context starts -- the binder fact §6h left open, pinned here |
 | `gemini.api-key`, `nessy.embedders.gemini.enabled=false` | the Gemini embedder is absent while the Gemini inference preset (run with `InferenceProvidersAutoConfiguration` in the same context) is present |
 | `nessy.embedders.mine.wire=openai`, `base-url`, `api-key` | `mine` registered, vendor `openai` by default |
 | `nessy.embedders.mine.base-url` with no `wire` | fails to start naming `mine` and `wire` |
@@ -735,7 +787,9 @@ and the two INFO cases.
 - two stores on one id share one provider and have two wrappers;
 - `validate` is called with the resolved options and its failure surfaces from `create`;
 - with a registry given, `create` returns an `ObservedEmbedder`; with none, it still does, over
-  `NOOP`.
+  `NOOP`;
+- an embedder that asked for 256 coordinates and is answered with 768 fails naming both (§5f),
+  on the first call and on a later one; an embedder that asked for none learns 768 and reports it.
 
 `ObservedEmbedderTest` is untouched.
 
@@ -756,13 +810,12 @@ others): `OpenAiEmbedderLiveTest`, `GeminiEmbedderLiveTest`, `BedrockEmbedderLiv
 each gains: a query embedded as a query and a document as a document are both the model's width
 and the model name on the `Embedding` is the one asked for. Added:
 
-- `LmStudioEmbedderLiveTest` (`nessy-spring-boot-autoconfigure`, beside `LmStudioPresetLiveTest`,
-  gated the same way): `nessy.embedders.lmstudio.enabled=true` with the pair naming
-  `text-embedding-nomic-embed-text-v1.5`, through the whole starter -- the vector is 768 wide,
-  `dimension()` reports 768 when none was asked, and a `dimension(256)` embedder is the
-  measurement behind §15 (3). Its pass is what moves the `lmstudio` row from candidate to preset.
-- An `ollama` row in the same class, gated on `:11434` answering, which turns that row on when
-  somebody with Ollama runs it; until then the catalogue does not carry it.
+- `LocalEmbedderLiveTest` (`nessy-spring-boot-autoconfigure`, beside `LmStudioPresetLiveTest`,
+  gated the same way on `:1234` answering): a **custom** embedder `local` on the `openai` wire at
+  LM Studio, with the pair naming `text-embedding-nomic-embed-text-v1.5`, through the whole
+  starter -- the vector is 768 wide, `dimension()` reports 768 when none was asked, and a
+  `dimension(256)` embedder fails naming 256 and 768 (§5f measured on the wire). It proves the
+  custom-embedder route the guide documents for local servers; it promotes nothing to a preset.
 
 ## 12. Sequencing
 
@@ -771,7 +824,8 @@ network before the next starts. Step 3 waits on the vendor-properties item; noth
 
 1. **The engine** (§5): `EmbedderFactoryConfig`, `DefaultEmbedderFactory.of(...)`, the registry,
    `EmbedderConfig.provider(...)`, resolution and its messages, the observation wrap in the
-   factory; the four configs lose `model` / `dimension` and the providers lose the two getters;
+   factory, the width check in `DefaultEmbedder` (§5f); the four configs lose `model` /
+   `dimension` and the providers lose the two getters, with their changelog line;
    `OpenAiEmbedderConfig.vendor(String)`; `ProviderId`'s javadoc; the engine and adapter tests.
    The three auto-configurations are moved to the new construction with one provider registered
    under its vendor's id and the old properties still read, so the starter keeps working between
@@ -782,132 +836,104 @@ network before the next starts. Step 3 waits on the vendor-properties item; noth
    `NessyProperties`; the three old auto-configurations, two conditions and `EmbeddingModels`
    deleted; the `AutoConfiguration.imports` line; the matrix of §11a; the changelog's breaking
    lines with the table of §6h.
-3. **Vendor properties** (§7), after that item lands: the `nessy-vendor-properties` module (or
-   its move, if that item built the class in the inference SPI first), the four adapters reading
-   their prefix, `EmbedderSettings.properties` through to `WireEmbedders`, `validate` called from
-   `create`, the Bedrock family check moved.
-4. **Live measurement** (§11d): the four live tests on the new shape, `LmStudioEmbedderLiveTest`;
-   the `lmstudio` row committed alone on its pass; the `ollama` row when measured.
-5. **Examples and docs**: chat-web's `ChatConfiguration.episodes`, `application.yml` and
-   `EpisodesWiringTest` (which sets `nessy.embedding.openai.model` today, line 39);
-   `docs/concepts/memory.md` (the examples, and its `Embedder` listing at lines 245-249, which
-   still shows `embed(String)` / `embed(List)` -- the pre-2026-09-20 interface);
-   `docs/guides/spring-boot.md`'s property table; `docs/guides/providers.md` gains an "Embedders"
-   section with the catalogue and the LM Studio findings; `docs/guides/observability.md` lines
-   141-152; the README and `docs/index.md` module tables, which name `nessy-embedding-api` -- a
-   module that does not exist; it is `nessy-embedding-spi` (§15 (7)). Describing what is
-   (`docs-describe-what-is`).
+3. **Vendor properties** (§7), after that item lands: the `nessy-vendor-properties` module with
+   both SPIs depending on it, the four adapters reading their prefix, `EmbedderSettings.properties`
+   through to `WireEmbedders`, `validate` called from `create`, the Bedrock family check moved.
+4. **Live measurement** (§11d): the four live tests on the new shape, `LocalEmbedderLiveTest`
+   through a custom embedder at LM Studio. No catalogue row changes on its pass (§6c).
+5. **Examples and docs, including the stale ones this record found -- ruled overnight to be fixed
+   in this branch's docs step, not deferred**: chat-web's `ChatConfiguration.episodes`,
+   `application.yml` and `EpisodesWiringTest` (which sets `nessy.embedding.openai.model` today,
+   line 39); `docs/guides/spring-boot.md`'s property table; `docs/guides/providers.md` gains an
+   "Embedders" section with the catalogue, the custom-embedder route for local servers and the
+   LM Studio findings as the documented limitation of §6d; `docs/guides/observability.md` lines
+   141-152 (the wrap is the factory's now); `docs/concepts/memory.md` -- its two factory examples
+   (lines 157-163, 268-270), its `Embedder` listing at lines 245-249, which still shows
+   `embed(String)` / `embed(List)`, the pre-2026-09-20 interface, and line 239's
+   `nessy-embedding-api`; `README.md` line 183 and `docs/index.md` line 142, whose module tables
+   name `nessy-embedding-api`, a module that does not exist -- it is `nessy-embedding-spi`;
+   `ROADMAP.md` line 42 (the same name), lines 156-167 (this item's entry, which still lists the
+   one-namespace question as open when it was withdrawn on 2026-09-29, §3), and lines 150-155
+   (the "Reasoning effort, vendor-neutral" entry, which the Responses record's §8 and the
+   vendor-properties record's §12 ruled out -- it becomes a line saying reasoning is configured
+   through vendor properties, or goes); `CHANGELOG.md` `[Unreleased]` with the table of §6h and
+   the §5d deletions. Describing what is (`docs-describe-what-is`).
 
 ## 13. Order of the questions to James
 
-§15 (1) shapes step 2 and is the only one that blocks it; (2) and (3) shape step 1's adapter
-work but can land as their own commits after it; (4) is step 2's; (6) is step 3's; the rest are
-records.
+Nothing in §15 blocks a step. (1) and (2) are records of what the code and the earlier documents
+said; (3) is pinned by a test in step 2; (4) follows whichever shape the two records beneath this
+one land in.
 
 ## 14. Design authority
 
-Listed by name, as the rule requires. "Ruled" means decided by James on 2026-09-29; "proposed"
-means this record needed it to honour a ruling and it awaits his yes; nothing proposed lands
-before it.
+Listed by name, as the rule requires. "Ruled" means decided by James on 2026-09-29. "Accepted
+overnight" and "ruled overnight" mean this record proposed it to honour a ruling, or the
+measurement raised it, and the controller James authorised for the overnight run ruled on it on
+2026-09-30, as proposed or with the change named; every such row is **pending James's morning
+review**, and nothing lands before it.
 
 | concept | where | status | § |
 |---|---|---|---|
 | two parallel namespaces, `nessy.providers.<id>` and `nessy.embedders.<id>`, same mechanics | Boot properties | ruled | 3, 6 |
 | a vendor's key lights an embedder only when `nessy-embedding-<vendor>` is present; one INFO line otherwise | Boot behaviour | ruled | 6b |
-| embedding wire values named for the vendor whose shape they are; Bedrock as a bean, not a preset | Boot property values | ruled; the choice of `openai` over `openai-embeddings` is this record's reading of the rule | 4c, 6d |
+| embedding wire values named for the vendor whose shape they are; Bedrock as a bean, not a preset | Boot property values | ruled | 4c, 6d |
 | `nessy.embedding.*` replaced by `nessy.embedders.*`, no aliases | Boot properties | ruled | 6h |
 | `EmbedderConfig.property(String, String)` and `nessy.embedders.<id>.properties.*` | public method, Boot property | ruled (the vendor-properties record); the binding is this record's | 7a |
 | stored vectors carry the model; switching is a ranking consequence, re-embedding is ROADMAP | contract | ruled | 8b |
 | the words **embedding provider**, **embedder**, **preset**, **wire**, **vendor** as §3 reads them | design vocabulary | the last three reused as ruled; the first two are the SPI's and the API's existing names | 3 |
-| `ProviderId` reused for embedding providers, javadoc widened | public type, meaning widened | proposed | 4a |
-| `EmbedderFactoryConfig`; `DefaultEmbedderFactory.of(Customizer)` / `of(List)` replacing the three constructors; `provider(ProviderId, EmbeddingProvider)`, `embedding(ProviderId, EmbeddingOptions)`, `observations(ObservationRegistry)` | public type and methods | proposed | 5a |
-| `EmbedderConfig.provider(ProviderId)` and `provider(String)` | public methods | proposed | 5b |
-| both provider and model required for every embedder; the failure messages | contract | proposed, as the mirror of a ruling | 5b, 5c |
-| deleting `model(...)` / `dimension(...)` from the four embedder configs and `defaultModel()` / `defaultDimension()` from the four providers | public methods, removed | proposed | 5d |
-| the observation wrap inside `DefaultEmbedderFactory.create` | engine behaviour | proposed | 5e |
-| `voyage.api-key` (`VOYAGE_API_KEY`) as Voyage's conventional key | Boot property | proposed | 6b |
-| `OpenAiEmbedderConfig.vendor(String)` | public method | proposed | 6e |
-| preset `EmbeddingProvider` beans named `<id>Embeddings`; registry ids are ids; application beans join under their bean names verbatim | Boot bean names | proposed | 6f |
-| `nessy.embedder` + `nessy.embedding-model` as a both-or-neither pair, `nessy.embedding-dimension` optional | Boot properties | **proposed, for the controller's ruling** | 6i, 15 (1) |
-| the `EmbedderFactory` bean always present, `@ConditionalOnMissingBean(EmbedderFactory.class)`; a store decides by the pair, not by the factory's absence | Boot behaviour | proposed | 6i |
-| `EmbeddingProvidersAutoConfiguration` replacing the three vendor auto-configurations | public class | proposed | 6h, 6i |
-| `nessy-vendor-properties`, a one-class module both adapter families depend on | new module | proposed | 7b |
-| `EmbeddingProvider.validate` called from `create`; Bedrock's family check moved there | engine behaviour | proposed | 7c |
-| the report's two lines, at INFO in the empty cases | Boot report | proposed | 6g |
+| `nessy.embedder` + `nessy.embedding-model` as a both-or-neither pair, `nessy.embedding-dimension` optional | Boot properties | accepted overnight, as proposed, pending James's morning review | 6i |
+| `ProviderId` reused for embedding providers, javadoc widened | public type, meaning widened | accepted overnight, as proposed, pending James's morning review | 4a |
+| `EmbedderFactoryConfig`; `DefaultEmbedderFactory.of(Customizer)` / `of(List)` replacing the three constructors; `provider(ProviderId, EmbeddingProvider)`, `embedding(ProviderId, EmbeddingOptions)`, `observations(ObservationRegistry)` | public type and methods | accepted overnight, as proposed, pending James's morning review | 5a |
+| `EmbedderConfig.provider(ProviderId)` and `provider(String)` | public methods | accepted overnight, as proposed, pending James's morning review | 5b |
+| both provider and model required for every embedder; the failure messages | contract | accepted overnight, as the mirror of a ruling, pending James's morning review | 5b, 5c |
+| deleting `model(...)` / `dimension(...)` from the four embedder configs and `defaultModel()` / `defaultDimension()` from the four providers, with a changelog line | public methods, removed | accepted overnight, as proposed, pending James's morning review | 5d |
+| the observation wrap inside `DefaultEmbedderFactory.create` | engine behaviour | accepted overnight, as proposed, pending James's morning review | 5e |
+| the width check: a reply whose width differs from the requested dimension fails, naming both | engine behaviour | **ruled overnight**, raised by the measurement, pending James's morning review | 5f |
+| the embedding wire value `openai` (not `openai-embeddings`) | Boot property value | accepted overnight, as proposed, pending James's morning review | 4c |
+| `voyage.api-key` (`VOYAGE_API_KEY`) as Voyage's conventional key | Boot property | accepted overnight, as proposed, pending James's morning review | 6b |
+| `OpenAiEmbedderConfig.vendor(String)` | public method | accepted overnight, as proposed, pending James's morning review | 6e |
+| preset `EmbeddingProvider` beans named `<id>Embeddings`; registry ids are ids; application beans join under their bean names verbatim | Boot bean names | accepted overnight, as proposed, pending James's morning review; resolves the two-registries contradiction | 6f |
+| **no `lmstudio` or `ollama` embedding preset in `0.3.0`**; local servers are custom embedders | Boot catalogue | **ruled overnight**, against this record's first draft, pending James's morning review | 6c, 6d |
+| a model-name mismatch at a compatible server is a documented limitation, not a client-side check | contract, guide | **ruled overnight**, against this record's first draft, pending James's morning review | 6d |
+| the `EmbedderFactory` bean always present, `@ConditionalOnMissingBean(EmbedderFactory.class)`; a store decides by the pair, not by the factory's absence | Boot behaviour | accepted overnight, as proposed, pending James's morning review | 6i |
+| `EmbeddingProvidersAutoConfiguration` replacing the three vendor auto-configurations | public class | accepted overnight, as proposed, pending James's morning review | 6h, 6i |
+| `nessy-vendor-properties`, a one-class module **both SPIs** depend on; amends the vendor-properties record's §8e | new module | accepted overnight, with the dependents named, pending James's morning review | 7b |
+| `EmbeddingProvider.validate` called from `create`; Bedrock's family check moved there | engine behaviour | accepted overnight, as proposed, pending James's morning review | 7c |
+| the report's two lines, at INFO in the empty cases | Boot report | accepted overnight, as proposed, pending James's morning review | 6g |
+| the stale docs found by this record fixed in this branch's docs step | docs | **ruled overnight** | 12, step 5 |
 
 Not new, and needing no yes: `EmbeddingWire` and every other package-private class named in
 §12 step 2, the catalogue table's contents, the report's wording, the test names, the live rows.
 
 ## 15. Open, for James
 
-1. **The default embedder's property names -- the one question the rulings left open.** This
-   record proposes **`nessy.embedder`** (the default `ProviderId`, in the shape of
-   `nessy.provider`) and **`nessy.embedding-model`** (the default model, keeping `nessy.model` as
-   inference's), a both-or-neither pair with `requireBothOrNeither`'s message naming both, and
-   **`nessy.embedding-dimension`** optional beside them. Both-or-neither for the reason the
-   inference pair has it: a default model with no provider goes to whoever is first, and a default
-   provider with no model is the vendor-default behaviour this record retires. Alternatives
-   weighed: `nessy.embedder` / `nessy.embedder-model` (reads as the embedder's model, which is
-   true, but "embedding model" is the phrase every vendor and the schema column use);
-   `nessy.embedding.provider` / `nessy.embedding.model` (nested, tidy, and the prefix is the one
-   §6h deletes, so a stale `nessy.embedding.openai.model` would sit one line from a live sibling
-   and look current); `nessy.embedders.default` (an id named `default` would then be unnameable).
-   Recommendation: the first, as written in §6a and §6i.
-2. **The adapter stamps the model it asked for, not the one that answered.** Measured (§6d): LM
-   Studio answers any model name with its loaded model and says so in the reply's `model` field;
-   `OpenAiEmbeddingProvider` writes `options.modelName()` on every `Embedding` and never reads
-   `response.model()`. A store then records vectors under a name no model produced, and a later
-   boot with the right name cannot rank them. Proposal: the OpenAI adapter compares the reply's
-   `model` with the one asked for and **refuses** with both names when they differ (`asked for
-   text-embedding-3-small, answered by text-embedding-nomic-embed-text-v1.5`); Gemini and Voyage
-   are checked for the same field and get the same rule if they carry it. The alternative --
-   stamping what answered -- would make a store's model a fact of the server rather than of the
-   store, which `Embedder`'s javadoc forbids. Recommendation: refuse.
-3. **A width asked for and not honoured.** Measured (§6d): LM Studio ignores `dimensions`.
-   `DefaultEmbedder.learn` only learns when no width was asked, so an embedder built with
-   `dimension(256)` reports 256 and produces 768. Proposal: `learn` compares every reply's width
-   with the requested one and refuses with both numbers when they differ, so a store never sizes
-   an index for a width its vectors do not have. One `if`; recommendation: yes, in step 1.
-4. **Preset bean names.** §6f names a preset's `EmbeddingProvider` bean `<id>Embeddings` because
-   the id is already an `InferenceProvider` bean's name. The alternative set aside: register no
-   per-preset beans at all and have the factory own and close the connections it builds. Rejected
-   because the container closing what it created is the shape everything else in the starter has,
-   and because a report that enumerates beans of a type is simpler than one that asks a factory.
-   If James would rather the ids not appear in bean names at all, `nessy.embedders.<id>` as the
-   bean name is the other honest spelling.
-5. **Found in the code, at odds with the decision record.** The 2026-09-20 record says an
+Closed overnight and folded in above: the default-embedder pair (§6i); the width check (§5f);
+the model-name mismatch (§6d, a documented limitation); the preset bean names (§6f); the helper's
+home (§7b, both SPIs); the local presets (§6c, none). What remains:
+
+1. **Found in the code, at odds with the decision record.** The 2026-09-20 record says an
    embedding provider "holds credentials and an endpoint and nothing about a model"; all four
    providers hold `defaultModel` and `defaultDimension`, set from `model(...)` / `dimension(...)`
-   on their configs. §5d deletes them; noting that the record and the code disagreed so the
-   deletion reads as a return, not a break.
-6. **The helper's home.** §7b proposes a one-class module. If a new module is more than the
-   class deserves, the fallback is the adapters (not the SPI) depending on `nessy-inference-spi`,
-   which puts the inference SPI and its codec on every embedding adapter's classpath but changes
-   nothing an application sees. The copy and the SPI-on-SPI dependency stay rejected.
-7. **Docs name a module that does not exist.** `README.md` line 183, `docs/index.md` line 142,
-   `docs/concepts/memory.md` line 239 and `ROADMAP.md` line 42 say `nessy-embedding-api`; the
-   module is `nessy-embedding-spi` (the 2026-09-20 record's last paragraph says
-   `nessy-embedding-api` "went with it"). `memory.md` lines 245-249 also show the pre-rework
-   `Embedder` with `embed(String)` / `embed(List)`. Step 5 fixes all of it; recorded so the fix
-   is not mistaken for a rename.
-8. **Found in the brief, at odds with the code.** (a) The brief named the notebook as an embedder
+   on their configs. §5d deletes them, accepted overnight; noting that the record and the code
+   disagreed so the deletion reads as a return, not a break.
+2. **Found in the brief, at odds with the code.** (a) The brief named the notebook as an embedder
    consumer; `JdbcNotebook` takes none (§8a). (b) The brief said "one `EmbedderFactory` bean per
    vendor auto-config"; it is five bean methods across three classes (§1), because OpenAI splits on
    `openai.base-url` and Gemini on the two key spellings. (c) The brief said "application beans
-   join by bean name" and "one bean per lit preset named by id"; both cannot hold in one Spring
-   bean namespace beside the inference registry, which is §6f and (4). (d) The ROADMAP entry for
-   this item (line 156) still lists "whether one `nessy.providers.<id>` entry serves both" as
-   open; it was withdrawn on 2026-09-29 (§3). (e) The ROADMAP's neighbouring entry, "Reasoning
-   effort, vendor-neutral (next, after the Responses adapter)", is contradicted by the Responses
-   record's §8 and the vendor-properties record's §12 ("no typed reasoning-effort concept");
-   outside this record, noted because step 5 touches the file.
-9. **What this record cites from records not yet in code.** From the vendor-properties record:
+   join by bean name" and "one bean per lit preset named by id"; both cannot hold literally in one
+   Spring bean namespace beside the inference registry -- resolved overnight by §6f. (d) The
+   brief's "keyless presets pending measurement" produced a measurement that ruled them out (§6c).
+   (e) The stale documents -- `nessy-embedding-api` in four files, `memory.md`'s pre-rework
+   `Embedder`, the ROADMAP's withdrawn one-namespace question and its "vendor-neutral reasoning
+   effort" line -- are in §12 step 5 by overnight ruling.
+3. **`enabled=` bound from a blank placeholder.** §6h and §11a: whether Boot's binder turns the
+   empty string into a null `Boolean` or fails is unmeasured; the matrix row decides it, and if it
+   fails, `EmbedderSettings.enabled` becomes a `String` read through `firstNonBlank` like the key.
+4. **What this record cites from records not yet in code.** From the vendor-properties record:
    `EmbedderConfig.property`, `EmbeddingOptions.properties`, `EmbeddingProvider.validate`, the
    four configs' `property` / `properties`, `Preset.defaultProperties`, `ProviderSettings.
-   properties`, and `VendorProperties` itself, whose module this record moves before it exists.
+   properties`, and `VendorProperties` itself, whose module this record names before it exists.
    From the Responses record: `Wire.OPENAI_CHAT`, which this branch still calls `Wire.OPENAI`;
    §4c's argument does not depend on which. If either record lands in a different shape, the
    names here follow it.
-10. **`enabled=` bound from a blank placeholder.** §6h and §11a: whether Boot's binder turns the
-    empty string into a null `Boolean` or fails is unmeasured; the matrix row decides it, and if it
-    fails, `EmbedderSettings.enabled` becomes a `String` read through `firstNonBlank` like the key.
