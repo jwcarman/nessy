@@ -50,6 +50,10 @@ class GeminiLiveTest {
   private static final String MODEL = "gemini-3.6-flash";
 
   private static InferenceRequest asking(String question) {
+    return asking(question, 1024);
+  }
+
+  private static InferenceRequest asking(String question, int maxTokens) {
     return new InferenceRequest(
         new SystemPrompt("You are a terse assistant."),
         InferenceContext.of(
@@ -61,7 +65,7 @@ class GeminiLiveTest {
                     null,
                     0))),
         Toolset.none(),
-        new InferenceOptions(MODEL, 1024));
+        new InferenceOptions(MODEL, maxTokens));
   }
 
   private static InferenceRequest askingFor(String question, JsonSchema shape) {
@@ -88,7 +92,9 @@ class GeminiLiveTest {
   }
 
   private static String text(InferenceResult result) {
-    assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+    assertThat(result)
+        .as("the reply, whole: %s", result)
+        .isInstanceOf(InferenceResult.Answer.class);
     return ((InferenceResult.Answer) result)
         .blocks().stream()
             .filter(Block.Text.class::isInstance)
@@ -120,12 +126,19 @@ class GeminiLiveTest {
           provider.infer(
               asking(
                   "In three paragraphs of about eighty words each, explain how Loch Ness was"
-                      + " formed, why it is so deep, and what lives in it."),
+                      + " formed, why it is so deep, and what lives in it.",
+                  4096),
               narrated);
 
       List<String> deltas = narrated.text();
-      assertThat(deltas).as("a real stream arrives in more than one piece").hasSizeGreaterThan(1);
-      assertThat(String.join("", deltas)).isEqualTo(text(result));
+      assertThat(deltas)
+          .as(
+              "a real stream arrives in more than one piece; result: %s; narrated: %s",
+              result, narrated.fragments())
+          .hasSizeGreaterThan(1);
+      assertThat(String.join("", deltas))
+          .as("the narrated text is the answer; result: %s", result)
+          .isEqualTo(text(result));
     }
   }
 
@@ -187,40 +200,59 @@ class GeminiLiveTest {
         .collect(Collectors.joining());
   }
 
+  private static InferenceRequest thinking(Map<String, String> properties) {
+    return new InferenceRequest(
+        new SystemPrompt("You are a terse assistant."),
+        InferenceContext.of(
+            List.of(
+                new Turn(
+                    new TurnId(1),
+                    new Input(
+                        new Seq(1),
+                        List.of(
+                            new Block.Text(
+                                "Think briefly, then reply with exactly: alpha beta gamma"))),
+                    List.of(),
+                    null,
+                    0))),
+        Toolset.none(),
+        new InferenceOptions(MODEL, 2048, properties));
+  }
+
+  private void thoughtsAreNarrated(Map<String, String> properties) {
+    try (GeminiInferenceProvider provider = provider()) {
+      Narration narrated = new Narration();
+      InferenceResult result = provider.infer(thinking(properties), narrated);
+      String answer = text(result);
+
+      assertThat(narrated.fragments())
+          .as(
+              "thoughts were narrated; result: %s; fragment kinds: %s",
+              result, narrated.fragments().stream().map(Narration.Fragment::kind).toList())
+          .anyMatch(fragment -> "thinking".equals(fragment.kind()));
+      assertThat(answer).as("the answer; result: %s", result).containsIgnoringCase("alpha");
+    }
+  }
+
   /** The typed thinking config reaches the vendor: thoughts come back and are narrated. */
   @Test
   void a_typed_thinking_config_arrives_and_thoughts_are_narrated() {
-    InferenceRequest request =
-        new InferenceRequest(
-            new SystemPrompt("You are a terse assistant."),
-            InferenceContext.of(
-                List.of(
-                    new Turn(
-                        new TurnId(1),
-                        new Input(
-                            new Seq(1),
-                            List.of(
-                                new Block.Text(
-                                    "Think briefly, then reply with exactly: alpha beta gamma"))),
-                        List.of(),
-                        null,
-                        0))),
-            Toolset.none(),
-            new InferenceOptions(
-                MODEL,
-                2048,
-                Map.of(
-                    "gemini.generationConfig.thinkingConfig.includeThoughts", "true",
-                    "gemini.generationConfig.thinkingConfig.thinkingBudget", "512")));
+    thoughtsAreNarrated(
+        Map.of(
+            GeminiProperties.INCLUDE_THOUGHTS.name(),
+            GeminiProperties.INCLUDE_THOUGHTS.format(true),
+            GeminiProperties.THINKING_BUDGET.name(),
+            GeminiProperties.THINKING_BUDGET.format(512)));
+  }
 
-    try (GeminiInferenceProvider provider = provider()) {
-      Narration narrated = new Narration();
-      String answer = text(provider.infer(request, narrated));
-
-      assertThat(narrated.fragments())
-          .as("the typed thinking config arrived: thoughts were narrated")
-          .anyMatch(fragment -> "thinking".equals(fragment.kind()));
-      assertThat(answer).containsIgnoringCase("alpha");
-    }
+  /** Gemini 3 is steered by a level rather than a budget; this shows which knob it honours. */
+  @Test
+  void a_typed_thinking_level_arrives_and_thoughts_are_narrated() {
+    thoughtsAreNarrated(
+        Map.of(
+            GeminiProperties.INCLUDE_THOUGHTS.name(),
+            GeminiProperties.INCLUDE_THOUGHTS.format(true),
+            GeminiProperties.THINKING_LEVEL.name(),
+            GeminiProperties.THINKING_LEVEL.format(GeminiThinkingLevel.HIGH)));
   }
 }
