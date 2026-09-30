@@ -46,6 +46,11 @@
       <groupId>com.google.genai</groupId>
       <artifactId>google-genai</artifactId>
     </dependency>
+    <!-- The DEBUG line naming other adapters' properties; the version is managed by the parent. -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

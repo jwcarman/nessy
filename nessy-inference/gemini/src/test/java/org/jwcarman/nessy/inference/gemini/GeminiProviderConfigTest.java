@@ -22,9 +22,12 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.google.genai.Client;
 import java.time.Duration;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.inference.InferenceOptions;
 import tools.jackson.databind.json.JsonMapper;
 
 /** Building a provider needs no network: the SDK client is constructed, never used. */
@@ -148,6 +151,64 @@ class GeminiProviderConfigTest {
       // Still usable afterwards: the provider did not close it, and the timeout was never applied
       // to it -- the client is used exactly as supplied.
       assertThat(theirs.models).isNotNull();
+    }
+  }
+
+  @Test
+  void a_property_under_another_prefix_is_refused_at_build_naming_the_prefix() {
+    Customizer<GeminiProviderConfig> customizer =
+        c -> c.apiKey("test-key").property("gcp.gemini.seed", "1");
+
+    assertThatThrownBy(() -> GeminiInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'gcp.gemini.seed'")
+        .hasMessageContaining("'gemini.'");
+  }
+
+  @Test
+  void a_clash_on_the_provider_is_refused_at_build() {
+    Customizer<GeminiProviderConfig> customizer =
+        c -> c.apiKey("test-key").property("gemini.generationConfig.maxOutputTokens", "9");
+
+    assertThatThrownBy(() -> GeminiInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("InferenceConfig.maxTokens");
+  }
+
+  @Test
+  void properties_given_as_a_map_are_accepted() {
+    assertThatCode(
+            () ->
+                GeminiInferenceProvider.of(
+                        c ->
+                            c.apiKey("test-key")
+                                .properties(Map.of("gemini.labels.team", "billing")))
+                    .close())
+        .doesNotThrowAnyException();
+  }
+
+  /**
+   * The config's map reaches the provider: only a provider holding the config's thinking budget can
+   * find an agent type's entry under the same thinking config to be a clash (plan ruling 11).
+   */
+  @Test
+  void a_property_on_the_config_reaches_the_provider() {
+    GeminiInferenceProvider provider =
+        GeminiInferenceProvider.of(
+            c ->
+                c.apiKey("test-key")
+                    .property("gemini.generationConfig.thinkingConfig.thinkingBudget", "1024"));
+    InferenceOptions options =
+        new InferenceOptions(
+            "gemini-3.6-flash",
+            4096,
+            Map.of("gemini.generationConfig.thinkingConfig.mode", "deep"));
+    try {
+      assertThatThrownBy(() -> provider.validate(options))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("thinkingBudget");
+    } finally {
+      provider.close();
     }
   }
 }

@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.inference.gemini;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.google.genai.types.Content;
 import com.google.genai.types.FunctionCallingConfig;
@@ -23,14 +25,18 @@ import com.google.genai.types.FunctionCallingConfigMode;
 import com.google.genai.types.FunctionDeclaration;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.Part;
+import com.google.genai.types.ThinkingConfig;
 import com.google.genai.types.ToolConfig;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
@@ -407,5 +413,183 @@ class GeminiRequestsTest {
 
   private static java.util.Optional<FunctionCallingConfig> calling(ToolConfig config) {
     return config.functionCallingConfig();
+  }
+
+  @Nested
+  class TheVendorProperties {
+
+    private static final String THINKING = "gemini.generationConfig.thinkingConfig.";
+
+    private static InferenceRequest carrying(Map<String, String> agentType) {
+      return new InferenceRequest(
+          SYSTEM,
+          InferenceContext.of(List.of(open(1, "hi"))),
+          Toolset.none(),
+          new InferenceOptions("gemini-3.6-pro", 1024, agentType));
+    }
+
+    private static GenerateContentConfig configFor(Map<String, String> agentType) {
+      return GeminiRequests.toConfig(carrying(agentType), Map.of(), MAPPER);
+    }
+
+    @Test
+    void the_thinking_names_land_in_the_typed_thinking_config() {
+      ThinkingConfig thinking =
+          configFor(
+                  Map.of(
+                      THINKING + "thinkingBudget", "2048",
+                      THINKING + "includeThoughts", "true",
+                      THINKING + "thinkingLevel", "low"))
+              .thinkingConfig()
+              .orElseThrow();
+
+      assertThat(thinking.thinkingBudget()).contains(2048);
+      assertThat(thinking.includeThoughts()).contains(true);
+      assertThat(thinking.thinkingLevel().orElseThrow().toString()).isEqualToIgnoringCase("low");
+    }
+
+    @Test
+    void without_them_no_thinking_config_is_set() {
+      assertThat(configFor(Map.of()).thinkingConfig()).isEmpty();
+      assertThat(configFor(Map.of()).httpOptions()).isEmpty();
+    }
+
+    @Test
+    void an_unknown_name_passes_through_in_the_extra_body_nested_by_path() {
+      GenerateContentConfig config =
+          configFor(
+              Map.of(
+                  "gemini.generationConfig.temperature", "0.2",
+                  "gemini.labels.team", "billing"));
+
+      Map<String, Object> body = config.httpOptions().orElseThrow().extraBody().orElseThrow();
+      assertThat(body)
+          .extractingByKey("generationConfig", InstanceOfAssertFactories.MAP)
+          .containsEntry("temperature", 0.2);
+      assertThat(body)
+          .extractingByKey("labels", InstanceOfAssertFactories.MAP)
+          .containsEntry("team", "billing");
+    }
+
+    @Test
+    void a_pass_through_value_keeps_its_json_type() {
+      GenerateContentConfig config =
+          configFor(
+              Map.of(
+                  "gemini.generationConfig.topK", "40",
+                  "gemini.generationConfig.candidateCount", "1"));
+
+      Map<String, Object> body = config.httpOptions().orElseThrow().extraBody().orElseThrow();
+      assertThat(body)
+          .extractingByKey("generationConfig", InstanceOfAssertFactories.MAP)
+          .containsEntry("topK", 40)
+          .containsEntry("candidateCount", 1);
+    }
+
+    @Test
+    void another_prefix_is_not_sent() {
+      assertThat(configFor(Map.of("openai.seed", "1")).httpOptions()).isEmpty();
+    }
+
+    @Test
+    void an_agent_type_entry_overrides_the_same_name_given_to_the_provider() {
+      GenerateContentConfig config =
+          GeminiRequests.toConfig(
+              carrying(Map.of(THINKING + "thinkingBudget", "512")),
+              Map.of(THINKING + "thinkingBudget", "4096"),
+              MAPPER);
+
+      assertThat(config.thinkingConfig().orElseThrow().thinkingBudget()).contains(512);
+    }
+
+    @Test
+    void the_providers_entry_applies_when_the_agent_type_says_nothing() {
+      GenerateContentConfig config =
+          GeminiRequests.toConfig(
+              carrying(Map.of()), Map.of(THINKING + "thinkingBudget", "4096"), MAPPER);
+
+      assertThat(config.thinkingConfig().orElseThrow().thinkingBudget()).contains(4096);
+    }
+
+    @Test
+    void a_thinking_name_beside_a_lookalike_in_another_object_is_accepted() {
+      Map<String, String> properties =
+          Map.of(
+              THINKING + "thinkingBudget",
+              "512",
+              "gemini.generationConfig.thinkingConfigs.mode",
+              "deep");
+
+      assertThatCode(() -> configFor(properties)).doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+      "contents,conversation",
+      "systemInstruction,system prompt",
+      "tools,tools the harness binds",
+      "toolConfig,tool choice",
+      "generationConfig.maxOutputTokens,InferenceConfig.maxTokens",
+      "generationConfig.responseMimeType,answer's shape",
+      "generationConfig.responseJsonSchema,answer's shape",
+      "generationConfig.responseSchema,answer's shape"
+    })
+    void every_name_the_adapter_decides_is_refused_naming_what_decides_it(
+        String name, String decidedBy) {
+      InferenceRequest request = carrying(Map.of("gemini." + name, "x"));
+
+      assertThatThrownBy(() -> GeminiRequests.toConfig(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'gemini." + name + "'")
+          .hasMessageContaining(decidedBy);
+    }
+
+    @Test
+    void the_conversation_is_refused_as_what_the_engine_assembles() {
+      InferenceRequest request = carrying(Map.of("gemini.contents", "[]"));
+
+      assertThatThrownBy(() -> GeminiRequests.toConfig(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'gemini.contents'");
+    }
+
+    @Test
+    void the_ceiling_is_refused_under_its_generation_config_spelling() {
+      InferenceRequest request = carrying(Map.of("gemini.generationConfig.maxOutputTokens", "9"));
+
+      assertThatThrownBy(() -> GeminiRequests.toConfig(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("InferenceConfig.maxTokens");
+    }
+
+    @Test
+    void a_pass_through_under_the_thinking_config_beside_a_known_name_is_refused() {
+      InferenceRequest request =
+          carrying(Map.of(THINKING + "thinkingBudget", "512", THINKING + "mode", "deep"));
+
+      assertThatThrownBy(() -> GeminiRequests.toConfig(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'" + THINKING + "mode'")
+          .hasMessageContaining("'" + THINKING + "thinkingBudget'");
+    }
+
+    @Test
+    void a_bad_budget_is_refused_naming_the_property_and_the_value() {
+      InferenceRequest request = carrying(Map.of(THINKING + "thinkingBudget", "lots"));
+
+      assertThatThrownBy(() -> GeminiRequests.toConfig(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("property '" + THINKING + "thinkingBudget' must be an integer, was 'lots'");
+    }
+
+    @Test
+    void a_bad_include_thoughts_is_refused_naming_the_property_and_the_value() {
+      InferenceRequest request = carrying(Map.of(THINKING + "includeThoughts", "maybe"));
+
+      assertThatThrownBy(() -> GeminiRequests.toConfig(request, Map.of(), MAPPER))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'" + THINKING + "includeThoughts'")
+          .hasMessageContaining("'maybe'");
+    }
   }
 }

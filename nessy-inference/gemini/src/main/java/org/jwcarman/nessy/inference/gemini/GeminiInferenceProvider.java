@@ -29,6 +29,8 @@ import com.google.genai.types.GenerateContentResponseUsageMetadata;
 import com.google.genai.types.Part;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -44,6 +46,7 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.vendor.VendorProperties;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -106,9 +109,27 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
   private final GeminiClient client;
   private final JsonMapper mapper;
 
+  /**
+   * The provider's own {@code gemini.} properties, checked at build; the agent type's overlay them.
+   */
+  private final Map<String, String> properties;
+
   GeminiInferenceProvider(GeminiClient client, JsonMapper mapper) {
+    this(client, mapper, Map.of());
+  }
+
+  GeminiInferenceProvider(GeminiClient client, JsonMapper mapper, Map<String, String> properties) {
     this.client = Objects.requireNonNull(client, "client must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
+    this.properties = Collections.unmodifiableMap(new LinkedHashMap<>(properties));
+  }
+
+  /** Reads the merged properties exactly as a request would, so a mistake fails the build (§7c). */
+  @Override
+  public void validate(InferenceOptions options) {
+    Map<String, String> merged = VendorProperties.merge(properties, options.properties());
+    GeminiProperties.read(merged, mapper);
+    GeminiProperties.logIgnored(merged);
   }
 
   public static GeminiInferenceProvider fromEnv() {
@@ -148,7 +169,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
         client.generateContentStream(
             request.options().modelName(),
             GeminiRequests.toContents(request, mapper),
-            GeminiRequests.toConfig(request, mapper))) {
+            GeminiRequests.toConfig(request, properties, mapper))) {
       Folded folded = new Folded();
       stream.forEach(partial -> folded.take(partial, narrator));
       if (!folded.any) {

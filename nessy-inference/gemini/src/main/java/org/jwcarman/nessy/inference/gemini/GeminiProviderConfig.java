@@ -18,8 +18,12 @@ package org.jwcarman.nessy.inference.gemini;
 import com.google.genai.Client;
 import com.google.genai.types.HttpOptions;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.vendor.VendorProperties;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -37,6 +41,7 @@ public final class GeminiProviderConfig {
   private boolean useEnv;
   private Duration timeout;
   private JsonMapper mapper = JsonMapper.builder().build();
+  private final Map<String, String> properties = new LinkedHashMap<>();
 
   GeminiProviderConfig() {}
 
@@ -105,8 +110,33 @@ public final class GeminiProviderConfig {
     return timeout;
   }
 
+  /**
+   * One vendor property for every agent type on this provider, spelled as the Gemini REST reference
+   * spells it: {@code gemini.generationConfig.thinkingConfig.thinkingBudget}. An agent type's entry
+   * of the same name overrides it. Repeatable; the last value given for a name wins. A name outside
+   * {@code gemini.}, a name the adapter already decides, or a bad value fails at build.
+   */
+  public GeminiProviderConfig property(String name, String value) {
+    Objects.requireNonNull(name, "name must not be null");
+    if (name.isBlank()) {
+      throw new IllegalArgumentException("name must not be blank");
+    }
+    properties.put(name, VendorProperties.requireString(name, value));
+    return this;
+  }
+
+  /** Every entry of {@code properties}, as if by {@link #property(String, String)}. */
+  public GeminiProviderConfig properties(Map<String, String> properties) {
+    Objects.requireNonNull(properties, "properties must not be null");
+    properties.forEach(this::property);
+    return this;
+  }
+
   GeminiInferenceProvider build() {
-    return new GeminiInferenceProvider(resolveClient(), mapper);
+    GeminiProperties.requireOwn(properties);
+    GeminiProperties.read(properties, mapper);
+    return new GeminiInferenceProvider(
+        resolveClient(), mapper, Collections.unmodifiableMap(new LinkedHashMap<>(properties)));
   }
 
   private GeminiClient resolveClient() {
