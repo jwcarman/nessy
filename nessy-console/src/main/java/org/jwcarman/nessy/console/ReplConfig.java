@@ -54,8 +54,18 @@ public final class ReplConfig {
   private AgentId agentId = newConversation();
   private int maxTokens = 4096;
   private DataSource dataSource;
+  private boolean keptInMemory;
 
   ReplConfig() {}
+
+  /** Set by the path that chose an in-memory backend: the conversation ends with the process. */
+  void keptInMemory() {
+    this.keptInMemory = true;
+  }
+
+  boolean isKeptInMemory() {
+    return keptInMemory;
+  }
 
   /** A conversation nobody has had yet: a fresh, time-ordered (UUIDv7) id. */
   static AgentId newConversation() {

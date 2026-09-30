@@ -147,6 +147,28 @@ class ReplLoopTest {
     }
 
     @Test
+    void a_conversation_kept_in_memory_is_named_without_advice_to_resume_it() {
+      ReplConfig config = config();
+      config.keptInMemory();
+      FakeConsole console = new FakeConsole("quit");
+      run(new FakeHarness(), console, config);
+      assertThat(console.written())
+          .contains(
+              "conversation %s (kept in memory; ends with this process)".formatted(AGENT.value()))
+          .doesNotContain("resume with");
+    }
+
+    @Test
+    void clear_on_an_in_memory_conversation_does_not_promise_a_resume_either() {
+      ReplConfig config = config();
+      config.keptInMemory();
+      FakeHarness harness = new FakeHarness();
+      FakeConsole console = new FakeConsole("/clear", "after", "quit");
+      run(harness, console, config);
+      assertThat(console.written()).contains("kept in memory").doesNotContain("resume with");
+    }
+
+    @Test
     void clear_switches_the_id_the_next_question_is_put_to() {
       FakeHarness harness = new FakeHarness();
       FakeConsole console = new FakeConsole("before", "/clear", "after", "quit");

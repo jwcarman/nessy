@@ -24,9 +24,10 @@ application does not have to:
   with `NESSY_MODEL` — the two are a pair, so set both or neither. With none
   set, the console names every provider it found. Put the adapter jar you
   want on your classpath; this module deliberately drags none of them in.
-- **The conversation itself stays in memory.** The terminal is the
-  conversation: a turn that has ended has ended, and a CLI that resumed
-  yesterday's chat would surprise the person typing into it. A `DataSource`
+- **The conversation itself stays in memory.** On the console's own path the
+  conversation ends with the process, and the console says so; an
+  application with a durable backend hands over its own factory and can
+  resume a conversation by id. A `DataSource`
   is still worth having when a tool brings its own store — a notebook, a
   plan — and `dataSource(...)` on the config, or `SPRING_DATASOURCE_URL`
   from the same Boot context, is where that comes from. Its schema is

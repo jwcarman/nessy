@@ -165,10 +165,11 @@ public final class Repl {
           return;
         }
       }
-      // A database is the application's business now, not this one's. The terminal keeps the
-      // conversation in memory because the process IS the conversation: a turn that has ended has
-      // ended, and a CLI that resumed yesterday's chat would surprise the person typing into it.
+      // A database is the application's business now, not this one's. This path keeps the
+      // conversation in memory, so it ends with the process; an application with a durable
+      // backend hands over its own factory and can resume a conversation by id.
       // A tool that wants to remember something still brings its own store.
+      config.keptInMemory();
       config.dataSource().ifPresent(Schemas::initialize);
       // Both taken from the context rather than built here: Boot configures the mapper, the starter
       // configures the codec factory, and a terminal that made its own would write bytes by

@@ -122,9 +122,13 @@ final class ReplLoop {
   }
 
   private void announceConversation() {
-    io.write(
-        "conversation %s: resume with --nessy.console.agent=%s%n"
-            .formatted(agentId.value(), agentId.value()));
+    String line =
+        config.isKeptInMemory()
+            ? "conversation %s (kept in memory; ends with this process)%n"
+                .formatted(agentId.value())
+            : "conversation %s: resume with --nessy.console.agent=%s%n"
+                .formatted(agentId.value(), agentId.value());
+    io.write(line);
     io.flush();
   }
 
