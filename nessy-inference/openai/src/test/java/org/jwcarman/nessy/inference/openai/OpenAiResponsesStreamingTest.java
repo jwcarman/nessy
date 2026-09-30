@@ -177,36 +177,51 @@ class OpenAiResponsesStreamingTest {
       events.addAll(eventsOf(completed(List.of(message("msg_1", "ok")))));
 
       assertThat(inferNarrating(events)).isInstanceOf(InferenceResult.Answer.class);
+      assertThat(narrated.fragments()).containsExactly(Narration.Fragment.text("ok"));
+    }
+
+    private static List<ResponseStreamEvent> errorMidStream(String code) {
+      return List.of(
+          textDelta(1, "msg_1", 0, "Par"),
+          event(
+              fields(
+                  "type",
+                  "error",
+                  "sequence_number",
+                  2,
+                  "code",
+                  code,
+                  "message",
+                  "the model fell over",
+                  "param",
+                  null)));
     }
 
     @Test
-    void a_mid_stream_error_with_no_terminal_event_is_a_fault_naming_the_error() {
-      List<ResponseStreamEvent> events =
-          List.of(
-              textDelta(1, "msg_1", 0, "Par"),
-              event(
-                  fields(
-                      "type",
-                      "error",
-                      "sequence_number",
-                      2,
-                      "code",
-                      "server_error",
-                      "message",
-                      "the model fell over",
-                      "param",
-                      null)));
+    void a_mid_stream_server_error_with_no_terminal_event_is_a_transient_fault_naming_the_error() {
+      InferenceResult result = inferNarrating(errorMidStream("server_error"));
 
-      InferenceResult result = inferNarrating(events);
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> {
+                assertThat(fault.failure()).isInstanceOf(Failure.Transient.class);
+                assertThat(fault.failure().reason())
+                    .contains("ended before")
+                    .contains("the model fell over");
+              });
+    }
+
+    @Test
+    void a_mid_stream_invalid_prompt_with_no_terminal_event_is_a_permanent_fault() {
+      InferenceResult result = inferNarrating(errorMidStream("invalid_prompt"));
 
       assertThat(result)
           .isInstanceOfSatisfying(
               InferenceResult.Fault.class,
               fault -> {
                 assertThat(fault.failure()).isInstanceOf(Failure.Permanent.class);
-                assertThat(fault.failure().reason())
-                    .contains("ended before")
-                    .contains("the model fell over");
+                assertThat(fault.failure().reason()).contains("the model fell over");
               });
     }
   }

@@ -22,6 +22,7 @@ import com.openai.errors.OpenAIException;
 import com.openai.helpers.ResponseAccumulator;
 import com.openai.models.ResponsesModel;
 import com.openai.models.responses.Response;
+import com.openai.models.responses.ResponseErrorEvent;
 import com.openai.models.responses.ResponseFunctionToolCall;
 import com.openai.models.responses.ResponseOutputItem;
 import com.openai.models.responses.ResponseOutputMessage;
@@ -115,7 +116,7 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
             .createStreaming(OpenAiResponsesRequests.toParams(request, vendor, mapper))) {
       ResponseAccumulator accumulator = ResponseAccumulator.create();
       boolean[] ended = {false};
-      String[] error = {null};
+      ResponseErrorEvent[] error = {null};
       stream.stream()
           .forEach(
               event -> {
@@ -123,7 +124,7 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
                 if (!ended[0]) {
                   narrate(event, narrator);
                 }
-                event.error().ifPresent(e -> error[0] = e.message());
+                event.error().ifPresent(e -> error[0] = e);
                 ended[0] |= event.isCompleted() || event.isFailed() || event.isIncomplete();
               });
       return read(accumulator, error[0], request.options().modelName());
@@ -137,15 +138,18 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
    * mid-stream {@code error} event, which the accumulator ignores, is remembered so the fault can
    * say what the server said rather than only that the stream ended.
    */
-  private InferenceResult read(ResponseAccumulator accumulator, String error, String asked) {
+  private InferenceResult read(
+      ResponseAccumulator accumulator, ResponseErrorEvent error, String asked) {
     Response response;
     try {
       response = accumulator.response();
     } catch (IllegalStateException incomplete) {
-      return new InferenceResult.Fault(
-          new Failure.Permanent(
-              "the stream ended before the answer was complete: "
-                  + (error != null ? error : incomplete.getMessage())));
+      String ended = "the stream ended before the answer was complete: ";
+      if (error != null) {
+        return new InferenceResult.Fault(
+            OpenAiFailures.classify(error.code().orElse("unknown"), ended + error.message()));
+      }
+      return new InferenceResult.Fault(new Failure.Permanent(ended + incomplete.getMessage()));
     }
     Usage usage = usageOf(response, modelOf(response, asked));
     if (response.error().isPresent()) {

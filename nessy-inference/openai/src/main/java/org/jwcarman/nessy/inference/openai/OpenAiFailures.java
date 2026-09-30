@@ -73,8 +73,16 @@ final class OpenAiFailures {
    * names a rate limit or a server-side failure, and never {@link Failure.Rejected}.
    */
   static Failure classify(ResponseError error) {
-    String code = error._code().asKnown().map(ResponseError.Code::asString).orElse("unknown");
-    String reason = "model call failed: " + code + ": " + error._message().asKnown().orElse("");
+    return classify(
+        error._code().asKnown().map(ResponseError.Code::asString).orElse("unknown"),
+        error._message().asKnown().orElse(""));
+  }
+
+  /**
+   * The same rule for a bare code and message, as a mid-stream {@code error} event carries them.
+   */
+  static Failure classify(String code, String message) {
+    String reason = "model call failed: " + code + ": " + message;
     if (ResponseError.Code.RATE_LIMIT_EXCEEDED.asString().equals(code)
         || ResponseError.Code.SERVER_ERROR.asString().equals(code)) {
       return new Failure.Transient(reason);
