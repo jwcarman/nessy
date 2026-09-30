@@ -352,9 +352,9 @@ class OpenAiResponsesLiveTest {
 
       assertThat(first).isInstanceOf(InferenceResult.Actions.class);
       InferenceResult.Actions actions = (InferenceResult.Actions) first;
-      assertThat(actions.blocks())
-          .as("the reasoning item that led to the call is kept: " + actions.blocks())
-          .anyMatch(Block.Provider.class::isInstance);
+      // Measured 2026-09-30: GPT-6 may call a tool this direct without reasoning first, at any
+      // effort, so the item is not always there. When it is, it goes back with the result below;
+      // that it is kept at all is proven by a_reasoning_summary_is_narrated_as_thinking.
 
       InferenceResult second =
           provider.infer(
