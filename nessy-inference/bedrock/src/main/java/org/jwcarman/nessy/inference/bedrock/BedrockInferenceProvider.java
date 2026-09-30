@@ -17,6 +17,8 @@ package org.jwcarman.nessy.inference.bedrock;
 
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -32,6 +34,7 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.vendor.VendorProperties;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.core.exception.SdkClientException;
@@ -100,9 +103,29 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
   private final BedrockClient client;
   private final JsonMapper mapper;
 
+  /**
+   * The provider's own {@code bedrock.} properties, checked at build; the agent type's overlay
+   * them.
+   */
+  private final Map<String, String> properties;
+
   BedrockInferenceProvider(BedrockClient client, JsonMapper mapper) {
+    this(client, mapper, Map.of());
+  }
+
+  BedrockInferenceProvider(
+      BedrockClient client, JsonMapper mapper, Map<String, String> properties) {
     this.client = Objects.requireNonNull(client, "client must not be null");
     this.mapper = Objects.requireNonNull(mapper, "mapper must not be null");
+    this.properties = Collections.unmodifiableMap(new LinkedHashMap<>(properties));
+  }
+
+  /** Reads the merged properties exactly as a request would, so a mistake fails the build (§7c). */
+  @Override
+  public void validate(InferenceOptions options) {
+    Map<String, String> merged = VendorProperties.merge(properties, options.properties());
+    BedrockProperties.read(merged, mapper);
+    BedrockProperties.logIgnored(merged);
   }
 
   public static BedrockInferenceProvider fromEnv() {
@@ -140,7 +163,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
     Objects.requireNonNull(narrator, "narrator must not be null");
     try {
       Folded folded = new Folded(narrator, mapper);
-      client.converseStream(BedrockRequests.toRequest(request, mapper), folded);
+      client.converseStream(BedrockRequests.toRequest(request, properties, mapper), folded);
       if (!folded.any) {
         return new InferenceResult.Fault(new Failure.Permanent("model returned no reply"));
       }

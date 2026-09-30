@@ -22,10 +22,13 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.lang.reflect.Proxy;
 import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.inference.InferenceOptions;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -111,6 +114,89 @@ class BedrockProviderConfigTest {
    * without reflection or a network call" rule as the other three providers, these tests assert on
    * the setter's own validation and that building still succeeds.
    */
+  @Test
+  void a_property_under_another_prefix_is_refused_at_build_naming_the_prefix() {
+    Customizer<BedrockProviderConfig> customizer =
+        c ->
+            c.region(Region.US_EAST_1)
+                .credentialsProvider(CREDENTIALS)
+                .property("aws.bedrock.thinking.type", "enabled");
+
+    assertThatThrownBy(() -> BedrockInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'aws.bedrock.thinking.type'")
+        .hasMessageContaining("'bedrock.'");
+  }
+
+  /**
+   * The config's map reaches the provider: the config's pass-through {@code bedrock.thinking.type}
+   * and an agent type's value at {@code bedrock.thinking} can only collide in the merged map, so
+   * only a provider holding the config's entry refuses them (plan ruling 11).
+   */
+  @Test
+  void a_property_on_the_config_reaches_the_provider() {
+    BedrockInferenceProvider provider =
+        BedrockInferenceProvider.of(
+            c ->
+                c.region(Region.US_EAST_1)
+                    .credentialsProvider(CREDENTIALS)
+                    .property("bedrock.thinking.type", "enabled"));
+    InferenceOptions options = new InferenceOptions("m", 512, Map.of("bedrock.thinking", "true"));
+    try {
+      assertThatThrownBy(() -> provider.validate(options))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("'bedrock.thinking'")
+          .hasMessageContaining("'bedrock.thinking.type'");
+    } finally {
+      provider.close();
+    }
+  }
+
+  @Test
+  void a_bad_value_on_the_config_is_refused_at_build() {
+    Customizer<BedrockProviderConfig> customizer =
+        c ->
+            c.region(Region.US_EAST_1)
+                .credentialsProvider(CREDENTIALS)
+                .property("bedrock.inferenceConfig.temperature", "hot");
+
+    assertThatThrownBy(() -> BedrockInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'bedrock.inferenceConfig.temperature'");
+  }
+
+  @Test
+  void a_clashing_name_on_the_config_is_refused_at_build() {
+    Customizer<BedrockProviderConfig> customizer =
+        c ->
+            c.region(Region.US_EAST_1)
+                .credentialsProvider(CREDENTIALS)
+                .property("bedrock.modelId", "x");
+
+    assertThatThrownBy(() -> BedrockInferenceProvider.of(customizer))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'bedrock.modelId'");
+  }
+
+  @Test
+  void valid_properties_on_the_config_build_and_validate_cleanly() {
+    BedrockInferenceProvider provider =
+        BedrockInferenceProvider.of(
+            c ->
+                c.region(Region.US_EAST_1)
+                    .credentialsProvider(CREDENTIALS)
+                    .properties(
+                        Map.of(
+                            "bedrock.thinking.type", "enabled",
+                            "bedrock.inferenceConfig.topP", "0.5")));
+    InferenceOptions options = new InferenceOptions("m", 512, Map.of("other.x", "1"));
+    try {
+      assertThatCode(() -> provider.validate(options)).doesNotThrowAnyException();
+    } finally {
+      provider.close();
+    }
+  }
+
   @Nested
   @DisplayName("its transport timeout")
   class Its_transport_timeout {

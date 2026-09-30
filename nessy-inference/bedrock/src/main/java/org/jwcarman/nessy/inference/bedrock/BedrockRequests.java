@@ -34,6 +34,7 @@ import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
+import org.jwcarman.nessy.vendor.VendorProperties;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.core.document.Document;
 import software.amazon.awssdk.services.bedrockruntime.model.AnyToolChoice;
@@ -74,10 +75,30 @@ public final class BedrockRequests {
   private BedrockRequests() {}
 
   public static ConverseStreamRequest toRequest(InferenceRequest request, JsonMapper mapper) {
+    return toRequest(request, Map.of(), mapper);
+  }
+
+  /**
+   * @param providerProperties the provider's own {@code bedrock.} map, overlaid here by the agent
+   *     type's (spec §7a)
+   */
+  static ConverseStreamRequest toRequest(
+      InferenceRequest request, Map<String, String> providerProperties, JsonMapper mapper) {
+    BedrockProperties.Read read =
+        BedrockProperties.read(
+            VendorProperties.merge(providerProperties, request.options().properties()), mapper);
     ConverseStreamRequest.Builder builder =
         ConverseStreamRequest.builder().modelId(request.options().modelName());
-    if (request.options().hasMaxTokens()) {
-      builder.inferenceConfig(config -> config.maxTokens(request.options().maxTokens()));
+    if (request.options().hasMaxTokens() || read.tunesInference()) {
+      builder.inferenceConfig(
+          config -> {
+            if (request.options().hasMaxTokens()) {
+              config.maxTokens(request.options().maxTokens());
+            }
+            read.temperature().ifPresent(config::temperature);
+            read.topP().ifPresent(config::topP);
+            read.stopSequences().ifPresent(config::stopSequences);
+          });
     }
 
     List<SystemContentBlock> system = new ArrayList<>();
@@ -112,6 +133,9 @@ public final class BedrockRequests {
       builder.toolConfig(tools.build());
     }
     request.outputSchema().ifPresent(schema -> askForShape(builder, schema));
+    if (!read.passThrough().isEmpty()) {
+      builder.additionalModelRequestFields(document(read.passThrough()));
+    }
     return builder.build();
   }
 

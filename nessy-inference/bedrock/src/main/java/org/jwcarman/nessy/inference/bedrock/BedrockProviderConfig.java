@@ -16,8 +16,12 @@
 package org.jwcarman.nessy.inference.bedrock;
 
 import java.time.Duration;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.vendor.VendorProperties;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient;
@@ -51,6 +55,7 @@ public final class BedrockProviderConfig {
   private boolean useEnv;
   private Duration timeout;
   private JsonMapper mapper = JsonMapper.builder().build();
+  private final Map<String, String> properties = new LinkedHashMap<>();
 
   BedrockProviderConfig() {}
 
@@ -125,8 +130,33 @@ public final class BedrockProviderConfig {
     return timeout;
   }
 
+  /**
+   * One vendor property for every agent type on this provider, spelled as the model's own request
+   * spells it: {@code bedrock.thinking.budget_tokens}. An agent type's entry of the same name
+   * overrides it. Repeatable; the last value given for a name wins. A name outside {@code
+   * bedrock.}, a name the adapter already decides, or a bad value fails at build.
+   */
+  public BedrockProviderConfig property(String name, String value) {
+    Objects.requireNonNull(name, "name must not be null");
+    if (name.isBlank()) {
+      throw new IllegalArgumentException("name must not be blank");
+    }
+    properties.put(name, VendorProperties.requireString(name, value));
+    return this;
+  }
+
+  /** Every entry of {@code properties}, as if by {@link #property(String, String)}. */
+  public BedrockProviderConfig properties(Map<String, String> properties) {
+    Objects.requireNonNull(properties, "properties must not be null");
+    properties.forEach(this::property);
+    return this;
+  }
+
   BedrockInferenceProvider build() {
-    return new BedrockInferenceProvider(resolveClient(), mapper);
+    BedrockProperties.requireOwn(properties);
+    BedrockProperties.read(properties, mapper);
+    return new BedrockInferenceProvider(
+        resolveClient(), mapper, Collections.unmodifiableMap(new LinkedHashMap<>(properties)));
   }
 
   private BedrockClient resolveClient() {
