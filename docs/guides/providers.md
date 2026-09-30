@@ -229,7 +229,6 @@ budget that is not below the agent type's `maxTokens`, at harness build.
 |---|---|---|---|
 | `bedrock.inferenceConfig.temperature` | `TEMPERATURE` | a finite number (`Float`) | Converse's typed inference config |
 | `bedrock.inferenceConfig.topP` | `TOP_P` | a finite number (`Float`) | the same |
-| `bedrock.inferenceConfig.stopSequences` | `STOP_SEQUENCES` | a JSON array of strings (`List<String>`) | the same |
 
 Every other `bedrock.` name is unsupported, Claude's extended thinking on
 Bedrock (`bedrock.thinking.*`) included.
@@ -622,7 +621,7 @@ public interface InferenceProvider {
   classification that authorises dropping something a person said. Let a
   bug in the adapter escape rather than recording it as the model's fault.
 - Own a prefix and declare your supported properties as `VendorProperty`
-  constants (`nessy-api`): `ofInteger`, `ofBoolean`, `ofFloat`, `ofStrings`,
+  constants (`nessy-api`): `ofInteger`, `ofBoolean`, `ofFloat`
   or `ofEnum` for a fixed value set, each carrying the full prefixed name.
   Read them through `VendorProperties` (`nessy-api`): merge the
   provider's map under `request.options().properties()`, take the entries

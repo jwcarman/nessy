@@ -414,17 +414,15 @@ class BedrockRequestsTest {
     }
 
     @Test
-    void the_three_converse_names_land_in_the_typed_inference_config_beside_the_ceiling() {
+    void the_two_converse_names_land_in_the_typed_inference_config_beside_the_ceiling() {
       ConverseStreamRequest request =
           requestFor(
               Map.of(
                   "bedrock.inferenceConfig.temperature", "0.2",
-                  "bedrock.inferenceConfig.topP", "0.9",
-                  "bedrock.inferenceConfig.stopSequences", "[\"END\"]"));
+                  "bedrock.inferenceConfig.topP", "0.9"));
 
       assertThat(request.inferenceConfig().temperature()).isEqualTo(0.2f);
       assertThat(request.inferenceConfig().topP()).isEqualTo(0.9f);
-      assertThat(request.inferenceConfig().stopSequences()).containsExactly("END");
       assertThat(request.inferenceConfig().maxTokens()).isEqualTo(1024);
       assertThat(request.additionalModelRequestFields()).isNull();
     }
@@ -501,8 +499,29 @@ class BedrockRequestsTest {
       assertThat(LogCapture.warnings(events))
           .containsExactly(
               "NESSY INFERENCE: property 'bedrock.thinking.type' is not supported by bedrock and"
-                  + " is ignored; supported: [bedrock.inferenceConfig.stopSequences,"
-                  + " bedrock.inferenceConfig.temperature, bedrock.inferenceConfig.topP]");
+                  + " is ignored; supported: [bedrock.inferenceConfig.temperature,"
+                  + " bedrock.inferenceConfig.topP]");
+    }
+
+    @Test
+    void stop_sequences_are_an_unsupported_name_ignored_and_warned_once() {
+      ConverseStreamRequest request =
+          requestFor(Map.of("bedrock.inferenceConfig.stopSequences", "[\"END\"]"));
+
+      List<ILoggingEvent> events =
+          LogCapture.during(
+              BedrockProperties.class,
+              () ->
+                  BedrockPropertyReader.warnUnsupported(
+                      Map.of("bedrock.inferenceConfig.stopSequences", "[\"END\"]")));
+
+      assertThat(request.inferenceConfig().hasStopSequences()).isFalse();
+      assertThat(request).isEqualTo(requestFor(Map.of()));
+      assertThat(LogCapture.warnings(events))
+          .containsExactly(
+              "NESSY INFERENCE: property 'bedrock.inferenceConfig.stopSequences' is not supported"
+                  + " by bedrock and is ignored; supported: [bedrock.inferenceConfig.temperature,"
+                  + " bedrock.inferenceConfig.topP]");
     }
 
     @Test
@@ -527,15 +546,12 @@ class BedrockRequestsTest {
       Map<String, String> typed =
           Map.of(
               BedrockProperties.TEMPERATURE.name(), BedrockProperties.TEMPERATURE.format(0.25f),
-              BedrockProperties.TOP_P.name(), BedrockProperties.TOP_P.format(0.5f),
-              BedrockProperties.STOP_SEQUENCES.name(),
-                  BedrockProperties.STOP_SEQUENCES.format(List.of("END", "STOP")));
+              BedrockProperties.TOP_P.name(), BedrockProperties.TOP_P.format(0.5f));
 
       ConverseStreamRequest request = requestFor(typed);
 
       assertThat(request.inferenceConfig().temperature()).isEqualTo(0.25f);
       assertThat(request.inferenceConfig().topP()).isEqualTo(0.5f);
-      assertThat(request.inferenceConfig().stopSequences()).containsExactly("END", "STOP");
     }
 
     @Test
@@ -554,16 +570,6 @@ class BedrockRequestsTest {
       assertThatThrownBy(() -> BedrockRequests.toRequest(request, Map.of(), MAPPER))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("'bedrock.inferenceConfig.topP' must be a number");
-    }
-
-    @Test
-    void stop_sequences_that_are_not_an_array_of_strings_are_refused() {
-      InferenceRequest request =
-          carrying(Map.of("bedrock.inferenceConfig.stopSequences", "[1, 2]"));
-
-      assertThatThrownBy(() -> BedrockRequests.toRequest(request, Map.of(), MAPPER))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("must be a JSON array of strings");
     }
   }
 }

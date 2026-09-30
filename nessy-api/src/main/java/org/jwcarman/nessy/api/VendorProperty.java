@@ -22,9 +22,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.DeserializationFeature;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * A vendor property an adapter supports: its full prefixed name and the type of its value.
@@ -33,13 +30,11 @@ import tools.jackson.databind.json.JsonMapper;
  * adapter to parse it, and by the warning that lists what an adapter supports. Values still travel
  * as text, so a property set with {@link InferenceConfig#property(VendorProperty, Object)} is the
  * same map entry as one set by name, and a value that does not parse fails naming the property, the
- * value and what it accepts. Equal by name.
+ * value and what it accepts. Text is parsed with plain Java and holds no JSON. Equal by name.
  *
  * @param <T> the type the value is read as
  */
 public final class VendorProperty<T> {
-
-  private static final JsonMapper JSON = JsonMapper.builder().build();
 
   private final String name;
   private final Function<String, T> parse;
@@ -97,15 +92,6 @@ public final class VendorProperty<T> {
         "a number");
   }
 
-  /** A property whose value is a JSON array of strings. */
-  public static VendorProperty<List<String>> ofStrings(String name) {
-    return new VendorProperty<>(
-        name,
-        VendorProperty::readStrings,
-        list -> JSON.writeValueAsString(list),
-        "a JSON array of strings");
-  }
-
   /**
    * A property whose value is one of a fixed set, each spelled as the vendor spells it.
    *
@@ -152,27 +138,10 @@ public final class VendorProperty<T> {
     }
     try {
       return Optional.of(parse.apply(text));
-    } catch (IllegalArgumentException | JacksonException e) {
+    } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException(
           "property '" + name + "' must be " + accepted + ", was '" + text + "'", e);
     }
-  }
-
-  private static List<String> readStrings(String value) {
-    Object read;
-    try {
-      read =
-          JSON.readerFor(Object.class)
-              .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
-              .without(DeserializationFeature.USE_JAVA_ARRAY_FOR_JSON_ARRAY)
-              .readValue(value);
-    } catch (JacksonException notJson) {
-      throw new IllegalArgumentException(value, notJson);
-    }
-    if (read instanceof List<?> list && list.stream().allMatch(String.class::isInstance)) {
-      return list.stream().map(String.class::cast).toList();
-    }
-    throw new IllegalArgumentException(value);
   }
 
   @Override

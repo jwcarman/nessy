@@ -34,13 +34,8 @@ public final class BedrockProperties {
   public static final VendorProperty<Float> TOP_P =
       VendorProperty.ofFloat("bedrock.inferenceConfig.topP");
 
-  /** Strings that end the answer when the model writes them. */
-  public static final VendorProperty<List<String>> STOP_SEQUENCES =
-      VendorProperty.ofStrings("bedrock.inferenceConfig.stopSequences");
-
   /** Every property this adapter supports. */
-  public static final List<VendorProperty<?>> SUPPORTED =
-      List.of(TEMPERATURE, TOP_P, STOP_SEQUENCES);
+  public static final List<VendorProperty<?>> SUPPORTED = List.of(TEMPERATURE, TOP_P);
 
   private BedrockProperties() {}
 }

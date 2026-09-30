@@ -115,6 +115,9 @@ above disagree with this one, this one holds.
 - **The parsing lives in package-private `XxxPropertyReader` classes**, so each public
   `XxxProperties` class holds only its `VendorProperty` constants and `SUPPORTED`. The readers log
   under the `XxxProperties` class's name, so a log line reads as it did.
+- **`VendorProperty` parses text with plain Java and holds no JSON; `ofStrings` and Bedrock's
+  `stopSequences` were removed** (James: "We're parsing a string"). A list-valued property returns
+  when one is needed, as plain text.
 
 ---
 

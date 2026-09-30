@@ -97,7 +97,6 @@ public final class BedrockRequests {
             }
             read.temperature().ifPresent(config::temperature);
             read.topP().ifPresent(config::topP);
-            read.stopSequences().ifPresent(config::stopSequences);
           });
     }
 

@@ -18,7 +18,6 @@ package org.jwcarman.nessy.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -114,37 +113,6 @@ class VendorPropertyTest {
       assertThatThrownBy(() -> property.in(properties))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("property 'acme.ratio' must be a number, was 'NaN'");
-    }
-  }
-
-  @Nested
-  class A_list_of_strings {
-
-    private final VendorProperty<List<String>> property = VendorProperty.ofStrings("acme.stop");
-
-    @Test
-    void round_trips_through_a_json_array() {
-      assertThat(property.format(List.of("END", "STOP"))).isEqualTo("[\"END\",\"STOP\"]");
-      assertThat(property.in(Map.of("acme.stop", "[\"END\",\"STOP\"]")))
-          .contains(List.of("END", "STOP"));
-    }
-
-    @Test
-    void is_refused_when_it_is_not_an_array_of_strings() {
-      Map<String, String> properties = Map.of("acme.stop", "[1, 2]");
-
-      assertThatThrownBy(() -> property.in(properties))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessage("property 'acme.stop' must be a JSON array of strings, was '[1, 2]'");
-    }
-
-    @Test
-    void is_refused_when_only_its_front_is_an_array() {
-      Map<String, String> properties = Map.of("acme.stop", "[\"a\"] trailing");
-
-      assertThatThrownBy(() -> property.in(properties))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("must be a JSON array of strings");
     }
   }
 

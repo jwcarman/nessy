@@ -37,21 +37,17 @@ final class BedrockPropertyReader {
   private BedrockPropertyReader() {}
 
   /** The {@code bedrock.} properties once read. */
-  record Read(
-      Optional<Float> temperature, Optional<Float> topP, Optional<List<String>> stopSequences) {
+  record Read(Optional<Float> temperature, Optional<Float> topP) {
 
     boolean tunesInference() {
-      return temperature.isPresent() || topP.isPresent() || stopSequences.isPresent();
+      return temperature.isPresent() || topP.isPresent();
     }
   }
 
   /** The supported names of the merged provider and agent-type map, parsed. Silent. */
   static Read read(Map<String, String> merged) {
     VendorProperties.under(merged, PREFIX);
-    return new Read(
-        BedrockProperties.TEMPERATURE.in(merged),
-        BedrockProperties.TOP_P.in(merged),
-        BedrockProperties.STOP_SEQUENCES.in(merged));
+    return new Read(BedrockProperties.TEMPERATURE.in(merged), BedrockProperties.TOP_P.in(merged));
   }
 
   /** A provider is one adapter: a provider-level entry under another prefix is a mistake (§6a). */
