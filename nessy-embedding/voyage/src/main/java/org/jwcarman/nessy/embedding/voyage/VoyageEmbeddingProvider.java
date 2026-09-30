@@ -99,6 +99,12 @@ public final class VoyageEmbeddingProvider implements EmbeddingProvider, AutoClo
     return "voyage";
   }
 
+  /** Says once which of an embedder's properties are ignored: none is supported yet. */
+  @Override
+  public void validate(EmbeddingOptions options) {
+    VoyageEmbedderConfig.warnUnsupported(options.properties());
+  }
+
   /** Batches of up to {@value #BATCH}, each one request; the reply is indexed and put in order. */
   @Override
   public List<Embedding> embedDocuments(List<String> texts, EmbeddingOptions options) {

@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.google.genai.Client;
 import com.google.genai.types.ContentEmbedding;
 import com.google.genai.types.EmbedContentConfig;
@@ -186,6 +187,55 @@ class GeminiEmbedderTest {
           .hasMessageContaining("GEMINI_API_KEY");
       assertThatCode(() -> GeminiEmbeddingProvider.of(c -> c.fromEnv().apiKey("k")).close())
           .doesNotThrowAnyException();
+    }
+  }
+
+  @Nested
+  class AnUnsupportedProperty {
+
+    @Test
+    void is_warned_once_when_the_embedder_is_built_and_is_not_in_any_request() {
+      List<Sent> all = new java.util.ArrayList<>();
+      GeminiEmbeddingProvider provider =
+          new GeminiEmbeddingProvider(
+              new GeminiEmbeddingClient() {
+                @Override
+                public EmbedContentResponse embed(
+                    String model, List<String> texts, EmbedContentConfig config) {
+                  all.add(new Sent(model, texts, config));
+                  return reply(new float[] {1, 0});
+                }
+
+                @Override
+                public void close() {
+                  // Nothing to close.
+                }
+              },
+              null);
+      DefaultEmbedderFactory factory = new DefaultEmbedderFactory(provider, "m");
+      var embedder = new Embedder[1];
+
+      List<ILoggingEvent> atBuild =
+          LogCapture.during(
+              GeminiEmbedderConfig.class,
+              () -> embedder[0] = factory.create(c -> c.property("gemini.labels.team", "billing")));
+      List<ILoggingEvent> atEmbedding =
+          LogCapture.during(
+              GeminiEmbedderConfig.class,
+              () -> {
+                embedder[0].embedDocument("a");
+                embedder[0].embedDocument("a");
+              });
+      factory.create(c -> {}).embedDocument("a");
+
+      assertThat(LogCapture.warnings(atBuild))
+          .containsExactly(
+              "NESSY EMBEDDING: property 'gemini.labels.team' is not supported by gemini and is"
+                  + " ignored; supported: []");
+      assertThat(atEmbedding).isEmpty();
+      assertThat(all).hasSize(3);
+      assertThat(all.get(0)).isEqualTo(all.get(2));
+      assertThat(all.get(0).config().httpOptions()).isEmpty();
     }
   }
 }

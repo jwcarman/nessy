@@ -20,11 +20,13 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.openai.client.OpenAIClient;
 import com.openai.models.embeddings.CreateEmbeddingResponse;
 import com.openai.models.embeddings.EmbeddingCreateParams;
 import com.openai.services.blocking.EmbeddingService;
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -221,6 +223,53 @@ class OpenAiEmbeddingProviderTest {
           .hasMessageContaining("OPENAI_API_KEY");
       assertThatCode(() -> OpenAiEmbeddingProvider.of(c -> c.fromEnv().apiKey("k")).close())
           .doesNotThrowAnyException();
+    }
+  }
+
+  @Nested
+  class An_unsupported_property {
+
+    private final List<EmbeddingCreateParams> sent = new ArrayList<>();
+
+    private OpenAiEmbeddingProvider provider() {
+      return OpenAiEmbeddingProvider.of(
+          c ->
+              c.client(
+                  fakeClient(
+                      params -> {
+                        sent.add(params);
+                        return reply(item(0, 0.1f, 0.2f));
+                      },
+                      new AtomicBoolean())));
+    }
+
+    @Test
+    void is_warned_once_when_the_embedder_is_built_and_is_not_in_any_request() {
+      OpenAiEmbeddingProvider provider = provider();
+      DefaultEmbedderFactory factory = new DefaultEmbedderFactory(provider, "m");
+      var embedder = new Embedder[1];
+
+      List<ILoggingEvent> atBuild =
+          LogCapture.during(
+              OpenAiEmbedderConfig.class,
+              () -> embedder[0] = factory.create(c -> c.property("openai.user", "tenant-1")));
+      List<ILoggingEvent> atEmbedding =
+          LogCapture.during(
+              OpenAiEmbedderConfig.class,
+              () -> {
+                embedder[0].embedDocument("a");
+                embedder[0].embedDocument("a");
+              });
+      factory.create(c -> {}).embedDocument("a");
+
+      assertThat(LogCapture.warnings(atBuild))
+          .containsExactly(
+              "NESSY EMBEDDING: property 'openai.user' is not supported by openai and is ignored;"
+                  + " supported: []");
+      assertThat(atEmbedding).isEmpty();
+      assertThat(sent).hasSize(3);
+      assertThat(sent.get(0)).isEqualTo(sent.get(2));
+      assertThat(sent.get(0)._additionalBodyProperties()).isEmpty();
     }
   }
 }

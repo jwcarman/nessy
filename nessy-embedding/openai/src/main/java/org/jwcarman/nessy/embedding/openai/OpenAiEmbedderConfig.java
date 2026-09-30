@@ -23,6 +23,8 @@ import java.util.Objects;
 import java.util.OptionalInt;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.vendor.VendorProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * What {@link OpenAiEmbeddingProvider#of(Customizer)} hands a customizer: a CONFIG, not a builder
@@ -37,6 +39,8 @@ public final class OpenAiEmbedderConfig {
 
   /** The prefix this embedder's properties are named under. */
   private static final String PROPERTY_PREFIX = "openai.";
+
+  private static final Logger log = LoggerFactory.getLogger(OpenAiEmbedderConfig.class);
 
   private String apiKey;
   private String baseUrl;
@@ -109,9 +113,10 @@ public final class OpenAiEmbedderConfig {
   }
 
   /**
-   * A vendor property for this embedder's requests, named under its prefix. Carried and not yet
-   * read: the embedding adapters read their properties from the named-embedders item on (spec §9f).
-   * Repeatable; the last value given for a name wins. A name under another prefix fails at build.
+   * A vendor property for this embedder's requests, named under its prefix. No embedder property is
+   * supported yet: one under this adapter's prefix is ignored, with a warning naming it, when the
+   * provider is built. Repeatable; the last value given for a name wins. A name under another
+   * prefix fails at build.
    */
   public OpenAiEmbedderConfig property(String name, String value) {
     Objects.requireNonNull(name, "name must not be null");
@@ -127,6 +132,21 @@ public final class OpenAiEmbedderConfig {
     Objects.requireNonNull(properties, "properties must not be null");
     properties.forEach(this::property);
     return this;
+  }
+
+  /**
+   * Says, once per name, that a property under this adapter's prefix is ignored: no embedder
+   * property is supported yet. Called when a property set is first checked (a provider's build, an
+   * embedder's build), never per request.
+   */
+  static void warnUnsupported(Map<String, String> properties) {
+    for (String name : properties.keySet()) {
+      if (name.startsWith(PROPERTY_PREFIX)) {
+        log.warn(
+            "NESSY EMBEDDING: property '{}' is not supported by openai and is ignored; supported: []",
+            name);
+      }
+    }
   }
 
   /** An embedder is one adapter: a property under another prefix is a mistake. */
@@ -150,6 +170,7 @@ public final class OpenAiEmbedderConfig {
 
   OpenAiEmbeddingProvider build() {
     requireOwnProperties();
+    warnUnsupported(properties);
     if (client != null) {
       return new OpenAiEmbeddingProvider(client, false, model, dimension);
     }

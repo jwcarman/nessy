@@ -15,14 +15,20 @@
  */
 package org.jwcarman.nessy.embedding.voyage;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
 
-/** Properties are carried and not yet read (spec §9f); another prefix is still a mistake. */
+/**
+ * No embedder property is supported yet: one under its own prefix is ignored with a warning;
+ * another prefix is a mistake.
+ */
 class VoyageEmbedderConfigTest {
 
   @Test
@@ -54,5 +60,24 @@ class VoyageEmbedderConfigTest {
     assertThatThrownBy(() -> VoyageEmbeddingProvider.of(customizer))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("'voyage.truncation'");
+  }
+
+  @Test
+  void a_property_under_its_own_prefix_is_warned_once_at_build_naming_it_and_no_supported_names() {
+    var built = new VoyageEmbeddingProvider[1];
+
+    List<ILoggingEvent> events =
+        LogCapture.during(
+            VoyageEmbedderConfig.class,
+            () ->
+                built[0] =
+                    VoyageEmbeddingProvider.of(
+                        c -> c.apiKey("test-key").property("voyage.truncation", "x")));
+
+    assertThat(LogCapture.warnings(events))
+        .containsExactly(
+            "NESSY EMBEDDING: property 'voyage.truncation' is not supported by voyage and is ignored;"
+                + " supported: []");
+    built[0].close();
   }
 }

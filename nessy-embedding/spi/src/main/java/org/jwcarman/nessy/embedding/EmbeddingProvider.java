@@ -42,8 +42,9 @@ public interface EmbeddingProvider {
   Embedding embedQuery(String query, EmbeddingOptions options);
 
   /**
-   * Refuses terms this provider cannot honour, before an embedder is built on them. The default
-   * accepts everything, which is right for a provider that reads no properties.
+   * Refuses terms this provider cannot honour, before an embedder is built on them, and says once
+   * which of its properties it ignores. The default accepts everything, which is right for a
+   * provider that reads no properties.
    *
    * @throws IllegalArgumentException naming the property
    */

@@ -89,6 +89,12 @@ public final class GeminiEmbeddingProvider implements EmbeddingProvider, AutoClo
     return "gcp.gemini";
   }
 
+  /** Says once which of an embedder's properties are ignored: none is supported yet. */
+  @Override
+  public void validate(EmbeddingOptions options) {
+    GeminiEmbedderConfig.warnUnsupported(options.properties());
+  }
+
   /** One request for the whole batch; the vendor returns them in the order given. */
   @Override
   public List<Embedding> embedDocuments(List<String> texts, EmbeddingOptions options) {

@@ -122,6 +122,12 @@ public final class BedrockEmbeddingProvider implements EmbeddingProvider, AutoCl
     return "aws.bedrock";
   }
 
+  /** Says once which of an embedder's properties are ignored: none is supported yet. */
+  @Override
+  public void validate(EmbeddingOptions options) {
+    BedrockEmbedderConfig.warnUnsupported(options.properties());
+  }
+
   @Override
   public List<Embedding> embedDocuments(List<String> texts, EmbeddingOptions options) {
     Objects.requireNonNull(texts, "texts must not be null");

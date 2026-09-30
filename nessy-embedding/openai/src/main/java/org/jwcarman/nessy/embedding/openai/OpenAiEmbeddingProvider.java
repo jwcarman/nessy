@@ -95,6 +95,12 @@ public final class OpenAiEmbeddingProvider implements EmbeddingProvider, AutoClo
     return "openai";
   }
 
+  /** Says once which of an embedder's properties are ignored: none is supported yet. */
+  @Override
+  public void validate(EmbeddingOptions options) {
+    OpenAiEmbedderConfig.warnUnsupported(options.properties());
+  }
+
   /**
    * One request for the whole batch; the vendor returns them indexed, and they are put in order.
    */

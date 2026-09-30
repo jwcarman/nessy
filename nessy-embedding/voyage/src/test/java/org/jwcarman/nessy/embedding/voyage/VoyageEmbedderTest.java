@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -234,6 +235,42 @@ class VoyageEmbedderTest {
                               .httpClient(java.net.http.HttpClient.newHttpClient()))
                   .vendor())
           .isEqualTo("voyage");
+    }
+  }
+
+  @Nested
+  class AnUnsupportedProperty {
+
+    @Test
+    void is_warned_once_when_the_embedder_is_built_and_is_not_in_any_request() {
+      answer = body -> reply(new float[] {1, 0});
+      try (VoyageEmbeddingProvider connection = provider(c -> {})) {
+        DefaultEmbedderFactory factory =
+            new DefaultEmbedderFactory(connection, VoyageEmbedderConfig.DEFAULT_MODEL);
+        var embedder = new Embedder[1];
+
+        List<ILoggingEvent> atBuild =
+            LogCapture.during(
+                VoyageEmbedderConfig.class,
+                () -> embedder[0] = factory.create(c -> c.property("voyage.truncation", "false")));
+        List<ILoggingEvent> atEmbedding =
+            LogCapture.during(
+                VoyageEmbedderConfig.class,
+                () -> {
+                  embedder[0].embedDocument("a");
+                  embedder[0].embedDocument("a");
+                });
+        factory.create(c -> {}).embedDocument("a");
+
+        assertThat(LogCapture.warnings(atBuild))
+            .containsExactly(
+                "NESSY EMBEDDING: property 'voyage.truncation' is not supported by voyage and is"
+                    + " ignored; supported: []");
+        assertThat(atEmbedding).isEmpty();
+        assertThat(received).hasSize(3);
+        assertThat(received.get(0)).isEqualTo(received.get(2));
+        assertThat(received.get(0).has("truncation")).isFalse();
+      }
     }
   }
 }

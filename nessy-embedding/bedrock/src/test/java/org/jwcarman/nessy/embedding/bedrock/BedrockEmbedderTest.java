@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalInt;
@@ -261,6 +262,42 @@ class BedrockEmbedderTest {
           "a region is set in this environment");
       assertThatThrownBy(BedrockEmbeddingProvider::fromEnv)
           .isInstanceOf(IllegalStateException.class);
+    }
+  }
+
+  @Nested
+  class AnUnsupportedProperty {
+
+    @Test
+    void is_warned_once_when_the_embedder_is_built_and_is_not_in_any_request() {
+      Scripted client = new Scripted(body -> "{\"embedding\":[1]}");
+      DefaultEmbedderFactory factory =
+          new DefaultEmbedderFactory(
+              new BedrockEmbeddingProvider(client, "search_document", MAPPER),
+              "amazon.titan-embed-text-v2:0");
+      var embedder = new Embedder[1];
+
+      List<ILoggingEvent> atBuild =
+          LogCapture.during(
+              BedrockEmbedderConfig.class,
+              () -> embedder[0] = factory.create(c -> c.property("bedrock.truncate", "END")));
+      List<ILoggingEvent> atEmbedding =
+          LogCapture.during(
+              BedrockEmbedderConfig.class,
+              () -> {
+                embedder[0].embedDocument("a");
+                embedder[0].embedDocument("a");
+              });
+      factory.create(c -> {}).embedDocument("a");
+
+      assertThat(LogCapture.warnings(atBuild))
+          .containsExactly(
+              "NESSY EMBEDDING: property 'bedrock.truncate' is not supported by bedrock and is"
+                  + " ignored; supported: []");
+      assertThat(atEmbedding).isEmpty();
+      assertThat(client.sent).hasSize(3);
+      assertThat(client.sent.get(0)).isEqualTo(client.sent.get(2));
+      assertThat(client.sent.get(0).has("truncate")).isFalse();
     }
   }
 }

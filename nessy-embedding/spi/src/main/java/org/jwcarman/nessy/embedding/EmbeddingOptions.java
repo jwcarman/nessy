@@ -31,8 +31,8 @@ import java.util.OptionalInt;
  * @param modelName the embedding model, which a store is then keyed on
  * @param dimension how many coordinates to ask for, where the vendor allows fewer than the model's
  *     own; empty for the model's
- * @param properties vendor-prefixed settings ({@code voyage.truncation}); read by the embedding
- *     adapters from the named-embedders item on, carried and ignored until then
+ * @param properties vendor-prefixed settings ({@code voyage.truncation}); no embedding adapter
+ *     supports any yet, so each is ignored and warned about once when the embedder is built
  */
 public record EmbeddingOptions(
     String modelName, OptionalInt dimension, Map<String, String> properties) {
