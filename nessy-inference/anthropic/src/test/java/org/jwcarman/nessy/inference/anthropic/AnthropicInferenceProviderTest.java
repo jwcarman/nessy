@@ -564,6 +564,80 @@ class AnthropicInferenceProviderTest {
   }
 
   @Nested
+  class ItsTypedProperties {
+
+    private final MessageCreateParams[] captured = new MessageCreateParams[1];
+
+    private final Function<MessageCreateParams, Message> capture =
+        params -> {
+          captured[0] = params;
+          return reply().addContent(text("ok")).build();
+        };
+
+    @Test
+    void typed_properties_set_in_code_reach_the_request_as_the_sdk_values() {
+      new AnthropicProviderConfig()
+          .property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED)
+          .property(AnthropicProperties.THINKING_BUDGET, 512)
+          .property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.ONE_HOUR)
+          .property(AnthropicProperties.SERVICE_TIER, AnthropicServiceTier.STANDARD_ONLY)
+          .client(fakeClient(capture))
+          .build()
+          .infer(REQUEST);
+
+      assertThat(captured[0].thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(512L);
+      assertThat(captured[0].serviceTier()).contains(MessageCreateParams.ServiceTier.STANDARD_ONLY);
+      assertThat(
+              captured[0]
+                  .system()
+                  .orElseThrow()
+                  .asTextBlockParams()
+                  .getFirst()
+                  .cacheControl()
+                  .orElseThrow()
+                  .ttl())
+          .contains(CacheControlEphemeral.Ttl.TTL_1H);
+    }
+
+    @Test
+    void adaptive_thinking_set_in_code_reaches_the_request() {
+      new AnthropicProviderConfig()
+          .property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ADAPTIVE)
+          .client(fakeClient(capture))
+          .build()
+          .infer(REQUEST);
+
+      assertThat(captured[0].thinking().orElseThrow().isAdaptive()).isTrue();
+    }
+
+    @Test
+    void a_yaml_style_string_with_a_bad_spelling_fails_at_build_listing_the_spellings() {
+      AnthropicProviderConfig config =
+          new AnthropicProviderConfig()
+              .apiKey("test-key")
+              .property("anthropic.cache_control.ttl", "2h");
+
+      assertThatThrownBy(config::build)
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("property 'anthropic.cache_control.ttl' must be one of [5m, 1h], was '2h'");
+    }
+
+    @Test
+    void a_bad_service_tier_fails_at_build_listing_the_spellings() {
+      AnthropicProviderConfig config =
+          new AnthropicProviderConfig()
+              .apiKey("test-key")
+              .property("anthropic.service_tier", "gold");
+
+      assertThatThrownBy(config::build)
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage(
+              "property 'anthropic.service_tier' must be one of [auto, standard_only],"
+                  + " was 'gold'");
+    }
+  }
+
+  @Nested
   class Configuration {
 
     @Test

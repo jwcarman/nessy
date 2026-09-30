@@ -238,7 +238,7 @@ public final class AnthropicProviderConfig {
    * statements with no order between them, so both set is refused.
    */
   private Map<String, String> providerProperties() {
-    AnthropicProperties.requireOwn(properties);
+    AnthropicPropertyReader.requireOwn(properties);
     refuseBoth(thinking != null, "thinking(boolean)", AnthropicProperties.THINKING_TYPE);
     refuseBoth(thinkingBudget != null, "thinkingBudget(int)", AnthropicProperties.THINKING_BUDGET);
     // thinking(false) speaks for both thinking names: a lone budget property would turn it on.
@@ -252,36 +252,39 @@ public final class AnthropicProviderConfig {
     refuseBoth(
         promptCaching != null, "promptCaching(PromptCaching)", AnthropicProperties.CACHE_TTL);
     Map<String, String> merged = new LinkedHashMap<>(properties);
-    String budgetName = AnthropicProperties.PREFIX + AnthropicProperties.THINKING_BUDGET;
+    String budgetName = AnthropicProperties.THINKING_BUDGET.name();
     if (Boolean.TRUE.equals(thinking)) {
       merged.put(
-          AnthropicProperties.PREFIX + AnthropicProperties.THINKING_TYPE,
-          AnthropicProperties.ENABLED);
+          AnthropicProperties.THINKING_TYPE.name(),
+          AnthropicProperties.THINKING_TYPE.format(AnthropicThinkingType.ENABLED));
       if (thinkingBudget != null) {
-        merged.put(budgetName, Integer.toString(thinkingBudget));
+        merged.put(budgetName, AnthropicProperties.THINKING_BUDGET.format(thinkingBudget));
       } else if (!merged.containsKey(budgetName)) {
-        merged.put(budgetName, Integer.toString(DEFAULT_THINKING_BUDGET));
+        merged.put(budgetName, AnthropicProperties.THINKING_BUDGET.format(DEFAULT_THINKING_BUDGET));
       }
     }
     if (promptCaching == PromptCaching.FIVE_MINUTES) {
-      merged.put(AnthropicProperties.PREFIX + AnthropicProperties.CACHE_TTL, "5m");
+      merged.put(
+          AnthropicProperties.CACHE_TTL.name(),
+          AnthropicProperties.CACHE_TTL.format(AnthropicCacheTtl.FIVE_MINUTES));
     } else if (promptCaching == PromptCaching.ONE_HOUR) {
-      merged.put(AnthropicProperties.PREFIX + AnthropicProperties.CACHE_TTL, "1h");
+      merged.put(
+          AnthropicProperties.CACHE_TTL.name(),
+          AnthropicProperties.CACHE_TTL.format(AnthropicCacheTtl.ONE_HOUR));
     }
-    AnthropicProperties.read(merged);
-    AnthropicProperties.warnUnsupported(merged);
+    AnthropicPropertyReader.read(merged);
+    AnthropicPropertyReader.warnUnsupported(merged);
     return Collections.unmodifiableMap(merged);
   }
 
-  private void refuseBoth(boolean setterCalled, String setter, String name) {
-    if (setterCalled && properties.containsKey(AnthropicProperties.PREFIX + name)) {
+  private void refuseBoth(boolean setterCalled, String setter, VendorProperty<?> property) {
+    if (setterCalled && properties.containsKey(property.name())) {
       throw new IllegalArgumentException(
           setter
               + " and property '"
-              + AnthropicProperties.PREFIX
-              + name
+              + property
               + "' both say how this provider "
-              + (name.startsWith("thinking") ? "thinks" : "caches")
+              + (property.name().startsWith("anthropic.thinking") ? "thinks" : "caches")
               + "; keep one");
     }
   }

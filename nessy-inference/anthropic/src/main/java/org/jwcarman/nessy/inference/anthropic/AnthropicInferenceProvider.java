@@ -102,7 +102,7 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
       AnthropicRequests.Features features,
       boolean ownsClient,
       JsonMapper mapper) {
-    this(client, AnthropicProperties.of(features), ownsClient, mapper);
+    this(client, AnthropicPropertyReader.of(features), ownsClient, mapper);
   }
 
   AnthropicInferenceProvider(
@@ -158,9 +158,9 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
   @Override
   public void validate(InferenceOptions options) {
     Map<String, String> merged = VendorProperties.merge(properties, options.properties());
-    AnthropicProperties.requireHeadroom(AnthropicProperties.read(merged), options);
-    AnthropicProperties.warnUnsupported(options.properties());
-    AnthropicProperties.logIgnored(merged);
+    AnthropicPropertyReader.requireHeadroom(AnthropicPropertyReader.read(merged), options);
+    AnthropicPropertyReader.warnUnsupported(options.properties());
+    AnthropicPropertyReader.logIgnored(merged);
   }
 
   @Override

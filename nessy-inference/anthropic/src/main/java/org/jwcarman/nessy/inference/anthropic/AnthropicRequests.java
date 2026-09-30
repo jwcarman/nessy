@@ -105,7 +105,7 @@ public final class AnthropicRequests {
    */
   public static MessageCreateParams toParams(
       InferenceRequest request, Features features, JsonMapper mapper) {
-    return toParams(request, AnthropicProperties.of(features), mapper);
+    return toParams(request, AnthropicPropertyReader.of(features), mapper);
   }
 
   /**
@@ -115,10 +115,11 @@ public final class AnthropicRequests {
   static MessageCreateParams toParams(
       InferenceRequest request, Map<String, String> providerProperties, JsonMapper mapper) {
     InferenceOptions options = request.options();
-    AnthropicProperties.Read read =
-        AnthropicProperties.read(VendorProperties.merge(providerProperties, options.properties()));
+    AnthropicPropertyReader.Read read =
+        AnthropicPropertyReader.read(
+            VendorProperties.merge(providerProperties, options.properties()));
     // Refused here as well as at validate, for a caller that never validated (a summariser).
-    AnthropicProperties.requireHeadroom(read, options);
+    AnthropicPropertyReader.requireHeadroom(read, options);
 
     Optional<CacheControlEphemeral> marker = read.cacheTtl().map(AnthropicRequests::cacheMarker);
     MessageCreateParams.Builder builder =
@@ -143,23 +144,21 @@ public final class AnthropicRequests {
     if (read.enabled()) {
       builder.thinking(
           ThinkingConfigEnabled.builder().budgetTokens(read.budget().getAsInt()).build());
-    } else if (read.thinking().filter(AnthropicProperties.ADAPTIVE::equals).isPresent()) {
+    } else if (read.thinking().filter(AnthropicThinkingType.ADAPTIVE::equals).isPresent()) {
       builder.thinking(ThinkingConfigAdaptive.builder().build());
     }
     read.serviceTier()
-        .ifPresent(tier -> builder.serviceTier(MessageCreateParams.ServiceTier.of(tier)));
+        .ifPresent(
+            tier -> builder.serviceTier(MessageCreateParams.ServiceTier.of(tier.spelling())));
     return builder.build();
   }
 
-  /**
-   * The cache marker for a ttl, as the vendor spells ttls: {@code 5m} is today's default marker,
-   * {@code 1h} the long one, and anything else is sent as written for the vendor to judge.
-   */
-  private static CacheControlEphemeral cacheMarker(String ttl) {
+  /** The cache marker for a ttl: {@code 5m} is today's default marker, {@code 1h} the long one. */
+  private static CacheControlEphemeral cacheMarker(AnthropicCacheTtl ttl) {
     return switch (ttl) {
-      case "5m" -> CacheControlEphemeral.builder().build();
-      case "1h" -> CacheControlEphemeral.builder().ttl(CacheControlEphemeral.Ttl.TTL_1H).build();
-      default -> CacheControlEphemeral.builder().ttl(CacheControlEphemeral.Ttl.of(ttl)).build();
+      case FIVE_MINUTES -> CacheControlEphemeral.builder().build();
+      case ONE_HOUR ->
+          CacheControlEphemeral.builder().ttl(CacheControlEphemeral.Ttl.TTL_1H).build();
     };
   }
 

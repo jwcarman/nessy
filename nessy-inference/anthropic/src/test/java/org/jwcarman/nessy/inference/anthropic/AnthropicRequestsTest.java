@@ -862,7 +862,7 @@ class AnthropicRequestsTest {
       assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage(
-              "property 'anthropic.thinking.type' must be enabled, adaptive or disabled,"
+              "property 'anthropic.thinking.type' must be one of [enabled, disabled, adaptive],"
                   + " was 'interleaved'");
     }
 
@@ -975,7 +975,7 @@ class AnthropicRequestsTest {
           LogCapture.during(
               AnthropicProperties.class,
               () ->
-                  AnthropicProperties.warnUnsupported(
+                  AnthropicPropertyReader.warnUnsupported(
                       Map.of("anthropic.top_k", "5", "anthropic.service_tier", "auto")));
 
       assertThat(LogCapture.warnings(events))

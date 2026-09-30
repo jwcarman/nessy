@@ -218,7 +218,7 @@ class AnthropicProviderConfigTest {
     assertThatThrownBy(() -> AnthropicInferenceProvider.of(customizer))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage(
-            "property 'anthropic.thinking.type' must be enabled, adaptive or disabled,"
+            "property 'anthropic.thinking.type' must be one of [enabled, disabled, adaptive],"
                 + " was 'interleaved'");
   }
 
