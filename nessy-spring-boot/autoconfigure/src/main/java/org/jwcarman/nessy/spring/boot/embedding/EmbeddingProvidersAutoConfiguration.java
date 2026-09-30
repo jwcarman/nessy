@@ -18,10 +18,11 @@ package org.jwcarman.nessy.spring.boot.embedding;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.ProviderId;
+import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.embedding.EmbeddingProvider;
@@ -89,10 +90,8 @@ public class EmbeddingProvidersAutoConfiguration {
                   });
               config.observations(observations.getIfAvailable(() -> ObservationRegistry.NOOP));
               if (properties.embedder() != null) {
-                OptionalInt width =
-                    properties.embeddingDimension() == null
-                        ? OptionalInt.empty()
-                        : OptionalInt.of(properties.embeddingDimension());
+                Optional<Dimension> width =
+                    Optional.ofNullable(properties.embeddingDimension()).map(Dimension::new);
                 config.embedding(
                     ProviderId.of(properties.embedder()),
                     new EmbeddingOptions(properties.embeddingModel(), width));
@@ -155,8 +154,12 @@ public class EmbeddingProvidersAutoConfiguration {
           "nessy.embedding-dimension is the default embedder's width: set it with nessy.embedder"
               + " and nessy.embedding-model");
     }
-    if (dimension != null && dimension <= 0) {
-      throw new IllegalStateException("nessy.embedding-dimension must be positive: " + dimension);
+    if (dimension != null) {
+      try {
+        Dimension.of(dimension);
+      } catch (IllegalArgumentException e) {
+        throw new IllegalStateException("nessy.embedding-dimension: " + e.getMessage(), e);
+      }
     }
   }
 }

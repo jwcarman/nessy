@@ -36,6 +36,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.ProviderId;
+import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
@@ -133,12 +134,12 @@ class OpenAiEmbeddingProviderTest {
                           },
                           new AtomicBoolean())));
 
-      assertThat(embedder.dimension()).isZero();
+      assertThat(embedder.dimension()).isEmpty();
       Embedding embedding = embedder.embedDocument("a lake monster");
 
       assertThat(embedding.model()).isEqualTo("text-embedding-3-small");
       assertThat(embedding.vector()).containsExactly(0.1f, 0.2f, 0.3f);
-      assertThat(embedder.dimension()).isEqualTo(3);
+      assertThat(embedder.dimension()).hasValue(Dimension.of(3));
       assertThat(sent.get().model()).hasToString("text-embedding-3-small");
       assertThat(sent.get().input().asArrayOfStrings()).containsExactly("a lake monster");
       assertThat(sent.get().dimensions()).isEmpty();
@@ -176,7 +177,7 @@ class OpenAiEmbeddingProviderTest {
               .create(c -> c.provider(OPENAI).model("text-embedding-3-large").dimension(2));
 
       assertThat(embedder.model()).isEqualTo("text-embedding-3-large");
-      assertThat(embedder.dimension()).isEqualTo(2);
+      assertThat(embedder.dimension()).hasValue(Dimension.of(2));
       embedder.embedDocument("x");
       assertThat(sent.get().dimensions()).contains(2L);
     }

@@ -62,7 +62,7 @@ class VoyageEmbedderLiveTest {
       double far = embeddings.get(0).similarity(embeddings.get(2));
       System.out.printf(
           "%s: %d dimensions; nessie~nessie %.3f, nessie~toner %.3f%n",
-          embedder.model(), embedder.dimension(), near, far);
+          embedder.model(), embedder.dimension().orElseThrow().value(), near, far);
       assertThat(near).isGreaterThan(far);
     }
   }
@@ -81,7 +81,9 @@ class VoyageEmbedderLiveTest {
           embedder.embedDocument("The Loch Ness monster is said to live in a Scottish lake.");
       Embedding query = embedder.embedQuery("Where does Nessie live?");
 
-      assertThat(document.dimension()).isPositive().isEqualTo(embedder.dimension());
+      assertThat(document.dimension())
+          .isPositive()
+          .isEqualTo(embedder.dimension().orElseThrow().value());
       assertThat(query.dimension()).isEqualTo(document.dimension());
       assertThat(document.model()).isEqualTo(model);
       assertThat(query.model()).isEqualTo(model);

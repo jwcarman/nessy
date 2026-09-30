@@ -22,8 +22,10 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
 
@@ -62,8 +64,8 @@ class ObservedEmbedderTest {
       }
 
       @Override
-      public int dimension() {
-        return 3;
+      public Optional<Dimension> dimension() {
+        return Optional.of(new Dimension(3));
       }
 
       @Override
@@ -86,8 +88,8 @@ class ObservedEmbedderTest {
       }
 
       @Override
-      public int dimension() {
-        return 3;
+      public Optional<Dimension> dimension() {
+        return Optional.of(new Dimension(3));
       }
 
       @Override

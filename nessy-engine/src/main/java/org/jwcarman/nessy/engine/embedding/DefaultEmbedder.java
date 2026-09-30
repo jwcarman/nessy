@@ -17,6 +17,8 @@ package org.jwcarman.nessy.engine.embedding;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
@@ -43,12 +45,12 @@ final class DefaultEmbedder implements Embedder {
    * answering. Kept here rather than in every adapter, which is where it used to be four times
    * over.
    */
-  private volatile int dimension;
+  private volatile Optional<Dimension> dimension;
 
   DefaultEmbedder(EmbeddingProvider provider, EmbeddingOptions options) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
     this.options = Objects.requireNonNull(options, "options must not be null");
-    this.dimension = options.dimension().orElse(0);
+    this.dimension = options.dimension();
   }
 
   @Override
@@ -62,7 +64,7 @@ final class DefaultEmbedder implements Embedder {
   }
 
   @Override
-  public int dimension() {
+  public Optional<Dimension> dimension() {
     return dimension;
   }
 
@@ -92,17 +94,18 @@ final class DefaultEmbedder implements Embedder {
    * vector, and what it prevents is an index nothing can rank.
    */
   private List<Embedding> learn(List<Embedding> embeddings) {
-    int asked = options.dimension().orElse(0);
-    if (asked > 0) {
+    Optional<Dimension> asked = options.dimension();
+    if (asked.isPresent()) {
+      int width = asked.get().value();
       for (Embedding embedding : embeddings) {
-        if (embedding.dimension() != asked) {
+        if (embedding.dimension() != width) {
           throw new IllegalStateException(
-              "asked for " + asked + " coordinates, the model returned " + embedding.dimension());
+              "asked for " + width + " coordinates, the model returned " + embedding.dimension());
         }
       }
     }
-    if (dimension == 0 && !embeddings.isEmpty()) {
-      dimension = embeddings.getFirst().dimension();
+    if (dimension.isEmpty() && !embeddings.isEmpty()) {
+      dimension = Optional.of(new Dimension(embeddings.getFirst().dimension()));
     }
     return embeddings;
   }

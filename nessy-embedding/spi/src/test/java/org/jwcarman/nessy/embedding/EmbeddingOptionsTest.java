@@ -21,8 +21,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.Embedding;
 
 class EmbeddingOptionsTest {
@@ -30,10 +31,11 @@ class EmbeddingOptionsTest {
   @Test
   void options_carry_properties_and_the_short_forms_carry_none() {
     EmbeddingOptions options =
-        new EmbeddingOptions("m", OptionalInt.of(256), Map.of("voyage.truncation", "false"));
+        new EmbeddingOptions(
+            "m", Optional.of(Dimension.of(256)), Map.of("voyage.truncation", "false"));
 
     assertThat(options.properties()).containsExactly(Map.entry("voyage.truncation", "false"));
-    assertThat(new EmbeddingOptions("m", OptionalInt.empty()).properties()).isEmpty();
+    assertThat(new EmbeddingOptions("m", Optional.empty()).properties()).isEmpty();
     assertThat(EmbeddingOptions.of("m").properties()).isEmpty();
     assertThat(options.toString()).contains("voyage.truncation").doesNotContain("false");
   }
@@ -58,7 +60,7 @@ class EmbeddingOptionsTest {
           }
         };
     EmbeddingOptions options =
-        new EmbeddingOptions("m", OptionalInt.empty(), Map.of("anything.at", "all"));
+        new EmbeddingOptions("m", Optional.empty(), Map.of("anything.at", "all"));
 
     assertThatCode(() -> provider.validate(options)).doesNotThrowAnyException();
   }
@@ -66,7 +68,7 @@ class EmbeddingOptionsTest {
   @Test
   void the_properties_cannot_be_changed() {
     Map<String, String> properties =
-        new EmbeddingOptions("m", OptionalInt.empty(), Map.of("a.b", "1")).properties();
+        new EmbeddingOptions("m", Optional.empty(), Map.of("a.b", "1")).properties();
 
     assertThatThrownBy(() -> properties.put("x", "y"))
         .isInstanceOf(UnsupportedOperationException.class);

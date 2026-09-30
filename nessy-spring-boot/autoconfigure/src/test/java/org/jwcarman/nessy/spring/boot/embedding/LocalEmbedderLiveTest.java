@@ -27,6 +27,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.api.embedding.Embedding;
@@ -80,7 +81,7 @@ class LocalEmbedderLiveTest {
     runner.run(
         context -> {
           Embedder embedder = context.getBean(EmbedderFactory.class).create(c -> {});
-          assertThat(embedder.dimension()).isZero();
+          assertThat(embedder.dimension()).isEmpty();
 
           Embedding document =
               embedder.embedDocument("The Loch Ness monster is said to live in a Scottish lake.");
@@ -88,7 +89,7 @@ class LocalEmbedderLiveTest {
 
           assertThat(document.dimension()).isEqualTo(768);
           assertThat(query.dimension()).isEqualTo(768);
-          assertThat(embedder.dimension()).isEqualTo(768);
+          assertThat(embedder.dimension()).hasValue(Dimension.of(768));
           assertThat(document.model()).isEqualTo(MODEL);
           assertThat(embedder.vendor()).isEqualTo("lmstudio");
         });

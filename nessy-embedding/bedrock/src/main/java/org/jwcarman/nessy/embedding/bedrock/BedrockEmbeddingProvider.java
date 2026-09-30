@@ -133,7 +133,7 @@ public final class BedrockEmbeddingProvider implements EmbeddingProvider, AutoCl
   /** Titan takes one text and answers with one vector. */
   private Embedding titan(String text, EmbeddingOptions options) {
     ObjectNode body = mapper.createObjectNode().put("inputText", text);
-    options.dimension().ifPresent(d -> body.put("dimensions", d).put("normalize", true));
+    options.dimension().ifPresent(d -> body.put("dimensions", d.value()).put("normalize", true));
     JsonNode reply = invoke(body, options);
     return vector(reply.path("embedding"), options);
   }

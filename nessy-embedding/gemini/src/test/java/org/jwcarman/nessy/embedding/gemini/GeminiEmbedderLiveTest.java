@@ -19,11 +19,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.List;
-import java.util.OptionalInt;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.ProviderId;
+import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
@@ -47,7 +48,8 @@ class GeminiEmbedderLiveTest {
     return DefaultEmbedderFactory.of(
             f ->
                 f.provider(GEMINI, provider)
-                    .embedding(GEMINI, new EmbeddingOptions(model, OptionalInt.of(dimension))))
+                    .embedding(
+                        GEMINI, new EmbeddingOptions(model, Optional.of(new Dimension(dimension)))))
         .create(c -> {});
   }
 
@@ -70,8 +72,8 @@ class GeminiEmbedderLiveTest {
       double far = embeddings.get(0).similarity(embeddings.get(2));
       System.out.printf(
           "%s: %d dimensions; nessie~nessie %.3f, nessie~toner %.3f%n",
-          embedder.model(), embedder.dimension(), near, far);
-      assertThat(embedder.dimension()).isEqualTo(768);
+          embedder.model(), embedder.dimension().orElseThrow().value(), near, far);
+      assertThat(embedder.dimension()).hasValue(Dimension.of(768));
       assertThat(near).isGreaterThan(far);
     }
   }
@@ -89,7 +91,9 @@ class GeminiEmbedderLiveTest {
           embedder.embedDocument("The Loch Ness monster is said to live in a Scottish lake.");
       Embedding query = embedder.embedQuery("Where does Nessie live?");
 
-      assertThat(document.dimension()).isPositive().isEqualTo(embedder.dimension());
+      assertThat(document.dimension())
+          .isPositive()
+          .isEqualTo(embedder.dimension().orElseThrow().value());
       assertThat(query.dimension()).isEqualTo(document.dimension());
       assertThat(document.dimension()).isEqualTo(768);
       assertThat(document.model()).isEqualTo(MODEL);

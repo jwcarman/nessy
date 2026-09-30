@@ -104,7 +104,7 @@ public final class GeminiEmbeddingProvider implements EmbeddingProvider, AutoClo
       return List.of();
     }
     EmbedContentConfig.Builder config = EmbedContentConfig.builder();
-    options.dimension().ifPresent(config::outputDimensionality);
+    options.dimension().ifPresent(d -> config.outputDimensionality(d.value()));
     config.taskType(role);
     EmbedContentResponse response = client.embed(options.modelName(), texts, config.build());
     List<ContentEmbedding> returned = response.embeddings().orElse(List.of());

@@ -77,6 +77,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`OpenAiEmbedderConfig.vendor(String)`**, for a custom `openai`-wire
   embedder that is somebody else.
 
+- **`Dimension`**, in `org.jwcarman.nessy.api.embedding`: how many
+  coordinates a vector has, at least 1. `EmbedderConfig.dimension(Dimension)`
+  takes it; `dimension(int)` remains as the convenience.
+
 ### Changed
 
 - **The `openai` preset sends strict function tools**
@@ -87,8 +91,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Anthropic `enabled` thinking with no budget sends 1024 tokens instead of
   refusing at build; the budget must still be below `maxTokens`.
 
+### Fixed
+
+- **A width of zero or less is refused where it is set.** `dimension(0)` and
+  `nessy.embedding-dimension: 0` fail at once; the property's failure names it.
+
 ### Breaking changes
 
+- **`Embedder.dimension()` returns `Optional<Dimension>`,** not `int` (0 for
+  not learned yet): empty until the first reply when no width was asked for.
+  `Embedding.dimension()`, a vector's length, stays `int`.
+- **`EmbeddingOptions.dimension` is `Optional<Dimension>`,** not `OptionalInt`.
 - **`InferenceOptions` and `EmbeddingOptions` gain a `properties`
   component.** Their existing constructors and `of(...)` still work;
   a record pattern over either (`InferenceOptions(var model, var max)`)

@@ -17,7 +17,9 @@ package org.jwcarman.nessy.memory.episodic;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
 
@@ -49,8 +51,8 @@ final class KeywordEmbedder implements Embedder {
   }
 
   @Override
-  public int dimension() {
-    return keywords.size() + 1;
+  public Optional<Dimension> dimension() {
+    return Optional.of(new Dimension(keywords.size() + 1));
   }
 
   /** Which flavour a caller asked for, so a test can say a store got it right. */

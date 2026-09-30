@@ -90,7 +90,7 @@ public final class OpenAiEmbeddingProvider implements EmbeddingProvider, AutoClo
     }
     EmbeddingCreateParams.Builder params =
         EmbeddingCreateParams.builder().model(model).inputOfArrayOfStrings(texts);
-    options.dimension().ifPresent(params::dimensions);
+    options.dimension().ifPresent(d -> params.dimensions(d.value()));
     CreateEmbeddingResponse response = client.embeddings().create(params.build());
 
     Embedding[] ordered = new Embedding[texts.size()];

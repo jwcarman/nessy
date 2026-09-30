@@ -70,7 +70,9 @@ class OpenAiEmbedderLiveTest {
       Embedding toner = embeddings.get(2);
 
       assertThat(embedder.model()).isEqualTo(MODEL);
-      assertThat(embedder.dimension()).isEqualTo(nessie.dimension()).isPositive();
+      assertThat(embedder.dimension().orElseThrow().value())
+          .isEqualTo(nessie.dimension())
+          .isPositive();
       assertThat(embeddings)
           .allSatisfy(e -> assertThat(e.dimension()).isEqualTo(nessie.dimension()));
 
@@ -101,7 +103,9 @@ class OpenAiEmbedderLiveTest {
           embedder.embedDocument("The Loch Ness monster is said to live in a Scottish lake.");
       Embedding query = embedder.embedQuery("Where does Nessie live?");
 
-      assertThat(document.dimension()).isPositive().isEqualTo(embedder.dimension());
+      assertThat(document.dimension())
+          .isPositive()
+          .isEqualTo(embedder.dimension().orElseThrow().value());
       assertThat(query.dimension()).isEqualTo(document.dimension());
       assertThat(document.model()).isEqualTo(MODEL);
       assertThat(query.model()).isEqualTo(MODEL);

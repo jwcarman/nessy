@@ -32,6 +32,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.ProviderId;
+import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
@@ -97,13 +98,13 @@ class GeminiEmbedderTest {
                   null),
               GeminiEmbedderConfig.DEFAULT_MODEL);
 
-      assertThat(embedder.dimension()).isZero();
+      assertThat(embedder.dimension()).isEmpty();
       List<Embedding> embeddings = embedder.embedDocuments(List.of("a", "b"));
 
       assertThat(embeddings)
           .extracting(Embedding::vector)
           .containsExactly(new float[] {1, 0}, new float[] {0, 1});
-      assertThat(embedder.dimension()).isEqualTo(2);
+      assertThat(embedder.dimension()).hasValue(Dimension.of(2));
       assertThat(sent.get().model()).isEqualTo("gemini-embedding-001");
       assertThat(sent.get().texts()).containsExactly("a", "b");
       assertThat(sent.get().config().outputDimensionality()).isEmpty();
@@ -120,7 +121,7 @@ class GeminiEmbedderTest {
           DefaultEmbedderFactory.of(f -> f.provider(GEMINI, provider))
               .create(c -> c.provider(GEMINI).model("m").dimension(2));
 
-      assertThat(embedder.dimension()).isEqualTo(2);
+      assertThat(embedder.dimension()).hasValue(Dimension.of(2));
       embedder.embedDocument("x");
 
       assertThat(sent.get().config().outputDimensionality()).contains(2);

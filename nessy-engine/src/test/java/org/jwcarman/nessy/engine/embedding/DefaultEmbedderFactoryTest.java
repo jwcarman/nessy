@@ -23,13 +23,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.VendorProperty;
+import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderConfig;
 import org.jwcarman.nessy.api.embedding.Embedding;
@@ -71,7 +72,9 @@ class DefaultEmbedderFactoryTest {
 
     private Embedding answer(EmbeddingOptions asked) {
       lastAsked.set(asked);
-      float[] vector = new float[fixedWidth > 0 ? fixedWidth : asked.dimension().orElse(3)];
+      float[] vector =
+          new float
+              [fixedWidth > 0 ? fixedWidth : asked.dimension().map(Dimension::value).orElse(3)];
       Arrays.fill(vector, 1f);
       return new Embedding(asked.modelName(), vector);
     }
@@ -130,22 +133,22 @@ class DefaultEmbedderFactoryTest {
   @Test
   void inherit_the_factory_default_width_when_they_ask_for_none() {
     Asked provider = new Asked();
-    over(provider, new EmbeddingOptions("a-model", OptionalInt.of(1024)))
+    over(provider, new EmbeddingOptions("a-model", Optional.of(Dimension.of(1024))))
         .create(c -> {})
         .embedDocument("anything");
 
-    assertThat(provider.lastAsked.get().dimension()).hasValue(1024);
+    assertThat(provider.lastAsked.get().dimension()).hasValue(Dimension.of(1024));
     assertThat(provider.lastAsked.get().modelName()).isEqualTo("a-model");
   }
 
   @Test
   void keep_their_own_width_when_they_ask_for_one() {
     Asked provider = new Asked();
-    over(provider, new EmbeddingOptions("a-model", OptionalInt.of(1024)))
+    over(provider, new EmbeddingOptions("a-model", Optional.of(Dimension.of(1024))))
         .create(c -> c.dimension(256))
         .embedDocument("anything");
 
-    assertThat(provider.lastAsked.get().dimension()).hasValue(256);
+    assertThat(provider.lastAsked.get().dimension()).hasValue(Dimension.of(256));
   }
 
   /** A factory with no opinion leaves the width to the model, which is most of them. */
@@ -195,7 +198,7 @@ class DefaultEmbedderFactoryTest {
   @Test
   void the_factory_default_properties_seed_every_embedder() {
     Asked provider = new Asked();
-    over(provider, new EmbeddingOptions("a-model", OptionalInt.empty(), Map.of("x.a", "1")))
+    over(provider, new EmbeddingOptions("a-model", Optional.empty(), Map.of("x.a", "1")))
         .create(c -> c.property("x.b", "2"))
         .embedDocument("anything");
 
@@ -339,6 +342,24 @@ class DefaultEmbedderFactoryTest {
     assertThat(provider.lastAsked.get().modelName()).isEqualTo("large");
   }
 
+  @Test
+  void a_width_of_zero_is_refused_where_it_is_set() {
+    DefaultEmbedderFactory factory = over(new Asked(), EmbeddingOptions.of("a-model"));
+
+    assertThatThrownBy(() -> factory.create(c -> c.dimension(0)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("an embedding dimension must be at least 1, was 0");
+  }
+
+  @Test
+  void a_negative_width_is_refused_where_it_is_set() {
+    DefaultEmbedderFactory factory = over(new Asked(), EmbeddingOptions.of("a-model"));
+
+    assertThatThrownBy(() -> factory.create(c -> c.dimension(-1)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("an embedding dimension must be at least 1, was -1");
+  }
+
   // ---- validate, and the wrap -----------------------------------------------------------
 
   @Test
@@ -347,7 +368,7 @@ class DefaultEmbedderFactoryTest {
     over(provider, EmbeddingOptions.of("a-model")).create(c -> c.dimension(8));
 
     assertThat(provider.validated)
-        .containsExactly(new EmbeddingOptions("a-model", OptionalInt.of(8), Map.of()));
+        .containsExactly(new EmbeddingOptions("a-model", Optional.of(Dimension.of(8)), Map.of()));
     assertThat(provider.lastAsked.get()).isNull();
   }
 
@@ -376,7 +397,7 @@ class DefaultEmbedderFactoryTest {
   void a_width_asked_for_and_not_received_fails_naming_both_on_every_call() {
     Asked server = new Asked("lmstudio", 768);
     Embedder embedder =
-        over(server, new EmbeddingOptions("nomic", OptionalInt.of(256))).create(c -> {});
+        over(server, new EmbeddingOptions("nomic", Optional.of(Dimension.of(256)))).create(c -> {});
     List<String> one = List.of("a lake monster");
 
     assertThatThrownBy(() -> embedder.embedDocuments(one))
@@ -392,10 +413,10 @@ class DefaultEmbedderFactoryTest {
     Embedder embedder =
         over(new Asked("lmstudio", 768), EmbeddingOptions.of("nomic")).create(c -> {});
 
-    assertThat(embedder.dimension()).isZero();
+    assertThat(embedder.dimension()).isEmpty();
     embedder.embedDocument("a lake monster");
 
-    assertThat(embedder.dimension()).isEqualTo(768);
+    assertThat(embedder.dimension()).hasValue(Dimension.of(768));
   }
 
   /** Review Focus 4: every vector in a reply is checked, not the first alone. */
@@ -405,7 +426,7 @@ class DefaultEmbedderFactoryTest {
         DefaultEmbedderFactory.of(
                 f ->
                     f.provider(OPENAI, new Mixed())
-                        .embedding(OPENAI, new EmbeddingOptions("m", OptionalInt.of(2))))
+                        .embedding(OPENAI, new EmbeddingOptions("m", Optional.of(Dimension.of(2)))))
             .create(c -> {});
     List<String> two = List.of("a", "b");
 

@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api.embedding;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Text into a vector, so that texts can be compared by meaning rather than by words.
@@ -43,8 +44,11 @@ public interface Embedder {
   /** The model's name, recorded beside every vector it produces. */
   String model();
 
-  /** How many coordinates every vector from this model has. */
-  int dimension();
+  /**
+   * How many coordinates every vector from this model has: the width asked for, or the one learned
+   * from the first reply. Empty until then, when none was asked for.
+   */
+  Optional<Dimension> dimension();
 
   /**
    * The documents, in the order given.

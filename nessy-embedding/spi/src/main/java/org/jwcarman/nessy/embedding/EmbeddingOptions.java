@@ -19,7 +19,8 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.OptionalInt;
+import java.util.Optional;
+import org.jwcarman.nessy.api.embedding.Dimension;
 
 /**
  * Which model, and how wide.
@@ -35,7 +36,7 @@ import java.util.OptionalInt;
  *     supports any yet, so each is ignored and warned about once when the embedder is built
  */
 public record EmbeddingOptions(
-    String modelName, OptionalInt dimension, Map<String, String> properties) {
+    String modelName, Optional<Dimension> dimension, Map<String, String> properties) {
 
   public EmbeddingOptions {
     Objects.requireNonNull(modelName, "modelName must not be null");
@@ -47,13 +48,13 @@ public record EmbeddingOptions(
   }
 
   /** No properties. */
-  public EmbeddingOptions(String modelName, OptionalInt dimension) {
+  public EmbeddingOptions(String modelName, Optional<Dimension> dimension) {
     this(modelName, dimension, Map.of());
   }
 
   /** The model's own width. */
   public static EmbeddingOptions of(String modelName) {
-    return new EmbeddingOptions(modelName, OptionalInt.empty());
+    return new EmbeddingOptions(modelName, Optional.empty());
   }
 
   /** Names only: a property's value may be sensitive, and this is what a log line prints. */

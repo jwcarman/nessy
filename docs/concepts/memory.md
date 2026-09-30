@@ -247,12 +247,16 @@ agent that talks, because every vector in a table must come from one model.
 public interface Embedder {
   default String vendor() { ... }
   String model();
-  int dimension();
+  Optional<Dimension> dimension();
   List<Embedding> embedDocuments(List<String> texts);
   default Embedding embedDocument(String text) { ... }
   default Embedding embedQuery(String query) { ... }
 }
 ```
+
+`dimension()` is the width asked for, or the one learned from the first reply
+when none was; it is empty until then. A `Dimension` is at least 1: a width of
+zero or less is refused where it is set.
 
 Four embedding providers ship. Each holds a connection and nothing about a
 model; the model and its width are the store's, named when its embedder is

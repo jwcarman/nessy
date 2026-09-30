@@ -35,6 +35,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.ProviderId;
+import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
@@ -122,7 +123,7 @@ class VoyageEmbedderTest {
         assertThat(embeddings)
             .extracting(Embedding::vector)
             .containsExactly(new float[] {1, 0}, new float[] {0, 1});
-        assertThat(embedder.dimension()).isEqualTo(2);
+        assertThat(embedder.dimension()).hasValue(Dimension.of(2));
         assertThat(embedder.model()).isEqualTo("voyage-3.5");
         assertThat(received).hasSize(1);
         assertThat(received.getFirst().path("model").asString()).isEqualTo("voyage-3.5");
@@ -141,7 +142,7 @@ class VoyageEmbedderTest {
             DefaultEmbedderFactory.of(f -> f.provider(VOYAGE, connection))
                 .create(c -> c.provider(VOYAGE).model("voyage-3.5-lite").dimension(2));
 
-        assertThat(embedder.dimension()).isEqualTo(2);
+        assertThat(embedder.dimension()).hasValue(Dimension.of(2));
         embedder.embedDocument("x");
 
         assertThat(received.getFirst().path("output_dimension").asInt()).isEqualTo(2);

@@ -53,7 +53,16 @@ public interface EmbedderConfig {
    * <p>Left unset, the model's. Shorter vectors are cheaper to store and to compare, and worse at
    * telling near things apart.
    */
-  EmbedderConfig dimension(int dimension);
+  EmbedderConfig dimension(Dimension dimension);
+
+  /**
+   * {@link #dimension(Dimension)}, by number.
+   *
+   * @throws IllegalArgumentException if the number is less than 1
+   */
+  default EmbedderConfig dimension(int value) {
+    return dimension(new Dimension(value));
+  }
 
   /**
    * A setting the vendor understands and this interface does not name, prefixed by the adapter that

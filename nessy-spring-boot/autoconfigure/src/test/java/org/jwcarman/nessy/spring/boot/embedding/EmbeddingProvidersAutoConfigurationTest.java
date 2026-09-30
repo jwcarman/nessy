@@ -28,6 +28,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderConfig;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
@@ -542,7 +543,10 @@ class EmbeddingProvidersAutoConfigurationTest {
             "nessy.embedder=voyage",
             "nessy.embedding-model=voyage-3.5",
             "nessy.embedding-dimension=256")
-        .run(context -> assertThat(factory(context).create(c -> {}).dimension()).isEqualTo(256));
+        .run(
+            context ->
+                assertThat(factory(context).create(c -> {}).dimension())
+                    .hasValue(Dimension.of(256)));
   }
 
   @Test
@@ -569,7 +573,8 @@ class EmbeddingProvidersAutoConfigurationTest {
             context -> {
               assertThat(context).hasFailed();
               assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining("nessy.embedding-dimension must be positive: 0");
+                  .hasStackTraceContaining(
+                      "nessy.embedding-dimension: an embedding dimension must be at least 1, was 0");
             });
   }
 

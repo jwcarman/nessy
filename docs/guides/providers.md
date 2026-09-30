@@ -686,6 +686,11 @@ A server that ignores the width it is asked for answers at its model's own.
 An embedder that asked for a width fails on every reply that differs, naming
 both numbers (`asked for 256 coordinates, the model returned 768`).
 
+A width is a `Dimension`, at least 1: `c.dimension(0)` and
+`nessy.embedding-dimension: 0` are refused where they are set, and an
+embedder that asked for none reports `dimension()` as empty until its first
+reply.
+
 !!! warning "A local server may answer any model name"
     Some local OpenAI-compatible servers answer whatever model name they are
     sent with the model they have loaded. The model a store records is the

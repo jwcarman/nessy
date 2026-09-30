@@ -20,7 +20,9 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Supplier;
+import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
 
@@ -98,7 +100,7 @@ public final class ObservedEmbedder implements Embedder, AutoCloseable {
   }
 
   @Override
-  public int dimension() {
+  public Optional<Dimension> dimension() {
     return delegate.dimension();
   }
 
@@ -146,7 +148,8 @@ public final class ObservedEmbedder implements Embedder, AutoCloseable {
             // one number over both hides which of them is slow.
             .lowCardinalityKeyValue(INPUT_TYPE, role)
             .highCardinalityKeyValue(
-                "gen_ai.embeddings.dimension.count", String.valueOf(delegate.dimension()));
+                "gen_ai.embeddings.dimension.count",
+                delegate.dimension().map(Dimension::toString).orElse("0"));
     inheritIdentity(observation);
     observation.start();
     try (var _ = observation.openScope()) {

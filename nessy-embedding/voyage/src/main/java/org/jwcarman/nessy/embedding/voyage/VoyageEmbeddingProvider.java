@@ -138,7 +138,7 @@ public final class VoyageEmbeddingProvider implements EmbeddingProvider, AutoClo
     ObjectNode body = mapper.createObjectNode().put("model", options.modelName());
     ArrayNode input = body.putArray("input");
     batch.forEach(input::add);
-    options.dimension().ifPresent(d -> body.put("output_dimension", d));
+    options.dimension().ifPresent(d -> body.put("output_dimension", d.value()));
     body.put("input_type", role);
     HttpRequest request =
         HttpRequest.newBuilder(endpoint)

@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.OptionalInt;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.ProviderId;
+import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderConfig;
 import org.jwcarman.nessy.api.embedding.Embedding;
@@ -81,7 +82,7 @@ class BedrockEmbedderTest {
   private static final ProviderId BEDROCK = ProviderId.of("bedrock");
 
   /** An embedder over a provider: the connection is the provider's, the model the caller's. */
-  private static Embedder embedder(Scripted client, String model, OptionalInt dimension) {
+  private static Embedder embedder(Scripted client, String model, Optional<Dimension> dimension) {
     BedrockEmbeddingProvider provider =
         new BedrockEmbeddingProvider(client, "search_document", MAPPER);
     return DefaultEmbedderFactory.of(
@@ -98,13 +99,13 @@ class BedrockEmbedderTest {
     void one_text_per_call_and_the_dimension_is_learned() {
       Scripted client =
           new Scripted(body -> "{\"embedding\":[0.5,0.25],\"inputTextTokenCount\":3}");
-      Embedder embedder = embedder(client, "amazon.titan-embed-text-v2:0", OptionalInt.empty());
+      Embedder embedder = embedder(client, "amazon.titan-embed-text-v2:0", Optional.empty());
 
       List<Embedding> embeddings = embedder.embedDocuments(List.of("a", "b"));
 
       assertThat(embeddings).hasSize(2);
       assertThat(embeddings.getFirst().vector()).containsExactly(0.5f, 0.25f);
-      assertThat(embedder.dimension()).isEqualTo(2);
+      assertThat(embedder.dimension()).hasValue(Dimension.of(2));
       assertThat(client.sent).hasSize(2);
       assertThat(client.sent.getFirst().path("inputText").asString()).isEqualTo("a");
       assertThat(client.sent.getFirst().has("dimensions")).isFalse();
@@ -114,13 +115,14 @@ class BedrockEmbedderTest {
     @Test
     void a_dimension_asked_for_is_sent_with_normalisation() {
       Scripted client = new Scripted(body -> "{\"embedding\":[0.6,0.8]}");
-      Embedder embedder = embedder(client, "amazon.titan-embed-text-v2:0", OptionalInt.of(2));
+      Embedder embedder =
+          embedder(client, "amazon.titan-embed-text-v2:0", Optional.of(Dimension.of(2)));
 
       embedder.embedDocument("x");
 
       assertThat(client.sent.getFirst().path("dimensions").asInt()).isEqualTo(2);
       assertThat(client.sent.getFirst().path("normalize").asBoolean()).isTrue();
-      assertThat(embedder.dimension()).isEqualTo(2);
+      assertThat(embedder.dimension()).hasValue(Dimension.of(2));
     }
 
     @Test
@@ -129,7 +131,7 @@ class BedrockEmbedderTest {
           embedder(
               new Scripted(body -> "{\"message\":\"nope\"}"),
               "amazon.titan-embed-text-v1",
-              OptionalInt.empty());
+              Optional.empty());
 
       assertThatThrownBy(() -> embedder.embedDocument("x"))
           .isInstanceOf(IllegalStateException.class);
@@ -142,7 +144,7 @@ class BedrockEmbedderTest {
     @Test
     void a_batch_per_call_with_the_input_type() {
       Scripted client = new Scripted(body -> "{\"embeddings\":[[1,0],[0,1]]}");
-      Embedder embedder = embedder(client, "cohere.embed-english-v3", OptionalInt.empty());
+      Embedder embedder = embedder(client, "cohere.embed-english-v3", Optional.empty());
 
       List<Embedding> embeddings = embedder.embedDocuments(List.of("a", "b"));
 
@@ -166,7 +168,7 @@ class BedrockEmbedderTest {
                 }
                 return reply.append("]}").toString();
               });
-      Embedder embedder = embedder(client, "cohere.embed-multilingual-v3", OptionalInt.empty());
+      Embedder embedder = embedder(client, "cohere.embed-multilingual-v3", Optional.empty());
       List<String> texts = java.util.Collections.nCopies(100, "x");
 
       assertThat(embedder.embedDocuments(texts)).hasSize(100);
@@ -179,7 +181,7 @@ class BedrockEmbedderTest {
           embedder(
               new Scripted(body -> "{\"embeddings\":[[1]]}"),
               "cohere.embed-english-v3",
-              OptionalInt.empty());
+              Optional.empty());
       List<String> two = List.of("a", "b");
 
       assertThatThrownBy(() -> embedder.embedDocuments(two))

@@ -20,11 +20,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.OptionalInt;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.ProviderId;
+import org.jwcarman.nessy.api.embedding.Dimension;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderConfig;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
@@ -115,8 +116,8 @@ public final class DefaultEmbedderFactory implements EmbedderFactory {
 
     private @Nullable ProviderId provider = defaultProvider;
     private @Nullable String model = defaultOptions == null ? null : defaultOptions.modelName();
-    private OptionalInt dimension =
-        defaultOptions == null ? OptionalInt.empty() : defaultOptions.dimension();
+    private Optional<Dimension> dimension =
+        defaultOptions == null ? Optional.empty() : defaultOptions.dimension();
     private final Map<String, String> properties =
         new LinkedHashMap<>(defaultOptions == null ? Map.of() : defaultOptions.properties());
 
@@ -133,8 +134,8 @@ public final class DefaultEmbedderFactory implements EmbedderFactory {
     }
 
     @Override
-    public EmbedderConfig dimension(int dimension) {
-      this.dimension = OptionalInt.of(dimension);
+    public EmbedderConfig dimension(Dimension dimension) {
+      this.dimension = Optional.of(Objects.requireNonNull(dimension, "dimension must not be null"));
       return this;
     }
 

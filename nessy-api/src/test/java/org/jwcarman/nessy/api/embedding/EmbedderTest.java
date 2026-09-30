@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -39,8 +40,8 @@ class EmbedderTest {
     }
 
     @Override
-    public int dimension() {
-      return 1;
+    public Optional<Dimension> dimension() {
+      return Optional.of(new Dimension(1));
     }
 
     @Override
@@ -65,8 +66,8 @@ class EmbedderTest {
           }
 
           @Override
-          public int dimension() {
-            return 1;
+          public Optional<Dimension> dimension() {
+            return Optional.of(new Dimension(1));
           }
 
           @Override
