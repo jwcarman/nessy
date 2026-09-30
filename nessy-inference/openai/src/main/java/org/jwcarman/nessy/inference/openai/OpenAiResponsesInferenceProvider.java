@@ -134,7 +134,7 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
   public void validate(InferenceOptions options) {
     Map<String, String> merged = VendorProperties.merge(properties, options.properties());
     OpenAiProperties.responses(merged);
-    OpenAiProperties.warnUnsupported(merged);
+    OpenAiProperties.warnUnsupported(options.properties());
     OpenAiProperties.logIgnored(merged);
   }
 

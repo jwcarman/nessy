@@ -159,7 +159,7 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
   public void validate(InferenceOptions options) {
     Map<String, String> merged = VendorProperties.merge(properties, options.properties());
     AnthropicProperties.requireHeadroom(AnthropicProperties.read(merged), options);
-    AnthropicProperties.warnUnsupported(merged);
+    AnthropicProperties.warnUnsupported(options.properties());
     AnthropicProperties.logIgnored(merged);
   }
 

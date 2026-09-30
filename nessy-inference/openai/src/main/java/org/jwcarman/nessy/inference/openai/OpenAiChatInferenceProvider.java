@@ -160,7 +160,7 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
   public void validate(InferenceOptions options) {
     Map<String, String> merged = VendorProperties.merge(properties, options.properties());
     OpenAiProperties.chat(merged);
-    OpenAiProperties.warnUnsupported(merged);
+    OpenAiProperties.warnUnsupported(options.properties());
     OpenAiProperties.logIgnored(merged);
   }
 
