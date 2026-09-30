@@ -1379,10 +1379,10 @@ class OpenAiChatInferenceProviderTest {
           new InferenceOptions("gpt-4o", 1024, Map.of("openai.max_completion_tokens", "5"));
 
       List<ILoggingEvent> atValidate =
-          LogCapture.during(OpenAiProperties.class, () -> provider.validate(options));
+          LogCapture.during(OpenAiPropertyReader.class, () -> provider.validate(options));
       List<ILoggingEvent> atInference =
           LogCapture.during(
-              OpenAiProperties.class,
+              OpenAiPropertyReader.class,
               () -> {
                 provider.infer(requestWith(options));
                 provider.infer(requestWith(options));
@@ -1414,7 +1414,7 @@ class OpenAiChatInferenceProviderTest {
           new InferenceOptions("gpt-4o", 1024, Map.of("openai.store", "true"));
 
       List<ILoggingEvent> atValidate =
-          LogCapture.during(OpenAiProperties.class, () -> provider.validate(options));
+          LogCapture.during(OpenAiPropertyReader.class, () -> provider.validate(options));
 
       assertThat(LogCapture.warnings(atValidate))
           .singleElement()

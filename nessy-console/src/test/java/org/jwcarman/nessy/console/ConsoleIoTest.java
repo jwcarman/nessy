@@ -33,7 +33,7 @@ import org.junit.jupiter.api.Test;
  * The real console: the one door {@link ConsoleIo#standard()} builds over {@code System.in} and
  * {@code System.out}.
  *
- * <p>{@link ConsoleIo.Standard#create()} is exercised directly, with {@code System.in}/{@code
+ * <p>{@link StandardConsoleIo#create()} is exercised directly, with {@code System.in}/{@code
  * System.out} swapped first, rather than through the {@code standard()} singleton — the singleton
  * is created at most once per JVM, on whichever thread happens to touch it first, so a test that
  * relied on being that thread would be racing every other test in this module.
@@ -60,7 +60,7 @@ class ConsoleIoTest {
   void reads_a_line_typed_on_stdin() {
     System.setIn(new ByteArrayInputStream("hello there\n".getBytes(StandardCharsets.UTF_8)));
 
-    ConsoleIo io = ConsoleIo.Standard.create();
+    ConsoleIo io = StandardConsoleIo.create();
 
     assertThat(io.readLine()).isEqualTo("hello there");
   }
@@ -70,7 +70,7 @@ class ConsoleIoTest {
   void end_of_input_is_null() {
     System.setIn(new ByteArrayInputStream(new byte[0]));
 
-    ConsoleIo io = ConsoleIo.Standard.create();
+    ConsoleIo io = StandardConsoleIo.create();
 
     assertThat(io.readLine()).isNull();
   }
@@ -86,7 +86,7 @@ class ConsoleIoTest {
           }
         });
 
-    ConsoleIo io = ConsoleIo.Standard.create();
+    ConsoleIo io = StandardConsoleIo.create();
 
     assertThatThrownBy(io::readLine).isInstanceOf(UncheckedIOException.class);
   }
@@ -96,7 +96,7 @@ class ConsoleIoTest {
     ByteArrayOutputStream captured = new ByteArrayOutputStream();
     System.setOut(new PrintStream(captured, true, StandardCharsets.UTF_8));
 
-    ConsoleIo io = ConsoleIo.Standard.create();
+    ConsoleIo io = StandardConsoleIo.create();
     io.write("hello");
 
     assertThat(captured.toString(StandardCharsets.UTF_8)).isEqualTo("hello");
@@ -111,7 +111,7 @@ class ConsoleIoTest {
     PrintStream unflushed = new PrintStream(captured, false, StandardCharsets.UTF_8);
     System.setOut(unflushed);
 
-    ConsoleIo io = ConsoleIo.Standard.create();
+    ConsoleIo io = StandardConsoleIo.create();
     io.write("buffered");
     io.flush();
 

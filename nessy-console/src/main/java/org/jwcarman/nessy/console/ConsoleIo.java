@@ -16,11 +16,6 @@
 package org.jwcarman.nessy.console;
 
 import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintStream;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 
 /**
  * The terminal, as the loop sees it: a line to read and somewhere to write.
@@ -49,45 +44,6 @@ interface ConsoleIo {
    * EOF and denies, because the loop's reader had already drained the pipe.
    */
   static ConsoleIo standard() {
-    return Standard.INSTANCE;
-  }
-
-  /** Holder, so the one reader is created on first use rather than at class-load. */
-  final class Standard {
-
-    private static final ConsoleIo INSTANCE = create();
-
-    private Standard() {}
-
-    // Package-private rather than private: a test builds one directly, with System.in/out
-    // redirected first, instead of fighting the timing of the lazily-initialized singleton above.
-    static ConsoleIo create() {
-      BufferedReader in =
-          new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
-      PrintStream out = System.out;
-      return new ConsoleIo() {
-
-        @Override
-        public String readLine() {
-          try {
-            return in.readLine();
-          } catch (IOException e) {
-            // Nothing a REPL can do about a broken stdin, and nothing a caller wants to catch:
-            // the loop is over either way.
-            throw new UncheckedIOException("could not read from the console", e);
-          }
-        }
-
-        @Override
-        public void write(String text) {
-          out.print(text);
-        }
-
-        @Override
-        public void flush() {
-          out.flush();
-        }
-      };
-    }
+    return StandardConsoleIo.INSTANCE;
   }
 }

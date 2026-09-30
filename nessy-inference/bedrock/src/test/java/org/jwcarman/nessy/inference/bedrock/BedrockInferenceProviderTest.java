@@ -255,10 +255,11 @@ class BedrockInferenceProviderTest {
       InferenceRequest request = carrying(Map.of("bedrock.inferenceConfig.maxTokens", "9"));
 
       List<ILoggingEvent> atValidate =
-          LogCapture.during(BedrockProperties.class, () -> provider.validate(request.options()));
+          LogCapture.during(
+              BedrockPropertyReader.class, () -> provider.validate(request.options()));
       List<ILoggingEvent> atInference =
           LogCapture.during(
-              BedrockProperties.class,
+              BedrockPropertyReader.class,
               () -> {
                 provider.infer(request);
                 provider.infer(request);

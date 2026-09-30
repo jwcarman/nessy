@@ -602,7 +602,7 @@ class OpenAiResponsesRequestsTest {
 
       List<ILoggingEvent> events =
           LogCapture.during(
-              OpenAiProperties.class,
+              OpenAiPropertyReader.class,
               () -> {
                 params(request);
                 params(request);

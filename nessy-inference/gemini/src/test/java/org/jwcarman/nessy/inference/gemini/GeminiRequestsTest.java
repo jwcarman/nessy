@@ -504,7 +504,7 @@ class GeminiRequestsTest {
 
       List<ILoggingEvent> events =
           LogCapture.during(
-              GeminiProperties.class,
+              GeminiPropertyReader.class,
               () -> {
                 GeminiRequests.toConfig(request, Map.of(), MAPPER);
                 GeminiRequests.toConfig(request, Map.of(), MAPPER);
@@ -517,7 +517,7 @@ class GeminiRequestsTest {
     void an_unsupported_name_is_warned_once_naming_it_and_what_is_supported() {
       List<ILoggingEvent> events =
           LogCapture.during(
-              GeminiProperties.class,
+              GeminiPropertyReader.class,
               () ->
                   GeminiPropertyReader.warnUnsupported(
                       Map.of(

@@ -357,10 +357,10 @@ class GeminiInferenceProviderTest {
       InferenceRequest request = carrying(Map.of("gemini.generationConfig.maxOutputTokens", "9"));
 
       List<ILoggingEvent> atValidate =
-          LogCapture.during(GeminiProperties.class, () -> provider.validate(request.options()));
+          LogCapture.during(GeminiPropertyReader.class, () -> provider.validate(request.options()));
       List<ILoggingEvent> atInference =
           LogCapture.during(
-              GeminiProperties.class,
+              GeminiPropertyReader.class,
               () -> {
                 provider.infer(request);
                 provider.infer(request);

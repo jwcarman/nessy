@@ -161,7 +161,8 @@ class AnthropicProviderConfigTest {
 
     List<ILoggingEvent> events =
         LogCapture.during(
-            AnthropicProperties.class, () -> built[0] = AnthropicInferenceProvider.of(customizer));
+            AnthropicPropertyReader.class,
+            () -> built[0] = AnthropicInferenceProvider.of(customizer));
 
     assertThat(LogCapture.warnings(events))
         .singleElement()

@@ -40,7 +40,7 @@ final class OpenAiPropertyReader {
           OpenAiProperties.TOOLS_STRICT.name(), OpenAiProperties.TOOLS_STRICT,
           OpenAiProperties.SERVICE_TIER.name(), OpenAiProperties.SERVICE_TIER);
 
-  private static final Logger log = LoggerFactory.getLogger(OpenAiProperties.class);
+  private static final Logger log = LoggerFactory.getLogger(OpenAiPropertyReader.class);
 
   private OpenAiPropertyReader() {}
 

@@ -38,7 +38,7 @@ final class BedrockPropertyReader {
           BedrockProperties.TEMPERATURE.name(), BedrockProperties.TEMPERATURE,
           BedrockProperties.TOP_P.name(), BedrockProperties.TOP_P);
 
-  private static final Logger log = LoggerFactory.getLogger(BedrockProperties.class);
+  private static final Logger log = LoggerFactory.getLogger(BedrockPropertyReader.class);
 
   private BedrockPropertyReader() {}
 

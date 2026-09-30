@@ -983,7 +983,7 @@ class AnthropicRequestsTest {
 
       List<ILoggingEvent> events =
           LogCapture.during(
-              AnthropicProperties.class,
+              AnthropicPropertyReader.class,
               () -> {
                 AnthropicRequests.toParams(request, Map.of(), MAPPER);
                 AnthropicRequests.toParams(request, Map.of(), MAPPER);
@@ -996,7 +996,7 @@ class AnthropicRequestsTest {
     void an_unsupported_name_is_warned_once_naming_it_and_what_is_supported() {
       List<ILoggingEvent> events =
           LogCapture.during(
-              AnthropicProperties.class,
+              AnthropicPropertyReader.class,
               () ->
                   AnthropicPropertyReader.warnUnsupported(
                       Map.of("anthropic.top_k", "5", "anthropic.service_tier", "auto")));

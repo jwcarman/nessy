@@ -143,7 +143,8 @@ class OpenAiChatProviderConfigTest {
 
     List<ILoggingEvent> events =
         LogCapture.during(
-            OpenAiProperties.class, () -> built[0] = OpenAiChatInferenceProvider.of(customizer));
+            OpenAiPropertyReader.class,
+            () -> built[0] = OpenAiChatInferenceProvider.of(customizer));
 
     assertThat(LogCapture.warnings(events))
         .singleElement()

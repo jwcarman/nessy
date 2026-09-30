@@ -41,7 +41,7 @@ final class GeminiPropertyReader {
           GeminiProperties.INCLUDE_THOUGHTS.name(), GeminiProperties.INCLUDE_THOUGHTS,
           GeminiProperties.THINKING_LEVEL.name(), GeminiProperties.THINKING_LEVEL);
 
-  private static final Logger log = LoggerFactory.getLogger(GeminiProperties.class);
+  private static final Logger log = LoggerFactory.getLogger(GeminiPropertyReader.class);
 
   private GeminiPropertyReader() {}
 

@@ -476,7 +476,7 @@ class BedrockRequestsTest {
 
       List<ILoggingEvent> events =
           LogCapture.during(
-              BedrockProperties.class,
+              BedrockPropertyReader.class,
               () -> {
                 BedrockRequests.toRequest(request, Map.of(), MAPPER);
                 BedrockRequests.toRequest(request, Map.of(), MAPPER);
@@ -489,7 +489,7 @@ class BedrockRequestsTest {
     void an_unsupported_name_is_warned_once_naming_it_and_what_is_supported() {
       List<ILoggingEvent> events =
           LogCapture.during(
-              BedrockProperties.class,
+              BedrockPropertyReader.class,
               () ->
                   BedrockPropertyReader.warnUnsupported(
                       Map.of(
@@ -510,7 +510,7 @@ class BedrockRequestsTest {
 
       List<ILoggingEvent> events =
           LogCapture.during(
-              BedrockProperties.class,
+              BedrockPropertyReader.class,
               () ->
                   BedrockPropertyReader.warnUnsupported(
                       Map.of("bedrock.inferenceConfig.stopSequences", "[\"END\"]")));

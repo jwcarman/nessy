@@ -146,7 +146,7 @@ class BedrockProviderConfigTest {
 
     List<ILoggingEvent> events =
         LogCapture.during(
-            BedrockProperties.class, () -> built[0] = BedrockInferenceProvider.of(customizer));
+            BedrockPropertyReader.class, () -> built[0] = BedrockInferenceProvider.of(customizer));
 
     assertThat(LogCapture.warnings(events))
         .singleElement()

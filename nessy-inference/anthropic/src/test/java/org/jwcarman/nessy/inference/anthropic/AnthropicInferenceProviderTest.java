@@ -1139,10 +1139,11 @@ class AnthropicInferenceProviderTest {
       InferenceRequest request = carrying(Map.of("anthropic.max_tokens", "5"));
 
       List<ILoggingEvent> atValidate =
-          LogCapture.during(AnthropicProperties.class, () -> provider.validate(request.options()));
+          LogCapture.during(
+              AnthropicPropertyReader.class, () -> provider.validate(request.options()));
       List<ILoggingEvent> atInference =
           LogCapture.during(
-              AnthropicProperties.class,
+              AnthropicPropertyReader.class,
               () -> {
                 provider.infer(request);
                 provider.infer(request);
@@ -1166,7 +1167,8 @@ class AnthropicInferenceProviderTest {
       InferenceRequest request = carrying(Map.of("anthropic.max_tokens", "5"));
 
       List<ILoggingEvent> atValidate =
-          LogCapture.during(AnthropicProperties.class, () -> provider.validate(request.options()));
+          LogCapture.during(
+              AnthropicPropertyReader.class, () -> provider.validate(request.options()));
 
       assertThat(LogCapture.warnings(atValidate))
           .singleElement()

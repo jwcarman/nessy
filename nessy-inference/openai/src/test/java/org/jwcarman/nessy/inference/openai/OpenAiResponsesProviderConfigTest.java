@@ -262,10 +262,10 @@ class OpenAiResponsesProviderConfigTest {
             options);
 
     List<ILoggingEvent> atValidate =
-        LogCapture.during(OpenAiProperties.class, () -> provider.validate(options));
+        LogCapture.during(OpenAiPropertyReader.class, () -> provider.validate(options));
     List<ILoggingEvent> atInference =
         LogCapture.during(
-            OpenAiProperties.class,
+            OpenAiPropertyReader.class,
             () -> {
               provider.infer(request);
               provider.infer(request);
@@ -287,7 +287,7 @@ class OpenAiResponsesProviderConfigTest {
 
     List<ILoggingEvent> events =
         LogCapture.during(
-            OpenAiProperties.class,
+            OpenAiPropertyReader.class,
             () -> built[0] = OpenAiResponsesInferenceProvider.of(customizer));
 
     assertThat(LogCapture.warnings(events))

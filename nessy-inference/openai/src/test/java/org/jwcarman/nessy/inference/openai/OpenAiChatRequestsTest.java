@@ -612,7 +612,7 @@ class OpenAiChatRequestsTest {
 
       List<ILoggingEvent> events =
           LogCapture.during(
-              OpenAiProperties.class,
+              OpenAiPropertyReader.class,
               () -> {
                 OpenAiChatRequests.toParams(request, MAPPER);
                 OpenAiChatRequests.toParams(request, MAPPER);
@@ -625,7 +625,7 @@ class OpenAiChatRequestsTest {
     void an_unsupported_name_is_warned_once_naming_it_and_what_is_supported() {
       List<ILoggingEvent> events =
           LogCapture.during(
-              OpenAiProperties.class,
+              OpenAiPropertyReader.class,
               () ->
                   OpenAiPropertyReader.warnUnsupported(
                       Map.of("openai.seed", "1", "openai.tools.strict", "true")));
@@ -668,7 +668,7 @@ class OpenAiChatRequestsTest {
     void another_prefix_is_named_at_debug_and_no_louder() {
       List<ILoggingEvent> events =
           LogCapture.during(
-              OpenAiProperties.class,
+              OpenAiPropertyReader.class,
               () ->
                   OpenAiPropertyReader.logIgnored(
                       Map.of("anthropic.top_k", "5", "openai.seed", "1")));

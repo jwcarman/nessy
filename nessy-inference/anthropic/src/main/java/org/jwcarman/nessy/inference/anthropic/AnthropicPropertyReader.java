@@ -46,7 +46,7 @@ final class AnthropicPropertyReader {
   // guaranteed to leave room under a small maxTokens.
   private static final int DEFAULT_THINKING_BUDGET = 1024;
 
-  private static final Logger log = LoggerFactory.getLogger(AnthropicProperties.class);
+  private static final Logger log = LoggerFactory.getLogger(AnthropicPropertyReader.class);
 
   private AnthropicPropertyReader() {}
 

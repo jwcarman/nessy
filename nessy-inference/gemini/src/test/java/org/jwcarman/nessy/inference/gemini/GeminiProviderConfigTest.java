@@ -200,7 +200,7 @@ class GeminiProviderConfigTest {
 
     List<ILoggingEvent> events =
         LogCapture.during(
-            GeminiProperties.class, () -> built[0] = GeminiInferenceProvider.of(customizer));
+            GeminiPropertyReader.class, () -> built[0] = GeminiInferenceProvider.of(customizer));
 
     assertThat(LogCapture.warnings(events))
         .singleElement()
