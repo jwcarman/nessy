@@ -45,8 +45,9 @@ import tools.jackson.databind.json.JsonMapper;
  * subset of JSON Schema; a schema carrying any keyword outside {@link #STRICT_KEYWORDS} (after
  * {@code oneOf} is read as {@code anyOf}), or an {@code additionalProperties} that is not {@code
  * false}, is returned unchanged with that keyword named, and the caller sends it with {@code
- * strict: false}. The walk covers {@code $defs} and every nested object and branch, so one document
- * never speaks two dialects.
+ * strict: false}. So does a root that is not an object: an answer can be a list, a string or a
+ * sealed type, and strict mode takes only an object there. The walk covers {@code $defs} and every
+ * nested object and branch, so one document never speaks two dialects.
  */
 final class OpenAiResponsesSchemas {
 
@@ -92,13 +93,30 @@ final class OpenAiResponsesSchemas {
 
   static Projected project(String json, JsonMapper mapper) {
     Map<String, Object> generated = mapper.readValue(json, new TypeReference<>() {});
-    Optional<String> refused = refused(generated);
+    Optional<String> refused = rootRefused(generated).or(() -> refused(generated));
     return refused.isPresent()
         ? new Projected(generated, refused)
         : new Projected(strict(generated), Optional.empty());
   }
 
   // ---- the check ------------------------------------------------------------------------
+
+  /**
+   * Strict mode wants an object at the root. A tool always has one, but an answer can be a list, a
+   * string or a sealed type, so the root is checked here and named when it is not an object.
+   */
+  private static Optional<String> rootRefused(Map<?, ?> schema) {
+    if (isObject(schema)) {
+      return Optional.empty();
+    }
+    for (String keyword : List.of(ONE_OF, ANY_OF, "$ref")) {
+      if (schema.containsKey(keyword)) {
+        return Optional.of(keyword + " at the root");
+      }
+    }
+    Object type = schema.get("type");
+    return Optional.of((type == null ? "no type" : String.valueOf(type)) + " at the root");
+  }
 
   private static Optional<String> refused(Map<?, ?> schema) {
     if (schema.containsKey(ANY_OF) && schema.containsKey(ONE_OF)) {

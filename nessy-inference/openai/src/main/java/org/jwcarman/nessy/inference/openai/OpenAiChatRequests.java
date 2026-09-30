@@ -142,10 +142,21 @@ final class OpenAiChatRequests {
    */
   private static void constrainAnswer(
       ChatCompletionCreateParams.Builder builder, JsonSchema schema, JsonMapper mapper) {
+    OpenAiResponsesSchemas.Projected projected =
+        OpenAiResponsesSchemas.project(schema.json(), mapper);
+    projected
+        .refusedKeyword()
+        .ifPresent(
+            keyword ->
+                log.warn(
+                    "The answer's shape is asked for without strict mode: its schema uses {},"
+                        + " which strict mode cannot express",
+                    keyword));
     ResponseFormatJsonSchema.JsonSchema.Schema.Builder shape =
         ResponseFormatJsonSchema.JsonSchema.Schema.builder();
-    Map<String, Object> properties = mapper.readValue(schema.json(), new TypeReference<>() {});
-    properties.forEach((name, value) -> shape.putAdditionalProperty(name, JsonValue.from(value)));
+    projected
+        .schema()
+        .forEach((name, value) -> shape.putAdditionalProperty(name, JsonValue.from(value)));
 
     builder.responseFormat(
         ResponseFormatJsonSchema.builder()
@@ -153,7 +164,7 @@ final class OpenAiChatRequests {
                 ResponseFormatJsonSchema.JsonSchema.builder()
                     .name("answer")
                     .schema(shape.build())
-                    .strict(true)
+                    .strict(projected.strict())
                     .build())
             .build());
   }

@@ -26,12 +26,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.openai.core.ObjectMappers;
 import com.openai.models.FunctionDefinition;
 import com.openai.models.ReasoningEffort;
+import com.openai.models.ResponseFormatJsonSchema;
 import com.openai.models.chat.completions.ChatCompletionCreateParams;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import com.openai.models.chat.completions.ChatCompletionToolChoiceOption;
 import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -846,6 +848,67 @@ class OpenAiChatRequestsTest {
       functionsFor(List.of(lookup), STRICT);
 
       assertThat(lookup.schema().json()).isEqualTo(LOOKUP_SCHEMA);
+    }
+  }
+
+  @Nested
+  class AnAnswersShape {
+
+    /** {@code record Verdict(String label, Optional<String> note)}, as the generator writes it. */
+    private static final String RECORD_ANSWER =
+        """
+        {"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",
+         "properties":{"label":{"type":"string"},"note":{"type":["string","null"]}},
+         "required":["label"]}""";
+
+    /** {@code List<Item>}, as the generator writes it: an array root over a {@code $ref}. */
+    private static final String LIST_ANSWER =
+        """
+        {"$schema":"https://json-schema.org/draft/2020-12/schema",
+       "$defs":{"Item":{"type":"object","properties":{"name":{"type":"string"},"count":{"type":"integer"}},
+                        "required":["name","count"]}},
+       "type":"array","items":{"$ref":"#/$defs/Item"}}""";
+
+    private static InferenceRequest answering(String schema) {
+      return new InferenceRequest(
+          SYSTEM,
+          InferenceContext.of(List.of(open(1, "hi"))),
+          Toolset.none(),
+          OPTIONS,
+          Optional.of(new JsonSchema(schema)));
+    }
+
+    private static ResponseFormatJsonSchema.JsonSchema formatOf(String schema) {
+      return OpenAiChatRequests.toParams(answering(schema), MAPPER)
+          .responseFormat()
+          .orElseThrow()
+          .asJsonSchema()
+          .jsonSchema();
+    }
+
+    @Test
+    void a_record_answer_is_strict_with_every_property_required_and_no_others_allowed() {
+      ResponseFormatJsonSchema.JsonSchema format = formatOf(RECORD_ANSWER);
+
+      Map<String, Object> schema = sent(format.schema().orElseThrow());
+      assertThat(format.name()).isEqualTo("answer");
+      assertThat(format.strict()).contains(true);
+      assertThat(schema).containsEntry("additionalProperties", false);
+      assertThat(schema).containsEntry("required", List.of("label", "note"));
+    }
+
+    @Test
+    void a_list_answer_is_asked_for_without_strict_mode_and_says_so() {
+      List<ILoggingEvent> events =
+          LogCapture.during(OpenAiChatRequests.class, () -> formatOf(LIST_ANSWER));
+      ResponseFormatJsonSchema.JsonSchema format = formatOf(LIST_ANSWER);
+
+      assertThat(format.strict()).contains(false);
+      assertThat(sent(format.schema().orElseThrow())).containsEntry("type", "array");
+      assertThat(LogCapture.warnings(events))
+          .containsExactly(
+              "The answer's shape is asked for without strict mode: its schema uses array at the"
+                  + " root, which strict mode cannot express");
     }
   }
 }

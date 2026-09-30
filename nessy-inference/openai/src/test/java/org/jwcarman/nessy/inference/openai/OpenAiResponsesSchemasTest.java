@@ -372,4 +372,49 @@ class OpenAiResponsesSchemasTest {
       assertThat(projected.schema()).isEqualTo(parse(json));
     }
   }
+
+  @Nested
+  class ARootThatIsNotAnObject {
+
+    @Test
+    void an_array_root_is_refused_naming_the_root_and_goes_as_generated() {
+      String json =
+          """
+          {"$schema":"https://json-schema.org/draft/2020-12/schema",
+       "$defs":{"Item":{"type":"object","properties":{"name":{"type":"string"},"count":{"type":"integer"}},
+                        "required":["name","count"]}},
+       "type":"array","items":{"$ref":"#/$defs/Item"}}""";
+
+      OpenAiResponsesSchemas.Projected projected = project(json);
+
+      assertThat(projected.strict()).isFalse();
+      assertThat(projected.refusedKeyword()).contains("array at the root");
+      assertThat(projected.schema()).isEqualTo(parse(json));
+    }
+
+    @Test
+    void a_string_root_is_refused_naming_the_root() {
+      assertThat(project("{\"type\":\"string\"}").refusedKeyword()).contains("string at the root");
+    }
+
+    @Test
+    void a_sealed_type_s_one_of_root_is_refused_naming_the_root() {
+      OpenAiResponsesSchemas.Projected projected =
+          project(
+              """
+              {"oneOf":[{"type":"object","properties":{"k":{"const":"a"}},"required":["k"]},
+                        {"type":"object","properties":{"k":{"const":"b"}},"required":["k"]}]}""");
+
+      assertThat(projected.strict()).isFalse();
+      assertThat(projected.refusedKeyword()).contains("oneOf at the root");
+    }
+
+    @Test
+    void a_reference_root_is_refused_naming_the_root() {
+      assertThat(
+              project("{\"$ref\":\"#/$defs/A\",\"$defs\":{\"A\":{\"type\":\"object\"}}}")
+                  .refusedKeyword())
+          .contains("$ref at the root");
+    }
+  }
 }

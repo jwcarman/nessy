@@ -773,4 +773,32 @@ class OpenAiResponsesRequestsTest {
     assertThat(format.strict()).contains(true);
     assertThat(sent(format.schema())).containsEntry("required", List.of("q", "reason"));
   }
+
+  @Test
+  void a_list_answer_is_asked_for_without_strict_mode_and_says_so() {
+    InferenceRequest request =
+        new InferenceRequest(
+            SYSTEM,
+            InferenceContext.of(List.of(open(1, "hi"))),
+            Toolset.none(),
+            OPTIONS,
+            Optional.of(
+                new JsonSchema(
+                    """
+                    {"$schema":"https://json-schema.org/draft/2020-12/schema",
+       "$defs":{"Item":{"type":"object","properties":{"name":{"type":"string"},"count":{"type":"integer"}},
+                        "required":["name","count"]}},
+       "type":"array","items":{"$ref":"#/$defs/Item"}}""")));
+
+    List<ILoggingEvent> events =
+        LogCapture.during(OpenAiResponsesRequests.class, () -> params(request));
+    var format = params(request).text().orElseThrow().format().orElseThrow().asJsonSchema();
+
+    assertThat(format.strict()).contains(false);
+    assertThat(sent(format.schema())).containsEntry("type", "array");
+    assertThat(LogCapture.warnings(events))
+        .containsExactly(
+            "The answer's shape is asked for without strict mode: its schema uses array at the"
+                + " root, which strict mode cannot express");
+  }
 }
