@@ -71,6 +71,7 @@ prompt is a complete program.
 | `systemPrompt(String)` / `systemPrompt(SystemPromptSource)` | a generic assistant |
 | `tool(Tool)` / `tool(Tool, binding)` | none |
 | `agent(AgentType)` | `chat` |
+| `history(String)` | `/config` shows no history line unless the caller says where it is kept (the console's own in-memory path says so itself) |
 | `id(AgentId)` | a freshly minted UUIDv7 each launch; pass one to resume that conversation |
 | `maxTokens(int)` | 4096 |
 | `dataSource(DataSource)` | the Boot context's |

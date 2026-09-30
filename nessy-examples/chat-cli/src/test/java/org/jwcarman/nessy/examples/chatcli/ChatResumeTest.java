@@ -52,6 +52,26 @@ class ChatResumeTest {
   }
 
   @Nested
+  class When_the_property_is_malformed {
+
+    @Test
+    void one_line_says_what_was_wrong_and_the_expected_form() {
+      assertThat(Chat.problemWith("not-an-id"))
+          .hasValueSatisfying(
+              line ->
+                  assertThat(line)
+                      .contains("nessy.console.agent", "not-an-id", "UUID")
+                      .doesNotContain(System.lineSeparator()));
+    }
+
+    @Test
+    void a_good_or_absent_value_is_no_problem() {
+      assertThat(Chat.problemWith(UUID.randomUUID().toString())).isEmpty();
+      assertThat(Chat.problemWith(null)).isEmpty();
+    }
+  }
+
+  @Nested
   class When_the_property_is_absent {
 
     @Test

@@ -121,56 +121,76 @@ public class Chat {
       Notebook notebook,
       Plans plans,
       Clock clock) {
-    return _ ->
-        Repl.run(
-            harnesses,
-            model,
-            config ->
-                resuming(config, resume)
-                    // No exitOn: the defaults already take exit, quit, /exit and /quit.
-                    .banner("nessy chat -- type /exit or press Ctrl-D to leave")
-                    .prompt("> ")
-                    .farewell("bye.")
-                    .systemPrompt(
-                        TemplatedSystemPrompt.of(
-                            new SpringPromptTemplateFactory(),
-                            SYSTEM_PROMPT,
-                            PromptVariableSource.supplied(
-                                "today", () -> LocalDate.now(clock).toString())))
-                    .agent(TYPE)
-                    // Two sources of background: the notebook's index and the current plan. Both
-                    // are ambient, so they are asked afresh every call and never written to the
-                    // story -- the model sees the notes and the plan as they stand NOW.
-                    .harness(
-                        h ->
-                            h.inference(
-                                in ->
-                                    in.context(
-                                        ctx ->
-                                            ctx.ambient(NotebookTools.index(notebook))
-                                                .ambient(PlanTools.plan(plans)))))
-                    .tool(new DaysUntilTool())
-                    .tool(NotebookTools.remember(notebook))
-                    .tool(NotebookTools.revise(notebook))
-                    .tool(NotebookTools.recall(notebook))
-                    .tool(NotebookTools.forget(notebook))
-                    .tool(PlanTools.updatePlan(plans))
-                    // The only thing here that reaches outside the process, so the only thing a
-                    // person is asked about. The renderer writes the sentence they consent to.
-                    .tool(
-                        new SendEmailTool(),
-                        binding ->
-                            binding
-                                .approver(ConsoleApprover.atTheTerminal())
-                                // Recipient, subject AND the body -- consenting to a message you
-                                // have not read is not consent. Trimmed rather than omitted.
-                                .action(
-                                    input ->
-                                        "Send an email to %s%n    subject: %s%n    body: %s"
-                                            .formatted(
-                                                input.to(),
-                                                input.subject(),
-                                                trimmed(input.body())))));
+    return _ -> {
+      Optional<String> problem = problemWith(resume);
+      if (problem.isPresent()) {
+        System.out.println(problem.get());
+        return;
+      }
+      Repl.run(
+          harnesses,
+          model,
+          config ->
+              resuming(config, resume)
+                  // No exitOn: the defaults already take exit, quit, /exit and /quit.
+                  .banner("nessy chat -- type /exit or press Ctrl-D to leave")
+                  .prompt("> ")
+                  .farewell("bye.")
+                  .systemPrompt(
+                      TemplatedSystemPrompt.of(
+                          new SpringPromptTemplateFactory(),
+                          SYSTEM_PROMPT,
+                          PromptVariableSource.supplied(
+                              "today", () -> LocalDate.now(clock).toString())))
+                  .agent(TYPE)
+                  .history("PostgreSQL; this conversation survives the process")
+                  // Two sources of background: the notebook's index and the current plan. Both
+                  // are ambient, so they are asked afresh every call and never written to the
+                  // story -- the model sees the notes and the plan as they stand NOW.
+                  .harness(
+                      h ->
+                          h.inference(
+                              in ->
+                                  in.context(
+                                      ctx ->
+                                          ctx.ambient(NotebookTools.index(notebook))
+                                              .ambient(PlanTools.plan(plans)))))
+                  .tool(new DaysUntilTool())
+                  .tool(NotebookTools.remember(notebook))
+                  .tool(NotebookTools.revise(notebook))
+                  .tool(NotebookTools.recall(notebook))
+                  .tool(NotebookTools.forget(notebook))
+                  .tool(PlanTools.updatePlan(plans))
+                  // The only thing here that reaches outside the process, so the only thing a
+                  // person is asked about. The renderer writes the sentence they consent to.
+                  .tool(
+                      new SendEmailTool(),
+                      binding ->
+                          binding
+                              .approver(ConsoleApprover.atTheTerminal())
+                              // Recipient, subject AND the body -- consenting to a message you
+                              // have not read is not consent. Trimmed rather than omitted.
+                              .action(
+                                  input ->
+                                      "Send an email to %s%n    subject: %s%n    body: %s"
+                                          .formatted(
+                                              input.to(),
+                                              input.subject(),
+                                              trimmed(input.body())))));
+    };
+  }
+
+  /**
+   * What is wrong with {@code nessy.console.agent}, said for a person, or nothing if it is fine.
+   */
+  static Optional<String> problemWith(String resume) {
+    try {
+      resumed(resume);
+      return Optional.empty();
+    } catch (IllegalArgumentException notAnId) {
+      return Optional.of(
+          "nessy.console.agent is not a conversation id (expected a UUID): " + resume);
+    }
   }
 
   /**

@@ -54,6 +54,7 @@ public final class ReplConfig {
   private AgentId agentId = newConversation();
   private int maxTokens = 4096;
   private DataSource dataSource;
+  private String history;
 
   ReplConfig() {}
 
@@ -136,6 +137,15 @@ public final class ReplConfig {
     return this;
   }
 
+  /**
+   * Where the conversation is kept, in a phrase, for {@code /config} to show. The console cannot
+   * see inside a harness it was handed, so unless the caller says, nothing is claimed.
+   */
+  public ReplConfig history(String where) {
+    this.history = Objects.requireNonNull(where, "where must not be null");
+    return this;
+  }
+
   public <I> ReplConfig tool(Tool<I> tool) {
     Objects.requireNonNull(tool, "tool must not be null");
     granted.add(tool.name().value());
@@ -201,6 +211,10 @@ public final class ReplConfig {
 
   int maxTokens() {
     return maxTokens;
+  }
+
+  Optional<String> history() {
+    return Optional.ofNullable(history);
   }
 
   Optional<DataSource> dataSource() {

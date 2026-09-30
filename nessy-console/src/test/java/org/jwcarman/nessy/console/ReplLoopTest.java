@@ -190,6 +190,25 @@ class ReplLoopTest {
   }
 
   @Nested
+  @DisplayName("what /config says about history")
+  class WhatConfigSaysAboutHistory {
+
+    @Test
+    void it_says_where_the_caller_said_it_is_kept() {
+      FakeConsole console = new FakeConsole("/config", "quit");
+      run(new FakeHarness(), console, config().history("PostgreSQL"));
+      assertThat(console.written()).contains("history").contains("PostgreSQL");
+    }
+
+    @Test
+    void it_says_nothing_when_nobody_said() {
+      FakeConsole console = new FakeConsole("/config", "quit");
+      run(new FakeHarness(), console, config());
+      assertThat(console.written()).contains("agent").doesNotContain("history");
+    }
+  }
+
+  @Nested
   @DisplayName("leaving")
   class Leaving {
 
