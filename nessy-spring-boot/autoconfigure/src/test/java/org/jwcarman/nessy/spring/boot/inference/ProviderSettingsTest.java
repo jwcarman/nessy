@@ -27,7 +27,7 @@ class ProviderSettingsTest {
   @Test
   void tostring_does_not_print_the_key() {
     ProviderSettings settings =
-        new ProviderSettings(Wire.OPENAI, "https://g/v1", "sk-super-secret", null, null);
+        new ProviderSettings(Wire.OPENAI_CHAT, "https://g/v1", "sk-super-secret", null, null);
 
     assertThat(settings.toString()).doesNotContain("sk-super-secret").contains("apiKey=***");
   }

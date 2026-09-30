@@ -72,7 +72,7 @@ factory with no default fail when the harness is built.
 DirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> config
         .backend(new InMemoryDirectBackend(codecs))
         .provider(ProviderId.of("anthropic"), AnthropicInferenceProvider.fromEnv())
-        .provider(ProviderId.of("openai"), OpenAiInferenceProvider.fromEnv()));
+        .provider(ProviderId.of("openai"), OpenAiChatInferenceProvider.fromEnv()));
 
 DirectHarness<String, String> triage = factory.create(
         new AgentType("triage"),
@@ -116,7 +116,7 @@ config, never a public builder:
 
 ```java
 InferenceProvider anthropic = AnthropicInferenceProvider.of(c -> c.apiKey(key));
-InferenceProvider openai = OpenAiInferenceProvider.of(c -> c.apiKey(key));
+InferenceProvider openai = OpenAiChatInferenceProvider.of(c -> c.apiKey(key));
 InferenceProvider gemini = GeminiInferenceProvider.of(c -> c.apiKey(key));
 InferenceProvider bedrock = BedrockInferenceProvider.of(c -> c.region(Region.US_EAST_1));
 ```
@@ -176,16 +176,16 @@ for four of them the base URL too. It becomes a provider once its
 
 | id | wire | base URL | vendor | ingredient |
 |---|---|---|---|---|
-| `openai` | `openai` | the vendor's own | `openai` | `openai.api-key` (`OPENAI_API_KEY`) |
-| `xai` | `openai` | `https://api.x.ai/v1` | `x_ai` | `xai.api-key` (`XAI_API_KEY`) |
+| `openai` | `openai-chat` | the vendor's own | `openai` | `openai.api-key` (`OPENAI_API_KEY`) |
+| `xai` | `openai-chat` | `https://api.x.ai/v1` | `x_ai` | `xai.api-key` (`XAI_API_KEY`) |
 | `anthropic` | `anthropic` | the vendor's own | `anthropic` | `anthropic.api-key` (`ANTHROPIC_API_KEY`) |
 | `gemini` | `gemini` | the vendor's own | `gcp.gemini` | `gemini.api-key` or `google.api-key` (`GEMINI_API_KEY` / `GOOGLE_API_KEY`) |
-| `openrouter` | `openai` | `https://openrouter.ai/api/v1` | `openrouter` | `openrouter.api-key` (`OPENROUTER_API_KEY`) |
-| `nvidia` | `openai` | `https://integrate.api.nvidia.com/v1` | `nvidia` | `nvidia.api-key` (`NVIDIA_API_KEY`) |
-| `groq` | `openai` | `https://api.groq.com/openai/v1` | `groq` | `groq.api-key` (`GROQ_API_KEY`) |
-| `mistral` | `openai` | `https://api.mistral.ai/v1` | `mistral_ai` | `mistral.api-key` (`MISTRAL_API_KEY`) |
-| `lmstudio` | `openai` | `http://localhost:1234/v1` | `lmstudio` | `nessy.providers.lmstudio.enabled: true` — keyless |
-| `ollama` | `openai` | `http://localhost:11434/v1` | `ollama` | `nessy.providers.ollama.enabled: true` — keyless |
+| `openrouter` | `openai-chat` | `https://openrouter.ai/api/v1` | `openrouter` | `openrouter.api-key` (`OPENROUTER_API_KEY`) |
+| `nvidia` | `openai-chat` | `https://integrate.api.nvidia.com/v1` | `nvidia` | `nvidia.api-key` (`NVIDIA_API_KEY`) |
+| `groq` | `openai-chat` | `https://api.groq.com/openai/v1` | `groq` | `groq.api-key` (`GROQ_API_KEY`) |
+| `mistral` | `openai-chat` | `https://api.mistral.ai/v1` | `mistral_ai` | `mistral.api-key` (`MISTRAL_API_KEY`) |
+| `lmstudio` | `openai-chat` | `http://localhost:1234/v1` | `lmstudio` | `nessy.providers.lmstudio.enabled: true` — keyless |
+| `ollama` | `openai-chat` | `http://localhost:11434/v1` | `ollama` | `nessy.providers.ollama.enabled: true` — keyless |
 
 Every field is overridable under `nessy.providers.<id>.*`: a different
 `base-url` for `anthropic` behind a proxy, a different `vendor` tag for an
@@ -224,17 +224,17 @@ provider, and must state its own `wire` and `base-url`:
 nessy:
   providers:
     my-gateway:
-      wire: openai
+      wire: openai-chat
       base-url: https://gateway.example.com/v1
       api-key: ${GATEWAY_KEY}
       vendor: openai
 ```
 
-`wire` is one of `openai`, `anthropic` or `gemini` — a typo is a binding
-error naming the allowed values, not a provider that silently fails to
-exist. `vendor` defaults to the wire's own (`openai` for the `openai`
-wire). Missing `wire` or `base-url` fails startup, naming the id and the
-field.
+`wire` is one of `openai-chat`, `openai-responses`, `anthropic` or `gemini` —
+a typo is a binding error naming the allowed values, not a provider that
+silently fails to exist. `vendor` defaults to the wire's own (`openai` for
+both OpenAI wires). Missing `wire` or `base-url` fails startup, naming the
+id and the field.
 
 ### Application beans
 
@@ -257,7 +257,7 @@ At startup, `InferenceReport` logs every registered provider once — id,
 wire, endpoint, vendor, never the key:
 
 ```
-NESSY INFERENCE: providers: openai (openai, the vendor's own endpoint, vendor openai); xai (openai, https://api.x.ai/v1, vendor x_ai)
+NESSY INFERENCE: providers: openai (openai-chat, the vendor's own endpoint, vendor openai); xai (openai-chat, https://api.x.ai/v1, vendor x_ai)
 ```
 
 An application bean the registrar never resolved prints only what it can
@@ -341,7 +341,7 @@ Name the vendor when it is not OpenAI, so spans and metrics say who was
 actually called:
 
 ```java
-InferenceProvider grok = OpenAiInferenceProvider.of(c -> c
+InferenceProvider grok = OpenAiChatInferenceProvider.of(c -> c
         .apiKey(key)
         .baseUrl("https://api.x.ai/v1")
         .vendor("x_ai"));

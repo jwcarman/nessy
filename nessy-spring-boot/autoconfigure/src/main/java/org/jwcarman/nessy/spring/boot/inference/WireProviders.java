@@ -20,7 +20,7 @@ import org.jspecify.annotations.Nullable;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider;
 import org.jwcarman.nessy.inference.gemini.GeminiInferenceProvider;
-import org.jwcarman.nessy.inference.openai.OpenAiInferenceProvider;
+import org.jwcarman.nessy.inference.openai.OpenAiChatInferenceProvider;
 import org.springframework.util.ClassUtils;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -35,8 +35,8 @@ import tools.jackson.databind.json.JsonMapper;
  */
 final class WireProviders {
 
-  private static final String OPENAI_CLASS =
-      "org.jwcarman.nessy.inference.openai.OpenAiInferenceProvider";
+  private static final String OPENAI_CHAT_CLASS =
+      "org.jwcarman.nessy.inference.openai.OpenAiChatInferenceProvider";
   private static final String ANTHROPIC_CLASS =
       "org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider";
   private static final String GEMINI_CLASS =
@@ -58,7 +58,7 @@ final class WireProviders {
   /** The Maven artifact a lit provider needs, named for {@link ProviderRegistrar}'s skip log. */
   static String artifactId(Wire wire) {
     return switch (wire) {
-      case OPENAI -> "nessy-inference-openai";
+      case OPENAI_CHAT, OPENAI_RESPONSES -> "nessy-inference-openai";
       case ANTHROPIC -> "nessy-inference-anthropic";
       case GEMINI -> "nessy-inference-gemini";
     };
@@ -66,10 +66,19 @@ final class WireProviders {
 
   private static String adapterClassName(Wire wire) {
     return switch (wire) {
-      case OPENAI -> OPENAI_CLASS;
+      case OPENAI_CHAT -> OPENAI_CHAT_CLASS;
+      case OPENAI_RESPONSES -> throw unbuilt();
       case ANTHROPIC -> ANTHROPIC_CLASS;
       case GEMINI -> GEMINI_CLASS;
     };
+  }
+
+  /**
+   * The Responses adapter lands in the next commit; selecting its wire before then is an error, not
+   * a skip.
+   */
+  private static IllegalStateException unbuilt() {
+    return new IllegalStateException("the openai-responses wire has no adapter yet");
   }
 
   /**
@@ -85,18 +94,19 @@ final class WireProviders {
     }
     return Optional.of(
         switch (resolved.wire()) {
-          case OPENAI -> OpenAi.build(resolved, mapper);
+          case OPENAI_CHAT -> OpenAiChat.build(resolved, mapper);
+          case OPENAI_RESPONSES -> throw unbuilt();
           case ANTHROPIC -> Anthropic.build(resolved, mapper);
           case GEMINI -> Gemini.build(resolved, mapper);
         });
   }
 
-  private static final class OpenAi {
+  private static final class OpenAiChat {
 
-    private OpenAi() {}
+    private OpenAiChat() {}
 
     static InferenceProvider build(ResolvedProvider resolved, @Nullable JsonMapper mapper) {
-      return OpenAiInferenceProvider.of(
+      return OpenAiChatInferenceProvider.of(
           c -> {
             c.apiKey(resolved.apiKey());
             if (resolved.baseUrl() != null) {

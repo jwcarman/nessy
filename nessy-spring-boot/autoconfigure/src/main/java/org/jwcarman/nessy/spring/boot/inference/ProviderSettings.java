@@ -22,8 +22,8 @@ import org.jspecify.annotations.Nullable;
  * custom provider (an id not in the catalogue) must supply {@code wire} and {@code baseUrl} itself.
  *
  * <p>{@code vendor} is ignored for the {@link Wire#ANTHROPIC} and {@link Wire#GEMINI} wires:
- * Anthropic and Gemini report their own fixed vendor, and only the {@code openai} wire (shared by
- * more than one vendor) needs an override.
+ * Anthropic and Gemini report their own fixed vendor, and only the two OpenAI wires (shared by more
+ * than one vendor) needs an override.
  */
 record ProviderSettings(
     @Nullable Wire wire,

@@ -18,11 +18,7 @@ package org.jwcarman.nessy.inference.openai;
 import com.openai.client.OpenAIClient;
 import com.openai.core.JsonString;
 import com.openai.core.http.StreamResponse;
-import com.openai.errors.InternalServerException;
 import com.openai.errors.OpenAIException;
-import com.openai.errors.OpenAIIoException;
-import com.openai.errors.OpenAIRetryableException;
-import com.openai.errors.RateLimitException;
 import com.openai.helpers.ChatCompletionAccumulator;
 import com.openai.models.chat.completions.ChatCompletion;
 import com.openai.models.chat.completions.ChatCompletionChunk;
@@ -47,11 +43,11 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * OpenAI, through the vendor's own SDK.
  *
- * <p>Speaks the {@code openai} wire, which xAI and any OpenAI-compatible endpoint (such as LM
- * Studio) also answer to.
+ * <p>Speaks Chat Completions -- the {@code openai-chat} wire under Boot -- which xAI and any
+ * OpenAI-compatible endpoint (such as LM Studio) also answer to.
  *
  * <p>Owns the {@link OpenAIClient} and is the only class here that touches the network; the
- * projection onto the wire lives in {@link OpenAiRequests} and can be tested without a key.
+ * projection onto the wire lives in {@link OpenAiChatRequests} and can be tested without a key.
  *
  * <p><b>Holds no model name.</b> Which model to call travels in {@link InferenceOptions}, so one
  * client serves several agent types asking for different models rather than needing an instance per
@@ -67,9 +63,9 @@ import tools.jackson.databind.json.JsonMapper;
  * streams; the person watching can.
  *
  * <p><b>Images are not sent.</b> The block grammar has no image yet, so there is nothing to
- * project; when it grows one, {@code OpenAiRequests} is where it lands.
+ * project; when it grows one, {@code OpenAiChatRequests} is where it lands.
  */
-public final class OpenAiInferenceProvider implements InferenceProvider, AutoCloseable {
+public final class OpenAiChatInferenceProvider implements InferenceProvider, AutoCloseable {
 
   /**
    * The OpenTelemetry GenAI semantic conventions' default value for this vendor (agentic-o11y spec
@@ -79,8 +75,8 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
    * class against {@code https://api.x.ai/v1}, and semconv has a separate {@code x_ai} value for
    * that. So the provider name is a field given at construction rather than a constant -- an xAI
    * turn must not be reported as an OpenAI one. Any other OpenAI-compatible endpoint reached
-   * through {@link OpenAiProviderConfig#baseUrl(String)} still answers {@code openai}, which is the
-   * honest default: nothing else is known about it.
+   * through {@link OpenAiChatProviderConfig#baseUrl(String)} still answers {@code openai}, which is
+   * the honest default: nothing else is known about it.
    */
   static final String VENDOR = "openai";
 
@@ -97,11 +93,11 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
 
   /**
    * Whether {@link #close()} may close {@link #client} -- false for a client handed in through
-   * {@link OpenAiProviderConfig#client(OpenAIClient)}, which the application still owns.
+   * {@link OpenAiChatProviderConfig#client(OpenAIClient)}, which the application still owns.
    */
   private final boolean ownsClient;
 
-  OpenAiInferenceProvider(
+  OpenAiChatInferenceProvider(
       OpenAIClient client, String vendor, boolean ownsClient, JsonMapper mapper) {
     this.client = client;
     this.vendor = Objects.requireNonNull(vendor, "vendor must not be null");
@@ -110,28 +106,29 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
   }
 
   /**
-   * The blessed one-call shape: equivalent to {@code of(OpenAiProviderConfig::fromEnv)}. Delegates
-   * credential and configuration resolution to the SDK's own environment table.
+   * The blessed one-call shape: equivalent to {@code of(OpenAiChatProviderConfig::fromEnv)}.
+   * Delegates credential and configuration resolution to the SDK's own environment table.
    */
-  public static OpenAiInferenceProvider fromEnv() {
-    return of(OpenAiProviderConfig::fromEnv);
+  public static OpenAiChatInferenceProvider fromEnv() {
+    return of(OpenAiChatProviderConfig::fromEnv);
   }
 
   /**
-   * Builds a provider from a live {@link OpenAiProviderConfig}: {@code customizer} fills it in,
+   * Builds a provider from a live {@link OpenAiChatProviderConfig}: {@code customizer} fills it in,
    * then this factory validates its required field and constructs the finished provider. No public
    * {@code build()} survives here; the factory is the only place a config ever turns into a
    * provider.
    */
-  public static OpenAiInferenceProvider of(List<Customizer<OpenAiProviderConfig>> customizers) {
+  public static OpenAiChatInferenceProvider of(
+      List<Customizer<OpenAiChatProviderConfig>> customizers) {
     Objects.requireNonNull(customizers, "customizers must not be null");
-    OpenAiProviderConfig config = new OpenAiProviderConfig();
+    OpenAiChatProviderConfig config = new OpenAiChatProviderConfig();
     customizers.forEach(customizer -> customizer.customize(config));
     return config.build();
   }
 
   /** One customizer, for a caller that is not a container. */
-  public static OpenAiInferenceProvider of(Customizer<OpenAiProviderConfig> customizer) {
+  public static OpenAiChatInferenceProvider of(Customizer<OpenAiChatProviderConfig> customizer) {
     return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
@@ -150,7 +147,7 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
   public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
     Objects.requireNonNull(narrator, "narrator must not be null");
     try (StreamResponse<ChatCompletionChunk> stream =
-        client.chat().completions().createStreaming(OpenAiRequests.toParams(request, mapper))) {
+        client.chat().completions().createStreaming(OpenAiChatRequests.toParams(request, mapper))) {
       ChatCompletionAccumulator accumulator = ChatCompletionAccumulator.create();
       boolean[] any = {false};
       CompletionUsage[] earlyUsage = {null};
@@ -167,7 +164,7 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
       }
       return read(accumulator, earlyUsage[0]);
     } catch (OpenAIException e) {
-      return new InferenceResult.Fault(classify(e));
+      return new InferenceResult.Fault(OpenAiFailures.classify(e));
     }
   }
 
@@ -331,7 +328,7 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
                     : Stream.<Block.ActionRequestContent>of(new Block.Commentary(said)),
                 calls.stream()
                     .filter(ChatCompletionMessageToolCall::isFunction)
-                    .map(OpenAiInferenceProvider::toBlock))
+                    .map(OpenAiChatInferenceProvider::toBlock))
             .toList());
   }
 
@@ -347,45 +344,9 @@ public final class OpenAiInferenceProvider implements InferenceProvider, AutoClo
   }
 
   /**
-   * Decides what a failed call means, which is the one thing this class knows and nothing above it
-   * does.
-   *
-   * <p>Grounded in the SDK's own retry classification: {@code
-   * com.openai.core.http.RetryingHttpClient} retries a raw {@link java.io.IOException} or {@link
-   * OpenAIRetryableException} unconditionally, and otherwise by status code (408, 409, 429, or any
-   * 5xx) <em>before</em> the response is ever translated into a typed exception -- so by the time
-   * one of those surfaces here, the SDK's own budget ({@code maxRetries}, default 2) is already
-   * spent. What is still worth another attempt from further out is {@link RateLimitException},
-   * {@link InternalServerException}, {@link OpenAIIoException} and {@link
-   * OpenAIRetryableException}.
-   *
-   * <p>Everything else is {@link Failure.Permanent}: a 400, 401, 403, 404 or 422 means the request
-   * itself is wrong, and repeating it unchanged only repeats the failure.
-   *
-   * <p><b>Nothing is classified {@link Failure.Rejected} here.</b> That is the one classification
-   * that authorises throwing away something a person said, and it should rest on a measured marker
-   * in a particular server's response rather than on a guess about what a 400 meant. None has been
-   * measured on this wire, so none is claimed.
-   */
-  private static Failure classify(OpenAIException e) {
-    if (e instanceof RateLimitException
-        || e instanceof InternalServerException
-        || e instanceof OpenAIRetryableException) {
-      return new Failure.Transient("model call failed: " + e.getMessage());
-    }
-    // Transport-level: the request may or may not have been processed before the connection
-    // went. Unknown rather than transient, because repeating it is safe exactly when repeating
-    // the work is safe, and that is not this class's call to make.
-    if (e instanceof OpenAIIoException) {
-      return new Failure.Unknown("no answer from the model: " + e.getMessage());
-    }
-    return new Failure.Permanent("model call failed: " + e.getMessage());
-  }
-
-  /**
    * Closes the {@link OpenAIClient} this provider BUILT -- its OkHttp connection pool and
    * dispatcher threads. A client handed in through {@link
-   * OpenAiProviderConfig#client(OpenAIClient)} is never closed here: it was never opened here.
+   * OpenAiChatProviderConfig#client(OpenAIClient)} is never closed here: it was never opened here.
    * Idempotent, as the SDK's own {@code close()} is.
    */
   @Override

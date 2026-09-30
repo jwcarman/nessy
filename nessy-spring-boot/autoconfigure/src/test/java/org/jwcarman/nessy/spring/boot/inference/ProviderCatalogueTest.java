@@ -43,7 +43,7 @@ class ProviderCatalogueTest {
         ProviderCatalogue.resolve(Map.of(), Map.of("openai.api-key", "k")::get);
 
     assertThat(resolved)
-        .containsExactly(new ResolvedProvider("openai", Wire.OPENAI, null, "openai", "k"));
+        .containsExactly(new ResolvedProvider("openai", Wire.OPENAI_CHAT, null, "openai", "k"));
   }
 
   @Test
@@ -53,7 +53,7 @@ class ProviderCatalogueTest {
 
     assertThat(resolved)
         .containsExactly(
-            new ResolvedProvider("xai", Wire.OPENAI, "https://api.x.ai/v1", "x_ai", "k"));
+            new ResolvedProvider("xai", Wire.OPENAI_CHAT, "https://api.x.ai/v1", "x_ai", "k"));
   }
 
   @Test
@@ -64,7 +64,7 @@ class ProviderCatalogueTest {
     assertThat(resolved)
         .containsExactly(
             new ResolvedProvider(
-                "openrouter", Wire.OPENAI, "https://openrouter.ai/api/v1", "openrouter", "k"));
+                "openrouter", Wire.OPENAI_CHAT, "https://openrouter.ai/api/v1", "openrouter", "k"));
   }
 
   @Test
@@ -75,7 +75,7 @@ class ProviderCatalogueTest {
     assertThat(resolved)
         .containsExactly(
             new ResolvedProvider(
-                "nvidia", Wire.OPENAI, "https://integrate.api.nvidia.com/v1", "nvidia", "k"));
+                "nvidia", Wire.OPENAI_CHAT, "https://integrate.api.nvidia.com/v1", "nvidia", "k"));
   }
 
   @Test
@@ -86,7 +86,7 @@ class ProviderCatalogueTest {
     assertThat(resolved)
         .containsExactly(
             new ResolvedProvider(
-                "groq", Wire.OPENAI, "https://api.groq.com/openai/v1", "groq", "k"));
+                "groq", Wire.OPENAI_CHAT, "https://api.groq.com/openai/v1", "groq", "k"));
   }
 
   @Test
@@ -97,7 +97,7 @@ class ProviderCatalogueTest {
     assertThat(resolved)
         .containsExactly(
             new ResolvedProvider(
-                "mistral", Wire.OPENAI, "https://api.mistral.ai/v1", "mistral_ai", "k"));
+                "mistral", Wire.OPENAI_CHAT, "https://api.mistral.ai/v1", "mistral_ai", "k"));
   }
 
   @Test
@@ -112,7 +112,7 @@ class ProviderCatalogueTest {
 
     assertThat(resolved)
         .containsExactly(
-            new ResolvedProvider("openai", Wire.OPENAI, null, "openai", "ok"),
+            new ResolvedProvider("openai", Wire.OPENAI_CHAT, null, "openai", "ok"),
             new ResolvedProvider("anthropic", Wire.ANTHROPIC, null, "anthropic", "ak"),
             new ResolvedProvider("gemini", Wire.GEMINI, null, "gcp.gemini", "gk"));
   }
@@ -143,7 +143,7 @@ class ProviderCatalogueTest {
 
     assertThat(resolved)
         .containsExactly(
-            new ResolvedProvider("xai", Wire.OPENAI, "https://api.x.ai/v1", "x_ai", "k"));
+            new ResolvedProvider("xai", Wire.OPENAI_CHAT, "https://api.x.ai/v1", "x_ai", "k"));
   }
 
   @Test
@@ -155,7 +155,8 @@ class ProviderCatalogueTest {
 
     assertThat(resolved)
         .containsExactly(
-            new ResolvedProvider("openai", Wire.OPENAI, "http://localhost:1234/v1", "openai", "k"));
+            new ResolvedProvider(
+                "openai", Wire.OPENAI_CHAT, "http://localhost:1234/v1", "openai", "k"));
   }
 
   @Test
@@ -174,12 +175,13 @@ class ProviderCatalogueTest {
 
   @Test
   void a_custom_provider_needs_a_wire_and_a_url() {
-    ProviderSettings mine = new ProviderSettings(Wire.OPENAI, "https://g/v1", "k", null, null);
+    ProviderSettings mine = new ProviderSettings(Wire.OPENAI_CHAT, "https://g/v1", "k", null, null);
 
     List<ResolvedProvider> resolved = ProviderCatalogue.resolve(Map.of("mine", mine), key -> null);
 
     assertThat(resolved)
-        .containsExactly(new ResolvedProvider("mine", Wire.OPENAI, "https://g/v1", "openai", "k"));
+        .containsExactly(
+            new ResolvedProvider("mine", Wire.OPENAI_CHAT, "https://g/v1", "openai", "k"));
   }
 
   @Test
@@ -194,7 +196,7 @@ class ProviderCatalogueTest {
 
   @Test
   void a_custom_provider_without_a_url_fails_naming_it() {
-    ProviderSettings mine = new ProviderSettings(Wire.OPENAI, null, null, null, null);
+    ProviderSettings mine = new ProviderSettings(Wire.OPENAI_CHAT, null, null, null, null);
     Map<String, ProviderSettings> settings = Map.of("mine", mine);
 
     assertThatThrownBy(() -> ProviderCatalogue.resolve(settings, key -> null))
@@ -219,7 +221,7 @@ class ProviderCatalogueTest {
     assertThat(resolved)
         .containsExactly(
             new ResolvedProvider(
-                "lmstudio", Wire.OPENAI, "http://localhost:1234/v1", "lmstudio", "lm-studio"));
+                "lmstudio", Wire.OPENAI_CHAT, "http://localhost:1234/v1", "lmstudio", "lm-studio"));
   }
 
   @Test
@@ -232,7 +234,11 @@ class ProviderCatalogueTest {
     assertThat(resolved)
         .containsExactly(
             new ResolvedProvider(
-                "lmstudio", Wire.OPENAI, "http://localhost:1234/v1", "lmstudio", "custom-key"));
+                "lmstudio",
+                Wire.OPENAI_CHAT,
+                "http://localhost:1234/v1",
+                "lmstudio",
+                "custom-key"));
   }
 
   @Test
@@ -252,7 +258,7 @@ class ProviderCatalogueTest {
     assertThat(resolved)
         .containsExactly(
             new ResolvedProvider(
-                "ollama", Wire.OPENAI, "http://localhost:11434/v1", "ollama", "ollama"));
+                "ollama", Wire.OPENAI_CHAT, "http://localhost:11434/v1", "ollama", "ollama"));
   }
 
   @Test
@@ -265,7 +271,7 @@ class ProviderCatalogueTest {
     assertThat(resolved)
         .containsExactly(
             new ResolvedProvider(
-                "ollama", Wire.OPENAI, "http://localhost:11434/v1", "ollama", "custom-key"));
+                "ollama", Wire.OPENAI_CHAT, "http://localhost:11434/v1", "ollama", "custom-key"));
   }
 
   @Test
@@ -290,7 +296,8 @@ class ProviderCatalogueTest {
 
   @Test
   void a_custom_entry_with_wire_and_base_url_and_enabled_false_is_absent() {
-    ProviderSettings mine = new ProviderSettings(Wire.OPENAI, "https://g/v1", "k", false, null);
+    ProviderSettings mine =
+        new ProviderSettings(Wire.OPENAI_CHAT, "https://g/v1", "k", false, null);
 
     List<ResolvedProvider> resolved = ProviderCatalogue.resolve(Map.of("mine", mine), key -> null);
 

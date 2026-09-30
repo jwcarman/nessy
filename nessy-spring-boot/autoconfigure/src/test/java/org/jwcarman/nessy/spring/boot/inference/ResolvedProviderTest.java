@@ -27,7 +27,7 @@ class ResolvedProviderTest {
   @Test
   void tostring_does_not_print_the_key() {
     ResolvedProvider resolved =
-        new ResolvedProvider("openai", Wire.OPENAI, null, "openai", "sk-super-secret");
+        new ResolvedProvider("openai", Wire.OPENAI_CHAT, null, "openai", "sk-super-secret");
 
     assertThat(resolved.toString()).doesNotContain("sk-super-secret").contains("apiKey=***");
   }

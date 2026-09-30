@@ -32,9 +32,9 @@ record Preset(
 
   static final List<Preset> CATALOGUE =
       List.of(
-          new Preset("openai", Wire.OPENAI, null, "openai", List.of("openai.api-key"), null),
+          new Preset("openai", Wire.OPENAI_CHAT, null, "openai", List.of("openai.api-key"), null),
           new Preset(
-              "xai", Wire.OPENAI, "https://api.x.ai/v1", "x_ai", List.of("xai.api-key"), null),
+              "xai", Wire.OPENAI_CHAT, "https://api.x.ai/v1", "x_ai", List.of("xai.api-key"), null),
           new Preset(
               "anthropic", Wire.ANTHROPIC, null, "anthropic", List.of("anthropic.api-key"), null),
           new Preset(
@@ -46,41 +46,46 @@ record Preset(
               null),
           new Preset(
               "openrouter",
-              Wire.OPENAI,
+              Wire.OPENAI_CHAT,
               "https://openrouter.ai/api/v1",
               "openrouter",
               List.of("openrouter.api-key"),
               null),
           new Preset(
               "nvidia",
-              Wire.OPENAI,
+              Wire.OPENAI_CHAT,
               "https://integrate.api.nvidia.com/v1",
               "nvidia",
               List.of("nvidia.api-key"),
               null),
           new Preset(
               "groq",
-              Wire.OPENAI,
+              Wire.OPENAI_CHAT,
               "https://api.groq.com/openai/v1",
               "groq",
               List.of("groq.api-key"),
               null),
           new Preset(
               "mistral",
-              Wire.OPENAI,
+              Wire.OPENAI_CHAT,
               "https://api.mistral.ai/v1",
               "mistral_ai",
               List.of("mistral.api-key"),
               null),
           new Preset(
               "lmstudio",
-              Wire.OPENAI,
+              Wire.OPENAI_CHAT,
               "http://localhost:1234/v1",
               "lmstudio",
               List.of(),
               "lm-studio"),
           new Preset(
-              "ollama", Wire.OPENAI, "http://localhost:11434/v1", "ollama", List.of(), "ollama"));
+              "ollama",
+              Wire.OPENAI_CHAT,
+              "http://localhost:11434/v1",
+              "ollama",
+              List.of(),
+              "ollama"));
 
   boolean keyless() {
     return keylessApiKey != null;

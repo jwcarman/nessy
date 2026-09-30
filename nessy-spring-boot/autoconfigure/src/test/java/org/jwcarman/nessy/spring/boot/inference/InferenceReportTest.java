@@ -73,8 +73,8 @@ class InferenceReportTest {
 
               assertThat(output)
                   .contains(
-                      "NESSY INFERENCE: providers: openai (openai, the vendor's own"
-                          + " endpoint, vendor openai); xai (openai,"
+                      "NESSY INFERENCE: providers: openai (openai-chat, the vendor's own"
+                          + " endpoint, vendor openai); xai (openai-chat,"
                           + " https://api.x.ai/v1, vendor x_ai)")
                   .doesNotContain("sk-super-secret")
                   .doesNotContain("xai-super-secret");

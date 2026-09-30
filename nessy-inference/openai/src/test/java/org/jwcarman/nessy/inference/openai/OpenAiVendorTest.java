@@ -37,7 +37,7 @@ class OpenAiVendorTest {
 
   @Test
   void the_semconv_default_for_this_provider_is_openai() {
-    assertThat(OpenAiInferenceProvider.VENDOR).isEqualTo("openai");
+    assertThat(OpenAiChatInferenceProvider.VENDOR).isEqualTo("openai");
   }
 
   /**
@@ -47,8 +47,8 @@ class OpenAiVendorTest {
    */
   @Test
   void a_provider_pointed_at_xai_reports_that_vendor_rather_than_openai() {
-    OpenAiInferenceProvider provider =
-        OpenAiInferenceProvider.of(
+    OpenAiChatInferenceProvider provider =
+        OpenAiChatInferenceProvider.of(
             c -> c.apiKey("sk-test").baseUrl("https://api.x.ai/v1").vendor("x_ai"));
 
     assertThat(provider.vendor()).isEqualTo("x_ai");
@@ -56,8 +56,8 @@ class OpenAiVendorTest {
 
   @Test
   void and_any_other_compatible_endpoint_still_answers_openai() {
-    OpenAiInferenceProvider provider =
-        OpenAiInferenceProvider.of(
+    OpenAiChatInferenceProvider provider =
+        OpenAiChatInferenceProvider.of(
             c -> c.apiKey("sk-test").baseUrl("https://openrouter.ai/api/v1"));
 
     assertThat(provider.vendor()).isEqualTo("openai");

@@ -53,10 +53,10 @@ import tools.jackson.databind.json.JsonMapper;
  * to ignore it. Run it deliberately:
  *
  * <pre>{@code
- * OPENAI_API_KEY=sk-... ./mvnw -pl nessy-inference/openai test -Dtest=OpenAiLiveTest
+ * OPENAI_API_KEY=sk-... ./mvnw -pl nessy-inference/openai test -Dtest=OpenAiChatLiveTest
  * }</pre>
  */
-class OpenAiLiveTest {
+class OpenAiChatLiveTest {
 
   /**
    * The cheapest model that still calls tools, because this runs on somebody's bill.
@@ -103,14 +103,14 @@ class OpenAiLiveTest {
         InferenceOptions.of(MODEL));
   }
 
-  private static OpenAiInferenceProvider provider() {
+  private static OpenAiChatInferenceProvider provider() {
     assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY is not set");
-    return OpenAiInferenceProvider.fromEnv();
+    return OpenAiChatInferenceProvider.fromEnv();
   }
 
   @Test
   void a_real_question_gets_a_real_answer() {
-    try (OpenAiInferenceProvider provider = provider()) {
+    try (OpenAiChatInferenceProvider provider = provider()) {
       InferenceResult result = provider.infer(asking("What is the capital of France?", List.of()));
 
       assertThat(result).isInstanceOf(InferenceResult.Answer.class);
@@ -127,7 +127,7 @@ class OpenAiLiveTest {
    */
   @Test
   void the_answer_is_narrated_as_it_streams() {
-    try (OpenAiInferenceProvider provider = provider()) {
+    try (OpenAiChatInferenceProvider provider = provider()) {
       Narration narrated = new Narration();
 
       InferenceResult result =
@@ -150,7 +150,7 @@ class OpenAiLiveTest {
    */
   @Test
   void a_tool_offer_is_accepted_and_called_with_arguments_that_fit_its_schema() {
-    try (OpenAiInferenceProvider provider = provider()) {
+    try (OpenAiChatInferenceProvider provider = provider()) {
       ToolOffer lookup =
           new ToolOffer(
               new ToolName("lake_depth"),
@@ -219,7 +219,7 @@ class OpenAiLiveTest {
    */
   @Test
   void requiring_one_tool_by_name_overrides_what_the_model_would_have_picked() {
-    try (OpenAiInferenceProvider provider = provider()) {
+    try (OpenAiChatInferenceProvider provider = provider()) {
       InferenceResult result =
           provider.infer(
               asking(
@@ -236,7 +236,7 @@ class OpenAiLiveTest {
   /** Requiring some tool, where an answer would otherwise have done. */
   @Test
   void requiring_some_tool_leaves_no_room_for_an_answer() {
-    try (OpenAiInferenceProvider provider = provider()) {
+    try (OpenAiChatInferenceProvider provider = provider()) {
       InferenceResult result =
           provider.infer(asking("Say hello.", twoTools(), new ToolChoice.Any()));
 
@@ -259,7 +259,7 @@ class OpenAiLiveTest {
    */
   @Test
   void answering_now_produces_prose_with_the_tools_still_on_offer() {
-    try (OpenAiInferenceProvider provider = provider()) {
+    try (OpenAiChatInferenceProvider provider = provider()) {
       InferenceResult result =
           provider.infer(asking("How deep is Loch Ness?", twoTools(), new ToolChoice.Answer()));
 
@@ -285,7 +285,7 @@ class OpenAiLiveTest {
    */
   @Test
   void forbidding_tools_means_no_call_is_made() {
-    try (OpenAiInferenceProvider provider = provider()) {
+    try (OpenAiChatInferenceProvider provider = provider()) {
       InferenceResult result =
           provider.infer(asking("How deep is Loch Ness?", twoTools(), new ToolChoice.None()));
 
@@ -315,7 +315,7 @@ class OpenAiLiveTest {
              "required":["city","country"],
              "additionalProperties":false}""");
 
-    try (OpenAiInferenceProvider provider = provider()) {
+    try (OpenAiChatInferenceProvider provider = provider()) {
       InferenceResult result = provider.infer(askingFor("What is the capital of France?", shape));
 
       assertThat(result).isInstanceOf(InferenceResult.Answer.class);
@@ -338,7 +338,7 @@ class OpenAiLiveTest {
              "required":["answer","confident"],
              "additionalProperties":false}""");
 
-    try (OpenAiInferenceProvider provider = provider()) {
+    try (OpenAiChatInferenceProvider provider = provider()) {
       InferenceResult result = provider.infer(askingFor("Tell me a joke.", shape));
 
       assertThat(result).isInstanceOf(InferenceResult.Answer.class);

@@ -51,7 +51,7 @@ import tools.jackson.databind.json.JsonMapper;
  * background goes, what a denied call is told to the model -- so it is worth asserting on the built
  * params rather than only on what a live call happens to accept.
  */
-class OpenAiRequestsTest {
+class OpenAiChatRequestsTest {
 
   private static final SystemPrompt SYSTEM = new SystemPrompt("you are a helpful assistant");
   private static final InferenceOptions OPTIONS = new InferenceOptions("gpt-4o", 1024);
@@ -83,7 +83,7 @@ class OpenAiRequestsTest {
   }
 
   private static List<ChatCompletionMessageParam> messagesOf(List<Turn> turns) {
-    return OpenAiRequests.toParams(request(turns), MAPPER).messages();
+    return OpenAiChatRequests.toParams(request(turns), MAPPER).messages();
   }
 
   @Nested
@@ -117,7 +117,7 @@ class OpenAiRequestsTest {
               OPTIONS);
 
       String system =
-          OpenAiRequests.toParams(request, MAPPER)
+          OpenAiChatRequests.toParams(request, MAPPER)
               .messages()
               .getFirst()
               .asSystem()
@@ -155,7 +155,7 @@ class OpenAiRequestsTest {
     @Test
     void come_from_the_options_rather_than_from_the_adapter() {
       ChatCompletionCreateParams params =
-          OpenAiRequests.toParams(request(List.of(open(1, "hi"))), MAPPER);
+          OpenAiChatRequests.toParams(request(List.of(open(1, "hi"))), MAPPER);
 
       assertThat(params.model().asString()).isEqualTo("gpt-4o");
       assertThat(params.maxCompletionTokens()).contains(1024L);
@@ -171,7 +171,7 @@ class OpenAiRequestsTest {
               Toolset.none(),
               InferenceOptions.of("gpt-4o"));
 
-      assertThat(OpenAiRequests.toParams(request, MAPPER).maxCompletionTokens()).isEmpty();
+      assertThat(OpenAiChatRequests.toParams(request, MAPPER).maxCompletionTokens()).isEmpty();
     }
   }
 
@@ -381,7 +381,7 @@ class OpenAiRequestsTest {
                               "{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}")))),
               OPTIONS);
 
-      var tools = OpenAiRequests.toParams(request, MAPPER).tools().orElseThrow();
+      var tools = OpenAiChatRequests.toParams(request, MAPPER).tools().orElseThrow();
 
       assertThat(tools).hasSize(1);
       var function = tools.getFirst().asFunction().function();
@@ -395,7 +395,7 @@ class OpenAiRequestsTest {
     /** A model offered nothing is asked exactly the way it was asked before tools existed. */
     @Test
     void is_absent_entirely_when_none_were_bound() {
-      assertThat(OpenAiRequests.toParams(request(List.of(open(1, "hi"))), MAPPER).tools())
+      assertThat(OpenAiChatRequests.toParams(request(List.of(open(1, "hi"))), MAPPER).tools())
           .isEmpty();
     }
   }
@@ -403,7 +403,7 @@ class OpenAiRequestsTest {
   @Test
   void usage_is_asked_for_on_the_stream() {
     ChatCompletionCreateParams params =
-        OpenAiRequests.toParams(
+        OpenAiChatRequests.toParams(
             new InferenceRequest(
                 new SystemPrompt("s"),
                 InferenceContext.of(List.of()),
@@ -419,7 +419,7 @@ class OpenAiRequestsTest {
   class ChoosingATool {
 
     private static ChatCompletionCreateParams choosing(ToolChoice choice) {
-      return OpenAiRequests.toParams(
+      return OpenAiChatRequests.toParams(
           new InferenceRequest(
               SYSTEM,
               InferenceContext.of(List.of(open(1, "hi"))),

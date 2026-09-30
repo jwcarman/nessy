@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking changes
+
+- **The `openai` wire is now `openai-chat`.** A custom provider with
+  `nessy.providers.<id>.wire: openai` fails at startup; write `openai-chat`.
+  Presets are unaffected, and the startup report now prints `openai-chat`.
+- **`OpenAiInferenceProvider` is now `OpenAiChatInferenceProvider`, and
+  `OpenAiProviderConfig` is now `OpenAiChatProviderConfig`.** Same factories,
+  same setters, same behaviour.
+- **`OpenAiRequests` is no longer public.** It was the chat adapter's
+  internal projection and is now the package-private `OpenAiChatRequests`.
+
 ## [0.2.0] - 2026-09-29
 
 ### Breaking changes

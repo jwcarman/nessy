@@ -71,14 +71,14 @@ import tools.jackson.databind.json.JsonMapper;
  * what its marketing page claims.
  *
  * <p>Each candidate is built the way a custom provider is today -- {@code nessy.providers.<id>.wire
- * =openai} plus a base URL, an environment-sourced key and a vendor -- or, for an existing preset,
- * by its key alone, so a wire other than {@code openai} is measured too. Either is then driven
- * through a real direct harness with a tool the question cannot be answered without, exactly like
- * {@link LmStudioPresetLiveTest}. A candidate with no key, or no model and no default, is skipped
- * rather than failed: this test measures what is reachable in the runner's environment, not what
- * should exist. Results land in {@code target/preset-measurements.md} for James to read after a
- * run; no key is ever written to that file, an assertion message, a log line, or an exception this
- * test constructs.
+ * =openai-chat} plus a base URL, an environment-sourced key and a vendor -- or, for an existing
+ * preset, by its key alone, so a wire other than {@code openai-chat} is measured too. Either is
+ * then driven through a real direct harness with a tool the question cannot be answered without,
+ * exactly like {@link LmStudioPresetLiveTest}. A candidate with no key, or no model and no default,
+ * is skipped rather than failed: this test measures what is reachable in the runner's environment,
+ * not what should exist. Results land in {@code target/preset-measurements.md} for James to read
+ * after a run; no key is ever written to that file, an assertion message, a log line, or an
+ * exception this test constructs.
  *
  * <pre>{@code
  * ./mvnw -q -pl :nessy-spring-boot-autoconfigure test -Dnessy.excludedGroups= -Dtest=PresetCandidatesLiveTest
@@ -135,7 +135,7 @@ class PresetCandidatesLiveTest {
   /**
    * A vendor this test can reach if its key is exported; {@code defaultModel} may be absent. A
    * candidate with no {@code baseUrl} is an existing preset, reached by its key alone -- which is
-   * how a wire other than {@code openai} gets measured.
+   * how a wire other than {@code openai-chat} gets measured.
    */
   private record Candidate(
       String id,
@@ -320,7 +320,7 @@ class PresetCandidatesLiveTest {
                 candidate.baseUrl() == null
                     ? new String[] {"nessy.providers." + candidate.id() + ".api-key=" + key}
                     : new String[] {
-                      "nessy.providers." + candidate.id() + ".wire=openai",
+                      "nessy.providers." + candidate.id() + ".wire=openai-chat",
                       "nessy.providers." + candidate.id() + ".base-url=" + candidate.baseUrl(),
                       "nessy.providers." + candidate.id() + ".api-key=" + key,
                       "nessy.providers." + candidate.id() + ".vendor=" + candidate.vendor()

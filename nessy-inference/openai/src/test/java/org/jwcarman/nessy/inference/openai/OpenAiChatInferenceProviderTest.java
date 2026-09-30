@@ -70,7 +70,7 @@ import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Toolset;
 
-class OpenAiInferenceProviderTest {
+class OpenAiChatInferenceProviderTest {
 
   private static Headers emptyHeaders() {
     return Headers.builder().build();
@@ -295,7 +295,7 @@ class OpenAiInferenceProviderTest {
 
   /** Runs one inference against a client that answers with {@code message}. */
   private static InferenceResult inferAnswering(ChatCompletionMessage message) {
-    return new OpenAiProviderConfig()
+    return new OpenAiChatProviderConfig()
         .client(fakeClient(params -> completionOf(message)))
         .build()
         .infer(REQUEST);
@@ -304,7 +304,7 @@ class OpenAiInferenceProviderTest {
   /** Runs one inference against a client that fails with {@code failure}. */
   private static Failure inferFailing(RuntimeException failure) {
     InferenceResult result =
-        new OpenAiProviderConfig()
+        new OpenAiChatProviderConfig()
             .client(
                 fakeClient(
                     params -> {
@@ -337,7 +337,7 @@ class OpenAiInferenceProviderTest {
               .build();
 
       InferenceResult result =
-          new OpenAiProviderConfig()
+          new OpenAiChatProviderConfig()
               .client(fakeStreamingClient(params -> chunksOf(priced)))
               .build()
               .infer(REQUEST);
@@ -367,7 +367,7 @@ class OpenAiInferenceProviderTest {
     private final Narration narrated = new Narration();
 
     private InferenceResult inferNarrating(List<ChatCompletionChunk> chunks) {
-      return new OpenAiProviderConfig()
+      return new OpenAiChatProviderConfig()
           .client(fakeStreamingClient(params -> chunks))
           .build()
           .infer(REQUEST, narrated);
@@ -600,7 +600,7 @@ class OpenAiInferenceProviderTest {
     @Test
     void a_completion_with_no_choices_is_a_permanent_fault() {
       InferenceResult result =
-          new OpenAiProviderConfig()
+          new OpenAiChatProviderConfig()
               .client(
                   fakeClient(
                       params ->
@@ -626,7 +626,7 @@ class OpenAiInferenceProviderTest {
     @Test
     void the_model_asked_for_is_the_one_in_the_options() {
       var captured = new ChatCompletionCreateParams[1];
-      new OpenAiProviderConfig()
+      new OpenAiChatProviderConfig()
           .client(
               fakeClient(
                   params -> {
@@ -761,7 +761,7 @@ class OpenAiInferenceProviderTest {
               finalUsageOnlyChunk());
 
       InferenceResult result =
-          new OpenAiProviderConfig()
+          new OpenAiChatProviderConfig()
               .client(fakeStreamingClient(params -> chunks))
               .build()
               .infer(REQUEST);
@@ -820,7 +820,7 @@ class OpenAiInferenceProviderTest {
               finishWithUsage);
 
       InferenceResult result =
-          new OpenAiProviderConfig()
+          new OpenAiChatProviderConfig()
               .client(fakeStreamingClient(params -> chunks))
               .build()
               .infer(REQUEST);
@@ -843,7 +843,7 @@ class OpenAiInferenceProviderTest {
               finalUsageOnlyChunk());
 
       InferenceResult result =
-          new OpenAiProviderConfig()
+          new OpenAiChatProviderConfig()
               .client(fakeStreamingClient(params -> chunks))
               .build()
               .infer(REQUEST);
@@ -902,7 +902,7 @@ class OpenAiInferenceProviderTest {
               everythingAtOnce);
 
       InferenceResult result =
-          new OpenAiProviderConfig()
+          new OpenAiChatProviderConfig()
               .client(fakeStreamingClient(params -> chunks))
               .build()
               .infer(REQUEST);
@@ -926,7 +926,7 @@ class OpenAiInferenceProviderTest {
 
     @Test
     void rejects_build_with_neither_a_key_nor_a_client() {
-      var config = new OpenAiProviderConfig();
+      var config = new OpenAiChatProviderConfig();
 
       assertThatThrownBy(config::build)
           .isInstanceOf(IllegalStateException.class)
@@ -943,7 +943,7 @@ class OpenAiInferenceProviderTest {
       // configured — moves to build() accordingly.
       assumeTrue(System.getenv("OPENAI_API_KEY") == null, "OPENAI_API_KEY is set in this shell");
 
-      var config = new OpenAiProviderConfig().fromEnv();
+      var config = new OpenAiChatProviderConfig().fromEnv();
 
       assertThatThrownBy(config::build)
           .isInstanceOf(IllegalStateException.class)
@@ -957,10 +957,11 @@ class OpenAiInferenceProviderTest {
       // OPENAI_API_KEY at all. What this cannot verify offline — since OpenAIClient exposes no
       // accessor for its resolved key/base URL — is that the SDK actually preferred our explicit
       // values over ones an environment variable might also supply; that end-to-end delegation is
-      // exercised live by OpenAiLiveTest, whose a_real_conversation_answers test builds exclusively
+      // exercised live by OpenAiChatLiveTest, whose a_real_conversation_answers test builds
+      // exclusively
       // via fromEnv().
-      OpenAiInferenceProvider provider =
-          new OpenAiProviderConfig()
+      OpenAiChatInferenceProvider provider =
+          new OpenAiChatProviderConfig()
               .fromEnv()
               .apiKey("sk-explicit-wins")
               .baseUrl("https://example.invalid")
@@ -976,15 +977,15 @@ class OpenAiInferenceProviderTest {
       // _environment above: that test always sets baseUrl and organization too, which never
       // exercises buildFromEnv()'s baseUrl == null / organization == null branches. This one
       // leaves both unset.
-      OpenAiInferenceProvider provider =
-          new OpenAiProviderConfig().fromEnv().apiKey("sk-explicit-only").build();
+      OpenAiChatInferenceProvider provider =
+          new OpenAiChatProviderConfig().fromEnv().apiKey("sk-explicit-only").build();
 
       assertThat(provider).isNotNull();
     }
 
     @Test
     void a_blank_api_key_is_rejected_the_same_as_a_missing_one() {
-      var config = new OpenAiProviderConfig().apiKey("   ");
+      var config = new OpenAiChatProviderConfig().apiKey("   ");
 
       assertThatThrownBy(config::build)
           .isInstanceOf(IllegalStateException.class)
@@ -995,7 +996,8 @@ class OpenAiInferenceProviderTest {
 
     @Test
     void an_api_key_alone_is_enough_to_build() {
-      OpenAiInferenceProvider provider = new OpenAiProviderConfig().apiKey("sk-test").build();
+      OpenAiChatInferenceProvider provider =
+          new OpenAiChatProviderConfig().apiKey("sk-test").build();
 
       assertThat(provider).isNotNull();
     }
@@ -1004,15 +1006,15 @@ class OpenAiInferenceProviderTest {
     void a_preconfigured_client_bypasses_the_key_requirement() {
       OpenAIClient client = OpenAIOkHttpClient.builder().apiKey("sk-test").build();
 
-      OpenAiInferenceProvider provider = new OpenAiProviderConfig().client(client).build();
+      OpenAiChatInferenceProvider provider = new OpenAiChatProviderConfig().client(client).build();
 
       assertThat(provider).isNotNull();
     }
 
     @Test
     void a_base_url_is_accepted_without_error() {
-      OpenAiInferenceProvider provider =
-          new OpenAiProviderConfig()
+      OpenAiChatInferenceProvider provider =
+          new OpenAiChatProviderConfig()
               .apiKey("sk-test")
               .baseUrl("https://openrouter.ai/api/v1")
               .build();
@@ -1022,26 +1024,27 @@ class OpenAiInferenceProviderTest {
 
     @Test
     void an_organization_is_accepted_without_error() {
-      OpenAiInferenceProvider provider =
-          new OpenAiProviderConfig().apiKey("sk-test").organization("org-123").build();
+      OpenAiChatInferenceProvider provider =
+          new OpenAiChatProviderConfig().apiKey("sk-test").organization("org-123").build();
 
       assertThat(provider).isNotNull();
     }
   }
 
   /**
-   * Drives the two public static factories directly — {@link OpenAiInferenceProvider#create} and
-   * {@link OpenAiInferenceProvider#fromEnv} — rather than the package-private {@link
-   * OpenAiProviderConfig} the {@link Configuration} tests above reach into. Spec §5 requires {@code
-   * fromEnv()} equal {@code create(config -> config.fromEnv())} in behavior; this pins that offline
-   * by driving both through the same unset-environment failure and comparing messages.
+   * Drives the two public static factories directly — {@link OpenAiChatInferenceProvider#create}
+   * and {@link OpenAiChatInferenceProvider#fromEnv} — rather than the package-private {@link
+   * OpenAiChatProviderConfig} the {@link Configuration} tests above reach into. Spec §5 requires
+   * {@code fromEnv()} equal {@code create(config -> config.fromEnv())} in behavior; this pins that
+   * offline by driving both through the same unset-environment failure and comparing messages.
    */
   @Nested
   class PublicStaticFactories {
 
     @Test
     void create_rejects_a_null_customizer() {
-      assertThatThrownBy(() -> OpenAiInferenceProvider.of((Customizer<OpenAiProviderConfig>) null))
+      assertThatThrownBy(
+              () -> OpenAiChatInferenceProvider.of((Customizer<OpenAiChatProviderConfig>) null))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("customizer must not be null");
     }
@@ -1050,17 +1053,18 @@ class OpenAiInferenceProviderTest {
     void from_env_fails_the_same_way_create_with_a_from_env_customizer_does() {
       assumeTrue(System.getenv("OPENAI_API_KEY") == null, "OPENAI_API_KEY is set in this shell");
 
-      assertThatThrownBy(OpenAiInferenceProvider::fromEnv)
+      assertThatThrownBy(OpenAiChatInferenceProvider::fromEnv)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("OPENAI_API_KEY");
-      assertThatThrownBy(() -> OpenAiInferenceProvider.of(OpenAiProviderConfig::fromEnv))
+      assertThatThrownBy(() -> OpenAiChatInferenceProvider.of(OpenAiChatProviderConfig::fromEnv))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("OPENAI_API_KEY");
     }
 
     @Test
     void create_reaches_the_real_construction_path_offline() {
-      OpenAiInferenceProvider provider = OpenAiInferenceProvider.of(c -> c.apiKey("sk-test"));
+      OpenAiChatInferenceProvider provider =
+          OpenAiChatInferenceProvider.of(c -> c.apiKey("sk-test"));
 
       assertThat(provider).isNotNull();
     }
@@ -1075,8 +1079,8 @@ class OpenAiInferenceProviderTest {
 
     @Test
     void reports_openai_even_when_wired_to_a_compatible_endpoint_such_as_xai() {
-      OpenAiInferenceProvider provider =
-          new OpenAiProviderConfig().apiKey("sk-test").baseUrl("https://api.x.ai/v1").build();
+      OpenAiChatInferenceProvider provider =
+          new OpenAiChatProviderConfig().apiKey("sk-test").baseUrl("https://api.x.ai/v1").build();
 
       assertThat(provider.name()).isEqualTo("OpenAI");
     }
@@ -1093,7 +1097,7 @@ class OpenAiInferenceProviderTest {
    * so by the time one surfaces here, the SDK's own budget ({@code maxRetries}, default 2) is
    * already spent, and only a further caller-driven retry with backoff is left.
    *
-   * <p>Driven through {@link OpenAiInferenceProvider#infer} rather than against a predicate,
+   * <p>Driven through {@link OpenAiChatInferenceProvider#infer} rather than against a predicate,
    * because the classification is only worth anything if a failure actually reaches the fold as a
    * {@code Fault} instead of escaping as a throw.
    */

@@ -26,7 +26,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Who closes the SDK client (ruled 2026-08-26). A provider must close the client it BUILT — its
  * OkHttp pool and dispatcher threads outlive the process otherwise — and must never close one the
- * application handed in through {@link OpenAiProviderConfig#client(OpenAIClient)}, which the
+ * application handed in through {@link OpenAiChatProviderConfig#client(OpenAIClient)}, which the
  * application still owns.
  *
  * <p>The recording client is a JDK dynamic {@link Proxy}, not a mocking library (the no-mocking
@@ -40,7 +40,7 @@ class OpenAiCloseOwnershipTest {
     AtomicInteger closes = new AtomicInteger();
     OpenAIClient supplied = recordingClient(closes);
 
-    OpenAiInferenceProvider provider = OpenAiInferenceProvider.of(c -> c.client(supplied));
+    OpenAiChatInferenceProvider provider = OpenAiChatInferenceProvider.of(c -> c.client(supplied));
     provider.close();
 
     assertThat(closes).hasValue(0);
@@ -49,8 +49,8 @@ class OpenAiCloseOwnershipTest {
   @Test
   void a_client_the_provider_built_itself_is_closed() {
     AtomicInteger closes = new AtomicInteger();
-    OpenAiInferenceProvider provider =
-        new OpenAiInferenceProvider(
+    OpenAiChatInferenceProvider provider =
+        new OpenAiChatInferenceProvider(
             recordingClient(closes), "openai", true, JsonMapper.builder().build());
 
     provider.close();
@@ -62,8 +62,8 @@ class OpenAiCloseOwnershipTest {
   @Test
   void a_supplied_client_is_untouched_whichever_vendor_the_provider_answers_for() {
     AtomicInteger closes = new AtomicInteger();
-    OpenAiInferenceProvider provider =
-        new OpenAiInferenceProvider(
+    OpenAiChatInferenceProvider provider =
+        new OpenAiChatInferenceProvider(
             recordingClient(closes), "x_ai", false, JsonMapper.builder().build());
 
     provider.close();

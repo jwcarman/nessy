@@ -33,13 +33,9 @@ import com.openai.models.chat.completions.ChatCompletionToolMessageParam;
 import com.openai.models.chat.completions.ChatCompletionUserMessageParam;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Summary;
@@ -54,15 +50,15 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Turn-speak into chat-completions shape.
+ * Turn-speak into Chat Completions shape.
  *
  * <p>Pure translation, and the only place in this module that knows what a "role" is. Everything
  * above it speaks in turns, exchanges and blocks; everything below it speaks OpenAI's wire. Nothing
  * here touches the network, which is what makes the whole projection testable without a key.
  */
-public final class OpenAiRequests {
+final class OpenAiChatRequests {
 
-  private OpenAiRequests() {}
+  private OpenAiChatRequests() {}
 
   /**
    * @param mapper reads a tool's schema back into a document. {@link
@@ -71,7 +67,7 @@ public final class OpenAiRequests {
    *     the bridge between the two, not a validation step. Supplied rather than made here, because
    *     a mapper an application cannot configure is a mapper it cannot fix.
    */
-  public static ChatCompletionCreateParams toParams(InferenceRequest request, JsonMapper mapper) {
+  static ChatCompletionCreateParams toParams(InferenceRequest request, JsonMapper mapper) {
     InferenceOptions options = request.options();
 
     List<ChatCompletionMessageParam> messages =
@@ -79,11 +75,11 @@ public final class OpenAiRequests {
                 Stream.of(
                     ChatCompletionMessageParam.ofSystem(
                         ChatCompletionSystemMessageParam.builder()
-                            .content(system(request))
+                            .content(OpenAiRendering.system(request))
                             .build())),
                 Stream.concat(
-                    request.context().summaries().stream().map(OpenAiRequests::summary),
-                    request.context().turns().stream().flatMap(OpenAiRequests::toMessages)))
+                    request.context().summaries().stream().map(OpenAiChatRequests::summary),
+                    request.context().turns().stream().flatMap(OpenAiChatRequests::toMessages)))
             .toList();
 
     ChatCompletionCreateParams.Builder builder =
@@ -132,37 +128,17 @@ public final class OpenAiRequests {
   }
 
   /**
-   * The system prompt, and whatever background stands behind the conversation.
+   * A summary, standing where the turns it replaces once stood.
    *
-   * <p><b>Folded into the system message, and that is this adapter's decision alone.</b> This wire
-   * has one place for anything nobody said, so background goes there. Anthropic would put it in the
-   * top-level system block and Gemini in a system instruction; {@link Ambient} says what the
-   * background is and takes no view on any of that.
-   *
-   * <p>Labelled with tags so a model reading two unlabelled blobs run together can tell which is
-   * the standing instruction and which is today's note. The kind is safe to interpolate without
-   * escaping -- {@code Ambient} constrains it to lowercase kebab-case precisely so no adapter has
-   * to remember to, and none can forget.
-   *
-   * <p>Sections are omitted entirely when there are none. A heading with nothing under it tells a
-   * model its notebook is empty, which is a claim; saying nothing is not.
+   * <p><b>User role, and bracketed, and that is this adapter's decision.</b> This wire has no role
+   * for "here is what happened earlier": {@code system} is the standing instruction, {@code
+   * assistant} would put the recap in the model's own mouth, and {@code user} is the only one that
+   * reads as something the model is being shown. The tag is what tells it from something the person
+   * just said, and the range is on it because the model is entitled to know that turns are missing
+   * and which ones.
    */
-  private static String system(InferenceRequest request) {
-    if (!request.context().hasAmbient()) {
-      return request.systemPrompt().value();
-    }
-    StringBuilder system = new StringBuilder(request.systemPrompt().value());
-    for (Ambient ambient : request.context().ambient()) {
-      system
-          .append("\n\n<")
-          .append(ambient.kind())
-          .append(">\n")
-          .append(text(ambient.content()))
-          .append("\n</")
-          .append(ambient.kind())
-          .append('>');
-    }
-    return system.toString();
+  private static ChatCompletionMessageParam summary(Summary summary) {
+    return user(OpenAiRendering.summary(summary));
   }
 
   /**
@@ -176,27 +152,11 @@ public final class OpenAiRequests {
    * <p>A refused input is dropped rather than re-sent: it is what caused the refusal, and
    * re-sending it keeps the conversation refused for as long as it is still in the request.
    */
-  /**
-   * A summary, standing where the turns it replaces once stood.
-   *
-   * <p><b>User role, and bracketed, and that is this adapter's decision.</b> This wire has no role
-   * for "here is what happened earlier": {@code system} is the standing instruction, {@code
-   * assistant} would put the recap in the model's own mouth, and {@code user} is the only one that
-   * reads as something the model is being shown. The tag is what tells it from something the person
-   * just said, and the range is on it because the model is entitled to know that turns are missing
-   * and which ones.
-   */
-  private static ChatCompletionMessageParam summary(Summary summary) {
-    return user(
-        "<summary from=\"%d\" through=\"%d\">\n%s\n</summary>"
-            .formatted(summary.from().value(), summary.through().value(), text(summary.content())));
-  }
-
   private static Stream<ChatCompletionMessageParam> toMessages(Turn turn) {
     Stream<ChatCompletionMessageParam> opening =
         turn.result() instanceof TurnResult.Refused
             ? Stream.empty()
-            : Stream.of(user(text(turn.input().blocks())));
+            : Stream.of(user(OpenAiRendering.text(turn.input().blocks())));
 
     // Every round, in order, between the question and whatever the model finally said. A call
     // and its result have to stay adjacent and in sequence: this wire rejects an assistant
@@ -207,24 +167,20 @@ public final class OpenAiRequests {
                 exchange ->
                     Stream.concat(
                         Stream.of(asking(exchange)),
-                        exchange.outcomes().stream().map(OpenAiRequests::answering)));
+                        exchange.outcomes().stream().map(OpenAiChatRequests::answering)));
 
     Stream<ChatCompletionMessageParam> ending =
         switch (turn.result()) {
           case null -> Stream.of();
-          case TurnResult.Answered(var blocks) -> Stream.of(assistant(text(blocks)));
+          case TurnResult.Answered(var blocks) ->
+              Stream.of(assistant(OpenAiRendering.text(blocks)));
           // "Did not complete" rather than "returned an error", because the call may never
           // have been made at all.
-          case TurnResult.Failed _ ->
-              Stream.of(system("The previous attempt to answer did not complete."));
+          case TurnResult.Failed _ -> Stream.of(system(OpenAiRendering.FAILED_TURN));
           // Stands where the withdrawn question stood. Saying nothing would leave two user
           // turns adjacent with no explanation; saying what it was would put back the very
           // content this exists to remove.
-          case TurnResult.Refused _ ->
-              Stream.of(
-                  system(
-                      "A previous message was withdrawn from this conversation and is no longer"
-                          + " available."));
+          case TurnResult.Refused _ -> Stream.of(system(OpenAiRendering.REFUSED_TURN));
         };
 
     return Stream.concat(opening, Stream.concat(middle, ending));
@@ -234,11 +190,11 @@ public final class OpenAiRequests {
   private static ChatCompletionMessageParam asking(Exchange exchange) {
     ChatCompletionAssistantMessageParam.Builder builder =
         ChatCompletionAssistantMessageParam.builder();
-    String said = text(exchange.request());
+    String said = OpenAiRendering.text(exchange.request());
     if (!said.isEmpty()) {
       builder.content(said);
     }
-    exchange.calls().stream().map(OpenAiRequests::toToolCall).forEach(builder::addToolCall);
+    exchange.calls().stream().map(OpenAiChatRequests::toToolCall).forEach(builder::addToolCall);
     return ChatCompletionMessageParam.ofAssistant(builder.build());
   }
 
@@ -251,13 +207,7 @@ public final class OpenAiRequests {
    * is free to.
    */
   private static ChatCompletionMessageParam answering(ToolOutcome outcome) {
-    String content =
-        switch (outcome) {
-          case ToolOutcome.Succeeded(CallId _, var blocks) -> text(blocks);
-          case ToolOutcome.Failed(CallId _, String message) -> "Error: " + message;
-          case ToolOutcome.Denied(CallId _, String reason) ->
-              "This call was not run because it was not permitted: " + reason;
-        };
+    String content = OpenAiRendering.outcome(outcome);
     return ChatCompletionMessageParam.ofTool(
         ChatCompletionToolMessageParam.builder()
             .toolCallId(outcome.callId().value())
@@ -290,11 +240,6 @@ public final class OpenAiRequests {
                 .build())
         .build();
   }
-
-  /**
-   * One tool, as this wire describes one. {@code function} is the only kind this API has ever had
-   * for a described tool, and it is still required on every entry.
-   */
 
   /**
    * How the model is told whether it may reach for what it was offered.
@@ -330,6 +275,10 @@ public final class OpenAiRequests {
     }
   }
 
+  /**
+   * One tool, as this wire describes one. {@code function} is the only kind this API has ever had
+   * for a described tool, and it is still required on every entry.
+   */
   private static ChatCompletionTool toFunctionTool(ToolOffer offer, JsonMapper mapper) {
     return ChatCompletionTool.ofFunction(
         ChatCompletionFunctionTool.builder()
@@ -356,31 +305,5 @@ public final class OpenAiRequests {
     Map<String, Object> properties = mapper.readValue(schema, new TypeReference<>() {});
     properties.forEach((name, value) -> builder.putAdditionalProperty(name, JsonValue.from(value)));
     return builder.build();
-  }
-
-  /**
-   * The text of a run of blocks, and only the text.
-   *
-   * <p>Exhaustive, so a new block kind has to say here whether it is something a person reads.
-   * Anything that is not text contributes nothing rather than being cast and thrown: a call travels
-   * in {@code tool_calls}, and another vendor's reasoning state belongs to whoever attached it --
-   * handing those bytes to this endpoint would at best be ignored and at worst rejected.
-   *
-   * <p>Commentary is re-sent beside the answer because it is part of what the assistant said, and
-   * this wire has one content field for both.
-   */
-  static String text(List<? extends Block> blocks) {
-    return blocks.stream()
-        .map(OpenAiRequests::readable)
-        .flatMap(Optional::stream)
-        .collect(Collectors.joining());
-  }
-
-  private static Optional<String> readable(Block block) {
-    return switch (block) {
-      case Block.Text(String value) -> Optional.of(value);
-      case Block.Commentary(String value) -> Optional.of(value);
-      case Block.Provider _, Block.ToolCall _ -> Optional.empty();
-    };
   }
 }

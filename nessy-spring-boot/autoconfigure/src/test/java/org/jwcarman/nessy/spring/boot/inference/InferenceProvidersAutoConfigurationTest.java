@@ -213,7 +213,7 @@ class InferenceProvidersAutoConfigurationTest {
   void a_custom_provider_with_a_wire_url_and_key_is_registered_with_the_wires_own_vendor() {
     runner
         .withPropertyValues(
-            "nessy.providers.mine.wire=openai",
+            "nessy.providers.mine.wire=openai-chat",
             "nessy.providers.mine.base-url=https://g/v1",
             "nessy.providers.mine.api-key=k")
         .run(
@@ -222,6 +222,25 @@ class InferenceProvidersAutoConfigurationTest {
                   context.getBeansOfType(InferenceProvider.class);
               assertThat(providers).containsOnlyKeys("mine");
               assertThat(providers.get("mine").vendor()).isEqualTo("openai");
+            });
+  }
+
+  /**
+   * The {@code 0.2.0} wire value is gone with no alias. The enum's binding error is the migration
+   * guide: at a real startup Boot's failure analyzer prints the four valid values beside it.
+   */
+  @Test
+  void the_retired_openai_wire_value_fails_to_start_naming_the_property() {
+    runner
+        .withPropertyValues(
+            "nessy.providers.mine.wire=openai",
+            "nessy.providers.mine.base-url=https://g/v1",
+            "nessy.providers.mine.api-key=k")
+        .run(
+            context -> {
+              assertThat(context).hasFailed();
+              assertThat(context.getStartupFailure())
+                  .hasStackTraceContaining("nessy.providers.mine.wire");
             });
   }
 

@@ -36,18 +36,19 @@ import org.junit.jupiter.api.Test;
  * a value read back from a built client.
  */
 @DisplayName("The OpenAI provider config's transport timeout")
-class OpenAiProviderConfigTest {
+class OpenAiChatProviderConfigTest {
 
   @Test
   void a_null_timeout_is_rejected() {
-    assertThatThrownBy(() -> OpenAiInferenceProvider.of(c -> c.apiKey("test-key").timeout(null)))
+    assertThatThrownBy(
+            () -> OpenAiChatInferenceProvider.of(c -> c.apiKey("test-key").timeout(null)))
         .isInstanceOf(NullPointerException.class);
   }
 
   @Test
   void a_zero_timeout_is_rejected() {
     assertThatThrownBy(
-            () -> OpenAiInferenceProvider.of(c -> c.apiKey("test-key").timeout(Duration.ZERO)))
+            () -> OpenAiChatInferenceProvider.of(c -> c.apiKey("test-key").timeout(Duration.ZERO)))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -55,15 +56,15 @@ class OpenAiProviderConfigTest {
   void a_negative_timeout_is_rejected() {
     assertThatThrownBy(
             () ->
-                OpenAiInferenceProvider.of(
+                OpenAiChatInferenceProvider.of(
                     c -> c.apiKey("test-key").timeout(Duration.ofSeconds(-1))))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void a_positive_timeout_builds_a_provider_that_closes_its_own_client() {
-    OpenAiInferenceProvider provider =
-        OpenAiInferenceProvider.of(c -> c.apiKey("test-key").timeout(Duration.ofMinutes(6)));
+    OpenAiChatInferenceProvider provider =
+        OpenAiChatInferenceProvider.of(c -> c.apiKey("test-key").timeout(Duration.ofMinutes(6)));
 
     assertThat(provider.name()).isEqualTo("OpenAI");
     assertThatCode(provider::close).doesNotThrowAnyException();
@@ -73,7 +74,7 @@ class OpenAiProviderConfigTest {
   void a_timeout_applies_on_the_from_env_build_path_too() {
     assertThatCode(
             () ->
-                OpenAiInferenceProvider.of(
+                OpenAiChatInferenceProvider.of(
                         c -> c.fromEnv().apiKey("explicit").timeout(Duration.ofMinutes(6)))
                     .close())
         .doesNotThrowAnyException();
@@ -84,8 +85,8 @@ class OpenAiProviderConfigTest {
     AtomicInteger closes = new AtomicInteger();
     OpenAIClient supplied = recordingClient(closes);
 
-    OpenAiInferenceProvider provider =
-        OpenAiInferenceProvider.of(c -> c.client(supplied).timeout(Duration.ofMinutes(6)));
+    OpenAiChatInferenceProvider provider =
+        OpenAiChatInferenceProvider.of(c -> c.client(supplied).timeout(Duration.ofMinutes(6)));
     provider.close();
 
     assertThat(closes).hasValue(0);
