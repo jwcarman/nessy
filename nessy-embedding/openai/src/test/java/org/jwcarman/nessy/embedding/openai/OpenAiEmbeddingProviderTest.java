@@ -35,20 +35,27 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 
 @DisplayName("The OpenAI embedder")
 class OpenAiEmbeddingProviderTest {
+
+  private static final ProviderId OPENAI = ProviderId.of("openai");
 
   /**
    * An embedder over a provider, which is how one is made: the connection is the provider's, the
    * model is the caller's.
    */
   private static Embedder embedderOver(Customizer<OpenAiEmbedderConfig> connection) {
-    return new DefaultEmbedderFactory(
-            OpenAiEmbeddingProvider.of(connection), OpenAiEmbedderConfig.DEFAULT_MODEL)
+    OpenAiEmbeddingProvider provider = OpenAiEmbeddingProvider.of(connection);
+    return DefaultEmbedderFactory.of(
+            f ->
+                f.provider(OPENAI, provider)
+                    .embedding(OPENAI, EmbeddingOptions.of(OpenAiEmbedderConfig.DEFAULT_MODEL)))
         .create(c -> {});
   }
 
@@ -154,23 +161,24 @@ class OpenAiEmbeddingProviderTest {
     @Test
     void a_model_and_a_dimension_asked_for_are_sent_and_reported() {
       AtomicReference<EmbeddingCreateParams> sent = new AtomicReference<>();
+      OpenAiEmbeddingProvider provider =
+          OpenAiEmbeddingProvider.of(
+              c ->
+                  c.client(
+                      fakeClient(
+                          params -> {
+                            sent.set(params);
+                            return reply(item(0, 1f, 2f));
+                          },
+                          new AtomicBoolean())));
       Embedder embedder =
-          new DefaultEmbedderFactory(
-                  OpenAiEmbeddingProvider.of(
-                      c ->
-                          c.client(
-                              fakeClient(
-                                  params -> {
-                                    sent.set(params);
-                                    return reply(item(0, 1f));
-                                  },
-                                  new AtomicBoolean()))))
-              .create(c -> c.model("text-embedding-3-large").dimension(256));
+          DefaultEmbedderFactory.of(f -> f.provider(OPENAI, provider))
+              .create(c -> c.provider(OPENAI).model("text-embedding-3-large").dimension(2));
 
       assertThat(embedder.model()).isEqualTo("text-embedding-3-large");
-      assertThat(embedder.dimension()).isEqualTo(256);
+      assertThat(embedder.dimension()).isEqualTo(2);
       embedder.embedDocument("x");
-      assertThat(sent.get().dimensions()).contains(256L);
+      assertThat(sent.get().dimensions()).contains(2L);
     }
 
     @Test

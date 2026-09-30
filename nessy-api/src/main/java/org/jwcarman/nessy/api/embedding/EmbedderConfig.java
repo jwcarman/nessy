@@ -15,15 +15,29 @@
  */
 package org.jwcarman.nessy.api.embedding;
 
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.VendorProperty;
 
 /**
  * What varies between one embedder and the next.
  *
- * <p>Which model, and how many coordinates it should produce. The connection is the factory's, and
- * is not a decision anybody makes twice.
+ * <p>Which registered provider makes the vectors, which model, how many coordinates, and any vendor
+ * properties. The connections are the factory's, registered once under the names a store asks for
+ * them by.
  */
 public interface EmbedderConfig {
+
+  /**
+   * Which of the factory's embedding providers makes the vectors. Defaults to the factory's; an
+   * embedder that names none, made by a factory with no default, fails when it is made, listing
+   * what is registered.
+   */
+  EmbedderConfig provider(ProviderId id);
+
+  /** {@link #provider(ProviderId)}, by name. */
+  default EmbedderConfig provider(String id) {
+    return provider(ProviderId.of(id));
+  }
 
   /**
    * Which model turns text into vectors.

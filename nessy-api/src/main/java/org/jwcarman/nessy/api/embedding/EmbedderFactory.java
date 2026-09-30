@@ -18,11 +18,13 @@ package org.jwcarman.nessy.api.embedding;
 import org.jwcarman.nessy.api.Customizer;
 
 /**
- * Makes embedders that share a connection.
+ * Makes embedders over the embedding providers it holds by name.
  *
- * <p>One vendor, one set of credentials, and as many embedders over them as there are stores. A
- * notebook and an episode log can be keyed on different models without either of them owning a
- * client, which is what makes changing one a change to that store rather than to the application.
+ * <p>Each provider is one connection, registered once; a store names the provider and the model it
+ * wants, or takes the factory's defaults, and gets an embedder of its own. A notebook and an
+ * episode log can be keyed on different models -- from different vendors -- without either of them
+ * owning a client, which is what makes changing one a change to that store rather than to the
+ * application.
  */
 @FunctionalInterface
 public interface EmbedderFactory {

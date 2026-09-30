@@ -22,8 +22,10 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 
 /**
@@ -39,12 +41,21 @@ class OpenAiEmbedderLiveTest {
   private static final String MODEL =
       System.getenv().getOrDefault("NESSY_EMBEDDING_MODEL", OpenAiEmbedderConfig.DEFAULT_MODEL);
 
+  private static final ProviderId OPENAI = ProviderId.of("openai");
+
+  /** An embedder over a provider: the connection is the provider's, the model the caller's. */
+  private static Embedder embedderOver(OpenAiEmbeddingProvider provider, String model) {
+    return DefaultEmbedderFactory.of(
+            f -> f.provider(OPENAI, provider).embedding(OPENAI, EmbeddingOptions.of(model)))
+        .create(c -> {});
+  }
+
   @Test
   void near_texts_are_nearer_than_far_ones() {
     assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY is not set");
     try (OpenAiEmbeddingProvider provider =
         OpenAiEmbeddingProvider.of(OpenAiEmbedderConfig::fromEnv)) {
-      Embedder embedder = new DefaultEmbedderFactory(provider, MODEL).create(c -> {});
+      Embedder embedder = embedderOver(provider, MODEL);
 
       List<Embedding> embeddings =
           embedder.embedDocuments(

@@ -19,11 +19,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.List;
+import java.util.OptionalInt;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 
 /** Against the Gemini Developer API. Tagged {@code live}; needs {@code GEMINI_API_KEY}. */
@@ -33,9 +36,19 @@ class GeminiEmbedderLiveTest {
 
   private static final String MODEL = GeminiEmbedderConfig.DEFAULT_MODEL;
 
-  /** An embedder over a provider: the connection is the provider's, the model the caller's. */
-  private static Embedder embedderOver(GeminiEmbeddingProvider provider, String model) {
-    return new DefaultEmbedderFactory(provider, model).create(c -> {});
+  private static final ProviderId GEMINI = ProviderId.of("gemini");
+
+  /**
+   * An embedder over a provider: the connection is the provider's, the model and width the
+   * caller's.
+   */
+  private static Embedder embedderOver(
+      GeminiEmbeddingProvider provider, String model, int dimension) {
+    return DefaultEmbedderFactory.of(
+            f ->
+                f.provider(GEMINI, provider)
+                    .embedding(GEMINI, new EmbeddingOptions(model, OptionalInt.of(dimension))))
+        .create(c -> {});
   }
 
   @Test
@@ -45,7 +58,7 @@ class GeminiEmbedderLiveTest {
         "GEMINI_API_KEY is not set");
     try (GeminiEmbeddingProvider provider =
         GeminiEmbeddingProvider.of(c -> c.fromEnv().dimension(768))) {
-      Embedder embedder = embedderOver(provider, MODEL);
+      Embedder embedder = embedderOver(provider, MODEL, 768);
       List<Embedding> embeddings =
           embedder.embedDocuments(
               List.of(

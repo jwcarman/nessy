@@ -15,71 +15,116 @@
  */
 package org.jwcarman.nessy.engine.embedding;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalInt;
+import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderConfig;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.embedding.EmbeddingProvider;
+import org.jwcarman.nessy.engine.observability.ObservedEmbedder;
 
 /**
- * Embedders over one connection, one per model.
+ * Embedders over the embedding providers an application registered by name.
  *
  * <p>The only implementation there needs to be, because nothing here is a vendor's business: the
- * connection is the provider's and the model is the caller's. A harness factory is this same shape
- * over an inference provider, for the same reason.
+ * connections are the providers' and the model is the store's. A store's provider is resolved
+ * exactly once, when its embedder is made; nothing downstream of that sees an id. Every embedder is
+ * handed out observed, so an application that gives the factory a registry gets spans without
+ * knowing the wrapper's name.
  */
 public final class DefaultEmbedderFactory implements EmbedderFactory {
 
-  private final EmbeddingProvider provider;
-  private final String defaultModel;
-  private final OptionalInt defaultDimension;
+  private final Map<ProviderId, EmbeddingProvider> providers;
+  private final @Nullable ProviderId defaultProvider;
+  private final @Nullable EmbeddingOptions defaultOptions;
+  private final ObservationRegistry observations;
+
+  private DefaultEmbedderFactory(EmbedderFactoryConfig config) {
+    this.providers = config.providers();
+    this.defaultProvider = config.defaultProvider();
+    this.defaultOptions = config.defaultOptions();
+    this.observations = config.observations();
+  }
 
   /**
-   * @param defaultModel what an embedder gets when it names none; null to require one, which is the
-   *     honest setting when no model is obviously right
-   * @param defaultDimension how wide an embedder's vectors are when it asks for no width; empty
-   *     leaves it to the model, which is what most of them want. A store's index is sized by this,
-   *     so a connection that has decided on a width says it once here rather than at every embedder
-   *     that must agree with the others.
+   * One factory, from every customizer that has something to say about it, in order, each adding to
+   * the same config before anything is built from it.
    */
-  public DefaultEmbedderFactory(
-      EmbeddingProvider provider, String defaultModel, OptionalInt defaultDimension) {
-    this.provider = Objects.requireNonNull(provider, "provider must not be null");
-    this.defaultModel = defaultModel;
-    this.defaultDimension =
-        Objects.requireNonNull(defaultDimension, "defaultDimension must not be null");
+  public static DefaultEmbedderFactory of(List<Customizer<EmbedderFactoryConfig>> customizers) {
+    Objects.requireNonNull(customizers, "customizers must not be null");
+    EmbedderFactoryConfig config = new EmbedderFactoryConfig();
+    customizers.forEach(customizer -> customizer.customize(config));
+    return new DefaultEmbedderFactory(config);
   }
 
-  /** A connection with a default model and no opinion about width. */
-  public DefaultEmbedderFactory(EmbeddingProvider provider, String defaultModel) {
-    this(provider, defaultModel, OptionalInt.empty());
+  /** One customizer, for a caller that is not a container. */
+  public static DefaultEmbedderFactory of(Customizer<EmbedderFactoryConfig> customizer) {
+    return of(List.of(Objects.requireNonNull(customizer, "customizer must not be null")));
   }
 
-  /** Every embedder names its own model. */
-  public DefaultEmbedderFactory(EmbeddingProvider provider) {
-    this(provider, null);
-  }
-
+  /**
+   * Resolves the provider, then the model, asks the provider whether it can honour the terms, and
+   * mints an observed embedder. Every failure happens here, where a store is built, rather than at
+   * its first write.
+   */
   @Override
   public Embedder create(Customizer<EmbedderConfig> customizer) {
     Objects.requireNonNull(customizer, "customizer must not be null");
     Settings settings = new Settings();
     customizer.customize(settings);
+    EmbeddingProvider provider = resolve(settings.provider);
     EmbeddingOptions options = settings.options();
     provider.validate(options);
-    return new DefaultEmbedder(provider, options);
+    return ObservedEmbedder.wrap(new DefaultEmbedder(provider, options), observations);
   }
 
+  private EmbeddingProvider resolve(@Nullable ProviderId named) {
+    if (named == null) {
+      throw new IllegalStateException(
+          "an embedder names no provider and the factory has no default; registered: "
+              + registered());
+    }
+    EmbeddingProvider provider = providers.get(named);
+    if (provider == null) {
+      throw new IllegalStateException(
+          "an embedder names provider '"
+              + named.value()
+              + "', which is not registered; registered: "
+              + registered());
+    }
+    return provider;
+  }
+
+  private String registered() {
+    return providers.keySet().stream()
+        .map(ProviderId::value)
+        .collect(Collectors.joining(", ", "[", "]"));
+  }
+
+  /** One store's say, seeded field by field from the factory's defaults. */
   private final class Settings implements EmbedderConfig {
 
-    private String model = defaultModel;
-    private OptionalInt dimension = defaultDimension;
-    private final Map<String, String> properties = new LinkedHashMap<>();
+    private @Nullable ProviderId provider = defaultProvider;
+    private @Nullable String model = defaultOptions == null ? null : defaultOptions.modelName();
+    private OptionalInt dimension =
+        defaultOptions == null ? OptionalInt.empty() : defaultOptions.dimension();
+    private final Map<String, String> properties =
+        new LinkedHashMap<>(defaultOptions == null ? Map.of() : defaultOptions.properties());
+
+    @Override
+    public EmbedderConfig provider(ProviderId id) {
+      this.provider = Objects.requireNonNull(id, "id must not be null");
+      return this;
+    }
 
     @Override
     public EmbedderConfig model(String model) {
@@ -108,11 +153,11 @@ public final class DefaultEmbedderFactory implements EmbedderFactory {
     }
 
     private EmbeddingOptions options() {
-      return new EmbeddingOptions(
-          Objects.requireNonNull(
-              model, "an embedder needs a model: model(...), or a factory default"),
-          dimension,
-          properties);
+      if (model == null) {
+        throw new IllegalStateException(
+            "an embedder needs a model: model(...), or a factory default");
+      }
+      return new EmbeddingOptions(model, dimension, properties);
     }
   }
 }

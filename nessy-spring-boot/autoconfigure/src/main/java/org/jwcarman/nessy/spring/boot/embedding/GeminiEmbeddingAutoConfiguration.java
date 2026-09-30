@@ -17,12 +17,13 @@ package org.jwcarman.nessy.spring.boot.embedding;
 
 import io.micrometer.observation.ObservationRegistry;
 import java.util.OptionalInt;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.embedding.EmbedderFactory;
+import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.embedding.EmbeddingProvider;
 import org.jwcarman.nessy.embedding.gemini.GeminiEmbedderConfig;
 import org.jwcarman.nessy.embedding.gemini.GeminiEmbeddingProvider;
 import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
-import org.jwcarman.nessy.engine.observability.ObservedEmbedder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -63,6 +64,7 @@ public class GeminiEmbeddingAutoConfiguration {
       String apiKey, String model, String dimension, ObservationRegistry observations) {
     GeminiEmbeddingProvider provider = GeminiEmbeddingProvider.of(c -> c.apiKey(apiKey));
     return factory(
+        "<built-in function id>",
         provider,
         EmbeddingModels.modelOr(model, GeminiEmbedderConfig.DEFAULT_MODEL),
         EmbeddingModels.dimensionOr(dimension, provider.defaultDimension()),
@@ -70,18 +72,20 @@ public class GeminiEmbeddingAutoConfiguration {
   }
 
   /**
-   * Embedders over one connection, each one watched.
-   *
-   * <p>Wrapped as they are minted rather than the provider being wrapped once, because what a
-   * report wants to say is which model was asked and how wide its vectors are -- facts of the
-   * embedder rather than of the connection behind it.
+   * Embedders over one connection, registered under the vendor's id with the configured model as
+   * the default; the factory wraps every embedder it mints.
    */
   private static EmbedderFactory factory(
+      String id,
       EmbeddingProvider provider,
       String model,
       OptionalInt dimension,
       ObservationRegistry observations) {
-    EmbedderFactory embedders = new DefaultEmbedderFactory(provider, model, dimension);
-    return customizer -> ObservedEmbedder.wrap(embedders.create(customizer), observations);
+    ProviderId providerId = ProviderId.of(id);
+    return DefaultEmbedderFactory.of(
+        f ->
+            f.provider(providerId, provider)
+                .embedding(providerId, new EmbeddingOptions(model, dimension))
+                .observations(observations));
   }
 }

@@ -83,7 +83,24 @@ final class DefaultEmbedder implements Embedder {
     return embedding;
   }
 
+  /**
+   * Checks every vector against the width asked for, and learns the width when none was.
+   *
+   * <p>A server that ignores the width it is asked for answers at its model's own, and a store that
+   * sized an index from {@link #dimension()} would fill it with vectors of the wrong shape. So a
+   * difference fails here, on every reply rather than the first: the check is one comparison per
+   * vector, and what it prevents is an index nothing can rank.
+   */
   private List<Embedding> learn(List<Embedding> embeddings) {
+    int asked = options.dimension().orElse(0);
+    if (asked > 0) {
+      for (Embedding embedding : embeddings) {
+        if (embedding.dimension() != asked) {
+          throw new IllegalStateException(
+              "asked for " + asked + " coordinates, the model returned " + embedding.dimension());
+        }
+      }
+    }
     if (dimension == 0 && !embeddings.isEmpty()) {
       dimension = embeddings.getFirst().dimension();
     }

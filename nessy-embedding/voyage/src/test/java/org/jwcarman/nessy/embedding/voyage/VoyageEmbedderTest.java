@@ -34,8 +34,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -46,9 +48,13 @@ import tools.jackson.databind.json.JsonMapper;
 @DisplayName("The Voyage embedder")
 class VoyageEmbedderTest {
 
+  private static final ProviderId VOYAGE = ProviderId.of("voyage");
+
   /** An embedder over a provider: the connection is the provider's, the model the caller's. */
   private static Embedder embedderOver(VoyageEmbeddingProvider provider, String model) {
-    return new DefaultEmbedderFactory(provider, model).create(c -> {});
+    return DefaultEmbedderFactory.of(
+            f -> f.provider(VOYAGE, provider).embedding(VOYAGE, EmbeddingOptions.of(model)))
+        .create(c -> {});
   }
 
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
@@ -129,15 +135,16 @@ class VoyageEmbedderTest {
 
     @Test
     void a_dimension_and_an_input_type_asked_for_are_sent() {
-      answer = body -> reply(new float[] {1});
+      answer = body -> reply(new float[] {1, 0});
       try (VoyageEmbeddingProvider connection = provider(c -> c.inputType("query"))) {
         Embedder embedder =
-            new DefaultEmbedderFactory(connection, "voyage-3.5-lite").create(c -> c.dimension(512));
+            DefaultEmbedderFactory.of(f -> f.provider(VOYAGE, connection))
+                .create(c -> c.provider(VOYAGE).model("voyage-3.5-lite").dimension(2));
 
-        assertThat(embedder.dimension()).isEqualTo(512);
+        assertThat(embedder.dimension()).isEqualTo(2);
         embedder.embedDocument("x");
 
-        assertThat(received.getFirst().path("output_dimension").asInt()).isEqualTo(512);
+        assertThat(received.getFirst().path("output_dimension").asInt()).isEqualTo(2);
         assertThat(received.getFirst().path("input_type").asString()).isEqualTo("query");
         assertThat(received.getFirst().path("model").asString()).isEqualTo("voyage-3.5-lite");
       }

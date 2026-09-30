@@ -18,6 +18,9 @@ package org.jwcarman.nessy.engine.embedding;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.micrometer.observation.ObservationRegistry;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
@@ -25,43 +28,67 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.VendorProperty;
+import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.EmbedderConfig;
 import org.jwcarman.nessy.api.embedding.Embedding;
 import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.embedding.EmbeddingProvider;
+import org.jwcarman.nessy.engine.observability.ObservedEmbedder;
 
 /**
- * What a connection decides once, and what an embedder decides for itself.
+ * Which provider a store's embedder is minted over, what it is asked with, and what comes back.
  *
- * <p>A store's index is sized by a width, so every embedder writing into it has to agree on one.
- * Saying it per embedder means every caller remembering; saying it per connection means saying it
- * where the connection is built. The connection-level width existed as a setter that was never read
- * -- a caller set it and got silence -- which is why these assert on what reaches the provider
- * rather than on what the config holds.
+ * <p>A store names a provider and a model, or takes the factory's defaults; either way the provider
+ * is resolved once, when the embedder is made, and a width asked for is a width received.
  */
-@DisplayName("Embedders over one connection")
+@DisplayName("Embedders over named providers")
 class DefaultEmbedderFactoryTest {
 
-  /** Remembers the options it was asked with, which is the whole of what is under test. */
+  private static final ProviderId OPENAI = ProviderId.of("openai");
+  private static final ProviderId VOYAGE = ProviderId.of("voyage");
+
+  /**
+   * Remembers what it was asked and validated. Answers with vectors as wide as it was asked for, or
+   * three wide when asked for no width -- unless given a fixed width, which it answers with
+   * whatever it was asked, as a server that ignores {@code dimensions} does.
+   */
   private static final class Asked implements EmbeddingProvider {
-    final AtomicReference<EmbeddingOptions> options = new AtomicReference<>();
+    final AtomicReference<EmbeddingOptions> lastAsked = new AtomicReference<>();
+    final List<EmbeddingOptions> validated = new ArrayList<>();
+    private final String vendor;
+    private final int fixedWidth;
+
+    Asked() {
+      this("asked", 0);
+    }
+
+    Asked(String vendor, int fixedWidth) {
+      this.vendor = vendor;
+      this.fixedWidth = fixedWidth;
+    }
+
+    private Embedding answer(EmbeddingOptions asked) {
+      lastAsked.set(asked);
+      float[] vector = new float[fixedWidth > 0 ? fixedWidth : asked.dimension().orElse(3)];
+      Arrays.fill(vector, 1f);
+      return new Embedding(asked.modelName(), vector);
+    }
 
     @Override
     public List<Embedding> embedDocuments(List<String> texts, EmbeddingOptions options) {
-      this.options.set(options);
-      return texts.stream().map(text -> new Embedding("m", new float[] {1f})).toList();
+      return texts.stream().map(text -> answer(options)).toList();
     }
 
     @Override
     public Embedding embedQuery(String query, EmbeddingOptions options) {
-      this.options.set(options);
-      return new Embedding("m", new float[] {1f});
+      return answer(options);
     }
 
     @Override
     public String vendor() {
-      return "asked";
+      return vendor;
     }
 
     @Override
@@ -69,75 +96,321 @@ class DefaultEmbedderFactoryTest {
       if (options.properties().containsKey("test.model")) {
         throw new IllegalArgumentException("property 'test.model' is refused");
       }
+      validated.add(options);
     }
   }
 
+  /** Answers a batch of two with a vector two wide, then one three wide: a mixed reply. */
+  private static final class Mixed implements EmbeddingProvider {
+    @Override
+    public List<Embedding> embedDocuments(List<String> texts, EmbeddingOptions options) {
+      return List.of(
+          new Embedding(options.modelName(), new float[] {1f, 1f}),
+          new Embedding(options.modelName(), new float[] {1f, 1f, 1f}));
+    }
+
+    @Override
+    public Embedding embedQuery(String query, EmbeddingOptions options) {
+      return new Embedding(options.modelName(), new float[] {1f, 1f});
+    }
+
+    @Override
+    public String vendor() {
+      return "mixed";
+    }
+  }
+
+  /** One provider, registered as {@code openai}, and the factory's default on it. */
+  private static DefaultEmbedderFactory over(Asked provider, EmbeddingOptions defaults) {
+    return DefaultEmbedderFactory.of(f -> f.provider(OPENAI, provider).embedding(OPENAI, defaults));
+  }
+
+  // ---- widths ---------------------------------------------------------------------------
+
   @Test
-  @DisplayName("inherit the connection's width when they ask for none")
-  void inherit_the_connections_width() {
+  void inherit_the_factory_default_width_when_they_ask_for_none() {
     Asked provider = new Asked();
-    new DefaultEmbedderFactory(provider, "a-model", OptionalInt.of(1024))
+    over(provider, new EmbeddingOptions("a-model", OptionalInt.of(1024)))
         .create(c -> {})
         .embedDocument("anything");
 
-    assertThat(provider.options.get().dimension()).hasValue(1024);
-    assertThat(provider.options.get().modelName()).isEqualTo("a-model");
+    assertThat(provider.lastAsked.get().dimension()).hasValue(1024);
+    assertThat(provider.lastAsked.get().modelName()).isEqualTo("a-model");
   }
 
   @Test
-  @DisplayName("keep their own width when they ask for one")
-  void keep_their_own_width() {
+  void keep_their_own_width_when_they_ask_for_one() {
     Asked provider = new Asked();
-    new DefaultEmbedderFactory(provider, "a-model", OptionalInt.of(1024))
+    over(provider, new EmbeddingOptions("a-model", OptionalInt.of(1024)))
         .create(c -> c.dimension(256))
         .embedDocument("anything");
 
-    assertThat(provider.options.get().dimension()).hasValue(256);
+    assertThat(provider.lastAsked.get().dimension()).hasValue(256);
   }
 
-  /** A connection with no opinion leaves the width to the model, which is most of them. */
+  /** A factory with no opinion leaves the width to the model, which is most of them. */
   @Test
-  @DisplayName("ask for no width when neither the connection nor the embedder named one")
-  void ask_for_no_width_when_nobody_named_one() {
+  void ask_for_no_width_when_neither_the_factory_nor_the_embedder_named_one() {
     Asked provider = new Asked();
-    new DefaultEmbedderFactory(provider, "a-model").create(c -> {}).embedDocument("anything");
+    over(provider, EmbeddingOptions.of("a-model")).create(c -> {}).embedDocument("anything");
 
-    assertThat(provider.options.get().dimension()).isEmpty();
+    assertThat(provider.lastAsked.get().dimension()).isEmpty();
   }
 
+  // ---- properties (VP Task 2's two cases, on the new construction) ------------------------
+
   @Test
-  @DisplayName("carry their properties to the provider")
   void carry_their_properties_to_the_provider() {
     Asked provider = new Asked();
-    new DefaultEmbedderFactory(provider, "a-model")
+    over(provider, EmbeddingOptions.of("a-model"))
         .create(c -> c.property("voyage.truncation", "false"))
         .embedDocument("anything");
 
-    assertThat(provider.options.get().properties())
+    assertThat(provider.lastAsked.get().properties())
         .containsExactly(Map.entry("voyage.truncation", "false"));
   }
 
   @Test
-  @DisplayName("carry a typed property as the text the string form carries")
   void carry_a_typed_property_as_the_text_the_string_form_carries() {
     Asked provider = new Asked();
     VendorProperty<Boolean> truncation = VendorProperty.ofBoolean("voyage.truncation");
-    new DefaultEmbedderFactory(provider, "a-model")
+    over(provider, EmbeddingOptions.of("a-model"))
         .create(c -> c.property(truncation, false))
         .embedDocument("anything");
 
-    assertThat(provider.options.get().properties())
+    assertThat(provider.lastAsked.get().properties())
         .containsExactly(Map.entry("voyage.truncation", "false"));
   }
 
   @Test
-  @DisplayName("are refused when the provider refuses their terms")
   void are_refused_when_the_provider_refuses_their_terms() {
-    DefaultEmbedderFactory factory = new DefaultEmbedderFactory(new Asked(), "a-model");
+    DefaultEmbedderFactory factory = over(new Asked(), EmbeddingOptions.of("a-model"));
     Customizer<EmbedderConfig> refused = c -> c.property("test.model", "x");
 
     assertThatThrownBy(() -> factory.create(refused))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("property 'test.model' is refused");
+  }
+
+  @Test
+  void the_factory_default_properties_seed_every_embedder() {
+    Asked provider = new Asked();
+    over(provider, new EmbeddingOptions("a-model", OptionalInt.empty(), Map.of("x.a", "1")))
+        .create(c -> c.property("x.b", "2"))
+        .embedDocument("anything");
+
+    assertThat(provider.lastAsked.get().properties()).containsOnlyKeys("x.a", "x.b");
+  }
+
+  // ---- which provider ---------------------------------------------------------------------
+
+  @Test
+  void a_store_that_names_a_registered_provider_gets_that_one() {
+    Asked openai = new Asked("openai", 0);
+    Asked voyage = new Asked("voyage", 0);
+    DefaultEmbedderFactory factory =
+        DefaultEmbedderFactory.of(
+            f ->
+                f.provider(OPENAI, openai)
+                    .provider(VOYAGE, voyage)
+                    .embedding(OPENAI, EmbeddingOptions.of("text-embedding-3-small")));
+
+    Embedder embedder = factory.create(c -> c.provider("voyage").model("voyage-3.5"));
+    embedder.embedDocument("anything");
+
+    assertThat(embedder.vendor()).isEqualTo("voyage");
+    assertThat(voyage.lastAsked.get().modelName()).isEqualTo("voyage-3.5");
+    assertThat(openai.lastAsked.get()).isNull();
+  }
+
+  @Test
+  void a_store_that_names_nothing_gets_the_factory_default() {
+    Asked openai = new Asked("openai", 0);
+    Asked voyage = new Asked("voyage", 0);
+    DefaultEmbedderFactory factory =
+        DefaultEmbedderFactory.of(
+            f ->
+                f.provider(OPENAI, openai)
+                    .provider(VOYAGE, voyage)
+                    .embedding(VOYAGE, EmbeddingOptions.of("voyage-3.5")));
+
+    Embedder embedder = factory.create(c -> {});
+    embedder.embedDocument("anything");
+
+    assertThat(embedder.vendor()).isEqualTo("voyage");
+    assertThat(embedder.model()).isEqualTo("voyage-3.5");
+    assertThat(openai.lastAsked.get()).isNull();
+  }
+
+  /** Plan ruling 4: the defaults seed each field on its own, as an agent type's do. */
+  @Test
+  void a_store_naming_only_a_provider_keeps_the_default_model() {
+    Asked openai = new Asked("openai", 0);
+    Asked voyage = new Asked("voyage", 0);
+    DefaultEmbedderFactory factory =
+        DefaultEmbedderFactory.of(
+            f ->
+                f.provider(OPENAI, openai)
+                    .provider(VOYAGE, voyage)
+                    .embedding(OPENAI, EmbeddingOptions.of("a-model")));
+
+    factory.create(c -> c.provider(VOYAGE)).embedDocument("anything");
+
+    assertThat(voyage.lastAsked.get().modelName()).isEqualTo("a-model");
+  }
+
+  @Test
+  void a_store_naming_an_unknown_provider_fails_listing_every_registered_one() {
+    DefaultEmbedderFactory factory =
+        DefaultEmbedderFactory.of(
+            f -> f.provider(OPENAI, new Asked()).provider(VOYAGE, new Asked()));
+    Customizer<EmbedderConfig> cohere = c -> c.provider("cohere").model("embed-v4");
+
+    assertThatThrownBy(() -> factory.create(cohere))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage(
+            "an embedder names provider 'cohere', which is not registered; registered: [openai,"
+                + " voyage]");
+  }
+
+  @Test
+  void
+      a_store_naming_no_provider_from_a_factory_with_no_default_fails_listing_what_is_registered() {
+    DefaultEmbedderFactory factory =
+        DefaultEmbedderFactory.of(
+            f -> f.provider(OPENAI, new Asked()).provider(VOYAGE, new Asked()));
+    Customizer<EmbedderConfig> modelOnly = c -> c.model("a-model");
+
+    assertThatThrownBy(() -> factory.create(modelOnly))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage(
+            "an embedder names no provider and the factory has no default; registered: [openai,"
+                + " voyage]");
+  }
+
+  @Test
+  void a_factory_with_nothing_registered_says_so() {
+    DefaultEmbedderFactory factory = DefaultEmbedderFactory.of(f -> {});
+    Customizer<EmbedderConfig> nothing = c -> {};
+
+    assertThatThrownBy(() -> factory.create(nothing))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("an embedder names no provider and the factory has no default; registered: []");
+  }
+
+  @Test
+  void a_store_naming_no_model_from_a_factory_with_no_default_fails() {
+    DefaultEmbedderFactory factory =
+        DefaultEmbedderFactory.of(f -> f.provider(OPENAI, new Asked()));
+    Customizer<EmbedderConfig> providerOnly = c -> c.provider(OPENAI);
+
+    assertThatThrownBy(() -> factory.create(providerOnly))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("an embedder needs a model: model(...), or a factory default");
+  }
+
+  @Test
+  void registering_one_id_twice_fails_at_registration() {
+    Asked first = new Asked();
+    Asked second = new Asked();
+    Customizer<EmbedderFactoryConfig> twice =
+        f -> f.provider(OPENAI, first).provider(OPENAI, second);
+
+    assertThatThrownBy(() -> DefaultEmbedderFactory.of(twice))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("embedding provider 'openai' is already registered");
+  }
+
+  @Test
+  void two_stores_on_one_id_share_the_provider_and_have_their_own_wrappers() {
+    Asked provider = new Asked();
+    DefaultEmbedderFactory factory = over(provider, EmbeddingOptions.of("a-model"));
+
+    Embedder notes = factory.create(c -> c.model("small"));
+    Embedder episodes = factory.create(c -> c.model("large"));
+    notes.embedDocument("a");
+    String askedFirst = provider.lastAsked.get().modelName();
+    episodes.embedDocument("b");
+
+    assertThat(notes).isNotSameAs(episodes);
+    assertThat(notes).isInstanceOf(ObservedEmbedder.class);
+    assertThat(episodes).isInstanceOf(ObservedEmbedder.class);
+    assertThat(askedFirst).isEqualTo("small");
+    assertThat(provider.lastAsked.get().modelName()).isEqualTo("large");
+  }
+
+  // ---- validate, and the wrap -----------------------------------------------------------
+
+  @Test
+  void validate_is_asked_with_the_resolved_options_before_anything_is_embedded() {
+    Asked provider = new Asked();
+    over(provider, EmbeddingOptions.of("a-model")).create(c -> c.dimension(8));
+
+    assertThat(provider.validated)
+        .containsExactly(new EmbeddingOptions("a-model", OptionalInt.of(8), Map.of()));
+    assertThat(provider.lastAsked.get()).isNull();
+  }
+
+  @Test
+  void with_a_registry_every_embedder_is_observed() {
+    DefaultEmbedderFactory factory =
+        DefaultEmbedderFactory.of(
+            f ->
+                f.provider(OPENAI, new Asked())
+                    .embedding(OPENAI, EmbeddingOptions.of("a-model"))
+                    .observations(ObservationRegistry.create()));
+
+    assertThat(factory.create(c -> {})).isInstanceOf(ObservedEmbedder.class);
+  }
+
+  /** Observed either way: with nothing configured the registry is the no-op one. */
+  @Test
+  void without_one_every_embedder_is_still_observed() {
+    assertThat(over(new Asked(), EmbeddingOptions.of("a-model")).create(c -> {}))
+        .isInstanceOf(ObservedEmbedder.class);
+  }
+
+  // ---- a width asked for is a width received (§5f) ---------------------------------------
+
+  @Test
+  void a_width_asked_for_and_not_received_fails_naming_both_on_every_call() {
+    Asked server = new Asked("lmstudio", 768);
+    Embedder embedder =
+        over(server, new EmbeddingOptions("nomic", OptionalInt.of(256))).create(c -> {});
+    List<String> one = List.of("a lake monster");
+
+    assertThatThrownBy(() -> embedder.embedDocuments(one))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("asked for 256 coordinates, the model returned 768");
+    assertThatThrownBy(() -> embedder.embedQuery("where does it live"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("asked for 256 coordinates, the model returned 768");
+  }
+
+  @Test
+  void an_embedder_that_asked_for_no_width_learns_the_model_s() {
+    Embedder embedder =
+        over(new Asked("lmstudio", 768), EmbeddingOptions.of("nomic")).create(c -> {});
+
+    assertThat(embedder.dimension()).isZero();
+    embedder.embedDocument("a lake monster");
+
+    assertThat(embedder.dimension()).isEqualTo(768);
+  }
+
+  /** Review Focus 4: every vector in a reply is checked, not the first alone. */
+  @Test
+  void a_batch_with_one_vector_of_the_wrong_width_fails() {
+    Embedder embedder =
+        DefaultEmbedderFactory.of(
+                f ->
+                    f.provider(OPENAI, new Mixed())
+                        .embedding(OPENAI, new EmbeddingOptions("m", OptionalInt.of(2))))
+            .create(c -> {});
+    List<String> two = List.of("a", "b");
+
+    assertThatThrownBy(() -> embedder.embedDocuments(two))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("asked for 2 coordinates, the model returned 3");
   }
 }

@@ -22,8 +22,10 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 
 /** Against Voyage AI. Tagged {@code live}; needs {@code VOYAGE_API_KEY}. */
@@ -31,9 +33,13 @@ import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 @DisplayName("The Voyage embedder, live")
 class VoyageEmbedderLiveTest {
 
+  private static final ProviderId VOYAGE = ProviderId.of("voyage");
+
   /** An embedder over a provider: the connection is the provider's, the model the caller's. */
   private static Embedder embedderOver(VoyageEmbeddingProvider provider, String model) {
-    return new DefaultEmbedderFactory(provider, model).create(c -> {});
+    return DefaultEmbedderFactory.of(
+            f -> f.provider(VOYAGE, provider).embedding(VOYAGE, EmbeddingOptions.of(model)))
+        .create(c -> {});
   }
 
   @Test

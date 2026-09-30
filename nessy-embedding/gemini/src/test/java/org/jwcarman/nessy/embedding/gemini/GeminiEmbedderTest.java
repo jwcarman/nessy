@@ -31,16 +31,22 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 
 @DisplayName("The Gemini embedder")
 class GeminiEmbedderTest {
 
+  private static final ProviderId GEMINI = ProviderId.of("gemini");
+
   /** An embedder over a provider: the connection is the provider's, the model the caller's. */
   private static Embedder embedderOver(GeminiEmbeddingProvider provider, String model) {
-    return new DefaultEmbedderFactory(provider, model).create(c -> {});
+    return DefaultEmbedderFactory.of(
+            f -> f.provider(GEMINI, provider).embedding(GEMINI, EmbeddingOptions.of(model)))
+        .create(c -> {});
   }
 
   private record Sent(String model, List<String> texts, EmbedContentConfig config) {}
@@ -107,18 +113,17 @@ class GeminiEmbedderTest {
     @Test
     void a_dimension_and_a_task_type_asked_for_are_sent() {
       AtomicReference<Sent> sent = new AtomicReference<>();
+      GeminiEmbeddingProvider provider =
+          new GeminiEmbeddingProvider(
+              scripted(reply(new float[] {1, 0}), sent, new AtomicBoolean()), "RETRIEVAL_QUERY");
       Embedder embedder =
-          new DefaultEmbedderFactory(
-                  new GeminiEmbeddingProvider(
-                      scripted(reply(new float[] {1}), sent, new AtomicBoolean()),
-                      "RETRIEVAL_QUERY"),
-                  "m")
-              .create(c -> c.dimension(256));
+          DefaultEmbedderFactory.of(f -> f.provider(GEMINI, provider))
+              .create(c -> c.provider(GEMINI).model("m").dimension(2));
 
-      assertThat(embedder.dimension()).isEqualTo(256);
+      assertThat(embedder.dimension()).isEqualTo(2);
       embedder.embedDocument("x");
 
-      assertThat(sent.get().config().outputDimensionality()).contains(256);
+      assertThat(sent.get().config().outputDimensionality()).contains(2);
       assertThat(sent.get().config().taskType()).contains("RETRIEVAL_QUERY");
     }
 

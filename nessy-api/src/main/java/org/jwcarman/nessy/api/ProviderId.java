@@ -16,12 +16,13 @@
 package org.jwcarman.nessy.api;
 
 /**
- * The name an application gives one of its inference providers: {@code openai}, {@code xai}, {@code
- * openai-batch}.
+ * The name an application gives one of its providers, inference or embedding: {@code openai},
+ * {@code xai}, {@code openai-batch}, {@code voyage}.
  *
  * <p>Ours, not the vendor's. Two providers can speak to the same vendor -- two OpenAI keys with
  * different quotas -- and report the same vendor to a trace, but each has its own id, and an agent
- * type names the one it wants by it.
+ * type or a store names the one it wants by it. Inference providers and embedding providers are
+ * registered in two separate registries, so one id may name one of each.
  */
 public record ProviderId(String value) {
 

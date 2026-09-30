@@ -22,8 +22,10 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 
 /**
@@ -34,9 +36,13 @@ import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 @DisplayName("The Bedrock embedder, live")
 class BedrockEmbedderLiveTest {
 
+  private static final ProviderId BEDROCK = ProviderId.of("bedrock");
+
   /** An embedder over a provider: the connection is the provider's, the model the caller's. */
   private static Embedder embedderOver(BedrockEmbeddingProvider provider, String model) {
-    return new DefaultEmbedderFactory(provider, model).create(c -> {});
+    return DefaultEmbedderFactory.of(
+            f -> f.provider(BEDROCK, provider).embedding(BEDROCK, EmbeddingOptions.of(model)))
+        .create(c -> {});
   }
 
   @Test

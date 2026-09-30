@@ -29,8 +29,10 @@ import java.util.function.Function;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.embedding.Embedder;
 import org.jwcarman.nessy.api.embedding.Embedding;
+import org.jwcarman.nessy.embedding.EmbeddingOptions;
 import org.jwcarman.nessy.engine.embedding.DefaultEmbedderFactory;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -74,11 +76,17 @@ class BedrockEmbedderTest {
     }
   }
 
+  private static final ProviderId BEDROCK = ProviderId.of("bedrock");
+
   /** An embedder over a provider: the connection is the provider's, the model the caller's. */
   private static Embedder embedder(Scripted client, String model, OptionalInt dimension) {
-    return new DefaultEmbedderFactory(
-            new BedrockEmbeddingProvider(client, "search_document", MAPPER), model)
-        .create(c -> dimension.ifPresent(c::dimension));
+    BedrockEmbeddingProvider provider =
+        new BedrockEmbeddingProvider(client, "search_document", MAPPER);
+    return DefaultEmbedderFactory.of(
+            f ->
+                f.provider(BEDROCK, provider)
+                    .embedding(BEDROCK, new EmbeddingOptions(model, dimension)))
+        .create(c -> {});
   }
 
   @Nested
@@ -103,14 +111,14 @@ class BedrockEmbedderTest {
 
     @Test
     void a_dimension_asked_for_is_sent_with_normalisation() {
-      Scripted client = new Scripted(body -> "{\"embedding\":[1]}");
-      Embedder embedder = embedder(client, "amazon.titan-embed-text-v2:0", OptionalInt.of(256));
+      Scripted client = new Scripted(body -> "{\"embedding\":[0.6,0.8]}");
+      Embedder embedder = embedder(client, "amazon.titan-embed-text-v2:0", OptionalInt.of(2));
 
       embedder.embedDocument("x");
 
-      assertThat(client.sent.getFirst().path("dimensions").asInt()).isEqualTo(256);
+      assertThat(client.sent.getFirst().path("dimensions").asInt()).isEqualTo(2);
       assertThat(client.sent.getFirst().path("normalize").asBoolean()).isTrue();
-      assertThat(embedder.dimension()).isEqualTo(256);
+      assertThat(embedder.dimension()).isEqualTo(2);
     }
 
     @Test
