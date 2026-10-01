@@ -82,6 +82,13 @@ class AnthropicRequestsTest {
     return AnthropicRequests.toParams(request(turns), NONE, MAPPER);
   }
 
+  /** A request that thinks: the setting is what makes replayed reasoning worth sending. */
+  private static final Map<String, String> THINKING = Map.of("anthropic.thinking.type", "adaptive");
+
+  private static MessageCreateParams thinkingParams(List<Turn> turns) {
+    return AnthropicRequests.toParams(request(turns), THINKING, MAPPER);
+  }
+
   private static MessageCreateParams params(List<Turn> turns, AnthropicCacheTtl ttl) {
     return AnthropicRequests.toParams(request(turns), caching(ttl), MAPPER);
   }
@@ -398,7 +405,7 @@ class AnthropicRequestsTest {
                   List.of(thinking("let me recall", "sig-abc"), new Block.Text("1412 metres"))),
               0);
 
-      var blocks = params(List.of(turn)).messages().get(1).content().asBlockParams();
+      var blocks = thinkingParams(List.of(turn)).messages().get(1).content().asBlockParams();
 
       assertThat(blocks).hasSize(2);
       assertThat(blocks.getFirst().asThinking().thinking()).isEqualTo("let me recall");
@@ -417,7 +424,7 @@ class AnthropicRequestsTest {
                   List.of(thinking("let me recall", ""), new Block.Text("1412 metres"))),
               0);
 
-      var blocks = params(List.of(turn)).messages().get(1).content().asBlockParams();
+      var blocks = thinkingParams(List.of(turn)).messages().get(1).content().asBlockParams();
 
       assertThat(blocks).hasSize(1);
       assertThat(blocks.getFirst().asText().text()).isEqualTo("1412 metres");
@@ -438,7 +445,7 @@ class AnthropicRequestsTest {
               new TurnResult.Answered(List.of(redacted, new Block.Text("1412 metres"))),
               0);
 
-      var blocks = params(List.of(turn)).messages().get(1).content().asBlockParams();
+      var blocks = thinkingParams(List.of(turn)).messages().get(1).content().asBlockParams();
 
       assertThat(blocks.getFirst().asRedactedThinking().data()).isEqualTo("opaque-bytes");
     }
@@ -462,7 +469,7 @@ class AnthropicRequestsTest {
               new TurnResult.Answered(List.of(theirs, new Block.Text("1412 metres"))),
               0);
 
-      var blocks = params(List.of(turn)).messages().get(1).content().asBlockParams();
+      var blocks = thinkingParams(List.of(turn)).messages().get(1).content().asBlockParams();
 
       assertThat(blocks).hasSize(1);
       assertThat(blocks.getFirst().asText().text()).isEqualTo("1412 metres");
@@ -481,7 +488,8 @@ class AnthropicRequestsTest {
               new TurnResult.Answered(List.of(odd, new Block.Text("1412 metres"))),
               0);
 
-      assertThat(params(List.of(turn)).messages().get(1).content().asBlockParams()).hasSize(1);
+      assertThat(thinkingParams(List.of(turn)).messages().get(1).content().asBlockParams())
+          .hasSize(1);
     }
 
     @Test
@@ -654,11 +662,19 @@ class AnthropicRequestsTest {
                   List.of(new Block.Text("1412 metres"), thinking("let me recall", "sig-abc"))),
               0);
 
-      var blocks = blocksOf(params(List.of(turn), AnthropicCacheTtl.FIVE_MINUTES));
+      var blocks =
+          blocksOf(
+              AnthropicRequests.toParams(
+                  request(List.of(turn)),
+                  Map.of(
+                      "anthropic.thinking.type", "adaptive",
+                      "anthropic.cache_control.ttl", "FIVE_MINUTES"),
+                  MAPPER));
 
+      assertThat(blocks).anyMatch(ContentBlockParam::isThinking);
+      assertThat(markedIn(blocks)).isNotEmpty();
       assertThat(markedIn(blocks))
           .allSatisfy(i -> assertThat(blocks.get(i).isThinking()).isFalse());
-      assertThat(markedIn(blocks)).isNotEmpty();
     }
   }
 
@@ -1039,6 +1055,152 @@ class AnthropicRequestsTest {
   }
 
   /**
+   * A request that does not think has no use for reasoning, and replaying it under a prefix that
+   * changed is the one thing the vendor may refuse. Summarisers are the usual case: they send an
+   * agent's turns, thinking included, under a prompt of their own and ask for no thinking.
+   */
+  @Nested
+  class WhenTheRequestDoesNotThink {
+
+    private static Turn thoughtThenAnswered() {
+      return new Turn(
+          new TurnId(1),
+          asked(1, "how deep?"),
+          List.of(),
+          new TurnResult.Answered(
+              List.of(
+                  thinking("let me recall", "sig-abc"),
+                  new Block.Text("1412 metres"),
+                  new Block.Text("at its deepest"))),
+          0);
+    }
+
+    private static Block.Provider redacted() {
+      return new Block.Provider(
+          "anthropic",
+          MAPPER.writeValueAsString(Map.of("type", "redacted_thinking", "data", "opaque-bytes")));
+    }
+
+    @Test
+    void signed_thinking_is_not_replayed_and_its_siblings_keep_their_order() {
+      var blocks =
+          params(List.of(thoughtThenAnswered())).messages().get(1).content().asBlockParams();
+
+      assertThat(blocks).hasSize(2);
+      assertThat(blocks.getFirst().asText().text()).isEqualTo("1412 metres");
+      assertThat(blocks.getLast().asText().text()).isEqualTo("at its deepest");
+    }
+
+    @Test
+    void redacted_thinking_is_not_replayed_either() {
+      Turn turn =
+          new Turn(
+              new TurnId(1),
+              asked(1, "how deep?"),
+              List.of(),
+              new TurnResult.Answered(List.of(redacted(), new Block.Text("1412 metres"))),
+              0);
+
+      var blocks = params(List.of(turn)).messages().get(1).content().asBlockParams();
+
+      assertThat(blocks).hasSize(1);
+      assertThat(blocks.getFirst().asText().text()).isEqualTo("1412 metres");
+    }
+
+    @Test
+    void an_agent_type_that_switched_thinking_off_replays_none_of_the_history() {
+      var params =
+          AnthropicRequests.toParams(
+              new InferenceRequest(
+                  SYSTEM,
+                  InferenceContext.of(List.of(thoughtThenAnswered())),
+                  Toolset.none(),
+                  new InferenceOptions(
+                      "claude-sonnet", 1024, Map.of("anthropic.thinking.type", "disabled"))),
+              THINKING,
+              MAPPER);
+
+      assertThat(params.thinking()).isEmpty();
+      assertThat(blocksOf(params)).hasSize(3).noneMatch(ContentBlockParam::isThinking);
+    }
+
+    @Test
+    void
+        the_same_turn_replays_its_thinking_with_its_signature_when_the_request_thinks_adaptively() {
+      var blocks =
+          thinkingParams(List.of(thoughtThenAnswered()))
+              .messages()
+              .get(1)
+              .content()
+              .asBlockParams();
+
+      assertThat(blocks).hasSize(3);
+      assertThat(blocks.getFirst().asThinking().thinking()).isEqualTo("let me recall");
+      assertThat(blocks.getFirst().asThinking().signature()).isEqualTo("sig-abc");
+    }
+
+    @Test
+    void the_same_turn_replays_its_thinking_with_its_signature_when_the_request_has_a_budget() {
+      var params =
+          AnthropicRequests.toParams(
+              new InferenceRequest(
+                  SYSTEM,
+                  InferenceContext.of(List.of(thoughtThenAnswered())),
+                  Toolset.none(),
+                  new InferenceOptions(
+                      "claude-sonnet", 2048, Map.of("anthropic.thinking.budget_tokens", "512"))),
+              NONE,
+              MAPPER);
+
+      var blocks = params.messages().get(1).content().asBlockParams();
+
+      assertThat(blocks).hasSize(3);
+      assertThat(blocks.getFirst().asThinking().signature()).isEqualTo("sig-abc");
+    }
+
+    /** A message of nothing is rejected by the vendor, so one left empty is not sent at all. */
+    @Test
+    void a_message_that_was_only_thinking_is_left_out_rather_than_sent_empty() {
+      Turn turn =
+          new Turn(
+              new TurnId(1),
+              asked(1, "how deep?"),
+              List.of(),
+              new TurnResult.Answered(List.of(thinking("let me recall", "sig-abc"))),
+              0);
+
+      var messages = params(List.of(turn)).messages();
+
+      assertThat(messages).hasSize(1);
+      assertThat(messages.getFirst().role()).isEqualTo(MessageParam.Role.USER);
+    }
+
+    @Test
+    void an_exchange_that_was_only_thinking_before_its_results_leaves_no_empty_message() {
+      Turn turn =
+          new Turn(
+              new TurnId(1),
+              asked(1, "how deep?"),
+              List.of(
+                  new Exchange(
+                      new Seq(2),
+                      List.of(thinking("let me recall", "sig-abc")),
+                      List.of(
+                          new ToolOutcome.Succeeded(
+                              new CallId("call_1"), List.of(new Block.Text("1412 metres")))))),
+              null,
+              0);
+
+      var messages = params(List.of(turn)).messages();
+
+      assertThat(messages).isNotEmpty();
+      assertThat(messages)
+          .allSatisfy(message -> assertThat(message.content().asBlockParams()).isNotEmpty());
+      assertThat(blocksOf(params(List.of(turn)))).noneMatch(ContentBlockParam::isThinking);
+    }
+  }
+
+  /**
    * Anthropic binds a thinking block to everything that came before it, and rejects the request
    * when that prefix has changed. Asked to, it drops the block instead and answers.
    */
@@ -1160,7 +1322,7 @@ class AnthropicRequestsTest {
     @Test
     void the_turn_in_flight_keeps_the_reasoning_it_did_before_the_call() {
       List<ContentBlockParam> asked =
-          params(List.of(afterOneLookup())).messages().get(1).content().asBlockParams();
+          thinkingParams(List.of(afterOneLookup())).messages().get(1).content().asBlockParams();
 
       assertThat(asked).hasSize(2);
       assertThat(asked.getFirst().asThinking().signature()).isEqualTo("sig-1");

@@ -100,11 +100,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `thinking.block_binding.prefix_mismatch_behavior: drop_block` and the
   `thinking-binding-controls-2026-08-01` beta header. Claude Fable 5.1,
   Opus 5.5 and Sonnet 5.5 bind a thinking block to everything before it, and
-  accounts created since 2026-08-31 got a 400 whenever background changed the
-  system prompt or the tail moved. The vendor now drops the thinking blocks
-  that no longer fit and answers. On older accounts, where such blocks used
-  to reach the model unchanged, they are dropped too.
-  The adapter logs how many blocks were dropped, at DEBUG.
+  accounts created since 2026-08-31 got a 400 when a request replayed
+  thinking and background had changed the system prompt or the tail had
+  moved. The vendor now drops the thinking blocks that no longer fit and
+  answers. On older accounts, where such blocks used to reach the model
+  unchanged, they are dropped too. The adapter logs how many blocks were
+  dropped, at DEBUG. A request that does not think, a summariser's for
+  instance, no longer replays thinking at all.
 - **Answers whose type is a list, enum, string or sealed type work on OpenAI
   and Azure.** A schema whose root is not an object travels wrapped as
   `{"value": ...}` and is unwrapped before the caller sees it, and generic

@@ -120,7 +120,11 @@ public final class AnthropicRequests {
     if (!system.isEmpty()) {
       builder.systemOfTextBlockParams(system);
     }
-    addMessages(builder, request.context().summaries(), request.context().turns(), marker, mapper);
+    boolean thinks =
+        read.enabled()
+            || read.thinking().filter(AnthropicThinkingType.ADAPTIVE::equals).isPresent();
+    addMessages(
+        builder, request.context().summaries(), request.context().turns(), marker, thinks, mapper);
     // Answering now is the one choice this vendor cannot be told: measured 2026-09-20, a ban with
     // the tools still in the request ends the turn with no content at all. What works here is not
     // offering them, so that is what this adapter does -- and the cached prefix is the price, paid
@@ -138,7 +142,7 @@ public final class AnthropicRequests {
               .budgetTokens(read.budget().getAsInt())
               .putAdditionalProperty(BLOCK_BINDING, DROP_MISMATCHED)
               .build());
-    } else if (read.thinking().filter(AnthropicThinkingType.ADAPTIVE::equals).isPresent()) {
+    } else if (thinks) {
       builder.thinking(
           ThinkingConfigAdaptive.builder()
               .putAdditionalProperty(BLOCK_BINDING, DROP_MISMATCHED)
@@ -197,12 +201,13 @@ public final class AnthropicRequests {
       List<Summary> summaries,
       List<Turn> turns,
       Optional<CacheControlEphemeral> marker,
+      boolean thinks,
       JsonMapper mapper) {
 
     List<Drafted> drafts =
         Stream.concat(
                 summaries.stream().map(AnthropicRequests::draftSummary),
-                turns.stream().flatMap(turn -> draft(turn, mapper)))
+                turns.stream().flatMap(turn -> draft(turn, thinks, mapper)))
             .toList();
     Set<Integer> marked = marker.isPresent() ? conversationBreakpoints(drafts) : Set.of();
 
@@ -233,22 +238,22 @@ public final class AnthropicRequests {
    * withdrawn" without putting words in the assistant's mouth, and a fabricated utterance is worse
    * than a gap.
    */
-  private static Stream<Drafted> draft(Turn turn, JsonMapper mapper) {
+  private static Stream<Drafted> draft(Turn turn, boolean thinks, JsonMapper mapper) {
     if (turn.result() instanceof TurnResult.Refused) {
       return Stream.of();
     }
 
     Stream<Drafted> opening =
-        draftOf(MessageParam.Role.USER, turn.input().blocks(), mapper).stream();
+        draftOf(MessageParam.Role.USER, turn.input().blocks(), thinks, mapper).stream();
 
     Stream<Drafted> middle =
-        turn.exchanges().stream().flatMap(exchange -> draftExchange(exchange, mapper));
+        turn.exchanges().stream().flatMap(exchange -> draftExchange(exchange, thinks, mapper));
 
     Stream<Drafted> ending =
         switch (turn.result()) {
           case null -> Stream.of();
           case TurnResult.Answered(var blocks) ->
-              draftOf(MessageParam.Role.ASSISTANT, blocks, mapper).stream();
+              draftOf(MessageParam.Role.ASSISTANT, blocks, thinks, mapper).stream();
           // "Did not complete" rather than "returned an error", because the call may never have
           // been made at all.
           case TurnResult.Failed _ ->
@@ -296,8 +301,10 @@ public final class AnthropicRequests {
    * <p>Tool results are user-role on this wire, which is not obvious and is the sort of thing only
    * an adapter should have to know.
    */
-  private static Stream<Drafted> draftExchange(Exchange exchange, JsonMapper mapper) {
-    Optional<Drafted> asking = draftOf(MessageParam.Role.ASSISTANT, exchange.request(), mapper);
+  private static Stream<Drafted> draftExchange(
+      Exchange exchange, boolean thinks, JsonMapper mapper) {
+    Optional<Drafted> asking =
+        draftOf(MessageParam.Role.ASSISTANT, exchange.request(), thinks, mapper);
     List<ContentBlockParam> results =
         exchange.outcomes().stream().map(AnthropicRequests::answering).toList();
     Drafted answering = new Drafted(MessageParam.Role.USER, List.of(), results);
@@ -336,11 +343,23 @@ public final class AnthropicRequests {
             .build());
   }
 
+  /**
+   * A message's blocks, or nothing when none is left to send.
+   *
+   * <p>A request that does not think has no use for the reasoning in its history, and carries it
+   * under a prefix that no longer matches the one it was signed against -- the case the vendor may
+   * refuse, and the one a summariser is in, since it replays an agent's turns under a prompt of its
+   * own. Removing every thinking block is valid on this wire, so none is sent; a message that was
+   * only reasoning is then left out whole, because an empty one is rejected.
+   */
   private static Optional<Drafted> draftOf(
-      MessageParam.Role role, List<? extends Block> content, JsonMapper mapper) {
+      MessageParam.Role role, List<? extends Block> content, boolean thinks, JsonMapper mapper) {
     List<Block> source = new ArrayList<>();
     List<ContentBlockParam> blocks = new ArrayList<>();
     for (Block block : content) {
+      if (!thinks && block instanceof Block.Provider) {
+        continue;
+      }
       toParam(block, Optional.empty(), mapper)
           .ifPresent(
               param -> {
