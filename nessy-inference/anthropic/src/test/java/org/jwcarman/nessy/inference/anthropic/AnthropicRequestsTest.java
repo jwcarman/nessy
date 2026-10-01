@@ -761,6 +761,46 @@ class AnthropicRequestsTest {
       assertThat(markedIn(blocks)).containsExactly(0, 2);
     }
 
+    /** A summary stands where turns once stood, and is marked like the user-side message it is. */
+    @Test
+    void a_summary_before_the_first_question_carries_the_second_marker() {
+      Summary summary =
+          new Summary(new TurnId(1), new TurnId(5), List.of(new Block.Text("what came before")));
+      InferenceRequest request =
+          new InferenceRequest(
+              SYSTEM,
+              new InferenceContext(List.of(summary), List.of(open(6, "question 6")), List.of()),
+              Toolset.none(),
+              options());
+
+      // summary, question 6
+      var blocks =
+          blocksOf(
+              AnthropicRequests.toParams(request, caching(AnthropicCacheTtl.FIVE_MINUTES), MAPPER));
+
+      assertThat(markedIn(blocks)).containsExactly(0, 1);
+    }
+
+    /** A refused turn is left out whole, so the markers fall on what is actually sent. */
+    @Test
+    void a_refused_turn_in_between_is_skipped_over() {
+      // question 1, answer 1, (turn 2 refused and omitted), question 3
+      var blocks =
+          cached(
+              List.of(
+                  answered(1, "question 1", "answer 1"),
+                  new Turn(
+                      new TurnId(2),
+                      asked(2, "question 2"),
+                      List.of(),
+                      new TurnResult.Refused(),
+                      0),
+                  open(3, "question 3")));
+
+      assertThat(blocks).hasSize(3);
+      assertThat(markedIn(blocks)).containsExactly(0, 2);
+    }
+
     /** The vendor rejects cache control on a thinking block, so the marker falls back. */
     @Test
     void a_breakpoint_never_lands_on_reasoning() {
@@ -855,8 +895,9 @@ class AnthropicRequestsTest {
       assertThat(params.messages().get(1).content().blockParams().orElseThrow()).hasSize(2);
     }
 
+    /** Another vendor's state is not ours to send, so the question is all there is to mark. */
     @Test
-    void a_conversation_of_nothing_but_provider_state_gets_no_breakpoint() {
+    void an_answer_of_nothing_but_another_vendor_s_state_leaves_the_question_marked() {
       Turn turn =
           new Turn(
               new TurnId(1),
@@ -869,6 +910,9 @@ class AnthropicRequestsTest {
       MessageCreateParams params = params(List.of(turn), AnthropicCacheTtl.ONE_HOUR);
 
       assertThat(params.messages()).hasSize(1);
+      assertThat(blocksOf(params))
+          .singleElement()
+          .satisfies(block -> assertThat(block.cacheControl()).isPresent());
     }
   }
 

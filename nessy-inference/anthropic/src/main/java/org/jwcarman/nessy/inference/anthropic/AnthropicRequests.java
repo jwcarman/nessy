@@ -266,8 +266,8 @@ public final class AnthropicRequests {
    * the model is being shown. The tag and the range tell it from a question, and tell the model
    * which turns are missing.
    *
-   * <p>Eligible for a cache breakpoint like any text block -- a summary is the most stable prefix a
-   * long conversation has.
+   * <p>A user-side message like any other where cache markers are concerned: it carries one when it
+   * is where a request ends, or where the last one did.
    */
   private static Drafted draftSummary(Summary summary) {
     String text =
