@@ -305,6 +305,15 @@ The defaults, when a property is absent:
   each call's `maxTokens`, which must exceed the budget or the request is
   refused before the call.
 - `adaptive` sends no budget; `disabled` sends nothing.
+- With thinking on, the adapter also sends
+  `thinking.block_binding.prefix_mismatch_behavior: drop_block` and the
+  `anthropic-beta: thinking-binding-controls-2026-08-01` header, beside any
+  betas the client already sends. Anthropic binds a thinking block to the
+  system prompt, tools and messages before it; with this setting it drops
+  thinking whose prefix changed in place of rejecting the request, and the
+  adapter logs how many blocks were dropped at `DEBUG`. A gateway or proxy
+  reached through `baseUrl` receives both. A request that does not think
+  replays no thinking.
 - Prompt caching is off unless `anthropic.cache_control.ttl` is set
   (`FIVE_MINUTES` or `ONE_HOUR`); it marks the system prompt and the tool list
   as cacheable.
