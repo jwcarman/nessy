@@ -515,10 +515,10 @@ class AnthropicLiveTest {
   /**
    * A tool loop with caching on: the second call must read back what the first one wrote.
    *
-   * <p>The markers sit on the newest tool result and on the one before it, so this is the only
-   * place that shows the vendor accepts a marker on a result and that the prefix the last request
-   * ended on is the one it finds. Two rounds is also the shape that could not be built at all while
-   * the markers were placed by counting blocks.
+   * <p>The standing prompt and the one tool are far too short to cache, so a read here is a read of
+   * the conversation. It shows the vendor accepts a marker on a tool result and finds a prefix the
+   * last request stored; with only two blocks between the rounds it cannot tell which of the two
+   * markers found it.
    */
   @Test
   void a_cached_tool_loop_reads_back_what_the_last_call_wrote() {

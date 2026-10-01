@@ -355,11 +355,11 @@ public final class AnthropicRequests {
    * Which messages end on a cache marker.
    *
    * <p>Two, and both are settled: the last message, where this request ends, and the user-side
-   * message before it, where the last request ended. No call is made to the model until every
-   * result of a round is in, so a request always ends on a question or a complete set of results,
-   * and that message never changes afterwards. The second marker is the one that earns anything: it
-   * sits on the prefix the last request wrote, so that is the prefix the vendor can read back,
-   * however many blocks the round in between added.
+   * message before it, where the last request ended. The engine makes no call to the model until
+   * every result of a round is in, so a request it sends ends on a question or a complete set of
+   * results, and that message never changes afterwards. The second marker sits on the prefix the
+   * last request wrote, so the vendor reads it back however many blocks the round in between added;
+   * the first alone would depend on the vendor's own search reaching back that far.
    */
   private static Set<Integer> breakpoints(List<Drafted> drafts) {
     int last = drafts.size() - 1;

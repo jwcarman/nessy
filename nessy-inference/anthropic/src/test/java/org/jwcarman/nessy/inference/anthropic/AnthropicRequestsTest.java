@@ -662,8 +662,8 @@ class AnthropicRequestsTest {
 
     /**
      * Two markers, both on something settled: where this request ends, and where the last one did.
-     * The second is what earns anything -- it is the prefix the last request wrote, so it is the
-     * one the vendor can read back.
+     * The second sits on the prefix the last request wrote, so the vendor can read it back however
+     * much the round in between added.
      */
     @Test
     void the_end_of_this_request_and_the_end_of_the_last_one_are_marked() {
@@ -822,10 +822,9 @@ class AnthropicRequestsTest {
                       "anthropic.cache_control.ttl", "FIVE_MINUTES"),
                   MAPPER));
 
-      assertThat(blocks).anyMatch(ContentBlockParam::isThinking);
-      assertThat(markedIn(blocks)).isNotEmpty();
-      assertThat(markedIn(blocks))
-          .allSatisfy(i -> assertThat(blocks.get(i).isThinking()).isFalse());
+      // question, answer text, reasoning
+      assertThat(blocks.get(2).isThinking()).isTrue();
+      assertThat(markedIn(blocks)).containsExactly(0, 1);
     }
   }
 
