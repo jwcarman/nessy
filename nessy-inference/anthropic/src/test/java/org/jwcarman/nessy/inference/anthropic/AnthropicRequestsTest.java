@@ -1283,6 +1283,13 @@ class AnthropicRequestsTest {
   /**
    * Inside one turn, each call must be the last one plus what happened since. Anything else is an
    * edit to the prefix, and an edit costs the model the reasoning it did earlier in the turn.
+   *
+   * <p>These requests are uncached, and say nothing about cached ones: with {@code
+   * anthropic.cache_control.ttl} set the cache marker moves to a later block as the turn grows, so
+   * a cached request is not byte-identical to the last one. Anthropic documents adding, moving or
+   * removing cache markers as valid under replayed thinking, and a tool loop with the tail marker
+   * moving on every call, thinking replayed and the prefix check enforced was run live on
+   * 2026-10-01 without a rejection on Sonnet 5.5 or Fable 5.1.
    */
   @Nested
   class ATurnThatGrows {

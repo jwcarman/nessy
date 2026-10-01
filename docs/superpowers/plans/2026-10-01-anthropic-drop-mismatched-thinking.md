@@ -31,7 +31,7 @@ Measured on the same day with `drop_block` set: every one of those requests retu
 - The full gate is `./mvnw -q clean verify`, run once, before the last commit. It must pass with no API key and no network.
 - Check Maven's exit code. Do not grep its output for success.
 - Work only in the worktree `/Users/jcarman/IdeaProjects/nessy-drop-block`, on branch `fix/anthropic-drop-mismatched-thinking`. Never touch `/Users/jcarman/IdeaProjects/nessy`. Do not push.
-- End every commit message with: `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`
+- End every commit message with the co-author attribution of the session that wrote the commit.
 
 ## Not in this plan
 
