@@ -18,6 +18,8 @@ package org.jwcarman.nessy.inference.anthropic;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -243,7 +245,9 @@ class AnthropicLiveTest {
    *
    * <p>On an older account the check is not enforced without the setting, so this could not have
    * failed there before the fix. What it proves anywhere is that the setting and its beta header
-   * are accepted on a model that enforces the check, with thinking replayed under a changed prompt.
+   * are accepted on a model that enforces the check, with thinking replayed under a changed prompt,
+   * and that the vendor's report of the drop is read off the stream: this is the one place the real
+   * wire shape of that report passes through the SDK.
    */
   @Test
   void a_changed_system_prompt_under_replayed_thinking_is_still_answered() {
@@ -277,17 +281,31 @@ class AnthropicLiveTest {
       SystemPrompt changed =
           new SystemPrompt(SYSTEM.value() + "\n<plan>\nStep 2 of 3: report the total.\n</plan>");
 
-      InferenceResult second =
-          provider.infer(
-              new InferenceRequest(
-                  changed,
-                  InferenceContext.of(List.of(done, open(3, "And what is half of that?"))),
-                  Toolset.none(),
-                  thinking));
+      InferenceResult[] second = new InferenceResult[1];
+      List<ILoggingEvent> logged =
+          LogCapture.during(
+              AnthropicInferenceProvider.class,
+              () ->
+                  second[0] =
+                      provider.infer(
+                          new InferenceRequest(
+                              changed,
+                              InferenceContext.of(
+                                  List.of(done, open(3, "And what is half of that?"))),
+                              Toolset.none(),
+                              thinking)));
 
-      assertThat(second)
+      assertThat(second[0])
           .as("a prefix that changed under replayed thinking is dropped by the vendor, not refused")
           .isInstanceOf(InferenceResult.Answer.class);
+      assertThat(logged)
+          .as("the drop is reported on message_start, the only place the wire shape is read")
+          .anyMatch(
+              event ->
+                  event.getLevel() == Level.DEBUG
+                      && event
+                          .getFormattedMessage()
+                          .contains("thinking block(s) whose prefix had changed"));
     }
   }
 
