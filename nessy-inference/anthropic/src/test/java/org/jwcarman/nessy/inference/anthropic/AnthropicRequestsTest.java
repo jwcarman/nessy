@@ -1115,4 +1115,80 @@ class AnthropicRequestsTest {
       assertThat(params._additionalHeaders().names()).doesNotContain("anthropic-beta");
     }
   }
+
+  /**
+   * Inside one turn, each call must be the last one plus what happened since. Anything else is an
+   * edit to the prefix, and an edit costs the model the reasoning it did earlier in the turn.
+   */
+  @Nested
+  class ATurnThatGrows {
+
+    private static final Block.ToolCall LOOKUP =
+        new Block.ToolCall(new CallId("call_1"), new ToolName("lookup"), "{\"q\":\"loch ness\"}");
+
+    private static Turn asking() {
+      return new Turn(new TurnId(1), asked(1, "how deep is it?"), List.of(), null, 0);
+    }
+
+    private static Turn afterOneLookup() {
+      return new Turn(
+          new TurnId(1),
+          asked(1, "how deep is it?"),
+          List.of(
+              new Exchange(
+                  new Seq(2),
+                  List.of(thinking("check the survey first", "sig-1"), LOOKUP),
+                  List.of(
+                      new ToolOutcome.Succeeded(
+                          new CallId("call_1"), List.of(new Block.Text("1412 metres")))))),
+          null,
+          0);
+    }
+
+    @Test
+    void the_next_call_starts_with_every_message_of_the_last_one() {
+      List<MessageParam> before = params(List.of(asking())).messages();
+      List<MessageParam> after = params(List.of(afterOneLookup())).messages();
+
+      assertThat(before).isNotEmpty();
+      assertThat(after).hasSizeGreaterThan(before.size());
+      assertThat(after.subList(0, before.size())).isEqualTo(before);
+    }
+
+    @Test
+    void the_turn_in_flight_keeps_the_reasoning_it_did_before_the_call() {
+      List<ContentBlockParam> asked =
+          params(List.of(afterOneLookup())).messages().get(1).content().asBlockParams();
+
+      assertThat(asked).hasSize(2);
+      assertThat(asked.getFirst().asThinking().signature()).isEqualTo("sig-1");
+      assertThat(asked.getLast().asToolUse().id()).isEqualTo("call_1");
+    }
+
+    /** An earlier turn is history by then, and must not be re-rendered either. */
+    @Test
+    void a_finished_turn_before_it_is_rendered_the_same_on_both_calls() {
+      Turn earlier = answered(1, "what is the loch called?", "Loch Ness");
+      Turn open = new Turn(new TurnId(2), asked(3, "how deep is it?"), List.of(), null, 0);
+      Turn grown =
+          new Turn(
+              new TurnId(2),
+              asked(3, "how deep is it?"),
+              List.of(
+                  new Exchange(
+                      new Seq(4),
+                      List.of(LOOKUP),
+                      List.of(
+                          new ToolOutcome.Succeeded(
+                              new CallId("call_1"), List.of(new Block.Text("1412 metres")))))),
+              null,
+              0);
+
+      List<MessageParam> before = params(List.of(earlier, open)).messages();
+      List<MessageParam> after = params(List.of(earlier, grown)).messages();
+
+      assertThat(before).hasSize(3);
+      assertThat(after.subList(0, before.size())).isEqualTo(before);
+    }
+  }
 }
