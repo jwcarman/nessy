@@ -29,10 +29,12 @@ import com.anthropic.errors.RateLimitException;
 import com.anthropic.helpers.MessageAccumulator;
 import com.anthropic.models.messages.ContentBlock;
 import com.anthropic.models.messages.Message;
+import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.RawContentBlockDelta;
 import com.anthropic.models.messages.RawMessageStreamEvent;
 import com.anthropic.models.messages.StopReason;
 import com.anthropic.models.messages.ToolUseBlock;
+import com.anthropic.services.blocking.MessageService;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -94,6 +96,16 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
   private static final String INPUT_TRANSFORMATIONS = "input_transformations";
 
   private static final String THINKING_DROPPED = "thinking_dropped";
+
+  /**
+   * The beta that lets a request carry {@code thinking.block_binding}; without it the setting is
+   * refused as an extra input. Applied to the call rather than to the params, because a header on
+   * the params replaces a client's own header of the same name while one on the options is added to
+   * it -- and a deployment's own betas are not ours to drop.
+   */
+  private static final String BETA_HEADER = "anthropic-beta";
+
+  private static final String THINKING_BINDING_BETA = "thinking-binding-controls-2026-08-01";
 
   private static final String NAME = "Anthropic";
 
@@ -172,10 +184,9 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
   @Override
   public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
     Objects.requireNonNull(narrator, "narrator must not be null");
+    MessageCreateParams params = AnthropicRequests.toParams(request, properties, mapper);
     try (StreamResponse<RawMessageStreamEvent> stream =
-        client
-            .messages()
-            .createStreaming(AnthropicRequests.toParams(request, properties, mapper))) {
+        messagesFor(params).createStreaming(params)) {
       MessageAccumulator accumulator = MessageAccumulator.create();
       boolean[] any = {false};
       stream.stream()
@@ -193,6 +204,17 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
     } catch (AnthropicException e) {
       return new InferenceResult.Fault(classify(e));
     }
+  }
+
+  /**
+   * The messages service this request goes through: the client's own, with the beta thinking's
+   * block-binding setting needs added beside any it already sends when the request thinks.
+   */
+  private MessageService messagesFor(MessageCreateParams params) {
+    MessageService messages = client.messages();
+    return params.thinking().isPresent()
+        ? messages.withOptions(options -> options.putHeader(BETA_HEADER, THINKING_BINDING_BETA))
+        : messages;
   }
 
   /**

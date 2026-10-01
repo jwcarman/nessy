@@ -1077,17 +1077,19 @@ class AnthropicRequestsTest {
       assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(512L);
     }
 
-    /** Measured 2026-10-01: without the header the setting is itself a 400. */
+    /**
+     * The beta header the setting needs is applied by the provider, where it is added beside the
+     * client's own. On the params it would replace them.
+     */
     @ParameterizedTest
     @ValueSource(
         strings = {"anthropic.thinking.type=adaptive", "anthropic.thinking.budget_tokens=512"})
-    void thinking_brings_the_beta_header_the_setting_needs(String property) {
+    void the_params_leave_the_beta_header_to_the_provider(String property) {
       String[] pair = property.split("=");
 
       MessageCreateParams params = thinkingWith(Map.of(pair[0], pair[1]));
 
-      assertThat(params._additionalHeaders().values("anthropic-beta"))
-          .contains("thinking-binding-controls-2026-08-01");
+      assertThat(params._additionalHeaders().names()).doesNotContain("anthropic-beta");
     }
 
     @Test

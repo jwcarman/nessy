@@ -88,16 +88,14 @@ public final class AnthropicRequests {
    * course: background is part of the system prompt, and the tail slides. Asked this way, the
    * vendor drops the blocks that no longer fit and answers; a block whose prefix is intact is kept.
    * Measured 2026-10-01 on all three models.
+   *
+   * <p>The setting is refused outright unless the request also carries the beta header, which
+   * {@link AnthropicInferenceProvider} adds beside whatever betas the client already sends.
    */
   private static final String BLOCK_BINDING = "block_binding";
 
   private static final JsonValue DROP_MISMATCHED =
       JsonValue.from(Map.of("prefix_mismatch_behavior", "drop_block"));
-
-  /** The setting is refused outright without this: "Extra inputs are not permitted". */
-  private static final String BETA_HEADER = "anthropic-beta";
-
-  private static final String THINKING_BINDING_BETA = "thinking-binding-controls-2026-08-01";
 
   private AnthropicRequests() {}
 
@@ -140,13 +138,11 @@ public final class AnthropicRequests {
               .budgetTokens(read.budget().getAsInt())
               .putAdditionalProperty(BLOCK_BINDING, DROP_MISMATCHED)
               .build());
-      builder.putAdditionalHeader(BETA_HEADER, THINKING_BINDING_BETA);
     } else if (read.thinking().filter(AnthropicThinkingType.ADAPTIVE::equals).isPresent()) {
       builder.thinking(
           ThinkingConfigAdaptive.builder()
               .putAdditionalProperty(BLOCK_BINDING, DROP_MISMATCHED)
               .build());
-      builder.putAdditionalHeader(BETA_HEADER, THINKING_BINDING_BETA);
     }
     read.serviceTier().ifPresent(tier -> builder.serviceTier(serviceTier(tier)));
     return builder.build();

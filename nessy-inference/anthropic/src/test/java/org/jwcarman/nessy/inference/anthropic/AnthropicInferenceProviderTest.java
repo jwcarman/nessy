@@ -22,9 +22,15 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.anthropic.client.AnthropicClient;
+import com.anthropic.client.AnthropicClientImpl;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
+import com.anthropic.core.ClientOptions;
 import com.anthropic.core.JsonValue;
+import com.anthropic.core.RequestOptions;
 import com.anthropic.core.http.Headers;
+import com.anthropic.core.http.HttpClient;
+import com.anthropic.core.http.HttpRequest;
+import com.anthropic.core.http.HttpResponse;
 import com.anthropic.core.http.StreamResponse;
 import com.anthropic.errors.AnthropicInvalidDataException;
 import com.anthropic.errors.AnthropicIoException;
@@ -60,11 +66,14 @@ import com.anthropic.models.messages.ThinkingDelta;
 import com.anthropic.models.messages.ToolUseBlock;
 import com.anthropic.models.messages.Usage;
 import com.anthropic.services.blocking.MessageService;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
@@ -142,6 +151,10 @@ class AnthropicInferenceProviderTest {
                         // Nothing held open.
                       }
                     };
+                  }
+                  // Options layered on a service change what it sends, not what this fake answers.
+                  if ("withOptions".equals(method.getName())) {
+                    return proxy;
                   }
                   throw new UnsupportedOperationException(method.getName());
                 });
@@ -638,9 +651,7 @@ class AnthropicInferenceProviderTest {
     @Test
     void a_yaml_style_string_with_a_bad_spelling_fails_at_build_listing_the_spellings() {
       AnthropicProviderConfig config =
-          new AnthropicProviderConfig()
-              .apiKey("test-key")
-              .property("anthropic.cache_control.ttl", "2h");
+          new AnthropicProviderConfig().property("anthropic.cache_control.ttl", "2h");
 
       assertThatThrownBy(config::build)
           .isInstanceOf(IllegalArgumentException.class)
@@ -651,9 +662,7 @@ class AnthropicInferenceProviderTest {
     @Test
     void a_bad_service_tier_fails_at_build_listing_the_spellings() {
       AnthropicProviderConfig config =
-          new AnthropicProviderConfig()
-              .apiKey("test-key")
-              .property("anthropic.service_tier", "gold");
+          new AnthropicProviderConfig().property("anthropic.service_tier", "gold");
 
       assertThatThrownBy(config::build)
           .isInstanceOf(IllegalArgumentException.class)
@@ -1201,6 +1210,137 @@ class AnthropicInferenceProviderTest {
       assertThatThrownBy(() -> provider.validate(options))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("maxTokens (2048) must be greater than the thinking budget (4096)");
+    }
+  }
+
+  /**
+   * Thinking asks for a beta, and a deployment may already be sending betas of its own. These go
+   * through the SDK's real header merge -- a real client over an HTTP layer that only records --
+   * because what is under test is what the SDK does with two values for one header, which the
+   * params alone cannot show.
+   */
+  @Nested
+  class TheBetaHeader {
+
+    /** Records every request the SDK finally sends, and answers each with an empty stream. */
+    private static final class Recording implements HttpClient {
+
+      private final List<HttpRequest> sent = new ArrayList<>();
+
+      @Override
+      public HttpResponse execute(HttpRequest request, RequestOptions requestOptions) {
+        sent.add(request);
+        return new HttpResponse() {
+          @Override
+          public int statusCode() {
+            return 200;
+          }
+
+          @Override
+          public Headers headers() {
+            return Headers.builder().put("content-type", "text/event-stream").build();
+          }
+
+          @Override
+          public InputStream body() {
+            return new ByteArrayInputStream(new byte[0]);
+          }
+
+          @Override
+          public void close() {
+            // Nothing held open.
+          }
+        };
+      }
+
+      @Override
+      public CompletableFuture<HttpResponse> executeAsync(
+          HttpRequest request, RequestOptions requestOptions) {
+        return CompletableFuture.completedFuture(execute(request, requestOptions));
+      }
+
+      @Override
+      public void close() {
+        // Nothing held open.
+      }
+    }
+
+    private final Recording wire = new Recording();
+
+    /** A client that already sends a beta of its own, as one built from the environment can. */
+    private final AnthropicClient deployment =
+        new AnthropicClientImpl(
+            ClientOptions.builder()
+                .httpClient(wire)
+                .putHeader("anthropic-beta", "deployment-beta-2026-01-01")
+                .build());
+
+    private List<String> betasSentWhen(Map<String, String> properties) {
+      AnthropicProviderConfig config = new AnthropicProviderConfig().client(deployment);
+      properties.forEach(config::property);
+      config.build().infer(REQUEST);
+      assertThat(wire.sent).hasSize(1);
+      return wire.sent.getFirst().headers().values("anthropic-beta");
+    }
+
+    @Test
+    void thinking_is_sent_beside_the_betas_the_deployment_already_sends() {
+      List<String> betas = betasSentWhen(Map.of("anthropic.thinking.type", "adaptive"));
+
+      assertThat(betas)
+          .containsExactlyInAnyOrder(
+              "deployment-beta-2026-01-01", "thinking-binding-controls-2026-08-01");
+    }
+
+    @Test
+    void budgeted_thinking_is_sent_beside_them_too() {
+      List<String> betas = betasSentWhen(Map.of("anthropic.thinking.budget_tokens", "512"));
+
+      assertThat(betas)
+          .containsExactlyInAnyOrder(
+              "deployment-beta-2026-01-01", "thinking-binding-controls-2026-08-01");
+    }
+
+    @Test
+    void a_request_that_does_not_think_leaves_the_deployments_betas_alone() {
+      List<String> betas = betasSentWhen(Map.of());
+
+      assertThat(betas).containsExactly("deployment-beta-2026-01-01");
+    }
+
+    @Test
+    void thinking_switched_off_by_the_agent_type_leaves_the_deployments_betas_alone() {
+      new AnthropicProviderConfig()
+          .client(deployment)
+          .property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ADAPTIVE)
+          .build()
+          .infer(
+              new InferenceRequest(
+                  REQUEST.systemPrompt(),
+                  REQUEST.context(),
+                  Toolset.none(),
+                  new InferenceOptions(
+                      "claude-sonnet", 1024, Map.of("anthropic.thinking.type", "disabled"))));
+
+      assertThat(wire.sent).hasSize(1);
+      assertThat(wire.sent.getFirst().headers().values("anthropic-beta"))
+          .containsExactly("deployment-beta-2026-01-01");
+    }
+
+    @Test
+    void a_deployment_with_no_betas_of_its_own_sends_only_ours_when_thinking() {
+      AnthropicClient plain =
+          new AnthropicClientImpl(ClientOptions.builder().httpClient(wire).build());
+
+      new AnthropicProviderConfig()
+          .client(plain)
+          .property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ADAPTIVE)
+          .build()
+          .infer(REQUEST);
+
+      assertThat(wire.sent).hasSize(1);
+      assertThat(wire.sent.getFirst().headers().values("anthropic-beta"))
+          .containsExactly("thinking-binding-controls-2026-08-01");
     }
   }
 
