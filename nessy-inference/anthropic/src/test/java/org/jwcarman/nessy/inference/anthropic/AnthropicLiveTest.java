@@ -236,6 +236,61 @@ class AnthropicLiveTest {
     }
   }
 
+  /**
+   * Background changes Nessy's system prompt between calls, and on the models that bind thinking to
+   * its prefix that used to be a 400 for accounts created since 2026-08-31. With the adapter asking
+   * for mismatched blocks to be dropped, the vendor answers.
+   *
+   * <p>On an older account the check is not enforced without the setting, so this could not have
+   * failed there before the fix. What it proves anywhere is that the setting and its beta header
+   * are accepted on a model that enforces the check, with thinking replayed under a changed prompt.
+   */
+  @Test
+  void a_changed_system_prompt_under_replayed_thinking_is_still_answered() {
+    String question =
+        "Privately work out 17 x 23 + 41 x 19 and check it twice. Reply with the number only.";
+    InferenceOptions thinking =
+        new InferenceOptions(
+            "claude-sonnet-5-5", 4096, Map.of("anthropic.thinking.type", "adaptive"));
+    try (AnthropicInferenceProvider provider = provider()) {
+      InferenceResult first =
+          provider.infer(
+              new InferenceRequest(
+                  SYSTEM,
+                  InferenceContext.of(List.of(open(1, question))),
+                  Toolset.none(),
+                  thinking));
+
+      assertThat(first).isInstanceOf(InferenceResult.Answer.class);
+      List<Block.AnswerContent> answered = ((InferenceResult.Answer) first).blocks();
+      assumeTrue(
+          answered.stream().anyMatch(Block.Provider.class::isInstance),
+          "adaptive thinking chose not to think, so there is nothing to replay");
+
+      Turn done =
+          new Turn(
+              new TurnId(1),
+              new Input(new Seq(1), List.of(new Block.Text(question))),
+              List.of(),
+              new TurnResult.Answered(answered),
+              0);
+      SystemPrompt changed =
+          new SystemPrompt(SYSTEM.value() + "\n<plan>\nStep 2 of 3: report the total.\n</plan>");
+
+      InferenceResult second =
+          provider.infer(
+              new InferenceRequest(
+                  changed,
+                  InferenceContext.of(List.of(done, open(3, "And what is half of that?"))),
+                  Toolset.none(),
+                  thinking));
+
+      assertThat(second)
+          .as("a prefix that changed under replayed thinking is dropped by the vendor, not refused")
+          .isInstanceOf(InferenceResult.Answer.class);
+    }
+  }
+
   /** Prompt caching is money rather than correctness, so what matters is that it is accepted. */
   @Test
   void a_cached_request_is_accepted() {
