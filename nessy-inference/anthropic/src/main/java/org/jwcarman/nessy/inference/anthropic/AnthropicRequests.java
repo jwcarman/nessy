@@ -79,6 +79,26 @@ public final class AnthropicRequests {
    */
   private static final int LOOKBACK_BLOCKS = 20;
 
+  /**
+   * What makes a changed prefix survivable.
+   *
+   * <p>On Fable 5.1, Opus 5.5 and Sonnet 5.5 a thinking block is bound to the system prompt, the
+   * tools and every message before it, and a request that replays one after any of those changed is
+   * rejected -- by default on accounts created since 2026-08-31. Nessy changes them as a matter of
+   * course: background is part of the system prompt, and the tail slides. Asked this way, the
+   * vendor drops the blocks that no longer fit and answers; a block whose prefix is intact is kept.
+   * Measured 2026-10-01 on all three models.
+   */
+  private static final String BLOCK_BINDING = "block_binding";
+
+  private static final JsonValue DROP_MISMATCHED =
+      JsonValue.from(Map.of("prefix_mismatch_behavior", "drop_block"));
+
+  /** The setting is refused outright without this: "Extra inputs are not permitted". */
+  private static final String BETA_HEADER = "anthropic-beta";
+
+  private static final String THINKING_BINDING_BETA = "thinking-binding-controls-2026-08-01";
+
   private AnthropicRequests() {}
 
   /**
@@ -116,9 +136,17 @@ public final class AnthropicRequests {
 
     if (read.enabled()) {
       builder.thinking(
-          ThinkingConfigEnabled.builder().budgetTokens(read.budget().getAsInt()).build());
+          ThinkingConfigEnabled.builder()
+              .budgetTokens(read.budget().getAsInt())
+              .putAdditionalProperty(BLOCK_BINDING, DROP_MISMATCHED)
+              .build());
+      builder.putAdditionalHeader(BETA_HEADER, THINKING_BINDING_BETA);
     } else if (read.thinking().filter(AnthropicThinkingType.ADAPTIVE::equals).isPresent()) {
-      builder.thinking(ThinkingConfigAdaptive.builder().build());
+      builder.thinking(
+          ThinkingConfigAdaptive.builder()
+              .putAdditionalProperty(BLOCK_BINDING, DROP_MISMATCHED)
+              .build());
+      builder.putAdditionalHeader(BETA_HEADER, THINKING_BINDING_BETA);
     }
     read.serviceTier().ifPresent(tier -> builder.serviceTier(serviceTier(tier)));
     return builder.build();

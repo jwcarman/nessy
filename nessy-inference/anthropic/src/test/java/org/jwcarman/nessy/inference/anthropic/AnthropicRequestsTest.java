@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
+import com.anthropic.core.JsonValue;
 import com.anthropic.models.messages.CacheControlEphemeral;
 import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.MessageCreateParams;
@@ -1034,6 +1035,84 @@ class AnthropicRequestsTest {
       assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("property 'anthropic.thinking.budget_tokens' must be an integer, was 'lots'");
+    }
+  }
+
+  /**
+   * Anthropic binds a thinking block to everything that came before it, and rejects the request
+   * when that prefix has changed. Asked to, it drops the block instead and answers.
+   */
+  @Nested
+  class WhenThePrefixChangesUnderReplayedThinking {
+
+    private static final JsonValue DROP_MISMATCHED =
+        JsonValue.from(Map.of("prefix_mismatch_behavior", "drop_block"));
+
+    private static MessageCreateParams thinkingWith(Map<String, String> properties) {
+      return AnthropicRequests.toParams(
+          new InferenceRequest(
+              SYSTEM,
+              InferenceContext.of(List.of(open(1, "hi"))),
+              Toolset.none(),
+              new InferenceOptions("claude-sonnet", 2048, properties)),
+          NONE,
+          MAPPER);
+    }
+
+    @Test
+    void adaptive_thinking_asks_for_mismatched_blocks_to_be_dropped() {
+      MessageCreateParams params = thinkingWith(Map.of("anthropic.thinking.type", "adaptive"));
+
+      assertThat(params.thinking().orElseThrow().asAdaptive()._additionalProperties())
+          .containsEntry("block_binding", DROP_MISMATCHED);
+    }
+
+    /** Haiku 4.5 takes a budget and refuses adaptive, so the setting has to ride on both. */
+    @Test
+    void budgeted_thinking_asks_for_the_same() {
+      MessageCreateParams params = thinkingWith(Map.of("anthropic.thinking.budget_tokens", "512"));
+
+      assertThat(params.thinking().orElseThrow().asEnabled()._additionalProperties())
+          .containsEntry("block_binding", DROP_MISMATCHED);
+      assertThat(params.thinking().orElseThrow().asEnabled().budgetTokens()).isEqualTo(512L);
+    }
+
+    /** Measured 2026-10-01: without the header the setting is itself a 400. */
+    @ParameterizedTest
+    @ValueSource(
+        strings = {"anthropic.thinking.type=adaptive", "anthropic.thinking.budget_tokens=512"})
+    void thinking_brings_the_beta_header_the_setting_needs(String property) {
+      String[] pair = property.split("=");
+
+      MessageCreateParams params = thinkingWith(Map.of(pair[0], pair[1]));
+
+      assertThat(params._additionalHeaders().values("anthropic-beta"))
+          .contains("thinking-binding-controls-2026-08-01");
+    }
+
+    @Test
+    void a_request_that_does_not_think_sends_neither() {
+      MessageCreateParams params = thinkingWith(Map.of());
+
+      assertThat(params.thinking()).isEmpty();
+      assertThat(params._additionalHeaders().names()).doesNotContain("anthropic-beta");
+    }
+
+    @Test
+    void thinking_switched_off_by_the_agent_type_sends_neither() {
+      MessageCreateParams params =
+          AnthropicRequests.toParams(
+              new InferenceRequest(
+                  SYSTEM,
+                  InferenceContext.of(List.of(open(1, "hi"))),
+                  Toolset.none(),
+                  new InferenceOptions(
+                      "claude-sonnet", 2048, Map.of("anthropic.thinking.type", "disabled"))),
+              Map.of("anthropic.thinking.type", "adaptive"),
+              MAPPER);
+
+      assertThat(params.thinking()).isEmpty();
+      assertThat(params._additionalHeaders().names()).doesNotContain("anthropic-beta");
     }
   }
 }
