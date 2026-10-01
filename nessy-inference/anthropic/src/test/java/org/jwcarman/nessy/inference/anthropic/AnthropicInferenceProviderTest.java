@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
@@ -1200,6 +1201,68 @@ class AnthropicInferenceProviderTest {
       assertThatThrownBy(() -> provider.validate(options))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("maxTokens (2048) must be greater than the thinking budget (4096)");
+    }
+  }
+
+  /**
+   * Asked to, the vendor drops thinking whose prefix changed and says so on the reply. That is the
+   * model losing reasoning it did earlier, which whoever is reading a turn's log will want to see.
+   */
+  @Nested
+  class WhenTheVendorDropsThinking {
+
+    private static Map<String, String> transformation(String type, String path) {
+      return Map.of("type", type, "path", path, "reason", "prefix_binding_mismatch");
+    }
+
+    private static Message reporting(List<Map<String, String>> transformations) {
+      return reply()
+          .addContent(text("ok"))
+          .putAdditionalProperty("input_transformations", JsonValue.from(transformations))
+          .build();
+    }
+
+    private static List<ILoggingEvent> loggedWhileAnswering(Message message) {
+      return LogCapture.during(AnthropicInferenceProvider.class, () -> inferAnswering(message));
+    }
+
+    @Test
+    void the_number_dropped_is_logged_at_debug() {
+      Message message =
+          reporting(
+              List.of(
+                  transformation("thinking_dropped", "messages.1.content.0"),
+                  transformation("thinking_dropped", "messages.3.content.0")));
+
+      List<ILoggingEvent> logged = loggedWhileAnswering(message);
+
+      assertThat(logged).hasSize(1);
+      assertThat(logged.getFirst().getLevel()).isEqualTo(Level.DEBUG);
+      assertThat(logged.getFirst().getFormattedMessage()).contains("dropped 2 thinking block(s)");
+    }
+
+    @Test
+    void a_reply_that_reports_nothing_logs_nothing() {
+      List<ILoggingEvent> logged = loggedWhileAnswering(reply().addContent(text("ok")).build());
+
+      assertThat(logged).isEmpty();
+    }
+
+    /** An older account can report a mismatch it let through; that is not a drop. */
+    @Test
+    void a_transformation_of_another_kind_is_not_counted() {
+      Message message =
+          reporting(List.of(transformation("thinking_mismatch_allowed", "messages.1.content.0")));
+
+      assertThat(loggedWhileAnswering(message)).isEmpty();
+    }
+
+    @Test
+    void the_answer_is_unaffected_by_the_report() {
+      Message message =
+          reporting(List.of(transformation("thinking_dropped", "messages.1.content.0")));
+
+      assertThat(inferAnswering(message)).isInstanceOf(InferenceResult.Answer.class);
     }
   }
 }

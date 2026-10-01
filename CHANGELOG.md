@@ -104,6 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   system prompt or the tail moved. The vendor now drops the thinking blocks
   that no longer fit and answers. On older accounts, where such blocks used
   to reach the model unchanged, they are dropped too.
+  The adapter logs how many blocks were dropped, at DEBUG.
 - **Answers whose type is a list, enum, string or sealed type work on OpenAI
   and Azure.** A schema whose root is not an object travels wrapped as
   `{"value": ...}` and is unwrapped before the caller sees it, and generic

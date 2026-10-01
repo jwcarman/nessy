@@ -16,6 +16,10 @@
 package org.jwcarman.nessy.inference.anthropic;
 
 import com.anthropic.client.AnthropicClient;
+import com.anthropic.core.JsonArray;
+import com.anthropic.core.JsonObject;
+import com.anthropic.core.JsonString;
+import com.anthropic.core.JsonValue;
 import com.anthropic.core.http.StreamResponse;
 import com.anthropic.errors.AnthropicException;
 import com.anthropic.errors.AnthropicIoException;
@@ -46,6 +50,8 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -78,6 +84,16 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
    * stops another vendor's reasoning state being sent here, and ours being sent there.
    */
   static final String VENDOR = "anthropic";
+
+  private static final Logger log = LoggerFactory.getLogger(AnthropicInferenceProvider.class);
+
+  /**
+   * Where the vendor says what it did to the request before the model saw it. Not a field the
+   * pinned SDK knows, so it is read as an additional property.
+   */
+  private static final String INPUT_TRANSFORMATIONS = "input_transformations";
+
+  private static final String THINKING_DROPPED = "thinking_dropped";
 
   private static final String NAME = "Anthropic";
 
@@ -168,6 +184,7 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
                 any[0] = true;
                 accumulator.accumulate(event);
                 narrate(event, narrator);
+                reportDroppedThinking(event);
               });
       if (!any[0]) {
         return new InferenceResult.Fault(new Failure.Permanent("model returned no message"));
@@ -193,6 +210,41 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
     } else if (delta.isThinking() && !delta.asThinking().thinking().isEmpty()) {
       narrator.thinking(delta.asThinking().thinking());
     }
+  }
+
+  /**
+   * Says so when the vendor dropped thinking whose prefix had changed since it was produced.
+   *
+   * <p>{@link AnthropicRequests} asks for exactly that in place of a rejection, and the price is
+   * reasoning the model did earlier and no longer has. The report rides on the first event of the
+   * stream, not on the folded message. At debug, because until background leaves the system prompt
+   * this happens on most calls of an agent that has any.
+   */
+  private static void reportDroppedThinking(RawMessageStreamEvent event) {
+    if (!event.isMessageStart()) {
+      return;
+    }
+    JsonValue reported =
+        event.asMessageStart().message()._additionalProperties().get(INPUT_TRANSFORMATIONS);
+    if (!(reported instanceof JsonArray transformations)) {
+      return;
+    }
+    long dropped =
+        transformations.values().stream()
+            .filter(AnthropicInferenceProvider::isDroppedThinking)
+            .count();
+    if (dropped > 0) {
+      log.debug(
+          "NESSY INFERENCE: Anthropic dropped {} thinking block(s) whose prefix had changed"
+              + " since they were produced",
+          dropped);
+    }
+  }
+
+  private static boolean isDroppedThinking(JsonValue transformation) {
+    return transformation instanceof JsonObject object
+        && object.values().get("type") instanceof JsonString type
+        && THINKING_DROPPED.equals(type.value());
   }
 
   /**
