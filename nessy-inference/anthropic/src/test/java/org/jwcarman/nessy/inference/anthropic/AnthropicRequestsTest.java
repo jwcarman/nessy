@@ -24,6 +24,7 @@ import com.anthropic.models.messages.CacheControlEphemeral;
 import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
@@ -606,12 +607,34 @@ class AnthropicRequestsTest {
   @Nested
   class ConversationCaching {
 
-    private static final int LOOKBACK = 20;
-
     private static List<Turn> conversation(int turns) {
       return IntStream.rangeClosed(1, turns)
           .mapToObj(i -> answered(i, "question " + i, "answer " + i))
           .toList();
+    }
+
+    /** One call and its result, as many times over as asked. */
+    private static List<Exchange> rounds(int count) {
+      return IntStream.rangeClosed(1, count)
+          .mapToObj(
+              i ->
+                  new Exchange(
+                      new Seq(100L + i),
+                      List.of(
+                          new Block.ToolCall(
+                              new CallId("call_" + i), new ToolName("lookup"), "{\"q\":\"x\"}")),
+                      List.of(
+                          new ToolOutcome.Succeeded(
+                              new CallId("call_" + i), List.of(new Block.Text("result " + i))))))
+          .toList();
+    }
+
+    private static Turn looping(long id, int rounds, TurnResult result) {
+      return new Turn(new TurnId(id), asked(id, "question " + id), rounds(rounds), result, 0);
+    }
+
+    private static List<ContentBlockParam> cached(List<Turn> turns) {
+      return blocksOf(params(turns, AnthropicCacheTtl.FIVE_MINUTES));
     }
 
     private static List<Integer> markedIn(List<ContentBlockParam> blocks) {
@@ -631,23 +654,111 @@ class AnthropicRequestsTest {
     }
 
     @Test
-    void a_short_conversation_is_marked_only_at_its_end() {
-      var blocks = blocksOf(params(conversation(2), AnthropicCacheTtl.FIVE_MINUTES));
+    void a_first_question_is_marked_and_nothing_else_is() {
+      var blocks = cached(List.of(open(1, "hi")));
 
-      assertThat(markedIn(blocks)).containsExactly(blocks.size() - 1);
+      assertThat(markedIn(blocks)).containsExactly(0);
     }
 
     /**
-     * The trailing marker is what actually earns anything. A single moving marker writes a new
-     * prefix every turn and reads none of it back, because by the next turn the conversation has
-     * moved past it.
+     * Two markers, both on something settled: where this request ends, and where the last one did.
+     * The second is what earns anything -- it is the prefix the last request wrote, so it is the
+     * one the vendor can read back.
      */
     @Test
-    void a_long_one_is_also_marked_a_lookback_window_behind_the_end() {
-      var blocks = blocksOf(params(conversation(15), AnthropicCacheTtl.FIVE_MINUTES));
+    void the_end_of_this_request_and_the_end_of_the_last_one_are_marked() {
+      // question 1, answer 1, question 2
+      var blocks = cached(List.of(answered(1, "question 1", "answer 1"), open(2, "question 2")));
+
+      assertThat(markedIn(blocks)).containsExactly(0, 2);
+    }
+
+    @Test
+    void a_long_conversation_carries_the_same_two_and_no_more() {
+      List<Turn> turns = new ArrayList<>(conversation(15));
+      turns.add(open(16, "question 16"));
+
+      var blocks = cached(turns);
 
       int last = blocks.size() - 1;
-      assertThat(markedIn(blocks)).containsExactly(last - LOOKBACK, last);
+      assertThat(markedIn(blocks)).containsExactly(last - 2, last);
+    }
+
+    /** A result is as settled as a question: no call to the model is made until every one is in. */
+    @Test
+    void after_one_round_the_result_is_marked_and_so_is_the_question() {
+      // question, call, result
+      var blocks = cached(List.of(looping(1, 1, null)));
+
+      assertThat(blocks.get(2).isToolResult()).isTrue();
+      assertThat(markedIn(blocks)).containsExactly(0, 2);
+    }
+
+    @Test
+    void in_a_tool_loop_the_newest_result_is_marked_and_so_is_the_one_before() {
+      // question, call 1, result 1, call 2, result 2
+      var blocks = cached(List.of(looping(1, 2, null)));
+
+      assertThat(markedIn(blocks)).containsExactly(2, 4);
+    }
+
+    @Test
+    void a_longer_loop_still_marks_only_its_last_two_results() {
+      // question, then three rounds of call and result
+      var blocks = cached(List.of(looping(1, 3, null)));
+
+      assertThat(markedIn(blocks)).containsExactly(4, 6);
+    }
+
+    /** Several calls in one round come back as one message; its last result carries the marker. */
+    @Test
+    void results_that_come_back_together_are_marked_once_at_their_end() {
+      Turn turn =
+          new Turn(
+              new TurnId(1),
+              asked(1, "look both up"),
+              List.of(
+                  new Exchange(
+                      new Seq(2),
+                      List.of(
+                          new Block.ToolCall(new CallId("a"), new ToolName("lookup"), "{}"),
+                          new Block.ToolCall(new CallId("b"), new ToolName("lookup"), "{}")),
+                      List.of(
+                          new ToolOutcome.Succeeded(new CallId("a"), List.of(new Block.Text("1"))),
+                          new ToolOutcome.Succeeded(
+                              new CallId("b"), List.of(new Block.Text("2")))))),
+              null,
+              0);
+
+      // question, call a, call b, result a, result b
+      var blocks = cached(List.of(turn));
+
+      assertThat(markedIn(blocks)).containsExactly(0, 4);
+    }
+
+    @Test
+    void a_new_question_after_a_turn_that_used_tools_is_marked_with_that_turn_s_last_result() {
+      // question 1, call 1, result 1, call 2, result 2, answer, question 2
+      var blocks =
+          cached(
+              List.of(
+                  looping(1, 2, new TurnResult.Answered(List.of(new Block.Text("done")))),
+                  open(2, "question 2")));
+
+      assertThat(markedIn(blocks)).containsExactly(4, 6);
+    }
+
+    @Test
+    void a_new_question_after_a_turn_that_failed_is_marked_with_the_question_before_it() {
+      // question 1, "(did not complete)", question 2
+      var blocks =
+          cached(
+              List.of(
+                  new Turn(
+                      new TurnId(1), asked(1, "question 1"), List.of(), new TurnResult.Failed(), 0),
+                  open(2, "question 2")));
+
+      assertThat(markedIn(blocks)).containsExactly(0, 2);
     }
 
     /** The vendor rejects cache control on a thinking block, so the marker falls back. */

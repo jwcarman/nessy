@@ -33,8 +33,11 @@ import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.Tokens;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Input;
+import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.inference.InferenceContext;
@@ -507,6 +510,72 @@ class AnthropicLiveTest {
           .as("thinking was asked for, so the reply carries this vendor's own state")
           .anyMatch(Block.Provider.class::isInstance);
     }
+  }
+
+  /**
+   * A tool loop with caching on: the second call must read back what the first one wrote.
+   *
+   * <p>The markers sit on the newest tool result and on the one before it, so this is the only
+   * place that shows the vendor accepts a marker on a result and that the prefix the last request
+   * ended on is the one it finds. Two rounds is also the shape that could not be built at all while
+   * the markers were placed by counting blocks.
+   */
+  @Test
+  void a_cached_tool_loop_reads_back_what_the_last_call_wrote() {
+    ToolOffer lookup =
+        new ToolOffer(
+            new ToolName("lake_depth"),
+            "returns the maximum depth of a named lake, in metres",
+            new JsonSchema(
+                """
+                {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}"""));
+    Input question =
+        new Input(new Seq(1), List.of(new Block.Text("How deep are Loch Ness and Loch Morar?")));
+    Exchange ness = looked(2, "call_ness", "Loch Ness", "230 metres. ");
+    Exchange morar = looked(4, "call_morar", "Loch Morar", "310 metres. ");
+    Turn afterOneRound = new Turn(new TurnId(1), question, List.of(ness), null, 0);
+    Turn afterTwoRounds = new Turn(new TurnId(1), question, List.of(ness, morar), null, 0);
+    Map<String, String> cached = Map.of("anthropic.cache_control.ttl", "FIVE_MINUTES");
+
+    try (AnthropicInferenceProvider provider = provider()) {
+      InferenceResult first = provider.infer(looping(afterOneRound, lookup, cached));
+      InferenceResult second = provider.infer(looping(afterTwoRounds, lookup, cached));
+
+      assertThat(first).isNotInstanceOf(InferenceResult.Fault.class);
+      assertThat(second).isNotInstanceOf(InferenceResult.Fault.class);
+      assertThat(second.usage().cacheReadTokens())
+          .as("the second call starts with everything the first one ended on")
+          .isInstanceOfSatisfying(
+              Tokens.Counted.class, read -> assertThat(read.count()).isPositive());
+    }
+  }
+
+  /** One call and a result long enough that the prefix it ends is worth caching. */
+  private static Exchange looked(long seq, String callId, String lake, String depth) {
+    return new Exchange(
+        new Seq(seq),
+        List.of(
+            new Block.ToolCall(
+                new CallId(callId),
+                new ToolName("lake_depth"),
+                "{\"name\":\"%s\"}".formatted(lake))),
+        List.of(
+            new ToolOutcome.Succeeded(
+                new CallId(callId),
+                List.of(
+                    new Block.Text(
+                        depth
+                            + "Survey notes you may ignore: the loch is deep and cold. "
+                                .repeat(300))))));
+  }
+
+  private static InferenceRequest looping(
+      Turn turn, ToolOffer offer, Map<String, String> properties) {
+    return new InferenceRequest(
+        SYSTEM,
+        InferenceContext.of(List.of(turn)),
+        new Toolset(List.of(offer), ToolChoice.auto()),
+        new InferenceOptions(MODEL, 2048, properties));
   }
 
   /** A prefix long enough to cache, asked twice: a write, then a read, is reported. */

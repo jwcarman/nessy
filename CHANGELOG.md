@@ -107,6 +107,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged, they are dropped too. The adapter logs how many blocks were
   dropped, at DEBUG. A request that does not think, a summariser's for
   instance, no longer replays thinking at all.
+- **Anthropic: prompt caching no longer fails a turn that uses tools.** With
+  `anthropic.cache_control.ttl` set, a turn's third model call (two tool
+  rounds in), or any request after a turn that used tools twice or that
+  failed, threw `ArrayIndexOutOfBoundsException` while the request was being
+  built. The conversation's two cache markers now sit on the last block of
+  the request, which in a tool loop is the newest tool result, and on the last
+  block of the user-side message before it, which is where the previous
+  request ended.
 - **Answers whose type is a list, enum, string or sealed type work on OpenAI
   and Azure.** A schema whose root is not an object travels wrapped as
   `{"value": ...}` and is unwrapped before the caller sees it, and generic

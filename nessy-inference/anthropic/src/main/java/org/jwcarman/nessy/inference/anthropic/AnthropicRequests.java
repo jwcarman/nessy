@@ -71,15 +71,6 @@ import tools.jackson.databind.json.JsonMapper;
 public final class AnthropicRequests {
 
   /**
-   * How far back the second cache breakpoint is placed.
-   *
-   * <p>Anthropic allows four; two are used. One moves with the conversation so the newest prefix is
-   * written, and one sits further back so that a stable, already-written prefix is still hit on the
-   * next turn -- without which the moving one invalidates itself every time.
-   */
-  private static final int LOOKBACK_BLOCKS = 20;
-
-  /**
    * What makes a changed prefix survivable.
    *
    * <p>On Fable 5.1, Opus 5.5 and Sonnet 5.5 a thinking block is bound to the system prompt, the
@@ -192,9 +183,8 @@ public final class AnthropicRequests {
     return blocks;
   }
 
-  /** A message on its way to being one: its role, the blocks it came from, and their params. */
-  private record Drafted(
-      MessageParam.Role role, List<Block> source, List<ContentBlockParam> blocks) {}
+  /** A message on its way to being one: its role and its blocks. */
+  private record Drafted(MessageParam.Role role, List<ContentBlockParam> blocks) {}
 
   private static void addMessages(
       MessageCreateParams.Builder builder,
@@ -209,18 +199,15 @@ public final class AnthropicRequests {
                 summaries.stream().map(AnthropicRequests::draftSummary),
                 turns.stream().flatMap(turn -> draft(turn, thinks, mapper)))
             .toList();
-    Set<Integer> marked = marker.isPresent() ? conversationBreakpoints(drafts) : Set.of();
+    Set<Integer> marked = marker.isPresent() ? breakpoints(drafts) : Set.of();
 
     List<MessageParam> params = new ArrayList<>(drafts.size());
-    int offset = 0;
-    for (Drafted draft : drafts) {
-      List<ContentBlockParam> blocks = new ArrayList<>(draft.blocks());
-      for (int i = 0; i < blocks.size(); i++) {
-        if (marked.contains(offset + i)) {
-          blocks.set(i, toParam(draft.source().get(i), marker, mapper).orElse(blocks.get(i)));
-        }
-      }
-      offset += blocks.size();
+    for (int i = 0; i < drafts.size(); i++) {
+      Drafted draft = drafts.get(i);
+      List<ContentBlockParam> blocks =
+          marked.contains(i)
+              ? endingOnMarker(draft.blocks(), marker.orElseThrow())
+              : draft.blocks();
       params.add(MessageParam.builder().role(draft.role()).contentOfBlockParams(blocks).build());
     }
     builder.messages(params);
@@ -260,7 +247,6 @@ public final class AnthropicRequests {
               Stream.of(
                   new Drafted(
                       MessageParam.Role.ASSISTANT,
-                      List.of(),
                       List.of(
                           ContentBlockParam.ofText(
                               TextBlockParam.builder()
@@ -284,15 +270,12 @@ public final class AnthropicRequests {
    * long conversation has.
    */
   private static Drafted draftSummary(Summary summary) {
-    Block.Text text =
-        new Block.Text(
-            "<summary from=\"%d\" through=\"%d\">\n%s\n</summary>"
-                .formatted(
-                    summary.from().value(), summary.through().value(), text(summary.content())));
+    String text =
+        "<summary from=\"%d\" through=\"%d\">\n%s\n</summary>"
+            .formatted(summary.from().value(), summary.through().value(), text(summary.content()));
     return new Drafted(
         MessageParam.Role.USER,
-        List.of(text),
-        List.of(ContentBlockParam.ofText(TextBlockParam.builder().text(text.text()).build())));
+        List.of(ContentBlockParam.ofText(TextBlockParam.builder().text(text).build())));
   }
 
   /**
@@ -307,7 +290,7 @@ public final class AnthropicRequests {
         draftOf(MessageParam.Role.ASSISTANT, exchange.request(), thinks, mapper);
     List<ContentBlockParam> results =
         exchange.outcomes().stream().map(AnthropicRequests::answering).toList();
-    Drafted answering = new Drafted(MessageParam.Role.USER, List.of(), results);
+    Drafted answering = new Drafted(MessageParam.Role.USER, results);
     return results.isEmpty()
         ? asking.stream()
         : Stream.concat(asking.stream(), Stream.of(answering));
@@ -354,61 +337,79 @@ public final class AnthropicRequests {
    */
   private static Optional<Drafted> draftOf(
       MessageParam.Role role, List<? extends Block> content, boolean thinks, JsonMapper mapper) {
-    List<Block> source = new ArrayList<>();
     List<ContentBlockParam> blocks = new ArrayList<>();
     for (Block block : content) {
       if (!thinks && block instanceof Block.Provider) {
         continue;
       }
-      toParam(block, Optional.empty(), mapper)
-          .ifPresent(
-              param -> {
-                source.add(block);
-                blocks.add(param);
-              });
+      toParam(block, mapper).ifPresent(blocks::add);
     }
     return blocks.isEmpty()
         ? Optional.empty()
-        : Optional.of(new Drafted(role, List.copyOf(source), List.copyOf(blocks)));
+        : Optional.of(new Drafted(role, List.copyOf(blocks)));
   }
 
   // ---- cache breakpoints ---------------------------------------------------------------
 
   /**
-   * Where to put the two markers, as positions in the flattened run of blocks.
+   * Which messages end on a cache marker.
    *
-   * <p>One rides the end of the conversation and one sits {@link #LOOKBACK_BLOCKS} behind it. The
-   * trailing one is what actually earns anything: a single moving marker writes a new prefix every
-   * turn and reads none of it back, because by the next turn the conversation has moved past it.
+   * <p>Two, and both are settled: the last message, where this request ends, and the user-side
+   * message before it, where the last request ended. No call is made to the model until every
+   * result of a round is in, so a request always ends on a question or a complete set of results,
+   * and that message never changes afterwards. The second marker is the one that earns anything: it
+   * sits on the prefix the last request wrote, so that is the prefix the vendor can read back,
+   * however many blocks the round in between added.
    */
-  private static Set<Integer> conversationBreakpoints(List<Drafted> drafts) {
-    List<Block> flattened = drafts.stream().map(Drafted::source).flatMap(List::stream).toList();
-    int moving = lastEligibleAtOrBefore(flattened, flattened.size() - 1);
-    if (moving < 0) {
+  private static Set<Integer> breakpoints(List<Drafted> drafts) {
+    int last = drafts.size() - 1;
+    if (last < 0) {
       return Set.of();
     }
-    int anchor = lastEligibleAtOrBefore(flattened, moving - LOOKBACK_BLOCKS);
-    return anchor < 0 ? Set.of(moving) : Set.of(anchor, moving);
-  }
-
-  private static int lastEligibleAtOrBefore(List<Block> blocks, int from) {
-    for (int i = Math.min(from, blocks.size() - 1); i >= 0; i--) {
-      if (mayCarryCacheControl(blocks.get(i))) {
-        return i;
+    for (int i = last - 1; i >= 0; i--) {
+      if (MessageParam.Role.USER.equals(drafts.get(i).role())) {
+        return Set.of(i, last);
       }
     }
-    return -1;
+    return Set.of(last);
   }
 
   /**
-   * A thinking block may not carry cache control -- the vendor rejects it -- so a breakpoint lands
-   * on the nearest block before it that may. Exhaustive, so a new block kind has to answer here.
+   * The same blocks, with the last one that may carry a marker carrying it.
+   *
+   * <p>A thinking block may not -- the vendor rejects it -- so the marker falls back to the nearest
+   * block before it that may. A message with no such block is sent as it was.
    */
-  private static boolean mayCarryCacheControl(Block block) {
-    return switch (block) {
-      case Block.Text _, Block.Commentary _, Block.ToolCall _ -> true;
-      case Block.Provider _ -> false;
-    };
+  private static List<ContentBlockParam> endingOnMarker(
+      List<ContentBlockParam> blocks, CacheControlEphemeral marker) {
+    List<ContentBlockParam> marked = new ArrayList<>(blocks);
+    for (int i = marked.size() - 1; i >= 0; i--) {
+      Optional<ContentBlockParam> carrying = carrying(marked.get(i), marker);
+      if (carrying.isPresent()) {
+        marked.set(i, carrying.get());
+        return marked;
+      }
+    }
+    return marked;
+  }
+
+  /** The block with the marker on it, for the three kinds this adapter sends that may carry one. */
+  private static Optional<ContentBlockParam> carrying(
+      ContentBlockParam block, CacheControlEphemeral marker) {
+    if (block.isText()) {
+      return Optional.of(
+          ContentBlockParam.ofText(block.asText().toBuilder().cacheControl(marker).build()));
+    }
+    if (block.isToolUse()) {
+      return Optional.of(
+          ContentBlockParam.ofToolUse(block.asToolUse().toBuilder().cacheControl(marker).build()));
+    }
+    if (block.isToolResult()) {
+      return Optional.of(
+          ContentBlockParam.ofToolResult(
+              block.asToolResult().toBuilder().cacheControl(marker).build()));
+    }
+    return Optional.empty();
   }
 
   // ---- tools ---------------------------------------------------------------------------
@@ -484,21 +485,16 @@ public final class AnthropicRequests {
 
   // ---- blocks --------------------------------------------------------------------------
 
-  private static Optional<ContentBlockParam> toParam(
-      Block block, Optional<CacheControlEphemeral> cacheControl, JsonMapper mapper) {
+  private static Optional<ContentBlockParam> toParam(Block block, JsonMapper mapper) {
     return switch (block) {
       case Block.Text(String text) ->
           text.isEmpty()
               ? Optional.empty()
-              : Optional.of(
-                  ContentBlockParam.ofText(
-                      TextBlockParam.builder().text(text).cacheControl(cacheControl).build()));
+              : Optional.of(ContentBlockParam.ofText(TextBlockParam.builder().text(text).build()));
       case Block.Commentary(String text) ->
           text.isEmpty()
               ? Optional.empty()
-              : Optional.of(
-                  ContentBlockParam.ofText(
-                      TextBlockParam.builder().text(text).cacheControl(cacheControl).build()));
+              : Optional.of(ContentBlockParam.ofText(TextBlockParam.builder().text(text).build()));
       case Block.Provider(String vendor, String payload) -> ours(vendor, payload, mapper);
       case Block.ToolCall(CallId id, var name, String arguments) ->
           Optional.of(
@@ -507,7 +503,6 @@ public final class AnthropicRequests {
                       .id(id.value())
                       .name(name.value())
                       .input(toInput(arguments, mapper))
-                      .cacheControl(cacheControl)
                       .build()));
     };
   }
