@@ -1752,7 +1752,7 @@ class AnthropicRequestsTest {
       MessageCreateParams params = thinkingWith(Map.of());
 
       assertThat(params.thinking()).isEmpty();
-      assertThat(params._additionalHeaders().names()).doesNotContain("anthropic-beta");
+      assertThat(params._additionalHeaders().values("anthropic-beta")).isEmpty();
     }
 
     @Test
@@ -1769,7 +1769,7 @@ class AnthropicRequestsTest {
               MAPPER);
 
       assertThat(params.thinking()).isEmpty();
-      assertThat(params._additionalHeaders().names()).doesNotContain("anthropic-beta");
+      assertThat(params._additionalHeaders().values("anthropic-beta")).isEmpty();
     }
   }
 
