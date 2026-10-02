@@ -603,6 +603,121 @@ class ChapterKeeperTest {
     }
 
     @Test
+    void
+        a_chapter_that_becomes_due_while_a_summary_is_being_written_is_closed_and_summarised_by_the_pass_that_was_writing() {
+      assertThat(chapters.append(TYPE, AGENT, Optional.empty(), List.of(chapter(1, 2)))).isTrue();
+      completeTurns(1, 2, 3);
+      CountDownLatch writing = new CountDownLatch(1);
+      CountDownLatch release = new CountDownLatch(1);
+      Summarizer summarizer =
+          chapter -> {
+            if (chapter.equals(chapter(1, 2))) {
+              writing.countDown();
+              try {
+                release.await(10, TimeUnit.SECONDS);
+              } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+              }
+            }
+            return SAYS_SOMETHING.summarize(chapter);
+          };
+      ChapterPolicy policy = open -> open.turns().size() >= 2 ? ids(4) : List.of();
+      Counting leases = new Counting();
+      ChapterKeeper keeper = keeper(policy, summarizer, leases, 10);
+      CompletableFuture<Void> first = CompletableFuture.runAsync(() -> keeper.keep(AGENT));
+      await().atMost(Duration.ofSeconds(10)).until(() -> writing.getCount() == 0);
+      completeTurns(4);
+      CompletableFuture<Void> second = CompletableFuture.runAsync(() -> keeper.keep(AGENT));
+
+      await().atMost(Duration.ofSeconds(10)).until(second::isDone);
+      assertThat(leases.refused).hasValue(1);
+      assertThat(first).isNotDone();
+      release.countDown();
+      first.join();
+
+      assertThat(chapters.closedThrough(TYPE, AGENT)).contains(id(4));
+      assertThat(chapters.summaries(TYPE, AGENT))
+          .extracting(Summary::chapter)
+          .containsExactly(chapter(1, 2), chapter(3, 4));
+      assertThat(unsummarized()).isEmpty();
+    }
+
+    /** A lease that counts every ask and refuses from the {@code refuseFrom}th on. */
+    private static final class Refusing implements Leases {
+      private final int refuseFrom;
+      private final AtomicInteger asked = new AtomicInteger();
+
+      Refusing(int refuseFrom) {
+        this.refuseFrom = refuseFrom;
+      }
+
+      @Override
+      public <T> Attempt<T> tryWithLease(
+          LeaseKind kind, AgentType type, AgentId agent, Duration ttl, Supplier<T> work) {
+        if (asked.incrementAndGet() >= refuseFrom) {
+          return new Attempt.Ignored<>();
+        }
+        return new Attempt.Ran<>(work.get());
+      }
+    }
+
+    @Test
+    void a_refused_pass_returns_at_once() {
+      completeTurns(1, 2, 3);
+      Refusing leases = new Refusing(1);
+
+      keeper(open -> List.of(), SAYS_SOMETHING, leases, 10).keep(AGENT);
+
+      assertThat(leases.asked).hasValue(1);
+    }
+
+    @Test
+    void a_pass_refused_a_summary_asks_for_nothing_more() {
+      assertThat(chapters.append(TYPE, AGENT, Optional.empty(), List.of(chapter(1, 2)))).isTrue();
+      completeTurns(1, 2, 3);
+      Refusing leases = new Refusing(2);
+
+      keeper(open -> List.of(), SAYS_SOMETHING, leases, 10).keep(AGENT);
+
+      assertThat(leases.asked).hasValue(2);
+      assertThat(unsummarized()).containsExactly(chapter(1, 2));
+    }
+
+    @Test
+    void a_summariser_that_keeps_failing_is_not_asked_again_in_the_same_pass() {
+      assertThat(chapters.append(TYPE, AGENT, Optional.empty(), List.of(chapter(1, 2)))).isTrue();
+      completeTurns(1, 2);
+      List<Chapter> asked = new ArrayList<>();
+      // A turn completes while the summary is being written, so the pass looks again.
+      Summarizer failing =
+          chapter -> {
+            asked.add(chapter);
+            completeTurns(3);
+            throw new IllegalStateException("the model is down");
+          };
+
+      keeper(open -> List.of(), failing, 10).keep(AGENT);
+
+      assertThat(asked).containsExactly(chapter(1, 2));
+      assertThat(unsummarized()).containsExactly(chapter(1, 2));
+    }
+
+    @Test
+    void a_policy_that_closes_nothing_is_not_asked_again_when_nothing_changed() {
+      completeTurns(1, 2, 3);
+      AtomicInteger asked = new AtomicInteger();
+      ChapterPolicy closesNothing =
+          open -> {
+            asked.incrementAndGet();
+            return List.of();
+          };
+
+      keeper(closesNothing, SAYS_SOMETHING, 10).keep(AGENT);
+
+      assertThat(asked).hasValue(1);
+    }
+
+    @Test
     void a_chapter_summarised_by_someone_else_before_the_work_runs_is_not_summarised_again() {
       Chapter closed = chapter(1, 2);
       assertThat(chapters.append(TYPE, AGENT, Optional.empty(), List.of(closed))).isTrue();
@@ -854,8 +969,9 @@ class ChapterKeeperTest {
       keeper(lateHistories(3, Integer.MAX_VALUE, reads), Duration.ofSeconds(10))
           .keepAfter(AGENT, id(2));
 
-      // The cut reads the open turns once; waiting would have read at least once more first.
-      assertThat(reads).hasValue(1);
+      // The cut reads the open turns once and the look after it once; waiting would have read
+      // at least once more first.
+      assertThat(reads).hasValue(2);
     }
   }
 

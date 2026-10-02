@@ -112,9 +112,9 @@ call never waits on either and either may block or call a model. The
 engine's `ChapterKeeper` listens for the end of each turn, takes a lease
 for the agent under the kind `nessy.chapters`, cuts what the policy says is
 due, and then summarises, oldest chapter first and one at a time. A keeper
-that finds the lease held asks again for about two seconds, so a chapter that
-became due while another keeper was cutting is still closed; past that it
-leaves the work to the next turn's end. See [Leases](leases.md).
+refused the lease does nothing. The keeper that held it looks at the history
+again when it lets go, so a chapter that became due meanwhile is still closed
+and summarised. See [Leases](leases.md).
 
 A policy that returns a turn that is not open, or names turns out of order,
 or throws, closes nothing, and the keeper logs a warning.

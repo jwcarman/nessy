@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Supplier;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.ChapterPolicy;
@@ -52,15 +51,28 @@ import org.slf4j.LoggerFactory;
  * that is split into chapters of at most that many turns, so no chapter outgrows what a summariser
  * can be shown.
  *
- * <p><b>Summarising.</b> Chapters without a summary are summarised oldest first, one at a time. A
- * blank summary, a summariser that throws or a refused lease stops the pass, so a later chapter is
- * never summarised ahead of an earlier one; the next turn's end tries again.
+ * <p><b>Summarising.</b> Chapters without a summary are summarised oldest first, one at a time, and
+ * the list is read again after each summary, so a chapter cut meanwhile is picked up. A blank
+ * summary or a summariser that throws stops the summarising for the rest of the pass, so a later
+ * chapter is never summarised ahead of an earlier one and the failing chapter is not asked again in
+ * the same pass; the next turn's end tries again.
  *
  * <p><b>Leases.</b> The cut holds the lease for the agent, and so does each summary, one at a time,
  * so a model call is never made outside one and the lease is never taken from inside itself (a
- * {@link Leases} must not be re-entered). A lease held by someone else is asked for again until the
- * keeper's wait is spent, because the holder may have read the history before the turn this pass
- * was told about; past that the keeper does nothing, and the next turn's end tries again.
+ * {@link Leases} must not be re-entered). Nothing waits on a lease: a keeper refused one logs at
+ * DEBUG and returns.
+ *
+ * <p><b>Looking again.</b> A pass that held the lease is answerable for what became due while it
+ * held it. When its work under the lease has returned and the lease is let go, it reads the history
+ * again; if a completed turn is there that the cut did not see, or a closed chapter has no summary,
+ * it goes round again, and it stops when a look finds nothing new, when it is refused the lease, or
+ * when it is interrupted. A summary that failed in this pass is not tried again in it, a policy
+ * that closes nothing is not asked again over the same turns, and a round limit stands behind both.
+ * This is enough because a turn is visible in the history before its keeper asks for the lease (see
+ * below), so a keeper that was refused was refused while another still held the lease, and the
+ * holder looks again only after letting go, which is after that refusal, so it sees the turn. The
+ * same holds for a chapter cut by a keeper that was then refused the summary lease. Nothing is kept
+ * in memory between passes, so this holds when the holder is on another node.
  *
  * <p><b>Waiting for the turn it was told about.</b> A turn's end is announced before the store that
  * holds it has committed: both doors narrate inside the lock that writes the turn, which on a
@@ -82,6 +94,9 @@ public final class ChapterKeeper {
 
   /** How often the listener looks again while it waits. */
   private static final Duration VISIBILITY_POLL = Duration.ofMillis(25);
+
+  /** A backstop on how often one pass goes round again; each round needs new work to happen. */
+  private static final int MAX_ROUNDS = 8;
 
   private static final Logger LOG = LoggerFactory.getLogger(ChapterKeeper.class);
 
@@ -195,64 +210,64 @@ public final class ChapterKeeper {
   }
 
   /**
-   * Cuts what is due, then writes what is unwritten. Public so a caller may ask outright.
+   * Cuts what is due, then writes what is unwritten, and looks again after letting go of the lease
+   * for anything that became due meanwhile. Public so a caller may ask outright.
    *
-   * <p>A pass that finds the lease held by another does not give up at once: whoever holds it may
-   * have read the turns before the one this pass was told about, so a chapter that turn made due
-   * would be left open. It asks again every poll interval until the lease is free or the keeper's
-   * wait (two seconds by default, the same as for a turn to become visible) is spent, which is long
-   * for a cut and short for a summary. If the wait is spent the pass does nothing and says so at
-   * DEBUG; the next turn's end keeps. The same wait applies before each summary. Nothing is
-   * remembered between passes, so this holds when the holder is on another node.
+   * <p>A pass refused the lease does nothing more: whoever holds it looks again when it lets go.
    */
   public void keep(AgentId agentId) {
     Objects.requireNonNull(agentId, "agentId must not be null");
-    Attempt<Boolean> cut =
-        withLease(
-            agentId,
-            () -> {
-              cut(agentId);
-              return true;
-            });
-    if (cut instanceof Attempt.Ignored<Boolean>) {
-      LOG.debug(
-          "[{}] chapters of agent {} were still being kept elsewhere after {}; the next turn's end"
-              + " will keep",
-          agentType.value(),
-          agentId,
-          visibilityWait);
+    Set<Chapter> failed = new HashSet<>();
+    for (int round = 1; round <= MAX_ROUNDS; round++) {
+      if (Thread.currentThread().isInterrupted()) {
+        return;
+      }
+      Attempt<List<TurnId>> cut =
+          leases.tryWithLease(LEASE_KIND, agentType, agentId, leaseTtl, () -> cut(agentId));
+      if (!(cut instanceof Attempt.Ran<List<TurnId>>(List<TurnId> seen))) {
+        refused(agentId);
+        return;
+      }
+      if (!summarise(agentId, failed)) {
+        refused(agentId);
+        return;
+      }
+      if (!turnsBeyond(agentId, seen)) {
+        return;
+      }
     }
-    summarise(agentId);
+    LOG.debug(
+        "[{}] chapters of agent {} were still changing after {} rounds; the next turn's end will"
+            + " keep",
+        agentType.value(),
+        agentId,
+        MAX_ROUNDS);
+  }
+
+  private void refused(AgentId agentId) {
+    LOG.debug(
+        "[{}] chapters of agent {} are being kept elsewhere; the keeper holding the lease looks"
+            + " again when it lets go",
+        agentType.value(),
+        agentId);
   }
 
   /**
-   * The work under the agent's lease, asking again while another holds it, up to the keeper's
-   * patience. A holder that is mid-cut read the turns before the one this pass was told about, so
-   * giving up at the first refusal would leave what that turn made due for the next turn's end.
-   * Nothing is remembered between passes, for the holder may be on another node; the lease is the
-   * only thing that is shared, so it is asked again. A refusal that outlasts the patience, or an
-   * interrupt, is answered as a refusal.
+   * Whether the history now holds a completed turn after the last closed chapter not in {@code
+   * seen}.
    */
-  private <T> Attempt<T> withLease(AgentId agentId, Supplier<T> work) {
-    long deadline = System.nanoTime() + visibilityWait.toNanos();
-    Attempt<T> attempt = leases.tryWithLease(LEASE_KIND, agentType, agentId, leaseTtl, work);
-    while (attempt instanceof Attempt.Ignored<T> && System.nanoTime() < deadline) {
-      try {
-        Thread.sleep(visibilityPoll);
-      } catch (InterruptedException _) {
-        Thread.currentThread().interrupt();
-        return attempt;
-      }
-      attempt = leases.tryWithLease(LEASE_KIND, agentType, agentId, leaseTtl, work);
-    }
-    return attempt;
+  private boolean turnsBeyond(AgentId agentId, List<TurnId> seen) {
+    Optional<TurnId> closed = chapters.closedThrough(agentType, agentId);
+    return histories.forAgent(agentType, agentId).completedAfter(closed).stream()
+        .anyMatch(turn -> !seen.contains(turn));
   }
 
-  private void cut(AgentId agentId) {
+  /** Closes what is due; answers the open turns it looked at. */
+  private List<TurnId> cut(AgentId agentId) {
     Optional<TurnId> after = chapters.closedThrough(agentType, agentId);
     List<TurnId> open = histories.forAgent(agentType, agentId).completedAfter(after);
     if (open.isEmpty()) {
-      return;
+      return open;
     }
     List<TurnId> ends = asked(agentId, open);
     if (ends.isEmpty() && open.size() >= maxChapterLength) {
@@ -260,7 +275,7 @@ public final class ChapterKeeper {
     }
     List<Chapter> cut = chaptersOf(agentId, open, ends);
     if (cut.isEmpty()) {
-      return;
+      return open;
     }
     if (chapters.append(agentType, agentId, after, cut)) {
       LOG.info(
@@ -275,6 +290,7 @@ public final class ChapterKeeper {
           agentType.value(),
           agentId);
     }
+    return open;
   }
 
   /** What the policy says, or nothing if it threw or answered with turns that are not open. */
@@ -335,17 +351,35 @@ public final class ChapterKeeper {
     return result;
   }
 
-  private void summarise(AgentId agentId) {
-    for (Chapter chapter : chapters.unsummarized(agentType, agentId)) {
-      Attempt<Boolean> attempt = withLease(agentId, () -> summarise(agentId, chapter));
-      boolean goOn = attempt.orElse(false);
-      if (!goOn) {
-        return;
+  /**
+   * Summarises the oldest chapter without a summary until none is left, reading the list again
+   * after each. A chapter whose summary failed is added to {@code failed} and ends the summarising.
+   * False when the lease was refused.
+   */
+  private boolean summarise(AgentId agentId, Set<Chapter> failed) {
+    while (true) {
+      List<Chapter> waiting = chapters.unsummarized(agentType, agentId);
+      if (waiting.isEmpty()) {
+        return true;
+      }
+      Chapter chapter = waiting.getFirst();
+      if (failed.contains(chapter)) {
+        return true;
+      }
+      Attempt<Boolean> attempt =
+          leases.tryWithLease(
+              LEASE_KIND, agentType, agentId, leaseTtl, () -> summarise(agentId, chapter));
+      if (attempt instanceof Attempt.Ignored<Boolean>) {
+        return false;
+      }
+      if (!attempt.orElse(false)) {
+        failed.add(chapter);
+        return true;
       }
     }
   }
 
-  /** Writes one chapter's summary; false when the pass should stop. */
+  /** Writes one chapter's summary; false when the summary failed. */
   private boolean summarise(AgentId agentId, Chapter chapter) {
     if (!chapters.unsummarized(agentType, agentId).contains(chapter)) {
       return true;
