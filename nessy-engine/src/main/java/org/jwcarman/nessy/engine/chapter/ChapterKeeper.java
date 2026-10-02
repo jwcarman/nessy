@@ -64,15 +64,18 @@ import org.slf4j.LoggerFactory;
  *
  * <p><b>Looking again.</b> A pass that held the lease is answerable for what became due while it
  * held it. When its work under the lease has returned and the lease is let go, it reads the history
- * again; if a completed turn is there that the cut did not see, or a closed chapter has no summary,
- * it goes round again, and it stops when a look finds nothing new, when it is refused the lease, or
- * when it is interrupted. A summary that failed in this pass is not tried again in it, a policy
- * that closes nothing is not asked again over the same turns, and a round limit stands behind both.
- * This is enough because a turn is visible in the history before its keeper asks for the lease (see
- * below), so a keeper that was refused was refused while another still held the lease, and the
- * holder looks again only after letting go, which is after that refusal, so it sees the turn. The
- * same holds for a chapter cut by a keeper that was then refused the summary lease. Nothing is kept
- * in memory between passes, so this holds when the holder is on another node.
+ * again; if a completed turn is there that the cut did not see, it goes round again, and it stops
+ * when a look finds nothing new, when it is refused the lease, or when it is interrupted. A closed
+ * chapter with no summary needs no look: the chapters still to be summarised are read afresh before
+ * each summary, so one cut meanwhile is picked up. A summary that failed in this pass is not tried
+ * again in it, a policy that closes nothing is not asked again over the same turns, and a round
+ * limit stands behind both. This is enough because a turn is visible in the history before its
+ * keeper asks for the lease (see below), so a keeper that was refused was refused while another
+ * still held the lease, and the holder looks again only after letting go, which is after that
+ * refusal, so it sees the turn. That holds for a turn the wait below found; a keeper that gave up
+ * waiting, or was asked to keep with no turn named, may read too early, and the next turn's end
+ * keeps what it missed. Nothing is kept in memory between passes, so this holds when the holder is
+ * on another node.
  *
  * <p><b>Waiting for the turn it was told about.</b> A turn's end is announced before the store that
  * holds it has committed: both doors narrate inside the lock that writes the turn, which on a

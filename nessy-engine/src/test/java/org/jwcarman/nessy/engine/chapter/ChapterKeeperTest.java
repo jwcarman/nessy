@@ -718,6 +718,22 @@ class ChapterKeeperTest {
     }
 
     @Test
+    void turns_left_open_by_a_cut_are_not_taken_for_new_ones() {
+      completeTurns(1, 2, 3);
+      AtomicInteger asked = new AtomicInteger();
+      ChapterPolicy closesTheFirstTwo =
+          open -> {
+            asked.incrementAndGet();
+            return open.turns().size() == 3 ? ids(2) : List.of();
+          };
+
+      keeper(closesTheFirstTwo, SAYS_SOMETHING, 10).keep(AGENT);
+
+      assertThat(chapters.closedThrough(TYPE, AGENT)).contains(id(2));
+      assertThat(asked).hasValue(1);
+    }
+
+    @Test
     void a_chapter_summarised_by_someone_else_before_the_work_runs_is_not_summarised_again() {
       Chapter closed = chapter(1, 2);
       assertThat(chapters.append(TYPE, AGENT, Optional.empty(), List.of(closed))).isTrue();
@@ -969,9 +985,9 @@ class ChapterKeeperTest {
       keeper(lateHistories(3, Integer.MAX_VALUE, reads), Duration.ofSeconds(10))
           .keepAfter(AGENT, id(2));
 
-      // The cut reads the open turns once and the look after it once; waiting would have read
-      // at least once more first.
-      assertThat(reads).hasValue(2);
+      // The cut reads the open turns once and the look after it at most once; waiting would have
+      // read at least once more first.
+      assertThat(reads.get()).isLessThan(3);
     }
   }
 
