@@ -4,8 +4,7 @@
 conversation; he ruled on each point in §2 as it was drafted. §15 lists where the build went past this text. Written on Opus because the session was on Opus; the model policy
 puts specifications on Fable, so this is a draft for James to revise, not a finished record.
 
-§2 says what James ruled and which names are provisional. A provisional name is what a build would
-use so the design can be tried; it has not had his yes.
+§2 says what James ruled, including the names that were provisional while it was built.
 
 Date: 2026-10-02. Amends the stratified-context design (`2026-10-01-stratified-context-design.md`
 §3, the summariser) and the approval lifecycle (the action shown to an approver).
@@ -76,7 +75,7 @@ Ruled by James on 2026-10-02:
 - Rolling back, old builds and events stored before this change are not a concern. Nothing here
   reads an event that has no description.
 
-Provisional, needing his yes:
+Provisional when this was written; James said yes to all five names on 2026-10-02, after the build:
 
 | Name | Where | What it is |
 |---|---|---|
