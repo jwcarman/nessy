@@ -42,11 +42,15 @@ are transactions, and what a step narrates is held until the step returns.
 So a listener is never told about something a rollback then undid, a step
 that fails is never heard at all, and a listener that reads the history finds
 what it was just told about: the turn whose end it hears is already stored.
+The one exception is a harness called from inside an application's own
+transaction: a step then joins that transaction, and is heard when it
+returns, before the application commits or rolls back.
 
 Order holds per agent: events are heard in the order their steps committed,
 and what one agent has not yet released never holds up another agent. What an
 agent narrates outside a step, such as the deltas of a streaming reply,
-is heard as it happens, but never ahead of a step that committed before it.
+is heard as it happens, but never ahead of a step that took the agent's lock
+before it.
 
 Narration never runs on the thread that folds a turn. Each harness tells
 its listeners on one thread of its own, in order, and a listener that

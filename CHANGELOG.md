@@ -236,7 +236,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A listener could be told about a step that then rolled back, or that failed
-  to commit. A step that does not commit is now never heard.
+  to commit. A step that does not commit is now never heard, unless the harness
+  was called inside an application's own transaction, which its steps then join.
 - **A chapter that was due at a turn's end could be left open, or unsummarised,
   until a later turn when two turns ended close together.** The keeper that
   found the agent's lease held walked away, and the keeper holding it had read

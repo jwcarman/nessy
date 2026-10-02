@@ -155,7 +155,14 @@ public final class AfterCommit implements Narrator, AutoCloseable {
   Step reserve(AgentType type, AgentId agent) {
     Step step = new Step(new Key(type, agent), State.OPEN);
     enqueue(step);
-    step.watch = watchdog.schedule(step::expire, bound.toNanos(), TimeUnit.NANOSECONDS);
+    try {
+      step.watch = watchdog.schedule(step::expire, bound.toNanos(), TimeUnit.NANOSECONDS);
+    } catch (RuntimeException e) {
+      // Already in line: a step that cannot be watched must not stay there, or it holds back
+      // every narration of its agent for as long as the process runs.
+      step.cancel();
+      throw e;
+    }
     return step;
   }
 
@@ -180,22 +187,34 @@ public final class AfterCommit implements Narrator, AutoCloseable {
       }
       line.draining = true;
     }
-    while (true) {
-      List<Step> settled = new ArrayList<>();
-      synchronized (line) {
-        while (!line.queue.isEmpty() && line.queue.peekFirst().state != State.OPEN) {
-          settled.add(line.queue.pollFirst());
-        }
-        if (settled.isEmpty()) {
-          line.draining = false;
-          if (line.queue.isEmpty()) {
-            line.retired = true;
-            lines.remove(line.key, line);
+    boolean finished = false;
+    try {
+      while (true) {
+        List<Step> settled = new ArrayList<>();
+        synchronized (line) {
+          while (!line.queue.isEmpty() && line.queue.peekFirst().state != State.OPEN) {
+            settled.add(line.queue.pollFirst());
           }
-          return;
+          if (settled.isEmpty()) {
+            line.draining = false;
+            if (line.queue.isEmpty()) {
+              line.retired = true;
+              lines.remove(line.key, line);
+            }
+            finished = true;
+            return;
+          }
+        }
+        settled.forEach(this::deliver);
+      }
+    } finally {
+      // Something other than a RuntimeException escaped a delivery. The line must not stay
+      // marked as being drained, or nothing for this agent would ever be told again.
+      if (!finished) {
+        synchronized (line) {
+          line.draining = false;
         }
       }
-      settled.forEach(this::deliver);
     }
   }
 

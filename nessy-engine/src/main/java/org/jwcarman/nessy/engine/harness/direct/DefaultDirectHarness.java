@@ -819,7 +819,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * the store then refused, or rolled back, would be told something that did not happen, and one
    * told before the commit could not read what it was told about. The deltas are the exception and
    * arrive ahead of everything, because a fragment of an answer is worth seeing before the answer
-   * exists; they are not written by a step and are not held.
+   * exists; they are not written by a step and are not held for a commit, though they still wait
+   * behind a step that took the agent's lock before them.
    */
   private void narrate(Step step, AgentEvent event) {
     // Some of these mean resolving what a reference stands for, which is real work: skipped

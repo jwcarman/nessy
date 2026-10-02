@@ -80,7 +80,9 @@ import org.slf4j.LoggerFactory;
  * <p><b>The turn it was told about is already committed.</b> Both doors tell their listeners about
  * a step's events only after the step has committed, so the keeper, which runs on a thread of its
  * own, never hears of a turn's end before the history can show the turn. It does not wait for the
- * turn to appear; it reads, and the turn is there.
+ * turn to appear; it reads, and the turn is there. A harness called inside an application's own
+ * transaction is the exception: its steps join that transaction and are heard before it commits, so
+ * the keeper may read too early, and the next turn's end keeps what it missed.
  */
 public final class ChapterKeeper {
 
