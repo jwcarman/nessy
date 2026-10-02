@@ -54,8 +54,6 @@
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
-    <!-- Real PostgreSQL: H2 coerces a UUID into a TEXT column that PostgreSQL refuses, and hid
-         exactly that bug in this store. -->
     <!-- Test only: a CodecFactory to hand the store, which is what an application's is built on. -->
     <dependency>
       <groupId>org.jwcarman.codec</groupId>
@@ -67,6 +65,8 @@
       <artifactId>jackson-databind</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- Real PostgreSQL: H2 coerces a UUID into a TEXT column that PostgreSQL refuses, and hid
+         exactly that bug in this store. -->
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>testcontainers-postgresql</artifactId>

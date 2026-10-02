@@ -98,7 +98,8 @@ class ContentColumnsTest {
   @Test
   void any_text_column_is_one_that_is_known_not_to_hold_content() {
     Set<String> textColumns =
-        columnsOfType("data_type IN ('text', 'character varying', 'character')");
+        columnsOfType(
+            "data_type IN ('text', 'character varying', 'character', 'json', 'jsonb', 'xml', 'ARRAY')");
 
     assertThat(textColumns).isNotEmpty();
     assertThat(textColumns).isSubsetOf(NOT_CONTENT);

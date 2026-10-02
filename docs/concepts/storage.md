@@ -128,8 +128,9 @@ ahead of an event, so it is one a storage transform must never skip. The noteboo
 and the plan take the same `CodecFactory` as the backend, as a constructor
 argument (`new JdbcNotebook(dataSource, TYPE, codecs)`), and a Spring Boot
 application passes the context's `CodecFactory` bean to them. The in-memory
-backend applies the codec to everything it holds as well, a chapter's summary
-included.
+backend encodes its events, payloads, effects and chapter summaries the same
+way; its backlog and the record of failed attempts are held as objects, since
+nothing it holds outlives the process.
 
 Everything else is stored as itself, and is what a query needs to find, order
 or fence a row, or is plumbing:
@@ -140,7 +141,7 @@ or fence a row, or is plumbing:
   `through_turn`, `after_turn`, and the ordinal of a backlog item, a note and a
   plan task;
 - timestamps and counters: `created_at`, `written_at`, `arrived_at`,
-  `closed_at`, `summarized_at`, `terminated_at`, `deadline`, `actionable_at`,
+  `updated_at`, `closed_at`, `summarized_at`, `terminated_at`, `deadline`, `actionable_at`,
   `expires_at`, `attempts_made`, `timeout_millis` and `takeovers`;
 - statuses: an effect's `status` and a plan task's `status`, which is one of
   three fixed words;
