@@ -40,11 +40,16 @@ and successful tool results are in the events only as a `PayloadRef` into
 `nessy_payload`. For each tool call the events also hold two lines of text.
 `ActionsRequested` holds a list of `ActionRequest`s, and each
 `ActionRequest.ToolCall(CallId id, ToolName name, String action)` carries
-`action`, what the call would do, made by the tool's binding from the call's
-arguments. `ToolSucceeded.rendered` is what the call returned, made by the
-same binding from the result. Each line is at most 1,000 characters
-(`ToolConfig.LINE_CAP`); the cap is applied when the binding is built, not by
-the records. A line is fixed when it is written and never worked out again.
+`action`, what the call would do. Usually the tool's binding makes it from the
+call's arguments. When the binding's stringifier gives nothing, it is the
+tool's name. When the arguments do not parse, or the stringifier throws, it is
+the name and a note that the arguments could not be read. When no tool of
+that name is bound, it is `<name> (no such tool)`. `ToolSucceeded.rendered`
+is what the call returned, made by the same binding from the result, and it
+may be empty. Each line is at most 1,000 characters (`ToolConfig.LINE_CAP`);
+the cap is applied when the binding is built, not by the records. A line is
+fixed when it is written and never worked out again. See
+[Tools](tools.md#what-a-call-leaves-behind).
 
 Events hold other text too. A failed call's message is at most 1,000
 characters; a longer one has its middle dropped and `...` in the gap, and the

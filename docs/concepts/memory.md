@@ -174,8 +174,34 @@ chapters on, **refuses to build**.
 
 ### The default summary
 
-`ProseSummarizer` shows the model the chapter's turns and asks for a record
-that stands alone. Its prompt asks for names, identifiers, numbers and
+`ProseSummarizer` writes the chapter's turns out as text, sends that text
+as one user message with a closing ask, and asks for a record that stands
+alone. It offers no tools, and the request holds no tool-call, tool-result
+or reasoning blocks.
+
+The text has one line per thing that happened:
+
+```text
+user: <the question>
+assistant: <what the model said beside its calls>
+assistant did: <action> -- succeeded: <result>
+assistant did: <action> -- failed: <message>
+assistant did: <action> -- denied: <reason>
+assistant: <the answer>
+```
+
+A call that succeeded with nothing worth saying is `succeeded` alone. The
+action and the result are the two lines recorded for the call; see
+[Tools](tools.md#what-a-call-leaves-behind). The call's raw arguments and its
+raw result are never shown. A failure's message and a denial's reason are
+each cut to 255 characters, keeping both ends. A turn that failed ends in
+`(the assistant could not answer)`, and one that was refused in `(the
+assistant declined to answer)`.
+
+This is only what the summariser reads. The turn being answered still gets
+every call and every result whole, and so does every turn in the tail.
+
+The prompt asks for names, identifiers, numbers and
 dates exactly as given, decisions and what they were for, commitments in
 either direction, and open questions. It writes no narration. The summary
 is written once and never revised.

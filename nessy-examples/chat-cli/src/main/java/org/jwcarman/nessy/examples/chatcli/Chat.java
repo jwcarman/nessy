@@ -157,7 +157,8 @@ public class Chat {
                   .tool(NotebookTools.forget(notebook))
                   .tool(PlanTools.updatePlan(plans))
                   // The only thing here that reaches outside the process, so the only thing a
-                  // person is asked about. The renderer writes the sentence they consent to.
+                  // person is asked about. The action stringifier writes the sentence they consent
+                  // to.
                   .tool(
                       new SendEmailTool(),
                       binding ->

@@ -1510,8 +1510,9 @@ class AnthropicRequestsTest {
 
   /**
    * A request that does not think has no use for reasoning, and replaying it under a prefix that
-   * changed is the one thing the vendor may refuse. Summarisers are the usual case: they send an
-   * agent's turns, thinking included, under a prompt of their own and ask for no thinking.
+   * changed is the one thing the vendor may refuse. A one-off caller that sends an agent's turns,
+   * thinking included, under a prompt of its own and asks for no thinking is the case. The built-in
+   * summariser sends one user message of text and is not.
    */
   @Nested
   class WhenTheRequestDoesNotThink {

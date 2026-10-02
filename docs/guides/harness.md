@@ -299,12 +299,15 @@ A person consents to a sentence, so write the sentence:
 ```java
 .tool(sendEmail, binding -> binding
         .approver(desk)
-        .action(email -> "Send an email to %s%n  subject: %s%n  body: %s"
-                .formatted(email.to(), email.subject(), trimmed(email.body()))))
+        .action(email -> "Send an email to %s, subject \"%s\": %s"
+                .formatted(email.to(), email.subject(), email.body())))
 ```
 
-Consenting to a message you have not read is not consent. Include the body;
-trim it if your surface is a terminal prompt, and don't if it is a page.
+Consenting to a message you have not read is not consent. Include the body.
+The sentence is stored as one line of at most 1,000 characters, and the model
+that summarises a chapter reads it too. See
+[Tools](../concepts/tools.md#what-a-call-leaves-behind) for the limits and for
+how to cut it.
 
 ## The console: the whole application in one call
 

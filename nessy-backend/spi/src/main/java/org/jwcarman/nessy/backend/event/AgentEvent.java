@@ -33,10 +33,14 @@ import org.jwcarman.nessy.inference.Failure;
  *
  * <p><b>Mostly identifiers, and a little text.</b> An event carries identifiers, status, a human
  * decision, a count, and a {@link PayloadRef} where content would otherwise be. For a tool call it
- * also carries two bounded lines of text made from the call's arguments and its result, each at
- * most 1,000 characters: {@link ActionRequest.ToolCall#action()} and {@link
- * ToolSucceeded#rendered()}. So an agent's content is in three places: its payload rows, those two
- * lines in its events, and the summaries of its chapters.
+ * also carries two bounded lines of text, each at most 1,000 characters: {@link
+ * ActionRequest.ToolCall#action()}, made when the call is requested, and {@link
+ * ToolSucceeded#rendered()}, made from the result. Usually the binding's stringifier makes the
+ * action from the call's arguments. When it gives nothing the action is the tool's name; when the
+ * arguments do not parse, or the stringifier throws, it is the name and a note that the arguments
+ * could not be read; when no tool of that name is bound it is the name and "(no such tool)". So an
+ * agent's content is in three places: its payload rows, those two lines in its events, and the
+ * summaries of its chapters.
  *
  * <p>What keeps the stream small enough to replay on every command is the references, which stand
  * in for the content, and the bound on those two lines. Every type in it is one of Nessy's own.

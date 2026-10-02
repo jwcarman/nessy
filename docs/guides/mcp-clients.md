@@ -28,7 +28,12 @@ harness.tell(agentId, "find the cheapest flight and buy it");
 
 An MCP tool is governed exactly like a hand-written one, because nothing
 about authorization lives on the `Tool` interface itself: approver, action
-renderer, enrichers, timeout and retry policy all apply.
+and result stringifiers, enrichers, timeout and retry policy all apply.
+
+An imported tool's input type is a `JsonNode`, so its `toString()` is the
+raw JSON. Set the sentence on the binding, as `action` does above, for any
+tool you gate. The line it writes is what an approver is shown and what a
+chapter's summary quotes. See [Tools](../concepts/tools.md#what-a-call-leaves-behind).
 
 The toolbox is deliberately not opened in a `try`-with-resources. A granted
 `Tool` keeps working only as long as the session that produced it is open,

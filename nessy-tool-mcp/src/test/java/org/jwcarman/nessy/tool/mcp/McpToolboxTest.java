@@ -291,10 +291,10 @@ class McpToolboxTest {
   }
 
   /**
-   * Governance -- approver, action renderer, timeout -- is attached where a tool is BOUND, on the
-   * harness config, and an MCP tool is bound exactly like a local one. There is no wrapper class to
-   * test here because there is no wrapper: the engine's own ToolBinding tests cover the binding,
-   * and this module's job ends at producing an ordinary {@link Tool}.
+   * Governance -- approver, action stringifier, timeout -- is attached where a tool is BOUND, on
+   * the harness config, and an MCP tool is bound exactly like a local one. There is no wrapper
+   * class to test here because there is no wrapper: the engine's own ToolBinding tests cover the
+   * binding, and this module's job ends at producing an ordinary {@link Tool}.
    */
   @Nested
   class Closed_toolbox {

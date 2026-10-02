@@ -59,7 +59,7 @@ public record ApprovalRequest(
     CallId callId,
     ToolName toolName,
     String arguments,      // the call's JSON, as the model wrote it
-    String action,         // the sentence the binding's renderer wrote
+    String action,         // the sentence the binding's stringifier wrote
     Instant askedAt,
     Instant deadline,
     ReplyToken replyToken,
@@ -79,7 +79,7 @@ being serialised back.
 
 **`arguments` is for deciding. `action` is for showing.** A policy reads
 the arguments to decide. A page shows `action()`, the sentence the binding's
-`ActionRenderer` wrote. Rendering raw arguments at a person is the failure
+action `Stringifier` wrote. Rendering raw arguments at a person is the failure
 this split exists to prevent: nobody can consent to
 `{"customer_id":"cus_8823","op":"purge"}`, and everybody can consent to
 "permanently delete Acme Corp's record".
@@ -92,19 +92,30 @@ request.
 
 ## Describing what is being approved
 
-`action` is the sentence a person consents to, and you write it:
+`action` is the sentence a person consents to, and you write it as a
+`Stringifier` of the tool's input:
 
 ```java
 config.tool(sendEmail, binding -> binding
         .approver(desk)
-        .action(email -> "Send an email to %s%n  subject: %s%n  body: %s"
-                .formatted(email.to(), email.subject(), trimmed(email.body()))));
+        .action(email -> "Send an email to %s, subject \"%s\": %s"
+                .formatted(email.to(), email.subject(), email.body())));
 ```
 
 **Consenting to a message you have not read is not consent.** Include the
-body. Trim it if your surface is a terminal prompt; don't if it is a page
-with room. The default renderer is the input's `toString()`, which is
-honest for a small record and useless for a large one.
+body. The sentence is stored and shown as one line: runs of whitespace,
+line breaks included, become one space, and the line is cut to at most
+1,000 characters. Without a stringifier of your own the line is cut at 255
+and keeps its start. When the part that matters is not the start, name the
+cut yourself, as in `.action(Stringifier.<SendEmail>json(mapper).dropMiddle(300))`.
+A cut that is already at or below 1,000 is used as given. The default is the
+input's `toString()`, which is honest for a small record and useless for a
+large one. See [Tools](tools.md#what-a-call-leaves-behind) for the
+stringifier, the droppers and the limits.
+
+What the approver is shown is the line stored when the model asked. When a
+stringifier gives nothing, that line is the tool's name; when the arguments
+cannot be read, the name and a note saying so.
 
 ## A denial is an answer
 

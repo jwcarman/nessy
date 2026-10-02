@@ -60,10 +60,11 @@ config.tool(new SendEmailTool(), binding -> binding
         .action(email -> "Send an email to " + email.to()));
 ```
 
-The customizer is typed to *that* tool's input, so the compiler ties an
-action renderer to the tool it describes. That matters as soon as an agent
+The customizer is typed to *that* tool's input, so the compiler ties the
+action stringifier to the tool it describes. That matters as soon as an agent
 has two tools with different inputs. The defaults are 30 seconds and no
-retries.
+retries. What `action` and `result` do is described in
+[What a call leaves behind](#what-a-call-leaves-behind).
 
 ## Answering now, or later
 
@@ -121,6 +122,118 @@ must read in full belongs in a successful result, which is not cut.
 The same is true of a refusal. A denied call is a completed call whose
 outcome says it was denied, with the reason; the model gets to respond to
 that, and it is not a failed turn.
+
+## What a call leaves behind
+
+Each tool call leaves two short lines of text in the agent's stored events.
+They are plain sentences about what happened, not the call's raw
+arguments or raw result.
+
+| Line | What it says | Made | Stored on |
+|---|---|---|---|
+| action | what the call would do | when the model asks for the call | `ActionRequest.ToolCall.action` |
+| result | what the call returned | when the call succeeds | `ToolSucceeded.rendered` |
+
+Both are made by the tool's binding, and both are fixed when written and
+never worked out again. A failed call has no result line: its message is
+stored instead. A call that is denied has no result line either.
+
+### A `Stringifier` says a thing in a line
+
+`Stringifier<T>` is a one-method interface, `String stringify(T value)`.
+`action` takes a `Stringifier` of the tool's input, and `result` takes a
+`Stringifier<ToolResult.Success>`:
+
+```java
+config.tool(new PurgeTool(), binding -> binding
+        .action(purge -> "permanently delete customer " + purge.customerId())
+        .result(ToolConfig.resultText().dropTail(200)));
+```
+
+`ToolConfig.resultText()` is the default result stringifier: the result's
+text blocks joined by a space, other blocks skipped.
+
+Three methods on `Stringifier` bound what it writes. Each returns a new
+stringifier that makes the text one line, turning every run of whitespace
+into one space and trimming the ends, and then cuts it to the limit:
+
+| Method | Keeps | Marker |
+|---|---|---|
+| `dropTail(limit)` | the start | `...` at the end |
+| `dropHead(limit)` | the end | `...` at the start |
+| `dropMiddle(limit)` | both ends | `...` in the gap |
+
+Text within the limit is kept whole, apart from the whitespace. The marker
+counts toward the limit. `Truncator` is the type behind the three, and
+`truncated(truncator, limit)` takes one of your own, for a cut on words or
+on a tokenizer's count. A limit below 1 is refused when the wrapper is made.
+
+`Stringifier.byToString()` is `String.valueOf`, and it is the default for an
+action. `Stringifier.json(mapper)` writes the value as JSON with a
+`tools.jackson.databind.json.JsonMapper` of yours; the type is named at the
+call, as in `Stringifier.<SendEmail>json(mapper).dropMiddle(300)`.
+
+### The limits
+
+A line is never longer than 1,000 characters (`ToolConfig.LINE_CAP`). With
+no stringifier named, a line is cut at 255 (`ToolConfig.DEFAULT_LINE_LIMIT`):
+an action keeps its start, and a result drops its middle and keeps both
+ends. With one named, a line over 1,000 is cut to 1,000 the same way, an
+action by `dropTail` and a result by `dropMiddle`. A named stringifier that
+already drops at or below 1,000 is used exactly as given, even when it cuts
+a different way.
+
+A stringifier that throws or returns null never fails a turn. A result line
+that cannot be made is the empty string. An action line that cannot be made
+is the tool's name:
+
+| What happens | The action line is |
+|---|---|
+| the stringifier gives nothing, or only blanks | the tool's name |
+| the arguments do not parse, or the stringifier throws | the tool's name and `(its arguments could not be read)` |
+| no tool of that name is bound | the tool's name and `(no such tool)` |
+
+### Writing a good action line
+
+The simplest way to a good action line is to override `toString()` on the
+tool's input record, since that is what `Stringifier.byToString()` writes:
+
+```java
+record RefundOrder(String orderId, int amountCents) {
+    @Override public String toString() {
+        return "refund " + amountCents + " cents on order " + orderId;
+    }
+}
+```
+
+A record's own `toString()` prints every component, so a field that holds a
+credential or a customer's email reaches everything that reads the line: an
+approver, a log, and the summary of a chapter. Override it, or name an
+`action`, for any such tool.
+
+A tool the application did not write, such as an imported MCP tool, has an
+input type the application cannot give a `toString()`. Set its sentence on
+the binding, as in [MCP Clients](../guides/mcp-clients.md). That is also
+where the sentence belongs for a gated tool: the application states what a
+call means, never the tool being governed.
+
+### Who reads the lines
+
+- **An approver** is shown the action line as `ApprovalRequest.action()`,
+  the same text that was stored when the model asked. It is a single line of
+  at most 1,000 characters. A gated tool should have a sentence short enough
+  not to be cut, or should name `dropTail` or `dropMiddle` itself so the
+  person sees the part that matters. See
+  [Authorization](authorization.md#describing-what-is-being-approved).
+- **The summariser** reads a chapter as text, one line per thing that
+  happened. A call is `assistant did: <action> -- succeeded: <result>`. See
+  [Memory](memory.md#the-default-summary).
+- **The model, in the turn being answered,** is not shown these lines. The
+  adapters send every call and every result whole, for the turn that is
+  under way and for the turns in the tail.
+
+A failed call's message is capped too, at the same 1,000 characters. See
+[Results](#results).
 
 ## Execution is at-least-once
 

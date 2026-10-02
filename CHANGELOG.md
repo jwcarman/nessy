@@ -146,6 +146,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ambient ones.
 - **`nessy-examples/chapter-lab`**, a command-line lab that replays a long
   recorded conversation under different chapter policies and summarisers.
+- **`Stringifier<T>`**, `String stringify(T value)`, with `dropTail`,
+  `dropHead` and `dropMiddle` to bound what it writes, `truncated` to bound it
+  with a `Truncator` of your own, `Stringifier.byToString()` and
+  `Stringifier.json(mapper)`. **`Truncator`** cuts a string to a limit and
+  supplies the three droppers.
+- **`ToolConfig.result`**, a `Stringifier<ToolResult.Success>` that says what a
+  call returned, with `ToolConfig.resultText()` as the default, plus
+  `ToolConfig.LINE_CAP` (1,000) and `ToolConfig.DEFAULT_LINE_LIMIT` (255).
+- **Two lines stored for each tool call:** `ActionRequest.ToolCall.action`,
+  written when the model asks, and `ToolSucceeded.rendered`, written when the
+  call succeeds. Each is at most 1,000 characters and is never worked out
+  again.
+- **`Exchange.actionOf(CallId)` and `Exchange.resultOf(CallId)`**, the two
+  lines for a call in a turn's history.
 
 ### Changed
 
@@ -192,9 +206,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PromptVariables` bean and then the `Environment`, and publishes a
   `SystemPrompt` bean. A hole nothing fills fails startup.
 - **`DirectBackend` and `QueuedBackend` declare `chapters()` and `leases()`.**
+- **`ToolConfig.action` takes a `Stringifier` of the tool's input.** A line is
+  one line of at most 1,000 characters; with none named it is cut at 255,
+  keeping its start.
+- **A chapter is summarised from text.** `ProseSummarizer` writes the chapter's
+  turns out as lines, each call as `assistant did: <action> -- succeeded:
+  <result>`, and sends them as one user message. Nothing changes for the turn
+  being answered: the adapters still receive every call and result whole.
+- **`Exchange`, `ActionRequest.ToolCall` and `ToolSucceeded` each gained
+  components:** `actions` and `results`, `action`, and `rendered`.
+- **A failed call's message is at most 1,000 characters,** its middle dropped
+  and `...` in the gap. That is the text the model reads back for the call.
+- **A database written by an earlier build cannot be read and must be
+  recreated.**
+
+### Removed
+
+- **`ActionRenderer`.** A `Stringifier<I>` takes its place.
 
 ### Fixed
 
+- **A chapter whose turns called a tool could not be summarised on Anthropic.**
+  The summary request carried tool history and offered no tools, and the model
+  answered nothing.
 - **Anthropic: a changed prefix no longer rejects a request that replays
   thinking.** With thinking on, the adapter now sends
   `thinking.block_binding.prefix_mismatch_behavior: drop_block` and the

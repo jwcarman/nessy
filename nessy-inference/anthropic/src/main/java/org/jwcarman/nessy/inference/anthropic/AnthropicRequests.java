@@ -440,9 +440,10 @@ public final class AnthropicRequests {
    *
    * <p>A request that does not think has no use for the reasoning in its history, and carries it
    * under a prefix that no longer matches the one it was signed against -- the case the vendor may
-   * refuse, and the one a summariser is in, since it replays an agent's turns under a prompt of its
-   * own. Removing every thinking block is valid on this wire, so none is sent; a message that was
-   * only reasoning is then left out whole, because an empty one is rejected.
+   * refuse, and the one a one-off call is in, such as a caller that sends an agent's turns under a
+   * prompt of its own and asks for no thinking. The built-in summariser does not: it sends one user
+   * message of text. Removing every thinking block is valid on this wire, so none is sent; a
+   * message that was only reasoning is then left out whole, because an empty one is rejected.
    */
   private static Optional<Drafted> draftOf(
       MessageParam.Role role, List<? extends Block> content, boolean thinks, JsonMapper mapper) {
