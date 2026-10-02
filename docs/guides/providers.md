@@ -164,7 +164,10 @@ summary is cut off at the output limit, the chapter stays unsummarised, and
 the keeper stops that pass. It tries again when a later turn ends, and the
 chapters behind it wait. An agent type's `maxTokens` therefore has to leave
 room for a chapter's summary: one that never fits is attempted, and cut off
-again, at every turn's end.
+again, at every turn's end. There are two ways to make a summary fit: raise
+the agent type's `maxTokens`, which also raises the ceiling on its answers, or
+close chapters sooner, with a smaller `ChapterPolicy.every(n)` or a lower
+`maxChapterLength`, so each summary has less to cover.
 
 While a chapter's summary does not fit, that chapter and every chapter after
 it stay unsummarised. The context holds only the newest `maxTail` completed
