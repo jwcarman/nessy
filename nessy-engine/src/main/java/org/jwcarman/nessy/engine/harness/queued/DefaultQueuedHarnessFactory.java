@@ -51,6 +51,7 @@ import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.DefaultInferenceService;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
 import org.jwcarman.nessy.engine.narration.Listeners;
+import org.jwcarman.nessy.engine.observability.CacheWatch;
 import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
 import org.jwcarman.nessy.engine.observability.ObservedMemorySource;
@@ -109,6 +110,10 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   private final ThreadPoolTaskScheduler scheduler;
   private final Traces traces;
   private final ObservationRegistry observations;
+
+  /** One for the factory, keyed by agent inside: every harness's inferences are told to it. */
+  private final CacheWatch cacheWatch;
+
   private final ProviderRegistry.Resolved providers;
 
   private final DefaultQueuedHarnessConfig.Defaults defaults;
@@ -158,6 +163,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     scheduler.setThreadNamePrefix("nessy-");
     scheduler.initialize();
     this.observations = config.observations();
+    this.cacheWatch = new CacheWatch(observations);
     this.traces =
         config
             .traceCarrier()
@@ -367,7 +373,8 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
         inference.options(),
         terms,
         payloads,
-        narrator);
+        narrator,
+        cacheWatch);
   }
 
   /**
