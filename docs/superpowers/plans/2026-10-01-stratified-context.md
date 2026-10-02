@@ -863,3 +863,126 @@ Commit: `test: one scripted conversation replayed under different chapter polici
 - [ ] Write the docs; `pgrep -fl nessy-example; ./mvnw -q clean verify` (for the examples); commit.
 
 Commit: `docs: chapters, the strata of the context, and where each provider puts them`
+
+---
+
+### Task 16: A system prompt that cannot change
+
+**Files:**
+- Delete: `nessy-api/src/main/java/org/jwcarman/nessy/api/SystemPromptSource.java`
+- Modify: `nessy-api/.../DirectHarnessConfig.java`, `QueuedHarnessConfig.java` (remove `systemPrompt(SystemPromptSource)`), `HarnessConfig.java` (add `instructions(String)`)
+- Modify: `nessy-engine` — both harness configs, both factories, `DefaultInferenceService`
+- Modify: `nessy-console` — `ReplConfig` and its README
+- Modify: `nessy-prompt/api` — `TemplatedSystemPrompt`, `PromptVariableSource`, `PromptVariables`; `nessy-prompt/spring` — `EnvironmentVariables`
+- Modify: `nessy-spring-boot/autoconfigure` — `PromptAutoConfiguration` and whatever consumes its bean
+- Modify: `nessy-examples/chat-cli/.../Chat.java` and any other example that passes prompt variables
+- Tests: the tests of each of the above
+
+**Interfaces:**
+- Produces, on `HarnessConfig<SELF>`:
+
+```java
+  /**
+   * Adds a section to what this agent type is told about itself. Fixed when the harness is built:
+   * the system prompt, then each section in the order it was added, separated by blank lines.
+   */
+  SELF instructions(String text);
+```
+
+- `systemPrompt(String)` stays on both door configs. `systemPrompt(SystemPromptSource)` and the type `SystemPromptSource` are removed.
+- `DefaultInferenceService` takes a `SystemPrompt` in place of a source.
+- `TemplatedSystemPrompt` renders once: `static SystemPrompt render(PromptTemplate template, PromptVariables variables)` and `static SystemPrompt render(PromptTemplateFactory engine, String source, PromptVariables variables)`.
+- `PromptVariableSource` is removed; its three factories (`of(Map)`, `supplied(String, Supplier)`, `firstOf(List)`) move to `PromptVariables` if they are not already there, without the agent parameter.
+
+**Behaviour.**
+- The instructions an agent type sends are one text, built once when the harness is built, and identical on every call and for every agent of the type. Nothing is asked again per call.
+- Blank `instructions` text is refused, as a blank system prompt is.
+- The Spring Boot starter publishes a `SystemPrompt` bean rendered once from `nessy.system-prompt` with every `PromptVariables` bean, in order, then the `Environment`; whatever applied the `SystemPromptSource` bean to a harness applies the `SystemPrompt` bean.
+- An example that put the date into the system prompt through a supplied variable offers it as an `AmbientSource` of kind `clock` instead.
+- Javadoc on `SystemPrompt`, `systemPrompt(String)` and `instructions(String)` says the text is fixed for the life of the harness and why: it is the head of every request, so a change in it invalidates everything a provider has cached for every agent of the type; what varies by agent belongs in a `StateSource`, and what varies by the moment in an `AmbientSource`.
+
+**Tests.**
+- Engine, on the direct door with a scripted provider: `the_system_prompt_is_the_prompt_then_each_instruction_in_order`; `the_system_prompt_is_the_same_on_every_call_and_for_every_agent`; `blank_instructions_are_refused`; a feature customizer's `instructions(...)` reaches the prompt.
+- Prompt module: `TemplatedSystemPromptTest` rewritten for one rendering; a supplied variable is read once.
+- Starter: `PromptAutoConfigurationTest` rewritten for a `SystemPrompt` bean.
+
+- [ ] Tests, implementation, `./mvnw spotless:apply license:format`, `pgrep -fl nessy-example; ./mvnw -q clean verify -Dnessy.excludedGroups=live`, commit.
+
+Commit: `feat: an agent type's instructions are fixed when its harness is built`
+
+---
+
+### Task 17: Noticing when cached tokens fall inside a turn
+
+**Files:**
+- Create: `nessy-engine/src/main/java/org/jwcarman/nessy/engine/observability/CacheWatch.java`
+- Modify: both harness factories (install it on every harness)
+- Test: `nessy-engine/src/test/java/org/jwcarman/nessy/engine/observability/CacheWatchTest.java`
+
+**Interfaces:**
+- Produces:
+
+```java
+package org.jwcarman.nessy.engine.observability;
+
+/** Hears every inference's token counts and reports a call that read fewer cached tokens than the call before it in the same turn. */
+public final class CacheWatch implements NarrationListener {
+  public CacheWatch(ObservationRegistry observations);
+  @Override public void on(AgentType agentType, AgentId agentId, Narration event);
+}
+```
+
+**Behaviour.**
+- Find the narration events that carry an inference's `Usage` and its turn (read `Narration.java` and `Usage.java`; the cache-read count is nullable). For each agent, remember the turn and the cache-read count of the last inference that reported one.
+- When an inference in the SAME turn reports a cache-read count lower than the remembered one, log at WARN: `NESSY CACHE: [{type}] agent {id} turn {turn} read {now} cached tokens after reading {before} on the call before; something ahead of the active turn changed, or the provider's cache expired`, and record an `Observation.Event` named `nessy.cache.read.fell` on the current observation if there is one, with the agent type as a low-cardinality key.
+- A new turn resets the remembered count without reporting. A count that is absent is ignored: it neither reports nor replaces the remembered one.
+- The memory is bounded (at most 10,000 agents, least recently used out first) and thread-safe.
+- Both factories add one `CacheWatch` to every harness's listeners. It is not asynchronous: it does no I/O.
+
+**Tests.** A fall inside a turn warns once and names both counts; a rise does not; the first call of a new turn that reads less than the previous turn's last call does not; an absent count is ignored; two agents do not affect each other; the map does not grow past its bound. Capture the log with the approach the module's other log-asserting tests use; if there is none, assert on the observation event with the test observation registry instead and leave the log unasserted.
+
+- [ ] Tests, implementation, `./mvnw spotless:apply license:format`, `pgrep -fl nessy-example; ./mvnw -q clean verify`, commit.
+
+Commit: `feat: a turn whose cached tokens fall from one call to the next is reported`
+
+---
+
+### Task 18: A lab for trying chapter policies and summarisers on a real conversation
+
+**Files:**
+- Modify: `nessy-engine/.../chapter/ProseSummarizer.java` (a constructor taking the prompt) and its test
+- Create: module `nessy-examples/chapter-lab` (artifactId `nessy-example-chapter-lab`): `pom.xml`, `README.md`, `src/main/java/org/jwcarman/nessy/examples/chapterlab/ChapterLab.java`, `LocomoConversation.java`, `LabPolicies.java`, `LabPrompts.java`, `Grader.java`
+- Modify: `nessy-examples/pom.xml` (add the module), and the root pom's publishing exclusions if the other examples are listed there
+- Test: `nessy-examples/chapter-lab/src/test/java/org/jwcarman/nessy/examples/chapterlab/ChapterLabTest.java`
+
+**What it is.** A command-line program that replays a long recorded conversation through the real engine, lets a real model write the chapter summaries under a chosen policy and summariser, asks questions with known answers, and prints how many were answered correctly and how large the context was. Not a Spring application; follow `nessy-examples/chat-cli` for how a provider is built from the environment without Spring and for the module's pom.
+
+**Interfaces:**
+- `ProseSummarizer` gains `public ProseSummarizer(TurnHistories histories, InferenceProvider provider, InferenceOptions options, String prompt)`; the three-argument constructor delegates with `PROMPT`.
+
+**Usage.**
+
+```
+java -jar nessy-example-chapter-lab.jar \
+  --data /path/to/locomo10.json --conversation 0 --questions 40 \
+  --provider anthropic --model claude-sonnet-5-5 \
+  --policy every:20 --summarizer prose
+```
+
+- `--policy`: `every:N`; `session` (a chapter per recorded session); `hindsight` (a model reads the open turns and names the natural breaks); `none` (no chapters: the whole conversation is sent).
+- `--summarizer`: `prose` (the default prompt) or `index` (a short entry: the dates covered, then who and what the chapter is about as short phrases; names things, does not explain them).
+- `--summary-model NAME` to write summaries with a different model from the one answering; `--max-chapter-length N` (default 200 so the policy alone decides) and `--max-tail N` (default 400).
+- The key is read from the environment by the provider, as chat-cli does it, and is never printed.
+
+**Behaviour.**
+1. `LocomoConversation` reads one conversation from the LoCoMo file: each recorded session's messages are paired into turns (the first speaker's message is the input, the reply is the answer; an unpaired last message is a turn with an empty-looking reply `(no reply)`); each input is prefixed with the session's date in brackets; it also keeps the questions with categories 1 to 4 that have evidence, and their answers. Selecting `--questions N` takes a fixed pseudo-random sample with seed `7 + conversation`.
+2. Seeding: a direct harness over `InMemoryDirectBackend` whose provider is a scripted one that replies with the recorded answer for each input, configured with the chosen policy, the chosen summariser built on the REAL provider, the maximum chapter length and `maxTail`. Every turn is driven in order; after the last, wait (with a deadline of ten minutes) until the store has no unsummarised chapter and the policy has been asked about the final turn.
+3. Asking: for each question, build an `InferenceContext` directly from the store (`chapters().summaries(...)`), the completed turns after the last summary, and an active turn whose input is `Question: ...` under the system prompt `Answer the question from the record of a conversation given below. Reply with the answer only, in a few words. If the record does not say, reply: unknown.`, and call the real provider. Nothing is appended to the agent, so every question sees the same context.
+4. Grading: `Grader` asks the real provider yes or no with this rule: same fact is yes whatever the wording, order or extra detail, unless the extra contradicts; a date expressed differently but meaning the same day or period is yes; when the correct answer is a list the given answer must contain every item; more specific and consistent is yes, vaguer is no; `unknown` or a refusal is no.
+5. Output: one line of settings, then chapters, summary words in total, context words per question, correct of asked, a breakdown by category, and the input and output tokens the providers reported. Each question, the answer, the correct answer and the verdict are appended as JSON lines to `chapter-lab-<provider>-<model>-<policy>-<summarizer>.jsonl` in the working directory.
+
+**Tests** (no key, no network): `LocomoConversation` pairs messages into turns and keeps session dates, against a small fixture JSON written for the test in `src/test/resources`; `LabPolicies.session` ends a chapter at each session's last turn; argument parsing rejects an unknown policy and an unknown summariser with a message listing the choices; an end-to-end run with a scripted provider standing in for the real one (it answers summary requests, questions and grading with fixed text) reports the expected counts for a three-session fixture.
+
+- [ ] Tests, implementation, README with the commands above and what each option does, `./mvnw spotless:apply license:format`, `pgrep -fl nessy-example; ./mvnw -q clean verify`, commit.
+
+Commit: `feat: a lab that tries chapter policies and summarisers on a recorded conversation`

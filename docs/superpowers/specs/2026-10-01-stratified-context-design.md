@@ -317,6 +317,34 @@ agent the answer is `active-turn` or `ambient` inside a turn and `history` at th
 
 The previous fingerprints are held in the process, bounded, and are not stored.
 
+## 6a. Instructions are fixed
+
+Added on James's instruction late on 2026-10-01: "we should not allow folks to create changing
+system prompts".
+
+An agent type's instructions are one text, built when its harness is built: the system prompt,
+then each section a module added with `instructions(String)`, in order. Nothing is asked again per
+call, so the text cannot differ between calls or between agents of the type. `SystemPromptSource`
+is removed, and the prompt templating renders once.
+
+What varied by agent moves to a `StateSource`; what varies by the moment moves to an
+`AmbientSource`. Because every agent of a type then sends the same instructions and tools, a
+provider's cache for that prefix is shared across all of them.
+
+`instructions(String)` and the removal of `SystemPromptSource` are provisional.
+
+## 6b. Noticing a broken cache
+
+Inside a turn each request is the previous one with more at the end, so the tokens a provider
+reads from its cache should only grow from call to call. The engine remembers the last cache-read
+count per agent and turn and reports a call that reads fewer, as a warning and as the observation
+event `nessy.cache.read.fell`. Read with §6: a fall while only `active-turn` or `ambient` changed
+is the provider's cache expiring; a fall while an earlier stratum changed is ours.
+
+It is dependable on Anthropic. OpenAI and Gemini cache implicitly and were measured returning no
+cached tokens on a noticeable share of calls for no visible reason, so there only the rate means
+anything.
+
 ## 7. What is removed
 
 - `nessy-memory-episodic` (`begin_episode`, `recall_episode`, the embedding-ranked index). The
