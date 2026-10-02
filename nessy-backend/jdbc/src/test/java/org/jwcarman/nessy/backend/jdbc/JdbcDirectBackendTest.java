@@ -84,6 +84,15 @@ class JdbcDirectBackendTest {
   private final DataSource dataSource = database();
 
   @Test
+  @DisplayName("hands back the database's chapters and leases")
+  void chapters_and_leases_are_present() {
+    DirectBackend backend = backend(dataSource);
+
+    assertThat(backend.chapters()).isInstanceOf(JdbcChapters.class);
+    assertThat(backend.leases()).isInstanceOf(JdbcLeases.class);
+  }
+
+  @Test
   @DisplayName(
       "a payload put through one instance is readable through another built over the same database")
   void payloads_are_shared_across_instances() {

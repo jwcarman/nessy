@@ -211,3 +211,25 @@ CREATE TABLE IF NOT EXISTS nessy_lease
     takeovers  INT         NOT NULL DEFAULT 0,
     PRIMARY KEY (kind, agent_type, agent_id)
 );
+
+-- One row per closed chapter of an agent's history. A chapter is a run of whole turns, from_turn
+-- through through_turn inclusive; chapters are contiguous and never overlap. summary is null until
+-- the text that stands in for the chapter has been written, and is written once.
+--
+-- after_turn is the through_turn of the chapter before this one, or 0 for the first. Unique per
+-- agent, it is what lets two writers appending different chapters after the same point exclude each
+-- other with no transaction and no lock: a chapter's from_turn differs between them, so the
+-- primary key alone would let both in, but both would be claiming the same predecessor.
+CREATE TABLE IF NOT EXISTS nessy_chapter
+(
+    agent_type    VARCHAR(64) NOT NULL,
+    agent_id      UUID        NOT NULL,
+    from_turn     BIGINT      NOT NULL,
+    through_turn  BIGINT      NOT NULL,
+    after_turn    BIGINT      NOT NULL,
+    summary       TEXT,
+    closed_at     TIMESTAMP WITH TIME ZONE NOT NULL,
+    summarized_at TIMESTAMP WITH TIME ZONE,
+    PRIMARY KEY (agent_type, agent_id, from_turn),
+    UNIQUE (agent_type, agent_id, after_turn)
+);

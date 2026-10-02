@@ -16,7 +16,11 @@
 package org.jwcarman.nessy.engine.harness.direct;
 
 import org.jwcarman.nessy.backend.DirectBackend;
+import org.jwcarman.nessy.backend.chapter.Chapters;
 import org.jwcarman.nessy.backend.event.AgentEvents;
+import org.jwcarman.nessy.backend.inmemory.InMemoryChapters;
+import org.jwcarman.nessy.backend.inmemory.InMemoryLeases;
+import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 
@@ -25,5 +29,12 @@ import org.jwcarman.nessy.backend.payload.Payloads;
  * the exact {@link AgentEvents} and {@link Payloads} instance it built while still handing the
  * factory the one thing its config now takes.
  */
-record FixedDirectBackend(Locks locks, AgentEvents events, Payloads payloads)
-    implements DirectBackend {}
+record FixedDirectBackend(
+    Locks locks, AgentEvents events, Payloads payloads, Chapters chapters, Leases leases)
+    implements DirectBackend {
+
+  /** For a test that cares about the three stores and not about chapters or leases. */
+  FixedDirectBackend(Locks locks, AgentEvents events, Payloads payloads) {
+    this(locks, events, payloads, new InMemoryChapters(), new InMemoryLeases());
+  }
+}

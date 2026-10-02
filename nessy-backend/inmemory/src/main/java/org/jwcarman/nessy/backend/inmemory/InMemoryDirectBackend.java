@@ -17,7 +17,9 @@ package org.jwcarman.nessy.backend.inmemory;
 
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.backend.DirectBackend;
+import org.jwcarman.nessy.backend.chapter.Chapters;
 import org.jwcarman.nessy.backend.event.AgentEvents;
+import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 
@@ -32,6 +34,8 @@ import org.jwcarman.nessy.backend.payload.Payloads;
 public final class InMemoryDirectBackend implements DirectBackend {
 
   private final Locks locks = new InMemoryLocks();
+  private final Chapters chapters = new InMemoryChapters();
+  private final Leases leases = new InMemoryLeases();
   private final AgentEvents events;
   private final Payloads payloads;
 
@@ -58,5 +62,15 @@ public final class InMemoryDirectBackend implements DirectBackend {
   @Override
   public Locks locks() {
     return locks;
+  }
+
+  @Override
+  public Chapters chapters() {
+    return chapters;
+  }
+
+  @Override
+  public Leases leases() {
+    return leases;
   }
 }

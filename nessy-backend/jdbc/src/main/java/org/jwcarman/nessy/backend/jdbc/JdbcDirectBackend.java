@@ -19,7 +19,9 @@ import java.util.Objects;
 import javax.sql.DataSource;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.backend.DirectBackend;
+import org.jwcarman.nessy.backend.chapter.Chapters;
 import org.jwcarman.nessy.backend.event.AgentEvents;
+import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -42,6 +44,8 @@ public final class JdbcDirectBackend implements DirectBackend {
   private final AgentEvents events;
   private final Payloads payloads;
   private final Locks locks;
+  private final Chapters chapters;
+  private final Leases leases;
 
   /**
    * For a caller that already coordinates its own transactions and builds its own codecs -- a
@@ -57,6 +61,8 @@ public final class JdbcDirectBackend implements DirectBackend {
     this.events = new JdbcAgentEvents(jdbc, codecs);
     this.payloads = new JdbcPayloads(jdbc, codecs);
     this.locks = new JdbcRowLocks(dataSource, transactions);
+    this.chapters = new JdbcChapters(jdbc);
+    this.leases = new JdbcLeases(jdbc);
   }
 
   @Override
@@ -72,5 +78,15 @@ public final class JdbcDirectBackend implements DirectBackend {
   @Override
   public Locks locks() {
     return locks;
+  }
+
+  @Override
+  public Chapters chapters() {
+    return chapters;
+  }
+
+  @Override
+  public Leases leases() {
+    return leases;
   }
 }

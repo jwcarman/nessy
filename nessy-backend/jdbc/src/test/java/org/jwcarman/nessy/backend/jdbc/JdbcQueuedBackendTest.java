@@ -83,6 +83,15 @@ class JdbcQueuedBackendTest {
   private final DataSource dataSource = database();
 
   @Test
+  @DisplayName("hands back the database's chapters and leases")
+  void chapters_and_leases_are_present() {
+    QueuedBackend backend = backend(dataSource);
+
+    assertThat(backend.chapters()).isInstanceOf(JdbcChapters.class);
+    assertThat(backend.leases()).isInstanceOf(JdbcLeases.class);
+  }
+
+  @Test
   @DisplayName("an agent ensured through one instance is seen as ensured through another")
   void agents_are_shared_across_instances() {
     QueuedBackend writer = backend(dataSource);

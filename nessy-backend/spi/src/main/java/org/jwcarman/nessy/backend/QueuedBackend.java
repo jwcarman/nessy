@@ -18,13 +18,17 @@ package org.jwcarman.nessy.backend;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.backend.agent.Agents;
 import org.jwcarman.nessy.backend.backlog.Backlogs;
+import org.jwcarman.nessy.backend.chapter.Chapters;
 import org.jwcarman.nessy.backend.effect.Effects;
 import org.jwcarman.nessy.backend.event.AgentEvents;
+import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 
 /**
- * Everything the queued door needs from underneath, chosen together so that they agree.
+ * Everything the queued door needs from underneath, chosen together so that they agree: the stores
+ * for events, payloads, locks, agents, effects, chapters and leases are one kind of thing, so a
+ * durable backend never pairs durable chapters with in-process leases.
  *
  * <p><b>Not a {@link DirectBackend}, by ruling.</b> Nothing ever takes a {@code DirectBackend} and
  * hopes to be handed a queued one, so asserting "a queued backend is a kind of direct backend" buys
@@ -43,6 +47,10 @@ public interface QueuedBackend {
   Agents agents();
 
   Effects effects();
+
+  Chapters chapters();
+
+  Leases leases();
 
   /**
    * One agent type's queue of waiting inputs, made on demand.

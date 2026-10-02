@@ -28,8 +28,10 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.agent.Agents;
 import org.jwcarman.nessy.backend.backlog.Backlogs;
+import org.jwcarman.nessy.backend.chapter.Chapters;
 import org.jwcarman.nessy.backend.effect.Effects;
 import org.jwcarman.nessy.backend.event.AgentEvents;
+import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 
@@ -51,6 +53,8 @@ public final class InMemoryQueuedBackend implements QueuedBackend {
   private record Key(AgentType type, AgentId agent) {}
 
   private final Locks locks = new InMemoryLocks();
+  private final Chapters chapters = new InMemoryChapters();
+  private final Leases leases = new InMemoryLeases();
   private final AgentEvents events;
   private final Payloads payloads;
   private final Effects effects;
@@ -95,6 +99,16 @@ public final class InMemoryQueuedBackend implements QueuedBackend {
   @Override
   public Locks locks() {
     return locks;
+  }
+
+  @Override
+  public Chapters chapters() {
+    return chapters;
+  }
+
+  @Override
+  public Leases leases() {
+    return leases;
   }
 
   @Override
