@@ -323,6 +323,11 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
    * where it is offered -- an adapter for a wire that cannot say it has to guess, and this one does
    * not have to.
    *
+   * <p>A reply the vendor cut off at the output limit ({@code max_tokens}) is read by what it was
+   * doing when it stopped. Inside a tool call it is a fault, because the vendor closes the call
+   * with empty arguments that parse and would run. With prose written it is {@code Truncated}. With
+   * nothing but reasoning it is the empty answer.
+   *
    * <p>Otherwise the choice is made on the presence of a tool-use block. Reasoning and prose are
    * carried in either case: prose beside calls is the model talking while it works, which is
    * commentary rather than an answer, and the grammar is what says so.
@@ -333,26 +338,49 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
           message.stopDetails().map(Object::toString).orElse("the model declined to answer"));
     }
 
+    boolean cutOff = message.stopReason().filter(StopReason.MAX_TOKENS::equals).isPresent();
     boolean asking = message.content().stream().anyMatch(ContentBlock::isToolUse);
+    if (cutOff && asking) {
+      // The vendor closes a call it was writing with empty arguments, which parse and would run.
+      return new InferenceResult.Fault(
+          new Failure.Permanent(
+              "the reply was cut off at the output limit inside a tool call"
+                  + " (stop_reason=max_tokens)"));
+    }
     List<Block> blocks =
         message.content().stream().flatMap(block -> toBlock(block, asking).stream()).toList();
 
     if (!asking) {
       if (blocks.isEmpty()) {
-        // A reply with nothing in it: a model that spent its budget thinking, say. Said as a
-        // fault rather than an answer of no blocks, which the story could not hold.
-        return new InferenceResult.Fault(
-            new Failure.Permanent(
-                "model returned an empty answer (stop_reason=%s, blocks=%s)"
-                    .formatted(
-                        message.stopReason().map(Object::toString).orElse("none"),
-                        shapesOf(message.content()))));
+        return emptyAnswer(message);
       }
-      return new InferenceResult.Answer(
-          blocks.stream().map(Block.AnswerContent.class::cast).toList());
+      List<Block.AnswerContent> content =
+          blocks.stream().map(Block.AnswerContent.class::cast).toList();
+      if (cutOff) {
+        // Cut off with prose written is a reply worth delivering, said as such. Cut off with
+        // nothing but reasoning is not: it is the empty answer, whose fault names the stop reason.
+        if (content.stream().noneMatch(Block.Text.class::isInstance)) {
+          return emptyAnswer(message);
+        }
+        return new InferenceResult.Truncated(content);
+      }
+      return new InferenceResult.Answer(content);
     }
     return new InferenceResult.Actions(
         blocks.stream().map(Block.ActionRequestContent.class::cast).toList());
+  }
+
+  /**
+   * A reply with nothing in it: a model that spent its budget thinking, say. Said as a fault rather
+   * than an answer of no blocks, which the story could not hold.
+   */
+  private static InferenceResult emptyAnswer(Message message) {
+    return new InferenceResult.Fault(
+        new Failure.Permanent(
+            "model returned an empty answer (stop_reason=%s, blocks=%s)"
+                .formatted(
+                    message.stopReason().map(Object::toString).orElse("none"),
+                    shapesOf(message.content()))));
   }
 
   /**

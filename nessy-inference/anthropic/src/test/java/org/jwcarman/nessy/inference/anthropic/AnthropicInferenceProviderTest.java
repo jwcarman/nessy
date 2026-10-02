@@ -578,6 +578,92 @@ class AnthropicInferenceProviderTest {
   }
 
   @Nested
+  class A_reply_cut_off_at_the_output_limit {
+
+    @Test
+    void text_cut_off_is_truncated_and_carries_what_was_written() {
+      InferenceResult result =
+          inferAnswering(
+              reply().stopReason(StopReason.MAX_TOKENS).addContent(text("The loch is")).build());
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Truncated.class,
+              truncated ->
+                  assertThat(truncated.blocks()).containsExactly(new Block.Text("The loch is")));
+    }
+
+    @Test
+    void text_cut_off_is_truncated_on_the_streamed_path_too() {
+      InferenceResult result =
+          new AnthropicProviderConfig()
+              .client(
+                  fakeClient(
+                      params ->
+                          reply()
+                              .stopReason(StopReason.MAX_TOKENS)
+                              .addContent(text("The loch is"))
+                              .build()))
+              .build()
+              .infer(REQUEST, new Narration());
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Truncated.class,
+              truncated ->
+                  assertThat(truncated.blocks()).containsExactly(new Block.Text("The loch is")));
+    }
+
+    @Test
+    void a_tool_call_cut_off_is_a_fault_and_is_not_run() {
+      InferenceResult result =
+          inferAnswering(
+              reply()
+                  .stopReason(StopReason.MAX_TOKENS)
+                  .addContent(text("Let me look."))
+                  .addContent(use("call_1", "lookup", Map.of()))
+                  .build());
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault ->
+                  assertThat(fault.failure())
+                      .isInstanceOfSatisfying(
+                          Failure.Permanent.class,
+                          permanent ->
+                              assertThat(permanent.reason())
+                                  .contains("cut off")
+                                  .contains("tool call")));
+    }
+
+    @Test
+    void reasoning_alone_cut_off_is_the_empty_answer_fault() {
+      InferenceResult result =
+          inferAnswering(
+              reply()
+                  .stopReason(StopReason.MAX_TOKENS)
+                  .addContent(
+                      ThinkingBlock.builder().thinking("let me think").signature("sig").build())
+                  .build());
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> assertThat(fault.failure().reason()).contains("stop_reason=max_tokens"));
+    }
+
+    @Test
+    void a_complete_reply_is_still_an_answer() {
+      InferenceResult result =
+          inferAnswering(
+              reply().stopReason(StopReason.END_TURN).addContent(text("1412 metres")).build());
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+    }
+  }
+
+  @Nested
   class ItsTypedProperties {
 
     private final MessageCreateParams[] captured = new MessageCreateParams[1];
