@@ -788,4 +788,70 @@ class AnthropicLiveTest {
               failure -> assertThat(failure.reason()).contains("tool call"));
     }
   }
+
+  /**
+   * A copy of {@code ProseSummarizer.PROMPT} in {@code nessy-engine}, which this module cannot
+   * depend on. Keep the two in step.
+   */
+  private static final String SUMMARY_PROMPT =
+      """
+      You are writing the record of one part of a longer conversation. It will be shown in place of that
+      part, and it is the only trace of it that is kept in view, so it must stand alone.
+
+      Keep what a reader would need in order to continue:
+      - who said or did what, with names, places, numbers, identifiers and dates exactly as given
+      - decisions made, and what they were made for
+      - commitments and obligations, in either direction, and how things turned out
+      - questions raised that are still open
+
+      Work out actual dates when someone says "yesterday" or "last week" and the date is known. Do not
+      narrate, and do not describe the conversation as a conversation. Keep exact values: a name, a
+      number or an identifier is worth more than a sentence about it.
+      """;
+
+  private static final String CHAPTER_AS_TEXT =
+      """
+      user: my birthday is on 12/21
+      assistant did: DaysUntilRequest[date=2025-12-21] -- succeeded: -285 days
+      assistant did: remember the birthday -- succeeded: noted
+      assistant: Got it! Your birthday was about 9.5 months ago.
+      user: how about my upcoming birthday in 2026
+      assistant did: DaysUntilRequest[date=2026-12-21] -- succeeded: 80 days
+      assistant: Your birthday is in 80 days.
+
+      Write the record of everything above now.""";
+
+  /**
+   * A chapter written out as text, with its tool calls as recorded lines, is summarised.
+   *
+   * <p>On 2026-10-02 the same chapter sent as messages with tool blocks, and no tools declared,
+   * came back empty five times of five on claude-sonnet-4-5; this is what is sent instead. The
+   * request is the one {@code ProseSummarizer} builds: the rendered chapter and the ask as the
+   * active turn's single input, no tools, sent as a one-off.
+   */
+  @Test
+  void a_chapter_written_out_as_text_with_tool_lines_is_summarised() {
+    try (AnthropicInferenceProvider provider = provider()) {
+      Turn asking = open(1, CHAPTER_AS_TEXT);
+      InferenceRequest request =
+          new InferenceRequest(
+                  new SystemPrompt(SUMMARY_PROMPT),
+                  new InferenceContext(
+                      List.of(), List.of(), List.of(), List.of(), asking, List.of()),
+                  Toolset.none(),
+                  new InferenceOptions(MODEL, 1024))
+              .asOneOff();
+
+      InferenceResult result = provider.infer(request);
+
+      assertThat(result)
+          .as("the reply, whole: %s", result)
+          .isInstanceOf(InferenceResult.Answer.class);
+      assertThat(((InferenceResult.Answer) result).blocks())
+          .filteredOn(Block.Text.class::isInstance)
+          .isNotEmpty()
+          .allSatisfy(block -> assertThat(((Block.Text) block).text()).isNotBlank())
+          .anySatisfy(block -> assertThat(((Block.Text) block).text()).contains("80"));
+    }
+  }
 }
