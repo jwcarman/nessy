@@ -238,6 +238,21 @@ class OpenAiChatRequestsTest {
     }
 
     @Test
+    void whitespace_around_a_sections_text_is_not_sent() {
+      List<ChatCompletionMessageParam> messages =
+          placed(
+              List.of(),
+              List.of(Memory.text("notes", "  the deploy is frozen\n")),
+              List.of(State.text("plan", "\n step one of three \t")),
+              open(1, "hello"),
+              List.of(Ambient.text("clock", " it is Tuesday  \n")));
+
+      assertThat(messages).hasSize(2);
+      assertThat(userText(messages.get(1)))
+          .isEqualTo(NOTES_TAG + "\n\n" + PLAN_TAG + "\n\nhello\n\n" + CLOCK_TAG);
+    }
+
+    @Test
     void blank_memory_state_and_ambient_are_left_out() {
       List<ChatCompletionMessageParam> messages =
           placed(

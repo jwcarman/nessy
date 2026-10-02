@@ -18,8 +18,8 @@ package org.jwcarman.nessy.backend.lock;
 import org.jwcarman.nessy.api.Identifiers;
 
 /**
- * The namespace a lock lives in: which activity is being excluded, so a head summary and an episode
- * summary of the same agent are two locks and not one.
+ * The namespace a lock lives in: which activity is being excluded, so two different activities on
+ * the same agent are two locks and not one.
  *
  * <p>Bounded at {@value #MAX_LENGTH} because it is a column, not free text -- whatever stores locks
  * or leases keys a row on it alongside the agent.

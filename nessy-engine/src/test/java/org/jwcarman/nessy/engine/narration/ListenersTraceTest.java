@@ -36,7 +36,7 @@ import org.jwcarman.nessy.api.TurnId;
  * A synchronous listener runs inside the narrating observation; an asynchronous one does not.
  *
  * <p>The asynchronous half is the interesting half, and it is deliberate. A listener nobody waits
- * for can outlive the turn that narrated to it -- an episode summary is a model call of its own --
+ * for can outlive the turn that narrated to it -- a chapter summary is a model call of its own --
  * and a child span that begins after its parent has closed renders as the longest bar in a trace
  * that nothing in the request was actually waiting on. Such work gets its own trace, and is found
  * by the identity it carries rather than by parentage.

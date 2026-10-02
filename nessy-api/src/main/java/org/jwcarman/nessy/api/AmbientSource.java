@@ -45,8 +45,8 @@ import java.util.function.Function;
 public interface AmbientSource {
 
   /**
-   * What this source contributes, as a section label: {@code notebook}, {@code plan}, {@code
-   * episodes}. Fixed for the life of the source, because it is what makes two of them a collision.
+   * What this source contributes, as a section label: {@code notebook} or {@code plan}. Fixed for
+   * the life of the source, because it is what makes two of them a collision.
    */
   String kind();
 

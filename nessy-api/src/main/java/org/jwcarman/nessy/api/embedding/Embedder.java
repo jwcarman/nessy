@@ -28,7 +28,7 @@ import java.util.Optional;
  * nothing. So a store takes an {@code Embedder} at construction and records {@link #model()} beside
  * every vector; a harness never sees one.
  *
- * <p>Used off the model-call path: when a note or an episode is written, and when a query is made.
+ * <p>Used off the model-call path: when a note is written, and when a query is made.
  */
 public interface Embedder {
 

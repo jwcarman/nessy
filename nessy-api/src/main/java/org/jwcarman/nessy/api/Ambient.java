@@ -33,10 +33,10 @@ import org.jwcarman.nessy.api.block.Block;
  * it is part of what was said. Background is re-derived every time and may say something different,
  * because the world moved.
  *
- * <p><b>Where it lands, and how it is labelled, is the provider's business.</b> Each vendor carries
- * background differently -- a top-level system field, a developer message, a system instruction --
- * and each has its own idea of how to mark a section: Anthropic's own guidance asks for XML tags,
- * another may want a heading or nothing at all. So this says what the background IS and leaves the
+ * <p><b>Where it lands, and how it is labelled, is the provider's business.</b> Background goes at
+ * the end of the request, as text after the active turn's last content, labelled by its kind. How a
+ * section is labelled is each adapter's own: Anthropic's own guidance asks for XML tags, another
+ * may want a heading or nothing at all. So this says what the background IS and leaves the
  * rendering to the adapter that knows the vendor.
  *
  * @param kind what this background is, for an adapter to label it by -- {@code "notebook"}, {@code

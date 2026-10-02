@@ -123,9 +123,10 @@ summary can be slow and can fail. So the two are separate steps, and the
 keeper stores the chapter before the text exists.
 
 Until a chapter's summary is written, its turns are still shown, whole, in
-the tail. A slow or failing summariser costs a larger context on some
-calls and never a hole. A failed summary is tried again at a later turn
-end.
+the tail. A slow summariser costs a larger context on some calls. A
+summary that never arrives costs more: its turns stay verbatim until the
+tail's maximum binds, and then the oldest verbatim turns fall out of view.
+A failed summary is tried again at a later turn end.
 
 History shows the unbroken run of summarised chapters from the first. A
 chapter with no summary ends the run, even if a later chapter has one, so

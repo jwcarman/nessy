@@ -109,7 +109,10 @@ public class ChatConfiguration {
                             .maxTokens(properties.maxTokens())
                             .context(
                                 ctx ->
-                                    ctx.ambient(NotebookTools.index(notebook))
+                                    // A local thinking model can take minutes to write a chapter's
+                                    // summary, so the lease outlasts the two-minute default.
+                                    ctx.chapterLeaseTtl(Duration.ofMinutes(10))
+                                        .ambient(NotebookTools.index(notebook))
                                         .ambient(PlanTools.plan(plans))))
                 .tool(new DaysUntilTool())
                 .tool(NotebookTools.remember(notebook))

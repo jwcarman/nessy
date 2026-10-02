@@ -20,7 +20,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
+import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.DisplayNameGeneration;
@@ -33,6 +35,13 @@ import org.jwcarman.nessy.api.OpenTurns;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.turn.Chapter;
+import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.backend.chapter.Chapters;
+import org.jwcarman.nessy.backend.inmemory.InMemoryChapters;
+import org.jwcarman.nessy.backend.inmemory.InMemoryLeases;
+import org.jwcarman.nessy.engine.chapter.ChapterKeeper;
+import org.jwcarman.nessy.engine.store.TurnHistories;
+import org.jwcarman.nessy.engine.store.TurnHistory;
 
 /** What the summariser and the chapter policy report when the keeper asks them something. */
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
@@ -125,6 +134,72 @@ class ObservedChaptersTest {
     assertThat(span.getLowCardinalityKeyValue(Identity.AGENT_NAME).getValue()).isEqualTo("chat");
     assertThat(span.getHighCardinalityKeyValue("nessy.chapter.open").getValue()).isEqualTo("2");
     assertThat(span.getHighCardinalityKeyValue("nessy.chapter.closed").getValue()).isEqualTo("1");
+  }
+
+  @Test
+  void a_policy_that_answers_null_passes_null_through_and_reports_nothing_closed() {
+    ChapterPolicy observed = ObservedChapterPolicy.wrap(open -> null, registry);
+    OpenTurns open = new OpenTurns(TYPE, AGENT, List.of(new TurnId(1)));
+
+    List<TurnId> ends = observed.ends(open);
+
+    assertThat(ends).isNull();
+    assertThat(only().getHighCardinalityKeyValue("nessy.chapter.closed").getValue()).isEqualTo("0");
+  }
+
+  @Test
+  void a_keeper_over_a_wrapped_policy_that_answers_null_cuts_nothing_below_the_maximum() {
+    Chapters chapters = new InMemoryChapters();
+    ChapterPolicy observed = ObservedChapterPolicy.wrap(open -> null, registry);
+    ChapterKeeper keeper =
+        new ChapterKeeper(
+            TYPE,
+            observed,
+            chapter -> "text",
+            chapters,
+            new InMemoryLeases(),
+            twoCompletedTurns(),
+            5,
+            Duration.ofMinutes(1));
+
+    keeper.keep(AGENT);
+
+    assertThat(chapters.closedThrough(TYPE, AGENT)).isEmpty();
+  }
+
+  private static TurnHistories twoCompletedTurns() {
+    return (type, agent) ->
+        new TurnHistory() {
+          @Override
+          public List<TurnId> completedAfter(Optional<TurnId> through) {
+            return List.of(new TurnId(1), new TurnId(2));
+          }
+
+          @Override
+          public List<Turn> lastTurns(int turns) {
+            throw new UnsupportedOperationException();
+          }
+
+          @Override
+          public List<Turn> turnsFrom(long fromTurn) {
+            throw new UnsupportedOperationException();
+          }
+
+          @Override
+          public List<Turn> lastTurnsAfter(TurnId through, int turns) {
+            throw new UnsupportedOperationException();
+          }
+
+          @Override
+          public long turnsAfter(long through) {
+            throw new UnsupportedOperationException();
+          }
+
+          @Override
+          public List<Turn> turnsBetween(TurnId from, TurnId through) {
+            throw new UnsupportedOperationException();
+          }
+        };
   }
 
   @Test

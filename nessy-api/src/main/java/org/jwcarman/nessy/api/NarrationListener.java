@@ -49,9 +49,9 @@ public interface NarrationListener {
    * A listener asked to be told on a thread of its own; see {@link #async()}.
    *
    * <p>A type rather than a lambda so the engine can see the request and honour it on an executor
-   * of its own, one that carries the trace of the turn being told about onto the listener's thread
-   * -- a summary written because a turn ended then appears beneath that turn. Told directly, with
-   * no engine in between, it starts the thread itself and carries nothing.
+   * of its own. That executor deliberately does not carry the trace of the turn being told about:
+   * the work can outlive the turn, so what a listener does here, a chapter's summary say, is a
+   * trace of its own. Told directly, with no engine in between, it starts the thread itself.
    */
   record Async(NarrationListener delegate) implements NarrationListener {
 

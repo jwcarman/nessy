@@ -112,12 +112,16 @@ final class OpenAiRendering {
     return String.join(BLANK_LINE, parts);
   }
 
-  /** {@code <tag attributes>}, the text, {@code </tag>}; nothing at all when the text is blank. */
+  /**
+   * {@code <tag attributes>}, the text stripped of surrounding whitespace, {@code </tag>}; nothing
+   * at all when the text is blank.
+   */
   private static Optional<String> section(String tag, String attributes, String text) {
-    if (text.isBlank()) {
+    String stripped = text.strip();
+    if (stripped.isEmpty()) {
       return Optional.empty();
     }
-    return Optional.of("<%s%s>\n%s\n</%s>".formatted(tag, attributes, text, tag));
+    return Optional.of("<%s%s>\n%s\n</%s>".formatted(tag, attributes, stripped, tag));
   }
 
   private static String kindAttribute(String kind) {

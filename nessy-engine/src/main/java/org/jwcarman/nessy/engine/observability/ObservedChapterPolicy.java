@@ -63,8 +63,9 @@ public final class ObservedChapterPolicy implements ChapterPolicy {
     return observation.observe(
         () -> {
           List<TurnId> ends = delegate.ends(open);
+          // A null answer is the keeper's to judge, so it is passed through; it closed nothing.
           observation.highCardinalityKeyValue(
-              "nessy.chapter.closed", Integer.toString(ends.size()));
+              "nessy.chapter.closed", Integer.toString(ends == null ? 0 : ends.size()));
           return ends;
         });
   }

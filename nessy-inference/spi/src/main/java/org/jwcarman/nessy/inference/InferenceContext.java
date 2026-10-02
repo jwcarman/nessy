@@ -33,7 +33,8 @@ import org.jwcarman.nessy.api.turn.Turn;
  *
  * <ol>
  *   <li><b>instructions</b> -- the system prompt. It stays on the {@link InferenceRequest}, beside
- *       this, because it is resolved per call and is the request's, not the story's.
+ *       this, because it is fixed when the harness is built and carried on the request, and is the
+ *       request's, not the story's.
  *   <li><b>history</b> -- {@link #summaries()}, one per closed chapter, oldest first, and then
  *       {@link #tail()}, the completed turns after them. Written down once and re-sent verbatim.
  *   <li><b>memory</b> -- what was recalled because it bears on this turn. Chosen for the turn being

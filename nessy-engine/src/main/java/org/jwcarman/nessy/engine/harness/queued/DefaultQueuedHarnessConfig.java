@@ -536,8 +536,7 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
       public ContextConfig memory(MemorySource source) {
         Objects.requireNonNull(source, "memory source must not be null");
         // Refused here rather than at render time: two sections under one label leave the model
-        // with a
-        // contradiction and no way to tell which is current.
+        // with a contradiction and no way to tell which is current.
         if (!memoryKinds.add(source.kind())) {
           throw new IllegalArgumentException(
               "two memory sources offer the kind '" + source.kind() + "'");
@@ -550,8 +549,7 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
       public ContextConfig state(StateSource source) {
         Objects.requireNonNull(source, "state source must not be null");
         // Refused here rather than at render time: two sections under one label leave the model
-        // with a
-        // contradiction and no way to tell which is current.
+        // with a contradiction and no way to tell which is current.
         if (!stateKinds.add(source.kind())) {
           throw new IllegalArgumentException(
               "two state sources offer the kind '" + source.kind() + "'");

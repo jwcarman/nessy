@@ -40,10 +40,11 @@ import org.slf4j.LoggerFactory;
  * <p><b>Isolated.</b> A listener that throws is logged and the rest still hear. Nothing a listener
  * does can fail a turn.
  *
- * <p><b>In the trace.</b> Both hops -- onto this harness's telling thread, and from there onto the
- * thread of an {@link NarrationListener.Async} listener -- carry the input that was current when
- * the event was narrated, which is the turn's or the effect's. What a listener does in response, a
- * summary say, is then a child of what it responded to, however long after.
+ * <p><b>In the trace.</b> The hop onto this harness's telling thread carries the input that was
+ * current when the event was narrated, which is the turn's or the effect's, so what a synchronous
+ * listener does is a child of what it responded to. The hop onto the thread of an {@link
+ * NarrationListener.Async} listener does not: work done there, a chapter's summary say, can outlive
+ * its turn's span, so it is a trace of its own, tied back to the agent by its identity attributes.
  */
 public final class Listeners implements Narrator, AutoCloseable {
 
@@ -64,7 +65,7 @@ public final class Listeners implements Narrator, AutoCloseable {
    * the turn's trace.
    *
    * <p><b>This used to propagate, and the spans it produced lied about what a turn cost.</b> An
-   * episode summary is a model call of its own: it began after its turn's span had closed and ran
+   * chapter summary is a model call of its own: it began after its turn's span had closed and ran
    * 300ms past it, so a waterfall showed a 1.45s bar nested inside a 1.12s one. The longest bar in
    * a trace is the first thing anyone reads when asking why a request was slow, and that bar was
    * work nobody waited for. A child outliving its parent also breaks self-time and critical-path

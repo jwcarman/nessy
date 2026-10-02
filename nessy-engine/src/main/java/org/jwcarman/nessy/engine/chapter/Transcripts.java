@@ -34,7 +34,10 @@ public final class Transcripts {
 
   private Transcripts() {}
 
-  /** How the head is rendered for the model: one line per thing that happened. */
+  /**
+   * The turns of a chapter, rendered for a model asked to summarise them: one line per thing that
+   * happened.
+   */
   public static String render(List<Turn> turns) {
     StringBuilder out = new StringBuilder();
     for (Turn turn : turns) {

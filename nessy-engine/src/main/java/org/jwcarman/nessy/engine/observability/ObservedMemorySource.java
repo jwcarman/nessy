@@ -27,7 +27,7 @@ import org.jwcarman.nessy.api.turn.Turn;
 
 /**
  * Recollections gathered for one call, in a span named for the source: {@code nessy.context memory
- * episodes}.
+ * notes}.
  *
  * <p>Named from the source's own kind, so a source that offers nothing this turn is as identifiable
  * as one that offers something -- which is the case worth seeing, since it is the one that cost

@@ -18,8 +18,8 @@ package org.jwcarman.nessy.backend.lease;
 import org.jwcarman.nessy.api.Identifiers;
 
 /**
- * The namespace a lease lives in: which activity is being excluded, so a head summary and an
- * episode summary of the same agent are two leases and not one.
+ * The namespace a lease lives in: which activity is being excluded, so the chapter keeper's {@code
+ * nessy.chapters} and any other activity on the same agent are two leases and not one.
  *
  * <p>Bounded at {@value #MAX_LENGTH} because it is a column, not free text -- whatever stores
  * leases keys a row on it alongside the agent.

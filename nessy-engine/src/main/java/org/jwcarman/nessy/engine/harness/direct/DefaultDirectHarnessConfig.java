@@ -419,8 +419,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     public ContextConfig memory(MemorySource source) {
       Objects.requireNonNull(source, "memory source must not be null");
       // Refused here rather than at render time: two sections under one label leave the model with
-      // a
-      // contradiction and no way to tell which is current.
+      // a contradiction and no way to tell which is current.
       if (!memoryKinds.add(source.kind())) {
         throw new IllegalArgumentException(
             "two memory sources offer the kind '" + source.kind() + "'");
@@ -433,8 +432,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     public ContextConfig state(StateSource source) {
       Objects.requireNonNull(source, "state source must not be null");
       // Refused here rather than at render time: two sections under one label leave the model with
-      // a
-      // contradiction and no way to tell which is current.
+      // a contradiction and no way to tell which is current.
       if (!stateKinds.add(source.kind())) {
         throw new IllegalArgumentException(
             "two state sources offer the kind '" + source.kind() + "'");
@@ -447,8 +445,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     public ContextConfig ambient(AmbientSource source) {
       Objects.requireNonNull(source, "ambient source must not be null");
       // Refused here rather than at render time: two sections under one label leave the model with
-      // a
-      // contradiction and no way to tell which is current.
+      // a contradiction and no way to tell which is current.
       if (!ambientKinds.add(source.kind())) {
         throw new IllegalArgumentException(
             "two ambient sources offer the kind '" + source.kind() + "'");
