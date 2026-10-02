@@ -72,11 +72,11 @@ import tools.jackson.databind.json.JsonMapper;
  * judgements about the same story, made here, which is the whole reason an adapter exists.
  *
  * <p><b>Where each stratum of the context lands.</b> The {@code system} field holds the system
- * prompt and nothing else, marked for caching when caching is on. Messages follow in order:
- * summaries, the tail's turns, and the active turn, whose first user message opens with the memory
- * and then the state, each its own text block. Background ends the request: its blocks are appended
- * to the last message when that is a user message, or sit in a user message of their own when it is
- * not.
+ * prompt and nothing else, marked for caching when caching is on and the request is not a one-off.
+ * Messages follow in order: summaries, the tail's turns, and the active turn, whose first user
+ * message opens with the memory and then the state, each its own text block. Background ends the
+ * request: its blocks are appended to the last message when that is a user message, or sit in a
+ * user message of their own when it is not.
  *
  * <p>Background is last because it is the stratum that changes while the agent works, and the cache
  * is a prefix. Measured 2026-10-01 on Sonnet 5.5 over thirty calls, background in the system field
@@ -128,7 +128,9 @@ public final class AnthropicRequests {
     // Refused here as well as at validate, for a caller that never validated (a summariser).
     AnthropicPropertyReader.requireHeadroom(read, options);
 
-    Optional<CacheControlEphemeral> marker = read.cacheTtl().map(AnthropicRequests::cacheMarker);
+    // A one-off is never sent again, so a marker on it would buy a cache write nobody reads back.
+    Optional<CacheControlEphemeral> marker =
+        request.oneOff() ? Optional.empty() : read.cacheTtl().map(AnthropicRequests::cacheMarker);
     MessageCreateParams.Builder builder =
         MessageCreateParams.builder().model(options.modelName()).maxTokens(options.maxTokens());
 
@@ -186,10 +188,10 @@ public final class AnthropicRequests {
   /**
    * The standing instruction, and only that.
    *
-   * <p>A top-level field on this wire rather than a leading message. Marked for caching, because
-   * the system prompt is the longest-lived prefix there is. Background does not appear here: it
-   * follows the last message, so a change in it never changes this field, and so never invalidates
-   * the cache that starts with it.
+   * <p>A top-level field on this wire rather than a leading message. Marked for caching when a
+   * marker is given, because the system prompt is the longest-lived prefix there is. Background
+   * does not appear here: it follows the last message, so a change in it never changes this field,
+   * and so never invalidates the cache that starts with it.
    */
   private static List<TextBlockParam> systemBlocks(
       InferenceRequest request, Optional<CacheControlEphemeral> marker) {

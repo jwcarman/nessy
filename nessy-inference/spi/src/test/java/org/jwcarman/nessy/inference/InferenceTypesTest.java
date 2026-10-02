@@ -32,6 +32,7 @@ import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Memory;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.State;
+import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -82,6 +83,38 @@ class InferenceTypesTest {
     assertThat(bare.hasSummaries()).isFalse();
     assertThat(summarised.hasSummaries()).isTrue();
     assertThat(new Failure.Rejected("too long").reason()).isEqualTo("too long");
+  }
+
+  @Nested
+  class A_request {
+
+    private static InferenceRequest request() {
+      return new InferenceRequest(
+          new SystemPrompt("you are a helpful assistant"),
+          InferenceContext.of(List.of(turn(1))),
+          Toolset.none(),
+          InferenceOptions.of("a-model"));
+    }
+
+    @Test
+    void is_one_of_a_series_unless_it_says_otherwise() {
+      assertThat(request().oneOff()).isFalse();
+    }
+
+    @Test
+    void as_a_one_off_is_the_same_request_and_says_so() {
+      InferenceRequest series = request();
+
+      InferenceRequest oneOff = series.asOneOff();
+
+      assertThat(oneOff.oneOff()).isTrue();
+      assertThat(oneOff.systemPrompt()).isEqualTo(series.systemPrompt());
+      assertThat(oneOff.context()).isEqualTo(series.context());
+      assertThat(oneOff.toolset()).isEqualTo(series.toolset());
+      assertThat(oneOff.options()).isEqualTo(series.options());
+      assertThat(oneOff.outputSchema()).isEqualTo(series.outputSchema());
+      assertThat(series.oneOff()).isFalse();
+    }
   }
 
   @Nested

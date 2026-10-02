@@ -106,11 +106,13 @@ public final class ProseSummarizer implements Summarizer {
 
     InferenceResult result =
         provider.infer(
+            // A chapter is summarised once, so there is nothing here for a vendor's cache to keep.
             new InferenceRequest(
-                new SystemPrompt(prompt),
-                new InferenceContext(List.of(), turns, List.of(), List.of(), asking, List.of()),
-                Toolset.none(),
-                options));
+                    new SystemPrompt(prompt),
+                    new InferenceContext(List.of(), turns, List.of(), List.of(), asking, List.of()),
+                    Toolset.none(),
+                    options)
+                .asOneOff());
     if (!(result instanceof InferenceResult.Answer(var blocks, _))) {
       throw new IllegalStateException(
           "the model did not answer for turns %s through %s: %s"

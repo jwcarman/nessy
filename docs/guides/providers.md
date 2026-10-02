@@ -369,6 +369,10 @@ The defaults, when a property is absent:
   (`FIVE_MINUTES` or `ONE_HOUR`); it marks the system prompt, the tool list
   and two messages of the conversation as cacheable, none of them the
   ambient text.
+- A request that is a one-off (`InferenceRequest.asOneOff()`) is marked
+  nowhere, whatever the property says. Nothing it sends is sent again, so a
+  cache write would be paid for and never read. The engine's summariser sends
+  one-offs.
 
 The constants are `THINKING_TYPE`, `THINKING_BUDGET` and `CACHE_TTL` on
 `AnthropicProperties`. An agent type's property overrides the provider's, so

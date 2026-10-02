@@ -295,10 +295,10 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
    * input processed, so the three are added and the cache pair is kept beside them for pricing, the
    * three rates being an order of magnitude apart.
    *
-   * <p>An absent cache count means nothing was cached rather than nobody counting: this provider
-   * marks a cache breakpoint on every request it sends, so the vendor is always asked and always
-   * answers. That is why zero is the right reading here and null is the right reading for a server
-   * that does not speak about caching at all.
+   * <p>An absent cache count means nothing was cached rather than nobody counting: this vendor
+   * supports caching and reports it, whether or not a request carried a marker, so a count it
+   * leaves out is a zero. That is why zero is the right reading here and null is the right reading
+   * for a server that does not speak about caching at all.
    *
    * <p>A cache write is one number here even though the vendor gives two, split by how long it is
    * kept. The two are priced differently and its invoice remains the authority on the split.

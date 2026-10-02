@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`InferenceRequest.oneOff`**, set with `asOneOff()`: a request that
+  belongs to no series, so nothing it sends will be sent again. The Anthropic
+  adapter sends no cache markers for one, whatever
+  `anthropic.cache_control.ttl` says, and `ProseSummarizer` sends one-offs, so
+  a chapter's summary no longer pays for a cache write nobody reads.
 - **`JsonSchemaGenerator.generate(Type)`**, which keeps type arguments:
   `List<Item>` is described with typed items. The `Class` form stays.
 - **Spring Boot: strict tools by default on the measured chat-wire presets.**

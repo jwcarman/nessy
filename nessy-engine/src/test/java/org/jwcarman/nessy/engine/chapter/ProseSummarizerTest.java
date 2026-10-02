@@ -157,6 +157,17 @@ class ProseSummarizerTest {
     }
 
     @Test
+    void sends_a_one_off_since_a_chapter_is_summarised_once() {
+      Story story = new Story(List.of(turn(1)));
+      Scripted provider = new Scripted(_ -> answer("the record"));
+
+      new ProseSummarizer(story, provider, OPTIONS).summarize(chapter(1, 1));
+
+      assertThat(provider.requests).hasSize(1);
+      assertThat(provider.requests.getFirst().oneOff()).isTrue();
+    }
+
+    @Test
     void sends_the_prompt_it_was_given_in_place_of_the_default() {
       Story story = new Story(List.of(turn(1)));
       Scripted provider = new Scripted(_ -> answer("the entry"));

@@ -865,6 +865,50 @@ class AnthropicRequestsTest {
       assertThat(markedIn(blocks)).isEmpty();
     }
 
+    /** Nothing a one-off sends is sent again, so a marker would pay for a write nobody reads. */
+    @Test
+    void nothing_is_marked_on_a_one_off_though_caching_was_asked_for() {
+      InferenceRequest oneOff =
+          new InferenceRequest(
+                  SYSTEM,
+                  InferenceContext.of(conversation(15)),
+                  Toolset.of(List.of(ABoundTool.offer("lookup"))),
+                  options())
+              .asOneOff();
+
+      MessageCreateParams params =
+          AnthropicRequests.toParams(oneOff, caching(AnthropicCacheTtl.FIVE_MINUTES), MAPPER);
+
+      assertThat(blocksOf(params)).isNotEmpty();
+      assertThat(markedIn(blocksOf(params))).isEmpty();
+      assertThat(params.system().orElseThrow().asTextBlockParams())
+          .isNotEmpty()
+          .allSatisfy(block -> assertThat(block.cacheControl()).isEmpty());
+      assertThat(params.tools().orElseThrow())
+          .isNotEmpty()
+          .allSatisfy(tool -> assertThat(tool.asTool().cacheControl()).isEmpty());
+    }
+
+    /** The lifetime in the request's own options is a setting; being a one-off is a fact. */
+    @Test
+    void nothing_is_marked_on_a_one_off_though_its_own_options_ask_for_caching() {
+      InferenceRequest oneOff =
+          new InferenceRequest(
+                  SYSTEM,
+                  InferenceContext.of(conversation(15)),
+                  Toolset.none(),
+                  new InferenceOptions("claude-sonnet", 1024, caching(AnthropicCacheTtl.ONE_HOUR)))
+              .asOneOff();
+
+      MessageCreateParams params = AnthropicRequests.toParams(oneOff, NONE, MAPPER);
+
+      assertThat(blocksOf(params)).isNotEmpty();
+      assertThat(markedIn(blocksOf(params))).isEmpty();
+      assertThat(params.system().orElseThrow().asTextBlockParams())
+          .isNotEmpty()
+          .allSatisfy(block -> assertThat(block.cacheControl()).isEmpty());
+    }
+
     @Test
     void a_first_question_is_marked_and_nothing_else_is() {
       var blocks = cached(List.of(open(1, "hi")));
