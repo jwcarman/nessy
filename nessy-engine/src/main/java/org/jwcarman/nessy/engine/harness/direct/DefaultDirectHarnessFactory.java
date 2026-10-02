@@ -55,6 +55,7 @@ import org.jwcarman.nessy.engine.history.Transcript;
 import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.DefaultInferenceService;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
+import org.jwcarman.nessy.engine.narration.AfterCommit;
 import org.jwcarman.nessy.engine.narration.Listeners;
 import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
@@ -287,7 +288,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
             options,
             observations)
         .ifPresent(keeper -> own.add(keeper.listener()));
-    Listeners narrator = new Listeners(listeners, own);
+    AfterCommit narrator = new AfterCommit(new Listeners(listeners, own));
     // Observed as they are handed over, the way a tool is wrapped as it is bound (§4g): what the
     // engine is given reports its own work, and the assembler knows nothing about spans. The same
     // recipe the queued factory uses, so a second implementation of it does not drift.

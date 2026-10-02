@@ -34,7 +34,19 @@ The engine's listeners are told first, then the harness's own, in the order
 they were attached. In a Boot application every `NarrationListener` bean is
 attached to the engine once the context has started.
 
-## Off the fold, in order
+## After the commit, off the fold, in order
+
+A listener hears an event only after the step that wrote it has committed.
+The doors write an agent's events in short locked steps, which on a database
+are transactions, and what a step narrates is held until the step returns.
+So a listener is never told about something a rollback then undid, a step
+that fails is never heard at all, and a listener that reads the history finds
+what it was just told about: the turn whose end it hears is already stored.
+
+Order holds per agent: events are heard in the order their steps committed,
+and what one agent has not yet released never holds up another agent. What an
+agent narrates outside a step, such as the deltas of a streaming reply,
+is heard as it happens, but never ahead of a step that committed before it.
 
 Narration never runs on the thread that folds a turn. Each harness tells
 its listeners on one thread of its own, in order, and a listener that
@@ -132,7 +144,8 @@ public SseEmitter events(@PathVariable String id,
 ```
 
 The browser sends `Last-Event-ID` on reconnect by itself, so resuming is one
-line. In a Boot application with an `Odyssey` bean present, `AgentStreams`
+line. The stream holds what listeners were told, so it holds only steps that
+committed, in the order they committed. In a Boot application with an `Odyssey` bean present, `AgentStreams`
 and the `OdysseyNarrator` are auto-configured, and the narrator is attached
 as a listener like any other bean. Retention is `nessy.narration.odyssey.*`:
 a day of inactivity and a day per entry by default, an hour once a stream

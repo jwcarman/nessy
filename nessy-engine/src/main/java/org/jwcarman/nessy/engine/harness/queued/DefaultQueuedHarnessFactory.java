@@ -50,6 +50,7 @@ import org.jwcarman.nessy.engine.history.Transcript;
 import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.DefaultInferenceService;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
+import org.jwcarman.nessy.engine.narration.AfterCommit;
 import org.jwcarman.nessy.engine.narration.Listeners;
 import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
@@ -113,6 +114,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   private final DefaultQueuedHarnessConfig.Defaults defaults;
   private final List<DefaultQueuedHarness<?>> harnesses = new CopyOnWriteArrayList<>();
   private final List<Listeners> tellers = new CopyOnWriteArrayList<>();
+  private final List<AfterCommit> sequencers = new CopyOnWriteArrayList<>();
 
   /**
    * Builds an engine from what an application says it wants, which is a {@link QueuedBackend} and a
@@ -237,8 +239,12 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
             options,
             observations)
         .ifPresent(keeper -> own.add(keeper.listener()));
-    Listeners narrator = new Listeners(listeners, own);
-    tellers.add(narrator);
+    Listeners telling = new Listeners(listeners, own);
+    tellers.add(telling);
+    // Between everything that narrates and the listeners: what a locked step narrates is held until
+    // it commits, and what is narrated outside one keeps its place in the agent's order.
+    AfterCommit narrator = new AfterCommit(telling);
+    sequencers.add(narrator);
     InferenceContextAssembler assembler =
         ObservedInferenceContextAssembler.wrap(
             new ContextAssembler(
@@ -312,7 +318,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   private @NonNull ToolCallHandler createToolCallHandler(
       AgentType agentType,
       Tools tools,
-      Listeners narrator,
+      AfterCommit narrator,
       Payloads payloads,
       EffectTermsSource terms) {
     return new ToolCallHandler(
@@ -329,7 +335,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   private @NonNull ApprovalHandler createApprovalHandler(
       AgentType agentType,
       Tools tools,
-      Listeners narrator,
+      AfterCommit narrator,
       EffectTermsSource terms,
       Payloads payloads) {
     return new ApprovalHandler(
@@ -349,7 +355,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
       InferenceProvider provider,
       DefaultQueuedHarnessConfig<I> config,
       Tools tools,
-      Listeners narrator,
+      AfterCommit narrator,
       Payloads payloads,
       EffectTermsSource terms) {
     return new InferenceHandler(
@@ -399,6 +405,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   @Override
   public void close() {
     harnesses.forEach(DefaultQueuedHarness::close);
+    sequencers.forEach(AfterCommit::close);
     tellers.forEach(Listeners::close);
     scheduler.shutdown();
   }

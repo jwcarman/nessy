@@ -163,6 +163,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Listeners hear an agent's events after the step that wrote them commits.**
+  Both doors write an agent's events in short locked steps, which on a
+  database are transactions, and used to tell listeners inside the step. What a
+  step narrates is now held until its lock returns and delivered then, in the
+  order the steps committed in for that agent; narration from outside any
+  step, such as streamed deltas, keeps its place behind a step reserved
+  before it. Another agent's narration is never held up. The chapter keeper
+  no longer waits for the turn it was told about to become visible, because
+  it already is.
 - **A reply cut off at the output limit is `Truncated`.** It was an `Answer`.
 - **A tool call cut off at the output limit is a `Fault`.** It was `Actions`,
   carrying arguments that could parse as `{}` and run.
@@ -226,6 +235,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A listener could be told about a step that then rolled back, or that failed
+  to commit. A step that does not commit is now never heard.
 - **A chapter that was due at a turn's end could be left open, or unsummarised,
   until a later turn when two turns ended close together.** The keeper that
   found the agent's lease held walked away, and the keeper holding it had read

@@ -26,7 +26,6 @@ import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.Narration;
-import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -47,6 +46,8 @@ import org.jwcarman.nessy.engine.core.Decision;
 import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
 import org.jwcarman.nessy.engine.effect.EffectDispatcher;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
+import org.jwcarman.nessy.engine.narration.AfterCommit;
+import org.jwcarman.nessy.engine.narration.AfterCommit.Step;
 import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
@@ -93,7 +94,7 @@ final class DefaultQueuedHarness<I>
   private final Backlogs<I> backlogs;
 
   private final Outbox effects;
-  private final Narrator narrator;
+  private final AfterCommit narrator;
   private final Clock clock;
   private final TurnPolicy turnPolicy;
   private final Traces traces;
@@ -107,7 +108,7 @@ final class DefaultQueuedHarness<I>
       QueuedBackend backend,
       Backlogs<I> backlogs,
       Outbox effects,
-      Narrator narrator,
+      AfterCommit narrator,
       Clock clock,
       TurnPolicy turnPolicy,
       Traces traces) {
@@ -154,28 +155,26 @@ final class DefaultQueuedHarness<I>
         () -> {
           String trace = traces.capture();
           boolean nudge =
-              backend
-                  .locks()
-                  .withLock(
-                      Locks.TURN,
-                      agentType,
-                      agentId,
-                      () -> {
-                        backend.agents().ensure(agentType, agentId);
-                        Backlog<I> backlog = backlogs.forAgent(agentType, agentId);
-                        if (backend.agents().terminated(agentType, agentId)) {
-                          // Ended. Coalescing now would put something into an emptied backlog and
-                          // be
-                          // read as work next time, undoing a termination that has happened.
-                          log.debug(
-                              "[{}] agent {} has ended; the input is refused",
-                              agentType.value(),
-                              agentId.value());
-                          return false;
-                        }
-                        policy.coalesce(backlog, arrival);
-                        return driveIfIdle(agentId, backlog, trace);
-                      });
+              narrator.locked(
+                  backend.locks(),
+                  agentType,
+                  agentId,
+                  step -> {
+                    backend.agents().ensure(agentType, agentId);
+                    Backlog<I> backlog = backlogs.forAgent(agentType, agentId);
+                    if (backend.agents().terminated(agentType, agentId)) {
+                      // Ended. Coalescing now would put something into an emptied backlog and
+                      // be
+                      // read as work next time, undoing a termination that has happened.
+                      log.debug(
+                          "[{}] agent {} has ended; the input is refused",
+                          agentType.value(),
+                          agentId.value());
+                      return false;
+                    }
+                    policy.coalesce(backlog, arrival);
+                    return driveIfIdle(step, agentId, backlog, trace);
+                  });
           if (nudge) {
             dispatch();
           }
@@ -195,25 +194,23 @@ final class DefaultQueuedHarness<I>
     log.info("[{}] terminating agent {}", agentType.value(), agentId.value());
     String trace = traces.capture();
     boolean nudge =
-        backend
-            .locks()
-            .withLock(
-                Locks.TURN,
-                agentType,
-                agentId,
-                () -> {
-                  backend.agents().ensure(agentType, agentId);
-                  Backlog<I> backlog = backlogs.forAgent(agentType, agentId);
-                  int abandoned = backend.agents().seal(agentType, agentId);
-                  if (abandoned > 0) {
-                    log.info(
-                        "[{}] agent {} ended with {} input(s) waiting; abandoned",
-                        agentType.value(),
-                        agentId.value(),
-                        abandoned);
-                  }
-                  return driveIfIdle(agentId, backlog, trace);
-                });
+        narrator.locked(
+            backend.locks(),
+            agentType,
+            agentId,
+            step -> {
+              backend.agents().ensure(agentType, agentId);
+              Backlog<I> backlog = backlogs.forAgent(agentType, agentId);
+              int abandoned = backend.agents().seal(agentType, agentId);
+              if (abandoned > 0) {
+                log.info(
+                    "[{}] agent {} ended with {} input(s) waiting; abandoned",
+                    agentType.value(),
+                    agentId.value(),
+                    abandoned);
+              }
+              return driveIfIdle(step, agentId, backlog, trace);
+            });
     if (nudge) {
       dispatch();
     }
@@ -234,21 +231,19 @@ final class DefaultQueuedHarness<I>
         outcome.getClass().getSimpleName(),
         agentId.value());
     boolean nudge =
-        backend
-            .locks()
-            .withLock(
-                Locks.TURN,
-                agentType,
-                agentId,
-                () -> {
-                  backend.agents().ensure(agentType, agentId);
-                  boolean wrote =
-                      fold(agentId, turn, request, outcome, traceContext, priorAttempts);
-                  // A turn that ended leaves the agent idle, and the next thing waiting becomes
-                  // the next turn -- here, before this transaction commits.
-                  return wrote
-                      | driveIfIdle(agentId, backlogs.forAgent(agentType, agentId), traceContext);
-                });
+        narrator.locked(
+            backend.locks(),
+            agentType,
+            agentId,
+            step -> {
+              backend.agents().ensure(agentType, agentId);
+              boolean wrote =
+                  fold(step, agentId, turn, request, outcome, traceContext, priorAttempts);
+              // A turn that ended leaves the agent idle, and the next thing waiting becomes
+              // the next turn -- here, before this transaction commits.
+              return wrote
+                  | driveIfIdle(step, agentId, backlogs.forAgent(agentType, agentId), traceContext);
+            });
     if (nudge) {
       dispatch();
     }
@@ -264,6 +259,7 @@ final class DefaultQueuedHarness<I>
    * agent not waiting on a request has no request for it to settle.
    */
   private boolean fold(
+      Step step,
       AgentId agentId,
       Optional<TurnId> turn,
       Optional<Seq> request,
@@ -291,6 +287,7 @@ final class DefaultQueuedHarness<I>
       return false;
     }
     return apply(
+        step,
         agentId,
         EffectOutcomes.command(answered.get(), answeredRequest, outcome, priorAttempts),
         trace);
@@ -321,7 +318,7 @@ final class DefaultQueuedHarness<I>
    *
    * @return whether anything was written that an effect dispatcher should be told about
    */
-  private boolean driveIfIdle(AgentId agentId, Backlog<I> backlog, String trace) {
+  private boolean driveIfIdle(Step step, AgentId agentId, Backlog<I> backlog, String trace) {
     if (!(reconstitute(agentId) instanceof AgentState.Idle)) {
       return false;
     }
@@ -330,18 +327,19 @@ final class DefaultQueuedHarness<I>
       // the application's own object, not an outcome, and no executor produced it.
       case Pull.Item<I>(BacklogItem<I> next) ->
           apply(
+              step,
               agentId,
               new AgentCommand.StartTurn(
                   backend.payloads().forAgent(agentId).put(renderer.render(next.input())),
                   clock.instant()),
               trace);
-      case Pull.Pill<I> _ -> apply(agentId, new AgentCommand.Terminate(), trace);
+      case Pull.Pill<I> _ -> apply(step, agentId, new AgentCommand.Terminate(), trace);
       case Pull.Empty<I> _ -> false;
     };
   }
 
   /** Folds one command and writes what it decided. */
-  private boolean apply(AgentId agentId, AgentCommand command, String trace) {
+  private boolean apply(Step step, AgentId agentId, AgentCommand command, String trace) {
     AgentState state = reconstitute(agentId);
     if (!(state.execute(command, turnPolicy, clock.instant())
         instanceof Decision.Advance advance)) {
@@ -358,13 +356,13 @@ final class DefaultQueuedHarness<I>
     for (AgentEffect effect : advance.effects()) {
       effects.insert(agentId, effect, clock.instant(), trace);
     }
-    advance.events().forEach(event -> narrate(agentId, event));
+    advance.events().forEach(event -> narrate(step, event));
     // Read off the effect rather than the state. Inferring is where an agent sits for the whole
     // of a call, so a fold that stays there without emitting anything -- an input queued
     // mid-turn -- would announce a second "thinking" for a call already in flight. The effect is
     // emitted exactly once per call, which is what this means.
     if (advance.effects().stream().anyMatch(AgentEffect.Infer.class::isInstance)) {
-      say(agentId, new Narration.Thinking());
+      step.narrate(new Narration.Thinking());
     }
     return !advance.effects().isEmpty();
   }
@@ -385,13 +383,15 @@ final class DefaultQueuedHarness<I>
   }
 
   /**
-   * What just became true, told to whoever is watching.
+   * What just became true, handed to the step that wrote it, to be told to whoever is watching once
+   * that step has committed.
    *
-   * <p>After the append and inside the transaction that made it true. A watcher told about a fold a
-   * rollback could still undo would be told something untrue; one told a moment late has only been
-   * told late.
+   * <p>Not told here: the step holds it until {@code withLock} returns, which is after the commit,
+   * and drops it if the step fails. A watcher told about a fold a rollback could still undo would
+   * be told something untrue, and one told before the commit could not read what it was told about;
+   * one told a moment late has only been told late.
    */
-  private void narrate(AgentId agentId, AgentEvent event) {
+  private void narrate(Step step, AgentEvent event) {
     // Some of these mean resolving what a reference stands for, which is real work: skipped
     // entirely when nobody is there to be told. Narrating anyway would still be correct.
     if (!narrator.listening()) {
@@ -403,8 +403,7 @@ final class DefaultQueuedHarness<I>
       // the story for whoever is counting what the turn spent.
       case AgentEvent.InferenceAttempted _ -> {}
       case AgentEvent.ActionsRequested asked ->
-          say(
-              agentId,
+          step.narrate(
               new Narration.ActionsRequested(
                   asked.actions().stream()
                       .filter(ActionRequest.ToolCall.class::isInstance)
@@ -412,42 +411,38 @@ final class DefaultQueuedHarness<I>
                       .map(ActionRequest.ToolCall::name)
                       .toList()));
       case AgentEvent.ToolApproved approved ->
-          say(agentId, new Narration.CallApproved(approved.callId()));
+          step.narrate(new Narration.CallApproved(approved.callId()));
       case AgentEvent.ToolDenied denied ->
-          say(agentId, new Narration.CallDenied(denied.callId(), denied.reason()));
-      case AgentEvent.ToolSucceeded done -> say(agentId, new Narration.CallFinished(done.callId()));
+          step.narrate(new Narration.CallDenied(denied.callId(), denied.reason()));
+      case AgentEvent.ToolSucceeded done -> step.narrate(new Narration.CallFinished(done.callId()));
       case AgentEvent.ToolFailed failed ->
-          say(agentId, new Narration.CallFailed(failed.callId(), failed.message()));
+          step.narrate(new Narration.CallFailed(failed.callId(), failed.message()));
       // However it ended, it ended: the one event to hear when the story grew by a turn. An
       // answer, a refusal and a fault all close one; asking for actions does not.
       case AgentEvent.InferenceRefused refused -> {
-        say(agentId, new Narration.TurnRefused(refused.category()));
-        say(agentId, new Narration.TurnEnded(refused.turn()));
+        step.narrate(new Narration.TurnRefused(refused.category()));
+        step.narrate(new Narration.TurnEnded(refused.turn()));
       }
       case AgentEvent.InferenceFailed failed -> {
-        say(agentId, new Narration.TurnFailed(failed.failure().reason()));
-        say(agentId, new Narration.TurnEnded(failed.turn()));
+        step.narrate(new Narration.TurnFailed(failed.failure().reason()));
+        step.narrate(new Narration.TurnEnded(failed.turn()));
       }
       // Heard exactly as any other failed turn is. A watcher does not care whether the model
       // could not answer or a policy decided it had answered enough; either way the turn is over.
       case AgentEvent.TurnFailed ended -> {
-        say(agentId, new Narration.TurnFailed(ended.reason()));
-        say(agentId, new Narration.TurnEnded(ended.turn()));
+        step.narrate(new Narration.TurnFailed(ended.reason()));
+        step.narrate(new Narration.TurnEnded(ended.turn()));
       }
-      case AgentEvent.Terminated _ -> say(agentId, new Narration.Terminated());
+      case AgentEvent.Terminated _ -> step.narrate(new Narration.Terminated());
       case AgentEvent.TurnStarted started ->
-          say(agentId, new Narration.TurnStarted(started.turn()));
+          step.narrate(new Narration.TurnStarted(started.turn()));
       // Said as a fact once the fold has committed, exactly as the direct door says it. The
       // deltas a provider streamed are what is ARRIVING; this is what was said, and a watcher
       // that saw neither -- a page opened mid-turn -- would otherwise never learn the answer.
       case AgentEvent.InferenceAnswered answered -> {
-        say(agentId, new Narration.Answered());
-        say(agentId, new Narration.TurnEnded(answered.turn()));
+        step.narrate(new Narration.Answered());
+        step.narrate(new Narration.TurnEnded(answered.turn()));
       }
     }
-  }
-
-  private void say(AgentId agentId, org.jwcarman.nessy.api.Narration event) {
-    narrator.narrate(agentType, agentId, event);
   }
 }
