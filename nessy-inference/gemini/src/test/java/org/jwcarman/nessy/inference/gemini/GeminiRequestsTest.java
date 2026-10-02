@@ -29,6 +29,7 @@ import com.google.genai.types.ThinkingConfig;
 import com.google.genai.types.ThinkingLevel;
 import com.google.genai.types.ToolConfig;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -41,7 +42,9 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.Memory;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.State;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
@@ -252,11 +255,195 @@ class GeminiRequestsTest {
     }
   }
 
+  /** Where memory, state and ambient stand among the contents. */
+  @Nested
+  class PlacingTheStrata {
+
+    private InferenceContext context(
+        List<Turn> tail,
+        List<Memory> memory,
+        List<State> state,
+        Turn active,
+        List<Ambient> ambient) {
+      return new InferenceContext(List.of(), tail, memory, state, active, ambient);
+    }
+
+    private List<String> texts(Content content) {
+      return content.parts().orElseThrow().stream().map(part -> part.text().orElseThrow()).toList();
+    }
+
+    private Turn askedWithCall(Block.Provider signature, boolean answered) {
+      List<Block.ActionRequestContent> asking = new ArrayList<>();
+      asking.add(new Block.ToolCall("call_1", "depth", "{\"lake\":\"ness\"}"));
+      asking.add(signature);
+      List<ToolOutcome> outcomes =
+          answered
+              ? List.of(
+                  new ToolOutcome.Succeeded(new CallId("call_1"), List.of(new Block.Text("230m"))))
+              : List.of();
+      Exchange exchange = new Exchange(new Seq(2), asking, outcomes);
+      return new Turn(new TurnId(1), asked(1, "how deep?"), List.of(exchange), null, 0);
+    }
+
+    private Block.Provider signed(byte[] signature) {
+      return new Block.Provider(
+          GeminiInferenceProvider.VENDOR,
+          MAPPER.writeValueAsString(
+              Map.of(
+                  "type",
+                  "thought-signature",
+                  "callId",
+                  "call_1",
+                  "signature",
+                  Base64.getEncoder().encodeToString(signature))));
+    }
+
+    @Test
+    void memory_and_state_lead_the_active_turns_first_user_content() {
+      InferenceContext context =
+          context(
+              List.of(),
+              List.of(
+                  Memory.text("notes", " likes tea "), Memory.text("episodes", "met on Monday")),
+              List.of(State.text("plan", "step one")),
+              open(1, "hi"),
+              List.of());
+
+      List<Content> contents = GeminiRequests.toContents(request(context, List.of()), MAPPER);
+
+      assertThat(contents).hasSize(1);
+      assertThat(contents.getFirst().role()).contains("user");
+      assertThat(texts(contents.getFirst()))
+          .containsExactly(
+              "<memory kind=\"notes\">\nlikes tea\n</memory>",
+              "<memory kind=\"episodes\">\nmet on Monday\n</memory>",
+              "<state kind=\"plan\">\nstep one\n</state>",
+              "hi");
+    }
+
+    @Test
+    void memory_and_state_are_not_attached_to_a_turn_in_the_tail() {
+      InferenceContext context =
+          context(
+              List.of(answered(1, "hello", "hi there")),
+              List.of(Memory.text("notes", "likes tea")),
+              List.of(State.text("plan", "step one")),
+              open(3, "again"),
+              List.of());
+
+      List<Content> contents = GeminiRequests.toContents(request(context, List.of()), MAPPER);
+
+      assertThat(contents).hasSize(3);
+      assertThat(texts(contents.get(0))).containsExactly("hello");
+      assertThat(texts(contents.get(1))).containsExactly("hi there");
+      assertThat(texts(contents.get(2)))
+          .containsExactly(
+              "<memory kind=\"notes\">\nlikes tea\n</memory>",
+              "<state kind=\"plan\">\nstep one\n</state>",
+              "again");
+    }
+
+    @Test
+    void ambient_ends_the_request_after_the_active_turns_input() {
+      InferenceContext context =
+          context(
+              List.of(),
+              List.of(),
+              List.of(),
+              open(1, "hi"),
+              List.of(Ambient.text("clock", "it is Tuesday"), Ambient.text("mood", "calm")));
+
+      List<Content> contents = GeminiRequests.toContents(request(context, List.of()), MAPPER);
+
+      assertThat(contents).hasSize(1);
+      assertThat(texts(contents.getFirst()))
+          .containsExactly("hi", "<clock>\nit is Tuesday\n</clock>", "<mood>\ncalm\n</mood>");
+    }
+
+    @Test
+    void ambient_ends_the_request_after_the_last_function_responses() {
+      InferenceContext context =
+          context(
+              List.of(),
+              List.of(),
+              List.of(),
+              askedWithCall(signed("sig".getBytes(StandardCharsets.UTF_8)), true),
+              List.of(Ambient.text("clock", "it is Tuesday")));
+
+      List<Content> contents = GeminiRequests.toContents(request(context, List.of()), MAPPER);
+
+      assertThat(contents)
+          .extracting(c -> c.role().orElseThrow())
+          .containsExactly("user", "model", "user", "user");
+      assertThat(contents.get(2).parts().orElseThrow().getFirst().functionResponse()).isPresent();
+      assertThat(contents.get(2).parts().orElseThrow()).hasSize(1);
+      assertThat(texts(contents.get(3))).containsExactly("<clock>\nit is Tuesday\n</clock>");
+    }
+
+    @Test
+    void a_context_with_no_memory_state_or_ambient_renders_as_before() {
+      List<Turn> turns = List.of(answered(1, "hi", "hello"), withoutBackground());
+      InferenceContext context =
+          context(List.of(turns.getFirst()), List.of(), List.of(), turns.getLast(), List.of());
+
+      List<Content> contents = GeminiRequests.toContents(request(context, List.of()), MAPPER);
+
+      assertThat(contents)
+          .extracting(c -> c.role().orElseThrow())
+          .containsExactly("user", "model", "user");
+      assertThat(contents)
+          .extracting(GeminiRequestsTest::textOf)
+          .containsExactly("hi", "hello", "bye");
+      assertThat(contents.stream().map(c -> c.parts().orElseThrow().size()).toList())
+          .containsExactly(1, 1, 1);
+    }
+
+    private Turn withoutBackground() {
+      return open(3, "bye");
+    }
+
+    @Test
+    void blank_memory_state_and_ambient_are_left_out() {
+      InferenceContext context =
+          context(
+              List.of(),
+              List.of(Memory.text("notes", "  ")),
+              List.of(State.text("plan", "\n")),
+              open(1, "hi"),
+              List.of(Ambient.text("clock", "   ")));
+
+      List<Content> contents = GeminiRequests.toContents(request(context, List.of()), MAPPER);
+
+      assertThat(contents).hasSize(1);
+      assertThat(texts(contents.getFirst())).containsExactly("hi");
+    }
+
+    @Test
+    void thought_signatures_in_the_active_turn_are_still_replayed_unchanged() {
+      byte[] signature = "sig".getBytes(StandardCharsets.UTF_8);
+      InferenceContext context =
+          context(
+              List.of(),
+              List.of(Memory.text("notes", "likes tea")),
+              List.of(State.text("plan", "step one")),
+              askedWithCall(signed(signature), true),
+              List.of(Ambient.text("clock", "it is Tuesday")));
+
+      List<Content> contents = GeminiRequests.toContents(request(context, List.of()), MAPPER);
+
+      Part call = contents.get(1).parts().orElseThrow().getFirst();
+      assertThat(call.functionCall().orElseThrow().name()).contains("depth");
+      assertThat(call.thoughtSignature()).contains(signature);
+      assertThat(contents.get(1).role()).contains("model");
+      assertThat(contents.get(1).parts().orElseThrow()).hasSize(1);
+    }
+  }
+
   @Nested
   class TheConfig {
 
     @Test
-    void the_prompt_and_the_ambient_are_the_system_instruction() {
+    void the_system_instruction_holds_only_the_instructions() {
       InferenceContext context =
           new InferenceContext(
               List.of(open(1, "hi")), List.of(Ambient.text("clock", "it is Tuesday")));
@@ -266,7 +453,7 @@ class GeminiRequestsTest {
       List<Part> instruction = config.systemInstruction().orElseThrow().parts().orElseThrow();
       assertThat(instruction)
           .extracting(p -> p.text().orElseThrow())
-          .containsExactly("you are a helpful assistant", "<clock>\nit is Tuesday\n</clock>");
+          .containsExactly("you are a helpful assistant");
       assertThat(config.maxOutputTokens()).contains(1024);
     }
 

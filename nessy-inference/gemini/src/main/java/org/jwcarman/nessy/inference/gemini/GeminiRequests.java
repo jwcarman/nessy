@@ -32,9 +32,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.Memory;
+import org.jwcarman.nessy.api.State;
 import org.jwcarman.nessy.api.VendorProperties;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -44,6 +47,7 @@ import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
+import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
@@ -77,21 +81,107 @@ public final class GeminiRequests {
 
   private GeminiRequests() {}
 
-  /** The conversation: every summary, then every turn, as the wire wants them. */
+  /**
+   * The conversation: every summary, then every turn, as the wire wants them, with the strata that
+   * are not the story placed around the turn in flight.
+   *
+   * <p>Memory and state are text parts at the head of the active turn's first user content, ahead
+   * of the question, so everything before them is the same from one call to the next and the
+   * provider's implicit cache can reuse it. Ambient is text parts at the very end of the request,
+   * because it changes on every call and nothing after it is left to invalidate.
+   */
   public static List<Content> toContents(InferenceRequest request, JsonMapper mapper) {
-    return Stream.of(
-            request.context().summaries().stream().map(GeminiRequests::summary),
-            request.context().tail().stream().flatMap(turn -> turn(turn, mapper)),
-            turn(request.context().activeTurn(), mapper))
-        .flatMap(rendered -> rendered)
-        .toList();
+    InferenceContext context = request.context();
+    List<Content> contents =
+        new ArrayList<>(
+            Stream.concat(
+                    context.summaries().stream().map(GeminiRequests::summary),
+                    context.tail().stream().flatMap(turn -> turn(turn, mapper)))
+                .toList());
+    List<Content> active = turn(context.activeTurn(), mapper).collect(Collectors.toList());
+    List<Part> leading = leading(context);
+    if (!leading.isEmpty()) {
+      if (active.isEmpty()) {
+        active.add(Content.builder().role(USER).parts(leading).build());
+      } else {
+        active.set(0, withLeading(active.getFirst(), leading));
+      }
+    }
+    contents.addAll(active);
+    List<Part> trailing = trailing(context);
+    if (!trailing.isEmpty()) {
+      appendTrailing(contents, trailing);
+    }
+    return List.copyOf(contents);
+  }
+
+  /** Memory, then state, each as a labelled text part; blank ones are left out. */
+  private static List<Part> leading(InferenceContext context) {
+    List<Part> parts = new ArrayList<>();
+    for (Memory memory : context.memory()) {
+      section("memory kind=\"%s\"".formatted(memory.kind()), "memory", memory.content())
+          .ifPresent(parts::add);
+    }
+    for (State state : context.state()) {
+      section("state kind=\"%s\"".formatted(state.kind()), "state", state.content())
+          .ifPresent(parts::add);
+    }
+    return parts;
+  }
+
+  /** Ambient, each as a text part labelled by its kind; blank ones are left out. */
+  private static List<Part> trailing(InferenceContext context) {
+    List<Part> parts = new ArrayList<>();
+    for (Ambient ambient : context.ambient()) {
+      section(ambient.kind(), ambient.kind(), ambient.content()).ifPresent(parts::add);
+    }
+    return parts;
+  }
+
+  private static Optional<Part> section(
+      String opening, String closing, List<? extends Block> blocks) {
+    String text = text(blocks);
+    return text.isBlank()
+        ? Optional.empty()
+        : Optional.of(Part.fromText("<%s>\n%s\n</%s>".formatted(opening, text.strip(), closing)));
+  }
+
+  private static Content withLeading(Content content, List<Part> leading) {
+    List<Part> parts = new ArrayList<>(leading);
+    parts.addAll(content.parts().orElse(List.of()));
+    return Content.builder().role(content.role().orElse(USER)).parts(parts).build();
   }
 
   /**
-   * The standing instruction, the background, the token cap and the tools on offer.
+   * Ambient joins the last content when that is a user content of text alone, and otherwise stands
+   * in a user content of its own: function responses and text are not mixed in one content, and a
+   * model content cannot carry background.
+   */
+  private static void appendTrailing(List<Content> contents, List<Part> trailing) {
+    Optional<Content> last =
+        contents.isEmpty() ? Optional.empty() : Optional.of(contents.getLast());
+    if (last.isPresent() && isUserText(last.get())) {
+      List<Part> parts = new ArrayList<>(last.get().parts().orElseThrow());
+      parts.addAll(trailing);
+      contents.set(contents.size() - 1, Content.builder().role(USER).parts(parts).build());
+    } else {
+      contents.add(Content.builder().role(USER).parts(trailing).build());
+    }
+  }
+
+  private static boolean isUserText(Content content) {
+    List<Part> parts = content.parts().orElse(List.of());
+    return content.role().filter(USER::equals).isPresent()
+        && !parts.isEmpty()
+        && parts.stream().allMatch(part -> part.text().isPresent());
+  }
+
+  /**
+   * The standing instruction, the token cap and the tools on offer.
    *
-   * <p>Ambient content goes into the system instruction as its own labelled part rather than into
-   * the conversation, because it is true now and was not said by anyone.
+   * <p>The system instruction holds the system prompt and nothing else. It sits ahead of every
+   * message, so anything in it that changes between calls would invalidate the provider's cache for
+   * the whole conversation; memory, state and ambient travel in the conversation instead.
    */
   public static GenerateContentConfig toConfig(InferenceRequest request, JsonMapper mapper) {
     return toConfig(request, Map.of(), mapper);
@@ -110,17 +200,8 @@ public final class GeminiRequests {
     if (request.options().hasMaxTokens()) {
       builder.maxOutputTokens(request.options().maxTokens());
     }
-    List<Part> instruction = new ArrayList<>();
-    instruction.add(Part.fromText(request.systemPrompt().value()));
-    for (Ambient ambient : request.context().ambient()) {
-      String text = text(ambient.content());
-      if (!text.isBlank()) {
-        instruction.add(
-            Part.fromText(
-                "<%s>\n%s\n</%s>".formatted(ambient.kind(), text.strip(), ambient.kind())));
-      }
-    }
-    builder.systemInstruction(Content.builder().parts(instruction).build());
+    builder.systemInstruction(
+        Content.builder().parts(List.of(Part.fromText(request.systemPrompt().value()))).build());
     if (request.toolset().any()) {
       builder.tools(
           List.of(
