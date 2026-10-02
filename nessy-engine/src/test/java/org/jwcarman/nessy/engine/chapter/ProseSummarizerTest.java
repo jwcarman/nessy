@@ -273,6 +273,24 @@ class ProseSummarizerTest {
     }
 
     @Test
+    void when_the_summary_was_cut_off_at_the_output_limit() {
+      Story story = new Story(List.of(turn(1), turn(2)));
+      Scripted provider =
+          new Scripted(
+              _ ->
+                  new InferenceResult.Truncated(
+                      List.of(new Block.Text("The record begins")), Usage.unreported()));
+      ProseSummarizer summarizer = new ProseSummarizer(story, provider, OPTIONS);
+      Chapter chapter = chapter(1, 2);
+
+      assertThatThrownBy(() -> summarizer.summarize(chapter))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("cut off at the output limit")
+          .hasMessageContaining("1")
+          .hasMessageContaining("2");
+    }
+
+    @Test
     void when_the_model_refuses() {
       Story story = new Story(List.of(turn(1)));
       Scripted provider =

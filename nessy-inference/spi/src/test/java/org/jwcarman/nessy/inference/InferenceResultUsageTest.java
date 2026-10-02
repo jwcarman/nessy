@@ -21,6 +21,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
+import tools.jackson.databind.json.JsonMapper;
 
 /** What a call cost, on whichever way it ended. */
 class InferenceResultUsageTest {
@@ -34,11 +35,39 @@ class InferenceResultUsageTest {
     InferenceResult actions =
         new InferenceResult.Actions(List.of(new Block.ToolCall("c1", "t", "{}")));
 
-    for (InferenceResult result : List.of(answer, refusal, fault, actions)) {
+    InferenceResult truncated = new InferenceResult.Truncated(List.of(new Block.Text("par")));
+
+    for (InferenceResult result : List.of(answer, refusal, fault, actions, truncated)) {
       assertThat(result.usage()).isEqualTo(Usage.unreported());
       InferenceResult priced = result.withUsage(usage);
       assertThat(priced.usage()).isEqualTo(usage);
       assertThat(priced.getClass()).isEqualTo(result.getClass());
     }
+  }
+
+  @Test
+  void a_truncated_result_survives_being_stored_and_read_back() {
+    JsonMapper mapper = JsonMapper.builder().build();
+    InferenceResult truncated =
+        new InferenceResult.Truncated(List.of(new Block.Text("par")), Usage.of("a-model", 10, 20));
+
+    InferenceResult read =
+        mapper.readValue(mapper.writeValueAsString(truncated), InferenceResult.class);
+
+    assertThat(read).isEqualTo(truncated);
+  }
+
+  @Test
+  void a_result_stored_before_truncated_existed_still_reads() {
+    JsonMapper mapper = JsonMapper.builder().build();
+    String stored =
+        """
+        {"type":"answer","blocks":[{"type":"text","text":"hi"}],"usage":{"model":null}}""";
+    InferenceResult.Answer expected = new InferenceResult.Answer(List.of(new Block.Text("hi")));
+
+    InferenceResult read = mapper.readValue(stored, InferenceResult.class);
+
+    assertThat(read.getClass()).isEqualTo(expected.getClass());
+    assertThat(((InferenceResult.Answer) read).blocks()).isEqualTo(expected.blocks());
   }
 }

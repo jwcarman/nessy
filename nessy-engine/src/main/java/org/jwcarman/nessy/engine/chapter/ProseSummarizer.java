@@ -41,6 +41,10 @@ import org.jwcarman.nessy.inference.Toolset;
  * the model never wrote: a chapter with no turns, or a call that came back as anything but an
  * answer, is an {@link IllegalStateException} naming the chapter's bounds.
  *
+ * <p><b>A summary that was cut off at the output limit is refused,</b> not kept: a summary is
+ * written once and then stands in for its chapter, so one that stops mid-sentence would lose the
+ * rest of the chapter for good. The chapter stays unsummarised.
+ *
  * <p>The options are validated when it is built, so a bad option fails at wiring rather than at the
  * first chapter that closes.
  */
@@ -113,6 +117,11 @@ public final class ProseSummarizer implements Summarizer {
                     Toolset.none(),
                     options)
                 .asOneOff());
+    if (result instanceof InferenceResult.Truncated) {
+      throw new IllegalStateException(
+          "the summary of turns %s through %s was cut off at the output limit"
+              .formatted(chapter.from(), chapter.through()));
+    }
     if (!(result instanceof InferenceResult.Answer(var blocks, _))) {
       throw new IllegalStateException(
           "the model did not answer for turns %s through %s: %s"

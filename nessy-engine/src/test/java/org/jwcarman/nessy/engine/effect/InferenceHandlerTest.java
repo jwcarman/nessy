@@ -22,6 +22,7 @@ import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -31,6 +32,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.TurnId;
@@ -39,6 +41,7 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
+import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.observability.CacheWatch;
 import org.jwcarman.nessy.engine.tool.Tools;
@@ -55,6 +58,8 @@ class InferenceHandlerTest {
   private final List<Observation.Context> stopped = new CopyOnWriteArrayList<>();
   private final Deque<InferenceResult> script = new ArrayDeque<>();
   private final ObservationRegistry registry = ObservationRegistry.create();
+
+  private final List<List<? extends Block>> stored = new ArrayList<>();
 
   private final InferenceHandler handler;
 
@@ -77,6 +82,7 @@ class InferenceHandlerTest {
         new Payloads() {
           @Override
           public PayloadRef put(List<? extends Block> content) {
+            stored.add(content);
             return PayloadRef.of("p");
           }
 
@@ -173,6 +179,23 @@ class InferenceHandlerTest {
           2);
 
       assertThat(stopped).isEmpty();
+    }
+  }
+
+  @Nested
+  class Delivers {
+
+    @Test
+    void a_truncated_reply_is_delivered_as_the_answer_it_is() {
+      List<Block.AnswerContent> written = List.of(new Block.Text("The answer begins"));
+      script.add(new InferenceResult.Truncated(written, reading(0)));
+
+      Awaited<EffectOutcome> outcome = handler.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)));
+
+      assertThat(outcome)
+          .isEqualTo(
+              Awaited.ready(new EffectOutcome.InferenceAnswered(PayloadRef.of("p"), reading(0))));
+      assertThat(stored).containsExactly(written);
     }
   }
 }

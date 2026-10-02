@@ -85,15 +85,23 @@ final class Models {
   }
 
   static String text(InferenceProvider provider, InferenceRequest request, Duration pause) {
-    return retrying(
-        () -> {
-          InferenceResult result = provider.infer(request);
-          if (result instanceof InferenceResult.Answer(var blocks, _)) {
-            return Transcripts.text(blocks).strip();
-          }
-          throw new IllegalStateException("the model did not answer: " + result);
-        },
-        pause);
+    // Only a call that did not come back at all is tried again. A reply cut off at the output limit
+    // did come back, and the same request would be cut off the same way, so it is not retried.
+    InferenceResult result =
+        retrying(
+            () -> {
+              InferenceResult attempt = provider.infer(request);
+              if (attempt instanceof InferenceResult.Answer
+                  || attempt instanceof InferenceResult.Truncated) {
+                return attempt;
+              }
+              throw new IllegalStateException("the model did not answer: " + attempt);
+            },
+            pause);
+    if (result instanceof InferenceResult.Answer(var blocks, _)) {
+      return Transcripts.text(blocks).strip();
+    }
+    throw new IllegalStateException("the reply was cut off at the output limit");
   }
 
   /**

@@ -30,11 +30,11 @@ import org.jwcarman.nessy.api.block.Block;
  * {@code InferenceAnswered} and {@code InferenceRefused}. That one is the fold's story and is told
  * in the past tense on purpose. Two vocabularies, deliberately.
  *
- * <p><b>The axis is whether the turn can close.</b> An answer, a refusal and a fault all end it;
- * nothing is owed. The arm still missing is {@code Exchange} -- a model asking for tool calls,
- * which ends nothing and leaves the turn open. It is absent because its payload is {@code
- * ExchangeContentBlock}, which this project has not ported yet, and an arm with no producer would
- * be a stub.
+ * <p><b>The axis is whether the turn can close.</b> An answer, a truncated reply, a refusal and a
+ * fault all end it; nothing is owed. The arm still missing is {@code Exchange} -- a model asking
+ * for tool calls, which ends nothing and leaves the turn open. It is absent because its payload is
+ * {@code ExchangeContentBlock}, which this project has not ported yet, and an arm with no producer
+ * would be a stub.
  *
  * <p><b>Every provider models this as a flag.</b> OpenAI hangs {@code finish_reason} off one
  * response object, Anthropic hangs {@code stop_reason}, Gemini {@code finishReason}. Reifying that
@@ -45,7 +45,8 @@ import org.jwcarman.nessy.api.block.Block;
 @JsonSubTypes({
   @JsonSubTypes.Type(value = InferenceResult.Answer.class, name = "answer"),
   @JsonSubTypes.Type(value = InferenceResult.Refusal.class, name = "refusal"),
-  @JsonSubTypes.Type(value = InferenceResult.Fault.class, name = "fault")
+  @JsonSubTypes.Type(value = InferenceResult.Fault.class, name = "fault"),
+  @JsonSubTypes.Type(value = InferenceResult.Truncated.class, name = "truncated")
 })
 public sealed interface InferenceResult {
 
@@ -181,6 +182,40 @@ public sealed interface InferenceResult {
     @Override
     public Actions withUsage(Usage usage) {
       return new Actions(blocks, usage);
+    }
+  }
+
+  /**
+   * The vendor stopped the reply at the output-token limit.
+   *
+   * <p>The blocks are what was written before it stopped. This is not an answer, and a caller that
+   * keeps one must decide to: the text may end mid-sentence, and nothing here says what was left
+   * unsaid. Kept apart from {@link Answer} so that every {@code switch} over a result has to say
+   * what it does with a reply that is not whole.
+   *
+   * <p>Holds at least one {@link Block.Text}: a reply cut off with nothing but reasoning in it has
+   * nothing to keep, and is a {@link Fault}. So is one cut off inside a tool call, whose arguments
+   * cannot be trusted.
+   */
+  record Truncated(List<Block.AnswerContent> blocks, Usage usage) implements InferenceResult {
+
+    public Truncated {
+      Objects.requireNonNull(usage, USAGE_NOT_NULL);
+      Objects.requireNonNull(blocks, "blocks must not be null");
+      if (blocks.stream().noneMatch(Block.Text.class::isInstance)) {
+        throw new IllegalArgumentException(
+            "a truncated reply must contain at least one text block");
+      }
+      blocks = List.copyOf(blocks);
+    }
+
+    public Truncated(List<Block.AnswerContent> blocks) {
+      this(blocks, Usage.unreported());
+    }
+
+    @Override
+    public Truncated withUsage(Usage usage) {
+      return new Truncated(blocks, usage);
     }
   }
 }

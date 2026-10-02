@@ -34,6 +34,7 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.State;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.turn.Chapter;
@@ -83,6 +84,47 @@ class InferenceTypesTest {
     assertThat(bare.hasSummaries()).isFalse();
     assertThat(summarised.hasSummaries()).isTrue();
     assertThat(new Failure.Rejected("too long").reason()).isEqualTo("too long");
+  }
+
+  @Nested
+  class A_truncated_reply {
+
+    @Test
+    void holds_the_partial_blocks_and_the_usage() {
+      Usage usage = Usage.of("a-model", 10, 20);
+      List<Block.AnswerContent> written = List.of(new Block.Text("The answer begins"));
+
+      InferenceResult.Truncated truncated = new InferenceResult.Truncated(written, usage);
+
+      assertThat(truncated.blocks()).isEqualTo(written);
+      assertThat(truncated.usage()).isEqualTo(usage);
+      assertThat(new InferenceResult.Truncated(written).usage()).isEqualTo(Usage.unreported());
+    }
+
+    @Test
+    void needs_at_least_one_text_block() {
+      List<Block.AnswerContent> noText = List.of(new Block.Provider("anthropic", "{}"));
+      List<Block.AnswerContent> nothing = List.of();
+
+      assertThatThrownBy(() -> new InferenceResult.Truncated(noText))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("at least one text block");
+      assertThatThrownBy(() -> new InferenceResult.Truncated(nothing))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("at least one text block");
+    }
+
+    @Test
+    void the_blocks_cannot_be_changed_afterwards() {
+      List<Block.AnswerContent> given = new ArrayList<>(List.of(new Block.Text("a")));
+      InferenceResult.Truncated truncated = new InferenceResult.Truncated(given);
+      given.add(new Block.Text("b"));
+      List<Block.AnswerContent> held = truncated.blocks();
+      Block.AnswerContent extra = new Block.Text("c");
+
+      assertThat(held).hasSize(1);
+      assertThatThrownBy(() -> held.add(extra)).isInstanceOf(UnsupportedOperationException.class);
+    }
   }
 
   @Nested

@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DisplayNameGeneration;
@@ -890,6 +891,75 @@ class ChapterLabTest {
 
       assertThat(result.notUnderstood()).isEqualTo(4);
       assertThat(result.unanswered()).isZero();
+    }
+  }
+
+  @Nested
+  @DisplayName("A run that meets a reply cut off at the output limit")
+  class A_run_that_meets_a_reply_cut_off_at_the_output_limit {
+
+    private final PrintStream quiet =
+        new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+    private final InferenceResult cutOff =
+        new InferenceResult.Truncated(
+            List.of(new Block.Text("It began to say")), Usage.unreported("the-model"));
+
+    private InferenceProvider counting(String system, AtomicInteger calls) {
+      InferenceProvider cutting = except(system, cutOff, new ScriptedModel());
+      return (request, narrator) -> {
+        if (request.systemPrompt().value().equals(system)) {
+          calls.incrementAndGet();
+        }
+        return cutting.infer(request, narrator);
+      };
+    }
+
+    @Test
+    void a_cut_off_answer_is_counted_as_no_answer_and_asked_once(@TempDir Path directory) {
+      AtomicInteger calls = new AtomicInteger();
+      InferenceProvider provider = counting(LabPrompts.ANSWER_SYSTEM, calls);
+      ChapterLab.Settings settings = settings("session", "prose");
+
+      ChapterLab.Result result =
+          ChapterLab.run(
+              settings,
+              LocomoConversation.read(settings.data(), 0),
+              provider,
+              quiet,
+              directory,
+              Duration.ZERO);
+
+      assertThat(result.asked()).isEqualTo(4);
+      assertThat(result.unanswered()).isEqualTo(4);
+      assertThat(calls).hasValue(4);
+    }
+
+    @Test
+    void a_cut_off_grade_is_a_verdict_not_understood_graded_once_and_says_why(
+        @TempDir Path directory) throws Exception {
+      AtomicInteger calls = new AtomicInteger();
+      InferenceProvider provider = counting(LabPrompts.GRADE_SYSTEM, calls);
+      ChapterLab.Settings settings = settings("session", "prose");
+
+      ChapterLab.Result result =
+          ChapterLab.run(
+              settings,
+              LocomoConversation.read(settings.data(), 0),
+              provider,
+              quiet,
+              directory,
+              Duration.ZERO);
+
+      assertThat(result.notUnderstood()).isEqualTo(4);
+      assertThat(calls).hasValue(4);
+      List<String> lines = Files.readAllLines(directory.resolve(settings.resultsFile()));
+      assertThat(lines).hasSize(4);
+      assertThat(lines)
+          .allSatisfy(
+              line ->
+                  assertThat(line)
+                      .contains("\"grader_reply\":\"(the grading call failed: ")
+                      .contains("cut off at the output limit"));
     }
   }
 

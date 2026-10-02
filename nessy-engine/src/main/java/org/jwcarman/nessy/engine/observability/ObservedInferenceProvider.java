@@ -200,6 +200,7 @@ public final class ObservedInferenceProvider implements InferenceProvider {
   static String finishReasonOf(InferenceResult result) {
     return switch (result) {
       case InferenceResult.Answer _ -> "stop";
+      case InferenceResult.Truncated _ -> "length";
       case InferenceResult.Actions _ -> "tool_calls";
       case InferenceResult.Refusal _ -> "content_filter";
       case InferenceResult.Fault _ -> "error";
