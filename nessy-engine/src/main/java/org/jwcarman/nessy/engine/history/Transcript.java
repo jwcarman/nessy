@@ -16,16 +16,19 @@
 package org.jwcarman.nessy.engine.history;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
+import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.payload.Payloads;
 
@@ -66,13 +69,18 @@ public final class Transcript {
             open = Open.on(started, resolve(resolved, started.input()));
 
         case AgentEvent.ActionsRequested requested ->
-            require(open, event).ask(requested.seq(), cast(resolve(resolved, requested.request())));
+            require(open, event)
+                .ask(
+                    requested.seq(),
+                    cast(resolve(resolved, requested.request())),
+                    requested.actions());
 
         case AgentEvent.ToolSucceeded done ->
             require(open, event)
-                .outcome(
+                .succeeded(
                     new ToolOutcome.Succeeded(
-                        done.callId(), cast(resolve(resolved, done.result()))));
+                        done.callId(), cast(resolve(resolved, done.result()))),
+                    done.rendered());
 
         case AgentEvent.ToolFailed done ->
             require(open, event).outcome(new ToolOutcome.Failed(done.callId(), done.message()));
@@ -169,6 +177,8 @@ public final class Transcript {
     private Seq askedAt;
     private List<Block.ActionRequestContent> request;
     private List<ToolOutcome> outcomes;
+    private Map<CallId, String> actions;
+    private Map<CallId, String> results;
 
     private Open(AgentEvent.TurnStarted started, Input input) {
       this.started = started;
@@ -179,11 +189,23 @@ public final class Transcript {
       return new Open(started, new Input(started.seq(), cast(content)));
     }
 
-    void ask(Seq at, List<Block.ActionRequestContent> blocks) {
+    void ask(Seq at, List<Block.ActionRequestContent> blocks, List<ActionRequest> requested) {
       flush();
       askedAt = at;
       request = blocks;
       outcomes = new ArrayList<>();
+      actions = new LinkedHashMap<>();
+      for (ActionRequest action : requested) {
+        switch (action) {
+          case ActionRequest.ToolCall call -> actions.put(call.id(), call.action());
+        }
+      }
+      results = new LinkedHashMap<>();
+    }
+
+    void succeeded(ToolOutcome.Succeeded outcome, String rendered) {
+      outcome(outcome);
+      results.put(outcome.callId(), rendered);
     }
 
     void outcome(ToolOutcome outcome) {
@@ -206,9 +228,11 @@ public final class Transcript {
 
     private void flush() {
       if (request != null) {
-        exchanges.add(new Exchange(askedAt, request, List.copyOf(outcomes)));
+        exchanges.add(new Exchange(askedAt, request, List.copyOf(outcomes), actions, results));
         request = null;
         outcomes = null;
+        actions = null;
+        results = null;
       }
     }
   }

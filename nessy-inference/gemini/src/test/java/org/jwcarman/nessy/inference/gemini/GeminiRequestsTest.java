@@ -31,6 +31,7 @@ import com.google.genai.types.ToolConfig;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
@@ -68,6 +69,23 @@ import tools.jackson.databind.json.JsonMapper;
 /** The projection onto Gemini's generateContent wire, with no network anywhere near it. */
 @DisplayName("Gemini requests")
 class GeminiRequestsTest {
+
+  private static Exchange exchangeOf(
+      Seq seq, List<Block.ActionRequestContent> request, List<ToolOutcome> outcomes) {
+    Map<CallId, String> actions = new LinkedHashMap<>();
+    for (Block.ActionRequestContent block : request) {
+      if (block instanceof Block.ToolCall call) {
+        actions.put(call.id(), "did " + call.name().value());
+      }
+    }
+    Map<CallId, String> results = new LinkedHashMap<>();
+    for (ToolOutcome outcome : outcomes) {
+      if (outcome instanceof ToolOutcome.Succeeded done && actions.containsKey(done.callId())) {
+        results.put(done.callId(), "returned for " + done.callId().value());
+      }
+    }
+    return new Exchange(seq, request, outcomes, actions, results);
+  }
 
   private static Chapter chapter(long from, long through) {
     return new Chapter(
@@ -169,7 +187,7 @@ class GeminiRequestsTest {
       request.add(new Block.ToolCall("call_1", "depth", "{\"lake\":\"ness\"}"));
       request.addAll(List.of(provider));
       Exchange exchange =
-          new Exchange(
+          exchangeOf(
               new Seq(2),
               request,
               List.of(
@@ -237,7 +255,7 @@ class GeminiRequestsTest {
     @Test
     void a_failure_and_a_denial_come_back_as_errors() {
       Exchange exchange =
-          new Exchange(
+          exchangeOf(
               new Seq(2),
               List.of(new Block.ToolCall("c1", "a", "{}"), new Block.ToolCall("c2", "b", "{}")),
               List.of(
@@ -281,7 +299,7 @@ class GeminiRequestsTest {
               ? List.of(
                   new ToolOutcome.Succeeded(new CallId("call_1"), List.of(new Block.Text("230m"))))
               : List.of();
-      Exchange exchange = new Exchange(new Seq(2), asking, outcomes);
+      Exchange exchange = exchangeOf(new Seq(2), asking, outcomes);
       return new Turn(new TurnId(1), asked(1, "how deep?"), List.of(exchange), null, 0);
     }
 
@@ -486,7 +504,7 @@ class GeminiRequestsTest {
     @Test
     void a_call_still_awaiting_its_results_is_sent_alone() {
       Exchange asking =
-          new Exchange(new Seq(2), List.of(new Block.ToolCall("c1", "lookup", "{}")), List.of());
+          exchangeOf(new Seq(2), List.of(new Block.ToolCall("c1", "lookup", "{}")), List.of());
       Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(asking), null, 0);
 
       List<Content> contents = GeminiRequests.toContents(request(List.of(turn)), MAPPER);
@@ -499,7 +517,7 @@ class GeminiRequestsTest {
     @Test
     void a_result_for_a_call_the_exchange_did_not_make_is_refused() {
       Exchange odd =
-          new Exchange(
+          exchangeOf(
               new Seq(2),
               List.of(new Block.ToolCall("c1", "lookup", "{}")),
               List.of(new ToolOutcome.Succeeded(new CallId("c9"), List.of(new Block.Text("?")))));
@@ -519,7 +537,7 @@ class GeminiRequestsTest {
               GeminiInferenceProvider.VENDOR,
               "{\"type\":\"thought-signature\",\"callId\":\"c1\",\"signature\":\"not base64!\"}");
       Exchange exchange =
-          new Exchange(
+          exchangeOf(
               new Seq(2),
               List.of(new Block.ToolCall("c1", "lookup", "{}"), broken),
               List.of(new ToolOutcome.Succeeded(new CallId("c1"), List.of(new Block.Text("ok")))));

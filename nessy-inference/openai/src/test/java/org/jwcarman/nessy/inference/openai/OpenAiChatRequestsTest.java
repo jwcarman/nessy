@@ -31,6 +31,7 @@ import com.openai.models.chat.completions.ChatCompletionCreateParams;
 import com.openai.models.chat.completions.ChatCompletionMessageParam;
 import com.openai.models.chat.completions.ChatCompletionToolChoiceOption;
 import java.io.UncheckedIOException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -72,6 +73,23 @@ import tools.jackson.databind.json.JsonMapper;
  * params rather than only on what a live call happens to accept.
  */
 class OpenAiChatRequestsTest {
+
+  private static Exchange exchangeOf(
+      Seq seq, List<Block.ActionRequestContent> request, List<ToolOutcome> outcomes) {
+    Map<CallId, String> actions = new LinkedHashMap<>();
+    for (Block.ActionRequestContent block : request) {
+      if (block instanceof Block.ToolCall call) {
+        actions.put(call.id(), "did " + call.name().value());
+      }
+    }
+    Map<CallId, String> results = new LinkedHashMap<>();
+    for (ToolOutcome outcome : outcomes) {
+      if (outcome instanceof ToolOutcome.Succeeded done && actions.containsKey(done.callId())) {
+        results.put(done.callId(), "returned for " + done.callId().value());
+      }
+    }
+    return new Exchange(seq, request, outcomes, actions, results);
+  }
 
   private static final SystemPrompt SYSTEM = new SystemPrompt("you are a helpful assistant");
   private static final InferenceOptions OPTIONS = new InferenceOptions("gpt-4o", 1024);
@@ -159,7 +177,7 @@ class OpenAiChatRequestsTest {
 
     private static Turn lookedUp() {
       Exchange exchange =
-          new Exchange(
+          exchangeOf(
               new Seq(2),
               List.of(new Block.ToolCall(new CallId("call_1"), new ToolName("lookup"), "{}")),
               List.of(
@@ -368,7 +386,7 @@ class OpenAiChatRequestsTest {
       return new Turn(
           new TurnId(1),
           asked(1, "look it up"),
-          List.of(new Exchange(new Seq(2), request, outcomes)),
+          List.of(exchangeOf(new Seq(2), request, outcomes)),
           new TurnResult.Answered(List.of(new Block.Text("done"))),
           0);
     }

@@ -36,6 +36,7 @@ import com.openai.models.responses.ResponseReasoningItem;
 import com.openai.models.responses.Tool;
 import com.openai.models.responses.ToolChoiceOptions;
 import java.io.UncheckedIOException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -80,6 +81,23 @@ import tools.jackson.databind.json.JsonMapper;
  * on the built params rather than only on what a live call happens to accept.
  */
 class OpenAiResponsesRequestsTest {
+
+  private static Exchange exchangeOf(
+      Seq seq, List<Block.ActionRequestContent> request, List<ToolOutcome> outcomes) {
+    Map<CallId, String> actions = new LinkedHashMap<>();
+    for (Block.ActionRequestContent block : request) {
+      if (block instanceof Block.ToolCall call) {
+        actions.put(call.id(), "did " + call.name().value());
+      }
+    }
+    Map<CallId, String> results = new LinkedHashMap<>();
+    for (ToolOutcome outcome : outcomes) {
+      if (outcome instanceof ToolOutcome.Succeeded done && actions.containsKey(done.callId())) {
+        results.put(done.callId(), "returned for " + done.callId().value());
+      }
+    }
+    return new Exchange(seq, request, outcomes, actions, results);
+  }
 
   private static Chapter chapter(long from, long through) {
     return new Chapter(
@@ -131,7 +149,7 @@ class OpenAiResponsesRequestsTest {
 
   private static Exchange exchange(
       long seq, List<Block.ActionRequestContent> request, String callId) {
-    return new Exchange(
+    return exchangeOf(
         new Seq(seq),
         request,
         List.of(new ToolOutcome.Succeeded(new CallId(callId), List.of(new Block.Text("ok")))));
@@ -420,7 +438,7 @@ class OpenAiResponsesRequestsTest {
     @Test
     void becomes_one_item_per_block_in_stored_order_then_one_output_per_call() {
       Exchange exchange =
-          new Exchange(
+          exchangeOf(
               new Seq(2),
               List.of(new Block.Commentary("Let me look."), call("call_1"), call("call_2")),
               List.of(
@@ -445,7 +463,7 @@ class OpenAiResponsesRequestsTest {
     @Test
     void reports_a_failed_call_in_words() {
       Exchange exchange =
-          new Exchange(
+          exchangeOf(
               new Seq(2),
               List.of(call("call_1")),
               List.of(new ToolOutcome.Failed(new CallId("call_1"), "the service was down")));
@@ -459,7 +477,7 @@ class OpenAiResponsesRequestsTest {
     @Test
     void tells_the_model_a_denied_call_was_not_permitted_rather_than_that_it_broke() {
       Exchange exchange =
-          new Exchange(
+          exchangeOf(
               new Seq(2),
               List.of(call("call_1")),
               List.of(new ToolOutcome.Denied(new CallId("call_1"), "out of hours")));

@@ -955,7 +955,8 @@ class DefaultDirectHarnessTest {
   void an_overdue_approval_discharges_its_call_and_the_inference_it_reopens() {
     AgentId agent = AgentId.random();
     PayloadRef abandonedInput = payloads.forAgent(agent).put(List.of(new Block.Text("first")));
-    PayloadRef abandonedRequest = payloads.forAgent(agent).put(List.of(new Block.Text("asked")));
+    PayloadRef abandonedRequest =
+        payloads.forAgent(agent).put(List.of(new Block.ToolCall(CALL, LOOKUP, "{}")));
     events.append(
         TYPE,
         agent,
@@ -1030,7 +1031,8 @@ class DefaultDirectHarnessTest {
   void a_call_within_its_deadline_is_left_alone() {
     AgentId agent = AgentId.random();
     PayloadRef abandonedInput = payloads.forAgent(agent).put(List.of(new Block.Text("first")));
-    PayloadRef abandonedRequest = payloads.forAgent(agent).put(List.of(new Block.Text("asked")));
+    PayloadRef abandonedRequest =
+        payloads.forAgent(agent).put(List.of(new Block.ToolCall(CALL, LOOKUP, "{}")));
     events.append(
         TYPE,
         agent,

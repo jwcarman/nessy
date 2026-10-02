@@ -17,7 +17,9 @@ package org.jwcarman.nessy.engine.inference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
@@ -31,15 +33,34 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.State;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.turn.Chapter;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.Summary;
+import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.inference.InferenceContext;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class ContextFingerprintTest {
+
+  private static Exchange exchangeOf(
+      Seq seq, List<Block.ActionRequestContent> request, List<ToolOutcome> outcomes) {
+    Map<CallId, String> actions = new LinkedHashMap<>();
+    for (Block.ActionRequestContent block : request) {
+      if (block instanceof Block.ToolCall call) {
+        actions.put(call.id(), "did " + call.name().value());
+      }
+    }
+    Map<CallId, String> results = new LinkedHashMap<>();
+    for (ToolOutcome outcome : outcomes) {
+      if (outcome instanceof ToolOutcome.Succeeded done && actions.containsKey(done.callId())) {
+        results.put(done.callId(), "returned for " + done.callId().value());
+      }
+    }
+    return new Exchange(seq, request, outcomes, actions, results);
+  }
 
   private static final AgentType TYPE = new AgentType("chat");
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
@@ -163,7 +184,7 @@ class ContextFingerprintTest {
               List.of(turn(1, "hello")),
               List.of(Memory.text("episodes", "met on Tuesday")),
               List.of(State.text("plan", "step one")),
-              turn(2, "and now?", List.of(new Exchange(new Seq(3), List.of(), List.of()))),
+              turn(2, "and now?", List.of(exchangeOf(new Seq(3), List.of(), List.of()))),
               List.of(Ambient.text("clock", "it is noon")));
 
       assertThat(changeFrom(base(), later)).isEqualTo("active-turn");

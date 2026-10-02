@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
@@ -62,6 +63,23 @@ import tools.jackson.databind.json.JsonMapper;
 /** The projection onto Bedrock's Converse wire, with no network anywhere near it. */
 @DisplayName("Bedrock requests")
 class BedrockRequestsTest {
+
+  private static Exchange exchangeOf(
+      Seq seq, List<Block.ActionRequestContent> request, List<ToolOutcome> outcomes) {
+    Map<CallId, String> actions = new LinkedHashMap<>();
+    for (Block.ActionRequestContent block : request) {
+      if (block instanceof Block.ToolCall call) {
+        actions.put(call.id(), "did " + call.name().value());
+      }
+    }
+    Map<CallId, String> results = new LinkedHashMap<>();
+    for (ToolOutcome outcome : outcomes) {
+      if (outcome instanceof ToolOutcome.Succeeded done && actions.containsKey(done.callId())) {
+        results.put(done.callId(), "returned for " + done.callId().value());
+      }
+    }
+    return new Exchange(seq, request, outcomes, actions, results);
+  }
 
   private static Chapter chapter(long from, long through) {
     return new Chapter(
@@ -260,7 +278,7 @@ class BedrockRequestsTest {
     @Test
     void ambient_ends_the_request_after_the_last_tool_results() {
       Exchange exchange =
-          new Exchange(
+          exchangeOf(
               new Seq(2),
               List.of(new Block.ToolCall("call_1", "depth", "{}")),
               List.of(
@@ -355,7 +373,7 @@ class BedrockRequestsTest {
       request.add(new Block.Commentary("let me look"));
       request.add(new Block.ToolCall("call_1", "depth", "{\"lake\":\"ness\",\"metres\":true}"));
       request.addAll(List.of(extra));
-      Exchange exchange = new Exchange(new Seq(2), request, outcomes);
+      Exchange exchange = exchangeOf(new Seq(2), request, outcomes);
       return new Turn(new TurnId(1), asked(1, "how deep?"), List.of(exchange), null, 0);
     }
 
@@ -463,7 +481,7 @@ class BedrockRequestsTest {
     @Test
     void a_call_still_awaiting_its_results_is_sent_alone() {
       Exchange asking =
-          new Exchange(
+          exchangeOf(
               new Seq(2),
               List.of(new Block.Commentary("aloud"), new Block.ToolCall("c1", "lookup", "{}")),
               List.of());

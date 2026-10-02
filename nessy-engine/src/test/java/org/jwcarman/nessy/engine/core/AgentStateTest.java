@@ -42,7 +42,6 @@ import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.agent.OutstandingAction;
 import org.jwcarman.nessy.inference.Failure;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The pure core, on its own: no provider, no database, no clock.
@@ -554,10 +553,18 @@ class AgentStateTest {
                       Usage.unreported())));
       AgentState awaiting = inferring.applyAll(requested.events());
 
-      String stored = JsonMapper.builder().build().writeValueAsString(awaiting);
+      AgentEvent.ActionsRequested actionsRequested =
+          (AgentEvent.ActionsRequested) requested.events().getFirst();
+      AgentState.AwaitingActions state = (AgentState.AwaitingActions) awaiting;
 
-      assertThat(stored)
-          .contains("call-1", "call-2", "refund", "audit")
+      assertThat(state.outstanding())
+          .isEqualTo(
+              Map.of(
+                  CALL,
+                  OutstandingAction.awaitingApproval(CALL, TOOL, actionsRequested.seq()),
+                  other,
+                  OutstandingAction.awaitingApproval(other, otherTool, actionsRequested.seq())));
+      assertThat(state.toString())
           .doesNotContain("refund 40 dollars to the buyer")
           .doesNotContain("audit the buyer's history");
     }

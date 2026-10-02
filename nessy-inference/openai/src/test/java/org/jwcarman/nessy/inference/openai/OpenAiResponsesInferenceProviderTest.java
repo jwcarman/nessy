@@ -44,6 +44,7 @@ import com.openai.errors.UnprocessableEntityException;
 import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.ResponseInputItem;
 import com.openai.models.responses.ResponseReasoningItem;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Nested;
@@ -69,6 +70,23 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
 class OpenAiResponsesInferenceProviderTest {
+
+  private static Exchange exchangeOf(
+      Seq seq, List<Block.ActionRequestContent> request, List<ToolOutcome> outcomes) {
+    Map<CallId, String> actions = new LinkedHashMap<>();
+    for (Block.ActionRequestContent block : request) {
+      if (block instanceof Block.ToolCall call) {
+        actions.put(call.id(), "did " + call.name().value());
+      }
+    }
+    Map<CallId, String> results = new LinkedHashMap<>();
+    for (ToolOutcome outcome : outcomes) {
+      if (outcome instanceof ToolOutcome.Succeeded done && actions.containsKey(done.callId())) {
+        results.put(done.callId(), "returned for " + done.callId().value());
+      }
+    }
+    return new Exchange(seq, request, outcomes, actions, results);
+  }
 
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
@@ -488,7 +506,7 @@ class OpenAiResponsesInferenceProviderTest {
                       functionCall("call_1", "lookup", "{}"))));
       List<Block.ActionRequestContent> stored = ((InferenceResult.Actions) result).blocks();
       Exchange exchange =
-          new Exchange(
+          exchangeOf(
               new Seq(2),
               stored,
               List.of(

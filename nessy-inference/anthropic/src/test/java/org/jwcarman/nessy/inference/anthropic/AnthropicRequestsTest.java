@@ -25,6 +25,7 @@ import com.anthropic.models.messages.ContentBlockParam;
 import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.MessageParam;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
@@ -67,6 +68,23 @@ import tools.jackson.databind.json.JsonMapper;
  * if this code never touches it.
  */
 class AnthropicRequestsTest {
+
+  private static Exchange exchangeOf(
+      Seq seq, List<Block.ActionRequestContent> request, List<ToolOutcome> outcomes) {
+    Map<CallId, String> actions = new LinkedHashMap<>();
+    for (Block.ActionRequestContent block : request) {
+      if (block instanceof Block.ToolCall call) {
+        actions.put(call.id(), "did " + call.name().value());
+      }
+    }
+    Map<CallId, String> results = new LinkedHashMap<>();
+    for (ToolOutcome outcome : outcomes) {
+      if (outcome instanceof ToolOutcome.Succeeded done && actions.containsKey(done.callId())) {
+        results.put(done.callId(), "returned for " + done.callId().value());
+      }
+    }
+    return new Exchange(seq, request, outcomes, actions, results);
+  }
 
   private static Chapter chapter(long from, long through) {
     return new Chapter(
@@ -247,7 +265,7 @@ class AnthropicRequestsTest {
 
     private static Turn calling(long id, String question) {
       Exchange exchange =
-          new Exchange(
+          exchangeOf(
               new Seq(100L),
               List.of(
                   new Block.ToolCall(
@@ -526,7 +544,7 @@ class AnthropicRequestsTest {
       return new Turn(
           new TurnId(1),
           asked(1, "look it up"),
-          List.of(new Exchange(new Seq(2), request, outcomes)),
+          List.of(exchangeOf(new Seq(2), request, outcomes)),
           new TurnResult.Answered(List.of(new Block.Text("done"))),
           0);
     }
@@ -830,7 +848,7 @@ class AnthropicRequestsTest {
       return IntStream.rangeClosed(1, count)
           .mapToObj(
               i ->
-                  new Exchange(
+                  exchangeOf(
                       new Seq(100L + i),
                       List.of(
                           new Block.ToolCall(
@@ -974,7 +992,7 @@ class AnthropicRequestsTest {
               new TurnId(1),
               asked(1, "look both up"),
               List.of(
-                  new Exchange(
+                  exchangeOf(
                       new Seq(2),
                       List.of(
                           new Block.ToolCall(new CallId("a"), new ToolName("lookup"), "{}"),
@@ -1135,7 +1153,7 @@ class AnthropicRequestsTest {
     @Test
     void a_call_still_awaiting_its_results_is_sent_without_a_results_message() {
       Exchange asking =
-          new Exchange(
+          exchangeOf(
               new Seq(2),
               List.of(
                   new Block.Commentary("thinking aloud"), new Block.ToolCall("c1", "lookup", "{}")),
@@ -1636,7 +1654,7 @@ class AnthropicRequestsTest {
               new TurnId(1),
               asked(1, "how deep?"),
               List.of(
-                  new Exchange(
+                  exchangeOf(
                       new Seq(2),
                       List.of(thinking("let me recall", "sig-abc")),
                       List.of(
@@ -1762,7 +1780,7 @@ class AnthropicRequestsTest {
           new TurnId(1),
           asked(1, "how deep is it?"),
           List.of(
-              new Exchange(
+              exchangeOf(
                   new Seq(2),
                   List.of(thinking("check the survey first", "sig-1"), LOOKUP),
                   List.of(
@@ -1802,7 +1820,7 @@ class AnthropicRequestsTest {
               new TurnId(2),
               asked(3, "how deep is it?"),
               List.of(
-                  new Exchange(
+                  exchangeOf(
                       new Seq(4),
                       List.of(LOOKUP),
                       List.of(

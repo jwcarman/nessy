@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -69,6 +70,23 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @Tag("live")
 class AnthropicLiveTest {
+
+  private static Exchange exchangeOf(
+      Seq seq, List<Block.ActionRequestContent> request, List<ToolOutcome> outcomes) {
+    Map<CallId, String> actions = new LinkedHashMap<>();
+    for (Block.ActionRequestContent block : request) {
+      if (block instanceof Block.ToolCall call) {
+        actions.put(call.id(), "did " + call.name().value());
+      }
+    }
+    Map<CallId, String> results = new LinkedHashMap<>();
+    for (ToolOutcome outcome : outcomes) {
+      if (outcome instanceof ToolOutcome.Succeeded done && actions.containsKey(done.callId())) {
+        results.put(done.callId(), "returned for " + done.callId().value());
+      }
+    }
+    return new Exchange(seq, request, outcomes, actions, results);
+  }
 
   /** The cheapest model that still calls tools and thinks, because this runs on somebody's bill. */
   private static final String MODEL = "claude-sonnet-4-5";
@@ -624,7 +642,7 @@ class AnthropicLiveTest {
 
   /** One call and a result long enough that the prefix it ends is worth caching. */
   private static Exchange looked(long seq, String callId, String lake, String depth) {
-    return new Exchange(
+    return exchangeOf(
         new Seq(seq),
         List.of(
             new Block.ToolCall(

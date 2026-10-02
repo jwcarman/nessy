@@ -19,7 +19,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DisplayNameGeneration;
@@ -48,6 +50,7 @@ import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Input;
+import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.chapter.DeclaredChapters.Beginning;
 import org.jwcarman.nessy.engine.store.TurnHistories;
@@ -55,6 +58,23 @@ import org.jwcarman.nessy.engine.store.TurnHistory;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class DeclaredChaptersTest {
+
+  private static Exchange exchangeOf(
+      Seq seq, List<Block.ActionRequestContent> request, List<ToolOutcome> outcomes) {
+    Map<CallId, String> actions = new LinkedHashMap<>();
+    for (Block.ActionRequestContent block : request) {
+      if (block instanceof Block.ToolCall call) {
+        actions.put(call.id(), "did " + call.name().value());
+      }
+    }
+    Map<CallId, String> results = new LinkedHashMap<>();
+    for (ToolOutcome outcome : outcomes) {
+      if (outcome instanceof ToolOutcome.Succeeded done && actions.containsKey(done.callId())) {
+        results.put(done.callId(), "returned for " + done.callId().value());
+      }
+    }
+    return new Exchange(seq, request, outcomes, actions, results);
+  }
 
   private static final AgentType TYPE = new AgentType("chat");
   private static final AgentId AGENT = AgentId.random();
@@ -71,7 +91,7 @@ class DeclaredChaptersTest {
       calls.add(new Block.ToolCall("call-" + number + "-" + calls.size(), tool, "{}"));
     }
     List<Exchange> exchanges =
-        calls.isEmpty() ? List.of() : List.of(new Exchange(Seq.of(2), calls, List.of()));
+        calls.isEmpty() ? List.of() : List.of(exchangeOf(Seq.of(2), calls, List.of()));
     return new Turn(
         id(number),
         new Input(Seq.of(1), List.of(new Block.Text("turn " + number))),

@@ -34,7 +34,11 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.inmemory.InMemoryAgentEvents;
 import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
@@ -174,6 +178,45 @@ class EventStreamHistoryTest {
       List<TurnId> found = history().completedAfter(Optional.of(new TurnId(1)));
 
       assertThat(found).isEmpty();
+    }
+  }
+
+  @Nested
+  class An_exchange_built_from_events {
+
+    @Test
+    void an_exchange_built_from_events_carries_each_calls_action_and_result() {
+      CallId refund = new CallId("call-1");
+      CallId audit = new CallId("call-2");
+      ToolName refundTool = new ToolName("refund");
+      ToolName auditTool = new ToolName("audit");
+      PayloadRef input = payloads.put(List.of(new Block.Text("q1")));
+      PayloadRef request =
+          payloads.put(
+              List.of(
+                  new Block.ToolCall(refund, refundTool, "{}"),
+                  new Block.ToolCall(audit, auditTool, "{}")));
+      PayloadRef result = payloads.put(List.of(new Block.Text("done")));
+      append(
+          new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), input, Instant.now()),
+          new AgentEvent.ActionsRequested(
+              new Seq(2),
+              new TurnId(1),
+              request,
+              List.of(
+                  new ActionRequest.ToolCall(refund, refundTool, "refund forty dollars"),
+                  new ActionRequest.ToolCall(audit, auditTool, "audit the buyer")),
+              Usage.unreported()),
+          new AgentEvent.ToolSucceeded(new Seq(3), new TurnId(1), refund, result, "refunded"),
+          new AgentEvent.ToolFailed(new Seq(4), new TurnId(1), audit, "no such buyer"));
+
+      List<Turn> found = history().turnsBetween(new TurnId(1), new TurnId(1));
+
+      Exchange exchange = found.getFirst().exchanges().getFirst();
+      assertThat(exchange.actionOf(refund)).isEqualTo("refund forty dollars");
+      assertThat(exchange.actionOf(audit)).isEqualTo("audit the buyer");
+      assertThat(exchange.resultOf(refund)).contains("refunded");
+      assertThat(exchange.resultOf(audit)).isEmpty();
     }
   }
 }

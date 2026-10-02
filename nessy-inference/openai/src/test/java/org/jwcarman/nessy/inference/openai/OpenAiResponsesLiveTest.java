@@ -36,6 +36,7 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Input;
@@ -68,6 +69,23 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @Tag("live")
 class OpenAiResponsesLiveTest {
+
+  private static Exchange exchangeOf(
+      Seq seq, List<Block.ActionRequestContent> request, List<ToolOutcome> outcomes) {
+    Map<CallId, String> actions = new LinkedHashMap<>();
+    for (Block.ActionRequestContent block : request) {
+      if (block instanceof Block.ToolCall call) {
+        actions.put(call.id(), "did " + call.name().value());
+      }
+    }
+    Map<CallId, String> results = new LinkedHashMap<>();
+    for (ToolOutcome outcome : outcomes) {
+      if (outcome instanceof ToolOutcome.Succeeded done && actions.containsKey(done.callId())) {
+        results.put(done.callId(), "returned for " + done.callId().value());
+      }
+    }
+    return new Exchange(seq, request, outcomes, actions, results);
+  }
 
   private static final String MODEL =
       System.getenv().getOrDefault("NESSY_LIVE_MODEL", "gpt-4o-mini");
@@ -366,7 +384,7 @@ class OpenAiResponsesLiveTest {
                           turn(
                               question,
                               List.of(
-                                  new Exchange(
+                                  exchangeOf(
                                       new Seq(2), actions.blocks(), outcomesFor(actions)))))),
                   Toolset.of(List.of(LAKE_DEPTH)),
                   reasoning(OpenAiReasoningEffort.MEDIUM, null)));
@@ -400,7 +418,7 @@ class OpenAiResponsesLiveTest {
           break;
         }
         exchanges.add(
-            new Exchange(new Seq(exchanges.size() + 2L), actions.blocks(), outcomesFor(actions)));
+            exchangeOf(new Seq(exchanges.size() + 2L), actions.blocks(), outcomesFor(actions)));
       }
 
       assertThat(exchanges)
