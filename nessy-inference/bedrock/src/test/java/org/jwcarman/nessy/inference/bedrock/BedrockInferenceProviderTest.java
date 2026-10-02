@@ -450,6 +450,63 @@ class BedrockInferenceProviderTest {
   }
 
   @Nested
+  class A_reply_cut_off_at_the_output_limit {
+
+    @Test
+    void text_cut_off_is_truncated_and_carries_what_was_written() {
+      InferenceResult result =
+          infer(reply(StopReason.MAX_TOKENS, ContentBlock.fromText("the lake is deep and")));
+
+      assertThat(result).isInstanceOf(InferenceResult.Truncated.class);
+      assertThat(result)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(
+              new InferenceResult.Truncated(List.of(new Block.Text("the lake is deep and"))));
+    }
+
+    @Test
+    void a_tool_call_cut_off_is_a_fault_and_is_not_run() {
+      ContentBlock use =
+          ContentBlock.fromToolUse(
+              ToolUseBlock.builder()
+                  .toolUseId("call_1")
+                  .name("depth")
+                  .input(Document.fromMap(Map.of()))
+                  .build());
+
+      InferenceResult result =
+          infer(reply(StopReason.MAX_TOKENS, ContentBlock.fromText("looking"), use));
+
+      assertThat(result).isInstanceOf(InferenceResult.Fault.class);
+      Failure failure = ((InferenceResult.Fault) result).failure();
+      assertThat(failure).isInstanceOf(Failure.Permanent.class);
+      assertThat(failure.reason()).contains("cut off", "tool call", "stop_reason=max_tokens");
+    }
+
+    @Test
+    void reasoning_alone_cut_off_is_the_empty_answer_fault() {
+      ContentBlock reasoning =
+          ContentBlock.fromReasoningContent(
+              ReasoningContentBlock.fromReasoningText(
+                  ReasoningTextBlock.builder().text("hmm").signature("sig").build()));
+
+      InferenceResult result = infer(reply(StopReason.MAX_TOKENS, reasoning));
+
+      assertThat(result).isInstanceOf(InferenceResult.Fault.class);
+      Failure failure = ((InferenceResult.Fault) result).failure();
+      assertThat(failure).isInstanceOf(Failure.Permanent.class);
+      assertThat(failure.reason()).contains("empty answer", "stop_reason=max_tokens");
+    }
+
+    @Test
+    void a_complete_reply_is_still_an_answer() {
+      assertThat(infer(reply(StopReason.END_TURN, ContentBlock.fromText("hello"))))
+          .isInstanceOf(InferenceResult.Answer.class);
+    }
+  }
+
+  @Nested
   class WhatAFailureMeans {
 
     @Test

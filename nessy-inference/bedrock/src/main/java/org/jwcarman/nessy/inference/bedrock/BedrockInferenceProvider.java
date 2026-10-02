@@ -354,6 +354,12 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
    * stop reason and taken where they are offered as a refusal named by the vendor's own value.
    * Otherwise the choice is made on the presence of a tool-use block, as on every wire that can
    * carry one.
+   *
+   * <p>A reply the vendor cut off at the output limit ({@code max_tokens}) is never taken for a
+   * complete one. Cut off inside a tool call it is a permanent fault, since the call's arguments
+   * cannot be trusted and would parse as {@code {}}. Cut off in prose it is {@link
+   * InferenceResult.Truncated}, carrying what was written; with no text in it, only reasoning, it
+   * is the empty-answer fault.
    */
   private InferenceResult read(ConverseResponse response) {
     StopReason stop = response.stopReason();
@@ -362,6 +368,15 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
     }
     List<ContentBlock> content = contentOf(response);
     boolean asking = content.stream().anyMatch(block -> block.toolUse() != null);
+    boolean cutOff = stop == StopReason.MAX_TOKENS;
+    if (cutOff && asking) {
+      return new InferenceResult.Fault(
+          new Failure.Permanent(
+              "the reply was cut off at the output limit inside a tool call"
+                  + " (stop_reason="
+                  + response.stopReasonAsString()
+                  + ")"));
+    }
 
     List<Block> blocks = new ArrayList<>();
     for (ContentBlock block : content) {
@@ -378,8 +393,19 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
                     + response.stopReasonAsString()
                     + ")"));
       }
-      return new InferenceResult.Answer(
-          blocks.stream().map(Block.AnswerContent.class::cast).toList());
+      List<Block.AnswerContent> answer =
+          blocks.stream().map(Block.AnswerContent.class::cast).toList();
+      if (cutOff) {
+        if (answer.stream().noneMatch(Block.Text.class::isInstance)) {
+          return new InferenceResult.Fault(
+              new Failure.Permanent(
+                  "model returned an empty answer (stop_reason="
+                      + response.stopReasonAsString()
+                      + ")"));
+        }
+        return new InferenceResult.Truncated(answer);
+      }
+      return new InferenceResult.Answer(answer);
     }
     return new InferenceResult.Actions(
         blocks.stream().map(Block.ActionRequestContent.class::cast).toList());
