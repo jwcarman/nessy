@@ -1,7 +1,7 @@
 # Recorded actions: what a tool call did is written down, in words, when it happens
 
-**Status: APPROVED FOR BUILDING, NOT BUILT.** Written on 2026-10-02 from rulings James made in
-conversation that day; he ruled on each point in §2 as it was drafted. Nothing here is built. Written on Opus because the session was on Opus; the model policy
+**Status: BUILT on 2026-10-02, branch `recorded-actions`.** Written that day from rulings James made in
+conversation; he ruled on each point in §2 as it was drafted. §15 lists where the build went past this text. Written on Opus because the session was on Opus; the model policy
 puts specifications on Fable, so this is a draft for James to revise, not a finished record.
 
 §2 says what James ruled and which names are provisional. A provisional name is what a build would
@@ -308,7 +308,7 @@ before the event is appended.
 | The arguments read and the stringifier returns text | that text, one line and within the binding's limit |
 | The stringifier returns null or blank | `<tool name>` |
 | The arguments do not read into the input type | `<tool name> (its arguments could not be read)` |
-| The stringifier throws | `<tool name> (its arguments could not be read)`, and a WARN |
+| The stringifier throws | `<tool name> (what it would do could not be said)`, and a WARN |
 | The model named a tool that is not bound | `<tool name> (no such tool)` |
 
 ### 6.2 The result
@@ -525,3 +525,39 @@ far shorter than either.
 ## 14. Open questions
 
 1. The remaining provisional names in §2. None is a concept; each names something already ruled.
+
+## 15. What the build added to this text
+
+Found by the build's reviews on 2026-10-02 and decided then. Where one was James's ruling it says so.
+
+- **Every action line is one line and within the cap, the fallbacks included.** A binding settles
+  its own lines when it is built (`SettledLines` is package-private in the engine), and the
+  fallback lines of §6.1 pass through the same cut. The line for a tool that is not bound holds a
+  name the model chose, and `ToolName` does not limit it.
+- **A gated call whose stringifier threw is not put to an approver.** Its stored action is the
+  could-not-be-said line, and a call whose stored action is that line is discharged without
+  asking, as a call whose arguments do not read is. Before this design a throwing renderer had
+  the same effect, because the sentence was rendered inside the approval. A stringifier that says
+  nothing leaves the tool's name, which is true, and the approver is asked. The stored action is
+  compared; nothing is rendered again (§6.3).
+- **A failed call's message** is bounded (§6.2), and a failure with no message is recorded as
+  `the tool failed and gave no message`. James's ruling.
+- **The transcript** leaves out a refused turn and indents what was said (§9). James's rulings.
+  Said text is split on every kind of line break, the Unicode separators included.
+- **An action sentence reaches an approver as one line.** The wrapper collapses whitespace before
+  it cuts, so a sentence written with line breaks loses them. James left this to the build; it
+  stays, because collapsing first is what makes a short limit worth storing for a tool's result.
+  Storing the sentence as written and collapsing it only in the transcript is the alternative,
+  not built.
+- **`Exchange` refuses more than §8 says:** an action or a result for an id that is not one of its
+  calls, and `resultOf` for such an id. Nothing the engine writes can trip either.
+- **A truncator or stringifier that returns null** gives the empty string.
+- **`EffectOutcome.ToolFailed`** refuses a null call id or message.
+- **Names this text did not have:** `ToolBinding.rendered` and `unbound`, and `action` on
+  `ToolCalls.ResolvedCall`. The agent's state does not hold the lines (§6.1).
+
+Not changed by this design and still open: a tool call's completion does not say which request it
+answers, so with a call id reused across two requests of one turn a redelivered success for the
+first could be taken for the second. It predates this work; the result line rides on the same
+completion as the result itself.
+
