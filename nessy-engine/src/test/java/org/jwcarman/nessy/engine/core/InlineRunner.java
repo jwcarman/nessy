@@ -110,6 +110,7 @@ final class InlineRunner {
       case AgentEffect.Approve approve ->
           new AgentCommand.CompleteApproval(
               approve.turn(),
+              approve.requestSeq(),
               approve.callId(),
               approves.test(approve.toolName())
                   ? new AgentCommand.ApprovalOutcome.Approved(Optional.empty())
@@ -119,19 +120,26 @@ final class InlineRunner {
         UnaryOperator<Object> tool = tools.get(call.toolName());
         if (tool == null) {
           yield new AgentCommand.CompleteToolCall(
-              call.turn(), call.callId(), new AgentCommand.ToolOutcome.Failed("no such tool"));
+              call.turn(),
+              call.requestSeq(),
+              call.callId(),
+              new AgentCommand.ToolOutcome.Failed("no such tool"));
         }
         try {
           // Rendered and claim-checked on the way back, exactly as the durable harness would:
           // what crosses into the state is a reference, never the result.
           yield new AgentCommand.CompleteToolCall(
               call.turn(),
+              call.requestSeq(),
               call.callId(),
               new AgentCommand.ToolOutcome.Succeeded(
                   claimCheck(tool.apply(argumentsFor())), "a tool result"));
         } catch (RuntimeException broken) {
           yield new AgentCommand.CompleteToolCall(
-              call.turn(), call.callId(), new AgentCommand.ToolOutcome.Failed(broken.getMessage()));
+              call.turn(),
+              call.requestSeq(),
+              call.callId(),
+              new AgentCommand.ToolOutcome.Failed(broken.getMessage()));
         }
       }
     };

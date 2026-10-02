@@ -19,12 +19,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.AppenderBase;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
@@ -43,7 +48,6 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.inmemory.InMemoryQueuedBackend;
 import org.jwcarman.nessy.backend.payload.Payloads;
-import org.jwcarman.nessy.engine.effect.EffectDispatcher;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
@@ -64,7 +68,6 @@ class RepeatedCallIdLateOutcomeTest {
   private static final AgentType TYPE = new AgentType("late-outcome");
   private static final Duration TOOL_DEADLINE = Duration.ofMillis(400);
 
-  private final CountDownLatch firstStarted = new CountDownLatch(1);
   private final CountDownLatch secondStarted = new CountDownLatch(1);
   private final CountDownLatch releaseFirst = new CountDownLatch(1);
   private final CountDownLatch releaseSecond = new CountDownLatch(1);
@@ -73,6 +76,9 @@ class RepeatedCallIdLateOutcomeTest {
 
   private InMemoryQueuedBackend backend;
   private DefaultQueuedHarnessFactory factory;
+
+  private final Logger harnessLog = (Logger) LoggerFactory.getLogger(DefaultQueuedHarness.class);
+  private final Ignored ignored = new Ignored();
 
   private volatile Duration modelLatency = Duration.ZERO;
 
@@ -120,7 +126,6 @@ class RepeatedCallIdLateOutcomeTest {
         int mine = invocations.incrementAndGet();
         try {
           if (mine == 1) {
-            firstStarted.countDown();
             releaseFirst.await(60, TimeUnit.SECONDS);
             return Awaited.ready(ToolResult.ok(new Block.Text("FIRST")));
           }
@@ -137,6 +142,8 @@ class RepeatedCallIdLateOutcomeTest {
 
   @AfterEach
   void stop() {
+    harnessLog.detachAppender(ignored);
+    harnessLog.setLevel(null);
     releaseFirst.countDown();
     releaseSecond.countDown();
     if (factory != null) {
@@ -189,23 +196,20 @@ class RepeatedCallIdLateOutcomeTest {
   }
 
   @Test
-  void with_a_model_that_answers_instantly_a_late_outcome_is_still_not_taken_for_a_later_request()
-      throws InterruptedException {
+  void with_a_model_that_answers_instantly_a_late_outcome_is_still_not_taken_for_a_later_request() {
     scenario(Duration.ZERO);
   }
 
   @Test
-  void with_a_model_that_takes_300_ms_a_late_outcome_is_not_taken_for_a_later_request()
-      throws InterruptedException {
+  void with_a_model_that_takes_300_ms_a_late_outcome_is_not_taken_for_a_later_request() {
     scenario(Duration.ofMillis(300));
   }
 
-  private void scenario(Duration latency) throws InterruptedException {
+  private void scenario(Duration latency) {
     modelLatency = latency;
-    Logger dispatcherLog = (Logger) LoggerFactory.getLogger(EffectDispatcher.class);
-    Logger harnessLog = (Logger) LoggerFactory.getLogger(DefaultQueuedHarness.class);
-    dispatcherLog.setLevel(Level.DEBUG);
     harnessLog.setLevel(Level.DEBUG);
+    harnessLog.addAppender(ignored);
+    ignored.start();
     backend = new InMemoryQueuedBackend(new JacksonCodecFactory(JsonMapper.builder().build()));
     factory =
         DefaultQueuedHarnessFactory.of(
@@ -227,29 +231,21 @@ class RepeatedCallIdLateOutcomeTest {
 
     harness.tell(agent, "go");
 
-    assertThat(firstStarted.await(30, TimeUnit.SECONDS)).as("first invocation started").isTrue();
-    // The first invocation is held past its deadline: the dispatcher gives up on it, the model
-    // asks again with the same id, and (if nothing intervenes) the second invocation starts.
-    boolean second = secondStarted.await(5, TimeUnit.SECONDS);
-    System.out.println(
-        "=== latency "
-            + latency
-            + ": second invocation started="
-            + second
-            + " BEFORE the first returns ===\n"
-            + printed(agent));
+    // The first invocation is held past its deadline: the dispatcher gives up on it, the model asks
+    // again with the same id, and the second invocation starts.
+    await("the second request's call is running").until(() -> secondStarted.getCount() == 0);
 
+    // Only now does the first invocation return. Its answer reaches the agent while the second
+    // request's call is the one being waited on, and the next step does not happen until the agent
+    // has said what it made of it: an answer taken for the second request's call would be recorded
+    // in the story, and one that is not is logged as ignored.
     releaseFirst.countDown();
-    Thread.sleep(1500);
-    System.out.println("=== AFTER the late FIRST was released ===\n" + printed(agent));
-
+    await("the late answer has been dealt with")
+        .until(() -> ignored.heard() || backendRecordedASecondDischarge(agent));
     releaseSecond.countDown();
-    Thread.sleep(1500);
-    String finalStory = printed(agent);
-    System.out.println("=== FINAL story (latency " + latency + ") ===\n" + finalStory);
-    dispatcherLog.setLevel(null);
-    harnessLog.setLevel(null);
+    await("the turn has finished").until(() -> answered(agent));
 
+    String finalStory = printed(agent);
     Payloads payloads = backend.payloads().forAgent(agent);
     List<AgentEvent> events = story(agent);
     long secondRequestSeq =
@@ -276,5 +272,39 @@ class RepeatedCallIdLateOutcomeTest {
               assertThat(resultText(payloads, recorded)).isEqualTo("SECOND");
               assertThat(recorded.rendered()).contains("SECOND");
             });
+  }
+
+  /** What the agent's story says once the second request has been discharged by anything at all. */
+  private boolean backendRecordedASecondDischarge(AgentId agent) {
+    return story(agent).stream()
+            .filter(
+                e -> e instanceof AgentEvent.ToolSucceeded || e instanceof AgentEvent.ToolFailed)
+            .count()
+        > 1;
+  }
+
+  private boolean answered(AgentId agent) {
+    return story(agent).stream().anyMatch(AgentEvent.InferenceAnswered.class::isInstance);
+  }
+
+  private static ConditionFactory await(String what) {
+    return Awaitility.await(what).atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(5));
+  }
+
+  /** Remembers whether the agent has said it ignored a tool call's answer. */
+  private static final class Ignored extends AppenderBase<ILoggingEvent> {
+
+    private final AtomicBoolean heard = new AtomicBoolean();
+
+    @Override
+    protected void append(ILoggingEvent event) {
+      if (event.getFormattedMessage().contains("ignoring CompleteToolCall")) {
+        heard.set(true);
+      }
+    }
+
+    boolean heard() {
+      return heard.get();
+    }
   }
 }

@@ -46,6 +46,11 @@ class AgentStateRepeatedCallIdTest {
   private static final TurnId TURN = new TurnId(1);
   private static final ToolName TOOL = new ToolName("slow");
 
+  /** Seqs: 1 the turn opens, 2 request 1, 3 approved, 4 succeeded, 5 request 2. */
+  private static final Seq FIRST_REQUEST = Seq.of(2);
+
+  private static final Seq SECOND_REQUEST = Seq.of(5);
+
   private final AgentState idle = AgentState.idle(Seq.NONE);
 
   private static AgentState after(AgentState state, Decision decision) {
@@ -64,23 +69,26 @@ class AgentStateRepeatedCallIdTest {
                     Usage.unreported()))));
   }
 
-  private static AgentState approved(AgentState awaiting) {
+  private static AgentState approved(AgentState awaiting, Seq request) {
     return after(
         awaiting,
         awaiting.execute(
             new AgentCommand.CompleteApproval(
-                TURN, C, new AgentCommand.ApprovalOutcome.Approved(Optional.empty()))));
+                TURN, request, C, new AgentCommand.ApprovalOutcome.Approved(Optional.empty()))));
   }
 
   /** Request 1 asked for c, it was approved and succeeded; the model is inferring again. */
   private AgentState inferringAfterFirstRequest() {
     AgentState state = after(idle, idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)));
-    state = approved(askingForC(state));
+    state = approved(askingForC(state), FIRST_REQUEST);
     return after(
         state,
         state.execute(
             new AgentCommand.CompleteToolCall(
-                TURN, C, new AgentCommand.ToolOutcome.Succeeded(FIRST_RESULT, "FIRST"))));
+                TURN,
+                FIRST_REQUEST,
+                C,
+                new AgentCommand.ToolOutcome.Succeeded(FIRST_RESULT, "FIRST"))));
   }
 
   private static String describe(Decision decision) {
@@ -93,10 +101,10 @@ class AgentStateRepeatedCallIdTest {
   @Test
   @DisplayName("a duplicate success of request 1's call is not request 2's running call's result")
   void a_duplicate_success_does_not_settle_the_later_running_call() {
-    AgentState running = approved(askingForC(inferringAfterFirstRequest()));
+    AgentState running = approved(askingForC(inferringAfterFirstRequest()), SECOND_REQUEST);
     AgentCommand.CompleteToolCall duplicate =
         new AgentCommand.CompleteToolCall(
-            TURN, C, new AgentCommand.ToolOutcome.Succeeded(FIRST_RESULT, "FIRST"));
+            TURN, FIRST_REQUEST, C, new AgentCommand.ToolOutcome.Succeeded(FIRST_RESULT, "FIRST"));
 
     Decision decision = running.execute(duplicate);
 
@@ -111,7 +119,10 @@ class AgentStateRepeatedCallIdTest {
     Decision real =
         afterDuplicate.execute(
             new AgentCommand.CompleteToolCall(
-                TURN, C, new AgentCommand.ToolOutcome.Succeeded(SECOND_RESULT, "SECOND")));
+                TURN,
+                SECOND_REQUEST,
+                C,
+                new AgentCommand.ToolOutcome.Succeeded(SECOND_RESULT, "SECOND")));
     assertThat(real.events())
         .as("request 2's real completion is recorded")
         .singleElement()
@@ -129,7 +140,10 @@ class AgentStateRepeatedCallIdTest {
     AgentState awaiting = askingForC(inferringAfterFirstRequest());
     AgentCommand.CompleteToolCall duplicate =
         new AgentCommand.CompleteToolCall(
-            TURN, C, new AgentCommand.ToolOutcome.Failed("the first call's failure"));
+            TURN,
+            FIRST_REQUEST,
+            C,
+            new AgentCommand.ToolOutcome.Failed("the first call's failure"));
 
     Decision decision = awaiting.execute(duplicate);
 

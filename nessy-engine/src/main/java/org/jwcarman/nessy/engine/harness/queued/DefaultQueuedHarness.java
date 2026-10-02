@@ -224,6 +224,7 @@ final class DefaultQueuedHarness<I>
   public void deliverOutcome(
       AgentId agentId,
       Optional<TurnId> turn,
+      Optional<Seq> request,
       EffectOutcome outcome,
       String traceContext,
       List<FailedAttempt> priorAttempts) {
@@ -241,7 +242,8 @@ final class DefaultQueuedHarness<I>
                 agentId,
                 () -> {
                   backend.agents().ensure(agentType, agentId);
-                  boolean wrote = fold(agentId, turn, outcome, traceContext, priorAttempts);
+                  boolean wrote =
+                      fold(agentId, turn, request, outcome, traceContext, priorAttempts);
                   // A turn that ended leaves the agent idle, and the next thing waiting becomes
                   // the next turn -- here, before this transaction commits.
                   return wrote
@@ -253,29 +255,44 @@ final class DefaultQueuedHarness<I>
   }
 
   /**
-   * Folds one outcome into the turn it answers.
+   * Folds one outcome into the turn and the request it answers.
    *
-   * <p>An outcome whose row could not be decoded names no turn, and the only turn it can be
-   * attributed to is the one the agent is on -- which is what the fold used to assume of every
-   * outcome, and the reason a late answer could be written down as somebody else's. An idle or
-   * ended agent has no turn at all, so there is nothing such an outcome could settle.
+   * <p>An outcome whose row could not be decoded names no turn and no request, and the only ones it
+   * can be attributed to are those the agent is on -- which is what the fold used to assume of
+   * every outcome, and the reason a late answer could be written down as somebody else's. An idle
+   * or ended agent has no turn at all, so there is nothing such an outcome could settle, and an
+   * agent not waiting on a request has no request for it to settle.
    */
   private boolean fold(
       AgentId agentId,
       Optional<TurnId> turn,
+      Optional<Seq> request,
       EffectOutcome outcome,
       String trace,
       List<FailedAttempt> priorAttempts) {
-    Optional<TurnId> answered = turn.or(() -> turnOf(reconstitute(agentId)));
-    if (answered.isEmpty()) {
+    boolean needsRequest = request.isEmpty() && EffectOutcomes.answersARequest(outcome);
+    AgentState state = turn.isEmpty() || needsRequest ? reconstitute(agentId) : null;
+    Optional<TurnId> answered = turn.or(() -> turnOf(state));
+    Optional<Seq> answeredRequest = needsRequest ? requestOf(state) : request;
+    if (answered.isEmpty() || (needsRequest && answeredRequest.isEmpty())) {
       log.debug(
-          "[{}] agent {} is not on a turn; {} settles nothing",
+          "[{}] agent {} is not waiting on a request; {} settles nothing",
           agentType.value(),
           agentId.value(),
           outcome.getClass().getSimpleName());
       return false;
     }
-    return apply(agentId, EffectOutcomes.command(answered.get(), outcome, priorAttempts), trace);
+    return apply(
+        agentId,
+        EffectOutcomes.command(answered.get(), answeredRequest, outcome, priorAttempts),
+        trace);
+  }
+
+  /** The request an agent is waiting on, if it is waiting on one. */
+  private static Optional<Seq> requestOf(AgentState state) {
+    return state instanceof AgentState.AwaitingActions awaiting
+        ? Optional.of(awaiting.requestSeq())
+        : Optional.empty();
   }
 
   /** The turn an agent is on, if it is on one. */

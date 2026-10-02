@@ -572,7 +572,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     // agent idle. So this inference is recovery's own: nothing holds it, and it is overdue by
     // construction rather than by the clock.
     if (alreadyDischarged && state instanceof AgentState.Inferring reopened) {
-      return Optional.of(undispatchable(reopened.turn(), handlers.termsFor(infer(reopened))));
+      return Optional.of(undispatchable(infer(reopened), handlers.termsFor(infer(reopened))));
     }
     return overdueDischarge(agent, state);
   }
@@ -598,7 +598,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     EffectTerms terms = handlers.termsFor(infer(inferring));
     Instant started = backend.events().writtenAt(agentType, agent, inferring.seq());
     return isOverdue(started, terms)
-        ? Optional.of(undispatchable(inferring.turn(), terms))
+        ? Optional.of(undispatchable(infer(inferring), terms))
         : Optional.empty();
   }
 
@@ -610,8 +610,9 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   }
 
   /** Work nobody performed, as the completion of the turn that is owed it. */
-  private static AgentCommand undispatchable(TurnId turn, EffectTerms terms) {
-    return EffectOutcomes.command(turn, terms.undispatchable(), NO_ATTEMPTS);
+  private static AgentCommand undispatchable(AgentEffect effect, EffectTerms terms) {
+    return EffectOutcomes.command(
+        effect.turn(), EffectOutcomes.requestOf(effect), terms.undispatchable(), NO_ATTEMPTS);
   }
 
   /** The first outstanding call whose own deadline has passed, if there is one. */
@@ -621,7 +622,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       EffectTerms terms = handlers.termsFor(effect);
       Instant started = backend.events().writtenAt(agentType, agent, outstanding.since());
       if (isOverdue(started, terms)) {
-        return Optional.of(undispatchable(awaiting.turn(), terms));
+        return Optional.of(undispatchable(effect, terms));
       }
     }
     return Optional.empty();
@@ -723,9 +724,11 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     // is the same one, but an outcome has to name the turn that ASKED for the work rather than
     // whichever turn the agent happens to be in by the time the answer lands.
     TurnId turn = effect.turn();
+    // Likewise the request: a call id can repeat across two requests of one turn.
+    Optional<Seq> request = EffectOutcomes.requestOf(effect);
     Instant started = backend.events().writtenAt(agentType, agent, since);
     if (isOverdue(started, terms)) {
-      return undispatchable(turn, terms);
+      return undispatchable(effect, terms);
     }
     Duration remaining = Duration.between(clock.instant(), started.plus(terms.timeout()));
     return within(
@@ -737,10 +740,11 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         () ->
             switch (handlers.perform(agent, effect)) {
               case Awaited.Ready<EffectOutcome>(EffectOutcome outcome) ->
-                  EffectOutcomes.command(turn, outcome, NO_ATTEMPTS);
+                  EffectOutcomes.command(turn, request, outcome, NO_ATTEMPTS);
               case Awaited.Deferred<EffectOutcome> _ ->
                   EffectOutcomes.command(
                       turn,
+                      request,
                       terms.failed(
                           new IllegalStateException(
                               "the effect was deferred, and nothing here can wait for it")),
@@ -783,6 +787,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       future.cancel(true);
       return EffectOutcomes.command(
           turn,
+          EffectOutcomes.requestOf(effect),
           terms.failed(new IllegalStateException("no answer within " + terms.timeout())),
           NO_ATTEMPTS);
     } catch (ExecutionException broken) {
@@ -791,7 +796,10 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       // agent stuck Inferring. Delivered the same way an expiry is: attempted, and nobody found out
       // how it went.
       return EffectOutcomes.command(
-          turn, terms.failed(asRuntimeException(broken.getCause())), NO_ATTEMPTS);
+          turn,
+          EffectOutcomes.requestOf(effect),
+          terms.failed(asRuntimeException(broken.getCause())),
+          NO_ATTEMPTS);
     } catch (InterruptedException interrupted) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException("interrupted while waiting on " + terms, interrupted);

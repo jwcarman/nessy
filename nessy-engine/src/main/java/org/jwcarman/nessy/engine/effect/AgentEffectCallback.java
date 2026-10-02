@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine.effect;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
@@ -47,6 +48,13 @@ public interface AgentEffectCallback {
    *     written down as the current turn's. Empty only when the effect row could not be decoded at
    *     all, and there is therefore nothing to read the turn from; the fold then settles for
    *     whatever turn the agent is on, which is all a corrupt row can support.
+   * @param request where the request that asked for this call sits, read off the effect row in the
+   *     same way, for an outcome that settles a call of a request; the fold ignores an answer for a
+   *     request other than the one the agent is waiting on, which is what stops a call id repeated
+   *     across two requests of one turn from letting a late answer settle the later one. Empty for
+   *     an inference, which answers no request -- and for the effect row that could not be decoded,
+   *     the one answer that cannot name its request, which the fold then matches to the request the
+   *     agent is waiting on.
    * @param traceContext the trace of the effect this answers, so whatever the outcome causes stays
    *     in the same turn's trace; null when that effect had none
    * @param priorAttempts what the attempts before this one learned, oldest first. Empty unless the
@@ -57,6 +65,7 @@ public interface AgentEffectCallback {
   void deliverOutcome(
       AgentId agentId,
       Optional<TurnId> turn,
+      Optional<Seq> request,
       EffectOutcome outcome,
       String traceContext,
       List<FailedAttempt> priorAttempts);

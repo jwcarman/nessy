@@ -34,6 +34,7 @@ import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
+import org.jwcarman.nessy.engine.effect.EffectOutcomes;
 import org.jwcarman.nessy.engine.store.Outbox;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -190,6 +191,9 @@ public final class DefaultReplies implements Replies {
             // The turn the row itself named when it was written, so an answer that arrives after
             // its turn has closed settles nothing rather than settling the current one.
             Optional.of(found.get().effect().turn()),
+            // Likewise the request, which the token named and the row confirmed: a call id can
+            // repeat across requests of one turn, and the turn alone would not tell them apart.
+            EffectOutcomes.requestOf(found.get().effect()),
             outcome.of(
                 where.callId(),
                 found.get().effect(),

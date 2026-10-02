@@ -589,6 +589,43 @@ class DefaultDirectHarnessTest {
   }
 
   @Test
+  @DisplayName("a turn of several requests, one reusing an earlier call id, is answered in full")
+  void answers_to_every_request_of_a_turn_are_taken_when_an_id_is_reused() {
+    AgentId agent = AgentId.random();
+    CallId first = new CallId("c-first");
+    CallId second = new CallId("c-second");
+    Scripted model =
+        new Scripted()
+            .then(asking(List.of(first, second)))
+            .then(asking(List.of(first)))
+            .then(answering("done"));
+
+    Outcome<String> outcome = harness(model, tool("found it")).ask(agent, "look it up");
+
+    assertThat(outcome)
+        .asInstanceOf(InstanceOfAssertFactories.type(Outcome.Answered.class))
+        .extracting(Outcome.Answered::value)
+        .isEqualTo("done");
+    List<AgentEvent> stream = events.readAll(TYPE, agent);
+    assertThat(stream)
+        .filteredOn(AgentEvent.ToolSucceeded.class::isInstance)
+        .map(AgentEvent.ToolSucceeded.class::cast)
+        .extracting(AgentEvent.ToolSucceeded::callId)
+        .as("each request's calls were answered once, the reused id included")
+        .containsExactlyInAnyOrder(first, second, first);
+    assertThat(stream).last().isInstanceOf(AgentEvent.InferenceAnswered.class);
+  }
+
+  private static InferenceResult asking(List<CallId> ids) {
+    return new InferenceResult.Actions(
+        ids.stream()
+            .<Block.ActionRequestContent>map(
+                id -> new Block.ToolCall(id, LOOKUP, "{\"id\":\"42\"}"))
+            .toList(),
+        Usage.unreported());
+  }
+
+  @Test
   @DisplayName("what the model is shown is rebuilt from the stream, not remembered")
   void the_transcript_is_projected_from_events() {
     AgentId agent = AgentId.random();

@@ -32,7 +32,6 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.RetryDecision;
 import org.jwcarman.nessy.api.RetryPolicy;
-import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
@@ -315,7 +314,7 @@ public class EffectDispatcher {
     // nobody claims is a row nobody retires -- and its agent waits forever. Coming due at the
     // deadline means coming due to be given up on.
     if (!clock.instant().isBefore(attempt.deadline())) {
-      expired(attempt, effect.turn());
+      expired(attempt, effect);
       return;
     }
 
@@ -346,6 +345,7 @@ public class EffectDispatcher {
           callback.deliverOutcome(
               attempt.agentId(),
               Optional.of(effect.turn()),
+              EffectOutcomes.requestOf(effect),
               outcome,
               attempt.traceContext(),
               effects.attemptsOf(attempt));
@@ -431,7 +431,7 @@ public class EffectDispatcher {
    * row stays and comes back, on the same principle as giving up: ending the attempts while the
    * agent is still waiting is the one outcome worse than trying again.
    */
-  private void expired(Attempt attempt, TurnId turn) {
+  private void expired(Attempt attempt, AgentEffect effect) {
     EffectOutcome outcome;
     try {
       outcome = effects.failureOf(attempt);
@@ -448,7 +448,8 @@ public class EffectDispatcher {
     try {
       callback.deliverOutcome(
           attempt.agentId(),
-          Optional.of(turn),
+          Optional.of(effect.turn()),
+          EffectOutcomes.requestOf(effect),
           outcome,
           attempt.traceContext(),
           effects.attemptsOf(attempt));
@@ -478,15 +479,16 @@ public class EffectDispatcher {
    * this will not decode there is nothing left to try: two independent blobs have gone, and the row
    * is retired with an error rather than left to be picked up forever.
    *
-   * <p>The one delivery that cannot name the turn it answers: the turn lives in the effect, and the
-   * effect is exactly what would not decode. So the fold is left to attribute it to whatever turn
-   * the agent is on, which is the best a corrupt row can do and no worse than what every delivery
-   * did before the turn rode along.
+   * <p>The one delivery that cannot name the turn it answers, nor the request: both live in the
+   * effect, and the effect is exactly what would not decode. So the fold is left to attribute it to
+   * whatever turn the agent is on, and to the request it is waiting on, which is the best a corrupt
+   * row can do and no worse than what every delivery did before the turn rode along.
    */
   private void undispatchable(Attempt attempt) {
     try {
       callback.deliverOutcome(
           attempt.agentId(),
+          Optional.empty(),
           Optional.empty(),
           effects.failureOf(attempt),
           attempt.traceContext(),
@@ -570,6 +572,7 @@ public class EffectDispatcher {
       callback.deliverOutcome(
           attempt.agentId(),
           Optional.of(effect.turn()),
+          EffectOutcomes.requestOf(effect),
           outcome,
           attempt.traceContext(),
           effects.attemptsOf(attempt));

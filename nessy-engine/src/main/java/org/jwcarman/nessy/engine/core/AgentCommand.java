@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -52,8 +53,9 @@ import org.jwcarman.nessy.inference.Failure;
  * is busy on the next one. Without the turn on the command, the fold stamps that answer with
  * whatever turn it happens to be in -- and the caller driving that turn is handed an answer to a
  * question it never asked. Each accepting arm checks the turn is its own and ignores it otherwise.
- * {@code StartTurn} and {@code Terminate} carry none: they open a turn or end an agent rather than
- * answering anything.
+ * An answer to a tool call or an approval names the request it answers as well as the turn, because
+ * a call id can repeat across two requests of one turn. {@code StartTurn} and {@code Terminate}
+ * carry none: they open a turn or end an agent rather than answering anything.
  */
 public sealed interface AgentCommand {
 
@@ -97,12 +99,32 @@ public sealed interface AgentCommand {
     }
   }
 
-  /** An approval decision came back for one call. */
-  record CompleteApproval(TurnId turn, CallId callId, ApprovalOutcome outcome)
+  /**
+   * An approval decision came back for one call.
+   *
+   * <p>It carries the turn and the request it answers. One for another turn, or for another request
+   * of the same turn, is ignored: a call id comes from the model and can repeat across two requests
+   * of one turn, so the id alone cannot say which of them is being answered.
+   *
+   * @param requestSeq where the request that asked for this call sits, as the effect that asked for
+   *     the decision named it
+   */
+  record CompleteApproval(TurnId turn, Seq requestSeq, CallId callId, ApprovalOutcome outcome)
       implements AgentCommand {}
 
-  /** A tool call came back. */
-  record CompleteToolCall(TurnId turn, CallId callId, ToolOutcome outcome)
+  /**
+   * A tool call came back.
+   *
+   * <p>It carries the turn and the request it answers. One for another turn, or for another request
+   * of the same turn, is ignored: a call id comes from the model and can repeat across two requests
+   * of one turn -- a Gemini reply that names none is given an id by its position, so every request
+   * asks for the same one -- and a late answer to the first would otherwise be recorded as the
+   * second's.
+   *
+   * @param requestSeq where the request that asked for this call sits, as the effect that asked for
+   *     the work named it
+   */
+  record CompleteToolCall(TurnId turn, Seq requestSeq, CallId callId, ToolOutcome outcome)
       implements AgentCommand {}
 
   /**

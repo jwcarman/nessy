@@ -275,7 +275,10 @@ public sealed interface AgentState {
    * @param seq where this state sits, which moves with every event it accepts
    * @param requestSeq where the request that asked for these calls sits, which does not move. An
    *     effect naming a call has to name that request too, because the call itself is content
-   *     behind it -- and by the time an approval comes back, {@code seq} is the approval's.
+   *     behind it -- and by the time an approval comes back, {@code seq} is the approval's. It is
+   *     also what an answer is checked against: an approval or a tool result carries the turn and
+   *     the request it answers, and one for another turn or another request is ignored, because a
+   *     call id comes from the model and can repeat across two requests of one turn.
    */
   record AwaitingActions(
       Seq seq,
@@ -346,6 +349,13 @@ public sealed interface AgentState {
         // alone is not enough -- ids come from the model and a later turn can reuse one.
         case AgentCommand.CompleteApproval done when !done.turn().equals(turn) -> Decision.ignore();
         case AgentCommand.CompleteToolCall done when !done.turn().equals(turn) -> Decision.ignore();
+        // Nor does one for another request of this turn. A call id repeats across requests -- a
+        // vendor that sends none is given one by position -- so a late answer to the first
+        // request's call would otherwise be taken for the second's.
+        case AgentCommand.CompleteApproval done when !done.requestSeq().equals(requestSeq) ->
+            Decision.ignore();
+        case AgentCommand.CompleteToolCall done when !done.requestSeq().equals(requestSeq) ->
+            Decision.ignore();
         case AgentCommand.CompleteApproval done -> approved(done, policy, now);
         case AgentCommand.CompleteToolCall done -> ran(done, policy, now);
         // As in Inferring: held by the harness until the turn closes.

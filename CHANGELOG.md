@@ -259,6 +259,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   last, like another model's, instead of failing the question.
 - **A width of zero or less is refused where it is set.** `dimension(0)` and
   `nessy.embedding-dimension: 0` fail at once; the property's failure names it.
+- **A late answer to a call could be recorded as the answer to a later call
+  with the same id.** A call id can repeat across two requests of one turn,
+  and the Gemini adapter mints ids by position when the vendor sends none. A
+  tool that finished after its deadline had been given up on, or an approval
+  that came back late, was taken for the second request's call. An answer to
+  a tool call or an approval now names the request it answers, and one for
+  another request is ignored.
 
 ### Breaking changes
 

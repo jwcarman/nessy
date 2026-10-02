@@ -37,6 +37,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
@@ -207,6 +208,26 @@ class DispatcherFailureTest {
         .atMost(Duration.ofSeconds(5))
         .untilAsserted(() -> assertThat(effects.retired).hasSize(1));
     assertThat(delivered.outcomes).isEmpty();
+  }
+
+  /**
+   * The one answer that cannot name its request: the effect would not decode, and the turn and the
+   * request both live in the effect. It is delivered naming neither, and the fold matches it to
+   * whatever the agent is on.
+   */
+  @Test
+  void an_undispatchable_effect_delivers_its_stored_failure_naming_no_turn_and_no_request() {
+    Effects effects = new Effects();
+    effects.due = List.of(attempt(NOW.plusSeconds(60), 1));
+    effects.effectFails = new IllegalStateException("an effect from a build that was rolled back");
+
+    dispatcherFor(effects, answering()).dispatch();
+
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(() -> assertThat(delivered.outcomes).hasSize(1));
+    assertThat(delivered.turns).containsExactly(Optional.empty());
+    assertThat(delivered.requests).containsExactly(Optional.empty());
   }
 
   /** A failed attempt with attempts left is written down to be tried again. */
@@ -577,15 +598,20 @@ class DispatcherFailureTest {
   private static final class Deliveries implements AgentEffectCallback {
 
     private final List<EffectOutcome> outcomes = new CopyOnWriteArrayList<>();
+    private final List<Optional<TurnId>> turns = new CopyOnWriteArrayList<>();
+    private final List<Optional<Seq>> requests = new CopyOnWriteArrayList<>();
 
     @Override
     public void deliverOutcome(
         AgentId agentId,
         Optional<TurnId> turn,
+        Optional<Seq> request,
         EffectOutcome outcome,
         String traceContext,
         List<FailedAttempt> priorAttempts) {
       outcomes.add(outcome);
+      turns.add(turn);
+      requests.add(request);
     }
   }
 

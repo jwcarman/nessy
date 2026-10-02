@@ -168,6 +168,28 @@ class MisroutedReplyTest {
   }
 
   @Test
+  void a_reply_for_the_current_request_is_delivered_with_that_request() {
+    serving();
+    rows.running = List.of(attempt());
+    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL);
+
+    assertThat(replies.complete(token(), ToolResult.ok(new Block.Text("done"))))
+        .isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(delivered.requests).containsExactly(Optional.of(REQUEST));
+  }
+
+  @Test
+  void a_verdict_for_the_current_request_is_delivered_with_that_request() {
+    serving();
+    rows.running = List.of(attempt());
+    rows.effect = new AgentEffect.Approve(TURN, REQUEST, CALL, TOOL);
+
+    assertThat(replies.approve(token(), ApprovalResult.approved()))
+        .isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(delivered.requests).containsExactly(Optional.of(REQUEST));
+  }
+
+  @Test
   void a_deferred_failure_without_a_message_is_recorded_with_one() {
     serving();
     rows.running = List.of(attempt());
@@ -255,15 +277,18 @@ class MisroutedReplyTest {
   private static final class Deliveries implements AgentEffectCallback {
 
     private final List<EffectOutcome> outcomes = new CopyOnWriteArrayList<>();
+    private final List<Optional<Seq>> requests = new CopyOnWriteArrayList<>();
 
     @Override
     public void deliverOutcome(
         AgentId agentId,
         Optional<TurnId> turn,
+        Optional<Seq> request,
         EffectOutcome outcome,
         String traceContext,
         List<FailedAttempt> priorAttempts) {
       outcomes.add(outcome);
+      requests.add(request);
     }
   }
 }

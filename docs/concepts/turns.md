@@ -64,7 +64,10 @@ With the turn on the command, `AgentState`'s busy arms check it before
 doing anything else: `CompleteInference` is ignored when `!done.turn().equals(turn)`,
 and the same guard sits on `CompleteApproval` and `CompleteToolCall`. A
 late reply from an abandoned turn is discarded rather than folded in
-anywhere. Nothing about this is exceptional — it is silent by design, the
+anywhere. `CompleteApproval` and `CompleteToolCall` also carry the sequence
+number of the request that asked for the call, and an answer for another
+request of the same turn is ignored the same way, because a call id can
+repeat across two requests of one turn. Nothing about this is exceptional — it is silent by design, the
 same way a duplicate at-least-once delivery of anything else is silent.
 
 ## The lifecycle a watcher sees
