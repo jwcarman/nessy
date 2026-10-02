@@ -188,7 +188,7 @@ agent's closed chapters still end where the caller said they did, so two
 processes that cut the same turns differently cannot both succeed, and
 neither leaves a gap or an overlap. The `Chapters` interface in
 `nessy-backend-spi`, reached as `backend.chapters()`, is how the engine reads
-and writes this table. See [Memory](memory.md#chapters).
+and writes this table. See [Context](context.md#chapters).
 
 ## Retention
 
@@ -199,5 +199,5 @@ is plain enough to do it in one statement per table.
 
 ## Where next
 
-- [Memory](memory.md), what a model call is built from
+- [Context](context.md), what a model call is built from
 - [Durable Computation](durable-computation.md), what survives a crash, and how

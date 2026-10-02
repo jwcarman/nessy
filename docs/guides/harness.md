@@ -247,7 +247,7 @@ approver 10 minutes, a model call 5 minutes, none of them retried by
 default. History is cut into chapters every 20 turns, each summarised by the
 agent's own model, and the tail shown whole is at most 40 completed turns.
 Chapters are on unless `withoutChapters()` is set, so an agent spends tokens
-on summaries by default. See [Memory](../concepts/memory.md#chapters).
+on summaries by default. See [Context](../concepts/context.md#chapters).
 
 ## Writing an approver
 
@@ -355,6 +355,6 @@ plan and the date, given as ambient background, added.
 - [Getting Started](getting-started.md), the shortest path to a running agent
 - [Tools](../concepts/tools.md), writing tools, and deferring
 - [Authorization](../concepts/authorization.md), grants and approvers
-- [Memory](../concepts/memory.md), what a model call is built from
+- [Context](../concepts/context.md), what a model call is built from
 - [Storage](../concepts/storage.md), the tables, and applying the schema
 - [Spring Boot](spring-boot.md), the starter

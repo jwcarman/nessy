@@ -69,7 +69,7 @@ them again would double-count.
 ## Where each stratum goes
 
 The context a request carries has six strata, in a fixed order (see
-[Memory](../concepts/memory.md)). Every adapter places them the same way,
+[Context](../concepts/context.md)). Every adapter places them the same way,
 because a provider caches a request's leading text and the strata are
 ordered by how often each changes:
 

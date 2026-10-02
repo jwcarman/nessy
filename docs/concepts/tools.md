@@ -233,7 +233,7 @@ call means, never the tool being governed.
   [Authorization](authorization.md#describing-what-is-being-approved).
 - **The summariser** reads a chapter as text, one line per thing that
   happened. A call is `assistant did: <action> -- succeeded: <result>`. See
-  [Memory](memory.md#the-default-summary).
+  [Context](context.md#the-default-summary).
 - **The model, in the turn being answered,** is not shown these lines. The
   adapters send every call and every result whole, for the turn that is
   under way and for the turns in the tail.

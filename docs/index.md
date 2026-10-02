@@ -169,9 +169,14 @@ See [Authorization](concepts/authorization.md).
     What survives a crash: effects as rows, deadlines as columns, and
     answers addressed to a place rather than an object.
 
+- **[Context](concepts/context.md)**
+
+    The six strata of a model call, history cut into summarised chapters, and
+    keeping the provider's cache.
+
 - **[Memory](concepts/memory.md)**
 
-    The six strata of a model call, and history cut into summarised chapters.
+    What an agent recalls: memory and state sources, notes, and embeddings.
 
 - **[Leases](concepts/leases.md)**
 

@@ -28,7 +28,7 @@ head:
   belongs in an `AmbientSource`. It reaches the model at the very end of
   the request.
 
-See [Memory](../concepts/memory.md) for the six places a model's context is
+See [Context](../concepts/context.md) for the six places a model's context is
 built from.
 
 ## Templates
@@ -123,5 +123,5 @@ midnight.
 ## Where next
 
 - [The Harness](harness.md), where the prompt is set
-- [Memory](../concepts/memory.md), where what varies goes instead
+- [Context](../concepts/context.md), where what varies goes instead
 - [Spring Boot](spring-boot.md), the properties

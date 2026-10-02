@@ -127,7 +127,7 @@ write an effect. See [Durable Computation](durable-computation.md).
   `nessy.chapters`, to cut the history into chapters, and again for each
   summary it writes. A lease held by someone else is an immediate refusal,
   and the keeper does nothing: whoever holds it is doing the same work. See
-  [Memory](memory.md#chapters).
+  [Context](context.md#chapters).
 - Your own listeners, whenever they react to an agent event with work that
   costs something and must not be done twice: a nightly report, a reflection
   pass, an export.
@@ -148,5 +148,5 @@ There is no separate module or property to add; see
 ## Where next
 
 - [Durable Computation](durable-computation.md), the effects a lease is not
-- [Memory](memory.md), the chapter keeper that runs under one
+- [Context](context.md), the chapter keeper that runs under one
 - [Storage](storage.md), the table

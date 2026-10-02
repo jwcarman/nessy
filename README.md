@@ -203,7 +203,8 @@ add `nessy-inference-spi`; an application building an agent depends on
 | Tools: structured calls, typed inputs, and deferring to the world | [Tools](https://jwcarman.github.io/nessy/concepts/tools/) |
 | Authorization: approvers, reply tokens, and describing what a person is consenting to | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/) |
 | Risk: an assessment over the NIST SP 800-30 matrix, and two thresholds with a person in between | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/#gating-on-risk) |
-| Memory: six strata, from instructions to ambient, and history cut into summarised chapters | [Memory](https://jwcarman.github.io/nessy/concepts/memory/) |
+| Context: six strata, from instructions to ambient, history cut into summarised chapters, and keeping the cache | [Context](https://jwcarman.github.io/nessy/concepts/context/) |
+| Memory: what an agent recalls, memory and state sources, notes, and embeddings | [Memory](https://jwcarman.github.io/nessy/concepts/memory/) |
 | Planning: a plan the model holds, and the family of patterns to come | [Planning](https://jwcarman.github.io/nessy/concepts/planning/) |
 | Storage: a table per thing, a codec seam for encryption, every model call on record | [Storage](https://jwcarman.github.io/nessy/concepts/storage/) |
 | Providers: four adapter modules, both OpenAI shapes, every OpenAI-compatible endpoint, and thinking as a provider setting | [Providers](https://jwcarman.github.io/nessy/guides/providers/) |
