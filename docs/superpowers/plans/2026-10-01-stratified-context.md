@@ -916,8 +916,8 @@ Commit: `feat: an agent type's instructions are fixed when its harness is built`
 
 **Files:**
 - Create: `nessy-engine/src/main/java/org/jwcarman/nessy/engine/observability/CacheWatch.java`
-- Modify: both harness factories (install it on every harness)
-- Test: `nessy-engine/src/test/java/org/jwcarman/nessy/engine/observability/CacheWatchTest.java`
+- Modify: `nessy-engine/src/main/java/org/jwcarman/nessy/engine/effect/InferenceHandler.java` and both harness factories (each builds one `CacheWatch` and hands it to the `InferenceHandler`s it makes)
+- Test: `nessy-engine/src/test/java/org/jwcarman/nessy/engine/observability/CacheWatchTest.java`, and a case in the existing test of `InferenceHandler` if there is one
 
 **Interfaces:**
 - Produces:
@@ -925,21 +925,23 @@ Commit: `feat: an agent type's instructions are fixed when its harness is built`
 ```java
 package org.jwcarman.nessy.engine.observability;
 
-/** Hears every inference's token counts and reports a call that read fewer cached tokens than the call before it in the same turn. */
-public final class CacheWatch implements NarrationListener {
+/** Told every inference's token counts; reports a call that read fewer cached tokens than the call before it in the same turn. */
+public final class CacheWatch {
   public CacheWatch(ObservationRegistry observations);
-  @Override public void on(AgentType agentType, AgentId agentId, Narration event);
+  public void saw(AgentType agentType, AgentId agentId, TurnId turn, Usage usage);
 }
 ```
 
-**Behaviour.**
-- Find the narration events that carry an inference's `Usage` and its turn (read `Narration.java` and `Usage.java`; the cache-read count is nullable). For each agent, remember the turn and the cache-read count of the last inference that reported one.
-- When an inference in the SAME turn reports a cache-read count lower than the remembered one, log at WARN: `NESSY CACHE: [{type}] agent {id} turn {turn} read {now} cached tokens after reading {before} on the call before; something ahead of the active turn changed, or the provider's cache expired`, and record an `Observation.Event` named `nessy.cache.read.fell` on the current observation if there is one, with the agent type as a low-cardinality key.
-- A new turn resets the remembered count without reporting. A count that is absent is ignored: it neither reports nor replaces the remembered one.
-- The memory is bounded (at most 10,000 agents, least recently used out first) and thread-safe.
-- Both factories add one `CacheWatch` to every harness's listeners. It is not asynchronous: it does no I/O.
+No narration event carries an inference's usage, so this is not a listener. `InferenceHandler.handle` knows the agent, the turn (`AgentEffect.Infer.turn()`) and the result's usage in all four arms; it calls `saw` once per inference, after the result is in hand.
 
-**Tests.** A fall inside a turn warns once and names both counts; a rise does not; the first call of a new turn that reads less than the previous turn's last call does not; an absent count is ignored; two agents do not affect each other; the map does not grow past its bound. Capture the log with the approach the module's other log-asserting tests use; if there is none, assert on the observation event with the test observation registry instead and leave the log unasserted.
+**Behaviour.**
+- For each agent, remember the turn and the cache-read count of the last inference that reported one (`Usage.cacheReadTokens()`; read `Usage.java` and `Tokens.java` for how a count that was not reported is represented).
+- When an inference in the SAME turn reports a cache-read count lower than the remembered one, log at WARN: `NESSY CACHE: [{type}] agent {id} turn {turn} read {now} cached tokens after reading {before} on the call before; something ahead of the active turn changed, or the provider's cache expired`, and start and stop a short observation named `nessy.cache.read.fell` on the registry it was given, with the agent type as a low-cardinality key, so that falls can be counted.
+- A new turn resets the remembered count without reporting. A count that was not reported is ignored: it neither reports nor replaces the remembered one.
+- The memory is bounded (at most 10,000 agents, least recently used out first) and thread-safe.
+- Nothing `saw` does may fail an inference: it must not throw.
+
+**Tests.** A fall inside a turn warns once and names both counts; a rise does not; the first call of a new turn that reads less than the previous turn's last call does not; an unreported count is ignored; two agents do not affect each other; the map does not grow past its bound; `InferenceHandler` tells the watch the agent, the turn and the usage of each of the four kinds of result. Assert on the observation with the test observation registry the module's other observability tests use.
 
 - [ ] Tests, implementation, `./mvnw spotless:apply license:format`, `pgrep -fl nessy-example; ./mvnw -q clean verify`, commit.
 
