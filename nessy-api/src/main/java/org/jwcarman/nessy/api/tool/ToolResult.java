@@ -30,6 +30,9 @@ public sealed interface ToolResult {
    * throws. Output the model must read in full belongs in a {@link Success} result, which is not
    * cut.
    *
+   * <p>A failure given no message is recorded with the message {@code the tool failed and gave no
+   * message}.
+   *
    * @param message what went wrong
    */
   record Failure(String message) implements ToolResult {}

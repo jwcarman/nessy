@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine.effect;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
@@ -167,7 +168,9 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
                         payloads.forAgent(agentId).put(success.blocks()),
                         binding.rendered(success));
                 case ToolResult.Failure(String message) ->
-                    new EffectOutcome.ToolFailed(callId, message);
+                    new EffectOutcome.ToolFailed(
+                        callId,
+                        Objects.requireNonNullElse(message, "the tool failed and gave no message"));
               });
       case Awaited.Deferred<ToolResult> _ -> {
         // Same reason as a deferred approval: the fold does not learn that anything is

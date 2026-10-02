@@ -323,8 +323,13 @@ class DefaultDirectHarnessTest {
     };
   }
 
-  /** A tool that throws, to prove a broken tool is told to the model rather than ending a turn. */
+  /** A tool that returns a failure carrying the given message, which may be null. */
   private static Tool<Lookup> failing(String message) {
+    return failing(message, new AtomicInteger());
+  }
+
+  /** The same, counting each time it is called. */
+  private static Tool<Lookup> failing(String message, AtomicInteger calls) {
     return new Tool<Lookup>() {
       @Override
       public Class<Lookup> inputType() {
@@ -343,11 +348,13 @@ class DefaultDirectHarnessTest {
 
       @Override
       public Awaited<ToolResult> call(ToolCallRequest<Lookup> request) {
+        calls.incrementAndGet();
         return Awaited.ready(new ToolResult.Failure(message));
       }
     };
   }
 
+  /** A tool that throws, to prove a broken tool is told to the model rather than ending a turn. */
   private static Tool<Lookup> broken(String message) {
     return new Tool<Lookup>() {
       @Override
@@ -660,6 +667,28 @@ class DefaultDirectHarnessTest {
                                 .singleElement()
                                 .isEqualTo(
                                     new ToolOutcome.Failed(failures.getFirst().callId(), stored))));
+  }
+
+  @Test
+  @DisplayName("a tool that fails without a message is recorded as failed and is not run again")
+  void a_tool_that_fails_without_a_message_is_recorded_as_failed_and_is_not_run_again() {
+    AgentId agent = AgentId.random();
+    AtomicInteger runs = new AtomicInteger();
+    Scripted model = new Scripted().then(asking("lookup")).then(answering("sorry"));
+
+    Outcome<String> outcome = harness(model, failing(null, runs)).ask(agent, "try");
+
+    assertThat(runs).as("the tool ran once").hasValue(1);
+    assertThat(events.readAll(TYPE, agent))
+        .filteredOn(AgentEvent.ToolFailed.class::isInstance)
+        .map(AgentEvent.ToolFailed.class::cast)
+        .singleElement()
+        .satisfies(f -> assertThat(f.message()).isEqualTo("the tool failed and gave no message"));
+    assertThat(outcome)
+        .as("the turn went on to the next inference")
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("sorry", ANY_STATS));
   }
 
   @Test

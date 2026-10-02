@@ -119,7 +119,9 @@ public final class DefaultReplies implements Replies {
                   new EffectOutcome.ToolSucceeded(
                       callId, payloads.put(success.blocks()), rendered(tools, effect, success));
               case ToolResult.Failure(String message) ->
-                  new EffectOutcome.ToolFailed(callId, message);
+                  new EffectOutcome.ToolFailed(
+                      callId,
+                      Objects.requireNonNullElse(message, "the tool failed and gave no message"));
             });
   }
 

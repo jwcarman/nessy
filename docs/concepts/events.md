@@ -47,7 +47,7 @@ the name and a note that the arguments could not be read. When no tool of
 that name is bound, it is `<name> (no such tool)`. `ToolSucceeded.rendered`
 is what the call returned, made by the same binding from the result, and it
 may be empty. Each line is at most 1,000 characters (`ToolConfig.LINE_CAP`);
-the cap is applied when the binding is built, not by the records. A line is
+the cap is applied when the binding is built, not by the records that carry the lines. A line is
 fixed when it is written and never worked out again. See
 [Tools](tools.md#what-a-call-leaves-behind).
 
@@ -59,8 +59,9 @@ are not bounded.
 
 So an agent's content is in three places: its payload rows, the lines and
 sentences in its events, and the summaries of its chapters in
-`nessy_chapter`. The references, and the bound on the two lines, are what
-keep the stream small enough to replay on every command.
+`nessy_chapter`. The references, and the bound on the two lines and on a
+failed call's message, are what keep the stream small enough to replay on
+every command.
 
 **Five arms carry `Usage`**: `InferenceAnswered`, `InferenceRefused`,
 `InferenceFailed`, `InferenceAttempted` and `ActionsRequested`. A

@@ -167,6 +167,18 @@ class MisroutedReplyTest {
         .containsExactly(new EffectOutcome.ToolSucceeded(CALL, ref, "done"));
   }
 
+  @Test
+  void a_deferred_failure_without_a_message_is_recorded_with_one() {
+    serving();
+    rows.running = List.of(attempt());
+    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL);
+
+    assertThat(replies.complete(token(), new ToolResult.Failure(null)))
+        .isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(delivered.outcomes)
+        .containsExactly(new EffectOutcome.ToolFailed(CALL, "the tool failed and gave no message"));
+  }
+
   /**
    * A verdict may not settle a call that is already running. Letting it through would approve a
    * tool that has already gone past the gate, which is a grant recorded for work already done.
