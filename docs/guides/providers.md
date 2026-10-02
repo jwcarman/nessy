@@ -131,7 +131,7 @@ Each adapter reads the cut-off from the vendor's own field:
 | Anthropic | `stop_reason` | `max_tokens` |
 | OpenAI Chat Completions | `finish_reason` | `length` |
 | OpenAI Responses | `status` and `incomplete_details.reason` | `incomplete` and `max_output_tokens` |
-| Gemini | `finishReason` | `MAX_TOKENS` |
+| Gemini | `finishReason` | `MAX_TOKENS`; `MALFORMED_FUNCTION_CALL` for a tool call |
 | Bedrock Converse | `stopReason` | `max_tokens` |
 
 What the cut-off result is depends on what the reply held when it stopped:
@@ -144,6 +144,11 @@ What the cut-off result is depends on what the reply held when it stopped:
   arguments arrive as a JSON fragment and the SDK's `MessageAccumulator`
   substitutes an empty object when it does not parse. Either way the adapter
   sees `{}`, which parses and would run.
+  Gemini reports a call cut off at the limit as `MALFORMED_FUNCTION_CALL`,
+  with no function call and no text in the reply (measured on 2026-10-02 on
+  `gemini-3.1-pro-preview`), so the Gemini adapter returns the `Fault` for that
+  finish reason whatever the reply holds, and its message says the call was
+  malformed and was not run.
 - **Nothing but reasoning.** The result is the empty-answer `Fault`, naming
   the stop reason. There is no text to keep.
 

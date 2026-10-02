@@ -106,6 +106,13 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
   /** The finish reason for a reply cut off at the output-token limit. */
   private static final String MAX_TOKENS = "MAX_TOKENS";
 
+  /**
+   * The finish reason for a function call the vendor could not complete. A call cut off at the
+   * output-token limit is reported this way, with no function-call part and no text (measured
+   * 2026-10-02 on gemini-3.1-pro-preview), and not as {@link #MAX_TOKENS}.
+   */
+  private static final String MALFORMED_FUNCTION_CALL = "MALFORMED_FUNCTION_CALL";
+
   private static final int TOO_MANY_REQUESTS = 429;
   private static final String CALL_FAILED = "model call failed: ";
 
@@ -333,6 +340,10 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
    * <p>A reply whose finish reason is {@code MAX_TOKENS} was cut off at the output limit. With
    * prose in it that is a {@link InferenceResult.Truncated}; with a function call in it, a fault,
    * because the call's arguments are incomplete; with neither, the empty-answer fault.
+   *
+   * <p>A reply whose finish reason is {@code MALFORMED_FUNCTION_CALL} is a fault whatever it holds:
+   * the vendor is saying the call it was writing is not one to run. That is how a function call cut
+   * off at the output limit arrives on this wire.
    */
   private InferenceResult read(GenerateContentResponse response) {
     List<Candidate> candidates = response.candidates().orElse(List.of());
@@ -352,6 +363,16 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
 
     if (!asking && REFUSALS.contains(finish)) {
       return new InferenceResult.Refusal(finish);
+    }
+
+    if (MALFORMED_FUNCTION_CALL.equals(finish)) {
+      // Whatever parts came with it, none is a call the vendor stands behind.
+      return new InferenceResult.Fault(
+          new Failure.Permanent(
+              "the model's tool call was malformed and was not run; a tool call cut off at the"
+                  + " output limit is reported this way (finish_reason="
+                  + finish
+                  + ")"));
     }
 
     boolean cutOff = MAX_TOKENS.equals(finish);

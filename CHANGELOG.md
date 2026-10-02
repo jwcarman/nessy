@@ -152,6 +152,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A reply cut off at the output limit is `Truncated`.** It was an `Answer`.
 - **A tool call cut off at the output limit is a `Fault`.** It was `Actions`,
   carrying arguments that could parse as `{}` and run.
+- **Gemini's `MALFORMED_FUNCTION_CALL` is a `Fault` that says a tool call was
+  malformed and was not run.** It was the empty-answer fault. Gemini reports a
+  tool call cut off at the output limit this way.
 - **A custom `InferenceProvider`, or a `switch` over `InferenceResult`, needs
   the new arm.** A provider returns `Truncated` when its vendor says the
   output limit was reached and the reply holds text.

@@ -89,8 +89,9 @@ class GeminiInferenceProviderTest {
 
   /**
    * The partials a server would have streamed this reply as: each text part five characters at a
-   * time, each other part whole, and the finish reason only on the last. A reply with no candidates
-   * is one partial saying so.
+   * time, each other part whole, and the finish reason and usage only on the last. A reply with no
+   * candidates is one partial saying so; a reply whose parts hold no text at all is one partial
+   * carrying the finish reason and usage.
    */
   static List<GenerateContentResponse> partialsOf(GenerateContentResponse response) {
     List<Candidate> candidates = response.candidates().orElse(List.of());
@@ -129,7 +130,9 @@ class GeminiInferenceProviderTest {
     if (partials.isEmpty()) {
       Candidate.Builder empty = Candidate.builder();
       candidate.finishReason().ifPresent(empty::finishReason);
-      partials.add(GenerateContentResponse.builder().candidates(List.of(empty.build())).build());
+      GenerateContentResponse.Builder built = GenerateContentResponse.builder();
+      response.usageMetadata().ifPresent(built::usageMetadata);
+      partials.add(built.candidates(List.of(empty.build())).build());
     }
     return partials;
   }
@@ -550,6 +553,66 @@ class GeminiInferenceProviderTest {
           .asString()
           .contains("cut off")
           .contains("tool call");
+    }
+
+    /**
+     * What the wire sent on 2026-10-02 for a function call cut off at the output limit: this finish
+     * reason, one empty text part, and no function-call part.
+     */
+    @Test
+    void a_function_call_the_vendor_reports_as_malformed_is_a_fault_that_says_so() {
+      GenerateContentResponse malformed =
+          reply(new FinishReason("MALFORMED_FUNCTION_CALL"), Part.fromText("")).toBuilder()
+              .usageMetadata(
+                  GenerateContentResponseUsageMetadata.builder()
+                      .promptTokenCount(5)
+                      .candidatesTokenCount(7)
+                      .thoughtsTokenCount(2)
+                      .build())
+              .build();
+
+      InferenceResult result = infer(malformed);
+
+      assertThat(result).isInstanceOf(InferenceResult.Fault.class);
+      assertThat(((InferenceResult.Fault) result).failure())
+          .isInstanceOf(Failure.Permanent.class)
+          .extracting(Failure::reason)
+          .asString()
+          .contains("tool call was malformed")
+          .contains("cut off at the output limit")
+          .contains("finish_reason=MALFORMED_FUNCTION_CALL");
+      assertThat(result.usage()).isEqualTo(new Usage("gemini-3.6-flash", 5, 9, null, null, 2));
+    }
+
+    @Test
+    void a_malformed_function_call_is_not_run_though_a_call_came_with_it() {
+      Part call =
+          Part.builder()
+              .functionCall(
+                  FunctionCall.builder().id("call_1").name("depth").args(Map.of()).build())
+              .build();
+
+      InferenceResult result = infer(reply(new FinishReason("MALFORMED_FUNCTION_CALL"), call));
+
+      assertThat(result).isInstanceOf(InferenceResult.Fault.class);
+      assertThat(((InferenceResult.Fault) result).failure())
+          .isInstanceOf(Failure.Permanent.class)
+          .extracting(Failure::reason)
+          .asString()
+          .contains("tool call was malformed");
+    }
+
+    @Test
+    void a_malformed_function_call_is_not_an_answer_though_text_came_with_it() {
+      InferenceResult result =
+          infer(reply(new FinishReason("MALFORMED_FUNCTION_CALL"), Part.fromText("looking it up")));
+
+      assertThat(result).isInstanceOf(InferenceResult.Fault.class);
+      assertThat(((InferenceResult.Fault) result).failure())
+          .isInstanceOf(Failure.Permanent.class)
+          .extracting(Failure::reason)
+          .asString()
+          .contains("tool call was malformed");
     }
 
     @Test
