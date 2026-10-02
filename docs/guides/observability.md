@@ -188,12 +188,12 @@ written (`cache_write / input`) rising.
 
 ```promql
 # share of input read from the cache, per agent type
-sum by (gen_ai_agent_name) (rate(gen_ai_client_token_usage_tokens_sum{gen_ai_token_type="cache_read"}[15m]))
-  / sum by (gen_ai_agent_name) (rate(gen_ai_client_token_usage_tokens_sum{gen_ai_token_type="input"}[15m]))
+sum by (gen_ai_agent_name) (rate(gen_ai_client_token_usage_sum{gen_ai_token_type="cache_read"}[15m]))
+  / sum by (gen_ai_agent_name) (rate(gen_ai_client_token_usage_sum{gen_ai_token_type="input"}[15m]))
 
 # share of input written to the cache, per agent type
-sum by (gen_ai_agent_name) (rate(gen_ai_client_token_usage_tokens_sum{gen_ai_token_type="cache_write"}[15m]))
-  / sum by (gen_ai_agent_name) (rate(gen_ai_client_token_usage_tokens_sum{gen_ai_token_type="input"}[15m]))
+sum by (gen_ai_agent_name) (rate(gen_ai_client_token_usage_sum{gen_ai_token_type="cache_write"}[15m]))
+  / sum by (gen_ai_agent_name) (rate(gen_ai_client_token_usage_sum{gen_ai_token_type="input"}[15m]))
 ```
 
 The engine itself keeps nothing between calls to compare with: it reports
