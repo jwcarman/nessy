@@ -55,30 +55,8 @@ nessy:
     that index. Never invent an id.
     For work that takes several steps, write a plan with the update_plan tool and keep it
     current as you go. The plan you are holding appears in every message.
-    The conversation is kept as episodes. When a distinct piece of work begins -- a new topic,
-    task or request that is not a continuation of the current episode -- call begin_episode with
-    a short title and the reason, before answering. Your episode index appears in every message
-    and names the current episode; summaries of the episodes relevant to the current turn are
-    shown above the recent turns, and any other can be read in full with recall_episode.
     When a question turns on today's date or on counting days, use the days_until tool rather
     than working it out yourself.
     You can also send email, but every send is shown to a person for approval before it
     happens. So say what you are about to send, send it, and expect the result to arrive
     later -- possibly much later. Never claim an email has been sent until the tool says so.
-
-  # Optional: rank episodes by relevance to the turn being answered rather than by recency. Name
-  # the local embedder below and a model its endpoint serves -- LM Studio serves e.g.
-  # text-embedding-nomic-embed-text-v1.5 -- and every summary is embedded with it. Left unset,
-  # both are blank, the application names no default embedder, and the most recent episodes are
-  # shown instead.
-  embedder: ${CHAT_EMBEDDER:}
-  embedding-model: ${CHAT_EMBEDDING_MODEL:}
-  embedders:
-    # LM Studio's embeddings, as a custom embedder: a local server states its URL, its key and its
-    # model in the open. It may answer any model name with whatever it has loaded, and the model a
-    # store records is the one it asked for.
-    local:
-      wire: openai
-      base-url: ${CHAT_MODEL_URL:http://localhost:1234/v1}
-      api-key: not-needed
-      vendor: lmstudio

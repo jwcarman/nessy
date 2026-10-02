@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.jwcarman.nessy.memory.summarizing;
+package org.jwcarman.nessy.engine.chapter;
 
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;

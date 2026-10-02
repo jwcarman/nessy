@@ -205,9 +205,9 @@ public final class GeminiRequests {
                 Part.fromText(
                     "<summary from=\"%d\" through=\"%d\">\n%s\n</summary>"
                         .formatted(
-                            summary.from().value(),
-                            summary.through().value(),
-                            text(summary.content())))))
+                            summary.chapter().from().value(),
+                            summary.chapter().through().value(),
+                            summary.text()))))
         .build();
   }
 

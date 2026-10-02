@@ -144,9 +144,9 @@ public final class DirectHarnessFactoryConfig {
   /**
    * Something that equips every agent this factory serves.
    *
-   * <p>For a module rather than an application: it can add tools, ambient context and a source of
-   * summaries, and reads the agent type to key whatever it keeps on. It cannot say what the agent
-   * is FOR -- no prompt, no renderer -- because the application already said that.
+   * <p>For a module rather than an application: it can add tools and ambient context, and reads the
+   * agent type to key whatever it keeps on. It cannot say what the agent is FOR -- no prompt, no
+   * renderer -- because the application already said that.
    */
   public DirectHarnessFactoryConfig feature(Customizer<HarnessConfig<?>> customizer) {
     features.add(Objects.requireNonNull(customizer, "customizer must not be null"));

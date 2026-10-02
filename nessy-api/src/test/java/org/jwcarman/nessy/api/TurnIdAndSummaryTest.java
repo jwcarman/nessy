@@ -18,9 +18,11 @@ package org.jwcarman.nessy.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.util.List;
+import org.junit.jupiter.api.DisplayNameGeneration;
+import org.junit.jupiter.api.DisplayNameGenerator;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.turn.Chapter;
 import org.jwcarman.nessy.api.turn.Summary;
 
 class TurnIdAndSummaryTest {
@@ -33,21 +35,49 @@ class TurnIdAndSummaryTest {
     assertThat(new Seq(7).opensTurn()).isEqualTo(new TurnId(7));
   }
 
-  @Test
-  void a_summary_runs_forwards_and_says_something() {
-    TurnId five = new TurnId(5);
-    TurnId three = new TurnId(3);
-    TurnId one = new TurnId(1);
-    List<Block.SummaryContent> nothing = List.of();
-    assertThatThrownBy(() -> Summary.text(five, three, "backwards"))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("forwards");
-    assertThatThrownBy(() -> new Summary(one, three, nothing))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("say something");
+  @Nested
+  @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
+  class A_summary {
 
-    Summary summary = Summary.text(new TurnId(1), new TurnId(9), "lakes");
-    assertThat(summary.covers(new TurnId(9))).isTrue();
-    assertThat(summary.covers(new TurnId(11))).isFalse();
+    private final Chapter chapter =
+        new Chapter(new AgentType("chat"), AgentId.random(), new TurnId(1), new TurnId(9));
+
+    @Test
+    void keeps_its_chapter_and_its_text() {
+      Summary summary = new Summary(chapter, "lakes");
+
+      assertThat(summary.chapter()).isEqualTo(chapter);
+      assertThat(summary.text()).isEqualTo("lakes");
+    }
+
+    @Test
+    void must_say_something() {
+      assertThatThrownBy(() -> new Summary(chapter, "  "))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("say something");
+    }
+
+    @Test
+    void must_have_a_chapter() {
+      assertThatThrownBy(() -> new Summary(null, "lakes"))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("chapter");
+    }
+
+    @Test
+    void must_have_text() {
+      assertThatThrownBy(() -> new Summary(chapter, null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("text");
+    }
+
+    @Test
+    void covers_the_turns_its_chapter_covers() {
+      Summary summary = new Summary(chapter, "lakes");
+
+      assertThat(summary.covers(new TurnId(1))).isTrue();
+      assertThat(summary.covers(new TurnId(9))).isTrue();
+      assertThat(summary.covers(new TurnId(11))).isFalse();
+    }
   }
 }

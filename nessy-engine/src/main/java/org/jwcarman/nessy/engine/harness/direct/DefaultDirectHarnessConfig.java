@@ -35,7 +35,6 @@ import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.RetryPolicy;
-import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.TurnPolicy;
@@ -116,12 +115,6 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
   public DirectHarnessConfig<I> inputRenderer(InputRenderer<I> renderer) {
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
     return this;
-  }
-
-  /** A shortcut into the context, where sources of summaries actually live. */
-  @Override
-  public DirectHarnessConfig<I> summaries(Summarizer source) {
-    return inference(in -> in.context(ctx -> ctx.summaries(source)));
   }
 
   /**
@@ -301,8 +294,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     private String modelName;
     private int maxTokens = 4096;
     private final Map<String, String> properties = new LinkedHashMap<>();
-    private int maxTail = 50;
-    private final List<Summarizer> summaries = new ArrayList<>();
+    private int maxTail = 40;
     private final List<AmbientSource> ambient = new ArrayList<>();
     private Duration timeout = DEFAULT_INFERENCE_TIMEOUT;
     private RetryPolicy retryPolicy = DEFAULT_RETRY_POLICY;
@@ -370,13 +362,10 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     }
 
     @Override
-    public ContextConfig summaries(Summarizer source) {
-      summaries.add(source);
-      return this;
-    }
-
-    @Override
     public ContextConfig maxTail(int turns) {
+      if (turns <= 0) {
+        throw new IllegalArgumentException("maxTail must be positive");
+      }
       this.maxTail = turns;
       return this;
     }
@@ -409,10 +398,6 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
 
     int maxTail() {
       return maxTail;
-    }
-
-    List<Summarizer> summaries() {
-      return List.copyOf(summaries);
     }
 
     List<AmbientSource> ambient() {

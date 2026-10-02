@@ -85,7 +85,8 @@ final class OpenAiRendering {
   /** A summary's text, tagged with the turn range it stands for. */
   static String summary(Summary summary) {
     return "<summary from=\"%d\" through=\"%d\">\n%s\n</summary>"
-        .formatted(summary.from().value(), summary.through().value(), text(summary.content()));
+        .formatted(
+            summary.chapter().from().value(), summary.chapter().through().value(), summary.text());
   }
 
   /**

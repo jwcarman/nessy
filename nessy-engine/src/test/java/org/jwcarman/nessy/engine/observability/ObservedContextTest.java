@@ -29,10 +29,8 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
 
@@ -71,19 +69,6 @@ class ObservedContextTest {
   private Observation.Context only() {
     assertThat(stopped).hasSize(1);
     return stopped.getFirst();
-  }
-
-  @Test
-  void a_summary_source_is_read_as_semconvs_search_memory() {
-    Summarizer source = _ -> List.of(Summary.text(new TurnId(1), new TurnId(4), "turns 1-4"));
-
-    ObservedSummarizer.wrap(source, registry).forAgent(AGENT);
-
-    assertThat(only().getContextualName()).isEqualTo("search_memory");
-    assertThat(only().getLowCardinalityKeyValue("gen_ai.operation.name").getValue())
-        .isEqualTo("search_memory");
-    assertThat(only().getHighCardinalityKeyValue("gen_ai.memory.record.count").getValue())
-        .isEqualTo("1");
   }
 
   @Test

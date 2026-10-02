@@ -79,13 +79,4 @@ public interface HarnessConfig<SELF extends HarnessConfig<SELF>> {
    * true when a turn began.
    */
   SELF ambient(AmbientSource source);
-
-  /**
-   * Somewhere older turns are recalled from, shown above the recent ones.
-   *
-   * <p>Here for the same reason as the rest: an episodic memory contributes tools, an index and a
-   * source of summaries together, and an application should not have to know that installing it
-   * means three different calls in three different places.
-   */
-  SELF summaries(Summarizer source);
 }

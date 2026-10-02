@@ -30,9 +30,8 @@ import org.jwcarman.nessy.engine.store.TurnHistory;
  * One agent's event stream, read as the turns it amounts to.
  *
  * <p>What lets the direct door use the same {@link org.jwcarman.nessy.engine.inference
- * .ContextAssembler} the queued one does, and with it the same ambient sources, the same tail
- * window and the same summaries. Assembling a context is one job; which door asked is not part of
- * it.
+ * .ContextAssembler} the queued one does, and with it the same ambient sources and the same tail
+ * window. Assembling a context is one job; which door asked is not part of it.
  *
  * <p><b>The cap is applied in memory, which the interface warns about.</b> A store that can count
  * and slice in a query should; this one holds an append-only stream and has to fold it to know

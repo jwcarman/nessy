@@ -29,7 +29,6 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.turn.Input;
-import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.TurnResult;
 
@@ -76,29 +75,10 @@ class ValueValidationTest {
   }
 
   @Test
-  void the_default_summarizer_and_the_default_reach() {
-    AgentId agent = AgentId.random();
-    assertThat(Summarizer.none().forAgent(agent)).isEmpty();
-    assertThat(Summarizer.none().summarizedThrough(agent)).isEmpty();
-
-    Summarizer two =
-        _ ->
-            List.of(
-                Summary.text(new TurnId(1), new TurnId(3), "a"),
-                Summary.text(new TurnId(5), new TurnId(9), "b"));
-    assertThat(two.summarizedThrough(agent)).contains(new TurnId(9));
-  }
-
-  @Test
   void a_constant_ambient_is_a_source_that_always_answers() {
     List<AmbientSource> added = new ArrayList<>();
     ContextConfig config =
         new ContextConfig() {
-          @Override
-          public ContextConfig summaries(Summarizer source) {
-            return this;
-          }
-
           @Override
           public ContextConfig maxTail(int turns) {
             return this;

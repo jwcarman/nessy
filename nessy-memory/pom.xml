@@ -44,8 +44,6 @@
 
   <modules>
     <module>notebook</module>
-    <module>summarizing</module>
-    <module>episodic</module>
   </modules>
 
 </project>

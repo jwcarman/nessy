@@ -272,7 +272,10 @@ public final class AnthropicRequests {
   private static Drafted draftSummary(Summary summary) {
     String text =
         "<summary from=\"%d\" through=\"%d\">\n%s\n</summary>"
-            .formatted(summary.from().value(), summary.through().value(), text(summary.content()));
+            .formatted(
+                summary.chapter().from().value(),
+                summary.chapter().through().value(),
+                summary.text());
     return new Drafted(
         MessageParam.Role.USER,
         List.of(ContentBlockParam.ofText(TextBlockParam.builder().text(text).build())));

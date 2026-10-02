@@ -30,11 +30,9 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Input;
-import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.engine.store.TurnHistories;
@@ -43,8 +41,7 @@ import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
 
 /**
- * Summaries, then the tail, then background -- and what an assembler ASKS FOR matters as much as
- * what it returns.
+ * The tail, then background -- and what an assembler ASKS FOR matters as much as what it returns.
  *
  * <p>An assembler that read the whole story and threw most of it away would pass any test written
  * only against its output while defeating the point of the cap. So the stub records the requests,
@@ -66,11 +63,6 @@ class ContextAssemblerTest {
 
   private static List<Turn> turns(long from, long through) {
     return IntStream.rangeClosed((int) from, (int) through).mapToObj(i -> turn(i)).toList();
-  }
-
-  private static Summary summary(long from, long through) {
-    return Summary.text(
-        new TurnId(from), new TurnId(through), "turns %d-%d".formatted(from, through));
   }
 
   private static InferenceInvocation invocation() {
@@ -125,106 +117,18 @@ class ContextAssemblerTest {
     }
   }
 
-  /**
-   * A source that has summarised further than it chooses to show: the tail must begin after what it
-   * has summarised, not after what it showed, or the head it summarised comes back as turns.
-   */
-  @Test
-  void theTailBeginsAfterWhatWasSummarisedNotAfterWhatWasShown() {
-    RecordingHistories histories = new RecordingHistories(turns(1, 12));
-    Summarizer selective =
-        new Summarizer() {
-          @Override
-          public List<Summary> forAgent(AgentId agentId) {
-            // Shows only the first of its two summaries, as a relevance filter might.
-            return List.of(Summary.text(new TurnId(1), new TurnId(4), "the beginning"));
-          }
-
-          @Override
-          public Optional<TurnId> summarizedThrough(AgentId agentId) {
-            return Optional.of(new TurnId(8));
-          }
-        };
-
-    InferenceContext context = assembler(histories, List.of(selective), 20).assemble(invocation());
-
-    assertThat(context.summaries()).hasSize(1);
-    assertThat(ids(context.turns())).containsExactly(9L, 10L, 11L, 12L);
-    assertThat(histories.tailsAfter).containsExactly(8L);
-  }
-
-  private static ContextAssembler assembler(
-      TurnHistories histories, List<Summarizer> summaries, int maxTail) {
-    return new ContextAssembler(histories, summaries, maxTail, List.of());
-  }
-
-  /** A source that ranks by relevance is told what is being answered: the last turn of the tail. */
-  @Test
-  void a_summarizer_is_handed_the_turn_being_answered() {
-    RecordingHistories histories = new RecordingHistories(turns(1, 12));
-    List<Long> askedAbout = new ArrayList<>();
-    Summarizer ranking =
-        new Summarizer() {
-          @Override
-          public List<Summary> forAgent(AgentId agentId) {
-            throw new AssertionError("the engine asks with the current turn");
-          }
-
-          @Override
-          public List<Summary> forAgent(AgentId agentId, Turn current) {
-            askedAbout.add(current.id().value());
-            return List.of(Summary.text(new TurnId(1), new TurnId(4), "the beginning"));
-          }
-
-          @Override
-          public Optional<TurnId> summarizedThrough(AgentId agentId) {
-            return Optional.of(new TurnId(4));
-          }
-        };
-
-    InferenceContext context = assembler(histories, List.of(ranking), 20).assemble(invocation());
-
-    assertThat(askedAbout).containsExactly(12L);
-    assertThat(context.summaries()).hasSize(1);
-    assertThat(ids(context.turns())).first().isEqualTo(5L);
-  }
-
-  /** With no story at all there is no turn to rank against, and the plain question is asked. */
-  @Test
-  void with_no_turns_a_summarizer_is_asked_without_one() {
-    List<Summary> asked = List.of(Summary.text(new TurnId(1), new TurnId(1), "odd"));
-    Summarizer plain =
-        new Summarizer() {
-          @Override
-          public List<Summary> forAgent(AgentId agentId) {
-            return List.of();
-          }
-
-          @Override
-          public List<Summary> forAgent(AgentId agentId, Turn current) {
-            return asked;
-          }
-
-          @Override
-          public Optional<TurnId> summarizedThrough(AgentId agentId) {
-            return Optional.empty();
-          }
-        };
-
-    InferenceContext context =
-        assembler(new RecordingHistories(List.of()), List.of(plain), 5).assemble(invocation());
-
-    assertThat(context.summaries()).isEmpty();
+  private static ContextAssembler assembler(TurnHistories histories, int maxTail) {
+    return new ContextAssembler(histories, maxTail, List.of());
   }
 
   @Nested
-  class WithNoSummaries {
+  class The_tail {
 
     @Test
     void the_tail_is_the_last_maxTail_turns_of_the_whole_story() {
       RecordingHistories histories = new RecordingHistories(turns(1, 30));
 
-      InferenceContext context = assembler(histories, List.of(), 5).assemble(invocation());
+      InferenceContext context = assembler(histories, 5).assemble(invocation());
 
       assertThat(context.summaries()).isEmpty();
       assertThat(ids(context.turns())).containsExactly(26L, 27L, 28L, 29L, 30L);
@@ -235,7 +139,7 @@ class ContextAssemblerTest {
     void the_cap_is_handed_to_the_store_rather_than_applied_after_reading_everything() {
       RecordingHistories histories = new RecordingHistories(turns(1, 30));
 
-      assembler(histories, List.of(), 5).assemble(invocation());
+      assembler(histories, 5).assemble(invocation());
 
       assertThat(histories.windows).containsExactly(5);
       assertThat(histories.tailsAfter)
@@ -246,101 +150,9 @@ class ContextAssemblerTest {
     @Test
     void an_empty_story_assembles_to_nothing_rather_than_failing() {
       InferenceContext context =
-          assembler(new RecordingHistories(List.of()), List.of(), 5).assemble(invocation());
+          assembler(new RecordingHistories(List.of()), 5).assemble(invocation());
 
       assertThat(context.turns()).isEmpty();
-    }
-  }
-
-  @Nested
-  class WithSummaries {
-
-    @Test
-    void the_summaries_come_first_and_the_tail_is_everything_after_the_last_one() {
-      RecordingHistories histories = new RecordingHistories(turns(1, 30));
-      Summarizer source = _ -> List.of(summary(1, 10), summary(11, 20));
-
-      InferenceContext context = assembler(histories, List.of(source), 50).assemble(invocation());
-
-      assertThat(context.summaries())
-          .extracting(s -> s.through().value())
-          .containsExactly(10L, 20L);
-      assertThat(ids(context.turns()))
-          .containsExactly(21L, 22L, 23L, 24L, 25L, 26L, 27L, 28L, 29L, 30L);
-      assertThat(histories.tailsAfter)
-          .as("read as a tail from the last summary")
-          .containsExactly(20L);
-      assertThat(histories.tailCaps).as("with the cap handed to the store").containsExactly(50);
-      assertThat(histories.windows).as("and never as an uncapped window").isEmpty();
-    }
-
-    /**
-     * <b>A gap between summaries is not filled.</b> A source that returns only the relevant
-     * episodes has left the others out on purpose; filling in would load every turn it declined to
-     * summarise and make the context larger, not smaller.
-     */
-    @Test
-    void a_gap_between_summaries_is_left_out_rather_than_filled_with_turns() {
-      RecordingHistories histories = new RecordingHistories(turns(1, 30));
-      Summarizer relevant = _ -> List.of(summary(1, 10), summary(21, 25));
-
-      InferenceContext context = assembler(histories, List.of(relevant), 50).assemble(invocation());
-
-      assertThat(ids(context.turns()))
-          .as("turns 11-20 are neither summarised nor sent")
-          .containsExactly(26L, 27L, 28L, 29L, 30L);
-    }
-
-    @Test
-    void the_tail_is_still_capped_at_maxTail() {
-      RecordingHistories histories = new RecordingHistories(turns(1, 30));
-      Summarizer source = _ -> List.of(summary(1, 10));
-
-      InferenceContext context = assembler(histories, List.of(source), 3).assemble(invocation());
-
-      assertThat(ids(context.turns())).containsExactly(28L, 29L, 30L);
-    }
-
-    @Test
-    void several_sources_are_concatenated_in_the_order_they_were_added() {
-      RecordingHistories histories = new RecordingHistories(turns(1, 30));
-      Summarizer episodes = _ -> List.of(summary(1, 10));
-      Summarizer folded = _ -> List.of(summary(11, 20));
-
-      InferenceContext context =
-          assembler(histories, List.of(episodes, folded), 50).assemble(invocation());
-
-      assertThat(context.summaries()).extracting(s -> s.from().value()).containsExactly(1L, 11L);
-    }
-
-    /** The same turns twice, in two forms, is a confused source rather than a selective one. */
-    @Test
-    void summaries_that_overlap_are_refused() {
-      RecordingHistories histories = new RecordingHistories(turns(1, 30));
-      Summarizer confused = _ -> List.of(summary(1, 15), summary(10, 20));
-
-      var assembler = assembler(histories, List.of(confused), 50);
-      var invocation = invocation();
-      assertThatThrownBy(() -> assembler.assemble(invocation))
-          .isInstanceOf(IllegalStateException.class)
-          .hasMessageContaining("overlap");
-    }
-
-    /**
-     * The turn being answered is always the newest one and is always in the story by the time this
-     * runs, so a summary that reaches it leaves nothing after it. That is a source summarising the
-     * question before it has been answered, and the model must not be asked to reply to a recap.
-     */
-    @Test
-    void a_summary_that_reaches_the_turn_in_flight_is_refused() {
-      RecordingHistories histories = new RecordingHistories(turns(1, 30));
-      Summarizer tooEager = _ -> List.of(summary(1, 30));
-
-      var assembler = assembler(histories, List.of(tooEager), 50);
-      var invocation = invocation();
-      assertThatThrownBy(() -> assembler.assemble(invocation))
-          .isInstanceOf(IllegalStateException.class)
-          .hasMessageContaining("turn being answered");
     }
   }
 
@@ -348,7 +160,7 @@ class ContextAssemblerTest {
   void it_reads_the_agent_the_invocation_names() {
     RecordingHistories histories = new RecordingHistories(turns(1, 3));
 
-    assembler(histories, List.of(), 5).assemble(invocation());
+    assembler(histories, 5).assemble(invocation());
 
     assertThat(histories.narrowedTo).containsExactly("chat/" + AGENT.value());
   }
@@ -369,7 +181,7 @@ class ContextAssemblerTest {
                         }));
 
     InferenceContext context =
-        new ContextAssembler(histories, List.of(), 5, List.of(clock)).assemble(invocation());
+        new ContextAssembler(histories, 5, List.of(clock)).assemble(invocation());
 
     assertThat(askedFor).containsExactly(AGENT);
     assertThat(context.ambient()).extracting(Ambient::kind).containsExactly("clock");
@@ -379,8 +191,7 @@ class ContextAssemblerTest {
   @Test
   void a_non_positive_cap_is_rejected_at_construction() {
     RecordingHistories empty = new RecordingHistories(List.of());
-    List<Summarizer> noSummaries = List.of();
-    assertThatThrownBy(() -> assembler(empty, noSummaries, 0))
+    assertThatThrownBy(() -> assembler(empty, 0))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("maxTail");
   }

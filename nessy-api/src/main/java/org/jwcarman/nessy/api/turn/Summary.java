@@ -15,13 +15,11 @@
  */
 package org.jwcarman.nessy.api.turn;
 
-import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.block.Block;
 
 /**
- * What stands in for a run of turns that are no longer sent whole.
+ * The text shown to a model in place of one chapter's turns.
  *
  * <p><b>Not ambient.</b> Ambient is a view of the world as it stands -- a note, a plan, the time --
  * regenerated on every call and never written down. A summary is the opposite on every count: it is
@@ -29,43 +27,26 @@ import org.jwcarman.nessy.api.block.Block;
  * Letting one stand in for the other would let a summary be quietly dropped like a note, or a note
  * be treated as the record of a conversation.
  *
- * <p><b>The range is whole turns.</b> A turn id is the seq of the input that opened it, so {@code
- * from} and {@code through} sit on the same number line as every entry -- and because they are turn
- * ids rather than arbitrary seqs, a summary can never split a turn, leaving a reply whose question
- * was compressed away.
+ * <p>It is written once and never replaced. Several of them cover a long story in successive
+ * chapters: the next stretch of turns becomes the next summary, and nothing already written is
+ * rewritten or re-costed.
  *
- * <p>Several of them may cover a long story in successive ranges. That is what makes folding cheap
- * and append-only: the next stretch of turns becomes the next summary, and nothing already written
- * is rewritten or re-costed.
- *
- * @param from the first turn this covers
- * @param through the last turn this covers, inclusive
- * @param content what to say in place of those turns
+ * @param chapter the closed run of turns this stands in for
+ * @param text what to say in place of those turns
  */
-public record Summary(TurnId from, TurnId through, List<Block.SummaryContent> content) {
+public record Summary(Chapter chapter, String text) {
 
   public Summary {
-    Objects.requireNonNull(from, "from must not be null");
-    Objects.requireNonNull(through, "through must not be null");
-    Objects.requireNonNull(content, "content must not be null");
-    if (through.value() < from.value()) {
-      throw new IllegalArgumentException(
-          "a summary must run forwards: from %s through %s".formatted(from, through));
-    }
-    if (content.isEmpty()) {
+    Objects.requireNonNull(chapter, "chapter must not be null");
+    Objects.requireNonNull(text, "text must not be null");
+    if (text.isBlank()) {
       // A summary that says nothing about the turns it replaces has replaced them with silence.
       throw new IllegalArgumentException("a summary must say something");
     }
-    content = List.copyOf(content);
-  }
-
-  /** The common case: prose standing in for a run of turns. */
-  public static Summary text(TurnId from, TurnId through, String text) {
-    return new Summary(from, through, List.of(new Block.Text(text)));
   }
 
   /** Whether {@code turn} is one of the turns this stands in for. */
   public boolean covers(TurnId turn) {
-    return turn.value() >= from.value() && turn.value() <= through.value();
+    return chapter.covers(turn);
   }
 }

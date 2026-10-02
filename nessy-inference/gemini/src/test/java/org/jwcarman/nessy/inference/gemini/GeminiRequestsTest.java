@@ -37,6 +37,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
@@ -45,6 +47,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.api.turn.Chapter;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.Summary;
@@ -62,6 +65,11 @@ import tools.jackson.databind.json.JsonMapper;
 /** The projection onto Gemini's generateContent wire, with no network anywhere near it. */
 @DisplayName("Gemini requests")
 class GeminiRequestsTest {
+
+  private static Chapter chapter(long from, long through) {
+    return new Chapter(
+        new AgentType("chat"), AgentId.random(), new TurnId(from), new TurnId(through));
+  }
 
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
   private static final SystemPrompt SYSTEM = new SystemPrompt("you are a helpful assistant");
@@ -119,7 +127,7 @@ class GeminiRequestsTest {
     void a_summary_stands_first_as_a_bracketed_user_turn() {
       InferenceContext context =
           new InferenceContext(
-              List.of(Summary.text(new TurnId(1), new TurnId(9), "they talked about lakes")),
+              List.of(new Summary(chapter(1, 9), "they talked about lakes")),
               List.of(open(11, "and monsters?")),
               List.of());
 

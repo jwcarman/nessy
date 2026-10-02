@@ -43,6 +43,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
@@ -51,6 +53,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.api.turn.Chapter;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.Summary;
@@ -75,6 +78,11 @@ import tools.jackson.databind.json.JsonMapper;
  * on the built params rather than only on what a live call happens to accept.
  */
 class OpenAiResponsesRequestsTest {
+
+  private static Chapter chapter(long from, long through) {
+    return new Chapter(
+        new AgentType("chat"), AgentId.random(), new TurnId(from), new TurnId(through));
+  }
 
   private static final SystemPrompt SYSTEM = new SystemPrompt("you are a helpful assistant");
   private static final InferenceOptions OPTIONS = new InferenceOptions("gpt-4o", 1024);
@@ -268,9 +276,7 @@ class OpenAiResponsesRequestsTest {
         new InferenceRequest(
             SYSTEM,
             new InferenceContext(
-                List.of(Summary.text(new TurnId(1), new TurnId(3), "they met")),
-                List.of(open(4, "hi")),
-                List.of()),
+                List.of(new Summary(chapter(1, 3), "they met")), List.of(open(4, "hi")), List.of()),
             Toolset.none(),
             OPTIONS);
 

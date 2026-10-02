@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.examples.chatweb;
 
-import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.List;
 import javax.sql.DataSource;
@@ -24,19 +23,9 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.embedding.Embedder;
-import org.jwcarman.nessy.api.embedding.EmbedderFactory;
 import org.jwcarman.nessy.api.tool.Approver;
-import org.jwcarman.nessy.backend.jdbc.JdbcLeases;
 import org.jwcarman.nessy.backend.jdbc.JdbcRowLocks;
-import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
-import org.jwcarman.nessy.engine.store.TurnHistories;
-import org.jwcarman.nessy.inference.InferenceOptions;
-import org.jwcarman.nessy.inference.InferenceProvider;
-import org.jwcarman.nessy.memory.episodic.EpisodeSummarizer;
-import org.jwcarman.nessy.memory.episodic.EpisodeTools;
-import org.jwcarman.nessy.memory.episodic.JdbcEpisodes;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
@@ -44,15 +33,12 @@ import org.jwcarman.nessy.planning.JdbcPlans;
 import org.jwcarman.nessy.planning.PlanTools;
 import org.jwcarman.nessy.planning.Plans;
 import org.jwcarman.nessy.spring.boot.NessyProperties;
-import org.springframework.beans.factory.ListableBeanFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.PlatformTransactionManager;
 
 /**
- * The chat agent: a notebook, a plan, episodes, a date tool, and an email tool a person has to
- * approve.
+ * The chat agent: a notebook, a plan, a date tool, and an email tool a person has to approve.
  *
  * <p>The starter supplies the factory, the provider (from {@code nessy.provider}) and the model
  * (from {@code nessy.model}); this class declares the harness itself because the starter's free one
@@ -88,68 +74,9 @@ public class ChatConfiguration {
     return new JdbcRowLocks(dataSource, transactions);
   }
 
-  /**
-   * The episode summariser's exclusion, kept apart from {@link #agentLocks}: opportunistic work
-   * over a model call, where somebody else running it instead is a fine outcome and nobody must be
-   * held open across the call. How long a lease taken under it is believed held for is the
-   * summariser's own call -- see {@link #episodeSummarizer} -- since only it knows how long its
-   * work takes.
-   */
-  @Bean
-  public Leases agentLeases(DataSource dataSource) {
-    return new JdbcLeases(dataSource);
-  }
-
   @Bean
   public Plans plans(DataSource dataSource) {
     return new JdbcPlans(dataSource, TYPE);
-  }
-
-  private static final int MAX_TAIL = 20;
-
-  /**
-   * The store mints its own embedder, because the model the vectors were written with is a fact of
-   * the store rather than of the application. This one takes the factory's default -- {@code
-   * nessy.embedder} and {@code nessy.embedding-model} -- when the application names one, and ranks
-   * by recency when it does not.
-   */
-  @Bean
-  public JdbcEpisodes episodes(
-      DataSource dataSource, EmbedderFactory embedders, NessyProperties properties) {
-    Embedder embedder = properties.embedder() == null ? null : embedders.create(c -> {});
-    return JdbcEpisodes.of(c -> c.dataSource(dataSource).agentType(TYPE).embedder(embedder));
-  }
-
-  /**
-   * Summarises each episode in the background, under a lease, once the model has begun the next.
-   * The model then sees the summaries of the episodes that bear on the current turn and the turns
-   * of the current episode, up to {@value #MAX_TAIL} of them. The lease is generous because a local
-   * thinking model can take minutes over a long episode; a hosted one takes seconds.
-   */
-  @Bean
-  public EpisodeSummarizer episodeSummarizer(
-      TurnHistories histories,
-      JdbcEpisodes episodes,
-      Leases agentLeases,
-      ListableBeanFactory beans,
-      NessyProperties properties,
-      ObjectProvider<ObservationRegistry> observations) {
-    // A registry can hold more than one InferenceProvider bean now, so this asks for the one
-    // nessy.provider names -- the same fact the harness's own factory default reads -- rather
-    // than for "the" InferenceProvider, which no longer exists as a single bean.
-    InferenceProvider provider = beans.getBean(properties.provider(), InferenceProvider.class);
-    return EpisodeSummarizer.of(
-        c ->
-            c.agentType(TYPE)
-                .episodes(episodes)
-                .histories(histories)
-                .leases(agentLeases)
-                .leaseTtl(Duration.ofMinutes(10))
-                .inference(
-                    provider, new InferenceOptions(properties.model(), properties.maxTokens()))
-                // Each summary is a nessy.summary span with its model call inside, when the
-                // application is tracing.
-                .observations(observations.getIfAvailable(() -> ObservationRegistry.NOOP)));
   }
 
   /**
@@ -166,36 +93,25 @@ public class ChatConfiguration {
       SendEmailTool email,
       Approver desk,
       Notebook notebook,
-      Plans plans,
-      JdbcEpisodes episodes,
-      EpisodeSummarizer summarizer) {
+      Plans plans) {
     return factory.<String>create(
         TYPE,
         config ->
             config
                 .inputRenderer(said -> List.of(new Block.Text(said)))
                 .systemPrompt(properties.resolveSystemPrompt())
-                // Hears every turn end and summarises any episode that has closed -- on its own
-                // thread, because a summary is a model call, and under a lease, so several
-                // instances never summarise one agent twice.
-                .listener(summarizer.listener())
-                // Three sources of background: the notebook's index, the current plan and the
-                // episode index. All ambient, so they are asked afresh every call and never
-                // written to the story -- the model sees them as they stand NOW.
+                // Two sources of background: the notebook's index and the current plan. Both
+                // ambient, so they are asked afresh every call and never written to the story --
+                // the model sees them as they stand NOW.
                 .inference(
                     in ->
                         in.model(properties.model())
                             .maxTokens(properties.maxTokens())
                             .context(
                                 ctx ->
-                                    ctx.summaries(episodes)
-                                        .maxTail(MAX_TAIL)
-                                        .ambient(NotebookTools.index(notebook))
-                                        .ambient(PlanTools.plan(plans))
-                                        .ambient(EpisodeTools.index(episodes))))
+                                    ctx.ambient(NotebookTools.index(notebook))
+                                        .ambient(PlanTools.plan(plans))))
                 .tool(new DaysUntilTool())
-                .tool(EpisodeTools.begin(episodes))
-                .tool(EpisodeTools.recall(episodes))
                 .tool(NotebookTools.remember(notebook))
                 .tool(NotebookTools.revise(notebook))
                 .tool(NotebookTools.recall(notebook))

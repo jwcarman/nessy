@@ -48,23 +48,6 @@ then runs the example alone. Run the `install` again after changing any module.
 Then open <http://localhost:8080>. Ask it to email someone and watch the card
 appear.
 
-The conversation is kept as episodes: the model calls `begin_episode` when
-the subject changes, each closed episode is summarised in the background, and
-the summaries that bear on the current turn are shown above the recent turns.
-Name the `local` embedder and a model it serves, and "bear on" is measured by
-embedding; leave them out and the most recent episodes are shown instead:
-
-```bash
-CHAT_EMBEDDER=local \
-CHAT_EMBEDDING_MODEL=text-embedding-nomic-embed-text-v1.5 \
-  ./mvnw -q -pl :nessy-example-chat-web spring-boot:run
-```
-
-`local` is a custom embedder in `application.yml`, at the same endpoint as the
-chat model. A local server may answer any model name with whatever it has
-loaded, and the model a store records is the one it asked for, so name the
-model the server actually serves.
-
 OpenAI itself works too: export `OPENAI_API_KEY`, which lights the starter's `openai`
 provider, and name that provider instead of the `lmstudio` default:
 
@@ -76,7 +59,7 @@ CHAT_MODEL_ID=gpt-4o-mini \
 
 ## What it does not do
 
-**It needs Postgres.** Agents, their stories, episodes, notes, plans and
+**It needs Postgres.** Agents, their stories, notes, plans and
 outstanding work are all rows. The `docker-compose.yml` beside this README runs
 the database the defaults point at (`localhost:5432/nessy`, user `nessy`, password `nessy`);
 `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` and

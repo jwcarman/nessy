@@ -32,6 +32,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
@@ -40,6 +42,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.api.turn.Chapter;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.Summary;
@@ -62,6 +65,11 @@ import tools.jackson.databind.json.JsonMapper;
  * if this code never touches it.
  */
 class AnthropicRequestsTest {
+
+  private static Chapter chapter(long from, long through) {
+    return new Chapter(
+        new AgentType("chat"), AgentId.random(), new TurnId(from), new TurnId(through));
+  }
 
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
   private static final Map<String, String> NONE = Map.of();
@@ -764,8 +772,7 @@ class AnthropicRequestsTest {
     /** A summary stands where turns once stood, and is marked like the user-side message it is. */
     @Test
     void a_summary_before_the_first_question_carries_the_second_marker() {
-      Summary summary =
-          new Summary(new TurnId(1), new TurnId(5), List.of(new Block.Text("what came before")));
+      Summary summary = new Summary(chapter(1, 5), "what came before");
       InferenceRequest request =
           new InferenceRequest(
               SYSTEM,
@@ -835,7 +842,7 @@ class AnthropicRequestsTest {
     void a_summary_stands_first_as_a_bracketed_user_message() {
       InferenceContext context =
           new InferenceContext(
-              List.of(Summary.text(new TurnId(1), new TurnId(9), "they talked about lakes")),
+              List.of(new Summary(chapter(1, 9), "they talked about lakes")),
               List.of(open(11, "and monsters?")),
               List.of());
       MessageCreateParams params =

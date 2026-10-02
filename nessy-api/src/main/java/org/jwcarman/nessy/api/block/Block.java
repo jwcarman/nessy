@@ -119,16 +119,6 @@ public sealed interface Block {
    */
   sealed interface ToolResultContent extends Block {}
 
-  /**
-   * What a summary may say.
-   *
-   * <p>Prose about turns that are no longer sent whole. Its own position rather than a reuse of
-   * {@link AmbientContent}, for the same reason a summary is not ambient: this stands in for things
-   * that were said, and a container that accepted either could not tell the record of a
-   * conversation from a note about the weather.
-   */
-  sealed interface SummaryContent extends Block {}
-
   // -------------------------------------------------------------------------------------
   // Kinds: each declares the positions it is legal in, and that is the only declaration.
   // -------------------------------------------------------------------------------------
@@ -147,7 +137,7 @@ public sealed interface Block {
    * stored so far begins with two newlines, which a blank check would have thrown away.
    */
   record Text(String text)
-      implements InputContent, AnswerContent, ToolResultContent, AmbientContent, SummaryContent {
+      implements InputContent, AnswerContent, ToolResultContent, AmbientContent {
 
     public Text {
       Objects.requireNonNull(text, "text must not be null");

@@ -23,14 +23,22 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.api.turn.Chapter;
 import org.jwcarman.nessy.api.turn.Summary;
 
 @DisplayName("The inference vocabulary")
 class InferenceTypesTest {
+
+  private static Chapter chapter(long from, long through) {
+    return new Chapter(
+        new AgentType("chat"), AgentId.random(), new TurnId(from), new TurnId(through));
+  }
 
   private static final List<Block.ActionRequestContent> ONLY_PROSE =
       List.of(new Block.Commentary("thinking"));
@@ -52,8 +60,7 @@ class InferenceTypesTest {
   void a_context_knows_whether_it_carries_summaries() {
     InferenceContext bare = InferenceContext.of(List.of());
     InferenceContext summarised =
-        new InferenceContext(
-            List.of(Summary.text(new TurnId(1), new TurnId(3), "a")), List.of(), List.of());
+        new InferenceContext(List.of(new Summary(chapter(1, 3), "a")), List.of(), List.of());
 
     assertThat(bare.hasSummaries()).isFalse();
     assertThat(summarised.hasSummaries()).isTrue();
