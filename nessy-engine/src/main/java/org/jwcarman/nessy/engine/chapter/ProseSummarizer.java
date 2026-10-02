@@ -29,6 +29,7 @@ import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferencePurpose;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Toolset;
@@ -141,7 +142,8 @@ public final class ProseSummarizer implements Summarizer {
                         List.of(), List.of(), List.of(), List.of(), asking, List.of()),
                     Toolset.none(),
                     options)
-                .asOneOff());
+                .asOneOff()
+                .withPurpose(InferencePurpose.SUMMARY));
     if (result instanceof InferenceResult.Truncated) {
       throw new IllegalStateException(
           "the summary of turns %s through %s was cut off at the output limit"

@@ -40,7 +40,13 @@ import org.jwcarman.nessy.api.SystemPrompt;
  * properties ask for, since an entry nobody reads back is paid for and never used. An adapter whose
  * vendor caches unasked has nothing to do.
  *
+ * <p><b>A request says what it is for.</b> Its {@link #purpose() purpose} -- answering a turn,
+ * summarising a chapter -- labels the span and the metrics recorded for the call, so spend can be
+ * split by it. A purpose and a one-off are separate things: one says what the call is for, the
+ * other whether its prefix will be sent again, and neither implies the other.
+ *
  * @param oneOff whether nothing this request sends will be sent again
+ * @param purpose what the call is for; never sent to the vendor
  */
 public record InferenceRequest(
     SystemPrompt systemPrompt,
@@ -48,7 +54,8 @@ public record InferenceRequest(
     Toolset toolset,
     InferenceOptions options,
     Optional<JsonSchema> outputSchema,
-    boolean oneOff) {
+    boolean oneOff,
+    InferencePurpose purpose) {
 
   public InferenceRequest {
     Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
@@ -56,16 +63,17 @@ public record InferenceRequest(
     Objects.requireNonNull(toolset, "toolset must not be null");
     Objects.requireNonNull(options, "options must not be null");
     Objects.requireNonNull(outputSchema, "outputSchema must not be null");
+    Objects.requireNonNull(purpose, "purpose must not be null");
   }
 
-  /** One of a series, as an agent's requests are. */
+  /** One of a series, as an agent's requests are, answering its turn. */
   public InferenceRequest(
       SystemPrompt systemPrompt,
       InferenceContext context,
       Toolset toolset,
       InferenceOptions options,
       Optional<JsonSchema> outputSchema) {
-    this(systemPrompt, context, toolset, options, outputSchema, false);
+    this(systemPrompt, context, toolset, options, outputSchema, false, InferencePurpose.ANSWER);
   }
 
   /** Asks for prose: no shape is required of the answer. */
@@ -79,6 +87,13 @@ public record InferenceRequest(
 
   /** This request as a one-off: nothing it sends will be sent again. */
   public InferenceRequest asOneOff() {
-    return new InferenceRequest(systemPrompt, context, toolset, options, outputSchema, true);
+    return new InferenceRequest(
+        systemPrompt, context, toolset, options, outputSchema, true, purpose);
+  }
+
+  /** This request for another purpose; whether it is a one-off is unchanged. */
+  public InferenceRequest withPurpose(InferencePurpose purpose) {
+    return new InferenceRequest(
+        systemPrompt, context, toolset, options, outputSchema, oneOff, purpose);
   }
 }

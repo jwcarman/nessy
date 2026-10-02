@@ -452,6 +452,12 @@ The defaults, when a property is absent:
   nowhere, whatever the property says. Nothing it sends is sent again, so a
   cache write would be paid for and never read. The engine's summariser sends
   one-offs.
+- A request also says what it is for, with `InferenceRequest.withPurpose`
+  (`InferencePurpose.ANSWER` unless it says otherwise, `SUMMARY` for the
+  engine's summariser). The purpose labels the span and the metrics recorded
+  for the call and is never sent to the vendor. It is separate from being a
+  one-off: one says what the call is for, the other whether its prefix will be
+  sent again, and neither implies the other.
 
 The constants are `THINKING_TYPE`, `THINKING_BUDGET` and `CACHE_TTL` on
 `AnthropicProperties`. An agent type's property overrides the provider's, so

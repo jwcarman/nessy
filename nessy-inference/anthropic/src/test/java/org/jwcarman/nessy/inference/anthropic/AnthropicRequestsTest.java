@@ -54,6 +54,7 @@ import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferencePurpose;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
@@ -925,6 +926,26 @@ class AnthropicRequestsTest {
       assertThat(params.system().orElseThrow().asTextBlockParams())
           .isNotEmpty()
           .allSatisfy(block -> assertThat(block.cacheControl()).isEmpty());
+    }
+
+    /** What a call is for is the application's business and the meters'; the vendor is not told. */
+    @Test
+    void the_purpose_of_a_request_changes_nothing_that_is_sent() {
+      InferenceRequest answer =
+          new InferenceRequest(
+              SYSTEM,
+              InferenceContext.of(conversation(15)),
+              Toolset.of(List.of(ABoundTool.offer("lookup"))),
+              options());
+      InferenceRequest summary = answer.withPurpose(InferencePurpose.SUMMARY);
+
+      MessageCreateParams asAnswer =
+          AnthropicRequests.toParams(answer, caching(AnthropicCacheTtl.FIVE_MINUTES), MAPPER);
+      MessageCreateParams asSummary =
+          AnthropicRequests.toParams(summary, caching(AnthropicCacheTtl.FIVE_MINUTES), MAPPER);
+
+      assertThat(blocksOf(asAnswer)).isNotEmpty();
+      assertThat(asSummary).isEqualTo(asAnswer);
     }
 
     @Test

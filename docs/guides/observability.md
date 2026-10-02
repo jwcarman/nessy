@@ -58,6 +58,37 @@ value is 606 makes a new time series per distinct count. What actually
 answered is `gen_ai.response.model` — not always what was asked for, since
 a vendor may resolve an alias to a dated build and price against that.
 
+**Every model call says what it is for.** The request carries an
+`InferencePurpose`, and the `chat` span, the `gen_ai.client.operation.duration`
+histogram and the `gen_ai.client.token.usage` histogram all carry it as the
+low-cardinality key `nessy.inference.purpose`. Two values are supplied:
+`answer`, an agent answering its turn (the default for a request), and
+`summary`, a chapter being summarised. An application may make its own with
+`new InferencePurpose("triage")`; a value is 1 to 32 characters of lower-case
+ASCII letters, digits, `-` and `_`, and each one in use is a series in both
+metrics, so the set stays small. The purpose is never sent to the vendor.
+Prometheus spells the key `nessy_inference_purpose` and the token type
+`gen_ai_token_type`; the series below are the token histogram's sum, with the
+unit it is recorded in appended to its name.
+
+Spend by purpose, in tokens over the last day:
+
+```
+sum by (nessy_inference_purpose, gen_ai_token_type) (
+  increase(gen_ai_client_token_usage_token_sum[1d]))
+```
+
+The cache hit ratio of answering calls only, so a summary's uncached calls do
+not pull it down:
+
+```
+sum(increase(gen_ai_client_token_usage_token_sum{
+      gen_ai_token_type="cache_read", nessy_inference_purpose="answer"}[1d]))
+/
+sum(increase(gen_ai_client_token_usage_token_sum{
+      gen_ai_token_type="input", nessy_inference_purpose="answer"}[1d]))
+```
+
 **Every span says whose it is, the same way.** The agent type is
 `gen_ai.agent.name`, low cardinality, so a dashboard groups by it; the agent
 id is `gen_ai.conversation.id`, high cardinality, so a trace search finds

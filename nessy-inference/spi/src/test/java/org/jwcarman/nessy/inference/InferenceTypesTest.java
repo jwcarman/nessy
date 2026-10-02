@@ -157,6 +157,94 @@ class InferenceTypesTest {
       assertThat(oneOff.outputSchema()).isEqualTo(series.outputSchema());
       assertThat(series.oneOff()).isFalse();
     }
+
+    @Test
+    void is_an_answer_unless_it_says_otherwise() {
+      assertThat(request().purpose()).isEqualTo(InferencePurpose.ANSWER);
+    }
+
+    @Test
+    void with_a_purpose_is_the_same_request_for_that_purpose_and_still_a_one_off() {
+      InferenceRequest oneOff = request().asOneOff();
+
+      InferenceRequest summary = oneOff.withPurpose(InferencePurpose.SUMMARY);
+
+      assertThat(summary.purpose()).isEqualTo(InferencePurpose.SUMMARY);
+      assertThat(summary.oneOff()).isTrue();
+      assertThat(summary.systemPrompt()).isEqualTo(oneOff.systemPrompt());
+      assertThat(summary.context()).isEqualTo(oneOff.context());
+      assertThat(summary.toolset()).isEqualTo(oneOff.toolset());
+      assertThat(summary.options()).isEqualTo(oneOff.options());
+      assertThat(summary.outputSchema()).isEqualTo(oneOff.outputSchema());
+      assertThat(oneOff.purpose()).isEqualTo(InferencePurpose.ANSWER);
+    }
+
+    @Test
+    void as_a_one_off_keeps_its_purpose() {
+      InferenceRequest summary = request().withPurpose(InferencePurpose.SUMMARY);
+
+      assertThat(summary.asOneOff().purpose()).isEqualTo(InferencePurpose.SUMMARY);
+    }
+
+    @Test
+    void is_refused_without_a_purpose() {
+      InferenceRequest series = request();
+
+      assertThatThrownBy(() -> series.withPurpose(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessageContaining("purpose");
+    }
+  }
+
+  @Nested
+  class A_purpose {
+
+    @Test
+    void has_two_supplied_values() {
+      assertThat(InferencePurpose.ANSWER.value()).isEqualTo("answer");
+      assertThat(InferencePurpose.SUMMARY.value()).isEqualTo("summary");
+    }
+
+    @Test
+    void of_an_applications_own_is_accepted() {
+      assertThat(new InferencePurpose("triage-2_b").value()).isEqualTo("triage-2_b");
+      assertThat(new InferencePurpose("a".repeat(32)).value()).hasSize(32);
+    }
+
+    @Test
+    void is_refused_when_null() {
+      assertThatThrownBy(() -> new InferencePurpose(null)).isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void is_refused_when_empty() {
+      assertThatThrownBy(() -> new InferencePurpose(""))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("1 to 32 characters");
+    }
+
+    @Test
+    void is_refused_when_longer_than_thirty_two_characters() {
+      String tooLong = "a".repeat(33);
+
+      assertThatThrownBy(() -> new InferencePurpose(tooLong))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("1 to 32 characters");
+    }
+
+    @Test
+    void is_refused_with_an_upper_case_letter() {
+      assertThatThrownBy(() -> new InferencePurpose("Answer"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("lower-case");
+    }
+
+    @Test
+    void is_refused_with_a_space() {
+      assertThatThrownBy(() -> new InferencePurpose("chapter summary"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("lower-case");
+    }
   }
 
   @Nested

@@ -48,6 +48,7 @@ import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferencePurpose;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 
@@ -230,6 +231,18 @@ class ProseSummarizerTest {
       new ProseSummarizer(story, provider, OPTIONS).summarize(chapter(1, 1));
 
       assertThat(provider.requests).hasSize(1);
+      assertThat(provider.requests.getFirst().oneOff()).isTrue();
+    }
+
+    @Test
+    void the_request_says_it_is_a_summary() {
+      Story story = new Story(List.of(turn(1)));
+      Scripted provider = new Scripted(_ -> answer("the record"));
+
+      new ProseSummarizer(story, provider, OPTIONS).summarize(chapter(1, 1));
+
+      assertThat(provider.requests).hasSize(1);
+      assertThat(provider.requests.getFirst().purpose()).isEqualTo(InferencePurpose.SUMMARY);
       assertThat(provider.requests.getFirst().oneOff()).isTrue();
     }
 

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`InferencePurpose`**, what a model call is for, with the supplied values
+  `ANSWER` and `SUMMARY`. `InferenceRequest` gains `purpose` (`ANSWER` unless
+  it says otherwise) and `withPurpose`, and `ProseSummarizer` sends `SUMMARY`.
+  The `nessy.inference.purpose` key is on the model-call span and on the
+  `gen_ai.client.token.usage` and `gen_ai.client.operation.duration` metrics,
+  so spend and cache use can be split by purpose. It is never sent to the
+  vendor.
 - **`InferenceResult.Truncated`**, a reply the vendor cut off at the output
   limit. It holds the blocks written before it stopped, at least one of them
   text. All five adapters return it (Anthropic `max_tokens`, OpenAI chat

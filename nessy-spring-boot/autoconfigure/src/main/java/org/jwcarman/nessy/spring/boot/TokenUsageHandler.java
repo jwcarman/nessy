@@ -35,6 +35,9 @@ public final class TokenUsageHandler implements ObservationHandler<Observation.C
 
   public static final String TOKEN_USAGE = "gen_ai.client.token.usage";
 
+  /** What the call is for, as the model-call observation names it. */
+  private static final String PURPOSE = "nessy.inference.purpose";
+
   private final MeterRegistry meters;
 
   public TokenUsageHandler(MeterRegistry meters) {
@@ -77,7 +80,9 @@ public final class TokenUsageHandler implements ObservationHandler<Observation.C
     DistributionSummary.Builder summary =
         DistributionSummary.builder(TOKEN_USAGE).baseUnit("token").tag("gen_ai.token.type", type);
     for (KeyValue tag : context.getLowCardinalityKeyValues()) {
-      if (tag.getKey().startsWith("gen_ai.") && !tag.getKey().startsWith("gen_ai.response")) {
+      boolean semconv =
+          tag.getKey().startsWith("gen_ai.") && !tag.getKey().startsWith("gen_ai.response");
+      if (semconv || tag.getKey().equals(PURPOSE)) {
         summary.tag(tag.getKey(), tag.getValue());
       }
     }

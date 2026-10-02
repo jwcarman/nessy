@@ -55,6 +55,9 @@ public final class ObservedInferenceProvider implements InferenceProvider {
   private static final String RESPONSE_MODEL = "gen_ai.response.model";
   private static final String ERROR_TYPE = "error.type";
 
+  /** What the call is for, so spend and cache use can be split by it. */
+  private static final String PURPOSE = "nessy.inference.purpose";
+
   /** Whose call it is, read off the span this one opens under, so it reads the same as theirs. */
   private static final List<String> LOW_CARDINALITY_IDENTITY = List.of("gen_ai.agent.name");
 
@@ -107,6 +110,9 @@ public final class ObservedInferenceProvider implements InferenceProvider {
             .lowCardinalityKeyValue(OPERATION_NAME, "chat")
             .lowCardinalityKeyValue("gen_ai.provider.name", delegate.vendor())
             .lowCardinalityKeyValue("gen_ai.request.model", model)
+            // Short and plain by the purpose's own construction, which is what makes it safe as a
+            // label.
+            .lowCardinalityKeyValue(PURPOSE, request.purpose().value())
             // Set at START, not on outcome. Micrometer compares an observation's key set
             // against others recorded under the same name, so a chat that only sometimes
             // carried a finish reason would be a different shape from one that did.

@@ -51,6 +51,7 @@ import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferencePurpose;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.Toolset;
@@ -122,6 +123,38 @@ class ObservedTest {
 
     assertThat(tagOf(DURATION, Identity.AGENT_NAME)).isEqualTo("observed");
     assertThat(tagOf("nessy.approval", Identity.AGENT_NAME)).isEqualTo("ops");
+  }
+
+  @Test
+  void the_token_histogram_and_the_duration_say_what_the_call_was_for() {
+    InferenceProvider provider =
+        (_, _) ->
+            new InferenceResult.Answer(List.of(new Block.Text("done")))
+                .withUsage(Usage.of("a-model", 3, 5));
+    ObservedInferenceProvider.wrap(provider, observations).infer(request());
+    ObservedInferenceProvider.wrap(provider, observations)
+        .infer(request().withPurpose(InferencePurpose.SUMMARY));
+
+    assertThat(
+            meters
+                .get(TokenUsageHandler.TOKEN_USAGE)
+                .tag("gen_ai.token.type", "input")
+                .tag("nessy.inference.purpose", "answer")
+                .summary()
+                .count())
+        .isEqualTo(1);
+    assertThat(
+            meters
+                .get(TokenUsageHandler.TOKEN_USAGE)
+                .tag("gen_ai.token.type", "input")
+                .tag("nessy.inference.purpose", "summary")
+                .summary()
+                .count())
+        .isEqualTo(1);
+    assertThat(meters.get(DURATION).tag("nessy.inference.purpose", "answer").timer().count())
+        .isEqualTo(1);
+    assertThat(meters.get(DURATION).tag("nessy.inference.purpose", "summary").timer().count())
+        .isEqualTo(1);
   }
 
   @Test
