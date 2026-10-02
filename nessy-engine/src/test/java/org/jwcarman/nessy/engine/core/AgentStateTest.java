@@ -79,7 +79,7 @@ class AgentStateTest {
                         TURN,
                         new AgentCommand.InferenceOutcome.RequestedActions(
                             MAIL,
-                            List.of(new ActionRequest.ToolCall(CALL, TOOL)),
+                            List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool")),
                             Usage.unreported())))
                 .events());
     return state.applyAll(
@@ -164,7 +164,7 @@ class AgentStateTest {
                           TURN,
                           new AgentCommand.InferenceOutcome.RequestedActions(
                               MAIL,
-                              List.of(new ActionRequest.ToolCall(CALL, TOOL)),
+                              List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool")),
                               Usage.unreported())))
                   .events());
       return awaiting.applyAll(
@@ -267,7 +267,7 @@ class AgentStateTest {
                       inferring.seq().next().next(),
                       TURN,
                       MAIL,
-                      List.of(new ActionRequest.ToolCall(CALL, TOOL)),
+                      List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool")),
                       Usage.of("a-model", 100, 20)));
 
       assertThat(after)
@@ -436,7 +436,9 @@ class AgentStateTest {
               new AgentCommand.CompleteInference(
                   TURN,
                   new AgentCommand.InferenceOutcome.RequestedActions(
-                      MAIL, List.of(new ActionRequest.ToolCall(CALL, TOOL)), Usage.unreported())));
+                      MAIL,
+                      List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool")),
+                      Usage.unreported())));
 
       assertThat(decision.effects()).singleElement().isInstanceOf(AgentEffect.Approve.class);
     }
@@ -454,7 +456,7 @@ class AgentStateTest {
                           TURN,
                           new AgentCommand.InferenceOutcome.RequestedActions(
                               MAIL,
-                              List.of(new ActionRequest.ToolCall(CALL, TOOL)),
+                              List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool")),
                               Usage.unreported())))
                   .events());
 
@@ -509,7 +511,9 @@ class AgentStateTest {
               new AgentCommand.CompleteInference(
                   TURN,
                   new AgentCommand.InferenceOutcome.RequestedActions(
-                      MAIL, List.of(new ActionRequest.ToolCall(CALL, TOOL)), Usage.unreported())));
+                      MAIL,
+                      List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool")),
+                      Usage.unreported())));
       AgentState awaiting = inferring.applyAll(requested.events());
 
       AgentEvent.ActionsRequested actionsRequested =
@@ -697,7 +701,7 @@ class AgentStateTest {
                           TURN,
                           new AgentCommand.InferenceOutcome.RequestedActions(
                               MAIL,
-                              List.of(new ActionRequest.ToolCall(CALL, TOOL)),
+                              List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool")),
                               Usage.unreported())))
                   .events());
 
@@ -802,9 +806,9 @@ class AgentStateTest {
                           new AgentCommand.InferenceOutcome.RequestedActions(
                               MAIL,
                               List.of(
-                                  new ActionRequest.ToolCall(A, TOOL),
-                                  new ActionRequest.ToolCall(B, TOOL),
-                                  new ActionRequest.ToolCall(C, TOOL)),
+                                  new ActionRequest.ToolCall(A, TOOL, "tool"),
+                                  new ActionRequest.ToolCall(B, TOOL, "tool"),
+                                  new ActionRequest.ToolCall(C, TOOL, "tool")),
                               Usage.unreported())))
                   .events());
       for (CallId call : List.of(A, B, C)) {
@@ -834,7 +838,8 @@ class AgentStateTest {
                   new AgentCommand.InferenceOutcome.RequestedActions(
                       MAIL,
                       List.of(
-                          new ActionRequest.ToolCall(A, TOOL), new ActionRequest.ToolCall(B, TOOL)),
+                          new ActionRequest.ToolCall(A, TOOL, "tool"),
+                          new ActionRequest.ToolCall(B, TOOL, "tool")),
                       Usage.unreported())));
 
       assertThat(decision.effects()).hasSize(2).allMatch(AgentEffect.Approve.class::isInstance);
@@ -904,7 +909,7 @@ class AgentStateTest {
                           TURN,
                           new AgentCommand.InferenceOutcome.RequestedActions(
                               MAIL,
-                              List.of(new ActionRequest.ToolCall(A, TOOL)),
+                              List.of(new ActionRequest.ToolCall(A, TOOL, "tool")),
                               Usage.unreported())))
                   .events());
 
@@ -943,7 +948,7 @@ class AgentStateTest {
                           TURN,
                           new AgentCommand.InferenceOutcome.RequestedActions(
                               MAIL,
-                              List.of(new ActionRequest.ToolCall(A, TOOL)),
+                              List.of(new ActionRequest.ToolCall(A, TOOL, "tool")),
                               Usage.unreported())))
                   .events());
 

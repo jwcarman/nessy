@@ -332,7 +332,8 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
                 terms,
                 payloads,
                 narrator,
-                cacheWatch),
+                cacheWatch,
+                tools),
             new ApprovalHandler(
                 config.agentType(), tools, calls, replyTokens, narrator, terms, clock),
             new ToolCallHandler(

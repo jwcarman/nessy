@@ -956,7 +956,7 @@ class DefaultDirectHarnessTest {
                 new Seq(2),
                 new TurnId(1),
                 abandonedRequest,
-                List.of(new ActionRequest.ToolCall(CALL, LOOKUP)),
+                List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup")),
                 Usage.unreported())),
         Seq.NONE);
 
@@ -1031,7 +1031,7 @@ class DefaultDirectHarnessTest {
                 new Seq(2),
                 new TurnId(1),
                 abandonedRequest,
-                List.of(new ActionRequest.ToolCall(CALL, LOOKUP)),
+                List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup")),
                 Usage.unreported())),
         Seq.NONE);
 

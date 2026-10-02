@@ -74,7 +74,7 @@ class InlineRunnerTest {
                   holder[0].claimCheck("refunded 42.00"), Usage.unreported())
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("please look it up"),
-                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP)),
+                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup")),
                   Usage.unreported());
         };
     holder[0] = new InlineRunner(model, tools, _ -> true);
@@ -114,7 +114,7 @@ class InlineRunnerTest {
                   holder[0].claimCheck("cannot help"), Usage.unreported())
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("please look it up"),
-                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP)),
+                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup")),
                   Usage.unreported());
         };
     holder[0] = new InlineRunner(model, tools, _ -> false);
@@ -181,7 +181,7 @@ class InlineRunnerTest {
                   holder[0].claimCheck("sorry"), Usage.unreported())
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("look it up"),
-                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP)),
+                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup")),
                   Usage.unreported());
         };
     holder[0] = new InlineRunner(model, tools, _ -> true);

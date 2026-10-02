@@ -203,7 +203,9 @@ class ToolCallingTest {
                     List.of(
                         new Block.Commentary("Let me look."),
                         new Block.ToolCall("call_1", "lookup", "{\"q\":\"loch ness\"}"))),
-                List.of(new ActionRequest.ToolCall(new CallId("call_1"), new ToolName("lookup"))),
+                List.of(
+                    new ActionRequest.ToolCall(
+                        new CallId("call_1"), new ToolName("lookup"), "Query[q=loch ness]")),
                 Usage.unreported()));
     assertThat(story.get(2))
         .as("the grant, written before the call was dispatched")

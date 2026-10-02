@@ -30,6 +30,8 @@ import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.inference.InferenceInvocation;
 import org.jwcarman.nessy.engine.inference.InferenceService;
 import org.jwcarman.nessy.engine.observability.CacheWatch;
+import org.jwcarman.nessy.engine.tool.ToolBinding;
+import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.slf4j.Logger;
@@ -62,6 +64,9 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
 
   private final Narrator narrator;
 
+  /** What says, for each call the model makes, what it would do. */
+  private final Tools tools;
+
   /** Told every inference's usage, to notice cached tokens falling inside a turn. */
   private final CacheWatch cacheWatch;
 
@@ -72,13 +77,15 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
       EffectTermsSource terms,
       Payloads payloads,
       Narrator narrator,
-      CacheWatch cacheWatch) {
+      CacheWatch cacheWatch,
+      Tools tools) {
     this.cacheWatch = Objects.requireNonNull(cacheWatch, "cacheWatch must not be null");
     this.agentType = agentType;
     this.inference = inference;
     this.options = options;
     this.terms = terms;
     this.payloads = payloads;
+    this.tools = Objects.requireNonNull(tools, "tools must not be null");
     this.narrator = Objects.requireNonNull(narrator, "narrator must not be null");
   }
 
@@ -154,12 +161,26 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
             said -> narrator.narrate(agentType, agentId, new Narration.Commentary(said.text())));
   }
 
-  /** Which calls a request obliges an outcome for, in the order the model made them. */
-  private static List<ActionRequest> requested(List<Block.ActionRequestContent> blocks) {
+  /**
+   * Which calls a request obliges an outcome for, in the order the model made them, each with what
+   * it would do.
+   *
+   * <p>A tool the model named that is not bound is still a call, and says so.
+   */
+  private List<ActionRequest> requested(List<Block.ActionRequestContent> blocks) {
     return blocks.stream()
         .filter(Block.ToolCall.class::isInstance)
         .map(Block.ToolCall.class::cast)
-        .map(call -> (ActionRequest) new ActionRequest.ToolCall(call.id(), call.name()))
+        .map(
+            call ->
+                (ActionRequest) new ActionRequest.ToolCall(call.id(), call.name(), action(call)))
         .toList();
+  }
+
+  private String action(Block.ToolCall call) {
+    return tools
+        .find(call.name())
+        .map(binding -> binding.describe(call.arguments()))
+        .orElseGet(() -> ToolBinding.unbound(call.name()));
   }
 }

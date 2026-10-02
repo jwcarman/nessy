@@ -637,7 +637,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    */
   private static AgentEffect effectFor(TurnId turn, Seq requestSeq, OutstandingAction outstanding) {
     return switch (outstanding.action()) {
-      case ActionRequest.ToolCall(var id, var name) ->
+      case ActionRequest.ToolCall(var id, var name, _) ->
           switch (outstanding.phase()) {
             case AWAITING_APPROVAL -> new AgentEffect.Approve(turn, requestSeq, id, name);
             case RUNNING -> new AgentEffect.CallTool(turn, requestSeq, id, name);

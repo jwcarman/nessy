@@ -17,6 +17,7 @@ package org.jwcarman.nessy.backend.event;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import java.util.Objects;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
 
@@ -29,10 +30,11 @@ import org.jwcarman.nessy.api.tool.ToolName;
  * arm beside this one, where a record named for tools would have made every row in the database
  * wrong and a rename into a migration.
  *
- * <p><b>Identifiers only.</b> What the model actually wrote -- the arguments -- is content, and
- * lives in the payload the {@link AgentEvent.ActionsRequested} that holds this points at. The id is
- * what routes back into that payload when somebody needs them, which is at the moment the action is
- * performed and not before.
+ * <p><b>Identifiers and one line.</b> What the model actually wrote -- the arguments -- is content,
+ * and lives in the payload the {@link AgentEvent.ActionsRequested} that holds this points at. The
+ * id is what routes back into that payload when somebody needs them, which is at the moment the
+ * action is performed and not before. The one line is what the call would do, in words, kept with
+ * the call so that a reader of the story need not open the payload to say it.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
 @JsonSubTypes({@JsonSubTypes.Type(value = ActionRequest.ToolCall.class, name = "tool-call")})
@@ -46,6 +48,15 @@ public sealed interface ActionRequest {
    *
    * @param id what the provider called this call, quoted back in its result
    * @param name which tool to run; the arguments are in the request's payload, under {@link #id()}
+   * @param action what this call would do, in words, written when the model asked and never worked
+   *     out again; never null and never blank
    */
-  record ToolCall(CallId id, ToolName name) implements ActionRequest {}
+  record ToolCall(CallId id, ToolName name, String action) implements ActionRequest {
+    public ToolCall {
+      Objects.requireNonNull(action, "action must not be null");
+      if (action.isBlank()) {
+        throw new IllegalArgumentException("action must not be blank");
+      }
+    }
+  }
 }

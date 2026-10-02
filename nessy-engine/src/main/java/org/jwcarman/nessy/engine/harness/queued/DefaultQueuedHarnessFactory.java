@@ -374,7 +374,8 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
         terms,
         payloads,
         narrator,
-        cacheWatch);
+        cacheWatch,
+        tools);
   }
 
   /**

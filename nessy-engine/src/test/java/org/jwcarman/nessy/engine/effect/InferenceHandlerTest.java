@@ -25,6 +25,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
@@ -33,21 +34,31 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.Stringifier;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.observability.CacheWatch;
+import org.jwcarman.nessy.engine.tool.SettledLines;
+import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceResult;
+import tools.jackson.databind.json.JsonMapper;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class InferenceHandlerTest {
@@ -62,6 +73,67 @@ class InferenceHandlerTest {
   private final List<List<? extends Block>> stored = new ArrayList<>();
 
   private final InferenceHandler handler;
+  private final InferenceHandler handlerWithTools;
+
+  record Refund(String order, int cents) {}
+
+  record Search(String query) {}
+
+  private static <I> ToolBinding<I> bind(String name, Class<I> inputType, Stringifier<I> action) {
+    Tool<I> tool =
+        new Tool<>() {
+          @Override
+          public ToolName name() {
+            return new ToolName(name);
+          }
+
+          @Override
+          public String description() {
+            return name;
+          }
+
+          @Override
+          public Class<I> inputType() {
+            return inputType;
+          }
+
+          @Override
+          public Awaited<ToolResult> call(ToolCallRequest<I> request) {
+            return Awaited.ready(ToolResult.ok(new Block.Text("ok")));
+          }
+        };
+    return new ToolBinding<>(
+        tool,
+        JsonMapper.builder().build(),
+        new JsonSchema("{\"type\":\"object\"}"),
+        Duration.ofSeconds(30),
+        new RetryPolicy.Never(),
+        SettledLines.action(Optional.ofNullable(action)),
+        SettledLines.result(Optional.empty()),
+        List.of(),
+        Approver.allow(),
+        Duration.ofMinutes(10),
+        new RetryPolicy.Never());
+  }
+
+  private InferenceHandler handlerOver(Tools tools, Payloads payloads) {
+    return new InferenceHandler(
+        TYPE,
+        invocation -> script.removeFirst(),
+        InferenceOptions.of("model"),
+        new EffectTermsSource(
+            tools,
+            Duration.ofSeconds(1),
+            new RetryPolicy.Never(),
+            Duration.ofSeconds(1),
+            new RetryPolicy.Never(),
+            Duration.ofSeconds(1),
+            new RetryPolicy.Never()),
+        payloads,
+        (type, id, event) -> {},
+        new CacheWatch(registry),
+        tools);
+  }
 
   InferenceHandlerTest() {
     registry
@@ -91,22 +163,20 @@ class InferenceHandlerTest {
             throw new UnsupportedOperationException();
           }
         };
-    handler =
-        new InferenceHandler(
-            TYPE,
-            invocation -> script.removeFirst(),
-            InferenceOptions.of("model"),
-            new EffectTermsSource(
-                Tools.none(),
-                Duration.ofSeconds(1),
-                new RetryPolicy.Never(),
-                Duration.ofSeconds(1),
-                new RetryPolicy.Never(),
-                Duration.ofSeconds(1),
-                new RetryPolicy.Never()),
-            payloads,
-            (type, id, event) -> {},
-            new CacheWatch(registry));
+    handler = handlerOver(Tools.none(), payloads);
+    handlerWithTools =
+        handlerOver(
+            new Tools(
+                List.of(
+                    bind("refund", Refund.class, order -> "refund " + order.order()),
+                    bind("search", Search.class, null),
+                    bind(
+                        "shout",
+                        Search.class,
+                        query -> {
+                          throw new IllegalStateException("boom");
+                        }))),
+            payloads);
   }
 
   private static Block.ToolCall call() {
@@ -196,6 +266,79 @@ class InferenceHandlerTest {
           .isEqualTo(
               Awaited.ready(new EffectOutcome.InferenceAnswered(PayloadRef.of("p"), reading(0))));
       assertThat(stored).containsExactly(written);
+    }
+  }
+
+  @Nested
+  class Recording_what_each_call_would_do {
+
+    private List<ActionRequest> requestedFor(Block.ToolCall... calls) {
+      script.add(new InferenceResult.Actions(List.of(calls), reading(0)));
+
+      Awaited<EffectOutcome> outcome =
+          handlerWithTools.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)));
+
+      assertThat(outcome).isInstanceOf(Awaited.Ready.class);
+      EffectOutcome value = ((Awaited.Ready<EffectOutcome>) outcome).value();
+      return ((EffectOutcome.InferenceRequestedActions) value).actions();
+    }
+
+    private List<String> actionsOf(List<ActionRequest> requested) {
+      return requested.stream()
+          .map(ActionRequest.ToolCall.class::cast)
+          .map(ActionRequest.ToolCall::action)
+          .toList();
+    }
+
+    @Test
+    void each_requested_call_carries_its_action() {
+      List<ActionRequest> requested =
+          requestedFor(
+              new Block.ToolCall(
+                  CallId.of("c1"), ToolName.of("refund"), "{\"order\":\"ord_88\",\"cents\":4200}"),
+              new Block.ToolCall(CallId.of("c2"), ToolName.of("search"), "{\"query\":\"loch\"}"));
+
+      assertThat(actionsOf(requested)).containsExactly("refund ord_88", "Search[query=loch]");
+    }
+
+    @Test
+    void a_call_to_a_tool_that_is_not_bound_says_so() {
+      List<ActionRequest> requested =
+          requestedFor(new Block.ToolCall(CallId.of("c1"), ToolName.of("nope"), "{}"));
+
+      assertThat(actionsOf(requested)).containsExactly("nope (no such tool)");
+    }
+
+    @Test
+    void arguments_that_cannot_be_read_say_so() {
+      List<ActionRequest> requested =
+          requestedFor(new Block.ToolCall(CallId.of("c1"), ToolName.of("refund"), "not json"));
+
+      assertThat(actionsOf(requested)).containsExactly("refund (its arguments could not be read)");
+    }
+
+    @Test
+    void a_stringifier_that_throws_does_not_fail_the_request() {
+      script.add(
+          new InferenceResult.Actions(
+              List.of(
+                  new Block.ToolCall(CallId.of("c1"), ToolName.of("shout"), "{\"query\":\"x\"}")),
+              reading(0)));
+
+      Awaited<EffectOutcome> outcome =
+          handlerWithTools.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)));
+
+      assertThat(outcome)
+          .isEqualTo(
+              Awaited.ready(
+                  new EffectOutcome.InferenceRequestedActions(
+                      PayloadRef.of("p"),
+                      List.of(
+                          new ActionRequest.ToolCall(
+                              CallId.of("c1"),
+                              ToolName.of("shout"),
+                              "shout (its arguments could not be read)")),
+                      reading(0))));
     }
   }
 }

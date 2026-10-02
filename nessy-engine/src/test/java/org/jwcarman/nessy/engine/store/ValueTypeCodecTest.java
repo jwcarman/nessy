@@ -99,7 +99,8 @@ class ValueTypeCodecTest {
         """
                 {"type":"actions-requested","seq":2,"turn":1,\
                 "request":"c7f1e2a9","actions":[\
-                {"type":"tool-call","id":"729606640","name":"lake_depth"}]}""";
+                {"type":"tool-call","id":"729606640","name":"lake_depth",\
+                "action":"how deep is Lake Tahoe"}]}""";
 
     AgentEvent.ActionsRequested entry =
         (AgentEvent.ActionsRequested) entries.decode(stored.getBytes(StandardCharsets.UTF_8));
@@ -114,6 +115,7 @@ class ValueTypeCodecTest {
             call -> {
               assertThat(call.id()).isEqualTo(new CallId("729606640"));
               assertThat(call.name()).isEqualTo(new ToolName("lake_depth"));
+              assertThat(call.action()).isEqualTo("how deep is Lake Tahoe");
             });
   }
 
@@ -129,7 +131,9 @@ class ValueTypeCodecTest {
                     PayloadRef.of("c7f1e2a9"),
                     List.of(
                         new ActionRequest.ToolCall(
-                            new CallId("729606640"), new ToolName("lake_depth"))),
+                            new CallId("729606640"),
+                            new ToolName("lake_depth"),
+                            "how deep is Lake Tahoe")),
                     Usage.unreported())),
             StandardCharsets.UTF_8);
 
@@ -138,8 +142,31 @@ class ValueTypeCodecTest {
         .contains("\"id\":\"729606640\"")
         .contains("\"name\":\"lake_depth\"")
         .contains("\"type\":\"tool-call\"")
+        .contains("\"action\":\"how deep is Lake Tahoe\"")
         .as("no value type may nest an object where a bare string belongs")
         .doesNotContain("\"value\"");
+  }
+
+  @Test
+  void an_actions_requested_event_reads_back_with_its_actions() {
+    AgentEvent.ActionsRequested written =
+        new AgentEvent.ActionsRequested(
+            new Seq(2),
+            new TurnId(1),
+            PayloadRef.of("c7f1e2a9"),
+            List.of(
+                new ActionRequest.ToolCall(
+                    new CallId("a"), new ToolName("lake_depth"), "how deep is Lake Tahoe"),
+                new ActionRequest.ToolCall(
+                    new CallId("b"), new ToolName("lake_area"), "lake_area (no such tool)")),
+            Usage.unreported());
+
+    byte[] bytes = entries.encode(written);
+
+    assertThat(new String(bytes, StandardCharsets.UTF_8))
+        .contains("\"action\":\"how deep is Lake Tahoe\"")
+        .contains("\"action\":\"lake_area (no such tool)\"");
+    assertThat(entries.decode(bytes)).isEqualTo(written);
   }
 
   @Test
