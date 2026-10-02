@@ -42,6 +42,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.engine.chapter.ProseSummarizer;
 import org.jwcarman.nessy.engine.chapter.Transcripts;
@@ -96,6 +97,10 @@ public final class ChapterLab {
 
   private static final AgentType TYPE = new AgentType("chapter-lab");
   private static final String RECORDED = "recorded";
+
+  /** What a question that the model never answered is recorded as. */
+  static final String NO_ANSWER = "(no answer)";
+
   private static final Duration TRANSPORT = Duration.ofMinutes(6);
   private static final int SUMMARY_TOKENS = 4000;
   private static final int ANSWER_TOKENS = 4000;
@@ -198,6 +203,8 @@ public final class ChapterLab {
    * @param contextWords the words in the context every question was asked with
    * @param askedByCategory how many questions of each category were asked
    * @param correctByCategory how many of each category were answered correctly
+   * @param unanswered how many questions got no answer from the model, graded as wrong
+   * @param notUnderstood how many verdicts could not be read, graded as wrong
    */
   record Result(
       int turns,
@@ -209,7 +216,9 @@ public final class ChapterLab {
       long summaryInputTokens,
       long summaryOutputTokens,
       long answerInputTokens,
-      long answerOutputTokens) {
+      long answerOutputTokens,
+      int unanswered,
+      int notUnderstood) {
 
     int asked() {
       return askedByCategory.values().stream().mapToInt(Integer::intValue).sum();
@@ -240,8 +249,14 @@ public final class ChapterLab {
       System.exit(2);
       return;
     }
-    Result result = run(settings, conversation, provider, System.out, Path.of("."));
-    System.out.println("done: " + result.correct() + " of " + result.asked());
+    try {
+      Result result = run(settings, conversation, provider, System.out, Path.of("."));
+      System.out.println("done: " + result.correct() + " of " + result.asked());
+    } catch (RuntimeException failed) {
+      System.err.println("the run failed: " + failed.getMessage());
+      System.exit(1);
+      return;
+    }
     System.exit(0);
   }
 
@@ -320,6 +335,13 @@ public final class ChapterLab {
             number(given, "max-tail", 400),
             baseUrl,
             effort);
+    if (policy.startsWith("every:")
+        && Integer.parseInt(policy.substring("every:".length())) > settings.maxChapterLength()) {
+      throw new IllegalArgumentException(
+          ("--policy %s is longer than --max-chapter-length (%d), so the engine would cut first;"
+                  + " raise --max-chapter-length (and --max-tail above it)")
+              .formatted(policy, settings.maxChapterLength()));
+    }
     if (settings.chapters() && settings.maxTail() <= settings.maxChapterLength()) {
       throw new IllegalArgumentException(
           "--max-tail (%d) must be greater than --max-chapter-length (%d)"
@@ -522,7 +544,7 @@ public final class ChapterLab {
               : Optional.of(summaries.getLast().chapter().through());
       List<Turn> tail = tail(factory, agent, through);
       int summaryWords = summaries.stream().mapToInt(s -> words(s.text())).sum();
-      int contextWords = summaryWords + words(Transcripts.render(tail));
+      int contextWords = summaryWords + tail.stream().mapToInt(ChapterLab::contentWords).sum();
       out.println(
           "asking %d questions with %d chapter summaries and %d turns in view"
               .formatted(
@@ -532,15 +554,17 @@ public final class ChapterLab {
 
       Map<Integer, Integer> asked = new TreeMap<>();
       Map<Integer, Integer> correct = new TreeMap<>();
-      Grader grader = new Grader(answering, answerOptions);
+      Grader grader = new Grader(answering, answerOptions, retryPause);
+      int unanswered = 0;
+      int notUnderstood = 0;
       Path results = resultsDirectory.resolve(settings.resultsFile());
       List<LocomoConversation.Question> questions =
           conversation.sample(settings.questions(), settings.conversation());
       long nextId = nextId(summaries, tail);
       for (int i = 0; i < questions.size(); i++) {
         LocomoConversation.Question question = questions.get(i);
-        String answer =
-            Models.text(
+        Optional<String> said =
+            Models.tryText(
                 answering,
                 new InferenceRequest(
                     new SystemPrompt(LabPrompts.ANSWER_SYSTEM),
@@ -552,14 +576,31 @@ public final class ChapterLab {
                         Models.asking(nextId, LabPrompts.question(question.text())),
                         List.of()),
                     Toolset.none(),
-                    answerOptions));
-        boolean right = grader.correct(question.text(), question.answer(), answer);
+                    answerOptions),
+                retryPause);
+        String answer = said.orElse(NO_ANSWER);
+        Grader.Verdict verdict =
+            said.isPresent()
+                ? grader.grade(question.text(), question.answer(), answer)
+                : Grader.Verdict.NO;
+        boolean right = verdict == Grader.Verdict.YES;
+        if (said.isEmpty()) {
+          unanswered++;
+        }
+        if (verdict == Grader.Verdict.NOT_UNDERSTOOD) {
+          notUnderstood++;
+        }
         asked.merge(question.category(), 1, Integer::sum);
         correct.merge(question.category(), right ? 1 : 0, Integer::sum);
         out.println(
             "question %d of %d: %s"
-                .formatted(i + 1, questions.size(), right ? "correct" : "wrong"));
-        append(mapper, results, question, answer, right);
+                .formatted(
+                    i + 1,
+                    questions.size(),
+                    verdict == Grader.Verdict.NOT_UNDERSTOOD
+                        ? "wrong (verdict not understood)"
+                        : right ? "correct" : "wrong"));
+        append(mapper, results, question, answer, right, verdict);
       }
 
       Result result =
@@ -573,7 +614,9 @@ public final class ChapterLab {
               writing.inputTokens(),
               writing.outputTokens(),
               answering.inputTokens(),
-              answering.outputTokens());
+              answering.outputTokens(),
+              unanswered,
+              notUnderstood);
       print(result, settings, results, out);
       return result;
     }
@@ -645,6 +688,15 @@ public final class ChapterLab {
     return Math.max(last, tail.isEmpty() ? 0 : tail.getLast().id().value()) + 1;
   }
 
+  /** The words a turn says, its input and its reply and nothing the lab adds around them. */
+  private static int contentWords(Turn turn) {
+    int reply =
+        turn.result() instanceof TurnResult.Answered(var blocks)
+            ? words(Transcripts.text(blocks))
+            : 0;
+    return words(Transcripts.text(turn.input().blocks())) + reply;
+  }
+
   private static int words(String text) {
     String stripped = text.strip();
     return stripped.isEmpty() ? 0 : stripped.split("\\s+").length;
@@ -655,13 +707,15 @@ public final class ChapterLab {
       Path file,
       LocomoConversation.Question question,
       String answer,
-      boolean right) {
+      boolean right,
+      Grader.Verdict verdict) {
     Map<String, Object> line = new LinkedHashMap<>();
     line.put("question", question.text());
     line.put("category", question.category());
     line.put("answer", answer);
     line.put("correct_answer", question.answer());
     line.put("correct", right);
+    line.put("verdict", verdict.name().toLowerCase(Locale.ROOT));
     try {
       Files.writeString(
           file,
@@ -681,6 +735,8 @@ public final class ChapterLab {
     out.println("summary words: " + result.summaryWords());
     out.println("context words per question: " + result.contextWords());
     out.println("correct: %d of %d".formatted(result.correct(), result.asked()));
+    out.println("questions with no answer: " + result.unanswered());
+    out.println("verdicts not understood: " + result.notUnderstood());
     result
         .askedByCategory()
         .forEach(

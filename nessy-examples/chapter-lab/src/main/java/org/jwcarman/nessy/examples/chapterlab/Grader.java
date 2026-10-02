@@ -15,8 +15,10 @@
  */
 package org.jwcarman.nessy.examples.chapterlab;
 
-import java.util.Locale;
+import java.time.Duration;
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 
@@ -25,26 +27,53 @@ import org.jwcarman.nessy.inference.InferenceProvider;
  * too many ways for a string comparison to judge: "7 May 2023", "the 7th of May, 2023" and "May 7"
  * are one answer, and "Paris, France" is a more specific and consistent version of "Paris".
  *
- * <p>The rule the model is given is in {@link LabPrompts#grade}. A reply that begins with "yes" is
- * a yes; anything else, including a reply that says nothing, is a no.
+ * <p>The rule the model is given is in {@link LabPrompts#grade}. The reply is read after any
+ * leading punctuation, quotes or markdown: it is a yes if it begins with the word yes and a no if
+ * it begins with the word no. A reply that begins with neither, and a grading call that fails, are
+ * {@link Verdict#NOT_UNDERSTOOD}: counted and printed, and graded as wrong.
  */
 final class Grader {
 
-  private final InferenceProvider provider;
-  private final InferenceOptions options;
-
-  Grader(InferenceProvider provider, InferenceOptions options) {
-    this.provider = Objects.requireNonNull(provider, "provider must not be null");
-    this.options = Objects.requireNonNull(options, "options must not be null");
+  /** What a grading reply came to. */
+  enum Verdict {
+    YES,
+    NO,
+    NOT_UNDERSTOOD
   }
 
-  /** Whether {@code given} says what {@code correct} says in answer to {@code question}. */
-  boolean correct(String question, String correct, String given) {
-    String verdict =
-        Models.text(
+  private static final Pattern VERDICT =
+      Pattern.compile("^[^\\p{L}]*(yes|no)\\b", Pattern.CASE_INSENSITIVE);
+
+  private final InferenceProvider provider;
+  private final InferenceOptions options;
+  private final Duration pause;
+
+  Grader(InferenceProvider provider, InferenceOptions options, Duration pause) {
+    this.provider = Objects.requireNonNull(provider, "provider must not be null");
+    this.options = Objects.requireNonNull(options, "options must not be null");
+    this.pause = Objects.requireNonNull(pause, "pause must not be null");
+  }
+
+  /**
+   * What the model says of {@code given} as the answer to {@code question}, whose key is {@code
+   * correct}.
+   */
+  Verdict grade(String question, String correct, String given) {
+    return Models.tryText(
             provider,
             Models.ask(
-                LabPrompts.GRADE_SYSTEM, LabPrompts.grade(question, correct, given), options));
-    return verdict.strip().toLowerCase(Locale.ROOT).startsWith("yes");
+                LabPrompts.GRADE_SYSTEM, LabPrompts.grade(question, correct, given), options),
+            pause)
+        .map(Grader::parse)
+        .orElse(Verdict.NOT_UNDERSTOOD);
+  }
+
+  /** A grading reply read as a verdict. */
+  static Verdict parse(String reply) {
+    Matcher found = VERDICT.matcher(reply);
+    if (!found.find()) {
+      return Verdict.NOT_UNDERSTOOD;
+    }
+    return found.group(1).equalsIgnoreCase("yes") ? Verdict.YES : Verdict.NO;
   }
 }

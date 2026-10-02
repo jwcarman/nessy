@@ -17,6 +17,7 @@ package org.jwcarman.nessy.examples.chapterlab;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
@@ -67,6 +68,23 @@ final class Models {
 
   /** The text of the answer to {@code request}, trying again if the model did not answer. */
   static String text(InferenceProvider provider, InferenceRequest request) {
+    return text(provider, request, DEFAULT_PAUSE);
+  }
+
+  /**
+   * As below, but a call that still has not answered after every attempt is an empty result rather
+   * than a failure, for a question or a grade, where one refusal must not lose the whole run.
+   */
+  static Optional<String> tryText(
+      InferenceProvider provider, InferenceRequest request, Duration pause) {
+    try {
+      return Optional.of(text(provider, request, pause));
+    } catch (IllegalStateException gaveUp) {
+      return Optional.empty();
+    }
+  }
+
+  static String text(InferenceProvider provider, InferenceRequest request, Duration pause) {
     return retrying(
         () -> {
           InferenceResult result = provider.infer(request);
@@ -74,7 +92,8 @@ final class Models {
             return Transcripts.text(blocks).strip();
           }
           throw new IllegalStateException("the model did not answer: " + result);
-        });
+        },
+        pause);
   }
 
   /**

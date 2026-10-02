@@ -58,6 +58,7 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import tools.jackson.databind.json.JsonMapper;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class ChapterLabTest {
@@ -377,6 +378,18 @@ class ChapterLabTest {
     }
 
     @Test
+    void only_the_last_bracketed_group_of_a_reply_counts() {
+      assertThat(LabPolicies.numbers("exchanges 1 to 40: [12, 25]")).containsExactly(12, 25);
+      assertThat(LabPolicies.numbers("first [3] then, on reflection, [7, 9]"))
+          .containsExactly(7, 9);
+    }
+
+    @Test
+    void a_reply_with_no_bracketed_group_names_nothing() {
+      assertThat(LabPolicies.numbers("breaks at 12 and 25")).isEmpty();
+    }
+
+    @Test
     void numbers_are_sorted_and_repeats_dropped() {
       List<TurnId> window = openTurns(10).turns();
 
@@ -558,6 +571,21 @@ class ChapterLabTest {
     }
 
     @Test
+    void a_fixed_length_longer_than_the_maximum_chapter_is_refused() {
+      String[] args = with("--policy", "every:300");
+
+      assertThatThrownBy(() -> ChapterLab.parse(args))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("every:300")
+          .hasMessageContaining("--max-chapter-length (200)");
+    }
+
+    @Test
+    void a_fixed_length_up_to_the_maximum_chapter_is_accepted() {
+      assertThat(ChapterLab.parse(with("--policy", "every:200")).policy()).isEqualTo("every:200");
+    }
+
+    @Test
     void a_missing_required_option_is_named() {
       String[] args = {"--data", "x.json", "--provider", "openai"};
 
@@ -583,6 +611,201 @@ class ChapterLabTest {
       assertThatThrownBy(() -> ChapterLab.parse(args))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("unknown option --colour");
+    }
+  }
+
+  @Nested
+  @DisplayName("Reading a verdict")
+  class Reading_a_verdict {
+
+    @Test
+    void a_plain_yes_or_no_is_understood() {
+      assertThat(Grader.parse("yes")).isEqualTo(Grader.Verdict.YES);
+      assertThat(Grader.parse("No")).isEqualTo(Grader.Verdict.NO);
+    }
+
+    @Test
+    void a_decorated_yes_is_understood() {
+      assertThat(Grader.parse("**Yes**")).isEqualTo(Grader.Verdict.YES);
+      assertThat(Grader.parse("\"yes.\"")).isEqualTo(Grader.Verdict.YES);
+      assertThat(Grader.parse("  - Yes, it matches")).isEqualTo(Grader.Verdict.YES);
+    }
+
+    @Test
+    void a_decorated_no_is_understood() {
+      assertThat(Grader.parse("**No.**")).isEqualTo(Grader.Verdict.NO);
+    }
+
+    @Test
+    void a_reply_that_is_neither_is_not_understood() {
+      assertThat(Grader.parse("Perhaps")).isEqualTo(Grader.Verdict.NOT_UNDERSTOOD);
+      assertThat(Grader.parse("Yesterday")).isEqualTo(Grader.Verdict.NOT_UNDERSTOOD);
+      assertThat(Grader.parse("")).isEqualTo(Grader.Verdict.NOT_UNDERSTOOD);
+    }
+  }
+
+  private static String longConversation(int turns) {
+    StringBuilder json = new StringBuilder();
+    json.append("{\"conversation\": {\"session_1_date_time\": \"1:00 pm on 1 May, 2023\", ");
+    json.append("\"session_1\": [");
+    for (int i = 1; i <= turns * 2; i++) {
+      if (i > 1) {
+        json.append(", ");
+      }
+      json.append("{\"speaker\": \"")
+          .append(i % 2 == 1 ? "Ann" : "Ben")
+          .append("\", \"dia_id\": \"D1:")
+          .append(i)
+          .append("\", \"text\": \"line ")
+          .append(i)
+          .append("\"}");
+    }
+    json.append("]}, \"qa\": [{\"question\": \"What did Ann plant?\", \"answer\": \"tomatoes\",");
+    json.append(" \"evidence\": [\"D1:1\"], \"category\": 1}]}");
+    return json.toString();
+  }
+
+  private static InferenceProvider except(
+      String system, InferenceResult instead, InferenceProvider otherwise) {
+    return (request, narrator) ->
+        request.systemPrompt().value().equals(system)
+            ? instead
+            : otherwise.infer(request, narrator);
+  }
+
+  @Nested
+  @DisplayName("A run that meets a refusal")
+  class A_run_that_meets_a_refusal {
+
+    private final PrintStream quiet =
+        new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+
+    @Test
+    void a_refused_answer_is_graded_wrong_without_asking_the_grader(@TempDir Path directory) {
+      ScriptedModel model = new ScriptedModel();
+      InferenceProvider refusing =
+          except(
+              LabPrompts.ANSWER_SYSTEM,
+              new InferenceResult.Refusal("policy", Usage.unreported("the-model")),
+              model);
+      ChapterLab.Settings settings = settings("session", "prose");
+
+      ChapterLab.Result result =
+          ChapterLab.run(
+              settings,
+              LocomoConversation.read(settings.data(), 0),
+              refusing,
+              quiet,
+              directory,
+              Duration.ZERO);
+
+      assertThat(result.asked()).isEqualTo(4);
+      assertThat(result.correct()).isZero();
+      assertThat(result.unanswered()).isEqualTo(4);
+      assertThat(result.notUnderstood()).isZero();
+    }
+
+    @Test
+    void a_refused_answer_is_recorded_as_no_answer(@TempDir Path directory) throws Exception {
+      ScriptedModel model = new ScriptedModel();
+      InferenceProvider refusing =
+          except(
+              LabPrompts.ANSWER_SYSTEM,
+              new InferenceResult.Refusal("policy", Usage.unreported("the-model")),
+              model);
+      ChapterLab.Settings settings = settings("session", "prose");
+
+      ChapterLab.run(
+          settings,
+          LocomoConversation.read(settings.data(), 0),
+          refusing,
+          quiet,
+          directory,
+          Duration.ZERO);
+
+      List<String> lines = Files.readAllLines(directory.resolve(settings.resultsFile()));
+      assertThat(lines).hasSize(4);
+      assertThat(lines).allSatisfy(line -> assertThat(line).contains("\"answer\":\"(no answer)\""));
+    }
+
+    @Test
+    void a_verdict_nobody_can_read_is_counted_and_graded_wrong(@TempDir Path directory)
+        throws Exception {
+      InferenceProvider hedging =
+          except(LabPrompts.GRADE_SYSTEM, answer("Perhaps", 5, 1), new ScriptedModel());
+      ChapterLab.Settings settings = settings("session", "prose");
+      ByteArrayOutputStream captured = new ByteArrayOutputStream();
+
+      ChapterLab.Result result =
+          ChapterLab.run(
+              settings,
+              LocomoConversation.read(settings.data(), 0),
+              hedging,
+              new PrintStream(captured, true, StandardCharsets.UTF_8),
+              directory,
+              Duration.ZERO);
+
+      assertThat(result.notUnderstood()).isEqualTo(4);
+      assertThat(result.correct()).isZero();
+      assertThat(captured.toString(StandardCharsets.UTF_8))
+          .contains("verdicts not understood: 4")
+          .contains("questions with no answer: 0");
+    }
+
+    @Test
+    void a_failed_grading_call_is_a_verdict_not_understood(@TempDir Path directory) {
+      InferenceProvider failing =
+          except(
+              LabPrompts.GRADE_SYSTEM,
+              new InferenceResult.Refusal("policy", Usage.unreported("the-model")),
+              new ScriptedModel());
+      ChapterLab.Settings settings = settings("session", "prose");
+
+      ChapterLab.Result result =
+          ChapterLab.run(
+              settings,
+              LocomoConversation.read(settings.data(), 0),
+              failing,
+              quiet,
+              directory,
+              Duration.ZERO);
+
+      assertThat(result.notUnderstood()).isEqualTo(4);
+      assertThat(result.unanswered()).isZero();
+    }
+  }
+
+  @Nested
+  @DisplayName("A run under the hindsight policy")
+  class A_run_under_the_hindsight_policy {
+
+    @Test
+    void the_model_names_the_breaks_and_the_store_ends_up_with_those_chapters(
+        @TempDir Path directory) {
+      ScriptedModel model =
+          new ScriptedModel("The breaks, in exchanges 1 to 40, are [10, 25, 40].");
+      LocomoConversation conversation =
+          LocomoConversation.of(JsonMapper.builder().build().readTree(longConversation(45)));
+      PrintStream quiet =
+          new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+
+      ChapterLab.Result result =
+          ChapterLab.run(
+              settings("hindsight", "prose"), conversation, model, quiet, directory, Duration.ZERO);
+
+      assertThat(result.turns()).isEqualTo(45);
+      assertThat(result.chapters()).isEqualTo(3);
+      assertThat(model.hindsights).hasSize(1);
+      assertThat(model.summaries).hasSize(3);
+      assertThat(model.summaries.stream().map(r -> r.context().tail().size()).toList())
+          .containsExactly(10, 15, 15);
+      assertThat(model.questions).isNotEmpty();
+      assertThat(model.questions)
+          .allSatisfy(
+              request -> {
+                assertThat(request.context().summaries()).hasSize(3);
+                assertThat(request.context().tail()).hasSize(5);
+              });
     }
   }
 
@@ -689,7 +912,7 @@ class ChapterLabTest {
       Run run = run(settings("every:2", "prose"), model, directory);
 
       assertThat(run.result.chapters()).isEqualTo(2);
-      assertThat(run.result.contextWords()).isEqualTo(14 + 17);
+      assertThat(run.result.contextWords()).isEqualTo(14 + 15);
       assertThat(model.questions).isNotEmpty();
       assertThat(model.questions)
           .allSatisfy(

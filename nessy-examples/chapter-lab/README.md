@@ -56,14 +56,16 @@ root. The key is read from the environment by the provider and is never printed.
 
 ### Policies
 
-- `every:N`: a chapter every N turns. Whatever is left over when the conversation stops stays open as
+- `every:N`: a chapter every N turns. N may not exceed `--max-chapter-length`, or the engine's own
+  cut would fire first. Whatever is left over when the conversation stops stays open as
   the tail.
 - `session`: a chapter for each recorded session. The lab knows which turn ends each session
   because it drove the turns.
 - `hindsight`: once forty turns are open, a model reads them and names the natural breaks; the
   turns after the last break stay open. Nothing is closed until forty turns are open, and what is
   left when the conversation stops stays open as the tail.
-- `none`: no chapters. The whole conversation is sent.
+- `none`: no chapters. The whole conversation is sent, which for a conversation longer than
+  `--max-tail` turns is more than the engine itself would send.
 
 ### Summarisers
 
@@ -76,11 +78,20 @@ root. The key is read from the environment by the provider and is never printed.
 One line of settings, one line per chapter as its summary is written, then:
 
 - the number of chapters and the words in all their summaries,
-- the words in the context every question is asked with (the summaries plus the open turns),
+- the words in the context every question is asked with: the words of the summaries plus the words
+  the open turns say (their inputs and replies), counted the same way for both,
 - how many questions were answered correctly of those asked, and the same by category (1 multi-hop,
   2 dates, 3 inference, 4 single fact),
+- how many questions got no answer from the model (recorded as `(no answer)` and graded wrong
+  without asking the grader) and how many grading verdicts could not be read (a reply that does not
+  begin with yes or no, or a grading call that failed; graded wrong),
 - the input and output tokens the provider reported, once for writing summaries and cuts and once for
-  answering and grading.
+  answering and grading. Calls that failed report no usage and are not counted, so these figures are
+  a lower bound.
+
+A refused or failed answer or grade costs one question, not the run. A failure while replaying (a
+summary that cannot be written after four attempts, a policy that throws) stops the run with the
+reason, since the context would no longer be what was asked for.
 
 Every question, the answer, the correct answer and the verdict are appended as JSON lines to
 `chapter-lab-<provider>-<model>-<policy>-<summarizer>.jsonl` in the working directory. The file is

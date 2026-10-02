@@ -47,6 +47,8 @@ final class LabPolicies {
   /** A longer run of digits is not an exchange number, and would not fit an int. */
   private static final int MAX_DIGITS = 6;
 
+  private static final Pattern GROUP = Pattern.compile("\\[([^\\[\\]]*)\\]");
+
   private static final Pattern NUMBER = Pattern.compile("\\d+");
 
   private LabPolicies() {}
@@ -107,10 +109,21 @@ final class LabPolicies {
     return ends;
   }
 
-  /** Every whole number in a model's reply, in the order it wrote them. */
+  /**
+   * The whole numbers in the last bracketed group of a model's reply, in the order it wrote them:
+   * "exchanges 1 to 40: [12, 25]" names 12 and 25. A reply with no bracketed group names none.
+   */
   static List<Integer> numbers(String reply) {
     List<Integer> numbers = new ArrayList<>();
-    Matcher found = NUMBER.matcher(reply);
+    Matcher group = GROUP.matcher(reply);
+    String last = null;
+    while (group.find()) {
+      last = group.group(1);
+    }
+    if (last == null) {
+      return numbers;
+    }
+    Matcher found = NUMBER.matcher(last);
     while (found.find()) {
       if (found.group().length() <= MAX_DIGITS) {
         numbers.add(Integer.parseInt(found.group()));
