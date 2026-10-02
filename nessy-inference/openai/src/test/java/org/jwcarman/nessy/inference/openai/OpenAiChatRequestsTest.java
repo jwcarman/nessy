@@ -41,7 +41,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.Memory;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.State;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
@@ -116,47 +118,6 @@ class OpenAiChatRequestsTest {
           .isEqualTo("you are a helpful assistant");
     }
 
-    /**
-     * There is no blank case to cover any more: {@link SystemPrompt} refuses one at construction,
-     * so an adapter cannot be handed an empty instruction and does not have to decide what to do
-     * about it.
-     */
-    @Test
-    void carries_ambient_background_in_labelled_sections() {
-      InferenceRequest request =
-          new InferenceRequest(
-              SYSTEM,
-              new InferenceContext(
-                  List.of(open(1, "hello")),
-                  List.of(
-                      Ambient.text("notebook", "the deploy is frozen"),
-                      Ambient.text("clock", "it is Tuesday"))),
-              Toolset.none(),
-              OPTIONS);
-
-      String system =
-          OpenAiChatRequests.toParams(request, MAPPER)
-              .messages()
-              .getFirst()
-              .asSystem()
-              .content()
-              .asText();
-
-      assertThat(system)
-          .as("the standing instruction first, then each section under its own label")
-          .isEqualTo(
-              """
-              you are a helpful assistant
-
-              <notebook>
-              the deploy is frozen
-              </notebook>
-
-              <clock>
-              it is Tuesday
-              </clock>""");
-    }
-
     /** A heading with nothing under it tells a model its notebook is empty, which is a claim. */
     @Test
     void says_nothing_at_all_when_there_is_no_background() {
@@ -164,6 +125,130 @@ class OpenAiChatRequestsTest {
           messagesOf(List.of(open(1, "hello"))).getFirst().asSystem().content().asText();
 
       assertThat(system).doesNotContain("<");
+    }
+  }
+
+  @Nested
+  class PlacingTheStrata {
+
+    private static final Memory NOTES = Memory.text("notes", "the deploy is frozen");
+    private static final State PLAN = State.text("plan", "step one of three");
+    private static final Ambient CLOCK = Ambient.text("clock", "it is Tuesday");
+
+    private static final String NOTES_TAG =
+        "<memory kind=\"notes\">\nthe deploy is frozen\n</memory>";
+    private static final String PLAN_TAG = "<state kind=\"plan\">\nstep one of three\n</state>";
+    private static final String CLOCK_TAG = "<clock>\nit is Tuesday\n</clock>";
+
+    private static List<ChatCompletionMessageParam> placed(
+        List<Turn> tail,
+        List<Memory> memory,
+        List<State> state,
+        Turn active,
+        List<Ambient> ambient) {
+      InferenceContext context =
+          new InferenceContext(List.of(), tail, memory, state, active, ambient);
+      return OpenAiChatRequests.toParams(
+              new InferenceRequest(SYSTEM, context, Toolset.none(), OPTIONS), MAPPER)
+          .messages();
+    }
+
+    private static String userText(ChatCompletionMessageParam message) {
+      return message.asUser().content().asText();
+    }
+
+    private static Turn lookedUp() {
+      Exchange exchange =
+          new Exchange(
+              new Seq(2),
+              List.of(new Block.ToolCall(new CallId("call_1"), new ToolName("lookup"), "{}")),
+              List.of(
+                  new ToolOutcome.Succeeded(new CallId("call_1"), List.of(new Block.Text("ok")))));
+      return new Turn(new TurnId(2), asked(2, "look it up"), List.of(exchange), null, 0);
+    }
+
+    @Test
+    void the_system_text_holds_only_the_instructions() {
+      List<ChatCompletionMessageParam> messages =
+          placed(List.of(), List.of(NOTES), List.of(PLAN), open(1, "hello"), List.of(CLOCK));
+
+      assertThat(messages.getFirst().asSystem().content().asText())
+          .isEqualTo("you are a helpful assistant");
+    }
+
+    @Test
+    void memory_and_state_lead_the_active_turns_user_message() {
+      List<ChatCompletionMessageParam> messages =
+          placed(
+              List.of(answered(1, "earlier", "yes")),
+              List.of(NOTES),
+              List.of(PLAN),
+              open(2, "hello"),
+              List.of());
+
+      assertThat(messages).hasSize(4);
+      assertThat(userText(messages.get(3))).isEqualTo(NOTES_TAG + "\n\n" + PLAN_TAG + "\n\nhello");
+    }
+
+    @Test
+    void memory_and_state_are_not_attached_to_a_turn_in_the_tail() {
+      List<ChatCompletionMessageParam> messages =
+          placed(
+              List.of(answered(1, "earlier", "yes")),
+              List.of(NOTES),
+              List.of(PLAN),
+              open(2, "hello"),
+              List.of());
+
+      assertThat(userText(messages.get(1))).isEqualTo("earlier");
+    }
+
+    @Test
+    void ambient_ends_the_request_after_the_active_turns_input() {
+      List<ChatCompletionMessageParam> messages =
+          placed(List.of(), List.of(), List.of(), open(1, "hello"), List.of(CLOCK));
+
+      assertThat(messages).hasSize(2);
+      assertThat(userText(messages.get(1))).isEqualTo("hello\n\n" + CLOCK_TAG);
+    }
+
+    @Test
+    void ambient_ends_the_request_after_the_last_tool_results() {
+      List<ChatCompletionMessageParam> messages =
+          placed(List.of(), List.of(), List.of(), lookedUp(), List.of(CLOCK));
+
+      assertThat(messages).hasSize(5);
+      assertThat(messages.get(3).isTool()).isTrue();
+      assertThat(messages.get(4).isUser()).isTrue();
+      assertThat(userText(messages.get(4))).isEqualTo(CLOCK_TAG);
+      assertThat(userText(messages.get(1))).isEqualTo("look it up");
+    }
+
+    @Test
+    void a_context_with_no_memory_state_or_ambient_renders_as_before() {
+      Turn earlier = answered(1, "earlier", "yes");
+      Turn active = lookedUp();
+
+      List<ChatCompletionMessageParam> messages =
+          placed(List.of(earlier), List.of(), List.of(), active, List.of());
+
+      assertThat(messages).isEqualTo(messagesOf(List.of(earlier, active)));
+      assertThat(messages).hasSize(6);
+      assertThat(userText(messages.get(3))).isEqualTo("look it up");
+    }
+
+    @Test
+    void blank_memory_state_and_ambient_are_left_out() {
+      List<ChatCompletionMessageParam> messages =
+          placed(
+              List.of(),
+              List.of(Memory.text("notes", "  ")),
+              List.of(State.text("plan", " \t ")),
+              open(1, "hello"),
+              List.of(Ambient.text("clock", "\n")));
+
+      assertThat(messages).hasSize(2);
+      assertThat(userText(messages.get(1))).isEqualTo("hello");
     }
   }
 

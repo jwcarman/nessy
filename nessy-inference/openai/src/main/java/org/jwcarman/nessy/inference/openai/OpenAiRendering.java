@@ -15,21 +15,22 @@
  */
 package org.jwcarman.nessy.inference.openai;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import org.jwcarman.nessy.api.Ambient;
+import java.util.stream.Stream;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
-import org.jwcarman.nessy.inference.InferenceRequest;
+import org.jwcarman.nessy.inference.InferenceContext;
 
 /**
- * The words both OpenAI wires send for the parts of a conversation that are text: the system prompt
- * with its ambient sections, a summary, a tool outcome, and the lines that stand where a turn
- * produced nothing. Each wire decides where these go; this class decides only what they say, so the
- * two projections cannot drift apart.
+ * The words both OpenAI wires send for the parts of a conversation that are text: the tagged
+ * sections of memory, state and ambient, a summary, a tool outcome, and the lines that stand where
+ * a turn produced nothing. Each wire decides where these go; this class decides only what they say,
+ * so the two projections cannot drift apart.
  */
 final class OpenAiRendering {
 
@@ -46,40 +47,81 @@ final class OpenAiRendering {
   static final String REFUSED_TURN =
       "A previous message was withdrawn from this conversation and is no longer available.";
 
+  private static final String BLANK_LINE = "\n\n";
+
   private OpenAiRendering() {}
 
   /**
-   * The system prompt, and whatever background stands behind the conversation.
+   * What leads the active turn's user message: the memory, then the state, each section tagged with
+   * its kind and separated by blank lines. Empty when there is nothing to say.
    *
-   * <p><b>Where the background goes is each adapter's decision alone.</b> The chat adapter folds it
-   * into the system message; the Responses adapter decides for itself where the prompt and the
-   * background travel, as Anthropic would use its top-level system block and Gemini a system
-   * instruction. {@link Ambient} says what the background is and takes no view on any of that.
+   * <p><b>Where it goes is why it is here.</b> Memory is chosen for the turn being answered and
+   * state is fixed for it, so both are constant across every call the turn makes. At the head of
+   * the turn's own question they sit after all the history, which never changes, and ahead of
+   * everything that grows during the turn, so the provider's cache covers them. In the system text
+   * they would sit ahead of every message, and any change would invalidate the cache for the whole
+   * conversation.
    *
-   * <p>Labelled with tags so a model reading two unlabelled blobs run together can tell which is
-   * the standing instruction and which is today's note. The kind is safe to interpolate without
-   * escaping -- {@code Ambient} constrains it to lowercase kebab-case precisely so no adapter has
-   * to remember to, and none can forget.
-   *
-   * <p>Sections are omitted entirely when there are none. A heading with nothing under it tells a
-   * model its notebook is empty, which is a claim; saying nothing is not.
+   * <p>The kind is safe to interpolate without escaping -- {@code Memory} and {@code State}
+   * constrain it to lowercase kebab-case precisely so no adapter has to remember to, and none can
+   * forget. A section whose text is blank is left out: a label with nothing under it tells a model
+   * its notes are empty, which is a claim, and saying nothing is not.
    */
-  static String system(InferenceRequest request) {
-    if (!request.context().hasAmbient()) {
-      return request.systemPrompt().value();
+  static String leading(InferenceContext context) {
+    Stream<Optional<String>> recalled =
+        context.memory().stream()
+            .map(memory -> section("memory", kindAttribute(memory.kind()), text(memory.content())));
+    Stream<Optional<String>> standing =
+        context.state().stream()
+            .map(state -> section("state", kindAttribute(state.kind()), text(state.content())));
+    return Stream.concat(recalled, standing)
+        .flatMap(Optional::stream)
+        .collect(Collectors.joining(BLANK_LINE));
+  }
+
+  /**
+   * What ends the request: every ambient, tagged with its kind and separated by blank lines. Empty
+   * when there is nothing to say.
+   *
+   * <p>Ambient can change while the agent works and is asked afresh on every call, so it goes last,
+   * after everything this call has in common with the one before it. The kind is safe to
+   * interpolate for the same reason as in {@link #leading}, and a blank section is left out for the
+   * same reason.
+   */
+  static String trailing(InferenceContext context) {
+    return context.ambient().stream()
+        .map(ambient -> section(ambient.kind(), "", text(ambient.content())))
+        .flatMap(Optional::stream)
+        .collect(Collectors.joining(BLANK_LINE));
+  }
+
+  /**
+   * The text of a turn's opening user message once the strata around it are added: the leading
+   * sections, the question, and the trailing ones, separated by blank lines. The question is always
+   * there, exactly as the turn stored it; the other two are there only when they say something.
+   */
+  static String opening(String leading, String question, String trailing) {
+    List<String> parts = new ArrayList<>();
+    if (!leading.isEmpty()) {
+      parts.add(leading);
     }
-    StringBuilder system = new StringBuilder(request.systemPrompt().value());
-    for (Ambient ambient : request.context().ambient()) {
-      system
-          .append("\n\n<")
-          .append(ambient.kind())
-          .append(">\n")
-          .append(text(ambient.content()))
-          .append("\n</")
-          .append(ambient.kind())
-          .append('>');
+    parts.add(question);
+    if (!trailing.isEmpty()) {
+      parts.add(trailing);
     }
-    return system.toString();
+    return String.join(BLANK_LINE, parts);
+  }
+
+  /** {@code <tag attributes>}, the text, {@code </tag>}; nothing at all when the text is blank. */
+  private static Optional<String> section(String tag, String attributes, String text) {
+    if (text.isBlank()) {
+      return Optional.empty();
+    }
+    return Optional.of("<%s%s>\n%s\n</%s>".formatted(tag, attributes, text, tag));
+  }
+
+  private static String kindAttribute(String kind) {
+    return " kind=\"" + kind + "\"";
   }
 
   /** A summary's text, tagged with the turn range it stands for. */

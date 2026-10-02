@@ -47,7 +47,9 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.Memory;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.State;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
@@ -179,19 +181,129 @@ class OpenAiResponsesRequestsTest {
       assertThat(params.input().orElseThrow().asResponse().getFirst().asEasyInputMessage().role())
           .isEqualTo(EasyInputMessage.Role.USER);
     }
+  }
+
+  @Nested
+  class PlacingTheStrata {
+
+    private static final Memory NOTES = Memory.text("notes", "the deploy is frozen");
+    private static final State PLAN = State.text("plan", "step one of three");
+    private static final Ambient CLOCK = Ambient.text("clock", "it is Tuesday");
+
+    private static final String NOTES_TAG =
+        "<memory kind=\"notes\">\nthe deploy is frozen\n</memory>";
+    private static final String PLAN_TAG = "<state kind=\"plan\">\nstep one of three\n</state>";
+    private static final String CLOCK_TAG = "<clock>\nit is Tuesday\n</clock>";
+
+    private static ResponseCreateParams placed(
+        List<Turn> tail,
+        List<Memory> memory,
+        List<State> state,
+        Turn active,
+        List<Ambient> ambient) {
+      InferenceContext context =
+          new InferenceContext(List.of(), tail, memory, state, active, ambient);
+      return params(new InferenceRequest(SYSTEM, context, Toolset.none(), OPTIONS));
+    }
+
+    private static List<ResponseInputItem> itemsPlaced(
+        List<Turn> tail,
+        List<Memory> memory,
+        List<State> state,
+        Turn active,
+        List<Ambient> ambient) {
+      return placed(tail, memory, state, active, ambient).input().orElseThrow().asResponse();
+    }
+
+    private static String userText(ResponseInputItem item) {
+      assertThat(message(item).role()).isEqualTo(EasyInputMessage.Role.USER);
+      return message(item).content().asTextInput();
+    }
+
+    private static Turn lookedUp() {
+      return inFlight(List.of(exchange(2, List.of(call("call_1")), "call_1")));
+    }
 
     @Test
-    void carry_ambient_background_in_labelled_sections() {
-      InferenceRequest request =
-          new InferenceRequest(
-              SYSTEM,
-              new InferenceContext(
-                  List.of(open(1, "hello")), List.of(Ambient.text("clock", "it is Tuesday"))),
-              Toolset.none(),
-              OPTIONS);
+    void the_system_text_holds_only_the_instructions() {
+      ResponseCreateParams params =
+          placed(List.of(), List.of(NOTES), List.of(PLAN), open(1, "hello"), List.of(CLOCK));
 
-      assertThat(params(request).instructions().orElseThrow())
-          .isEqualTo("you are a helpful assistant\n\n<clock>\nit is Tuesday\n</clock>");
+      assertThat(params.instructions().orElseThrow()).isEqualTo("you are a helpful assistant");
+    }
+
+    @Test
+    void memory_and_state_lead_the_active_turns_user_message() {
+      List<ResponseInputItem> items =
+          itemsPlaced(
+              List.of(answered(1, "earlier", "yes")),
+              List.of(NOTES),
+              List.of(PLAN),
+              open(2, "hello"),
+              List.of());
+
+      assertThat(items).hasSize(3);
+      assertThat(userText(items.get(2))).isEqualTo(NOTES_TAG + "\n\n" + PLAN_TAG + "\n\nhello");
+    }
+
+    @Test
+    void memory_and_state_are_not_attached_to_a_turn_in_the_tail() {
+      List<ResponseInputItem> items =
+          itemsPlaced(
+              List.of(answered(1, "earlier", "yes")),
+              List.of(NOTES),
+              List.of(PLAN),
+              open(2, "hello"),
+              List.of());
+
+      assertThat(userText(items.getFirst())).isEqualTo("earlier");
+    }
+
+    @Test
+    void ambient_ends_the_request_after_the_active_turns_input() {
+      List<ResponseInputItem> items =
+          itemsPlaced(List.of(), List.of(), List.of(), open(1, "hello"), List.of(CLOCK));
+
+      assertThat(items).hasSize(1);
+      assertThat(userText(items.getFirst())).isEqualTo("hello\n\n" + CLOCK_TAG);
+    }
+
+    @Test
+    void ambient_ends_the_request_after_the_last_tool_results() {
+      List<ResponseInputItem> items =
+          itemsPlaced(List.of(), List.of(), List.of(), lookedUp(), List.of(CLOCK));
+
+      assertThat(items).hasSize(4);
+      assertThat(items.get(2).isFunctionCallOutput()).isTrue();
+      assertThat(userText(items.get(3))).isEqualTo(CLOCK_TAG);
+      assertThat(userText(items.getFirst())).isEqualTo("look it up");
+    }
+
+    @Test
+    void a_context_with_no_memory_state_or_ambient_renders_as_before() {
+      Turn earlier = answered(1, "earlier", "yes");
+      Turn active = lookedUp();
+
+      List<ResponseInputItem> items =
+          itemsPlaced(List.of(earlier), List.of(), List.of(), active, List.of());
+
+      assertThat(items).isEqualTo(itemsOf(List.of(earlier, active)));
+      assertThat(items).hasSize(5);
+      assertThat(userText(items.get(2))).isEqualTo("look it up");
+    }
+
+    @Test
+    void blank_memory_state_and_ambient_are_left_out() {
+      List<ResponseInputItem> items =
+          itemsPlaced(
+              List.of(),
+              List.of(Memory.text("notes", "  ")),
+              List.of(State.text("plan", " \t ")),
+              open(1, "hello"),
+              List.of(Ambient.text("clock", "\n")));
+
+      assertThat(items).hasSize(1);
+      assertThat(userText(items.getFirst())).isEqualTo("hello");
     }
   }
 

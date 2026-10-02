@@ -57,6 +57,12 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>Pure translation; nothing here touches the network. <b>Stateless by construction</b>: every
  * request carries the whole context and {@code store: false}, and nothing here can name a previous
  * response or a conversation -- Nessy's event log is the only conversation there is.
+ *
+ * <p>{@code instructions} holds the system prompt and nothing else. The strata of the context are
+ * placed as the cache wants them: the summaries and the finished turns first, unchanged from call
+ * to call; then the active turn's question, led by the memory and state that are fixed for it; then
+ * the rounds of calls made so far, with the reasoning item for the turn in flight; and last, the
+ * ambient background, which is asked afresh on every call.
  */
 final class OpenAiResponsesRequests {
 
@@ -97,16 +103,32 @@ final class OpenAiResponsesRequests {
             summary ->
                 input.add(message(EasyInputMessage.Role.USER, OpenAiRendering.summary(summary))));
     for (Turn turn : request.context().tail()) {
-      input.addAll(items(turn, false, vendor, mapper));
+      input.addAll(items(turn, false, "", "", vendor, mapper));
     }
+    // Memory and state lead the question of the turn being answered, and ambient ends the input:
+    // appended to the question while that is the last thing there, a message of its own after
+    // the last item otherwise. A reasoning item replayed for the turn in flight stays where it is.
     Turn active = request.context().activeTurn();
-    input.addAll(items(active, active.result() == null, vendor, mapper));
+    String leading = OpenAiRendering.leading(request.context());
+    String trailing = OpenAiRendering.trailing(request.context());
+    boolean endsOnQuestion = active.exchanges().isEmpty() && active.result() == null;
+    input.addAll(
+        items(
+            active,
+            active.result() == null,
+            leading,
+            endsOnQuestion ? trailing : "",
+            vendor,
+            mapper));
+    if (!endsOnQuestion && !trailing.isEmpty()) {
+      input.add(message(EasyInputMessage.Role.USER, trailing));
+    }
 
     // store is sent explicitly: the API's default is true, and a default is a thing that changes.
     ResponseCreateParams.Builder builder =
         ResponseCreateParams.builder()
             .model(options.modelName())
-            .instructions(OpenAiRendering.system(request))
+            .instructions(request.systemPrompt().value())
             .inputOfResponse(input)
             .store(false)
             .addInclude(ResponseIncludable.REASONING_ENCRYPTED_CONTENT);
@@ -141,12 +163,29 @@ final class OpenAiResponsesRequests {
   /**
    * One turn as input items. An exchange is one item per stored block, in stored order -- a
    * reasoning item must precede the call it led to -- followed by one output per call.
+   *
+   * @param leading the memory and state that lead the question, or empty
+   * @param trailing the ambient that ends the question's message, or empty; given only when the
+   *     question is the last thing in the request
    */
   private static List<ResponseInputItem> items(
-      Turn turn, boolean inFlight, String vendor, JsonMapper mapper) {
+      Turn turn,
+      boolean inFlight,
+      String leading,
+      String trailing,
+      String vendor,
+      JsonMapper mapper) {
     List<ResponseInputItem> items = new ArrayList<>();
     if (!(turn.result() instanceof TurnResult.Refused)) {
-      items.add(message(EasyInputMessage.Role.USER, OpenAiRendering.text(turn.input().blocks())));
+      items.add(
+          message(
+              EasyInputMessage.Role.USER,
+              OpenAiRendering.opening(
+                  leading, OpenAiRendering.text(turn.input().blocks()), trailing)));
+    } else if (!leading.isEmpty()) {
+      // Nothing of the withdrawn question is sent, but what was recalled for it still has to be
+      // somewhere.
+      items.add(message(EasyInputMessage.Role.USER, leading));
     }
     List<Exchange> exchanges = turn.exchanges();
     for (int i = 0; i < exchanges.size(); i++) {

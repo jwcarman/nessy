@@ -45,6 +45,7 @@ import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
+import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.ToolChoice;
@@ -60,6 +61,12 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>Pure translation, and the only place in this module that knows what a "role" is. Everything
  * above it speaks in turns, exchanges and blocks; everything below it speaks OpenAI's wire. Nothing
  * here touches the network, which is what makes the whole projection testable without a key.
+ *
+ * <p>The system message holds the system prompt and nothing else. The strata of the context are
+ * placed as the cache wants them: the summaries and the finished turns first, unchanged from call
+ * to call; then the active turn's question, led by the memory and state that are fixed for it; then
+ * the rounds of calls made so far; and last, the ambient background, which is asked afresh on every
+ * call.
  */
 final class OpenAiChatRequests {
 
@@ -89,15 +96,11 @@ final class OpenAiChatRequests {
 
     List<ChatCompletionMessageParam> messages =
         Stream.concat(
-                Stream.of(
-                    ChatCompletionMessageParam.ofSystem(
-                        ChatCompletionSystemMessageParam.builder()
-                            .content(OpenAiRendering.system(request))
-                            .build())),
+                Stream.of(system(request.systemPrompt().value())),
                 Stream.of(
                         request.context().summaries().stream().map(OpenAiChatRequests::summary),
-                        request.context().tail().stream().flatMap(OpenAiChatRequests::toMessages),
-                        toMessages(request.context().activeTurn()))
+                        request.context().tail().stream().flatMap(turn -> toMessages(turn, "", "")),
+                        activeTurn(request.context()))
                     .flatMap(rendered -> rendered))
             .toList();
 
@@ -186,6 +189,27 @@ final class OpenAiChatRequests {
   }
 
   /**
+   * The turn being answered, with the strata that surround it.
+   *
+   * <p>Memory and state lead its question, in the same user message: they are fixed for the turn,
+   * so everything before them and them themselves are the same on every call it makes, and a cached
+   * prefix reaches through them. Ambient ends the request, because it is asked afresh on every call
+   * and anything after it would be re-read every time. Before the first exchange the request ends
+   * on the question, and the ambient is appended to that message rather than made a second user
+   * message after it; after it the ambient is a user message of its own.
+   */
+  private static Stream<ChatCompletionMessageParam> activeTurn(InferenceContext context) {
+    Turn turn = context.activeTurn();
+    String leading = OpenAiRendering.leading(context);
+    String trailing = OpenAiRendering.trailing(context);
+    boolean endsOnQuestion = turn.exchanges().isEmpty() && turn.result() == null;
+    if (endsOnQuestion || trailing.isEmpty()) {
+      return toMessages(turn, leading, trailing);
+    }
+    return Stream.concat(toMessages(turn, leading, ""), Stream.of(user(trailing)));
+  }
+
+  /**
    * One turn, as this provider wants to be asked.
    *
    * <p>Every decision here is this adapter's, because only it knows what its wire permits. A turn
@@ -196,11 +220,17 @@ final class OpenAiChatRequests {
    * <p>A refused input is dropped rather than re-sent: it is what caused the refusal, and
    * re-sending it keeps the conversation refused for as long as it is still in the request.
    */
-  private static Stream<ChatCompletionMessageParam> toMessages(Turn turn) {
+  private static Stream<ChatCompletionMessageParam> toMessages(
+      Turn turn, String leading, String trailing) {
     Stream<ChatCompletionMessageParam> opening =
         turn.result() instanceof TurnResult.Refused
-            ? Stream.empty()
-            : Stream.of(user(OpenAiRendering.text(turn.input().blocks())));
+            // Nothing of the withdrawn question is sent, but what was recalled for it still has
+            // to be somewhere.
+            ? (leading.isEmpty() ? Stream.empty() : Stream.of(user(leading)))
+            : Stream.of(
+                user(
+                    OpenAiRendering.opening(
+                        leading, OpenAiRendering.text(turn.input().blocks()), trailing)));
 
     // Every round, in order, between the question and whatever the model finally said. A call
     // and its result have to stay adjacent and in sequence: this wire rejects an assistant
