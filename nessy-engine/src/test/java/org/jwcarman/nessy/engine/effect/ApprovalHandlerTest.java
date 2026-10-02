@@ -123,10 +123,15 @@ class ApprovalHandlerTest {
 
   /** A story holding one call, at seq 2, in turn 1. */
   private static ToolCalls story(String arguments) {
+    return story(arguments, "Query[q=loch ness]");
+  }
+
+  /** The same story, with the action that was stored when the model asked. */
+  private static ToolCalls story(String arguments, String storedAction) {
     Block.ToolCall call = new Block.ToolCall("c1", "lookup", arguments);
     return (agentId, requestSeq, callId) ->
         requestSeq.equals(new Seq(2)) && new CallId("c1").equals(callId)
-            ? Optional.of(new ToolCalls.ResolvedCall(new TurnId(1), call))
+            ? Optional.of(new ToolCalls.ResolvedCall(new TurnId(1), call, storedAction))
             : Optional.empty();
   }
 
@@ -251,11 +256,12 @@ class ApprovalHandlerTest {
   }
 
   /**
-   * The sentence a person consents to, rendered from the tool's own input type rather than the
-   * model's JSON -- which is why the arguments have to be read before anybody is asked.
+   * The sentence a person consents to was written when the model asked, and is read back here,
+   * never worked out again -- so what the binding's stringifier would say today is beside the
+   * point.
    */
   @Test
-  void theActionSaysWhatTheCallWouldDoRatherThanWhatTheToolIs() {
+  void the_question_carries_the_action_stored_with_the_call() {
     String[] seen = new String[1];
     ask(
         bound(
@@ -265,9 +271,53 @@ class ApprovalHandlerTest {
             },
             Duration.ofMinutes(10),
             new RetryPolicy.Never(),
-            query -> "look up " + query.q() + " in the register"));
+            query -> "look up " + query.q() + " in the register"),
+        story("{\"q\":\"loch ness\"}", "stored at request time"));
 
-    assertThat(seen[0]).isEqualTo("look up loch ness in the register");
+    assertThat(seen[0]).isEqualTo("stored at request time");
+  }
+
+  /** The tool's name is what gets stored when a stringifier says nothing, and approval shows it. */
+  @Test
+  void a_stringifier_that_said_nothing_leaves_the_tools_name_to_be_shown() {
+    String[] seen = new String[1];
+    ask(
+        bound(
+            request -> {
+              seen[0] = request.action();
+              return Awaited.ready(ApprovalResult.approved());
+            },
+            Duration.ofMinutes(10),
+            new RetryPolicy.Never(),
+            _ -> " "),
+        story("{\"q\":\"loch ness\"}", "lookup"));
+
+    assertThat(seen[0]).isEqualTo("lookup");
+  }
+
+  /** An enricher runs after the question is built, so it reads the stored sentence. */
+  @Test
+  void an_enricher_reads_the_stored_action() {
+    String[] seen = new String[1];
+    Tools tools =
+        new Tools(
+            List.of(
+                new ToolBinding<>(
+                    tool(),
+                    JsonMapper.builder().build(),
+                    new JsonSchema("{\"type\":\"object\"}"),
+                    Duration.ofSeconds(30),
+                    new RetryPolicy.Never(),
+                    SettledLines.action(Optional.empty()),
+                    SettledLines.result(Optional.empty()),
+                    List.of(request -> seen[0] = request.action()),
+                    Approver.allow(),
+                    Duration.ofMinutes(10),
+                    new RetryPolicy.Never())));
+
+    ask(tools, story("{\"q\":\"loch ness\"}", "stored at request time"));
+
+    assertThat(seen[0]).isEqualTo("stored at request time");
   }
 
   /** The default reads well for a record, which is what most inputs are. */

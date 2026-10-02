@@ -168,11 +168,11 @@ public final class ToolBinding<I> {
   /**
    * Builds the question this call raises.
    *
-   * <p>The arguments are read here, before anyone is asked, because the sentence a person consents
-   * to is rendered from the tool's own input type rather than from the model's JSON -- which is the
-   * point of the action stringifier. A call whose arguments will not read cannot run whatever
-   * anybody says about it, so there is nothing to gate and the caller discharges it instead. The
-   * throw is Jackson's, turned into something the model reads at the one call site that catches it.
+   * <p>The action is the sentence stored when the model asked, shown as it is and never worked out
+   * again. The arguments are still read into the tool's input type here, before anyone is asked: a
+   * call whose arguments will not read cannot run whatever anybody says about it, so there is
+   * nothing to gate and the caller discharges it instead. The throw is Jackson's, turned into
+   * something the model reads at the one call site that catches it.
    */
   public ApprovalRequest question(
       AgentType agentType,
@@ -180,8 +180,10 @@ public final class ToolBinding<I> {
       TurnId turn,
       CallId callId,
       String arguments,
+      String action,
       Instant askedAt,
       ReplyToken replyToken) {
+    mapper.readValue(arguments, tool.inputType());
     ApprovalRequest question =
         new ApprovalRequest(
             agentType,
@@ -190,7 +192,7 @@ public final class ToolBinding<I> {
             callId,
             tool.name(),
             arguments,
-            action.stringify(mapper.readValue(arguments, tool.inputType())),
+            action,
             askedAt,
             askedAt.plus(approvalTimeout),
             replyToken);

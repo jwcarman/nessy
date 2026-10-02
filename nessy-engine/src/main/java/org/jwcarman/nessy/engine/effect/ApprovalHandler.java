@@ -129,12 +129,13 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
               resolved.turn(),
               callId,
               resolved.call().arguments(),
+              resolved.action(),
               clock.instant(),
               replyTokens.mint(agentType, agentId, effect.requestSeq(), callId));
     } catch (RuntimeException e) {
-      // The sentence a person consents to is rendered from the tool's own input type, so a
-      // call whose arguments will not read has no question to ask about it -- and could not
-      // run whatever anybody answered. Discharged without asking: a gate exists to stop
+      // A call whose arguments will not read into the tool's input type has no question to
+      // ask about it -- and could not run whatever anybody answered. Discharged without asking: a
+      // gate exists to stop
       // execution, and there is no execution here to stop.
       log.warn(
           "[{}] agent {}: call {} of {} has unreadable arguments",

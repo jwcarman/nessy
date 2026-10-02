@@ -124,7 +124,7 @@ class ToolCallHandlerTest {
   private static ToolCalls story(Block.ToolCall call) {
     return (agentId, requestSeq, callId) ->
         requestSeq.equals(new Seq(2)) && call.id().equals(callId)
-            ? Optional.of(new ToolCalls.ResolvedCall(new TurnId(1), call))
+            ? Optional.of(new ToolCalls.ResolvedCall(new TurnId(1), call, "lookup"))
             : Optional.empty();
   }
 
