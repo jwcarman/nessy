@@ -630,18 +630,14 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   /**
    * The effect one outstanding call implies, so its terms can be looked up the way §4c does.
    *
-   * <p>A pattern switch rather than a cast, because {@link ActionRequest} is deliberately a grammar
-   * with room for an arm beside {@code ToolCall}: on the day one arrives, this has to stop
-   * compiling. A cast would instead have kept compiling and thrown here at recovery time, which is
-   * the least observable moment in this class to learn about it.
+   * <p>Built from the call's id and tool name, which is all the state keeps of it.
    */
   private static AgentEffect effectFor(TurnId turn, Seq requestSeq, OutstandingAction outstanding) {
-    return switch (outstanding.action()) {
-      case ActionRequest.ToolCall(var id, var name, _) ->
-          switch (outstanding.phase()) {
-            case AWAITING_APPROVAL -> new AgentEffect.Approve(turn, requestSeq, id, name);
-            case RUNNING -> new AgentEffect.CallTool(turn, requestSeq, id, name);
-          };
+    return switch (outstanding.phase()) {
+      case AWAITING_APPROVAL ->
+          new AgentEffect.Approve(turn, requestSeq, outstanding.callId(), outstanding.toolName());
+      case RUNNING ->
+          new AgentEffect.CallTool(turn, requestSeq, outstanding.callId(), outstanding.toolName());
     };
   }
 

@@ -17,7 +17,8 @@ package org.jwcarman.nessy.engine.agent;
 
 import java.util.Objects;
 import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.backend.event.ActionRequest;
+import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.ToolName;
 
 /**
  * One call the engine owes an outcome for, and how far along it is.
@@ -28,8 +29,10 @@ import org.jwcarman.nessy.backend.event.ActionRequest;
  * then gone -- but approval does not remove anything, so presence alone cannot tell a first
  * approval from a second. The phase can.
  *
- * <p>The tool's name is carried because the call effect needs it and the fold has no registry to
- * look it up in. It is the same name the model wrote, which may no longer be bound to anything.
+ * <p>It holds what the fold needs to finish a call: the call's id and its tool's name. The name is
+ * carried because the call effect needs it and the fold has no registry to look it up in; it is the
+ * same name the model wrote, which may no longer be bound to anything. What the call would do is in
+ * the {@code ActionsRequested} event, not here.
  *
  * <p>{@code since} is the seq of the event that put this call into its current phase -- {@code
  * ActionsRequested} for {@link Phase#AWAITING_APPROVAL}, {@code ToolApproved} for {@link
@@ -38,10 +41,11 @@ import org.jwcarman.nessy.backend.event.ActionRequest;
  * around to asking. It costs no migration, because this state is never stored -- it is rebuilt by
  * replay every time.
  */
-public record OutstandingAction(ActionRequest action, Phase phase, Seq since) {
+public record OutstandingAction(CallId callId, ToolName toolName, Phase phase, Seq since) {
 
   public OutstandingAction {
-    Objects.requireNonNull(action, "action must not be null");
+    Objects.requireNonNull(callId, "callId must not be null");
+    Objects.requireNonNull(toolName, "toolName must not be null");
     Objects.requireNonNull(phase, "phase must not be null");
     Objects.requireNonNull(since, "since must not be null");
   }
@@ -56,11 +60,11 @@ public record OutstandingAction(ActionRequest action, Phase phase, Seq since) {
     RUNNING
   }
 
-  public static OutstandingAction awaitingApproval(ActionRequest action, Seq since) {
-    return new OutstandingAction(action, Phase.AWAITING_APPROVAL, since);
+  public static OutstandingAction awaitingApproval(CallId callId, ToolName toolName, Seq since) {
+    return new OutstandingAction(callId, toolName, Phase.AWAITING_APPROVAL, since);
   }
 
   public OutstandingAction running(Seq since) {
-    return new OutstandingAction(action, Phase.RUNNING, since);
+    return new OutstandingAction(callId, toolName, Phase.RUNNING, since);
   }
 }

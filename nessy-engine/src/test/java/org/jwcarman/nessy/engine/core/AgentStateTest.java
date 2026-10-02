@@ -42,6 +42,7 @@ import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.agent.OutstandingAction;
 import org.jwcarman.nessy.inference.Failure;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The pure core, on its own: no provider, no database, no clock.
@@ -532,6 +533,33 @@ class AgentStateTest {
       assertThat(state.outstanding()).isNotEmpty();
       assertThat(state.outstanding().get(CALL).since()).isEqualTo(state.seq());
       assertThat(state.outstanding().get(CALL).phase()).isEqualTo(OutstandingAction.Phase.RUNNING);
+    }
+
+    @Test
+    void the_state_holds_a_calls_id_and_tool_and_not_what_it_would_do() {
+      CallId other = new CallId("call-2");
+      ToolName otherTool = new ToolName("audit");
+      AgentState inferring =
+          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+      Decision requested =
+          inferring.execute(
+              new AgentCommand.CompleteInference(
+                  TURN,
+                  new AgentCommand.InferenceOutcome.RequestedActions(
+                      MAIL,
+                      List.of(
+                          new ActionRequest.ToolCall(CALL, TOOL, "refund 40 dollars to the buyer"),
+                          new ActionRequest.ToolCall(
+                              other, otherTool, "audit the buyer's history")),
+                      Usage.unreported())));
+      AgentState awaiting = inferring.applyAll(requested.events());
+
+      String stored = JsonMapper.builder().build().writeValueAsString(awaiting);
+
+      assertThat(stored)
+          .contains("call-1", "call-2", "refund", "audit")
+          .doesNotContain("refund 40 dollars to the buyer")
+          .doesNotContain("audit the buyer's history");
     }
   }
 

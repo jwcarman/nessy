@@ -297,7 +297,12 @@ public sealed interface AgentState {
     static AwaitingActions opening(AgentEvent.ActionsRequested requested, TurnStats stats) {
       Map<CallId, OutstandingAction> calls = new LinkedHashMap<>();
       for (ActionRequest action : requested.actions()) {
-        calls.put(action.id(), OutstandingAction.awaitingApproval(action, requested.seq()));
+        switch (action) {
+          case ActionRequest.ToolCall call ->
+              calls.put(
+                  call.id(),
+                  OutstandingAction.awaitingApproval(call.id(), call.name(), requested.seq()));
+        }
       }
       return new AwaitingActions(requested.seq(), requested.turn(), requested.seq(), calls, stats);
     }
@@ -360,7 +365,7 @@ public sealed interface AgentState {
         case AgentCommand.ApprovalOutcome.Approved ok ->
             Decision.of(
                 List.of(new AgentEvent.ToolApproved(at, turn, done.callId(), ok.reference())),
-                List.of(performing(turn, requestSeq, call.action())));
+                List.of(performing(turn, requestSeq, call)));
         case AgentCommand.ApprovalOutcome.Denied no ->
             continuing(
                 at,
@@ -374,12 +379,6 @@ public sealed interface AgentState {
       OutstandingAction call = outstanding.get(done.callId());
       // Already discharged, or never ours: a redelivery.
       if (call == null) {
-        return Decision.ignore();
-      }
-      // An answer has to fit the action it claims to settle. A tool outcome can only discharge a
-      // tool call -- when a second kind of action exists, its answer arriving at this id would
-      // otherwise settle something it knows nothing about.
-      if (!(call.action() instanceof ActionRequest.ToolCall)) {
         return Decision.ignore();
       }
       // A result can only come from a call that was running. A FAILURE can reach one that never
@@ -401,12 +400,9 @@ public sealed interface AgentState {
       return continuing(at, event, policy, now);
     }
 
-    /** The work that performs an action, whatever kind of action it is. */
-    private static AgentEffect performing(TurnId turn, Seq requestSeq, ActionRequest action) {
-      return switch (action) {
-        case ActionRequest.ToolCall call ->
-            new AgentEffect.CallTool(turn, requestSeq, call.id(), call.name());
-      };
+    /** The work that performs an outstanding call. */
+    private static AgentEffect performing(TurnId turn, Seq requestSeq, OutstandingAction call) {
+      return new AgentEffect.CallTool(turn, requestSeq, call.callId(), call.toolName());
     }
 
     /**
