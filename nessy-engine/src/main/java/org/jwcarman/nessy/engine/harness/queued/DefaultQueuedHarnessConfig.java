@@ -37,10 +37,12 @@ import org.jwcarman.nessy.api.EffectsConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
 import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
+import org.jwcarman.nessy.api.MemorySource;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.StateSource;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.SystemPromptSource;
@@ -166,6 +168,26 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
   public DefaultQueuedHarnessConfig<I> backlogPolicy(BacklogPolicy<I> policy) {
     this.policy = policy;
     return this;
+  }
+
+  /**
+   * What was recalled because it bears on the turn being answered, asked afresh on every call.
+   *
+   * <p>A shortcut into the context, which is where memory sources actually live.
+   */
+  @Override
+  public DefaultQueuedHarnessConfig<I> memory(MemorySource source) {
+    return inference(in -> in.context(ctx -> ctx.memory(source)));
+  }
+
+  /**
+   * The agent's standing situation, asked afresh on every call with the turn being answered.
+   *
+   * <p>A shortcut into the context, which is where state sources actually live.
+   */
+  @Override
+  public DefaultQueuedHarnessConfig<I> state(StateSource source) {
+    return inference(in -> in.context(ctx -> ctx.state(source)));
   }
 
   /**
@@ -490,6 +512,10 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
     /** The tail and background: everything that goes in that is not the call itself. */
     static final class Context implements ContextConfig {
 
+      private final List<MemorySource> memory = new ArrayList<>();
+      private final Set<String> memoryKinds = new LinkedHashSet<>();
+      private final List<StateSource> state = new ArrayList<>();
+      private final Set<String> stateKinds = new LinkedHashSet<>();
       private final List<AmbientSource> ambient = new ArrayList<>();
       private final Set<String> ambientKinds = new LinkedHashSet<>();
       private int maxTail = 40;
@@ -501,6 +527,34 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
           throw new IllegalArgumentException("maxTail must be positive");
         }
         this.maxTail = turns;
+        return this;
+      }
+
+      @Override
+      public ContextConfig memory(MemorySource source) {
+        Objects.requireNonNull(source, "memory source must not be null");
+        // Refused here rather than at render time: two sections under one label leave the model
+        // with a
+        // contradiction and no way to tell which is current.
+        if (!memoryKinds.add(source.kind())) {
+          throw new IllegalArgumentException(
+              "two memory sources offer the kind '" + source.kind() + "'");
+        }
+        memory.add(source);
+        return this;
+      }
+
+      @Override
+      public ContextConfig state(StateSource source) {
+        Objects.requireNonNull(source, "state source must not be null");
+        // Refused here rather than at render time: two sections under one label leave the model
+        // with a
+        // contradiction and no way to tell which is current.
+        if (!stateKinds.add(source.kind())) {
+          throw new IllegalArgumentException(
+              "two state sources offer the kind '" + source.kind() + "'");
+        }
+        state.add(source);
         return this;
       }
 
@@ -559,6 +613,14 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
 
       int maxTail() {
         return maxTail;
+      }
+
+      List<MemorySource> memory() {
+        return List.copyOf(memory);
+      }
+
+      List<StateSource> state() {
+        return List.copyOf(state);
       }
 
       List<AmbientSource> ambient() {

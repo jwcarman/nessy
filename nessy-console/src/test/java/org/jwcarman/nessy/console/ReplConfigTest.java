@@ -35,8 +35,10 @@ import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
 import org.jwcarman.nessy.api.InputRenderer;
+import org.jwcarman.nessy.api.MemorySource;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.StateSource;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.TurnPolicy;
@@ -204,6 +206,16 @@ class ReplConfigTest {
 
       @Override
       public DirectHarnessConfig<String> ambient(AmbientSource source) {
+        return this;
+      }
+
+      @Override
+      public DirectHarnessConfig<String> memory(MemorySource source) {
+        return this;
+      }
+
+      @Override
+      public DirectHarnessConfig<String> state(StateSource source) {
         return this;
       }
 

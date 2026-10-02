@@ -188,10 +188,9 @@ public final class ObservedInferenceProvider implements InferenceProvider {
     }
   }
 
-  /** The last turn in the context is the one being answered; a first call has none. */
+  /** The active turn is the one being answered. */
   private static TurnId openTurn(InferenceRequest request) {
-    var turns = request.context().turns();
-    return turns.isEmpty() ? null : turns.getLast().id();
+    return request.context().activeTurn().id();
   }
 
   /**

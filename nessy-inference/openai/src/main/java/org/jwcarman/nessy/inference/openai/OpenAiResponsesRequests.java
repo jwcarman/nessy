@@ -96,12 +96,11 @@ final class OpenAiResponsesRequests {
         .forEach(
             summary ->
                 input.add(message(EasyInputMessage.Role.USER, OpenAiRendering.summary(summary))));
-    List<Turn> turns = request.context().turns();
-    for (int i = 0; i < turns.size(); i++) {
-      Turn turn = turns.get(i);
-      boolean inFlight = i == turns.size() - 1 && turn.result() == null;
-      input.addAll(items(turn, inFlight, vendor, mapper));
+    for (Turn turn : request.context().tail()) {
+      input.addAll(items(turn, false, vendor, mapper));
     }
+    Turn active = request.context().activeTurn();
+    input.addAll(items(active, active.result() == null, vendor, mapper));
 
     // store is sent explicitly: the API's default is true, and a default is a thing that changes.
     ResponseCreateParams.Builder builder =

@@ -1398,7 +1398,7 @@ class DefaultDirectHarnessTest {
 
     // The fifth call is the one worth looking at: four turns are behind it, and only maxTail of
     // them may be sent -- the window is what makes a thousand-turn conversation affordable.
-    assertThat(model.seen.getLast().context().turns()).hasSizeLessThanOrEqualTo(2);
+    assertThat(model.seen.getLast().context().tail()).hasSizeLessThanOrEqualTo(2);
   }
 
   private DirectHarness<String, String> harnessKeeping(Scripted model, int maxTail) {

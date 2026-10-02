@@ -29,7 +29,11 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
+import org.jwcarman.nessy.api.Memory;
+import org.jwcarman.nessy.api.MemorySource;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.State;
+import org.jwcarman.nessy.api.StateSource;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Chapter;
@@ -137,7 +141,7 @@ class ContextAssemblerTest {
   }
 
   private static ContextAssembler assembler(TurnHistories histories, int maxTail) {
-    return new ContextAssembler(histories, maxTail, List.of());
+    return new ContextAssembler(histories, maxTail, List.of(), List.of(), List.of());
   }
 
   @Nested
@@ -150,7 +154,8 @@ class ContextAssemblerTest {
       InferenceContext context = assembler(histories, 5).assemble(invocation());
 
       assertThat(context.summaries()).isEmpty();
-      assertThat(ids(context.turns())).containsExactly(26L, 27L, 28L, 29L, 30L);
+      assertThat(ids(context.tail())).containsExactly(25L, 26L, 27L, 28L, 29L);
+      assertThat(context.activeTurn().id()).isEqualTo(new TurnId(30));
     }
 
     /** The cap is spent in the query, so the store is told it. */
@@ -160,18 +165,43 @@ class ContextAssemblerTest {
 
       assembler(histories, 5).assemble(invocation());
 
-      assertThat(histories.windows).containsExactly(5);
+      assertThat(histories.windows)
+          .as("the active turn is read besides the tail")
+          .containsExactly(6);
       assertThat(histories.tailsAfter)
           .as("no range read: the whole story was not pulled back")
           .isEmpty();
     }
 
     @Test
-    void an_empty_story_assembles_to_nothing_rather_than_failing() {
-      InferenceContext context =
-          assembler(new RecordingHistories(List.of()), 5).assemble(invocation());
+    void an_empty_story_has_no_turn_to_answer() {
+      ContextAssembler assembler = assembler(new RecordingHistories(List.of()), 5);
+      InferenceInvocation invocation = invocation();
 
-      assertThat(context.turns()).isEmpty();
+      assertThatThrownBy(() -> assembler.assemble(invocation))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("no turn to answer");
+    }
+
+    @Test
+    void the_active_turn_is_the_newest_and_is_not_in_the_tail() {
+      RecordingHistories histories = new RecordingHistories(turns(1, 3));
+
+      InferenceContext context = assembler(histories, 5).assemble(invocation());
+
+      assertThat(context.activeTurn().id()).isEqualTo(new TurnId(3));
+      assertThat(ids(context.tail())).containsExactly(1L, 2L);
+      assertThat(ids(context.turns())).containsExactly(1L, 2L, 3L);
+    }
+
+    @Test
+    void a_story_of_one_turn_has_an_empty_tail() {
+      RecordingHistories histories = new RecordingHistories(turns(1, 1));
+
+      InferenceContext context = assembler(histories, 5).assemble(invocation());
+
+      assertThat(context.tail()).isEmpty();
+      assertThat(context.activeTurn().id()).isEqualTo(new TurnId(1));
     }
   }
 
@@ -198,12 +228,14 @@ class ContextAssemblerTest {
       RecordingHistories histories = new RecordingHistories(turns(1, 25));
 
       InferenceContext context =
-          new ContextAssembler(histories, closed(2), 40, List.of()).assemble(invocation());
+          new ContextAssembler(histories, closed(2), 40, List.of(), List.of(), List.of())
+              .assemble(invocation());
 
       assertThat(context.summaries())
           .extracting(Summary::text)
           .containsExactly("the first ten", "the second ten");
-      assertThat(ids(context.turns())).containsExactly(21L, 22L, 23L, 24L, 25L);
+      assertThat(ids(context.tail())).containsExactly(21L, 22L, 23L, 24L);
+      assertThat(context.activeTurn().id()).isEqualTo(new TurnId(25));
       assertThat(histories.tailsAfter).containsExactly(20L);
     }
 
@@ -212,7 +244,8 @@ class ContextAssemblerTest {
       RecordingHistories histories = new RecordingHistories(turns(1, 25));
 
       InferenceContext context =
-          new ContextAssembler(histories, closed(1), 40, List.of()).assemble(invocation());
+          new ContextAssembler(histories, closed(1), 40, List.of(), List.of(), List.of())
+              .assemble(invocation());
 
       assertThat(context.summaries()).extracting(Summary::text).containsExactly("the first ten");
       assertThat(ids(context.turns())).hasSize(15).startsWith(11L).endsWith(25L);
@@ -223,10 +256,12 @@ class ContextAssemblerTest {
       RecordingHistories histories = new RecordingHistories(turns(1, 30));
 
       InferenceContext context =
-          new ContextAssembler(histories, closed(2), 3, List.of()).assemble(invocation());
+          new ContextAssembler(histories, closed(2), 3, List.of(), List.of(), List.of())
+              .assemble(invocation());
 
-      assertThat(ids(context.turns())).containsExactly(28L, 29L, 30L);
-      assertThat(histories.tailCaps).containsExactly(3);
+      assertThat(ids(context.tail())).containsExactly(27L, 28L, 29L);
+      assertThat(context.activeTurn().id()).isEqualTo(new TurnId(30));
+      assertThat(histories.tailCaps).containsExactly(4);
     }
 
     @Test
@@ -234,17 +269,20 @@ class ContextAssemblerTest {
       RecordingHistories histories = new RecordingHistories(turns(1, 30));
 
       InferenceContext context =
-          new ContextAssembler(histories, new InMemoryChapters(), 5, List.of())
+          new ContextAssembler(
+                  histories, new InMemoryChapters(), 5, List.of(), List.of(), List.of())
               .assemble(invocation());
 
       assertThat(context.summaries()).isEmpty();
-      assertThat(ids(context.turns())).containsExactly(26L, 27L, 28L, 29L, 30L);
+      assertThat(ids(context.tail())).containsExactly(25L, 26L, 27L, 28L, 29L);
+      assertThat(context.activeTurn().id()).isEqualTo(new TurnId(30));
     }
 
     @Test
     void a_summary_that_reaches_the_turn_being_answered_is_refused() {
       RecordingHistories histories = new RecordingHistories(turns(1, 20));
-      ContextAssembler assembler = new ContextAssembler(histories, closed(2), 40, List.of());
+      ContextAssembler assembler =
+          new ContextAssembler(histories, closed(2), 40, List.of(), List.of(), List.of());
       InferenceInvocation invocation = invocation();
 
       assertThatThrownBy(() -> assembler.assemble(invocation))
@@ -258,12 +296,14 @@ class ContextAssemblerTest {
   @Test
   void without_chapters_the_stored_summaries_are_not_read_and_the_story_is_cut_at_the_cap() {
     RecordingHistories histories = new RecordingHistories(turns(1, 30));
-    ContextAssembler assembler = new ContextAssembler(histories, null, 5, List.of());
+    ContextAssembler assembler =
+        new ContextAssembler(histories, null, 5, List.of(), List.of(), List.of());
 
     InferenceContext context = assembler.assemble(invocation());
 
     assertThat(context.summaries()).isEmpty();
-    assertThat(ids(context.turns())).containsExactly(26L, 27L, 28L, 29L, 30L);
+    assertThat(ids(context.tail())).containsExactly(25L, 26L, 27L, 28L, 29L);
+    assertThat(context.activeTurn().id()).isEqualTo(new TurnId(30));
   }
 
   @Test
@@ -291,10 +331,127 @@ class ContextAssemblerTest {
                         }));
 
     InferenceContext context =
-        new ContextAssembler(histories, 5, List.of(clock)).assemble(invocation());
+        new ContextAssembler(histories, 5, List.of(), List.of(), List.of(clock))
+            .assemble(invocation());
 
     assertThat(askedFor).containsExactly(AGENT);
     assertThat(context.ambient()).extracting(Ambient::kind).containsExactly("clock");
+  }
+
+  /** Records what each source was handed, and in what order the sources were asked. */
+  private static final class Asked {
+    final List<String> order = new ArrayList<>();
+    final List<Turn> handed = new ArrayList<>();
+  }
+
+  private static MemorySource memorySource(String kind, Asked asked) {
+    return new MemorySource() {
+      @Override
+      public String kind() {
+        return kind;
+      }
+
+      @Override
+      public Optional<Memory> forAgent(AgentId agentId, Turn current) {
+        asked.order.add("memory " + kind);
+        asked.handed.add(current);
+        return Optional.of(Memory.text(kind, "recalled " + kind));
+      }
+    };
+  }
+
+  private static StateSource stateSource(String kind, Asked asked) {
+    return new StateSource() {
+      @Override
+      public String kind() {
+        return kind;
+      }
+
+      @Override
+      public Optional<State> forAgent(AgentId agentId, Turn current) {
+        asked.order.add("state " + kind);
+        asked.handed.add(current);
+        return Optional.of(State.text(kind, "standing " + kind));
+      }
+    };
+  }
+
+  @Nested
+  class Memory_and_state {
+
+    @Test
+    void each_source_is_handed_the_active_turn() {
+      RecordingHistories histories = new RecordingHistories(turns(1, 9));
+      Asked asked = new Asked();
+      ContextAssembler assembler =
+          new ContextAssembler(
+              histories,
+              5,
+              List.of(memorySource("episodes", asked)),
+              List.of(stateSource("plan", asked)),
+              List.of());
+
+      InferenceContext context = assembler.assemble(invocation());
+
+      assertThat(asked.handed).hasSize(2);
+      assertThat(asked.handed).allSatisfy(turn -> assertThat(turn.id()).isEqualTo(new TurnId(9)));
+      assertThat(context.memory()).containsExactly(Memory.text("episodes", "recalled episodes"));
+      assertThat(context.state()).containsExactly(State.text("plan", "standing plan"));
+    }
+
+    @Test
+    void sources_are_asked_in_the_order_they_were_bound_memory_then_state_then_ambient() {
+      RecordingHistories histories = new RecordingHistories(turns(1, 3));
+      Asked asked = new Asked();
+      AmbientSource clock =
+          AmbientSource.of(
+              source ->
+                  source
+                      .kind("clock")
+                      .text(
+                          _ -> {
+                            asked.order.add("ambient clock");
+                            return Optional.of("Tuesday");
+                          }));
+      ContextAssembler assembler =
+          new ContextAssembler(
+              histories,
+              5,
+              List.of(memorySource("second", asked), memorySource("first", asked)),
+              List.of(stateSource("b", asked), stateSource("a", asked)),
+              List.of(clock));
+
+      InferenceContext context = assembler.assemble(invocation());
+
+      assertThat(asked.order)
+          .containsExactly("memory second", "memory first", "state b", "state a", "ambient clock");
+      assertThat(context.memory()).extracting(Memory::kind).containsExactly("second", "first");
+      assertThat(context.state()).extracting(State::kind).containsExactly("b", "a");
+    }
+
+    @Test
+    void a_source_with_nothing_to_say_is_left_out() {
+      RecordingHistories histories = new RecordingHistories(turns(1, 3));
+      MemorySource quiet = MemorySource.constant(Memory.text("episodes", "x"));
+      MemorySource silent =
+          new MemorySource() {
+            @Override
+            public String kind() {
+              return "silent";
+            }
+
+            @Override
+            public Optional<Memory> forAgent(AgentId agentId, Turn current) {
+              return Optional.empty();
+            }
+          };
+
+      InferenceContext context =
+          new ContextAssembler(histories, 5, List.of(silent, quiet), List.of(), List.of())
+              .assemble(invocation());
+
+      assertThat(context.memory()).extracting(Memory::kind).containsExactly("episodes");
+    }
   }
 
   /** A cap of zero would send an empty context; refused where it is set, not where it is spent. */

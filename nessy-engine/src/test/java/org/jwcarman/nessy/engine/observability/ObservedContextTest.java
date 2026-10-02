@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -28,9 +29,14 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
+import org.jwcarman.nessy.api.Memory;
+import org.jwcarman.nessy.api.MemorySource;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.State;
+import org.jwcarman.nessy.api.StateSource;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
 
@@ -81,6 +87,42 @@ class ObservedContextTest {
     assertThat(only().getContextualName()).isEqualTo("nessy.context ambient clock");
   }
 
+  @Test
+  void a_memory_source_is_named_for_its_kind_and_handed_the_turn_on() {
+    List<Object> handed = new ArrayList<>();
+    MemorySource episodes =
+        new MemorySource() {
+          @Override
+          public String kind() {
+            return "episodes";
+          }
+
+          @Override
+          public Optional<Memory> forAgent(AgentId agentId, Turn current) {
+            handed.add(current);
+            return Optional.empty();
+          }
+        };
+
+    Optional<Memory> offered =
+        ObservedMemorySource.wrap(episodes, registry).forAgent(AGENT, StoryOfOne.TURN);
+
+    assertThat(offered).isEmpty();
+    assertThat(handed).containsExactly(StoryOfOne.TURN);
+    assertThat(only().getContextualName()).isEqualTo("nessy.context memory episodes");
+  }
+
+  @Test
+  void a_state_source_is_named_for_its_kind_and_handed_the_turn_on() {
+    StateSource plan = StateSource.constant(State.text("plan", "step two"));
+
+    Optional<State> offered =
+        ObservedStateSource.wrap(plan, registry).forAgent(AGENT, StoryOfOne.TURN);
+
+    assertThat(offered).contains(State.text("plan", "step two"));
+    assertThat(only().getContextualName()).isEqualTo("nessy.context state plan");
+  }
+
   /**
    * The case worth seeing: a source that cost time and offered nothing is as identifiable as one
    * that offered something, because the name comes from the source rather than from its answer.
@@ -97,7 +139,7 @@ class ObservedContextTest {
   @Test
   void assembling_a_context_is_one_span_over_the_reads() {
     ObservedInferenceContextAssembler.wrap(
-            _ -> new InferenceContext(List.of(), List.of(), List.of()), registry)
+            _ -> InferenceContext.of(List.of(StoryOfOne.TURN)), registry)
         .assemble(
             new org.jwcarman.nessy.engine.inference.InferenceInvocation(
                 TYPE, AGENT, InferenceOptions.of("a-model")));

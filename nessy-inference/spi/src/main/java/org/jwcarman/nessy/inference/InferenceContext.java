@@ -15,15 +15,41 @@
  */
 package org.jwcarman.nessy.inference;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Ambient;
+import org.jwcarman.nessy.api.Memory;
+import org.jwcarman.nessy.api.State;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
 
 /**
- * What a provider is given to work from: the conversation, and whatever background stands behind
+ * What a provider is given to work from, as strata: the conversation, and whatever stands behind
  * it.
+ *
+ * <p>There are six, in this order, and each has its own lifetime and its own reason for being
+ * there:
+ *
+ * <ol>
+ *   <li><b>instructions</b> -- the system prompt. It stays on the {@link InferenceRequest}, beside
+ *       this, because it is resolved per call and is the request's, not the story's.
+ *   <li><b>history</b> -- {@link #summaries()}, one per closed chapter, oldest first, and then
+ *       {@link #tail()}, the completed turns after them. Written down once and re-sent verbatim.
+ *   <li><b>memory</b> -- what was recalled because it bears on this turn. Chosen for the turn being
+ *       answered, so it changes most from turn to turn.
+ *   <li><b>state</b> -- the agent's standing situation. It changes rarely, and only between turns:
+ *       each source answers as of the start of the turn it is handed.
+ *   <li><b>the active turn</b> -- {@link #activeTurn()}, the turn being answered, whole: the
+ *       question, and every round of calls made so far.
+ *   <li><b>ambient</b> -- anything that can change while the agent is working, asked afresh on
+ *       every call.
+ * </ol>
+ *
+ * <p>Memory, state and ambient are none of them part of the story. They are derived per call and
+ * discarded, and a view of the world recorded forever stops being one. <b>Where each stratum lands
+ * on the wire, and how it is labelled, is the adapter's.</b> This says what each one IS and leaves
+ * the placement to the adapter that knows the vendor.
  *
  * <p><b>Turns rather than a flat list of messages</b>, because a flat list is already a wire shape
  * and it is one particular provider's. The same fact is encoded differently by each of them -- a
@@ -38,42 +64,58 @@ import org.jwcarman.nessy.api.turn.Turn;
  * the model, or what a failed one says in its place, is a decision taken here, once, rather than
  * reinvented in prose by every adapter that has to render it.
  *
- * <p>The system prompt is resolved per call too, which is what lets it vary per agent and know what
- * today is. Carried here rather than sent separately because it is part of the context: how an
- * adapter delivers it is a wire question -- a top-level field for some providers, a leading message
- * for others.
- *
- * <p><b>Ambient sits beside the turns, not among them.</b> Background is not something anybody
- * said, so it has no place in a sequence of things that were said -- and the two have opposite
- * lifetimes: a turn is written down once and re-sent verbatim forever, while background is
- * re-derived on every call and may say something different each time. Interleaving them would put a
- * view of the world into a record of a conversation, and no later reader could tell which was
- * which.
- *
  * <p>Derived per call and discarded. Nothing here is stored.
  *
- * @param turns the conversation, oldest first
- * @param ambient what stands behind it, in the order its sources were bound -- usually empty
+ * @param summaries what stands in for the closed chapters, oldest first -- usually empty
+ * @param tail the completed turns after the summaries, oldest first
+ * @param memory what was recalled for this turn, in the order its sources were bound
+ * @param state the agent's standing situation, in the order its sources were bound
+ * @param activeTurn the turn being answered
+ * @param ambient what can change while the agent works, in the order its sources were bound
  */
-public record InferenceContext(List<Summary> summaries, List<Turn> turns, List<Ambient> ambient) {
+public record InferenceContext(
+    List<Summary> summaries,
+    List<Turn> tail,
+    List<Memory> memory,
+    List<State> state,
+    Turn activeTurn,
+    List<Ambient> ambient) {
 
   public InferenceContext {
     Objects.requireNonNull(summaries, "summaries must not be null");
-    Objects.requireNonNull(turns, "turns must not be null");
+    Objects.requireNonNull(tail, "tail must not be null");
+    Objects.requireNonNull(memory, "memory must not be null");
+    Objects.requireNonNull(state, "state must not be null");
+    Objects.requireNonNull(activeTurn, "activeTurn must not be null");
     Objects.requireNonNull(ambient, "ambient must not be null");
     summaries = List.copyOf(summaries);
-    turns = List.copyOf(turns);
+    tail = List.copyOf(tail);
+    memory = List.copyOf(memory);
+    state = List.copyOf(state);
     ambient = List.copyOf(ambient);
   }
 
-  /** Turns and background, with nothing compressed away. */
+  /** Turns and background, with nothing compressed away: the last turn is the active one. */
   public InferenceContext(List<Turn> turns, List<Ambient> ambient) {
     this(List.of(), turns, ambient);
   }
 
-  /** Only turns: no summaries, no background. */
+  /** Summaries, turns and background: the last turn is the active one. */
+  public InferenceContext(List<Summary> summaries, List<Turn> turns, List<Ambient> ambient) {
+    this(summaries, tailOf(turns), List.of(), List.of(), activeOf(turns), ambient);
+  }
+
+  /** Only turns: the last is the active turn, the rest are the tail. */
   public static InferenceContext of(List<Turn> turns) {
     return new InferenceContext(List.of(), turns, List.of());
+  }
+
+  /** The tail and then the active turn: every turn in the context, oldest first. */
+  public List<Turn> turns() {
+    List<Turn> all = new ArrayList<>(tail.size() + 1);
+    all.addAll(tail);
+    all.add(activeTurn);
+    return List.copyOf(all);
   }
 
   public boolean hasSummaries() {
@@ -82,5 +124,18 @@ public record InferenceContext(List<Summary> summaries, List<Turn> turns, List<A
 
   public boolean hasAmbient() {
     return !ambient.isEmpty();
+  }
+
+  private static Turn activeOf(List<Turn> turns) {
+    Objects.requireNonNull(turns, "turns must not be null");
+    if (turns.isEmpty()) {
+      throw new IllegalArgumentException("a context needs an active turn: turns must not be empty");
+    }
+    return turns.getLast();
+  }
+
+  private static List<Turn> tailOf(List<Turn> turns) {
+    activeOf(turns);
+    return turns.subList(0, turns.size() - 1);
   }
 }

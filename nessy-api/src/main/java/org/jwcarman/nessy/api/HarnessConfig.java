@@ -73,6 +73,20 @@ public interface HarnessConfig<SELF extends HarnessConfig<SELF>> {
   <T> SELF tool(Tool<T> tool);
 
   /**
+   * What was recalled because it bears on the turn being answered, asked afresh on every call.
+   *
+   * <p>Never written into the story.
+   */
+  SELF memory(MemorySource source);
+
+  /**
+   * The agent's standing situation, asked afresh on every call with the turn being answered.
+   *
+   * <p>Never written into the story.
+   */
+  SELF state(StateSource source);
+
+  /**
    * Something the model is shown every turn, asked afresh each time.
    *
    * <p>Never written into the story, so what it returns is what is true now rather than what was

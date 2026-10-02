@@ -21,9 +21,11 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
@@ -33,9 +35,11 @@ import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
 import org.jwcarman.nessy.api.InputRenderer;
+import org.jwcarman.nessy.api.MemorySource;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.StateSource;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.SystemPromptSource;
@@ -118,6 +122,26 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
   public DirectHarnessConfig<I> inputRenderer(InputRenderer<I> renderer) {
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
     return this;
+  }
+
+  /**
+   * What was recalled because it bears on the turn being answered, asked afresh on every call.
+   *
+   * <p>A shortcut into the context, which is where memory sources actually live.
+   */
+  @Override
+  public DirectHarnessConfig<I> memory(MemorySource source) {
+    return inference(in -> in.context(ctx -> ctx.memory(source)));
+  }
+
+  /**
+   * The agent's standing situation, asked afresh on every call with the turn being answered.
+   *
+   * <p>A shortcut into the context, which is where state sources actually live.
+   */
+  @Override
+  public DirectHarnessConfig<I> state(StateSource source) {
+    return inference(in -> in.context(ctx -> ctx.state(source)));
   }
 
   /**
@@ -309,7 +333,12 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     private final Map<String, String> properties = new LinkedHashMap<>();
     private int maxTail = 40;
     private final ChapterSettings chapters = new ChapterSettings();
+    private final List<MemorySource> memory = new ArrayList<>();
+    private final Set<String> memoryKinds = new LinkedHashSet<>();
+    private final List<StateSource> state = new ArrayList<>();
+    private final Set<String> stateKinds = new LinkedHashSet<>();
     private final List<AmbientSource> ambient = new ArrayList<>();
+    private final Set<String> ambientKinds = new LinkedHashSet<>();
     private Duration timeout = DEFAULT_INFERENCE_TIMEOUT;
     private RetryPolicy retryPolicy = DEFAULT_RETRY_POLICY;
 
@@ -385,7 +414,43 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     }
 
     @Override
+    public ContextConfig memory(MemorySource source) {
+      Objects.requireNonNull(source, "memory source must not be null");
+      // Refused here rather than at render time: two sections under one label leave the model with
+      // a
+      // contradiction and no way to tell which is current.
+      if (!memoryKinds.add(source.kind())) {
+        throw new IllegalArgumentException(
+            "two memory sources offer the kind '" + source.kind() + "'");
+      }
+      memory.add(source);
+      return this;
+    }
+
+    @Override
+    public ContextConfig state(StateSource source) {
+      Objects.requireNonNull(source, "state source must not be null");
+      // Refused here rather than at render time: two sections under one label leave the model with
+      // a
+      // contradiction and no way to tell which is current.
+      if (!stateKinds.add(source.kind())) {
+        throw new IllegalArgumentException(
+            "two state sources offer the kind '" + source.kind() + "'");
+      }
+      state.add(source);
+      return this;
+    }
+
+    @Override
     public ContextConfig ambient(AmbientSource source) {
+      Objects.requireNonNull(source, "ambient source must not be null");
+      // Refused here rather than at render time: two sections under one label leave the model with
+      // a
+      // contradiction and no way to tell which is current.
+      if (!ambientKinds.add(source.kind())) {
+        throw new IllegalArgumentException(
+            "two ambient sources offer the kind '" + source.kind() + "'");
+      }
       ambient.add(source);
       return this;
     }
@@ -446,6 +511,14 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
 
     int maxTail() {
       return maxTail;
+    }
+
+    List<MemorySource> memory() {
+      return List.copyOf(memory);
+    }
+
+    List<StateSource> state() {
+      return List.copyOf(state);
     }
 
     List<AmbientSource> ambient() {

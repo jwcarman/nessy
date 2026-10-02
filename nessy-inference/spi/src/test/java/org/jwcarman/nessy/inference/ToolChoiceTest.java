@@ -22,8 +22,13 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.api.turn.Input;
+import org.jwcarman.nessy.api.turn.Turn;
 
 /**
  * What a request means when it says nothing about choosing a tool.
@@ -39,6 +44,14 @@ class ToolChoiceTest {
   private static final ToolOffer LOOKUP =
       new ToolOffer(new ToolName("lookup"), "looks something up", new JsonSchema("{}"));
 
+  private static final Turn OPEN_TURN =
+      new Turn(
+          new TurnId(1),
+          new Input(new Seq(1), List.of(new Block.Text("hello"))),
+          List.of(),
+          null,
+          0);
+
   private static Toolset with(ToolChoice choice) {
     return new Toolset(List.of(LOOKUP), choice);
   }
@@ -48,7 +61,10 @@ class ToolChoiceTest {
   void a_toolset_that_does_not_mention_choosing_leaves_it_to_the_model() {
     InferenceRequest request =
         new InferenceRequest(
-            SYSTEM, InferenceContext.of(List.of()), Toolset.none(), InferenceOptions.of("a-model"));
+            SYSTEM,
+            InferenceContext.of(List.of(OPEN_TURN)),
+            Toolset.none(),
+            InferenceOptions.of("a-model"));
 
     assertThat(request.toolset().choice()).isEqualTo(new ToolChoice.Auto());
     assertThat(Toolset.of(List.of(LOOKUP)).choice()).isEqualTo(new ToolChoice.Auto());

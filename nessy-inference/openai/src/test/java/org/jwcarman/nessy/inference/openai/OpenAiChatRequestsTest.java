@@ -424,7 +424,7 @@ class OpenAiChatRequestsTest {
         OpenAiChatRequests.toParams(
             new InferenceRequest(
                 new SystemPrompt("s"),
-                InferenceContext.of(List.of()),
+                InferenceContext.of(List.of(open(1, "hi"))),
                 Toolset.none(),
                 InferenceOptions.of("m")),
             MAPPER);

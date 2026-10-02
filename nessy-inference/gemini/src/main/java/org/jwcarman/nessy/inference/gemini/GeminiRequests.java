@@ -79,9 +79,11 @@ public final class GeminiRequests {
 
   /** The conversation: every summary, then every turn, as the wire wants them. */
   public static List<Content> toContents(InferenceRequest request, JsonMapper mapper) {
-    return Stream.concat(
+    return Stream.of(
             request.context().summaries().stream().map(GeminiRequests::summary),
-            request.context().turns().stream().flatMap(turn -> turn(turn, mapper)))
+            request.context().tail().stream().flatMap(turn -> turn(turn, mapper)),
+            turn(request.context().activeTurn(), mapper))
+        .flatMap(rendered -> rendered)
         .toList();
   }
 

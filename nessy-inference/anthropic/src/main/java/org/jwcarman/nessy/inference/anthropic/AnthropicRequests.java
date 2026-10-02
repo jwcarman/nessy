@@ -49,6 +49,7 @@ import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
+import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.ToolChoice;
@@ -114,8 +115,7 @@ public final class AnthropicRequests {
     boolean thinks =
         read.enabled()
             || read.thinking().filter(AnthropicThinkingType.ADAPTIVE::equals).isPresent();
-    addMessages(
-        builder, request.context().summaries(), request.context().turns(), marker, thinks, mapper);
+    addMessages(builder, request.context(), marker, thinks, mapper);
     // Answering now is the one choice this vendor cannot be told: measured 2026-09-20, a ban with
     // the tools still in the request ends the turn with no content at all. What works here is not
     // offering them, so that is what this adapter does -- and the cached prefix is the price, paid
@@ -188,16 +188,17 @@ public final class AnthropicRequests {
 
   private static void addMessages(
       MessageCreateParams.Builder builder,
-      List<Summary> summaries,
-      List<Turn> turns,
+      InferenceContext context,
       Optional<CacheControlEphemeral> marker,
       boolean thinks,
       JsonMapper mapper) {
 
     List<Drafted> drafts =
-        Stream.concat(
-                summaries.stream().map(AnthropicRequests::draftSummary),
-                turns.stream().flatMap(turn -> draft(turn, thinks, mapper)))
+        Stream.of(
+                context.summaries().stream().map(AnthropicRequests::draftSummary),
+                context.tail().stream().flatMap(turn -> draft(turn, thinks, mapper)),
+                draft(context.activeTurn(), thinks, mapper))
+            .flatMap(rendered -> rendered)
             .toList();
     Set<Integer> marked = marker.isPresent() ? breakpoints(drafts) : Set.of();
 

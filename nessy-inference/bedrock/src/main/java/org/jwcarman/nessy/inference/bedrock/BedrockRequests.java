@@ -113,9 +113,11 @@ public final class BedrockRequests {
     builder.system(system);
 
     List<Message> drafted =
-        Stream.concat(
+        Stream.of(
                 request.context().summaries().stream().map(BedrockRequests::summary),
-                request.context().turns().stream().flatMap(turn -> turn(turn, mapper)))
+                request.context().tail().stream().flatMap(turn -> turn(turn, mapper)),
+                turn(request.context().activeTurn(), mapper))
+            .flatMap(rendered -> rendered)
             .toList();
     builder.messages(alternating(drafted));
 

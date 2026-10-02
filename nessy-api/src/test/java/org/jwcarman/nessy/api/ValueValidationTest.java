@@ -110,6 +110,16 @@ class ValueValidationTest {
           }
 
           @Override
+          public ContextConfig memory(MemorySource source) {
+            return this;
+          }
+
+          @Override
+          public ContextConfig state(StateSource source) {
+            return this;
+          }
+
+          @Override
           public ContextConfig ambient(AmbientSource source) {
             added.add(source);
             return this;

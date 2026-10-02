@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.engine.chapter;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.Summarizer;
@@ -89,14 +88,13 @@ public final class ProseSummarizer implements Summarizer {
           "no turns from %s through %s".formatted(chapter.from(), chapter.through()));
     }
 
-    List<Turn> shown = new ArrayList<>(turns);
-    shown.add(Transcripts.ask(turns.getLast(), ASK));
+    Turn asking = Transcripts.ask(turns.getLast(), ASK);
 
     InferenceResult result =
         provider.infer(
             new InferenceRequest(
                 new SystemPrompt(PROMPT),
-                new InferenceContext(List.of(), shown, List.of()),
+                new InferenceContext(List.of(), turns, List.of(), List.of(), asking, List.of()),
                 Toolset.none(),
                 options));
     if (!(result instanceof InferenceResult.Answer(var blocks, _))) {

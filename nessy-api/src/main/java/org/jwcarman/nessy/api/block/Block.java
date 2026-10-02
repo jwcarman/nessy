@@ -112,6 +112,25 @@ public sealed interface Block {
   sealed interface AmbientContent extends Block {}
 
   /**
+   * What memory may carry.
+   *
+   * <p>Things recalled because they bear on the turn being answered. Its own position rather than a
+   * reuse of {@link InputContent}, because an input is something that <em>happened</em> and is
+   * written down forever, while a recollection is chosen afresh for each turn and written nowhere.
+   */
+  sealed interface MemoryContent extends Block {}
+
+  /**
+   * What state may carry.
+   *
+   * <p>The agent's standing situation: how things stand with it, as of the start of the turn being
+   * answered. Its own position rather than a reuse of {@link InputContent}, because an input is
+   * something that <em>happened</em> and is written down forever, while a situation is read, not
+   * said.
+   */
+  sealed interface StateContent extends Block {}
+
+  /**
    * What a tool may hand back.
    *
    * <p>A result may not contain a result. Nesting has no meaning on any provider's wire, and
@@ -137,7 +156,12 @@ public sealed interface Block {
    * stored so far begins with two newlines, which a blank check would have thrown away.
    */
   record Text(String text)
-      implements InputContent, AnswerContent, ToolResultContent, AmbientContent {
+      implements InputContent,
+          AnswerContent,
+          ToolResultContent,
+          AmbientContent,
+          MemoryContent,
+          StateContent {
 
     public Text {
       Objects.requireNonNull(text, "text must not be null");

@@ -94,9 +94,11 @@ final class OpenAiChatRequests {
                         ChatCompletionSystemMessageParam.builder()
                             .content(OpenAiRendering.system(request))
                             .build())),
-                Stream.concat(
-                    request.context().summaries().stream().map(OpenAiChatRequests::summary),
-                    request.context().turns().stream().flatMap(OpenAiChatRequests::toMessages)))
+                Stream.of(
+                        request.context().summaries().stream().map(OpenAiChatRequests::summary),
+                        request.context().tail().stream().flatMap(OpenAiChatRequests::toMessages),
+                        toMessages(request.context().activeTurn()))
+                    .flatMap(rendered -> rendered))
             .toList();
 
     ChatCompletionCreateParams.Builder builder =

@@ -25,7 +25,10 @@ import java.time.Duration;
  *
  * <pre>
  *   summaries   the engine's own: one per closed chapter, oldest first
- *   tail        the turns after the last summary, at most {@link #maxTail}
+ *   tail        the completed turns after the last summary, at most {@link #maxTail}
+ *   memory      what every {@link MemorySource} recalled as bearing on this turn
+ *   state       the agent's standing situation, from every {@link StateSource}
+ *   active      the turn being answered, whole
  *   ambient     whatever every {@link AmbientSource} has to say right now
  * </pre>
  *
@@ -46,12 +49,13 @@ import java.time.Duration;
 public interface ContextConfig {
 
   /**
-   * At most this many turns of the tail, counting back from the newest, whole.
+   * At most this many completed turns of the tail, counting back from the newest, whole. The turn
+   * being answered is sent besides, and is not counted.
    *
-   * <p>The tail is the turns after the last summarised chapter; with no summary it is the whole
-   * story, cut to this many turns. Turns rather than tokens: an estimate written when an entry is
-   * stored and the provider's tokenizer never agree, so a token budget is a number that cannot be
-   * checked against the one that decides whether a request is accepted. Defaults to 40.
+   * <p>The tail is the completed turns after the last summarised chapter; with no summary it is the
+   * whole story, cut to this many turns. Turns rather than tokens: an estimate written when an
+   * entry is stored and the provider's tokenizer never agree, so a token budget is a number that
+   * cannot be checked against the one that decides whether a request is accepted. Defaults to 40.
    */
   ContextConfig maxTail(int turns);
 
@@ -77,14 +81,32 @@ public interface ContextConfig {
   ContextConfig withoutChapters();
 
   /**
+   * Offers what was recalled because it bears on the turn being answered, asked afresh on every
+   * call.
+   *
+   * <p>Two memory sources may not offer the same {@link Memory#kind()} -- refused here rather than
+   * at render time. The same kind may be offered by a state or an ambient source.
+   */
+  ContextConfig memory(MemorySource source);
+
+  /**
+   * Offers the agent's standing situation, asked afresh on every call with the turn being answered
+   * so that it can answer as of that turn's start.
+   *
+   * <p>Two state sources may not offer the same {@link State#kind()} -- refused here rather than at
+   * render time. The same kind may be offered by a memory or an ambient source.
+   */
+  ContextConfig state(StateSource source);
+
+  /**
    * Offers background the model should have in mind, asked afresh on every call.
    *
    * <p>The other half of a tool. A notebook the agent writes to is a tool and one of these; so is a
    * plan it keeps, or a view of a system it is operating. Tool in, background out.
    *
-   * <p>Two sources may not offer the same {@link Ambient#kind()} -- refused here rather than at
-   * render time, because an adapter would write two sections under one label and the model would
-   * see a contradiction with no way to tell which is current.
+   * <p>Two ambient sources may not offer the same {@link Ambient#kind()} -- refused here rather
+   * than at render time, because an adapter would write two sections under one label and the model
+   * would see a contradiction with no way to tell which is current.
    */
   ContextConfig ambient(AmbientSource source);
 

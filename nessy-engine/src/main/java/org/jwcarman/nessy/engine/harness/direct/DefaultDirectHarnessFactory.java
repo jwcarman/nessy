@@ -58,6 +58,8 @@ import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
 import org.jwcarman.nessy.engine.narration.Listeners;
 import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
+import org.jwcarman.nessy.engine.observability.ObservedMemorySource;
+import org.jwcarman.nessy.engine.observability.ObservedStateSource;
 import org.jwcarman.nessy.engine.observability.ObservedTurnHistories;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
@@ -295,6 +297,12 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
                 histories,
                 inference.chapters().on() ? backend.chapters() : null,
                 inference.maxTail(),
+                inference.memory().stream()
+                    .map(source -> ObservedMemorySource.wrap(source, observations))
+                    .toList(),
+                inference.state().stream()
+                    .map(source -> ObservedStateSource.wrap(source, observations))
+                    .toList(),
                 inference.ambient().stream()
                     .map(source -> ObservedAmbientSource.wrap(source, observations))
                     .toList()),

@@ -53,6 +53,8 @@ import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
 import org.jwcarman.nessy.engine.narration.Listeners;
 import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
+import org.jwcarman.nessy.engine.observability.ObservedMemorySource;
+import org.jwcarman.nessy.engine.observability.ObservedStateSource;
 import org.jwcarman.nessy.engine.observability.ObservedTurnHistories;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.engine.store.Outbox;
@@ -244,6 +246,12 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
                 histories,
                 context.chapters().on() ? backend.chapters() : null,
                 context.maxTail(),
+                context.memory().stream()
+                    .map(source -> ObservedMemorySource.wrap(source, observations))
+                    .toList(),
+                context.state().stream()
+                    .map(source -> ObservedStateSource.wrap(source, observations))
+                    .toList(),
                 context.ambient().stream()
                     .map(source -> ObservedAmbientSource.wrap(source, observations))
                     .toList()),
