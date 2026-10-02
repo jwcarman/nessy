@@ -40,6 +40,8 @@ import java.util.Set;
 import java.util.stream.Stream;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.Memory;
+import org.jwcarman.nessy.api.State;
 import org.jwcarman.nessy.api.VendorProperties;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -68,6 +70,20 @@ import tools.jackson.databind.json.JsonMapper;
  * message -- so where an OpenAI-compatible adapter can narrate around a turn that produced nothing,
  * this one has to answer for it as the assistant or say nothing at all. Those are different
  * judgements about the same story, made here, which is the whole reason an adapter exists.
+ *
+ * <p><b>Where each stratum of the context lands.</b> The {@code system} field holds the system
+ * prompt and nothing else, marked for caching when caching is on. Messages follow in order:
+ * summaries, the tail's turns, and the active turn, whose first user message opens with the memory
+ * and then the state, each its own text block. Background ends the request: its blocks are appended
+ * to the last message when that is a user message, or sit in a user message of their own when it is
+ * not.
+ *
+ * <p>Background is last because it is the stratum that changes while the agent works, and the cache
+ * is a prefix. Measured 2026-10-01 on Sonnet 5.5 over thirty calls, background in the system field
+ * cost 56k billed input tokens when it never changed and 342k when it changed on every call, as
+ * each change rewrote the whole conversation into the cache; a block at the end of the last user
+ * message cost 77k to 78k either way. The cache markers are chosen before background is appended,
+ * so none sits on it and the cached prefix never contains it.
  */
 public final class AnthropicRequests {
 
@@ -77,9 +93,11 @@ public final class AnthropicRequests {
    * <p>On Fable 5.1, Opus 5.5 and Sonnet 5.5 a thinking block is bound to the system prompt, the
    * tools and every message before it, and a request that replays one after any of those changed is
    * rejected -- by default on accounts created since 2026-08-31. Nessy changes them as a matter of
-   * course: background is part of the system prompt, and the tail slides. Asked this way, the
-   * vendor drops the blocks that no longer fit and answers; a block whose prefix is intact is kept.
-   * Measured 2026-10-01 on all three models.
+   * course: the tail slides, and background sits inside the messages rather than ahead of them, so
+   * a finished turn no longer carries the background it was sent with and the text ahead of its
+   * thinking blocks differs on later calls. Asked this way, the vendor drops the blocks that no
+   * longer fit and answers; a block whose prefix is intact is kept. Measured 2026-10-01 on all
+   * three models.
    *
    * <p>The setting is refused outright unless the request also carries the beta header, which
    * {@link AnthropicInferenceProvider} adds beside whatever betas the client already sends.
@@ -160,27 +178,17 @@ public final class AnthropicRequests {
   }
 
   /**
-   * The standing instruction, and whatever background stands behind the conversation.
+   * The standing instruction, and only that.
    *
-   * <p>A top-level field on this wire rather than a leading message, which is why background can be
-   * its own labelled block here instead of being concatenated into one string. Marked for caching
-   * on the first block, because the system prompt is the longest-lived prefix there is.
+   * <p>A top-level field on this wire rather than a leading message. Marked for caching, because
+   * the system prompt is the longest-lived prefix there is. Background does not appear here: it
+   * follows the last message, so a change in it never changes this field, and so never invalidates
+   * the cache that starts with it.
    */
   private static List<TextBlockParam> systemBlocks(
       InferenceRequest request, Optional<CacheControlEphemeral> marker) {
-    List<TextBlockParam> blocks = new ArrayList<>();
-    blocks.add(
+    return List.of(
         TextBlockParam.builder().text(request.systemPrompt().value()).cacheControl(marker).build());
-    for (Ambient ambient : request.context().ambient()) {
-      String text = text(ambient.content());
-      if (!text.isBlank()) {
-        blocks.add(
-            TextBlockParam.builder()
-                .text("<%s>\n%s\n</%s>".formatted(ambient.kind(), text.strip(), ambient.kind()))
-                .build());
-      }
-    }
-    return blocks;
   }
 
   /** A message on its way to being one: its role and its blocks. */
@@ -197,7 +205,7 @@ public final class AnthropicRequests {
         Stream.of(
                 context.summaries().stream().map(AnthropicRequests::draftSummary),
                 context.tail().stream().flatMap(turn -> draft(turn, thinks, mapper)),
-                draft(context.activeTurn(), thinks, mapper))
+                withLeadingStrata(draft(context.activeTurn(), thinks, mapper).toList(), context))
             .flatMap(rendered -> rendered)
             .toList();
     Set<Integer> marked = marker.isPresent() ? breakpoints(drafts) : Set.of();
@@ -211,7 +219,93 @@ public final class AnthropicRequests {
               : draft.blocks();
       params.add(MessageParam.builder().role(draft.role()).contentOfBlockParams(blocks).build());
     }
+    List<ContentBlockParam> background = background(context.ambient());
+    if (!background.isEmpty()) {
+      appendBackground(params, background);
+    }
     builder.messages(params);
+  }
+
+  /**
+   * The active turn's messages, opening with the memory and then the state.
+   *
+   * <p>Each is one text block at the head of the turn's first message, ahead of the input's own
+   * blocks, so the turn reads as what was recalled, how things stand, and then the question. Only
+   * the active turn carries them: they were chosen for it, and a turn that has finished is sent as
+   * it was. With neither there is nothing to add and the messages are returned as they were.
+   */
+  private static Stream<Drafted> withLeadingStrata(List<Drafted> active, InferenceContext context) {
+    List<ContentBlockParam> leading = new ArrayList<>();
+    for (Memory memory : context.memory()) {
+      tagged("memory", memory.kind(), memory.content()).ifPresent(leading::add);
+    }
+    for (State state : context.state()) {
+      tagged("state", state.kind(), state.content()).ifPresent(leading::add);
+    }
+    if (leading.isEmpty()) {
+      return active.stream();
+    }
+    if (active.isEmpty() || !MessageParam.Role.USER.equals(active.getFirst().role())) {
+      return Stream.concat(
+          Stream.of(new Drafted(MessageParam.Role.USER, leading)), active.stream());
+    }
+    List<ContentBlockParam> opening = new ArrayList<>(leading);
+    opening.addAll(active.getFirst().blocks());
+    return Stream.concat(
+        Stream.of(new Drafted(MessageParam.Role.USER, opening)), active.stream().skip(1));
+  }
+
+  /** {@code <memory kind="notes">}, its text and the closing tag, or nothing for blank text. */
+  private static Optional<ContentBlockParam> tagged(
+      String tag, String kind, List<? extends Block> content) {
+    String text = text(content).strip();
+    if (text.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        ContentBlockParam.ofText(
+            TextBlockParam.builder()
+                .text("<%s kind=\"%s\">\n%s\n</%s>".formatted(tag, kind, text, tag))
+                .build()));
+  }
+
+  /** Each ambient section as its own labelled block, in context order; blank ones are left out. */
+  private static List<ContentBlockParam> background(List<Ambient> ambient) {
+    List<ContentBlockParam> blocks = new ArrayList<>();
+    for (Ambient section : ambient) {
+      String text = text(section.content()).strip();
+      if (!text.isEmpty()) {
+        blocks.add(
+            ContentBlockParam.ofText(
+                TextBlockParam.builder()
+                    .text("<%s>\n%s\n</%s>".formatted(section.kind(), text, section.kind()))
+                    .build()));
+      }
+    }
+    return blocks;
+  }
+
+  /**
+   * Background ends the request: after the last message's own blocks when that message is a user
+   * message, or as a user message of its own when the last one is the assistant's, so roles still
+   * alternate.
+   */
+  private static void appendBackground(
+      List<MessageParam> params, List<ContentBlockParam> background) {
+    int last = params.size() - 1;
+    if (last >= 0 && MessageParam.Role.USER.equals(params.get(last).role())) {
+      List<ContentBlockParam> blocks = new ArrayList<>(params.get(last).content().asBlockParams());
+      blocks.addAll(background);
+      params.set(
+          last,
+          MessageParam.builder().role(MessageParam.Role.USER).contentOfBlockParams(blocks).build());
+    } else {
+      params.add(
+          MessageParam.builder()
+              .role(MessageParam.Role.USER)
+              .contentOfBlockParams(background)
+              .build());
+    }
   }
 
   /**

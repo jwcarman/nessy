@@ -36,7 +36,9 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.Memory;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.State;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
@@ -148,18 +150,17 @@ class AnthropicRequestsTest {
       assertThat(system.getFirst().text()).isEqualTo("you are a helpful assistant");
     }
 
-    /**
-     * Its own block rather than concatenated, because this wire takes a list. An OpenAI-compatible
-     * adapter has one string and must run them together; here they stay separable.
-     */
+    /** Background follows the last message, so a change in it never changes this field. */
     @Test
-    void carries_each_ambient_section_as_its_own_labelled_block() {
+    void does_not_carry_ambient_sections() {
       InferenceRequest request =
           new InferenceRequest(
               SYSTEM,
               new InferenceContext(
                   List.of(open(1, "hello")),
-                  List.of(Ambient.text("notebook", "the deploy is frozen"))),
+                  List.of(
+                      Ambient.text("notebook", "the deploy is frozen"),
+                      Ambient.text("clock", "it is Tuesday"))),
               Toolset.none(),
               options());
 
@@ -169,42 +170,8 @@ class AnthropicRequestsTest {
               .orElseThrow()
               .asTextBlockParams();
 
-      assertThat(system).hasSize(2);
-      assertThat(system.get(1).text()).isEqualTo("<notebook>\nthe deploy is frozen\n</notebook>");
-    }
-
-    /** A heading with nothing under it tells a model its notebook is empty, which is a claim. */
-    @Test
-    void omits_an_ambient_section_that_says_nothing() {
-      InferenceRequest request =
-          new InferenceRequest(
-              SYSTEM,
-              new InferenceContext(
-                  List.of(open(1, "hello")),
-                  List.of(new Ambient("notebook", List.of(new Block.Text("   "))))),
-              Toolset.none(),
-              options());
-
-      assertThat(
-              AnthropicRequests.toParams(request, NONE, MAPPER)
-                  .system()
-                  .orElseThrow()
-                  .asTextBlockParams())
-          .hasSize(1);
-    }
-
-    @Test
-    void is_never_a_message_in_the_conversation_itself() {
-      InferenceRequest request =
-          new InferenceRequest(
-              SYSTEM,
-              new InferenceContext(
-                  List.of(open(1, "hello")), List.of(Ambient.text("clock", "it is Tuesday"))),
-              Toolset.none(),
-              options());
-
-      assertThat(blocksOf(AnthropicRequests.toParams(request, NONE, MAPPER)))
-          .noneSatisfy(block -> assertThat(block.asText().text()).contains("it is Tuesday"));
+      assertThat(system).hasSize(1);
+      assertThat(system.getFirst().text()).isEqualTo("you are a helpful assistant");
     }
 
     @Test
@@ -240,6 +207,208 @@ class AnthropicRequestsTest {
 
       assertThat(marker.ttl())
           .contains(com.anthropic.models.messages.CacheControlEphemeral.Ttl.TTL_1H);
+    }
+  }
+
+  @Nested
+  class PlacingTheStrata {
+
+    private static final Memory RECALLED = Memory.text("recalled", "  the lake is deep \n");
+    private static final Memory TRIVIA = Memory.text("trivia", "Nessie is shy");
+    private static final State SITUATION = State.text("situation", "the deploy is frozen");
+    private static final Ambient CLOCK = Ambient.text("clock", "it is Tuesday");
+    private static final Ambient WEATHER = Ambient.text("weather", "rain");
+
+    private static InferenceContext context(
+        List<Turn> tail,
+        List<Memory> memory,
+        List<State> state,
+        Turn active,
+        List<Ambient> ambient) {
+      return new InferenceContext(List.of(), tail, memory, state, active, ambient);
+    }
+
+    private static MessageCreateParams built(InferenceContext context, Map<String, String> props) {
+      return AnthropicRequests.toParams(
+          new InferenceRequest(SYSTEM, context, Toolset.none(), options()), props, MAPPER);
+    }
+
+    private static List<String> textsOf(MessageParam message) {
+      return message.content().asBlockParams().stream()
+          .map(
+              block -> {
+                if (block.isText()) {
+                  return block.asText().text();
+                }
+                return block.isToolResult() ? "<tool_result>" : "<other>";
+              })
+          .toList();
+    }
+
+    private static Turn calling(long id, String question) {
+      Exchange exchange =
+          new Exchange(
+              new Seq(100L),
+              List.of(
+                  new Block.ToolCall(
+                      new CallId("call_1"), new ToolName("lookup"), "{\"q\":\"x\"}")),
+              List.of(
+                  new ToolOutcome.Succeeded(
+                      new CallId("call_1"), List.of(new Block.Text("result 1")))));
+      return new Turn(new TurnId(id), asked(id, question), List.of(exchange), null, 0);
+    }
+
+    @Test
+    void the_system_field_holds_only_the_instructions() {
+      var built =
+          built(
+              context(
+                  List.of(),
+                  List.of(RECALLED),
+                  List.of(SITUATION),
+                  open(1, "hello"),
+                  List.of(CLOCK)),
+              NONE);
+
+      var system = built.system().orElseThrow().asTextBlockParams();
+
+      assertThat(system).hasSize(1);
+      assertThat(system.getFirst().text()).isEqualTo("you are a helpful assistant");
+    }
+
+    @Test
+    void memory_and_state_lead_the_active_turns_first_message() {
+      var built =
+          built(
+              context(
+                  List.of(),
+                  List.of(RECALLED, TRIVIA),
+                  List.of(SITUATION),
+                  open(1, "hello"),
+                  List.of()),
+              NONE);
+
+      assertThat(built.messages()).hasSize(1);
+      assertThat(textsOf(built.messages().getFirst()))
+          .containsExactly(
+              "<memory kind=\"recalled\">\nthe lake is deep\n</memory>",
+              "<memory kind=\"trivia\">\nNessie is shy\n</memory>",
+              "<state kind=\"situation\">\nthe deploy is frozen\n</state>",
+              "hello");
+    }
+
+    @Test
+    void memory_and_state_are_not_attached_to_a_turn_in_the_tail() {
+      var built =
+          built(
+              context(
+                  List.of(answered(1, "question 1", "answer 1")),
+                  List.of(RECALLED),
+                  List.of(SITUATION),
+                  open(2, "question 2"),
+                  List.of()),
+              NONE);
+
+      assertThat(built.messages()).hasSize(3);
+      assertThat(textsOf(built.messages().get(0))).containsExactly("question 1");
+      assertThat(textsOf(built.messages().get(1))).containsExactly("answer 1");
+      assertThat(textsOf(built.messages().get(2)))
+          .containsExactly(
+              "<memory kind=\"recalled\">\nthe lake is deep\n</memory>",
+              "<state kind=\"situation\">\nthe deploy is frozen\n</state>",
+              "question 2");
+    }
+
+    @Test
+    void ambient_ends_the_request_after_the_active_turns_input() {
+      var built =
+          built(
+              context(List.of(), List.of(), List.of(), open(1, "hello"), List.of(CLOCK, WEATHER)),
+              NONE);
+
+      assertThat(built.messages()).hasSize(1);
+      assertThat(textsOf(built.messages().getFirst()))
+          .containsExactly(
+              "hello", "<clock>\nit is Tuesday\n</clock>", "<weather>\nrain\n</weather>");
+    }
+
+    @Test
+    void ambient_ends_the_request_after_the_last_tool_results() {
+      var built =
+          built(
+              context(List.of(), List.of(), List.of(), calling(1, "hello"), List.of(CLOCK)), NONE);
+
+      assertThat(built.messages()).hasSize(3);
+      assertThat(built.messages().getLast().role()).isEqualTo(MessageParam.Role.USER);
+      assertThat(textsOf(built.messages().getLast()))
+          .containsExactly("<tool_result>", "<clock>\nit is Tuesday\n</clock>");
+    }
+
+    @Test
+    void ambient_gets_a_user_message_of_its_own_when_the_request_ends_on_the_assistant() {
+      Turn answeredOnce = answered(1, "question 1", "answer 1");
+      var built =
+          built(context(List.of(), List.of(), List.of(), answeredOnce, List.of(CLOCK)), NONE);
+
+      assertThat(built.messages()).hasSize(3);
+      assertThat(built.messages().getLast().role()).isEqualTo(MessageParam.Role.USER);
+      assertThat(textsOf(built.messages().getLast()))
+          .containsExactly("<clock>\nit is Tuesday\n</clock>");
+    }
+
+    @Test
+    void the_cache_marker_sits_on_the_block_before_ambient() {
+      var built =
+          built(
+              context(
+                  List.of(),
+                  List.of(RECALLED),
+                  List.of(),
+                  calling(1, "hello"),
+                  List.of(CLOCK, WEATHER)),
+              caching(AnthropicCacheTtl.FIVE_MINUTES));
+
+      var last = built.messages().getLast().content().asBlockParams();
+      assertThat(last).hasSize(3);
+      assertThat(last.get(0).isToolResult()).isTrue();
+      assertThat(last.get(0).cacheControl()).isPresent();
+      assertThat(last.get(1).asText().cacheControl()).isEmpty();
+      assertThat(last.get(2).asText().cacheControl()).isEmpty();
+      var ambientTexts = last.subList(1, 3);
+      assertThat(ambientTexts).isNotEmpty();
+      assertThat(ambientTexts).noneMatch(block -> block.cacheControl().isPresent());
+    }
+
+    @Test
+    void a_context_with_no_memory_state_or_ambient_renders_as_before() {
+      List<Turn> turns = List.of(answered(1, "question 1", "answer 1"), calling(2, "question 2"));
+
+      var plain = built(InferenceContext.of(turns), caching(AnthropicCacheTtl.FIVE_MINUTES));
+      var bare =
+          built(
+              context(List.of(turns.getFirst()), List.of(), List.of(), turns.getLast(), List.of()),
+              caching(AnthropicCacheTtl.FIVE_MINUTES));
+
+      assertThat(bare.messages()).isEqualTo(plain.messages());
+      assertThat(bare.messages()).hasSize(5);
+      assertThat(textsOf(bare.messages().get(2))).containsExactly("question 2");
+      assertThat(blocksOf(bare)).filteredOn(block -> block.cacheControl().isPresent()).hasSize(2);
+    }
+
+    @Test
+    void blank_memory_state_and_ambient_are_left_out() {
+      var built =
+          built(
+              context(
+                  List.of(),
+                  List.of(Memory.text("recalled", "   ")),
+                  List.of(State.text("situation", "\n ")),
+                  open(1, "hello"),
+                  List.of(Ambient.text("clock", "  "))),
+              NONE);
+
+      assertThat(built.messages()).hasSize(1);
+      assertThat(textsOf(built.messages().getFirst())).containsExactly("hello");
     }
   }
 

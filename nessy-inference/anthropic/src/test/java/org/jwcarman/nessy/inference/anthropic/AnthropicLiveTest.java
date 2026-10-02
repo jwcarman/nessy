@@ -27,6 +27,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
@@ -548,6 +549,75 @@ class AnthropicLiveTest {
           .isInstanceOfSatisfying(
               Tokens.Counted.class, read -> assertThat(read.count()).isPositive());
     }
+  }
+
+  /**
+   * Background that differs on every call sits after the cached prefix, so it cannot spoil it: the
+   * second and third calls of a tool loop read back what the call before wrote even though the
+   * clock said something new each time.
+   */
+  @Test
+  void ambient_that_changes_on_every_call_does_not_spoil_the_cache() {
+    ToolOffer lookup =
+        new ToolOffer(
+            new ToolName("lake_depth"),
+            "returns the maximum depth of a named lake, in metres",
+            new JsonSchema(
+                """
+                {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}"""));
+    Input question =
+        new Input(
+            new Seq(1),
+            List.of(new Block.Text("How deep are Loch Ness, Loch Morar and Loch Lomond?")));
+    Exchange ness = looked(2, "call_ness", "Loch Ness", "230 metres. ");
+    Exchange morar = looked(4, "call_morar", "Loch Morar", "310 metres. ");
+    Exchange lomond = looked(6, "call_lomond", "Loch Lomond", "190 metres. ");
+    Map<String, String> cached = Map.of("anthropic.cache_control.ttl", "FIVE_MINUTES");
+
+    try (AnthropicInferenceProvider provider = provider()) {
+      InferenceResult first =
+          provider.infer(
+              withClock(
+                  new Turn(new TurnId(1), question, List.of(ness), null, 0),
+                  lookup,
+                  cached,
+                  "it is 10:00"));
+      InferenceResult second =
+          provider.infer(
+              withClock(
+                  new Turn(new TurnId(1), question, List.of(ness, morar), null, 0),
+                  lookup,
+                  cached,
+                  "it is 10:01"));
+      InferenceResult third =
+          provider.infer(
+              withClock(
+                  new Turn(new TurnId(1), question, List.of(ness, morar, lomond), null, 0),
+                  lookup,
+                  cached,
+                  "it is 10:02"));
+
+      assertThat(first).isNotInstanceOf(InferenceResult.Fault.class);
+      assertThat(second).isNotInstanceOf(InferenceResult.Fault.class);
+      assertThat(third).isNotInstanceOf(InferenceResult.Fault.class);
+      assertThat(second.usage().cacheReadTokens())
+          .as("the second call reads the first call's prefix")
+          .isInstanceOfSatisfying(
+              Tokens.Counted.class, read -> assertThat(read.count()).isPositive());
+      assertThat(third.usage().cacheReadTokens())
+          .as("the third call reads the second call's prefix")
+          .isInstanceOfSatisfying(
+              Tokens.Counted.class, read -> assertThat(read.count()).isPositive());
+    }
+  }
+
+  private static InferenceRequest withClock(
+      Turn turn, ToolOffer offer, Map<String, String> properties, String clock) {
+    return new InferenceRequest(
+        SYSTEM,
+        new InferenceContext(List.of(turn), List.of(Ambient.text("clock", clock))),
+        new Toolset(List.of(offer), ToolChoice.auto()),
+        new InferenceOptions(MODEL, 2048, properties));
   }
 
   /** One call and a result long enough that the prefix it ends is worth caching. */
