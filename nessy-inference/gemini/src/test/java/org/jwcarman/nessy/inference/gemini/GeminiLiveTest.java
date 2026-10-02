@@ -294,6 +294,11 @@ class GeminiLiveTest {
               {"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}"""));
 
   private static InferenceRequest limited(String question, Toolset toolset) {
+    return limited(question, toolset, 1500, Map.of());
+  }
+
+  private static InferenceRequest limited(
+      String question, Toolset toolset, int maxTokens, Map<String, String> properties) {
     return new InferenceRequest(
         new SystemPrompt("You are a terse assistant."),
         InferenceContext.of(
@@ -305,7 +310,7 @@ class GeminiLiveTest {
                     null,
                     0))),
         toolset,
-        new InferenceOptions(MODEL, 1500));
+        new InferenceOptions(MODEL, maxTokens, properties));
   }
 
   /**
@@ -344,9 +349,12 @@ class GeminiLiveTest {
    * A tool call cut off at the output limit is a permanent fault and is never a call to run.
    *
    * <p>One tool, {@code save_note}, is offered and the model is required to call it with {@link
-   * ToolChoice.Named}; this class has no other test that requires a tool. The text it is asked to
-   * carry cannot fit in 1500 tokens, so the call is cut off mid-argument. What matters is the first
-   * assertion: a call whose arguments are incomplete, or empty, must never be handed over to run.
+   * ToolChoice.Named}; this class has no other test that requires a tool. The limit is 300 tokens
+   * and the thinking level is minimal, so the limit is reached while the call is being written and
+   * not while the model reasons. A higher limit lets the model finish: measured 2026-10-02 with
+   * 1500, Gemini 3.6 Flash wrote the first hundred lines, closed the call and stopped, which is a
+   * whole call and rightly one to run. What matters is the first assertion: a call whose arguments
+   * are incomplete, or empty, must never be handed over to run.
    *
    * <p>How this wire reports the cut-off varies by model, and each way is a permanent fault.
    * Measured 2026-10-02: Gemini 3.1 Pro, by a raw-HTTP probe, returned {@code
@@ -363,8 +371,11 @@ class GeminiLiveTest {
           provider.infer(
               limited(
                   NOTE_REQUEST,
-                  new Toolset(
-                      List.of(SAVE_NOTE), new ToolChoice.Named(new ToolName("save_note")))));
+                  new Toolset(List.of(SAVE_NOTE), new ToolChoice.Named(new ToolName("save_note"))),
+                  300,
+                  Map.of(
+                      GeminiProperties.THINKING_LEVEL.name(),
+                      GeminiProperties.THINKING_LEVEL.format(GeminiThinkingLevel.MINIMAL))));
 
       assertThat(result)
           .as(
