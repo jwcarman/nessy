@@ -46,8 +46,13 @@ import org.jwcarman.nessy.engine.chapter.ContextReplay.Totals;
  * of {@code ./mvnw -q -pl :nessy-engine -am test -Dtest=ChapterPolicyComparisonTest} is the
  * comparison.
  *
- * <p>Only the policy differs between runs: the maximum chapter length (30) and the maximum tail
- * (40) are the same everywhere, so every run builds.
+ * <p>Reading the three numbers: <em>sent</em> is the size of the context; <em>changed</em> is the
+ * text that differs from the call before, which a cache cannot serve and a provider reads uncached;
+ * the <em>share</em> is the part that did not change, and is comparable only between runs that send
+ * about the same amount.
+ *
+ * <p>Only the policy differs between runs: the maximum tail (40) is the same everywhere, and the
+ * maximum chapter length (30) is the same wherever there are chapters, so every run builds.
  */
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class ChapterPolicyComparisonTest {
@@ -104,6 +109,8 @@ class ChapterPolicyComparisonTest {
 
     @Test
     void the_totals_of_each_run_print_as_one_line() {
+      // sent = the context's size; changed = what a cache cannot serve; the share is comparable
+      // only between runs that send about the same amount.
       System.out.println();
       System.out.println(
           "Sixty turns, every third calling a tool; characters sent to the model, and how many of"
@@ -150,6 +157,15 @@ class ChapterPolicyComparisonTest {
 
       assertThat(withChapters.calls()).isEqualTo(without.calls()).isPositive();
       assertThat(withChapters.ratio()).isGreaterThan(without.ratio());
+    }
+
+    @Test
+    void every_20_changes_less_text_than_chapters_off_after_turn_40() {
+      Totals withChapters = every20.totalsAfter(40);
+      Totals without = off.totalsAfter(40);
+
+      assertThat(withChapters.calls()).isEqualTo(without.calls()).isPositive();
+      assertThat(withChapters.changed()).isLessThan(without.changed());
     }
 
     @Test

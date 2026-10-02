@@ -71,7 +71,9 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>The canonical text of a call is its strata in order, each ended by a newline: the system
  * prompt, every summary's text, the tail rendered by {@link Transcripts#render}, memory, state, the
- * active turn rendered the same way, and ambient.
+ * active turn rendered the same way, and ambient. That order is the replay's own stand-in for the
+ * strata's order, not the order any provider's wire uses, so what the replay shows is its own
+ * accounting and not an adapter's placement.
  */
 final class ContextReplay {
 
@@ -144,7 +146,10 @@ final class ContextReplay {
   /**
    * Runs the conversation with this chapter policy, then the settings. The policy is wrapped so
    * that after each turn the replay waits until the keeper has asked it again, has closed the
-   * chapter it named, and has written every summary.
+   * chapter it named, and has written every summary. The wait is only correct for a policy that
+   * closes chapters itself before the maximum chapter length is reached: when the policy names
+   * nothing and the maximum is reached, the keeper cuts anyway, and the replay does not see that
+   * cut and so does not wait for it.
    */
   Report run(ChapterPolicy policy, Customizer<DirectHarnessConfig<String>> settings) {
     return replay(Optional.of(new Watched(Objects.requireNonNull(policy, "policy"))), settings);
@@ -251,6 +256,8 @@ final class ContextReplay {
       Watched watched, InMemoryDirectBackend backend, AgentId agent, int before, int turn) {
     await()
         .alias("the chapter keeper after turn " + turn)
+        .pollDelay(Duration.ZERO)
+        .pollInterval(Duration.ofMillis(5))
         .atMost(PATIENCE_PER_TURN)
         .until(
             () -> {
@@ -475,6 +482,11 @@ final class ContextReplay {
   /** Totals over some calls. */
   record Totals(int calls, long chars, long stable) {
 
+    /** The characters that differ from the call before: what a provider would read uncached. */
+    long changed() {
+      return chars - stable;
+    }
+
     private static Totals of(List<Call> calls) {
       return new Totals(
           calls.size(),
@@ -489,8 +501,8 @@ final class ContextReplay {
 
     /** One line, labelled. */
     String line(String label) {
-      return "%-14s calls %4d   sent %10d chars   stable prefix %10d chars   stable share %5.1f%%"
-          .formatted(label, calls, chars, stable, 100.0 * ratio());
+      return "%-14s calls %4d   sent %10d chars   changed (uncached) %10d chars   stable share %5.1f%%"
+          .formatted(label, calls, chars, changed(), 100.0 * ratio());
     }
   }
 }
