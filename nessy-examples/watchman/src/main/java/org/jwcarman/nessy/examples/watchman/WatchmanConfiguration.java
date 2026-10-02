@@ -97,9 +97,10 @@ public class WatchmanConfiguration {
         String.class,
         config -> {
           config.systemPrompt(WatchmanPrompt.SYSTEM).backlogPolicy(BacklogPolicy.keepLatest());
-          // A watchman does rounds forever, so its story grows forever. The tail the model is
-          // shown is capped (the default is the last twenty turns); summarising the head into a
-          // paragraph is the piece that has not been rebuilt yet.
+          // A watchman does rounds forever, so its story grows forever. Nothing is set here for
+          // that, so the defaults apply: every twenty turns the engine closes a chapter and has
+          // the agent's own model write its summary, and the tail shown whole is capped at the
+          // last forty completed turns.
           tools.forEach(
               tool -> {
                 if (WatchmanTools.needsApproval(tool.name())) {

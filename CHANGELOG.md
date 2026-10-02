@@ -151,8 +151,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Chapters are on by default.** An agent that sets nothing gets a chapter
   every 20 turns, summarised by its own provider and model, so it spends
   tokens on summaries unless `withoutChapters()` is set.
-- **The default `maxTail` is 40**, down from 50. It counts completed turns;
-  the turn being answered is sent besides.
+- **The default `maxTail` is 40 on both doors.** It was 50 on the direct door
+  and 20 on the queued one, so a queued harness now shows more. It counts
+  completed turns; the turn being answered is sent besides.
 - **The system prompt is fixed when a harness is built.** It was resolved on
   every call. What varies by agent belongs in a `StateSource`, and what
   varies by the moment in an `AmbientSource`.
@@ -169,9 +170,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `thinking-binding-controls-2026-08-01` beta header. Claude Fable 5.1,
   Opus 5.5 and Sonnet 5.5 bind a thinking block to everything before it, and
   accounts created since 2026-08-31 got a 400 when a request replayed
-  thinking and background had changed the system prompt or the tail had
-  moved. The vendor now drops the thinking blocks that no longer fit and
-  answers. On older accounts, where such blocks used to reach the model
+  thinking and the tail had moved or the background had changed. The
+  request now asks the vendor to drop a thinking block whose prefix has
+  changed, which is what makes a moved tail or changed background an answer
+  and not a refusal. On older accounts, where such blocks used to reach the model
   unchanged, they are dropped too. The adapter logs how many blocks were
   dropped, at DEBUG. A request that does not think, a summariser's for
   instance, no longer replays thinking at all.

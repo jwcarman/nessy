@@ -1,7 +1,11 @@
 # Storage
 
-Nessy is PostgreSQL rows. Each kind of thing lives in a table shaped for how
-it is read, and there is no abstraction between the engine and its SQL.
+Nessy keeps an agent in PostgreSQL rows. Each kind of thing lives in a table
+shaped for how it is read, and there is no abstraction between the engine and
+its SQL. There are two backends: `nessy-backend-jdbc` for PostgreSQL, which
+survives a restart, and `nessy-backend-inmemory`, which holds everything,
+chapters and leases included, in the process, for a test or a CLI, and loses
+it all when the process stops.
 
 | What | Where | Lives for |
 |---|---|---|
@@ -24,11 +28,10 @@ and `nessy-planning`.
 The queries this engine rests on are PostgreSQL's: `pg_advisory_xact_lock`
 to serialise an agent for the length of one transaction, `FOR UPDATE SKIP
 LOCKED` to claim work, `INSERT ... ON CONFLICT` to take a lease, `TIMESTAMPTZ`
-columns. There is no in-memory fallback and no H2: a fallback would not run
-a degraded Nessy, it would run one that fails on the first turn, and saying
-so at startup is kinder than an embedded database that looks like it
-worked. The test suite runs the same DDL against a real PostgreSQL
-container.
+columns. The JDBC backend runs on PostgreSQL only, with no H2 or other
+embedded database standing in for it. The in-memory backend is a separate
+implementation of the same stores, not a fallback for the JDBC one. The test
+suite runs the same DDL against a real PostgreSQL container.
 
 ## Applying the schema
 

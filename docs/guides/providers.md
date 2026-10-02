@@ -95,8 +95,6 @@ ordered by how often each changes:
 | Gemini | `systemInstruction` | the last content when it is a user content of text alone, otherwise a user content of its own |
 | Bedrock | the system list | the last user message, otherwise a user message of its own |
 
-Ambient no longer travels in the system prompt on any provider.
-
 Where Anthropic's cache markers go, when caching is on: the system prompt, the
 tool list, the last message before the ambient text is added, and the user
 message before that. The ambient text is appended after the markers are
@@ -110,8 +108,10 @@ later calls, the active turn's own included. Memory and state do the same to
 a turn once it is finished, since the first message that carried them is
 sent without them from then on. The adapter's `drop_block` setting makes
 that a drop rather than a refusal; a block whose prefix is intact is kept.
-An agent that relies on its reasoning being replayed to the model should
-carry no ambient sources.
+Measured on Anthropic, with background in the messages every replayed
+thinking block was dropped (193 of 193), and none were with no background
+present. An agent whose work depends on reasoning carried from call to call
+pays for ambient content with that reasoning.
 
 ## Naming providers
 

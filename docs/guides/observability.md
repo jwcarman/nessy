@@ -79,10 +79,10 @@ trace is deliberately **not** nested under the turn that caused it.
 
 A chapter summary, say, is a model call of its own, triggered by a turn
 ending but not waited for by anything — it can begin after the turn's own
-span has closed and outlive it. Nesting it anyway used to make a 1.45
-second span appear inside a 1.12 second one: the longest bar in a trace is
+span has closed and outlive it. Nesting it would put a 1.45
+second span inside a 1.12 second one: the longest bar in a trace is
 the first thing anyone reads when asking why a request was slow, and that
-bar was work nobody was waiting on. A child outliving its parent also
+bar would be work nobody was waiting on. A child outliving its parent also
 breaks self-time and critical-path arithmetic, which assume a child is
 contained. So an async listener's span is a root of its own trace.
 
