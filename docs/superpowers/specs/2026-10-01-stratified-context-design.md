@@ -334,6 +334,8 @@ provider's cache for that prefix is shared across all of them.
 
 `instructions(String)` and the removal of `SystemPromptSource` are provisional.
 
+The engine class `Instructions` joins the prompt and the sections for both doors.
+
 ## 6b. Noticing a broken cache
 
 Inside a turn each request is the previous one with more at the end, so the tokens a provider
@@ -341,6 +343,9 @@ reads from its cache should only grow from call to call. The engine remembers th
 count per agent and turn and reports a call that reads fewer, as a warning and as the observation
 event `nessy.cache.read.fell`. Read with §6: a fall while only `active-turn` or `ambient` changed
 is the provider's cache expiring; a fall while an earlier stratum changed is ours.
+
+No narration event carries an inference's usage, so the watch (`CacheWatch`) is told directly by
+the engine's inference handler, which knows the agent, the turn and the counts.
 
 It is dependable on Anthropic. OpenAI and Gemini cache implicitly and were measured returning no
 cached tokens on a noticeable share of calls for no visible reason, so there only the rate means
@@ -366,3 +371,51 @@ anything.
    built; the measurements on chat history showed little gain from fetching.
 6. What becomes of old summaries once there are hundreds. Nothing folds them together.
 7. Whether tool-result stubbing follows the same cuts.
+
+## 9. What the build found (2026-10-02)
+
+Decisions the build made in James's absence. Each is recorded in the build's ledger with its
+reason and is his to overturn.
+
+1. **A turn's end is announced before it is committed.** On a JDBC backend both doors narrate
+   `TurnEnded` inside the transaction that writes the turn, so a listener on another thread may
+   read before the turn is visible. This was true before this work, for every listener. The chapter
+   keeper is told which turn ended and waits up to two seconds for it to be visible before cutting.
+   The root fix is to narrate after the commit.
+2. **A policy that throws, or answers invalidly, closes nothing, and the maximum chapter length
+   still applies.** A null answer is an invalid answer.
+3. **`maxTail` must exceed the maximum chapter length** when chapters are on, or the harness
+   refuses to build. An application that sets a tail of 30 or less today is affected.
+4. **`chapterPolicy(...)` or `summarizer(...)` after `withoutChapters()` turns chapters back on.**
+   The last call wins.
+5. **Two public engine helpers the plan did not name:** `ChapterSettings` and `Instructions`, each
+   shared by the two doors' configurations. Neither is API.
+6. **A state source is handed the turn being answered**, as a memory source is, so that it can
+   answer as of the start of that turn.
+7. **The append to the chapter store is a compare-and-set on the previous chapter's end**, enforced
+   by a unique constraint (`after_turn`), after the first design was measured letting three of eight
+   racing writers through.
+8. **The starter's system-prompt bean has no consumer**, and had none before. Whether the starter
+   should apply it to harnesses or drop it is open.
+
+### Withdrawn: Anthropic's markers when memory or state is present
+
+Memory and state sit at the head of the active turn's first message, and a finished turn is
+rendered without them. So the first call of the next turn differs from what was cached from that
+message on, and every turn is written to the cache twice over its life, once with them and once
+bare. If the previous turn was longer than the vendor's 20-block lookback, the two markers used
+today read nothing and the whole conversation is rewritten.
+
+A rule to fix this was built and withdrawn. It placed three message markers beside the system
+prompt's and the tools' own, which is five where the vendor allows four. The reviewer's proposal,
+to measure live before building:
+
+1. Count the tools' marker: stop marking the tools when caching is on (the system prompt's marker
+   already covers them), or allow two message markers when tools are offered.
+2. On the first call of a turn, mark the last two ends of history and the end of the request.
+3. On later calls, mark the last end of history, the previous user-side message and the end of the
+   request.
+4. Apply this whether or not the request carries memory or state, because what matters is whether
+   the previous turn was rendered with them, which a stateless renderer cannot know.
+
+No shipped module supplies memory or state yet, so nothing is worse than before without it.
