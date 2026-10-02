@@ -29,8 +29,10 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.Stringifier;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
@@ -39,6 +41,7 @@ import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.event.AgentEvent;
@@ -116,6 +119,11 @@ class DeferredToolTest {
   }
 
   private QueuedHarness<String> harness(AgentType type, Duration toolBudget) {
+    return harness(type, toolBudget, Customizer.withDefaults());
+  }
+
+  private QueuedHarness<String> harness(
+      AgentType type, Duration toolBudget, Customizer<ToolConfig<Job>> more) {
     return engine
         .harnesses()
         .create(
@@ -126,7 +134,12 @@ class DeferredToolTest {
                     .systemPrompt("You are a test assistant.")
                     // Nothing gates it: permission is granted at once, so the call itself is what
                     // parks. A tool cannot defer before it has been allowed to run.
-                    .tool(slowJob(), t -> t.timeout(toolBudget))
+                    .tool(
+                        slowJob(),
+                        t -> {
+                          t.timeout(toolBudget);
+                          more.customize(t);
+                        })
                     .inference(in -> in.model("a-model"))
                     .effects(e -> e.pollInterval(Duration.ofMillis(50))));
   }
@@ -146,8 +159,12 @@ class DeferredToolTest {
   }
 
   private AgentId park(AgentType type, Duration toolBudget) {
+    return park(type, toolBudget, Customizer.withDefaults());
+  }
+
+  private AgentId park(AgentType type, Duration toolBudget, Customizer<ToolConfig<Job>> more) {
     AgentId agentId = new AgentId(UUID.randomUUID());
-    harness(type, toolBudget).tell(agentId, "kick off the reindex");
+    harness(type, toolBudget, more).tell(agentId, "kick off the reindex");
     await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(handed).hasSize(1));
     return agentId;
   }
@@ -183,8 +200,35 @@ class DeferredToolTest {
                 new Seq(4),
                 new TurnId(1),
                 new CallId("call_1"),
-                engine.ref(agentId, List.of(new Block.Text("reindexed 91")))));
+                engine.ref(agentId, List.of(new Block.Text("reindexed 91"))),
+                "reindexed 91"));
     assertThat(story.get(4)).isInstanceOf(AgentEvent.InferenceAnswered.class);
+  }
+
+  /**
+   * A result that arrives later is recorded by a different class from one that returns on the spot,
+   * so the line is made in two places. The tool's own binding must speak for both.
+   */
+  @Test
+  void a_result_that_arrives_later_carries_its_rendered_line_too() {
+    AgentType type = new AgentType("deferred-tool-rendered");
+    Stringifier<ToolResult.Success> line =
+        success -> "job finished: " + ToolConfig.resultText().stringify(success);
+    AgentId agentId = park(type, Duration.ofMinutes(30), t -> t.result(line));
+
+    ToolResult.Success reported = new ToolResult.Success(List.of(new Block.Text("reindexed 91")));
+    assertThat(engine.replies().complete(handed.peek(), reported))
+        .isInstanceOf(ReplyOutcome.Settled.class);
+
+    await()
+        .atMost(Duration.ofSeconds(20))
+        .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
+
+    assertThat(engine.story(type, agentId).get(3))
+        .asInstanceOf(type(AgentEvent.ToolSucceeded.class))
+        .extracting(AgentEvent.ToolSucceeded::rendered)
+        .isEqualTo(line.stringify(reported))
+        .isEqualTo("job finished: reindexed 91");
   }
 
   /** Work that finished badly is still an answer, and discharges the call the same way. */

@@ -25,7 +25,6 @@ import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
@@ -129,7 +128,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
     return outcomeOf(
         agentId,
         callId,
-        call.name(),
+        binding,
         until,
         binding.call(
             agentType,
@@ -152,7 +151,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
   private Awaited<EffectOutcome> outcomeOf(
       AgentId agentId,
       CallId callId,
-      ToolName toolName,
+      ToolBinding<?> binding,
       Instant until,
       Awaited<ToolResult> awaited) {
     return switch (awaited) {
@@ -161,15 +160,19 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
               switch (result) {
                 // Put away where it was produced. A tool's result is content; what the fold is
                 // told is that the call succeeded and where the result went.
-                case ToolResult.Success(var blocks) ->
-                    new EffectOutcome.ToolSucceeded(callId, payloads.forAgent(agentId).put(blocks));
+                case ToolResult.Success success ->
+                    new EffectOutcome.ToolSucceeded(
+                        callId,
+                        payloads.forAgent(agentId).put(success.blocks()),
+                        binding.rendered(success));
                 case ToolResult.Failure(String message) ->
                     new EffectOutcome.ToolFailed(callId, message);
               });
       case Awaited.Deferred<ToolResult> _ -> {
         // Same reason as a deferred approval: the fold does not learn that anything is
         // waiting, so this is the only place a watcher can.
-        narrator.narrate(agentType, agentId, new Narration.CallDeferred(callId, toolName, until));
+        narrator.narrate(
+            agentType, agentId, new Narration.CallDeferred(callId, binding.name(), until));
         yield new Awaited.Deferred<>();
       }
     };

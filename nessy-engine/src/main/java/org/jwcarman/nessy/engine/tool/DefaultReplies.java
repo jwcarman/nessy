@@ -28,6 +28,7 @@ import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
@@ -54,19 +55,25 @@ public final class DefaultReplies implements Replies {
 
   private static final Logger log = LoggerFactory.getLogger(DefaultReplies.class);
 
-  /** One agent type's two halves: where its rows live, and how to reach its fold. */
-  public record Bound(Outbox effects, AgentEffectCallback callback, Payloads payloads) {}
+  /**
+   * One agent type's halves: where its rows live, how to reach its fold, and the tools it bound,
+   * which a late result is put into words with.
+   */
+  public record Bound(
+      Outbox effects, AgentEffectCallback callback, Payloads payloads, Tools tools) {}
 
   /**
    * How a late answer becomes an outcome.
    *
    * <p>Takes the store because a reply that carries content -- a tool result from a desk answering
    * hours later -- has to put it away before saying so, exactly as the executor would have done had
-   * it answered on the spot. An outcome never carries content, whenever it arrives.
+   * it answered on the spot. An outcome never carries content, whenever it arrives. It is given the
+   * effect it settles because that names the tool, and the tool's binding is what says in a line
+   * what the result was.
    */
   @FunctionalInterface
   private interface Settlement {
-    EffectOutcome of(CallId callId, Attempt attempt, Payloads payloads);
+    EffectOutcome of(CallId callId, AgentEffect effect, Tools tools, Payloads payloads);
   }
 
   private final ReplyTokens tokens;
@@ -78,8 +85,12 @@ public final class DefaultReplies implements Replies {
 
   /** Called as each harness is built. An agent type answered before that is simply unknown. */
   public void register(
-      AgentType agentType, Outbox effects, AgentEffectCallback callback, Payloads payloads) {
-    byAgentType.put(agentType.value(), new Bound(effects, callback, payloads));
+      AgentType agentType,
+      Outbox effects,
+      AgentEffectCallback callback,
+      Payloads payloads,
+      Tools tools) {
+    byAgentType.put(agentType.value(), new Bound(effects, callback, payloads, tools));
   }
 
   @Override
@@ -88,7 +99,7 @@ public final class DefaultReplies implements Replies {
     return settle(
         token,
         AgentEffect.Approve.class,
-        (callId, _, _) ->
+        (callId, _, _, _) ->
             switch (result) {
               case ApprovalResult.Approved(var reference) ->
                   new EffectOutcome.ToolApproved(callId, reference);
@@ -103,13 +114,30 @@ public final class DefaultReplies implements Replies {
     return settle(
         token,
         AgentEffect.CallTool.class,
-        (callId, _, payloads) ->
+        (callId, effect, tools, payloads) ->
             switch (result) {
-              case ToolResult.Success(var blocks) ->
-                  new EffectOutcome.ToolSucceeded(callId, payloads.put(blocks));
+              case ToolResult.Success success ->
+                  new EffectOutcome.ToolSucceeded(
+                      callId, payloads.put(success.blocks()), rendered(tools, effect, success));
               case ToolResult.Failure(String message) ->
                   new EffectOutcome.ToolFailed(callId, message);
             });
+  }
+
+  /**
+   * What the result says, as its binding would have said it had the tool answered on the spot.
+   *
+   * <p>A tool that is no longer bound -- the configuration changed while it worked -- is said the
+   * way an unconfigured binding says it, so the call still gets a line and the answer is not lost.
+   */
+  private static String rendered(Tools tools, AgentEffect effect, ToolResult.Success success) {
+    if (effect instanceof AgentEffect.CallTool call) {
+      Optional<ToolBinding<?>> binding = tools.find(call.toolName());
+      if (binding.isPresent()) {
+        return binding.get().rendered(success);
+      }
+    }
+    return ToolConfig.resultText().dropMiddle(ToolConfig.DEFAULT_LINE_LIMIT).stringify(success);
   }
 
   /**
@@ -161,7 +189,11 @@ public final class DefaultReplies implements Replies {
             // The turn the row itself named when it was written, so an answer that arrives after
             // its turn has closed settles nothing rather than settling the current one.
             Optional.of(found.get().effect().turn()),
-            outcome.of(where.callId(), attempt, bound.payloads().forAgent(agentId)),
+            outcome.of(
+                where.callId(),
+                found.get().effect(),
+                bound.tools(),
+                bound.payloads().forAgent(agentId)),
             attempt.traceContext(),
             // Nothing to carry. Only a model call keeps what a failed attempt learned -- a tool
             // knows it failed and nothing else -- and this is always a tool's answer.

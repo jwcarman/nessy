@@ -46,9 +46,11 @@ import tools.jackson.databind.json.JsonMapper;
  * {@code @JsonValue} every one of those rows would have stopped reading, silently, and the only
  * symptom would have been agents that could no longer be loaded.
  *
- * <p>So these are not round-trip tests. A round trip passes perfectly well against a format nobody
- * else can read. What is pinned here is the <em>exact bytes</em>, and against literal JSON copied
- * from a live database rather than from anything this code produced.
+ * <p>So most of these pin the <em>exact bytes</em>: a round trip passes perfectly well against a
+ * format nobody else can read. They check the written form for what it must contain, and read back
+ * literal JSON written out by hand in the stored shape. A few are round trips as well, for the
+ * events that carry the lines of text a tool call leaves behind, where what matters is that the
+ * text survives the trip.
  */
 class ValueTypeCodecTest {
 
@@ -91,7 +93,7 @@ class ValueTypeCodecTest {
         .containsExactly(Map.entry(new CallId("call_1"), "running"));
   }
 
-  // ---- the rows that already exist ----------------------------------------------------
+  // ---- stored shapes, written out by hand ---------------------------------------------
 
   @Test
   void aStoredRequestForActionsReadsBackWithItsValueTypes() {
@@ -175,10 +177,26 @@ class ValueTypeCodecTest {
         new String(
             entries.encode(
                 new AgentEvent.ToolSucceeded(
-                    new Seq(4), new TurnId(1), new CallId("729606640"), PayloadRef.of("a3d9f0b1"))),
+                    new Seq(4),
+                    new TurnId(1),
+                    new CallId("729606640"),
+                    PayloadRef.of("a3d9f0b1"),
+                    "reindexed 91")),
             StandardCharsets.UTF_8);
 
     assertThat(written).contains("\"callId\":\"729606640\"").doesNotContain("\"value\"");
+  }
+
+  @Test
+  void a_tool_succeeded_event_reads_back_with_its_rendered_line() {
+    AgentEvent.ToolSucceeded written =
+        new AgentEvent.ToolSucceeded(
+            new Seq(4), new TurnId(1), new CallId("c1"), PayloadRef.of("a3d9f0b1"), "80 days");
+
+    byte[] bytes = entries.encode(written);
+
+    assertThat(new String(bytes, StandardCharsets.UTF_8)).contains("\"rendered\":\"80 days\"");
+    assertThat(entries.decode(bytes)).isEqualTo(written);
   }
 
   @Test
@@ -258,7 +276,7 @@ class ValueTypeCodecTest {
     String stored =
         """
                 {"type":"tool-succeeded","seq":4,"turn":1,"callId":"call_1",\
-                "result":"a3d9f0b1"}""";
+                "result":"a3d9f0b1","rendered":"reindexed 91"}""";
 
     AgentEvent.ToolSucceeded entry =
         (AgentEvent.ToolSucceeded) entries.decode(stored.getBytes(StandardCharsets.UTF_8));

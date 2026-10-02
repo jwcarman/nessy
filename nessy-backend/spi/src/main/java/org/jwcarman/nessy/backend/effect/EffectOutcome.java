@@ -18,6 +18,7 @@ package org.jwcarman.nessy.backend.effect;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Usage;
@@ -127,8 +128,15 @@ public sealed interface EffectOutcome {
    * <p>The {@code callId} is not decoration: the fold uses it to know which of the calls it is
    * still waiting on has been discharged, and to recognise a redelivery of one already discharged.
    * An outcome that could not name its call could not do either.
+   *
+   * <p>{@code rendered} is what the call returned, in a line made by its binding: never null, and
+   * empty when the binding had nothing to say. It goes to the event and no further.
    */
-  record ToolSucceeded(CallId callId, PayloadRef result) implements EffectOutcome {}
+  record ToolSucceeded(CallId callId, PayloadRef result, String rendered) implements EffectOutcome {
+    public ToolSucceeded {
+      Objects.requireNonNull(rendered, "rendered must not be null");
+    }
+  }
 
   /**
    * A tool was run and did not produce content.

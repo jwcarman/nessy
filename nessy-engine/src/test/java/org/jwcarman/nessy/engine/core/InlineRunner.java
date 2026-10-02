@@ -127,7 +127,8 @@ final class InlineRunner {
           yield new AgentCommand.CompleteToolCall(
               call.turn(),
               call.callId(),
-              new AgentCommand.ToolOutcome.Succeeded(claimCheck(tool.apply(argumentsFor()))));
+              new AgentCommand.ToolOutcome.Succeeded(
+                  claimCheck(tool.apply(argumentsFor())), "a tool result"));
         } catch (RuntimeException broken) {
           yield new AgentCommand.CompleteToolCall(
               call.turn(), call.callId(), new AgentCommand.ToolOutcome.Failed(broken.getMessage()));

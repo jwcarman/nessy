@@ -218,7 +218,8 @@ class ToolCallingTest {
                 new Seq(4),
                 new TurnId(1),
                 new CallId("call_1"),
-                engine.ref(agentId, List.of(new Block.Text("the answer to loch ness")))));
+                engine.ref(agentId, List.of(new Block.Text("the answer to loch ness"))),
+                "the answer to loch ness"));
     assertThat(story.get(4))
         .isEqualTo(
             new AgentEvent.InferenceAnswered(

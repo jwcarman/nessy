@@ -151,7 +151,11 @@ public sealed interface AgentCommand {
 
   /** What a tool produced. */
   sealed interface ToolOutcome {
-    record Succeeded(PayloadRef result) implements ToolOutcome {}
+    record Succeeded(PayloadRef result, String rendered) implements ToolOutcome {
+      public Succeeded {
+        Objects.requireNonNull(rendered, "rendered must not be null");
+      }
+    }
 
     /** Names what went wrong, never the values involved. See {@link AgentEvent.ToolFailed}. */
     record Failed(String message) implements ToolOutcome {}

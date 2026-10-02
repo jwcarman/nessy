@@ -19,6 +19,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
@@ -30,9 +31,13 @@ import org.jwcarman.nessy.inference.Failure;
 /**
  * What happened. Facts, in order, and the only thing that moves an {@code AgentState}.
  *
- * <p><b>No payloads.</b> Every one of these carries identifiers, status, a human decision or a
- * count -- and a {@link PayloadRef} where content would otherwise be. That is what keeps the stream
- * small enough to replay on every command, and what keeps every type in it one of Nessy's own.
+ * <p><b>Mostly identifiers, and a little text.</b> An event carries identifiers, status, a human
+ * decision, a count, and a {@link PayloadRef} where content would otherwise be. For a tool call it
+ * also carries two bounded lines of text made from the call's arguments and its result, each at
+ * most 1,000 characters: {@link ActionRequest.ToolCall#action()} and {@link
+ * ToolSucceeded#rendered()}. So an agent's content is in three places: its payload rows, those two
+ * lines in its events, and the summaries of its chapters. That keeps the stream small enough to
+ * replay on every command, and keeps every type in it one of Nessy's own.
  *
  * <p>Two scopes live here. Most events belong to a turn and carry its id; {@link Terminated}
  * belongs to the agent's life and sits between turns.
@@ -193,9 +198,19 @@ public sealed interface AgentEvent {
   record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> reference)
       implements AgentEvent {}
 
-  /** A call ran and produced something. */
-  record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result)
-      implements AgentEvent {}
+  /**
+   * A call ran and produced something.
+   *
+   * <p>{@code rendered} is what the call returned, in a line its binding made when the result was
+   * recorded: never null, empty when there was nothing to say, and at most 1,000 characters. It is
+   * fixed when written and never worked out again.
+   */
+  record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, String rendered)
+      implements AgentEvent {
+    public ToolSucceeded {
+      Objects.requireNonNull(rendered, "rendered must not be null");
+    }
+  }
 
   /**
    * A call ran and did not produce content.
@@ -204,8 +219,8 @@ public sealed interface AgentEvent {
    * InferenceFailed} and deliberately so: a failed tool call is the <em>model's</em> problem, it is
    * going to read this, and what matters is that it can tell what to do next.
    *
-   * <p>This is one of only two free-text fields in the whole stream. It names what went wrong and
-   * never the values involved -- the stream is stored in the clear and kept for a long time.
+   * <p>This is free text, kept in the clear for a long time, so it names what went wrong and never
+   * the values involved.
    */
   record ToolFailed(Seq seq, TurnId turn, CallId callId, String message) implements AgentEvent {}
 

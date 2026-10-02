@@ -80,7 +80,7 @@ class MisroutedReplyTest {
   }
 
   private void serving() {
-    replies.register(TYPE, rows, delivered, payloads);
+    replies.register(TYPE, rows, delivered, payloads, Tools.none());
   }
 
   /** A token minted before a rename, or a deployment that no longer builds that harness. */

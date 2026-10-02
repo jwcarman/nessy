@@ -393,7 +393,7 @@ public sealed interface AgentState {
       AgentEvent event =
           switch (done.outcome()) {
             case AgentCommand.ToolOutcome.Succeeded ok ->
-                new AgentEvent.ToolSucceeded(at, turn, done.callId(), ok.result());
+                new AgentEvent.ToolSucceeded(at, turn, done.callId(), ok.result(), ok.rendered());
             case AgentCommand.ToolOutcome.Failed no ->
                 new AgentEvent.ToolFailed(at, turn, done.callId(), no.message());
           };

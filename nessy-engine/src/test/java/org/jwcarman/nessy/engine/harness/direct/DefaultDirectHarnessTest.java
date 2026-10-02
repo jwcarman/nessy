@@ -400,17 +400,26 @@ class DefaultDirectHarnessTest {
   }
 
   @Test
-  @DisplayName("no content ever reaches the event stream: every event carries a reference")
-  void the_stream_holds_no_content() {
+  @DisplayName("content stays out of the event stream, except the line a tool's result leaves")
+  void the_stream_holds_content_only_as_the_line_a_tool_leaves() {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("the answer itself"));
 
     harness(model, tool("the tool's own words")).ask(agent, "a question with words");
 
-    assertThat(events.readAll(TYPE, agent).toString())
+    List<AgentEvent> stream = events.readAll(TYPE, agent);
+    assertThat(stream.toString())
         .doesNotContain("a question with words")
-        .doesNotContain("the tool's own words")
         .doesNotContain("the answer itself");
+    List<AgentEvent> beyondTheResultLine =
+        stream.stream().filter(e -> !(e instanceof AgentEvent.ToolSucceeded)).toList();
+    assertThat(beyondTheResultLine).isNotEmpty();
+    assertThat(beyondTheResultLine.toString()).doesNotContain("the tool's own words");
+    assertThat(stream)
+        .filteredOn(AgentEvent.ToolSucceeded.class::isInstance)
+        .singleElement()
+        .extracting(e -> ((AgentEvent.ToolSucceeded) e).rendered())
+        .isEqualTo("the tool's own words");
   }
 
   @Test

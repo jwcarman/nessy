@@ -99,10 +99,11 @@ CREATE INDEX IF NOT EXISTS ix_nessy_agent_effect_actionable
     ON nessy_agent_effect (agent_type, status, actionable_at);
 -- Content, kept away from the record of what happened to it.
 --
--- Everything a model was shown or said -- inputs, answers, tool results -- lives here and
--- nowhere else. The tables that describe an agent's life hold references, so they are plain rows
--- nobody has to reason about: no user text, no tool output, nothing anybody has to encrypt,
--- redact, or hunt through to answer a question about what is retained.
+-- Everything a model was shown or said -- inputs, answers, tool results -- lives here, and the
+-- tables that describe an agent's life hold references to it. Two bounded lines of text per tool
+-- call are the exception: what a call would do and what it returned, each at most 1,000
+-- characters, kept in nessy_agent_event. The summaries of an agent's chapters are in nessy_chapter.
+-- So what an agent has said is in three places, and answering what is retained means all three.
 --
 -- Addressed by the hash of its own bytes, which buys idempotence: an effect retried after a
 -- failure writes the same row rather than a second copy. Scoped by agent, which buys forgetting:
@@ -122,8 +123,9 @@ CREATE TABLE IF NOT EXISTS nessy_payload
     PRIMARY KEY (agent_id, hash)
 );
 
--- What happened to an agent, in order, append-only. No content: every block is a reference into
--- nessy_payload, so this table is a list of facts about a life rather than a copy of it.
+-- What happened to an agent, in order, append-only. Facts about a life rather than a copy of it:
+-- every block is a reference into nessy_payload. The one text it holds is, for a tool call, a line
+-- saying what the call would do and a line saying what it returned, each at most 1,000 characters.
 --
 -- The primary key is the concurrency control. Two writers that decided from the same state mint
 -- the same seq, so the second one violates it and takes its own transaction down -- which is the

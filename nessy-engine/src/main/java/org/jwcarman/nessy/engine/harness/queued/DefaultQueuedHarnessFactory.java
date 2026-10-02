@@ -294,7 +294,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     // Registered before the dispatcher polls, so an answer can never arrive for an agent type
     // this process is serving but has not admitted to. The reverse -- a token for a type
     // nobody configured -- is answered as nothing awaiting, which is what it is.
-    replies.register(agentType, effects, harness, backend.payloads());
+    replies.register(agentType, effects, harness, backend.payloads(), tools);
 
     EffectDispatcher dispatcher =
         new EffectDispatcher(

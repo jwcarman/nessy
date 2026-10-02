@@ -25,6 +25,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
@@ -34,6 +35,7 @@ import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.Stringifier;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -104,6 +106,11 @@ class ToolCallHandlerTest {
   }
 
   private static Tools bound(Tool<Query> tool, Approver approver) {
+    return bound(tool, approver, Optional.empty());
+  }
+
+  private static Tools bound(
+      Tool<Query> tool, Approver approver, Optional<Stringifier<ToolResult.Success>> result) {
     return new Tools(
         List.of(
             new ToolBinding<>(
@@ -113,7 +120,7 @@ class ToolCallHandlerTest {
                 Duration.ofSeconds(30),
                 new RetryPolicy.Never(),
                 SettledLines.action(Optional.empty()),
-                SettledLines.result(Optional.empty()),
+                SettledLines.result(result),
                 List.of(),
                 approver,
                 Duration.ofMinutes(10),
@@ -167,7 +174,45 @@ class ToolCallHandlerTest {
         .isEqualTo(
             new EffectOutcome.ToolSucceeded(
                 new CallId("c1"),
-                PAYLOADS.forAgent(AGENT).put(List.of(new Block.Text("you said loch ness")))));
+                PAYLOADS.forAgent(AGENT).put(List.of(new Block.Text("you said loch ness"))),
+                "you said loch ness"));
+  }
+
+  @Nested
+  class The_line_a_success_carries {
+
+    @Test
+    void a_success_carries_what_the_binding_says_it_returned() {
+      Tools tools = bound(echo(), Approver.allow(), Optional.of(success -> "80 days"));
+
+      EffectOutcome outcome =
+          handle(tools, story(new Block.ToolCall("c1", "lookup", "{\"q\":\"loch ness\"}")));
+
+      assertThat(outcome)
+          .asInstanceOf(type(EffectOutcome.ToolSucceeded.class))
+          .extracting(EffectOutcome.ToolSucceeded::rendered)
+          .isEqualTo("80 days");
+    }
+
+    @Test
+    void a_result_stringifier_that_throws_leaves_an_empty_line_and_the_call_still_succeeds() {
+      Tools tools =
+          bound(
+              echo(),
+              Approver.allow(),
+              Optional.of(
+                  success -> {
+                    throw new IllegalStateException("no words for this");
+                  }));
+
+      EffectOutcome outcome =
+          handle(tools, story(new Block.ToolCall("c1", "lookup", "{\"q\":\"loch ness\"}")));
+
+      assertThat(outcome)
+          .asInstanceOf(type(EffectOutcome.ToolSucceeded.class))
+          .extracting(EffectOutcome.ToolSucceeded::rendered)
+          .isEqualTo("");
+    }
   }
 
   /**

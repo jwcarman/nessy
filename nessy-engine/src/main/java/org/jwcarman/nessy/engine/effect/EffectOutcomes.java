@@ -58,9 +58,9 @@ public final class EffectOutcomes {
               turn,
               new AgentCommand.InferenceOutcome.RequestedActions(request, calls, usage),
               priorAttempts);
-      case EffectOutcome.ToolSucceeded(var callId, var result) ->
+      case EffectOutcome.ToolSucceeded(var callId, var result, var rendered) ->
           new AgentCommand.CompleteToolCall(
-              turn, callId, new AgentCommand.ToolOutcome.Succeeded(result));
+              turn, callId, new AgentCommand.ToolOutcome.Succeeded(result, rendered));
       case EffectOutcome.ToolFailed(var callId, String message) ->
           new AgentCommand.CompleteToolCall(
               turn, callId, new AgentCommand.ToolOutcome.Failed(message));

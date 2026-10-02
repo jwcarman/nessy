@@ -185,7 +185,7 @@ class AgentStateTest {
       Decision decision =
           awaiting.execute(
               new AgentCommand.CompleteToolCall(
-                  TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT)),
+                  TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it")),
               stopNow,
               Instant.EPOCH);
 
@@ -212,7 +212,7 @@ class AgentStateTest {
       Decision decision =
           awaiting.execute(
               new AgentCommand.CompleteToolCall(
-                  TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT)),
+                  TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it")),
               stopNow,
               Instant.EPOCH);
 
@@ -233,7 +233,7 @@ class AgentStateTest {
       Decision decision =
           awaiting.execute(
               new AgentCommand.CompleteToolCall(
-                  TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT)),
+                  TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it")),
               wrapUp,
               Instant.EPOCH);
 
@@ -477,7 +477,7 @@ class AgentStateTest {
       Decision decision =
           running.execute(
               new AgentCommand.CompleteToolCall(
-                  TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT)));
+                  TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it")));
 
       assertThat(decision.effects()).singleElement().isInstanceOf(AgentEffect.Infer.class);
       assertThat(running.applyAll(decision.events())).isInstanceOf(AgentState.Inferring.class);
@@ -490,13 +490,13 @@ class AgentStateTest {
       Decision first =
           running.execute(
               new AgentCommand.CompleteToolCall(
-                  TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT)));
+                  TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it")));
       AgentState after = running.applyAll(first.events());
 
       Decision again =
           after.execute(
               new AgentCommand.CompleteToolCall(
-                  TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT)));
+                  TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it")));
 
       assertThat(again).isInstanceOf(Decision.Ignore.class);
     }
@@ -629,7 +629,7 @@ class AgentStateTest {
       assertThat(
               inferring.execute(
                   new AgentCommand.CompleteToolCall(
-                      TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT))))
+                      TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it"))))
           .isInstanceOf(Decision.Ignore.class);
     }
 
@@ -753,7 +753,9 @@ class AgentStateTest {
       Decision decision =
           running.execute(
               new AgentCommand.CompleteToolCall(
-                  new TurnId(99), CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT)));
+                  new TurnId(99),
+                  CALL,
+                  new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it")));
 
       assertThat(decision).isInstanceOf(Decision.Ignore.class);
       assertThat(decision.events()).isEmpty();
@@ -783,7 +785,7 @@ class AgentStateTest {
       AgentState inferring =
           idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
       AgentEvent tooEarly =
-          new AgentEvent.ToolSucceeded(Seq.of(9), Seq.of(9).opensTurn(), CALL, RESULT);
+          new AgentEvent.ToolSucceeded(Seq.of(9), Seq.of(9).opensTurn(), CALL, RESULT, "found it");
 
       assertThatThrownBy(() -> inferring.apply(tooEarly))
           .isInstanceOf(IllegalArgumentException.class)
@@ -881,21 +883,21 @@ class AgentStateTest {
       Decision first =
           state.execute(
               new AgentCommand.CompleteToolCall(
-                  TURN, A, new AgentCommand.ToolOutcome.Succeeded(RESULT)));
+                  TURN, A, new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it")));
       assertThat(first.effects()).isEmpty();
       state = state.applyAll(first.events());
 
       Decision second =
           state.execute(
               new AgentCommand.CompleteToolCall(
-                  TURN, B, new AgentCommand.ToolOutcome.Succeeded(RESULT)));
+                  TURN, B, new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it")));
       assertThat(second.effects()).isEmpty();
       state = state.applyAll(second.events());
 
       Decision last =
           state.execute(
               new AgentCommand.CompleteToolCall(
-                  TURN, C, new AgentCommand.ToolOutcome.Succeeded(RESULT)));
+                  TURN, C, new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it")));
       assertThat(last.effects()).singleElement().isInstanceOf(AgentEffect.Infer.class);
       assertThat(state.applyAll(last.events())).isInstanceOf(AgentState.Inferring.class);
     }
@@ -911,7 +913,7 @@ class AgentStateTest {
                 state
                     .execute(
                         new AgentCommand.CompleteToolCall(
-                            TURN, call, new AgentCommand.ToolOutcome.Succeeded(RESULT)))
+                            TURN, call, new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it")))
                     .events());
       }
 
@@ -958,7 +960,9 @@ class AgentStateTest {
       assertThat(
               state.execute(
                   new AgentCommand.CompleteToolCall(
-                      TURN, new CallId("nobody"), new AgentCommand.ToolOutcome.Succeeded(RESULT))))
+                      TURN,
+                      new CallId("nobody"),
+                      new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it"))))
           .isInstanceOf(Decision.Ignore.class);
     }
 
@@ -983,7 +987,7 @@ class AgentStateTest {
       assertThat(
               state.execute(
                   new AgentCommand.CompleteToolCall(
-                      TURN, A, new AgentCommand.ToolOutcome.Succeeded(RESULT))))
+                      TURN, A, new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it"))))
           .isInstanceOf(Decision.Ignore.class);
     }
   }
@@ -1067,7 +1071,7 @@ class AgentStateTest {
       assertThat(
               dead.execute(
                   new AgentCommand.CompleteToolCall(
-                      TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT))))
+                      TURN, CALL, new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it"))))
           .isInstanceOf(Decision.Ignore.class);
     }
 

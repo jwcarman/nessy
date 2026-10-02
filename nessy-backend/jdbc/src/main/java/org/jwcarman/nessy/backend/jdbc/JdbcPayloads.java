@@ -35,10 +35,9 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 /**
  * Content in {@code nessy_payload}, addressed by its own hash and scoped to one agent.
  *
- * <p>The reason the rest of the engine's tables hold no content: inputs, answers and tool results
- * are written here, and what goes beside the record of an agent's life is a reference. Those tables
- * become plain rows -- nothing to encrypt, nothing to redact, and one place to look when somebody
- * asks what is retained.
+ * <p>Inputs, answers and tool results are written here, and what goes beside the record of an
+ * agent's life is a reference. The exception is two bounded lines of text per tool call, which stay
+ * in the events, so this table is where most of what an agent said lives and not all of it.
  *
  * <p><b>Addressed, not minted.</b> The reference is the SHA-256 of the encoded content, so putting
  * the same content twice is one row and the same reference. An effect retried after a failure
