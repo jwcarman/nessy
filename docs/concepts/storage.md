@@ -11,7 +11,7 @@ it all when the process stops.
 |---|---|---|
 | An agent, so there is something to lock | `nessy_agent` | until it is terminated, and after |
 | What happened to an agent, one row per event, append-only | `nessy_agent_event` | forever, unless you prune it |
-| Content: what a message or a tool result actually said | `nessy_payload` | forever, unless you prune it |
+| Content: what a message or a tool result actually said (the events keep two short lines per tool call) | `nessy_payload` | forever, unless you prune it |
 | Work an agent owes, with its deadline | `nessy_agent_effect` | until it completes or is given up on |
 | Work offered to a busy agent, waiting its turn (queued door only) | `nessy_agent_backlog` | until it is claimed or coalesced away |
 | Closed chapters of an agent's history, each with the summary that stands in for it once written | `nessy_chapter` | forever, unless you prune it |
@@ -143,14 +143,22 @@ is a lookup rather than a scan: a partial index over `starts_turn` picks out
 the handful of rows per agent that matter to that query, however long the
 conversation.
 
-Events carry no content directly. What a message said, or a tool returned,
+Events carry content by reference. What a message said, or a tool returned,
 lives in `nessy_payload`, addressed by the SHA-256 hash of its own encoded
-bytes and scoped to the agent that produced it. That buys idempotence — an
-effect retried after a failure writes the same row rather than a second
-copy — and it buys forgetting: deleting everything one agent ever said is
-one statement over one table, with nothing shared out from under another
-agent. Identical content in two agents is stored twice, and that is the
-trade.
+bytes and scoped to the agent that produced it. The events hold a reference
+to it. That buys idempotence — an effect retried after a failure writes the
+same row rather than a second copy — and it makes removing an agent's
+payload rows one statement over one table, with nothing shared out from
+under another agent. Identical content in two agents is stored twice, and
+that is the trade.
+
+That statement is not everything the agent said. For each tool call the
+events also hold two lines of text, what the call would do and what it
+returned, each at most 1,000 characters, and they hold other short text: a
+failed call's message, a denial's reason, why a turn failed. The summaries
+of the agent's chapters are in `nessy_chapter`. An agent's content is in
+those three places, its payload rows, its events and its chapters. Nothing
+in the engine deletes any of it today.
 
 ## Effects
 

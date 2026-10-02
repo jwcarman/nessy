@@ -58,10 +58,12 @@ import org.jwcarman.nessy.inference.Failure;
 })
 public sealed interface EffectOutcome {
 
-  // Nothing here carries content. Whatever produced this outcome -- the thing that called the
+  // Nothing here carries content itself. Whatever produced this outcome -- the thing that called
+  // the
   // model, the thing that ran the tool -- put what it produced away before saying so, because that
   // is the moment the content exists and the only place that has both the content and somewhere to
-  // put it. What crosses into the fold is a reference, a status, a decision or a count.
+  // put it. What crosses into the fold is a reference, a status, a decision or a count, and, for a
+  // tool call, the one bounded line saying what the call would do or what it returned.
 
   /**
    * The model said something.

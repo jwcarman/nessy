@@ -35,8 +35,10 @@ class ToolSucceededTest {
 
   @Test
   void an_event_refuses_a_null_rendered_line() {
-    assertThatThrownBy(
-            () -> new AgentEvent.ToolSucceeded(new Seq(4), new TurnId(1), CALL, RESULT, null))
+    Seq seq = new Seq(4);
+    TurnId turn = new TurnId(1);
+
+    assertThatThrownBy(() -> new AgentEvent.ToolSucceeded(seq, turn, CALL, RESULT, null))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("rendered must not be null");
   }

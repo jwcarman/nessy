@@ -26,7 +26,7 @@ public sealed interface AgentEvent {
   record ActionsRequested(Seq seq, TurnId turn, PayloadRef request, List<ActionRequest> actions, Usage usage) implements AgentEvent {}
   record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> reference) implements AgentEvent {}
   record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> reference) implements AgentEvent {}
-  record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result) implements AgentEvent {}
+  record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, String rendered) implements AgentEvent {}
   record ToolFailed(Seq seq, TurnId turn, CallId callId, String message) implements AgentEvent {}
   record Terminated(Seq seq) implements AgentEvent {}
 }
@@ -35,9 +35,25 @@ public sealed interface AgentEvent {
 Most events belong to a turn and carry its `TurnId`; `Terminated` belongs to
 the agent's life and sits between turns instead.
 
-**No payloads.** Every event carries identifiers, status, a human decision
-or a count — and a `PayloadRef` where content would otherwise sit. That is
-what keeps the stream small enough to replay on every command.
+**Content by reference, and two lines for each tool call.** Inputs, answers
+and successful tool results are in the events only as a `PayloadRef` into
+`nessy_payload`. For each tool call the events also hold two lines of text.
+`ActionsRequested` holds a list of `ActionRequest`s, and each
+`ActionRequest.ToolCall(CallId id, ToolName name, String action)` carries
+`action`, what the call would do, made by the tool's binding from the call's
+arguments. `ToolSucceeded.rendered` is what the call returned, made by the
+same binding from the result. Each line is at most 1,000 characters
+(`ToolConfig.LINE_CAP`); the cap is applied when the binding is built, not by
+the records. A line is fixed when it is written and never worked out again.
+
+Events hold other short text too, and it is not bounded: a failed call's
+message, a denial's reason and its reference, why a turn failed, a refusal's
+category and a failure's reason.
+
+So an agent's content is in three places: its payload rows, the lines and
+sentences in its events, and the summaries of its chapters in
+`nessy_chapter`. The references, and the bound on the two lines, are what
+keep the stream small enough to replay on every command.
 
 **Five arms carry `Usage`**: `InferenceAnswered`, `InferenceRefused`,
 `InferenceFailed`, `InferenceAttempted` and `ActionsRequested`. A

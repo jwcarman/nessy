@@ -18,7 +18,7 @@ earlier it goes and the more of the cache survives when something later
 changes.
 
 The story itself, one row per event in `nessy_agent_event` with its content
-in `nessy_payload`, is appended and never rewritten. Everything on this page
+in `nessy_payload` and two short lines for each tool call, is appended and never rewritten. Everything on this page
 is a policy about how much of it a model sees and what stands in for the
 rest. See [Storage](storage.md).
 

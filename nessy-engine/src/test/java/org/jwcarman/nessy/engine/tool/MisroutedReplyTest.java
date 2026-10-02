@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
@@ -151,6 +152,19 @@ class MisroutedReplyTest {
 
     assertThat(replies.complete(token(), ToolResult.ok(new Block.Text("done"))))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);
+  }
+
+  @Test
+  void a_result_for_a_tool_that_is_no_longer_bound_still_gets_its_line() {
+    serving();
+    rows.running = List.of(attempt());
+    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL);
+    PayloadRef ref = payloads.put(List.of(new Block.Text("done")));
+
+    assertThat(replies.complete(token(), ToolResult.ok(new Block.Text("done"))))
+        .isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(delivered.outcomes)
+        .containsExactly(new EffectOutcome.ToolSucceeded(CALL, ref, "done"));
   }
 
   /**

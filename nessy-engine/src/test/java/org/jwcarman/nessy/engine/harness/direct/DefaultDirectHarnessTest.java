@@ -74,6 +74,7 @@ import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.event.ActionRequest;
@@ -100,8 +101,9 @@ import tools.jackson.databind.json.JsonMapper;
  * A whole turn, on one thread, with a map for storage.
  *
  * <p>The provider is scripted so these run without a key or a network; what they prove is the
- * harness, not the model. The last two are the ones that matter: no content ever reaches the event
- * stream, and what the model is shown is rebuilt from that stream rather than remembered.
+ * harness, not the model. The last two are the ones that matter: the event stream holds content
+ * only as references and as the two bounded lines a tool call leaves, and what the model is shown
+ * is rebuilt from that stream rather than remembered.
  */
 class DefaultDirectHarnessTest {
 
@@ -400,26 +402,58 @@ class DefaultDirectHarnessTest {
   }
 
   @Test
-  @DisplayName("content stays out of the event stream, except the line a tool's result leaves")
-  void the_stream_holds_content_only_as_the_line_a_tool_leaves() {
+  @DisplayName(
+      "content stays out of the event stream, except the two lines a tool call leaves, each capped")
+  void the_stream_holds_content_only_as_the_two_lines_a_tool_call_leaves() {
     AgentId agent = AgentId.random();
-    Scripted model = new Scripted().then(asking("lookup")).then(answering("the answer itself"));
+    String argumentText = "zebra-in-the-arguments";
+    String resultText = "the tool's own words";
+    InferenceResult asking =
+        new InferenceResult.Actions(
+            List.of(new Block.ToolCall(CALL, LOOKUP, "{\"id\":\"" + argumentText + "\"}")),
+            Usage.unreported());
+    Scripted model = new Scripted().then(asking).then(answering("the answer itself"));
+    String expectedAction = String.valueOf(new Lookup(argumentText));
 
-    harness(model, tool("the tool's own words")).ask(agent, "a question with words");
+    harness(model, tool(resultText)).ask(agent, "a question with words");
 
     List<AgentEvent> stream = events.readAll(TYPE, agent);
     assertThat(stream.toString())
         .doesNotContain("a question with words")
-        .doesNotContain("the answer itself");
+        .doesNotContain("the answer itself")
+        .containsOnlyOnce(argumentText)
+        .containsOnlyOnce(resultText);
+
+    // The call's arguments appear nowhere but the action line of the request that made the call.
+    List<AgentEvent> beyondTheRequest =
+        stream.stream().filter(e -> !(e instanceof AgentEvent.ActionsRequested)).toList();
+    assertThat(beyondTheRequest).isNotEmpty();
+    assertThat(beyondTheRequest.toString()).doesNotContain(argumentText);
+    AgentEvent.ActionsRequested requested =
+        stream.stream()
+            .filter(AgentEvent.ActionsRequested.class::isInstance)
+            .map(AgentEvent.ActionsRequested.class::cast)
+            .findFirst()
+            .orElseThrow();
+    assertThat(requested.request().toString()).doesNotContain(argumentText);
+    assertThat(requested.actions())
+        .containsExactly(new ActionRequest.ToolCall(CALL, LOOKUP, expectedAction));
+
+    // The result appears nowhere but the line on the event that records it.
     List<AgentEvent> beyondTheResultLine =
         stream.stream().filter(e -> !(e instanceof AgentEvent.ToolSucceeded)).toList();
     assertThat(beyondTheResultLine).isNotEmpty();
-    assertThat(beyondTheResultLine.toString()).doesNotContain("the tool's own words");
-    assertThat(stream)
-        .filteredOn(AgentEvent.ToolSucceeded.class::isInstance)
-        .singleElement()
-        .extracting(e -> ((AgentEvent.ToolSucceeded) e).rendered())
-        .isEqualTo("the tool's own words");
+    assertThat(beyondTheResultLine.toString()).doesNotContain(resultText);
+    AgentEvent.ToolSucceeded succeeded =
+        stream.stream()
+            .filter(AgentEvent.ToolSucceeded.class::isInstance)
+            .map(AgentEvent.ToolSucceeded.class::cast)
+            .findFirst()
+            .orElseThrow();
+    assertThat(succeeded.rendered()).isEqualTo(resultText);
+
+    assertThat(expectedAction.length()).isLessThanOrEqualTo(ToolConfig.LINE_CAP);
+    assertThat(succeeded.rendered().length()).isLessThanOrEqualTo(ToolConfig.LINE_CAP);
   }
 
   @Test

@@ -24,7 +24,8 @@ import java.util.Objects;
  *
  * <p>Inputs, model output and tool results are claim-checked by the harness before a command
  * reaches the state, and what crosses is this. The core branches on identifiers, status, human
- * decisions and counts; everything else is behind one of these.
+ * decisions and counts. The content itself is behind one of these; the only text that crosses
+ * beside it is short, such as the two bounded lines a tool call leaves.
  *
  * <p>Opaque on purpose. The harness that minted it knows how to resolve it -- from a table, from
  * memory, or by revealing a surrogate through a destination that may refuse. None of that is the

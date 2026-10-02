@@ -159,7 +159,8 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
           Awaited.ready(
               switch (result) {
                 // Put away where it was produced. A tool's result is content; what the fold is
-                // told is that the call succeeded and where the result went.
+                // told is that the call succeeded, where the result went, and the one bounded
+                // line the binding makes of it.
                 case ToolResult.Success success ->
                     new EffectOutcome.ToolSucceeded(
                         callId,

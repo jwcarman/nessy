@@ -36,17 +36,20 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * Content in {@code nessy_payload}, addressed by its own hash and scoped to one agent.
  *
  * <p>Inputs, answers and tool results are written here, and what goes beside the record of an
- * agent's life is a reference. The exception is two bounded lines of text per tool call, which stay
- * in the events, so this table is where most of what an agent said lives and not all of it.
+ * agent's life is a reference. The exception is two lines of text per tool call, what the call
+ * would do and what it returned, each at most 1,000 characters, which stay in the events. The
+ * summaries of an agent's chapters are in {@code nessy_chapter}. So this table is where most of
+ * what an agent said lives and not all of it.
  *
  * <p><b>Addressed, not minted.</b> The reference is the SHA-256 of the encoded content, so putting
  * the same content twice is one row and the same reference. An effect retried after a failure
  * cannot leave a second copy, and a reference proves what is behind it.
  *
  * <p><b>Scoped, not shared.</b> Two agents that say the same thing store it twice. That is
- * deliberate: forgetting an agent is then one statement over one table, with nothing shared out
- * from under anybody. Counting references across agents would save a little space and cost the one
- * property this table exists for.
+ * deliberate: removing an agent's payload rows is then one statement over one table, with nothing
+ * shared out from under anybody. That statement does not reach the lines in its events or the
+ * summaries of its chapters. Counting references across agents would save a little space and cost
+ * the one property this table exists for.
  */
 public final class JdbcPayloads implements Payloads {
 

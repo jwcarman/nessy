@@ -28,7 +28,6 @@ import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.tool.ReplyToken;
-import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
@@ -67,9 +66,9 @@ public final class DefaultReplies implements Replies {
    *
    * <p>Takes the store because a reply that carries content -- a tool result from a desk answering
    * hours later -- has to put it away before saying so, exactly as the executor would have done had
-   * it answered on the spot. An outcome never carries content, whenever it arrives. It is given the
-   * effect it settles because that names the tool, and the tool's binding is what says in a line
-   * what the result was.
+   * it answered on the spot. An outcome carries no content, whenever it arrives: a reference to it,
+   * and the one bounded line a successful result leaves. It is given the effect it settles because
+   * that names the tool, and the tool's binding is what says in a line what the result was.
    */
   @FunctionalInterface
   private interface Settlement {
@@ -137,7 +136,7 @@ public final class DefaultReplies implements Replies {
         return binding.get().rendered(success);
       }
     }
-    return ToolConfig.resultText().dropMiddle(ToolConfig.DEFAULT_LINE_LIMIT).stringify(success);
+    return SettledLines.result(Optional.empty()).stringify(success);
   }
 
   /**

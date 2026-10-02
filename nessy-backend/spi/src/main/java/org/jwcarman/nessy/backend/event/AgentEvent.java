@@ -36,8 +36,10 @@ import org.jwcarman.nessy.inference.Failure;
  * also carries two bounded lines of text made from the call's arguments and its result, each at
  * most 1,000 characters: {@link ActionRequest.ToolCall#action()} and {@link
  * ToolSucceeded#rendered()}. So an agent's content is in three places: its payload rows, those two
- * lines in its events, and the summaries of its chapters. That keeps the stream small enough to
- * replay on every command, and keeps every type in it one of Nessy's own.
+ * lines in its events, and the summaries of its chapters.
+ *
+ * <p>What keeps the stream small enough to replay on every command is the references, which stand
+ * in for the content, and the bound on those two lines. Every type in it is one of Nessy's own.
  *
  * <p>Two scopes live here. Most events belong to a turn and carry its id; {@link Terminated}
  * belongs to the agent's life and sits between turns.

@@ -41,7 +41,10 @@ import org.jwcarman.nessy.inference.Failure;
  * concerned -- only the one that is looks inside -- and the switch it then does is real logic
  * rather than routing.
  *
- * <p><b>No payloads.</b> Content is claim-checked by the harness before it gets here.
+ * <p><b>Content by reference.</b> Content is claim-checked by the harness before it gets here, so a
+ * command carries a reference to it. The text it does carry is short and bounded: for a tool call,
+ * the line saying what the call would do and the line saying what it returned, each at most 1,000
+ * characters.
  *
  * <p><b>A completion names the turn it answers.</b> Delivery is at-least-once and a door releases
  * its lock between steps, so an answer for a turn that has since closed can arrive while the agent

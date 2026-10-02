@@ -47,9 +47,11 @@ public interface Payloads {
   /**
    * This store, for one agent's content.
    *
-   * <p>Everything an agent ever said is scoped to it, so forgetting an agent is one statement over
-   * one table rather than a traversal of what it might share with others. A store that keeps
-   * nothing beyond the process has nothing to scope and answers with itself.
+   * <p>Every payload an agent ever wrote is scoped to it, so removing an agent's payloads is one
+   * statement over one table rather than a traversal of what it might share with others. That is
+   * not everything the agent said: the lines in its events and the summaries of its chapters are
+   * elsewhere. A store that keeps nothing beyond the process has nothing to scope and answers with
+   * itself.
    */
   default Payloads forAgent(AgentId agent) {
     return this;

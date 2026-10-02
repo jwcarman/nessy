@@ -106,9 +106,10 @@ CREATE INDEX IF NOT EXISTS ix_nessy_agent_effect_actionable
 -- So what an agent has said is in three places, and answering what is retained means all three.
 --
 -- Addressed by the hash of its own bytes, which buys idempotence: an effect retried after a
--- failure writes the same row rather than a second copy. Scoped by agent, which buys forgetting:
--- deleting everything one agent ever said is one statement over one table, with nothing shared
--- out from under another agent. Identical content in two agents is stored twice, and that is the
+-- failure writes the same row rather than a second copy. Scoped by agent, which buys removal of
+-- its payload rows: that is one statement over one table, with nothing shared out from under
+-- another agent. It is not everything the agent said; the lines in nessy_agent_event and the
+-- summaries in nessy_chapter are elsewhere. Identical content in two agents is stored twice, and that is the
 -- trade -- cross-agent sharing is rare, and a deletion that has to count references is a deletion
 -- somebody eventually gets wrong.
 CREATE TABLE IF NOT EXISTS nessy_payload
@@ -124,8 +125,10 @@ CREATE TABLE IF NOT EXISTS nessy_payload
 );
 
 -- What happened to an agent, in order, append-only. Facts about a life rather than a copy of it:
--- every block is a reference into nessy_payload. The one text it holds is, for a tool call, a line
--- saying what the call would do and a line saying what it returned, each at most 1,000 characters.
+-- every block is a reference into nessy_payload. It also holds short text: for a tool call, a line
+-- saying what the call would do and a line saying what it returned, each at most 1,000 characters,
+-- and a failed call's message, a denial's reason, why a turn failed, a refusal's
+-- category and a failure's reason. Those last are not bounded.
 --
 -- The primary key is the concurrency control. Two writers that decided from the same state mint
 -- the same seq, so the second one violates it and takes its own transaction down -- which is the

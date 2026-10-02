@@ -30,8 +30,8 @@ import org.jwcarman.nessy.backend.payload.Payloads;
  *
  * <p>This is the whole of "storage" for a turn nobody will ever resume: the content lives as long
  * as the object holding it and not a moment longer. The core cannot tell the difference between
- * this and a table, which is the point -- the discipline of keeping content out of events costs the
- * cheapest door nothing.
+ * this and a table, which is the point -- the discipline of keeping content behind references costs
+ * the cheapest door nothing.
  *
  * <p><b>It encodes, and that is deliberate work a map does not need.</b> Holding the caller's own
  * list would make this store behave differently from a durable one in two ways that matter. What
