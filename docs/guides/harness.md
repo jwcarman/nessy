@@ -53,16 +53,19 @@ DirectHarness<String, String> harness = factory.<String>create(
         new AgentType("assistant"),
         config -> config
                 .systemPrompt("You are a terse assistant.")
-                .inference(in -> in.model("claude-sonnet-5"))
+                .inference(in -> in.provider(providerId.value()).model("claude-sonnet-5"))
                 .tool(new AddTool()));
 
 Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
 ```
 
-A harness's own `.inference(in -> in.model(...))` wins when it states one;
-otherwise it falls back to whatever the factory was given through
+Here `backend`, `provider` and `providerId` are as built in
+[Getting Started](getting-started.md#what-the-factory-needs). A harness's own
+`.inference(...)` wins when it states a provider or a model; whatever it
+leaves out falls back to what the factory was given through
 `config.inference(ProviderId, InferenceOptions)`, the same fallback the
-queued door has.
+queued door has. With neither, `create` throws `IllegalStateException`,
+because nothing names a provider.
 
 ### Outcome
 
@@ -71,9 +74,9 @@ four arms:
 
 | Arm | What it means |
 |---|---|
-| `Answered<T>(T value)` | The model answered, parsed into `T` if a shape was asked for |
-| `Refused<T>(String category)` | The model declined, and would decline again |
-| `Failed<T>(String reason)` | The turn ended without an answer — worth retrying, unlike a refusal |
+| `Answered<T>(T value, TurnStats stats)` | The model answered, parsed into `T` if a shape was asked for |
+| `Refused<T>(String category, TurnStats stats)` | The model declined, and would decline again |
+| `Failed<T>(String reason, TurnStats stats)` | The turn ended without an answer — worth retrying, unlike a refusal |
 | `Busy<T>()` | Somebody else is already running a turn on this agent; nothing happened |
 
 `Busy` is the only arm where no turn ran at all: nothing was appended,
@@ -86,12 +89,15 @@ it to that:
 
 ```java
 switch (outcome) {
-    case Outcome.Answered<String>(String said) -> System.out.println(said);
-    case Outcome.Refused<String>(String category) -> System.out.println("refused: " + category);
-    case Outcome.Failed<String>(String reason) -> System.out.println("failed: " + reason);
+    case Outcome.Answered<String>(String said, _) -> System.out.println(said);
+    case Outcome.Refused<String>(String category, _) -> System.out.println("refused: " + category);
+    case Outcome.Failed<String>(String reason, _) -> System.out.println("failed: " + reason);
     case Outcome.Busy<String> _ -> System.out.println("busy; try again");
 }
 ```
+
+`Busy` carries nothing, because no turn ran to tally. The other three end in
+a `TurnStats`, what the turn did and what it cost; the `_` ignores it here.
 
 ### Answering in a shape
 
@@ -105,7 +111,7 @@ DirectHarness<String, Verdict> harness = factory.<String, Verdict>create(
         new AgentType("reviewer"), Verdict.class,
         config -> config
                 .systemPrompt("You review a request and decide.")
-                .inference(in -> in.model("claude-sonnet-5")));
+                .inference(in -> in.provider(providerId.value()).model("claude-sonnet-5")));
 
 Outcome<Verdict> outcome = harness.ask(AgentId.random(), "may I deploy on a Friday?");
 ```
@@ -334,7 +340,10 @@ CommandLineRunner terminal(DirectHarnessFactory harnesses, @Value("${nessy.model
 
 For a program that is not Spring Boot and does not want to become one,
 `Repl.run(customizer)` raises just enough of a context to find an
-`InferenceProvider` and a `DataSource`, then does the rest itself:
+`InferenceProvider`, then does the rest itself. The conversation stays in
+memory and ends with the process; a `DataSource` is optional, for tools that
+bring their own store. It needs `nessy-console` and one provider adapter on
+the classpath:
 
 ```java
 public static void main(String[] args) {

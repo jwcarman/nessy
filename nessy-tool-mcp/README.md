@@ -7,7 +7,7 @@ agent may call it — importing a whole server's toolbox does not import
 authority along with it. `McpToolbox` opens a server's tools as plain
 nessy `Tool<JsonNode>` instances; nothing about that act pre-authorizes
 anything. Each one is wired into an agent the same way a hand-written
-`Tool` is — named individually, paired with its own `Approver` — so a
+`Tool` is — named individually, ungated unless you give it an `Approver` — so a
 server offering ten tools yields ten separate grant decisions, not one
 blanket "trust this server":
 
@@ -28,8 +28,8 @@ tool the server actually advertised — rather than handing back `null` for
 a typo. `toolbox.tools()` returns every tool the server advertised, in
 `tools/list` order, for callers that want to grant the whole set (still
 one binding per tool — `HarnessConfig#tool` has no bulk-grant form,
-because a tool carries zero authority content on its own; every
-attachment states its approver or does not compile). Two servers make two
+because a tool carries zero authority content on its own; an attachment
+with no binding runs ungated, as `Approver.allow()` is the default). Two servers make two
 toolboxes and two namespaces: a name collision between them is the
 application's business, made visible in the grant list itself — you
 still grant what you name.

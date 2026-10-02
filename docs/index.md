@@ -67,11 +67,16 @@ DirectHarness<String, String> harness = factory.<String>create(
         new AgentType("assistant"),
         config -> config
                 .systemPrompt("You are a terse assistant.")
-                .inference(in -> in.model("claude-sonnet-5"))
+                .inference(in -> in.provider("anthropic").model("claude-sonnet-5"))
                 .tool(new AddTool()));
 
 Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
 ```
+
+`backend` is a `DirectBackend`; [Getting Started](guides/getting-started.md)
+builds an in-memory one in two lines and lists the dependencies and imports.
+Each harness names its provider and model, because the factory has no
+default unless it is given one.
 
 `ask` never throws for anything it understands: a model declining, a turn
 running out of budget or the agent already being busy are `Outcome` arms to

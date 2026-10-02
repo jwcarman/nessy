@@ -3,7 +3,7 @@
 `nessy-tool-mcp` turns an MCP server's tools into plain Nessy
 `Tool<JsonNode>` instances. `McpToolbox` opens a server; each tool it hands
 back is granted the same way a hand-written `Tool` is, named individually,
-paired with its own `Approver`.
+and ungated unless you give it an `Approver`.
 
 ## Import is not authority
 
@@ -85,7 +85,9 @@ try (McpToolbox toolbox = McpToolbox.connect(transport, mapper)) {
               // The one that spends someone else's model budget, so the one a person answers.
               .tool(
                   toolbox.tool("ask_question"),
-                  binding -> binding.approver(ConsoleApprover.atTheTerminal())));
+                  binding -> binding
+                      .approver(ConsoleApprover.atTheTerminal())
+                      .action(arguments -> "Ask DeepWiki: " + arguments)));
 }
 ```
 

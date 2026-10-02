@@ -16,6 +16,11 @@ DirectHarness<String, Weather> forecaster = factory.create(
         config -> config.systemPrompt("Answer with today's weather, nothing else."));
 ```
 
+This `factory` was built with a default model, so the harness need not name
+one: `config.inference(ProviderId.of("anthropic"), InferenceOptions.of("claude-sonnet-5"))`
+beside the backend and the provider. See
+[Getting Started](getting-started.md#the-smallest-harness).
+
 Naming `Weather.class` here does two things at once. The schema is
 generated once, when the harness is built, and sent to the provider on
 every call so the model is constrained to that shape on the wire — natively,
@@ -45,9 +50,9 @@ generated. The transcript keeps the model's own text, wrapper included.
 Outcome<Weather> outcome = forecaster.ask(agentId, "what's the weather in Columbus, Ohio?");
 
 switch (outcome) {
-  case Outcome.Answered<Weather>(Weather weather) -> System.out.println(weather);
-  case Outcome.Refused<Weather>(String category) -> System.out.println("declined: " + category);
-  case Outcome.Failed<Weather>(String reason) -> System.out.println("failed: " + reason);
+  case Outcome.Answered<Weather>(Weather weather, _) -> System.out.println(weather);
+  case Outcome.Refused<Weather>(String category, _) -> System.out.println("declined: " + category);
+  case Outcome.Failed<Weather>(String reason, _) -> System.out.println("failed: " + reason);
   case Outcome.Busy<Weather> _ -> System.out.println("busy, try again");
 }
 ```

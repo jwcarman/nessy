@@ -965,9 +965,9 @@ public interface InferenceProvider {
   prefix. Override `InferenceProvider.validate(InferenceOptions)` to run the
   same reading, so a mistake fails the harness build rather than its first
   turn.
-- `InferenceNarrator.narrate(event)` is how a streaming adapter reports deltas
-  as they arrive: a `ContentDelta` per piece of the answer, a `ThinkingDelta`
-  per piece of visible reasoning. All four shipped adapters use their
+- `InferenceNarrator` is how a streaming adapter reports deltas as they
+  arrive: `text(String)` per piece of the answer, `thinking(String)` per
+  piece of visible reasoning. All four shipped adapters use their
   vendor's streaming call and narrate this way, folding the stream back into
   the one result the engine reads (with the SDK's own accumulator where one
   exists, OpenAI and Anthropic; with a fold of their own for Gemini and

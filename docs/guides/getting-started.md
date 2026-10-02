@@ -5,8 +5,8 @@ door through line by line, then shows the other one.
 
 ## Install
 
-Import the BOM to align every module's version, then pick the artifacts the
-application actually needs.
+Nessy needs Java 25. Import the BOM to align every Nessy module's version,
+then pick the artifacts the application actually needs.
 
 ```xml
 <dependencyManagement>
@@ -37,14 +37,51 @@ application actually needs.
   <dependency>
     <groupId>org.jwcarman.codec</groupId>
     <artifactId>codec-jackson</artifactId>
+    <version>0.10.0</version>
   </dependency>
 </dependencies>
 ```
+
+The BOM manages Nessy's own artifacts only. `codec-jackson` belongs to the
+codec library and is not a dependency of `nessy-engine`, so it carries its
+own version.
 
 `nessy-engine` pulls in `nessy-api` (the vocabulary you write tools against)
 and `nessy-inference-spi` (the seam you write provider adapters against). A
 backend is a separate dependency, because which one you pick is a decision
 the engine does not make for you.
+
+The snippets on this page use these imports. `JsonMapper` is the Jackson 3
+class, in `tools.jackson`:
+
+```java
+import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.DirectHarness;
+import org.jwcarman.nessy.api.DirectHarnessFactory;
+import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.ProviderId;
+import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.QueuedHarnessFactory;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.backend.DirectBackend;
+import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
+import org.jwcarman.nessy.backend.inmemory.InMemoryQueuedBackend;
+import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
+import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider;
+import tools.jackson.databind.json.JsonMapper;
+```
 
 ## What the factory needs
 
@@ -59,8 +96,10 @@ DirectBackend backend = new InMemoryDirectBackend(codecs);
 
 `nessy-backend-jdbc` implements the same `DirectBackend` seam over
 PostgreSQL rows instead, for anything that must survive a restart — bring a
-`DataSource`, call `Schemas.initialize(dataSource)` once, and hand a
-`JdbcDirectBackend` to the factory instead. See [Storage](../concepts/storage.md).
+`DataSource` and a Spring `PlatformTransactionManager`, call
+`Schemas.initialize(dataSource)` once, and hand
+`new JdbcDirectBackend(dataSource, transactionManager, codecs)` to the
+factory instead. See [Storage](../concepts/storage.md).
 
 **A provider.** An `InferenceProvider` is a vendor adapter, one per
 application:
@@ -145,12 +184,15 @@ DirectHarness<String, Verdict> reviewer = factory.<String, Verdict>create(
 Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
 
 switch (outcome) {
-    case Outcome.Answered<String>(String said) -> System.out.println(said);
-    case Outcome.Refused<String>(String category) -> System.out.println("refused: " + category);
-    case Outcome.Failed<String>(String reason) -> System.out.println("failed: " + reason);
+    case Outcome.Answered<String>(String said, _) -> System.out.println(said);
+    case Outcome.Refused<String>(String category, _) -> System.out.println("refused: " + category);
+    case Outcome.Failed<String>(String reason, _) -> System.out.println("failed: " + reason);
     case Outcome.Busy<String> _ -> System.out.println("busy; try again");
 }
 ```
+
+`Answered`, `Refused` and `Failed` each carry a `TurnStats` as their last
+component, what the turn did and what it cost; the `_` ignores it here.
 
 `Busy` means no turn ran at all — somebody else already holds this agent —
 and is the only arm worth simply retrying. See [The Harness](harness.md#outcome)
@@ -167,8 +209,10 @@ returns.
 
 ## The console door
 
-For a terminal agent, one call does the whole bootstrap: the database, the
-provider from the environment, the harness and the read-line loop.
+For a terminal agent, one call does the whole bootstrap: the provider from
+the environment, the harness and the read-line loop. Add `nessy-console` and
+one provider adapter to the dependencies above; `nessy-inference-openai`
+serves the local presets below.
 
 ```java
 public static void main(String[] args) {
@@ -180,6 +224,10 @@ public static void main(String[] args) {
                     .action(email -> "Send an email to " + email.to())));
 }
 ```
+
+`SendEmailTool` is a tool of your own, written like `AddTool`. The snippet
+also imports `org.jwcarman.nessy.console.Repl` and
+`org.jwcarman.nessy.console.ConsoleApprover`.
 
 Run it against a local model with no key and no cost, using the `lmstudio`
 or `ollama` preset:
@@ -198,8 +246,11 @@ export NESSY_PROVIDER=ollama
 export NESSY_MODEL=<a model id your Ollama instance serves>
 ```
 
-`nessy-examples/chat-cli` is exactly this, with a notebook, a plan and the
-date, given as ambient background, added.
+The conversation stays in memory and ends with the process. A database is
+only for tools that bring their own store, such as a notebook.
+`nessy-examples/chat-cli` is the longer version: a Spring Boot application
+that hands `Repl.run` the starter's factory, over PostgreSQL, with a
+notebook, a plan and the date, given as ambient background, added.
 
 ## Telling it something instead
 

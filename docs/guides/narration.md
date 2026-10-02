@@ -27,7 +27,7 @@ DefaultDirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> c
 At a harness, to hear its agents alone:
 
 ```java
-factory.create(config -> config.listener(reporter.listener()) ...);
+factory.create(new AgentType("reporter"), config -> config.listener(reporter.listener()) ...);
 ```
 
 The engine's listeners are told first, then the harness's own, in the order

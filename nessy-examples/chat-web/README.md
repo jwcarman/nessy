@@ -9,44 +9,66 @@ person, and where that person is asked.
 
 ## What it shows
 
-**The stream is not the response to your message.** POSTing a message returns
-`202` and an empty body — by then the line is durably the agent's problem, not
-the request's. Everything the agent then says arrives on a separate, standing
-`EventSource` subscription to that agent. That is not a stylistic choice; it
-is the only shape that matches the engine:
+**The answer is the response to your message.** The app runs on the direct
+door. `POST /api/agents/{id}/messages` runs the turn on the request thread
+and returns when it is over: `200` with `said`, `tokens` and `calls` for an
+answer, `200` with `refused` for a refusal, `500` with `failed` when the
+turn ended without one, and `409` when another request is already mid-turn
+on that agent.
 
-- a turn started in one tab is narrated to every tab
-- an answer that lands while nobody is looking is not lost
-- a tool that finishes an hour after the message that triggered it still has
-  somewhere to report
+**The stream shows the turn happening.** A page also holds an
+`EventSource` on `GET /api/agents/{id}/events`, which carries the deltas as
+the model writes them. That stream is narration, not delivery: the answer
+comes back on the POST, and a browser that reconnects with `Last-Event-ID`
+catches up on what it missed.
 
-**Approval is the agent waiting, not the request blocking.** `send_email` is
-gated. When the model asks for it, the approver defers: it tells the desk
-where the answer should come back and how long the question stands, then
-returns. The turn stays parked — for an hour, across page reloads, across
-tabs — until someone clicks. The reply token never reaches the browser; the
-page addresses a question by its call id and the server looks the token up.
+**Approval holds the request.** `send_email` is gated. When the model asks
+for it, the approver puts a card on the approvals stream
+(`GET /api/agents/{id}/approvals/events`) and waits for a click, which the
+page sends as `POST /api/agents/{id}/approvals/{callId}` with
+`{"decision": "approve"}` or anything else for a denial. The waiting turn
+holds the POST that started it. It waits at most five minutes; no answer in
+that time is a denial. A second click on a question already answered gets
+`409`.
+
+The cards live in this process's memory. A restart loses them, and a turn
+cannot outlive its request: the direct door never parks a call. A tool that
+must wait for days needs the queued door.
+
+Other endpoints: `GET /api/agents/{id}` returns the transcript and the
+pending cards, and `DELETE /api/agents/{id}` ends the conversation (the
+story is kept; the agent takes no more input).
 
 `send_email` sends nothing. It is the right *shape* — outward-facing and
 irreversible — without being something you could point at a stranger.
 
 ## Run it
 
-Start its database and Grafana with the compose file beside this README, then
-the example from the repository root. Defaults target
-[LM Studio](https://lmstudio.ai) on `localhost:1234`:
+Run the example from the repository root. `spring-boot:run` starts the
+compose file beside this README (Postgres, and Grafana for traces) and stops it
+on exit. Defaults target [LM Studio](https://lmstudio.ai) on `localhost:1234`:
 
 ```bash
-docker compose -f nessy-examples/chat-web/docker-compose.yml up -d
 ./mvnw -q -pl :nessy-example-chat-web -am install -DskipTests
 ./mvnw -q -pl :nessy-example-chat-web spring-boot:run
 ```
 
 The `install` builds the example and everything it depends on; `spring-boot:run`
 then runs the example alone. Run the `install` again after changing any module.
+The compose file publishes Postgres on port 5432, so the example cannot run
+beside another one that does the same.
 
 Then open <http://localhost:8080>. Ask it to email someone and watch the card
 appear.
+
+| Variable | Default | What it sets |
+|---|---|---|
+| `CHAT_PROVIDER` | `lmstudio` | which registered provider answers |
+| `CHAT_MODEL_ID` | `qwen/qwen3.6-35b-a3b` | the model |
+| `CHAT_MODEL_URL` | `http://localhost:1234/v1` | the base URL of the `lmstudio` preset |
+| `CHAT_CHAPTER_TURNS` | `20` | turns per chapter |
+| `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | the compose file's database | where the agents are kept |
+| `OTLP_TRACES_URL` | `http://localhost:4318/v1/traces` | where traces go |
 
 OpenAI itself works too: export `OPENAI_API_KEY`, which lights the starter's `openai`
 provider, and name that provider instead of the `lmstudio` default:
@@ -71,7 +93,8 @@ CHAT_CHAPTER_TURNS=4 \
 ```
 
 `CHAT_CHAPTER_TURNS` is how many turns make a chapter; it defaults to the
-engine's 20.
+engine's 20. A chapter holds at most 30 turns unless `maxChapterLength` is
+raised, which this app does not do.
 
 ## What it does not do
 
@@ -80,8 +103,3 @@ outstanding work are all rows. The `docker-compose.yml` beside this README runs
 the database the defaults point at (`localhost:5432/nessy`, user `nessy`, password `nessy`);
 `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` and
 `SPRING_DATASOURCE_PASSWORD` point it somewhere else.
-
-The reply key IS fixed, in `application.yml`, because ephemeral keys and
-parked approvals do not mix: a token minted before a restart cannot be read
-after one, and every waiting question becomes unanswerable. It is a demo key.
-Generate your own.

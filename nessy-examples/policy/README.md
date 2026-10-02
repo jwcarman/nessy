@@ -3,7 +3,7 @@
 Wiring, and nothing else. The pieces live in the library now:
 
 - `nessy-approval-policy` — `Verdict`, `PolicyEngine`, `PolicyApprover`
-- `nessy-approval-policy-opa` — `OpaPolicyEngine`, `InputRenderer`, `DecisionInterpreter`
+- `nessy-approval-policy-opa` — `OpaPolicyEngine`, `InputDocumentRenderer`, `DecisionInterpreter`
 
 This example used to carry its own copy of the OPA adapter. It doesn't any
 more, which is the point: an example that reimplements the library isn't
@@ -12,14 +12,16 @@ showing you how to use the library.
 ## The whole thing
 
 ```java
-var opa = OpaPolicyEngine.create(policy -> policy
+var opa = OpaPolicyEngine.of(policy -> policy
     .url("http://localhost:8181")
     .decisionPath("nessy/tools/decision"));
 
-Approver gate = PolicyApprover.create(config -> config
+Approver gate = PolicyApprover.of(config -> config
     .engine(opa)
     .delegate("humans", desk));
 ```
+
+`desk` is your own `Approver`, the one that parks a call for a person.
 
 Two decisions belong to the application and nothing else: **which policy**, and
 **who the policy is allowed to name**. `delegate` is an allowlist — given a
@@ -77,7 +79,7 @@ and its absence is reported as a broken gate instead of served as a denial.
 
 `ApprovalRequest.replyToken()` is a capability: whoever holds it settles the
 call. A policy engine logs its input and is frequently somebody else's service,
-so `InputRenderer` builds the document field by field rather than serializing
+so `InputDocumentRenderer` builds the document field by field rather than serializing
 the record. There are tests whose only job is to keep it absent — one for the
 standard shape, one for AuthZEN's.
 
@@ -89,7 +91,7 @@ means the gate is broken; a denial alone means the gate worked.
 
 ## AuthZEN
 
-`InputRenderer.authzen()` and `DecisionInterpreter.authzen()` speak the OpenID
+`InputDocumentRenderer.authzen(mapper)` and `DecisionInterpreter.authzen()` speak the OpenID
 Foundation's Authorization API 1.0, for a shop already running such endpoints.
 Be aware of the limit: AuthZEN's response is
 `{"decision": <boolean>, "context": {...}}` — it standardizes allow and deny

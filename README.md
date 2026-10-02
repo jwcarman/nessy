@@ -52,6 +52,9 @@ class AddTool implements Tool<Add> {
     }
 }
 
+CodecFactory codecs = new JacksonCodecFactory(JsonMapper.builder().build());
+DirectBackend backend = new InMemoryDirectBackend(codecs);   // nothing durable
+
 DirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> config
         .backend(backend)
         .provider(ProviderId.of("anthropic"), AnthropicInferenceProvider.fromEnv()));
@@ -66,6 +69,12 @@ DirectHarness<String, String> harness = factory.<String>create(
 Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
 ```
 
+The example needs Java 25 and four dependencies: `nessy-engine`,
+`nessy-backend-inmemory`, `nessy-inference-anthropic` and
+`org.jwcarman.codec:codec-jackson` (version `0.10.0`; the BOM below does not
+manage it). [Getting Started](https://jwcarman.github.io/nessy/guides/getting-started/)
+has the pom and the imports.
+
 `ask` never throws for anything it understands: a model declining, a turn
 running out of budget or the agent already being busy are `Outcome` arms —
 `Answered`, `Refused`, `Failed`, `Busy` — to branch on, not faults. See
@@ -73,8 +82,9 @@ running out of budget or the agent already being busy are `Outcome` arms —
 queued door, which trades that returned outcome for a backlog and answers
 narrated to listeners.
 
-For a terminal agent, one call does the whole bootstrap: database, provider,
-harness and loop:
+For a terminal agent, one call does the whole bootstrap: provider, harness and
+loop. It needs `nessy-console` and one provider adapter on the classpath, and
+the conversation stays in memory:
 
 ```java
 public static void main(String[] args) {
