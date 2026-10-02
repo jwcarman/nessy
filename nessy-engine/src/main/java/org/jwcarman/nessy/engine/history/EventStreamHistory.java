@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine.history;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
@@ -84,5 +85,21 @@ public final class EventStreamHistory implements TurnHistory {
   @Override
   public long turnsAfter(long through) {
     return all().stream().filter(turn -> turn.id().value() > through).count();
+  }
+
+  @Override
+  public List<Turn> turnsBetween(TurnId from, TurnId through) {
+    return all().stream()
+        .filter(turn -> turn.id().value() >= from.value() && turn.id().value() <= through.value())
+        .toList();
+  }
+
+  @Override
+  public List<TurnId> completedAfter(Optional<TurnId> through) {
+    return all().stream()
+        .filter(Turn::complete)
+        .map(Turn::id)
+        .filter(id -> through.isEmpty() || id.value() > through.get().value())
+        .toList();
   }
 }

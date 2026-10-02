@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.store;
 
 import java.util.List;
+import java.util.Optional;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.turn.Turn;
 
@@ -65,4 +66,13 @@ public interface TurnHistory {
    * counts them all, as {@link #turnsFrom(long)} reads them all from one.
    */
   long turnsAfter(long through);
+
+  /** Every turn from {@code from} through {@code through}, both included, whole, oldest first. */
+  List<Turn> turnsBetween(TurnId from, TurnId through);
+
+  /**
+   * The ids of the completed turns after {@code through}, oldest first; every completed turn when
+   * {@code through} is empty. A turn still under way is never among them.
+   */
+  List<TurnId> completedAfter(Optional<TurnId> through);
 }

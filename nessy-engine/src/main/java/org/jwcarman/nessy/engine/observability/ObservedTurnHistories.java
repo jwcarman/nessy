@@ -19,6 +19,7 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jwcarman.nessy.api.AgentId;
@@ -65,6 +66,17 @@ public final class ObservedTurnHistories {
       @Override
       public List<Turn> lastTurnsAfter(TurnId through, int turns) {
         return read(() -> delegate.lastTurnsAfter(through, turns));
+      }
+
+      @Override
+      public List<Turn> turnsBetween(TurnId from, TurnId through) {
+        return read(() -> delegate.turnsBetween(from, through));
+      }
+
+      @Override
+      public List<TurnId> completedAfter(Optional<TurnId> through) {
+        // Ids only: nothing of the story's content is fetched, so there is nothing to time.
+        return delegate.completedAfter(through);
       }
 
       @Override

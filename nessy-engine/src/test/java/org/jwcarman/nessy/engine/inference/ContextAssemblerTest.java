@@ -115,6 +115,22 @@ class ContextAssemblerTest {
     public long turnsAfter(long through) {
       return turnsFrom(through + 1).size();
     }
+
+    @Override
+    public List<Turn> turnsBetween(TurnId from, TurnId through) {
+      return story.stream()
+          .filter(t -> t.id().value() >= from.value() && t.id().value() <= through.value())
+          .toList();
+    }
+
+    @Override
+    public List<TurnId> completedAfter(Optional<TurnId> through) {
+      return story.stream()
+          .filter(Turn::complete)
+          .map(Turn::id)
+          .filter(id -> through.isEmpty() || id.value() > through.get().value())
+          .toList();
+    }
   }
 
   private static ContextAssembler assembler(TurnHistories histories, int maxTail) {

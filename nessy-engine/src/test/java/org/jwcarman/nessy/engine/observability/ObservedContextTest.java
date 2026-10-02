@@ -187,5 +187,15 @@ class ObservedContextTest {
     public long turnsAfter(long through) {
       return 1;
     }
+
+    @Override
+    public List<org.jwcarman.nessy.api.turn.Turn> turnsBetween(TurnId from, TurnId through) {
+      return List.of(TURN);
+    }
+
+    @Override
+    public List<TurnId> completedAfter(Optional<TurnId> through) {
+      return List.of();
+    }
   }
 }
