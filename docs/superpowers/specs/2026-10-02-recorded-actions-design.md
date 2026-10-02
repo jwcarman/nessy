@@ -317,8 +317,9 @@ record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, Str
 ```
 
 It is never null. It may be empty: a tool that returned nothing a reader needs, or a stringifier that
-said nothing. It is written in `ToolCallHandler`, when the tool returns a success, from the
-binding's result stringifier. A stringifier that throws gives an empty line and a WARN; the call still
+said nothing. It is written where a success is recorded, from the binding's result stringifier:
+in `ToolCallHandler` when the tool returns one, and in `DefaultReplies` when a tool that answered
+later delivers one. Both give the same line for the same result. A stringifier that throws gives an empty line and a WARN; the call still
 succeeded.
 
 `ToolFailed` and `ToolDenied` are unchanged. They already hold a message and a reason.
