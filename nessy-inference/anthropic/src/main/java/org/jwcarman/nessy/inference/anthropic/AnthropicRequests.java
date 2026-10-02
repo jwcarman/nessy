@@ -93,11 +93,17 @@ public final class AnthropicRequests {
    * <p>On Fable 5.1, Opus 5.5 and Sonnet 5.5 a thinking block is bound to the system prompt, the
    * tools and every message before it, and a request that replays one after any of those changed is
    * rejected -- by default on accounts created since 2026-08-31. Nessy changes them as a matter of
-   * course: the tail slides, and background sits inside the messages rather than ahead of them, so
-   * a finished turn no longer carries the background it was sent with and the text ahead of its
-   * thinking blocks differs on later calls. Asked this way, the vendor drops the blocks that no
-   * longer fit and answers; a block whose prefix is intact is kept. Measured 2026-10-01 on all
-   * three models.
+   * course: the tail slides, and background sits inside the messages rather than ahead of them.
+   *
+   * <p>With any background present, every replayed thinking block has a changed prefix on every
+   * later call, the active turn's own included: a request ends on its message plus the background,
+   * and the next call sends that same message without it, with the background on the new last
+   * message. The text ahead of the reasoning therefore differs, and the vendor drops all of it
+   * (measured 2026-10-01: 193 of 193 replayed blocks dropped with background at the end, none with
+   * it in an unchanging system field). Memory and state do the same to a turn once it is finished,
+   * since the first message it carried them in is sent without them from then on. {@code
+   * drop_block} is what makes this an answer and not a refusal; a block whose prefix is intact is
+   * kept.
    *
    * <p>The setting is refused outright unless the request also carries the beta header, which
    * {@link AnthropicInferenceProvider} adds beside whatever betas the client already sends.
@@ -232,7 +238,9 @@ public final class AnthropicRequests {
    * <p>Each is one text block at the head of the turn's first message, ahead of the input's own
    * blocks, so the turn reads as what was recalled, how things stand, and then the question. Only
    * the active turn carries them: they were chosen for it, and a turn that has finished is sent as
-   * it was. With neither there is nothing to add and the messages are returned as they were.
+   * it was. With neither there is nothing to add and the messages are returned as they were. A turn
+   * that drafts to nothing -- a refused one -- is omitted whole, and the memory and state chosen
+   * for it go with it.
    */
   private static Stream<Drafted> withLeadingStrata(List<Drafted> active, InferenceContext context) {
     List<ContentBlockParam> leading = new ArrayList<>();
@@ -242,12 +250,8 @@ public final class AnthropicRequests {
     for (State state : context.state()) {
       tagged("state", state.kind(), state.content()).ifPresent(leading::add);
     }
-    if (leading.isEmpty()) {
+    if (leading.isEmpty() || active.isEmpty()) {
       return active.stream();
-    }
-    if (active.isEmpty() || !MessageParam.Role.USER.equals(active.getFirst().role())) {
-      return Stream.concat(
-          Stream.of(new Drafted(MessageParam.Role.USER, leading)), active.stream());
     }
     List<ContentBlockParam> opening = new ArrayList<>(leading);
     opening.addAll(active.getFirst().blocks());
@@ -455,9 +459,12 @@ public final class AnthropicRequests {
    * <p>Two, and both are settled: the last message, where this request ends, and the user-side
    * message before it, where the last request ended. The engine makes no call to the model until
    * every result of a round is in, so a request it sends ends on a question or a complete set of
-   * results, and that message never changes afterwards. The second marker sits on the prefix the
-   * last request wrote, so the vendor reads it back however many blocks the round in between added;
-   * the first alone would depend on the vendor's own search reaching back that far.
+   * results. What holds is that the blocks up to and including the marked one do not change within
+   * a turn; the message that ends a request does lose its background on the next call, and the
+   * active turn's first message loses its memory and state once the turn is in the tail. The second
+   * marker sits on the prefix the last request wrote, so the vendor reads it back however many
+   * blocks the round in between added; the first alone would depend on the vendor's own search
+   * reaching back that far.
    */
   private static Set<Integer> breakpoints(List<Drafted> drafts) {
     int last = drafts.size() - 1;

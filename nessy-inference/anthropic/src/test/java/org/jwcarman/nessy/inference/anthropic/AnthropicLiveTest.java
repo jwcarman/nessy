@@ -243,9 +243,10 @@ class AnthropicLiveTest {
   }
 
   /**
-   * Background changes Nessy's system prompt between calls, and on the models that bind thinking to
-   * its prefix that used to be a 400 for accounts created since 2026-08-31. With the adapter asking
-   * for mismatched blocks to be dropped, the vendor answers.
+   * Background moves between calls -- it ends each request, after a message the next call sends
+   * without it -- and on the models that bind thinking to its prefix that changes the prefix, a 400
+   * for accounts created since 2026-08-31. With the adapter asking for mismatched blocks to be
+   * dropped, the vendor answers.
    *
    * <p>On an older account the check is not enforced without the setting, so this could not have
    * failed there before the fix. What it proves anywhere is that the setting and its beta header

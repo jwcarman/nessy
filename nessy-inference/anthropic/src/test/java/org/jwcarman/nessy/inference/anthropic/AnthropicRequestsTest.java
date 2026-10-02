@@ -381,18 +381,53 @@ class AnthropicRequestsTest {
 
     @Test
     void a_context_with_no_memory_state_or_ambient_renders_as_before() {
-      List<Turn> turns = List.of(answered(1, "question 1", "answer 1"), calling(2, "question 2"));
-
-      var plain = built(InferenceContext.of(turns), caching(AnthropicCacheTtl.FIVE_MINUTES));
-      var bare =
+      var built =
           built(
-              context(List.of(turns.getFirst()), List.of(), List.of(), turns.getLast(), List.of()),
+              context(
+                  List.of(answered(1, "question 1", "answer 1")),
+                  List.of(),
+                  List.of(),
+                  calling(2, "question 2"),
+                  List.of()),
               caching(AnthropicCacheTtl.FIVE_MINUTES));
 
-      assertThat(bare.messages()).isEqualTo(plain.messages());
-      assertThat(bare.messages()).hasSize(5);
-      assertThat(textsOf(bare.messages().get(2))).containsExactly("question 2");
-      assertThat(blocksOf(bare)).filteredOn(block -> block.cacheControl().isPresent()).hasSize(2);
+      assertThat(built.messages()).hasSize(5);
+      assertThat(textsOf(built.messages().get(0))).containsExactly("question 1");
+      assertThat(textsOf(built.messages().get(1))).containsExactly("answer 1");
+      assertThat(textsOf(built.messages().get(2))).containsExactly("question 2");
+      assertThat(textsOf(built.messages().get(3))).containsExactly("<other>");
+      assertThat(textsOf(built.messages().get(4))).containsExactly("<tool_result>");
+      var marked =
+          IntStream.range(0, built.messages().size())
+              .boxed()
+              .flatMap(
+                  message -> {
+                    var blocks = built.messages().get(message).content().asBlockParams();
+                    return IntStream.range(0, blocks.size())
+                        .filter(block -> blocks.get(block).cacheControl().isPresent())
+                        .mapToObj(block -> message + ":" + block);
+                  })
+              .toList();
+      assertThat(marked).containsExactly("2:0", "4:0");
+    }
+
+    @Test
+    void a_refused_active_turn_sends_no_memory_or_state() {
+      Turn refused =
+          new Turn(new TurnId(2), asked(2, "rude"), List.of(), new TurnResult.Refused(), 0);
+      var built =
+          built(
+              context(
+                  List.of(answered(1, "question 1", "answer 1")),
+                  List.of(RECALLED),
+                  List.of(SITUATION),
+                  refused,
+                  List.of()),
+              NONE);
+
+      assertThat(built.messages()).hasSize(2);
+      assertThat(blocksOf(built)).noneMatch(block -> block.asText().text().contains("<memory"));
+      assertThat(blocksOf(built)).noneMatch(block -> block.asText().text().contains("<state"));
     }
 
     @Test
@@ -1611,8 +1646,10 @@ class AnthropicRequestsTest {
   }
 
   /**
-   * Inside one turn, each call must be the last one plus what happened since. Anything else is an
-   * edit to the prefix, and an edit costs the model the reasoning it did earlier in the turn.
+   * Inside one turn, each call must be the last one plus what happened since, for the blocks up to
+   * the marked one; these requests carry no ambient, which is the only thing that moves. Anything
+   * else is an edit to the prefix, and an edit costs the model the reasoning it did earlier in the
+   * turn.
    *
    * <p>These requests are uncached, and say nothing about cached ones: with {@code
    * anthropic.cache_control.ttl} set the cache marker moves to a later block as the turn grows, so
