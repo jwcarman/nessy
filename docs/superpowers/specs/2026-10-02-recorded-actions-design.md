@@ -328,7 +328,15 @@ in `ToolCallHandler` when the tool returns one, and in `DefaultReplies` when a t
 later delivers one. Both give the same line for the same result. A stringifier that throws gives an empty line and a WARN; the call still
 succeeded.
 
-`ToolFailed` and `ToolDenied` are unchanged. They already hold a message and a reason.
+`ToolDenied` is unchanged. It already holds a reason.
+
+`ToolFailed` already holds a message, and that message is bounded. Ruled by James on 2026-10-02,
+after the build's review found that a tool can put anything of any length there: a failed call's
+message is at most `ToolConfig.LINE_CAP` characters, cut with `Truncator.dropMiddle()`, whitespace
+left as it is, because the stored message is also the text the model reads back for the failed
+call and line breaks in an error matter. `EffectOutcome.ToolFailed` applies the cut itself, so
+every failure is bounded wherever it is built. A tool that fails and gives no message is recorded
+as `the tool failed and gave no message`. Output a model must read in full belongs in a result.
 
 ### 6.3 Fixed when written
 
@@ -421,8 +429,19 @@ assistant: Perfect! Your birthday is in 80 days ...
 - No outcome recorded: `assistant did: <action> -- no outcome recorded`.
 - A failure's message and a denial's reason are made one line and cut with
   `Truncator.dropMiddle()` at `ToolConfig.DEFAULT_LINE_LIMIT` as they are written into the
-  transcript. They are stored whole, as today.
+  transcript. (A failure's message is stored with its line breaks, at most 1,000 characters;
+  see 6.2.)
 - What the model said beside its calls is kept, as `assistant: <text>`, as today.
+- A turn the model refused is one line, `(a message was withdrawn)`, in place of the whole turn:
+  its input, anything it did, and the refusal. Ruled by James on 2026-10-02. Every adapter
+  withholds a refused turn from later requests, because sending it again can get the new request
+  refused; the transcript is one text message, so the adapters cannot withhold it there, and a
+  refused summary request is retried at every later turn with every later chapter waiting.
+- Every line after the first of what the user said, of what the model said beside its calls and
+  of its answer is indented four spaces; a blank line stays empty. Ruled by James on 2026-10-02.
+  The action and result lines are already single lines. So the only lines that start at the
+  margin are ones the engine wrote, and text that holds a line break followed by
+  `assistant did: ...` cannot pass for a call in a summary that then stands in for the chapter.
 
 `ProseSummarizer` sends that text. Its request holds no summaries, an empty tail, and one active
 turn whose input is the rendered chapter, a blank line, and the closing ask ("Write the record of
