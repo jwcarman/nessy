@@ -87,13 +87,20 @@ One line of settings, one line per chapter as its summary is written, then:
   begin with yes or no, or a grading call that failed; graded wrong),
 - the input and output tokens the provider reported, once for writing summaries and cuts and once for
   answering and grading. Calls that failed report no usage and are not counted, so these figures are
-  a lower bound.
+  a lower bound. The input figure is all input, cached or not.
+- under each, how much of that input was read from the provider's cache, how much was written to it,
+  and how much was charged at the ordinary rate; or `not reported` when the provider gave no cache
+  counts.
 
 A refused or failed answer or grade costs one question, not the run. A failure while replaying (a
 summary that cannot be written after four attempts, a policy that throws) stops the run with the
 reason, since the context would no longer be what was asked for.
 
-Every question, the answer, the correct answer and the verdict are appended as JSON lines to
+A verdict that cannot be read is printed with the grader's reply as it happens, or with the reason
+the grading call failed.
+
+Every question, the answer, the correct answer, the verdict and the grader's reply (`grader_reply`)
+are appended as JSON lines to
 `chapter-lab-<provider>-<model>-<policy>-<summarizer>.jsonl` in the working directory. The file is
 appended to, not replaced, so remove it between runs you want to keep apart.
 
@@ -117,6 +124,12 @@ appended to, not replaced, so remove it between runs you want to keep apart.
    is yes, vaguer is no, and `unknown` is no.
 
 The prompts are the ones the Python probe used, in `LabPrompts`.
+
+## Caching
+
+With `--provider anthropic` the lab turns the provider's prompt cache on, with the five-minute
+lifetime. Every question is asked with the same context ahead of it, so the first question writes
+that context to the cache and the rest read it back. The other providers are left as they are.
 
 ## Cost
 

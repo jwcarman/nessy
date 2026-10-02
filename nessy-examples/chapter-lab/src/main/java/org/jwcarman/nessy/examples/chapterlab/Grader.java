@@ -29,8 +29,11 @@ import org.jwcarman.nessy.inference.InferenceProvider;
  *
  * <p>The rule the model is given is in {@link LabPrompts#grade}. The reply is read after any
  * leading punctuation, quotes or markdown: it is a yes if it begins with the word yes and a no if
- * it begins with the word no. A reply that begins with neither, and a grading call that fails, are
- * {@link Verdict#NOT_UNDERSTOOD}: counted and printed, and graded as wrong.
+ * it begins with the word no. A reply that begins with neither is read by its last word instead,
+ * because a model that reasons first ends on its answer. A reply that neither begins nor ends with
+ * one of the two, one that begins with one and ends with the other, and a grading call that fails,
+ * are {@link Verdict#NOT_UNDERSTOOD}: counted and printed, and graded as wrong. Every verdict comes
+ * back with the reply it was read from, so one that was not understood can be read by a person.
  */
 final class Grader {
 
@@ -41,8 +44,11 @@ final class Grader {
     NOT_UNDERSTOOD
   }
 
-  private static final Pattern VERDICT =
+  private static final Pattern OPENING =
       Pattern.compile("^[^\\p{L}]*(yes|no)\\b", Pattern.CASE_INSENSITIVE);
+
+  private static final Pattern CLOSING =
+      Pattern.compile("(?<![\\p{L}\\p{N}])(yes|no)[^\\p{L}\\p{N}]*$", Pattern.CASE_INSENSITIVE);
 
   private final InferenceProvider provider;
   private final InferenceOptions options;
@@ -55,25 +61,50 @@ final class Grader {
   }
 
   /**
+   * A verdict and what it was read from.
+   *
+   * @param verdict what the reply came to
+   * @param reply the model's reply as it was written, or, for a grading call that failed, why
+   */
+  record Graded(Verdict verdict, String reply) {}
+
+  /**
    * What the model says of {@code given} as the answer to {@code question}, whose key is {@code
    * correct}.
    */
-  Verdict grade(String question, String correct, String given) {
-    return Models.tryText(
-            provider,
-            Models.ask(
-                LabPrompts.GRADE_SYSTEM, LabPrompts.grade(question, correct, given), options),
-            pause)
-        .map(Grader::parse)
-        .orElse(Verdict.NOT_UNDERSTOOD);
+  Graded grade(String question, String correct, String given) {
+    try {
+      String reply =
+          Models.text(
+              provider,
+              Models.ask(
+                  LabPrompts.GRADE_SYSTEM, LabPrompts.grade(question, correct, given), options),
+              pause);
+      return new Graded(parse(reply), reply);
+    } catch (IllegalStateException gaveUp) {
+      return new Graded(
+          Verdict.NOT_UNDERSTOOD, "(the grading call failed: " + gaveUp.getMessage() + ")");
+    }
   }
 
-  /** A grading reply read as a verdict. */
+  /**
+   * A grading reply read as a verdict: its first word if that is yes or no, and otherwise its last,
+   * since a model that reasons before it answers ends on the answer. A reply that opens with one
+   * and closes with the other ("No contradiction here ... yes") is not understood, since either
+   * could be the verdict.
+   */
   static Verdict parse(String reply) {
-    Matcher found = VERDICT.matcher(reply);
-    if (!found.find()) {
+    Matcher opening = OPENING.matcher(reply);
+    Matcher closing = CLOSING.matcher(reply);
+    boolean opens = opening.find();
+    boolean closes = closing.find();
+    if (!opens && !closes) {
       return Verdict.NOT_UNDERSTOOD;
     }
-    return found.group(1).equalsIgnoreCase("yes") ? Verdict.YES : Verdict.NO;
+    String word = opens ? opening.group(1) : closing.group(1);
+    if (opens && closes && !word.equalsIgnoreCase(closing.group(1))) {
+      return Verdict.NOT_UNDERSTOOD;
+    }
+    return word.equalsIgnoreCase("yes") ? Verdict.YES : Verdict.NO;
   }
 }

@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.examples.chapterlab;
 
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.nessy.api.Tokens;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.inference.InferenceNarrator;
@@ -31,12 +31,44 @@ import org.jwcarman.nessy.inference.InferenceResult;
  *
  * <p>Two of these around one provider keep two ledgers: what writing the chapters cost, and what
  * answering and grading cost.
+ *
+ * <p>The cache counts are a breakdown of the input, as they are in {@link Usage}. A vendor that
+ * reports neither leaves them uncounted, which is not the same as nothing having been cached.
  */
 final class Counting implements InferenceProvider {
 
   private final InferenceProvider provider;
-  private final AtomicLong input = new AtomicLong();
-  private final AtomicLong output = new AtomicLong();
+  private final AtomicReference<Spent> spent =
+      new AtomicReference<>(new Spent(Tokens.none(), Tokens.none(), Tokens.none(), Tokens.none()));
+
+  /**
+   * What the calls so far came to.
+   *
+   * @param input all the input processed, cached tokens included
+   * @param output the output
+   * @param cacheRead the part of the input read from the vendor's cache
+   * @param cacheWrite the part of the input written to the vendor's cache
+   */
+  record Spent(Tokens input, Tokens output, Tokens cacheRead, Tokens cacheWrite) {
+
+    Spent plus(Usage usage) {
+      return new Spent(
+          input.plus(usage.inputTokens()),
+          output.plus(usage.outputTokens()),
+          cacheRead.plus(usage.cacheReadTokens()),
+          cacheWrite.plus(usage.cacheWriteTokens()));
+    }
+
+    /** Whether any call said how much of its input was read from or written to a cache. */
+    boolean cacheReported() {
+      return cacheRead instanceof Tokens.Counted || cacheWrite instanceof Tokens.Counted;
+    }
+
+    /** A count as a number, nothing reported being none. */
+    static long count(Tokens tokens) {
+      return tokens instanceof Tokens.Counted(int count) ? count : 0;
+    }
+  }
 
   Counting(InferenceProvider provider) {
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
@@ -46,8 +78,7 @@ final class Counting implements InferenceProvider {
   public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
     InferenceResult result = provider.infer(request, narrator);
     Usage usage = result.usage();
-    add(input, usage.inputTokens());
-    add(output, usage.outputTokens());
+    spent.updateAndGet(sofar -> sofar.plus(usage));
     return result;
   }
 
@@ -61,19 +92,8 @@ final class Counting implements InferenceProvider {
     return provider.vendor();
   }
 
-  /** The input tokens reported so far. */
-  long inputTokens() {
-    return input.get();
-  }
-
-  /** The output tokens reported so far. */
-  long outputTokens() {
-    return output.get();
-  }
-
-  private static void add(AtomicLong total, Tokens tokens) {
-    if (tokens instanceof Tokens.Counted(int count)) {
-      total.addAndGet(count);
-    }
+  /** What the calls through this provider have come to so far. */
+  Spent spent() {
+    return spent.get();
   }
 }

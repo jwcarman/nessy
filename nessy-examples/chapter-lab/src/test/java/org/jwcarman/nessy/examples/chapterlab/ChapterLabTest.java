@@ -43,6 +43,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.OpenTurns;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.Tokens;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
@@ -637,6 +638,25 @@ class ChapterLabTest {
     }
 
     @Test
+    void a_reply_that_reasons_first_is_read_by_its_last_word() {
+      assertThat(Grader.parse("The given answer names the same month.\n\nyes"))
+          .isEqualTo(Grader.Verdict.YES);
+      assertThat(Grader.parse("It is vaguer than the correct answer, so: **No.**"))
+          .isEqualTo(Grader.Verdict.NO);
+    }
+
+    @Test
+    void a_reply_that_opens_with_one_word_and_closes_with_the_other_is_not_understood() {
+      assertThat(Grader.parse("No contradiction with the correct answer.\n\nyes"))
+          .isEqualTo(Grader.Verdict.NOT_UNDERSTOOD);
+    }
+
+    @Test
+    void a_word_that_only_ends_in_no_is_not_a_verdict() {
+      assertThat(Grader.parse("The answer names a piano")).isEqualTo(Grader.Verdict.NOT_UNDERSTOOD);
+    }
+
+    @Test
     void a_reply_that_is_neither_is_not_understood() {
       assertThat(Grader.parse("Perhaps")).isEqualTo(Grader.Verdict.NOT_UNDERSTOOD);
       assertThat(Grader.parse("Yesterday")).isEqualTo(Grader.Verdict.NOT_UNDERSTOOD);
@@ -750,6 +770,65 @@ class ChapterLabTest {
       assertThat(captured.toString(StandardCharsets.UTF_8))
           .contains("verdicts not understood: 4")
           .contains("questions with no answer: 0");
+    }
+
+    @Test
+    void a_verdict_nobody_can_read_is_printed_and_recorded_with_the_graders_reply(
+        @TempDir Path directory) throws Exception {
+      InferenceProvider hedging =
+          except(
+              LabPrompts.GRADE_SYSTEM,
+              answer("Partly.\nIt names the month.", 5, 1),
+              new ScriptedModel());
+      ChapterLab.Settings settings = settings("session", "prose");
+      ByteArrayOutputStream captured = new ByteArrayOutputStream();
+
+      ChapterLab.run(
+          settings,
+          LocomoConversation.read(settings.data(), 0),
+          hedging,
+          new PrintStream(captured, true, StandardCharsets.UTF_8),
+          directory,
+          Duration.ZERO);
+
+      assertThat(captured.toString(StandardCharsets.UTF_8))
+          .contains("wrong (verdict not understood: Partly. It names the month.)");
+      List<String> lines = Files.readAllLines(directory.resolve(settings.resultsFile()));
+      assertThat(lines).hasSize(4);
+      assertThat(lines)
+          .allSatisfy(
+              line ->
+                  assertThat(line)
+                      .contains("\"verdict\":\"not_understood\"")
+                      .contains("\"grader_reply\":\"Partly.\\nIt names the month.\""));
+    }
+
+    @Test
+    void a_failed_grading_call_is_recorded_with_why_it_failed(@TempDir Path directory)
+        throws Exception {
+      InferenceProvider failing =
+          except(
+              LabPrompts.GRADE_SYSTEM,
+              new InferenceResult.Refusal("policy", Usage.unreported("the-model")),
+              new ScriptedModel());
+      ChapterLab.Settings settings = settings("session", "prose");
+
+      ChapterLab.run(
+          settings,
+          LocomoConversation.read(settings.data(), 0),
+          failing,
+          quiet,
+          directory,
+          Duration.ZERO);
+
+      List<String> lines = Files.readAllLines(directory.resolve(settings.resultsFile()));
+      assertThat(lines).hasSize(4);
+      assertThat(lines)
+          .allSatisfy(
+              line ->
+                  assertThat(line)
+                      .contains("\"grader_reply\":\"(the grading call failed: gave up after 4")
+                      .contains("Refusal"));
     }
 
     @Test
@@ -879,6 +958,47 @@ class ChapterLabTest {
           .contains("chapter 1 summarised")
           .contains("chapter 3 summarised")
           .contains("policy session");
+    }
+
+    @Test
+    void a_provider_that_reports_no_cache_counts_is_reported_as_such(@TempDir Path directory)
+        throws Exception {
+      Run run = run(settings("session", "prose"), new ScriptedModel(), directory);
+
+      assertThat(run.printed).contains("cache: not reported").doesNotContain("read (");
+    }
+
+    @Test
+    void the_report_says_how_much_of_the_input_was_read_from_and_written_to_the_cache(
+        @TempDir Path directory) {
+      InferenceResult cached =
+          new InferenceResult.Answer(
+              List.of(new Block.Text("tomatoes")),
+              new Usage(
+                  "the-model",
+                  Tokens.of(100),
+                  Tokens.of(2),
+                  Tokens.of(80),
+                  Tokens.of(15),
+                  Tokens.none()));
+      InferenceProvider caching = except(LabPrompts.ANSWER_SYSTEM, cached, new ScriptedModel());
+      ChapterLab.Settings settings = settings("session", "prose");
+      ByteArrayOutputStream captured = new ByteArrayOutputStream();
+
+      ChapterLab.Result result =
+          ChapterLab.run(
+              settings,
+              LocomoConversation.read(settings.data(), 0),
+              caching,
+              new PrintStream(captured, true, StandardCharsets.UTF_8),
+              directory,
+              Duration.ZERO);
+
+      assertThat(result.answerTokens().cacheRead()).isEqualTo(Tokens.of(320));
+      assertThat(result.answerTokens().cacheWrite()).isEqualTo(Tokens.of(60));
+      assertThat(captured.toString(StandardCharsets.UTF_8))
+          .contains("cache: 320 read (")
+          .contains("60 written");
     }
 
     @Test

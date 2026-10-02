@@ -53,7 +53,9 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.Toolset;
+import org.jwcarman.nessy.inference.anthropic.AnthropicCacheTtl;
 import org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider;
+import org.jwcarman.nessy.inference.anthropic.AnthropicProperties;
 import org.jwcarman.nessy.inference.gemini.GeminiInferenceProvider;
 import org.jwcarman.nessy.inference.openai.OpenAiChatInferenceProvider;
 import org.jwcarman.nessy.inference.openai.OpenAiChatProviderConfig;
@@ -100,6 +102,9 @@ public final class ChapterLab {
 
   /** What a question that the model never answered is recorded as. */
   static final String NO_ANSWER = "(no answer)";
+
+  /** What the grader's reply is recorded as for a question the grader was never asked about. */
+  static final String NOT_GRADED = "(not asked: there was no answer to grade)";
 
   private static final Duration TRANSPORT = Duration.ofMinutes(6);
   private static final int SUMMARY_TOKENS = 4000;
@@ -203,6 +208,8 @@ public final class ChapterLab {
    * @param contextWords the words in the context every question was asked with
    * @param askedByCategory how many questions of each category were asked
    * @param correctByCategory how many of each category were answered correctly
+   * @param summaryTokens what writing the summaries and naming the cuts cost
+   * @param answerTokens what answering and grading cost
    * @param unanswered how many questions got no answer from the model, graded as wrong
    * @param notUnderstood how many verdicts could not be read, graded as wrong
    */
@@ -213,10 +220,8 @@ public final class ChapterLab {
       int contextWords,
       Map<Integer, Integer> askedByCategory,
       Map<Integer, Integer> correctByCategory,
-      long summaryInputTokens,
-      long summaryOutputTokens,
-      long answerInputTokens,
-      long answerOutputTokens,
+      Counting.Spent summaryTokens,
+      Counting.Spent answerTokens,
       int unanswered,
       int notUnderstood) {
 
@@ -414,7 +419,14 @@ public final class ChapterLab {
 
   private static InferenceProvider provider(String name, String baseUrl, String reasoningEffort) {
     return switch (name) {
-      case "anthropic" -> AnthropicInferenceProvider.of(c -> c.fromEnv().timeout(TRANSPORT));
+      case "anthropic" ->
+          // Every question is asked with the same context ahead of it, so the vendor's cache is on:
+          // the first question writes that context and the rest read it back.
+          AnthropicInferenceProvider.of(
+              c ->
+                  c.fromEnv()
+                      .timeout(TRANSPORT)
+                      .property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.FIVE_MINUTES));
       case "openai" ->
           OpenAiChatInferenceProvider.of(
               c -> {
@@ -579,10 +591,11 @@ public final class ChapterLab {
                     answerOptions),
                 retryPause);
         String answer = said.orElse(NO_ANSWER);
-        Grader.Verdict verdict =
+        Grader.Graded graded =
             said.isPresent()
                 ? grader.grade(question.text(), question.answer(), answer)
-                : Grader.Verdict.NO;
+                : new Grader.Graded(Grader.Verdict.NO, NOT_GRADED);
+        Grader.Verdict verdict = graded.verdict();
         boolean right = verdict == Grader.Verdict.YES;
         if (said.isEmpty()) {
           unanswered++;
@@ -598,9 +611,10 @@ public final class ChapterLab {
                     i + 1,
                     questions.size(),
                     verdict == Grader.Verdict.NOT_UNDERSTOOD
-                        ? "wrong (verdict not understood)"
+                        ? "wrong (verdict not understood: %s)"
+                            .formatted(graded.reply().replaceAll("\\s+", " "))
                         : right ? "correct" : "wrong"));
-        append(mapper, results, question, answer, right, verdict);
+        append(mapper, results, question, answer, right, graded);
       }
 
       Result result =
@@ -611,10 +625,8 @@ public final class ChapterLab {
               contextWords,
               asked,
               correct,
-              writing.inputTokens(),
-              writing.outputTokens(),
-              answering.inputTokens(),
-              answering.outputTokens(),
+              writing.spent(),
+              answering.spent(),
               unanswered,
               notUnderstood);
       print(result, settings, results, out);
@@ -708,14 +720,15 @@ public final class ChapterLab {
       LocomoConversation.Question question,
       String answer,
       boolean right,
-      Grader.Verdict verdict) {
+      Grader.Graded graded) {
     Map<String, Object> line = new LinkedHashMap<>();
     line.put("question", question.text());
     line.put("category", question.category());
     line.put("answer", answer);
     line.put("correct_answer", question.answer());
     line.put("correct", right);
-    line.put("verdict", verdict.name().toLowerCase(Locale.ROOT));
+    line.put("verdict", graded.verdict().name().toLowerCase(Locale.ROOT));
+    line.put("grader_reply", graded.reply());
     try {
       Files.writeString(
           file,
@@ -744,12 +757,27 @@ public final class ChapterLab {
                 out.println(
                     "  category %d: %d of %d"
                         .formatted(category, result.correctByCategory().get(category), asked)));
-    out.println(
-        "tokens, summaries and cuts: %d in, %d out"
-            .formatted(result.summaryInputTokens(), result.summaryOutputTokens()));
-    out.println(
-        "tokens, answers and grading: %d in, %d out"
-            .formatted(result.answerInputTokens(), result.answerOutputTokens()));
+    printTokens("summaries and cuts", result.summaryTokens(), out);
+    printTokens("answers and grading", result.answerTokens(), out);
     out.println("questions and verdicts appended to " + results);
+  }
+
+  private static void printTokens(String what, Counting.Spent spent, PrintStream out) {
+    long input = Counting.Spent.count(spent.input());
+    out.println(
+        "tokens, %s: %d in, %d out".formatted(what, input, Counting.Spent.count(spent.output())));
+    if (!spent.cacheReported()) {
+      out.println("  cache: not reported");
+      return;
+    }
+    long read = Counting.Spent.count(spent.cacheRead());
+    long written = Counting.Spent.count(spent.cacheWrite());
+    out.println(
+        "  cache: %d read (%d%% of the input), %d written, %d at the ordinary rate"
+            .formatted(
+                read,
+                input == 0 ? 0 : Math.round(100.0 * read / input),
+                written,
+                input - read - written));
   }
 }
