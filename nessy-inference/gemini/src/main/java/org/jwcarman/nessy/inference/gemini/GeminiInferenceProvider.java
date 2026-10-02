@@ -90,8 +90,6 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
    * so a caller can tell a safety block from a recitation block without this adapter inventing a
    * taxonomy.
    */
-  private static final String MAX_TOKENS = "MAX_TOKENS";
-
   private static final Set<String> REFUSALS =
       Set.of(
           "SAFETY",
@@ -104,6 +102,9 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
           "IMAGE_PROHIBITED_CONTENT",
           "IMAGE_RECITATION",
           "IMAGE_OTHER");
+
+  /** The finish reason for a reply cut off at the output-token limit. */
+  private static final String MAX_TOKENS = "MAX_TOKENS";
 
   private static final int TOO_MANY_REQUESTS = 429;
   private static final String CALL_FAILED = "model call failed: ";

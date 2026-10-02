@@ -39,7 +39,8 @@ import org.jwcarman.nessy.inference.Toolset;
  *
  * <p>A call that fails is tried again a few times, a pause longer each time, because a run of
  * hundreds of calls will meet a rate limit; after the last attempt it fails with what went wrong,
- * so a run never goes on with an answer nobody wrote.
+ * so a run never goes on with an answer nobody wrote. A reply cut off at the output limit is not
+ * tried again, because the same request would be cut off again; it fails at once.
  */
 final class Models {
 
@@ -72,8 +73,10 @@ final class Models {
   }
 
   /**
-   * As below, but a call that still has not answered after every attempt is an empty result rather
-   * than a failure, for a question or a grade, where one refusal must not lose the whole run.
+   * As below, but a call that still has not answered after every attempt, or whose reply was cut
+   * off at the output limit (which is not tried again, because the same request would be cut off
+   * again), is an empty result rather than a failure, for a question or a grade, where one refusal
+   * must not lose the whole run.
    */
   static Optional<String> tryText(
       InferenceProvider provider, InferenceRequest request, Duration pause) {

@@ -76,7 +76,8 @@ final class Watch {
 
   /**
    * The summariser, trying a failed summary again, saying so when a chapter is written, and
-   * stopping the run when it cannot be.
+   * stopping the run when it cannot be. A summary cut off at the output limit is tried again like
+   * any other failure, so it costs every attempt before the run stops.
    */
   Summarizer reporting(Summarizer summarizer) {
     return chapter -> {

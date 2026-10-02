@@ -31,10 +31,8 @@ import org.jwcarman.nessy.api.block.Block;
  * in the past tense on purpose. Two vocabularies, deliberately.
  *
  * <p><b>The axis is whether the turn can close.</b> An answer, a truncated reply, a refusal and a
- * fault all end it; nothing is owed. The arm still missing is {@code Exchange} -- a model asking
- * for tool calls, which ends nothing and leaves the turn open. It is absent because its payload is
- * {@code ExchangeContentBlock}, which this project has not ported yet, and an arm with no producer
- * would be a stub.
+ * fault all end it; nothing is owed. {@code Actions} is the other kind: the model asking for tool
+ * calls, which ends nothing and leaves the turn open.
  *
  * <p><b>Every provider models this as a flag.</b> OpenAI hangs {@code finish_reason} off one
  * response object, Anthropic hangs {@code stop_reason}, Gemini {@code finishReason}. Reifying that

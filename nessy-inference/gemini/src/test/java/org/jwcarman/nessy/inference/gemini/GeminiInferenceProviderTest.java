@@ -533,6 +533,12 @@ class GeminiInferenceProviderTest {
           infer(reply(new FinishReason("MAX_TOKENS"), Part.fromText("looking"), call));
 
       assertThat(result).isInstanceOf(InferenceResult.Fault.class);
+      assertThat(((InferenceResult.Fault) result).failure())
+          .isInstanceOf(Failure.Permanent.class)
+          .extracting(Failure::reason)
+          .asString()
+          .contains("cut off")
+          .contains("tool call");
     }
 
     @Test

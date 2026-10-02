@@ -70,4 +70,30 @@ class InferenceResultUsageTest {
     assertThat(read.getClass()).isEqualTo(expected.getClass());
     assertThat(((InferenceResult.Answer) read).blocks()).isEqualTo(expected.blocks());
   }
+
+  @Test
+  void a_refusal_stored_before_truncated_existed_still_reads_with_its_usage() {
+    JsonMapper mapper = JsonMapper.builder().build();
+    String stored =
+        """
+        {"type":"refusal","category":"bio","usage":{"model":"a-model","inputTokens":10,"outputTokens":20,"cacheReadTokens":null,"cacheWriteTokens":null,"reasoningTokens":null}}""";
+
+    InferenceResult read = mapper.readValue(stored, InferenceResult.class);
+
+    assertThat(read).isEqualTo(new InferenceResult.Refusal("bio", Usage.of("a-model", 10, 20)));
+  }
+
+  @Test
+  void a_fault_stored_before_truncated_existed_still_reads_with_its_usage() {
+    JsonMapper mapper = JsonMapper.builder().build();
+    String stored =
+        """
+        {"type":"fault","failure":{"type":"permanent","reason":"no"},"usage":{"model":"a-model","inputTokens":10,"outputTokens":20,"cacheReadTokens":null,"cacheWriteTokens":null,"reasoningTokens":null}}""";
+
+    InferenceResult read = mapper.readValue(stored, InferenceResult.class);
+
+    assertThat(read)
+        .isEqualTo(
+            new InferenceResult.Fault(new Failure.Permanent("no"), Usage.of("a-model", 10, 20)));
+  }
 }

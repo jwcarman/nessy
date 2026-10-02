@@ -387,21 +387,13 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
       if (blocks.isEmpty()) {
         // A reply with nothing in it: a model that spent its budget thinking, say. Said as a
         // fault rather than an answer of no blocks, which the story could not hold.
-        return new InferenceResult.Fault(
-            new Failure.Permanent(
-                "model returned an empty answer (stop_reason="
-                    + response.stopReasonAsString()
-                    + ")"));
+        return emptyAnswer(response);
       }
       List<Block.AnswerContent> answer =
           blocks.stream().map(Block.AnswerContent.class::cast).toList();
       if (cutOff) {
         if (answer.stream().noneMatch(Block.Text.class::isInstance)) {
-          return new InferenceResult.Fault(
-              new Failure.Permanent(
-                  "model returned an empty answer (stop_reason="
-                      + response.stopReasonAsString()
-                      + ")"));
+          return emptyAnswer(response);
         }
         return new InferenceResult.Truncated(answer);
       }
@@ -409,6 +401,12 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
     }
     return new InferenceResult.Actions(
         blocks.stream().map(Block.ActionRequestContent.class::cast).toList());
+  }
+
+  private static InferenceResult emptyAnswer(ConverseResponse response) {
+    return new InferenceResult.Fault(
+        new Failure.Permanent(
+            "model returned an empty answer (stop_reason=" + response.stopReasonAsString() + ")"));
   }
 
   private static List<ContentBlock> contentOf(ConverseResponse response) {

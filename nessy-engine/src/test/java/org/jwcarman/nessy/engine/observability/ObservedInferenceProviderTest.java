@@ -55,4 +55,12 @@ class ObservedInferenceProviderTest {
 
     assertThat(ObservedInferenceProvider.finishReasonOf(fault)).isEqualTo("error");
   }
+
+  @Test
+  void actions_finish_for_tool_calls() {
+    InferenceResult actions =
+        new InferenceResult.Actions(List.of(new Block.ToolCall("c1", "t", "{}")));
+
+    assertThat(ObservedInferenceProvider.finishReasonOf(actions)).isEqualTo("tool_calls");
+  }
 }

@@ -225,7 +225,9 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
    * a part of its own. Each message's text is commentary beside calls or the answer without them;
    * each function call is a call; each encrypted reasoning item is kept where it arrived; every
    * other kind -- web search, file search, code interpreter, MCP and the rest -- is dropped,
-   * because nothing here offered it.
+   * because nothing here offered it. A response with {@code status=incomplete} and reason {@code
+   * max_output_tokens} makes the result {@code Truncated}, or a {@code Fault} when a function call
+   * is present.
    */
   private InferenceResult read(Response response) {
     Optional<String> refusal =

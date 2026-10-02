@@ -594,7 +594,7 @@ class AnthropicInferenceProviderTest {
     }
 
     @Test
-    void text_cut_off_is_truncated_on_the_streamed_path_too() {
+    void text_cut_off_is_truncated_when_a_narrator_listens_too() {
       InferenceResult result =
           new AnthropicProviderConfig()
               .client(
