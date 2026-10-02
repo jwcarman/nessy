@@ -25,6 +25,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
@@ -54,6 +55,9 @@ import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider;
 import org.jwcarman.nessy.inference.gemini.GeminiInferenceProvider;
 import org.jwcarman.nessy.inference.openai.OpenAiChatInferenceProvider;
+import org.jwcarman.nessy.inference.openai.OpenAiChatProviderConfig;
+import org.jwcarman.nessy.inference.openai.OpenAiProperties;
+import org.jwcarman.nessy.inference.openai.OpenAiReasoningEffort;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -76,7 +80,13 @@ import tools.jackson.databind.json.JsonMapper;
 public final class ChapterLab {
 
   /** The providers {@code --provider} accepts. */
-  static final List<String> PROVIDERS = List.of("anthropic", "openai", "xai", "gemini");
+  static final List<String> PROVIDERS = List.of("anthropic", "openai", "xai", "gemini", "lmstudio");
+
+  /** Where a local OpenAI-compatible server listens unless {@code --base-url} says otherwise. */
+  static final String LMSTUDIO_URL = "http://localhost:1234/v1";
+
+  /** The providers that speak the OpenAI chat wire, and so take {@code --reasoning-effort}. */
+  private static final List<String> OPENAI_WIRE = List.of("openai", "xai", "lmstudio");
 
   /** The policies {@code --policy} accepts, as the usage message spells them. */
   static final String POLICIES = "every:N, session, hindsight or none";
@@ -87,15 +97,16 @@ public final class ChapterLab {
   private static final AgentType TYPE = new AgentType("chapter-lab");
   private static final String RECORDED = "recorded";
   private static final Duration TRANSPORT = Duration.ofMinutes(6);
-  private static final int SUMMARY_TOKENS = 2000;
-  private static final int ANSWER_TOKENS = 1000;
-  private static final int GRADE_TOKENS = 300;
+  private static final int SUMMARY_TOKENS = 4000;
+  private static final int ANSWER_TOKENS = 4000;
+  private static final int GRADE_TOKENS = 2000;
   private static final String USAGE =
       """
-      usage: ChapterLab --data FILE --provider (anthropic|openai|xai|gemini) --model NAME
+      usage: ChapterLab --data FILE --provider (anthropic|openai|xai|gemini|lmstudio) --model NAME
                         [--conversation N] [--questions N] [--policy every:N|session|hindsight|none]
                         [--summarizer prose|index] [--summary-model NAME]
-                        [--max-chapter-length N] [--max-tail N]""";
+                        [--max-chapter-length N] [--max-tail N]
+                        [--base-url URL (lmstudio)] [--reasoning-effort VALUE]""";
 
   private ChapterLab() {}
 
@@ -104,6 +115,8 @@ public final class ChapterLab {
    *
    * @param policy {@code every:N}, {@code session}, {@code hindsight} or {@code none}
    * @param summaryModel the model that writes summaries and cuts; the answering model by default
+   * @param baseUrl the address of a local server, or null for its default
+   * @param reasoningEffort an {@link OpenAiReasoningEffort} name, or null to send none
    */
   record Settings(
       File data,
@@ -115,7 +128,35 @@ public final class ChapterLab {
       String summarizer,
       String summaryModel,
       int maxChapterLength,
-      int maxTail) {
+      int maxTail,
+      String baseUrl,
+      String reasoningEffort) {
+
+    Settings(
+        File data,
+        int conversation,
+        int questions,
+        String provider,
+        String model,
+        String policy,
+        String summarizer,
+        String summaryModel,
+        int maxChapterLength,
+        int maxTail) {
+      this(
+          data,
+          conversation,
+          questions,
+          provider,
+          model,
+          policy,
+          summarizer,
+          summaryModel,
+          maxChapterLength,
+          maxTail,
+          null,
+          null);
+    }
 
     boolean chapters() {
       return !policy.equals("none");
@@ -193,7 +234,7 @@ public final class ChapterLab {
     InferenceProvider provider;
     try {
       conversation = LocomoConversation.read(settings.data(), settings.conversation());
-      provider = provider(settings.provider());
+      provider = provider(settings);
     } catch (IllegalArgumentException | IllegalStateException refused) {
       System.err.println(refused.getMessage());
       System.exit(2);
@@ -232,7 +273,9 @@ public final class ChapterLab {
             "summarizer",
             "summary-model",
             "max-chapter-length",
-            "max-tail");
+            "max-tail",
+            "base-url",
+            "reasoning-effort");
     for (String name : given.keySet()) {
       if (!known.contains(name)) {
         throw new IllegalArgumentException("unknown option --" + name + "; options are " + known);
@@ -251,6 +294,18 @@ public final class ChapterLab {
           "unknown summarizer '%s'; choose one of %s".formatted(summarizer, SUMMARIZERS));
     }
     String model = required(given, "model");
+    String baseUrl = given.get("base-url");
+    if (baseUrl != null && !provider.equals("lmstudio")) {
+      throw new IllegalArgumentException("--base-url applies only to --provider lmstudio");
+    }
+    String effort = given.get("reasoning-effort");
+    if (effort != null) {
+      if (!OPENAI_WIRE.contains(provider)) {
+        throw new IllegalArgumentException(
+            "--reasoning-effort applies only to the providers " + OPENAI_WIRE);
+      }
+      effort(effort);
+    }
     Settings settings =
         new Settings(
             new File(required(given, "data")),
@@ -262,7 +317,9 @@ public final class ChapterLab {
             summarizer,
             given.getOrDefault("summary-model", model),
             number(given, "max-chapter-length", 200),
-            number(given, "max-tail", 400));
+            number(given, "max-tail", 400),
+            baseUrl,
+            effort);
     if (settings.chapters() && settings.maxTail() <= settings.maxChapterLength()) {
       throw new IllegalArgumentException(
           "--max-tail (%d) must be greater than --max-chapter-length (%d)"
@@ -315,21 +372,63 @@ public final class ChapterLab {
    * to set and never prints one.
    */
   static InferenceProvider provider(String name) {
+    return provider(name, null, null);
+  }
+
+  /** The provider {@code settings} names, with its address and reasoning effort if given. */
+  static InferenceProvider provider(Settings settings) {
+    return provider(settings.provider(), settings.baseUrl(), settings.reasoningEffort());
+  }
+
+  private static OpenAiReasoningEffort effort(String name) {
+    try {
+      return OpenAiReasoningEffort.valueOf(name.toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException unknown) {
+      throw new IllegalArgumentException(
+          "unknown reasoning effort '%s'; choose one of %s"
+              .formatted(name, List.of(OpenAiReasoningEffort.values())));
+    }
+  }
+
+  private static InferenceProvider provider(String name, String baseUrl, String reasoningEffort) {
     return switch (name) {
       case "anthropic" -> AnthropicInferenceProvider.of(c -> c.fromEnv().timeout(TRANSPORT));
-      case "openai" -> OpenAiChatInferenceProvider.of(c -> c.fromEnv().timeout(TRANSPORT));
+      case "openai" ->
+          OpenAiChatInferenceProvider.of(
+              c -> {
+                c.fromEnv().timeout(TRANSPORT);
+                withEffort(c, reasoningEffort);
+              });
+      case "lmstudio" ->
+          OpenAiChatInferenceProvider.of(
+              c -> {
+                // A local server ignores the key, but the client insists on one.
+                c.apiKey("lm-studio")
+                    .baseUrl(baseUrl == null ? LMSTUDIO_URL : baseUrl)
+                    .vendor("lmstudio")
+                    .timeout(TRANSPORT);
+                withEffort(c, reasoningEffort);
+              });
       case "xai" ->
           OpenAiChatInferenceProvider.of(
-              c ->
-                  c.apiKey(environment("XAI_API_KEY"))
-                      .baseUrl("https://api.x.ai/v1")
-                      .vendor("x_ai")
-                      .timeout(TRANSPORT));
+              c -> {
+                c.apiKey(environment("XAI_API_KEY"))
+                    .baseUrl("https://api.x.ai/v1")
+                    .vendor("x_ai")
+                    .timeout(TRANSPORT);
+                withEffort(c, reasoningEffort);
+              });
       case "gemini" -> GeminiInferenceProvider.of(c -> c.fromEnv().timeout(TRANSPORT));
       default ->
           throw new IllegalArgumentException(
               "unknown provider '%s'; choose one of %s".formatted(name, PROVIDERS));
     };
+  }
+
+  private static void withEffort(OpenAiChatProviderConfig config, String reasoningEffort) {
+    if (reasoningEffort != null) {
+      config.property(OpenAiProperties.REASONING_EFFORT, effort(reasoningEffort));
+    }
   }
 
   private static String environment(String variable) {

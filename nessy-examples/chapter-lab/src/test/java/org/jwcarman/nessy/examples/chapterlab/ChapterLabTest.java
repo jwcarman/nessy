@@ -477,13 +477,84 @@ class ChapterLabTest {
 
     @Test
     void an_unknown_provider_is_refused_with_the_choices() {
-      String[] args = {"--data", "x.json", "--provider", "lmstudio", "--model", "m"};
+      String[] args = {"--data", "x.json", "--provider", "ollama", "--model", "m"};
 
       assertThatThrownBy(() -> ChapterLab.parse(args))
           .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("unknown provider 'lmstudio'")
+          .hasMessageContaining("unknown provider 'ollama'")
           .hasMessageContaining("anthropic")
           .hasMessageContaining("gemini");
+    }
+
+    @Test
+    void a_local_server_is_accepted_at_its_default_address() {
+      ChapterLab.Settings settings =
+          ChapterLab.parse(
+              new String[] {"--data", "x.json", "--provider", "lmstudio", "--model", "qwen/q"});
+
+      assertThat(settings.provider()).isEqualTo("lmstudio");
+      assertThat(settings.baseUrl()).isNull();
+      assertThat(settings.model()).isEqualTo("qwen/q");
+    }
+
+    @Test
+    void a_local_server_may_be_given_another_address_and_a_reasoning_effort() {
+      ChapterLab.Settings settings =
+          ChapterLab.parse(
+              new String[] {
+                "--data",
+                "x.json",
+                "--provider",
+                "lmstudio",
+                "--model",
+                "m",
+                "--base-url",
+                "http://box:9000/v1",
+                "--reasoning-effort",
+                "low"
+              });
+
+      assertThat(settings.baseUrl()).isEqualTo("http://box:9000/v1");
+      assertThat(settings.reasoningEffort()).isEqualTo("low");
+    }
+
+    @Test
+    void building_a_local_provider_needs_no_key_and_does_not_call_the_server() {
+      ChapterLab.Settings settings =
+          ChapterLab.parse(
+              new String[] {
+                "--data",
+                "x.json",
+                "--provider",
+                "lmstudio",
+                "--model",
+                "m",
+                "--reasoning-effort",
+                "none"
+              });
+
+      assertThat(ChapterLab.provider(settings)).isNotNull();
+    }
+
+    @Test
+    void a_base_url_for_a_hosted_provider_is_refused() {
+      String[] args = with("--base-url", "http://box:9000/v1");
+
+      assertThatThrownBy(() -> ChapterLab.parse(args))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("--base-url applies only to --provider lmstudio");
+    }
+
+    @Test
+    void an_unknown_reasoning_effort_is_refused_with_the_choices() {
+      String[] args = {
+        "--data", "x.json", "--provider", "lmstudio", "--model", "m", "--reasoning-effort", "loud"
+      };
+
+      assertThatThrownBy(() -> ChapterLab.parse(args))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("unknown reasoning effort 'loud'")
+          .hasMessageContaining("MINIMAL");
     }
 
     @Test

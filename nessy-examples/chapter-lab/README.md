@@ -24,6 +24,15 @@ export ANTHROPIC_API_KEY=...        # or OPENAI_API_KEY, XAI_API_KEY, GEMINI_API
                --policy every:20 --summarizer prose"
 ```
 
+With a model served locally (LM Studio's OpenAI-compatible server, no key needed):
+
+```
+./mvnw -q -pl :nessy-example-chapter-lab -am compile exec:java -Dexec.args="--data /path/to/locomo10.json --conversation 0 --questions 5 --provider lmstudio --model qwen/qwen3.6-35b-a3b --policy every:20 --summarizer prose"
+```
+
+A local model is slow, and one that reasons before it answers is slower: use a small `--questions`
+to try it.
+
 `-am compile` builds the engine and the providers it depends on first (the other modules skip
 `exec:java`). `exec:java` runs in Maven's JVM, so the result files below land in the directory Maven was started from: the repository
 root. The key is read from the environment by the provider and is never printed.
@@ -35,7 +44,9 @@ root. The key is read from the environment by the provider and is never printed.
 | `--data FILE` | The LoCoMo file (`locomo10.json`). Required. |
 | `--conversation N` | Which conversation in the file to replay, counting from 0. Default 0. |
 | `--questions N` | How many questions to ask. Only questions of categories 1 to 4 that cite evidence are eligible; a fixed pseudo-random sample is taken with seed `7 + conversation`, so the same options always ask the same questions. Java's generator does not reproduce the Python probe's choice from that seed. Default 40. |
-| `--provider NAME` | `anthropic`, `openai`, `xai` or `gemini`. Required. Keys come from `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`, `GEMINI_API_KEY` (or `GOOGLE_API_KEY`). OpenAI and xAI use the chat completions wire. Bedrock and the local servers are not offered. |
+| `--provider NAME` | `anthropic`, `openai`, `xai` or `gemini`. Required. Keys come from `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`, `GEMINI_API_KEY` (or `GOOGLE_API_KEY`). OpenAI and xAI use the chat completions wire. `lmstudio` is an OpenAI-compatible chat server at `http://localhost:1234/v1` and needs no key; models are named as the server names them. Bedrock is not offered. |
+| `--base-url URL` | `lmstudio` only: the server's address, in place of `http://localhost:1234/v1`. |
+| `--reasoning-effort V` | Sets the adapter's `openai.reasoning.effort` property for every call (summaries, cuts, answers, grading). Providers `openai`, `xai` and `lmstudio` only. Accepted values: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Whether a server honours it is up to the server. Unset, nothing is sent. |
 | `--model NAME` | The model that answers the questions and grades the answers. Required. |
 | `--summary-model NAME` | The model that writes summaries (and, for `hindsight`, names the cuts). Defaults to `--model`. Always the same provider. |
 | `--policy P` | Where chapters end. See below. Default `every:20`. |
