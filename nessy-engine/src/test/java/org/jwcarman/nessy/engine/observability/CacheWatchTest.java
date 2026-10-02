@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.observability;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
@@ -87,6 +88,14 @@ class CacheWatchTest {
     }
 
     @Test
+    void a_reported_zero_counts_as_a_fall() {
+      saw(AGENT, 1, reading(100));
+      saw(AGENT, 1, reading(0));
+
+      assertThat(stopped).hasSize(1);
+    }
+
+    @Test
     void a_rise_is_not_reported() {
       saw(AGENT, 1, reading(40));
       saw(AGENT, 1, reading(100));
@@ -127,6 +136,18 @@ class CacheWatchTest {
     }
 
     @Test
+    void two_agent_types_sharing_an_id_and_a_turn_do_not_affect_each_other() {
+      AgentType other = new AgentType("billing");
+      watch.saw(TYPE, AGENT, TurnId.of(1), reading(100));
+      watch.saw(other, AGENT, TurnId.of(1), reading(50));
+      assertThat(stopped).isEmpty();
+
+      watch.saw(TYPE, AGENT, TurnId.of(1), reading(40));
+
+      assertThat(stopped).hasSize(1);
+    }
+
+    @Test
     void two_agents_do_not_affect_each_other() {
       AgentId other = AgentId.random();
       saw(AGENT, 1, reading(100));
@@ -162,6 +183,39 @@ class CacheWatchTest {
       saw(AGENT, 1, reading(50));
 
       assertThat(stopped).hasSize(1);
+    }
+  }
+
+  @Nested
+  class Never_failing_an_inference {
+
+    @Test
+    void a_missing_usage_does_not_throw() {
+      assertThatCode(() -> watch.saw(TYPE, AGENT, TurnId.of(1), null)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void an_observation_handler_that_throws_does_not_make_it_throw() {
+      ObservationRegistry hostile = ObservationRegistry.create();
+      hostile
+          .observationConfig()
+          .observationHandler(
+              new ObservationHandler<>() {
+                @Override
+                public void onStart(Observation.Context context) {
+                  throw new IllegalStateException("handler failed");
+                }
+
+                @Override
+                public boolean supportsContext(Observation.Context context) {
+                  return true;
+                }
+              });
+      CacheWatch fragile = new CacheWatch(hostile);
+      fragile.saw(TYPE, AGENT, TurnId.of(1), reading(100));
+
+      assertThatCode(() -> fragile.saw(TYPE, AGENT, TurnId.of(1), reading(10)))
+          .doesNotThrowAnyException();
     }
   }
 }

@@ -55,14 +55,16 @@ public final class CacheWatch {
 
   private static final Logger log = LoggerFactory.getLogger(CacheWatch.class);
 
+  private record Who(AgentType type, AgentId id) {}
+
   private record Last(TurnId turn, int cached) {}
 
   private final ObservationRegistry observations;
 
-  private final Map<AgentId, Last> remembered =
+  private final Map<Who, Last> remembered =
       new LinkedHashMap<>(16, 0.75f, true) {
         @Override
-        protected boolean removeEldestEntry(Map.Entry<AgentId, Last> eldest) {
+        protected boolean removeEldestEntry(Map.Entry<Who, Last> eldest) {
           return size() > MAX_AGENTS;
         }
       };
@@ -79,7 +81,7 @@ public final class CacheWatch {
       }
       Last before;
       synchronized (remembered) {
-        before = remembered.put(agentId, new Last(turn, now));
+        before = remembered.put(new Who(agentType, agentId), new Last(turn, now));
       }
       if (before != null && before.turn().equals(turn) && now < before.cached()) {
         report(agentType, agentId, turn, now, before.cached());
