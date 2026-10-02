@@ -196,10 +196,9 @@ class BedrockLiveTest {
 
   // ---- a reply cut off at the output limit ----------------------------------------------
 
-  private static final String LISTING =
-      "Write the numbers 1 to 500, one per line, each followed by a colon and its square, for"
-          + " example '12: 144'. Write every line yourself, starting now: no program, no"
-          + " explanation, nothing but those lines.";
+  private static final String LONG_ANSWER =
+      "Write an essay of at least 3,000 words on the history of lighthouses, from antiquity to"
+          + " the present day. Begin the essay at once, with no preamble.";
 
   private static final String NOTE_REQUEST =
       "Call save_note once, now. Its text must be the numbers 1 to 2000, one per line, each"
@@ -232,15 +231,15 @@ class BedrockLiveTest {
    * A reply the vendor cut off at the output limit comes back as {@code Truncated}, holding what
    * was written, and is neither an answer nor a fault.
    *
-   * <p>The full listing needs far more than the 1500 tokens allowed, and 1500 leaves room for a
-   * model that reasons a little before it writes.
-   *
-   * <p>This wire had not been measured when the test was written.
+   * <p>The essay asked for needs far more than the 1500 tokens allowed, and 1500 leaves room for a
+   * model that reasons a little before it writes. It is an essay and not a list of numbers because
+   * Nova Lite refuses a long numbered listing: measured 2026-10-02, it returned {@code
+   * content_filtered} with no output for one, which this adapter reports as a refusal.
    */
   @Test
   void an_answer_cut_off_at_the_output_limit_is_truncated_and_keeps_what_was_written() {
     try (BedrockInferenceProvider provider = provider()) {
-      InferenceResult result = provider.infer(limited(LISTING, Toolset.none()));
+      InferenceResult result = provider.infer(limited(LONG_ANSWER, Toolset.none()));
 
       assertThat(result)
           .as("the reply, whole: %s", result)
@@ -254,7 +253,6 @@ class BedrockLiveTest {
               block -> {
                 String written = ((Block.Text) block).text();
                 assertThat(written).isNotBlank();
-                assertThat(written.strip()).startsWith("1: 1");
               });
       assertThat(truncated.usage().model())
           .as("the vendor named the model that wrote it")
@@ -269,12 +267,14 @@ class BedrockLiveTest {
    * ToolChoice.Named}; this class has no other test that requires a tool. The text it is asked to
    * carry cannot fit in 1500 tokens, so the call is cut off mid-argument. What matters is the first
    * assertion: a call whose arguments are incomplete, or empty, must never be handed over to run.
-   * The wire's own wording for the cut-off varies by model, so only {@code tool call} is asserted
-   * of the reason.
    *
-   * <p>This wire had not been measured when the test was written. A cut-off call may surface as
-   * {@code max_tokens} with a call present, or as arguments that {@code did not parse}; both give a
-   * permanent fault whose reason says {@code tool call}.
+   * <p>How this wire reports the cut-off varies by model, and each way is a permanent fault. A
+   * cut-off call may surface as {@code max_tokens} with a call present, or as arguments that {@code
+   * did not parse}; both give a reason that says {@code tool call}. Measured 2026-10-02 through
+   * this test, Nova Lite did neither: the service itself rejected the reply with a 424, "Model
+   * produced invalid sequence as part of ToolUse", which this adapter reports as a permanent fault
+   * carrying that message. So the reason is one that names a tool call, or the service's own
+   * complaint about {@code ToolUse}.
    */
   @Test
   void a_tool_call_cut_off_at_the_output_limit_is_a_fault_and_is_never_a_call_to_run() {
@@ -295,9 +295,10 @@ class BedrockLiveTest {
           .as("the reply, whole: %s", result)
           .isInstanceOf(InferenceResult.Fault.class);
       assertThat(((InferenceResult.Fault) result).failure())
+          .as("the reply, whole: %s", result)
           .isInstanceOfSatisfying(
               Failure.Permanent.class,
-              failure -> assertThat(failure.reason()).contains("tool call"));
+              failure -> assertThat(failure.reason()).containsAnyOf("tool call", "ToolUse"));
     }
   }
 }

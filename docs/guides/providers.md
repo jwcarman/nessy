@@ -151,6 +151,10 @@ What the cut-off result is depends on what the reply held when it stopped:
   malformed and was not run. `gemini-3.6-flash` instead ended on `MAX_TOKENS`
   with no function call and no text (measured the same day), which is the
   empty-answer `Fault` naming that finish reason.
+  On Bedrock, Nova Lite's cut-off call never reached the adapter as a reply:
+  the service rejected it with a 424, "Model produced invalid sequence as part
+  of ToolUse" (measured the same day), which the adapter reports as a
+  `Permanent` fault carrying that message.
 - **Nothing but reasoning.** The result is the empty-answer `Fault`, naming
   the stop reason. There is no text to keep.
 
