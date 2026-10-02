@@ -30,7 +30,9 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.Memory;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.State;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
@@ -157,19 +159,191 @@ class BedrockRequestsTest {
           .extracting(BedrockRequestsTest::textOf)
           .containsExactly("one", "(The previous attempt to answer did not complete.)", "three");
     }
+  }
+
+  @Nested
+  class PlacingTheStrata {
+
+    private InferenceContext context(
+        List<Turn> tail,
+        List<Memory> memory,
+        List<State> state,
+        Turn active,
+        List<Ambient> ambient) {
+      return new InferenceContext(List.of(), tail, memory, state, active, ambient);
+    }
+
+    private ConverseStreamRequest render(InferenceContext context) {
+      return BedrockRequests.toRequest(request(context, List.of()), MAPPER);
+    }
+
+    private List<String> texts(Message message) {
+      return message.content().stream().map(ContentBlock::text).toList();
+    }
 
     @Test
-    void the_prompt_and_the_ambient_are_the_system_field() {
-      InferenceContext context =
-          new InferenceContext(
-              List.of(open(1, "hi")), List.of(Ambient.text("clock", "it is Tuesday")));
-
+    void the_system_list_holds_only_the_instructions() {
       ConverseStreamRequest converse =
-          BedrockRequests.toRequest(request(context, List.of()), MAPPER);
+          render(
+              context(
+                  List.of(),
+                  List.of(Memory.text("notes", "likes lakes")),
+                  List.of(State.text("plan", "step one")),
+                  open(1, "hi"),
+                  List.of(Ambient.text("clock", "it is Tuesday"))));
 
       assertThat(converse.system())
           .extracting(block -> block.text())
-          .containsExactly("you are a helpful assistant", "<clock>\nit is Tuesday\n</clock>");
+          .containsExactly("you are a helpful assistant");
+    }
+
+    @Test
+    void memory_and_state_lead_the_active_turns_first_user_message() {
+      ConverseStreamRequest converse =
+          render(
+              context(
+                  List.of(),
+                  List.of(Memory.text("notes", "  likes lakes  "), Memory.text("episodes", "a")),
+                  List.of(State.text("plan", "step one")),
+                  open(1, "hi"),
+                  List.of()));
+
+      assertThat(converse.messages()).hasSize(1);
+      Message message = converse.messages().getFirst();
+      assertThat(message.role()).isEqualTo(ConversationRole.USER);
+      assertThat(texts(message))
+          .containsExactly(
+              "<memory kind=\"notes\">\nlikes lakes\n</memory>",
+              "<memory kind=\"episodes\">\na\n</memory>",
+              "<state kind=\"plan\">\nstep one\n</state>",
+              "hi");
+    }
+
+    @Test
+    void memory_and_state_are_not_attached_to_a_turn_in_the_tail() {
+      ConverseStreamRequest converse =
+          render(
+              context(
+                  List.of(answered(1, "first", "reply")),
+                  List.of(Memory.text("notes", "likes lakes")),
+                  List.of(State.text("plan", "step one")),
+                  open(3, "second"),
+                  List.of()));
+
+      assertThat(converse.messages()).hasSize(3);
+      assertThat(texts(converse.messages().get(0))).containsExactly("first");
+      assertThat(texts(converse.messages().get(1))).containsExactly("reply");
+      assertThat(texts(converse.messages().get(2)))
+          .containsExactly(
+              "<memory kind=\"notes\">\nlikes lakes\n</memory>",
+              "<state kind=\"plan\">\nstep one\n</state>",
+              "second");
+    }
+
+    @Test
+    void ambient_ends_the_request_after_the_active_turns_input() {
+      ConverseStreamRequest converse =
+          render(
+              context(
+                  List.of(),
+                  List.of(),
+                  List.of(),
+                  open(1, "hi"),
+                  List.of(Ambient.text("clock", " it is Tuesday "))));
+
+      assertThat(converse.messages()).hasSize(1);
+      assertThat(converse.messages().getFirst().role()).isEqualTo(ConversationRole.USER);
+      assertThat(texts(converse.messages().getFirst()))
+          .containsExactly("hi", "<clock>\nit is Tuesday\n</clock>");
+    }
+
+    @Test
+    void ambient_ends_the_request_after_the_last_tool_results() {
+      Exchange exchange =
+          new Exchange(
+              new Seq(2),
+              List.of(new Block.ToolCall("call_1", "depth", "{}")),
+              List.of(
+                  new ToolOutcome.Succeeded(
+                      new CallId("call_1"), List.of(new Block.Text("230m")))));
+      Turn active = new Turn(new TurnId(1), asked(1, "how deep?"), List.of(exchange), null, 0);
+
+      ConverseStreamRequest converse =
+          render(
+              context(
+                  List.of(),
+                  List.of(),
+                  List.of(),
+                  active,
+                  List.of(Ambient.text("clock", "it is Tuesday"))));
+
+      assertThat(converse.messages())
+          .extracting(Message::role)
+          .containsExactly(
+              ConversationRole.USER, ConversationRole.ASSISTANT, ConversationRole.USER);
+      List<ContentBlock> last = converse.messages().getLast().content();
+      assertThat(last).hasSize(2);
+      assertThat(last.getFirst().toolResult().toolUseId()).isEqualTo("call_1");
+      assertThat(last.get(1).text()).isEqualTo("<clock>\nit is Tuesday\n</clock>");
+    }
+
+    @Test
+    void ambient_after_an_assistant_message_is_a_user_message_of_its_own() {
+      Turn answeredActive =
+          new Turn(
+              new TurnId(1),
+              asked(1, "hi"),
+              List.of(),
+              new TurnResult.Answered(List.of(new Block.Text("hello"))),
+              0);
+
+      ConverseStreamRequest converse =
+          render(
+              context(
+                  List.of(),
+                  List.of(),
+                  List.of(),
+                  answeredActive,
+                  List.of(Ambient.text("clock", "it is Tuesday"))));
+
+      assertThat(converse.messages())
+          .extracting(Message::role)
+          .containsExactly(
+              ConversationRole.USER, ConversationRole.ASSISTANT, ConversationRole.USER);
+      assertThat(texts(converse.messages().getLast()))
+          .containsExactly("<clock>\nit is Tuesday\n</clock>");
+    }
+
+    @Test
+    void a_context_with_no_memory_state_or_ambient_renders_as_before() {
+      List<Turn> turns = List.of(answered(1, "hi", "hello"), open(3, "bye"));
+
+      ConverseStreamRequest converse =
+          render(
+              context(List.of(turns.getFirst()), List.of(), List.of(), turns.getLast(), List.of()));
+
+      assertThat(converse.system()).hasSize(1);
+      assertThat(converse.messages())
+          .extracting(Message::role)
+          .containsExactly(
+              ConversationRole.USER, ConversationRole.ASSISTANT, ConversationRole.USER);
+      assertThat(converse.messages().stream().map(this::texts).toList())
+          .containsExactly(List.of("hi"), List.of("hello"), List.of("bye"));
+    }
+
+    @Test
+    void blank_memory_state_and_ambient_are_left_out() {
+      ConverseStreamRequest converse =
+          render(
+              context(
+                  List.of(),
+                  List.of(Memory.text("notes", "   ")),
+                  List.of(State.text("plan", "\n")),
+                  open(1, "hi"),
+                  List.of(Ambient.text("clock", " "))));
+
+      assertThat(converse.messages()).hasSize(1);
+      assertThat(texts(converse.messages().getFirst())).containsExactly("hi");
     }
   }
 

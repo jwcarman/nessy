@@ -32,6 +32,7 @@ import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
+import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
@@ -63,6 +64,13 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>Pure translation, and the only place in this module that knows what a role is. Nothing here
  * touches the network, which is what makes the whole projection testable without a credential.
+ *
+ * <p><b>The system list holds the instructions and nothing else.</b> Anything placed there sits
+ * ahead of every message, so a change in it would invalidate a provider's cached prefix for the
+ * whole conversation. Memory and state are text blocks at the head of the active turn's first user
+ * message, tagged {@code <memory kind="...">} or {@code <state kind="...">}; ambient is text
+ * blocks, tagged by its kind, at the end of the last user message, or a user message of its own
+ * when the request would otherwise end on the assistant. A blank one is left out.
  *
  * <p><b>This wire insists that roles alternate.</b> Converse rejects two consecutive messages with
  * the same role, and a summary followed by an input is exactly that, so the drafted messages are
@@ -100,23 +108,16 @@ public final class BedrockRequests {
           });
     }
 
-    List<SystemContentBlock> system = new ArrayList<>();
-    system.add(SystemContentBlock.fromText(request.systemPrompt().value()));
-    for (Ambient ambient : request.context().ambient()) {
-      String text = text(ambient.content());
-      if (!text.isBlank()) {
-        system.add(
-            SystemContentBlock.fromText(
-                "<%s>\n%s\n</%s>".formatted(ambient.kind(), text.strip(), ambient.kind())));
-      }
-    }
-    builder.system(system);
+    builder.system(SystemContentBlock.fromText(request.systemPrompt().value()));
 
+    InferenceContext context = request.context();
     List<Message> drafted =
         Stream.of(
-                request.context().summaries().stream().map(BedrockRequests::summary),
-                request.context().tail().stream().flatMap(turn -> turn(turn, mapper)),
-                turn(request.context().activeTurn(), mapper))
+                context.summaries().stream().map(BedrockRequests::summary),
+                context.tail().stream().flatMap(turn -> turn(turn, mapper)),
+                background(recalled(context)).stream(),
+                turn(context.activeTurn(), mapper),
+                background(context.ambient().stream().map(BedrockRequests::ambient)).stream())
             .flatMap(rendered -> rendered)
             .toList();
     builder.messages(alternating(drafted));
@@ -206,6 +207,41 @@ public final class BedrockRequests {
       }
     }
     return merged;
+  }
+
+  /** Memory, then state, each as one tagged section of text. */
+  private static Stream<String> recalled(InferenceContext context) {
+    return Stream.concat(
+        context.memory().stream()
+            .map(
+                memory ->
+                    tagged("memory kind=\"" + memory.kind() + "\"", "memory", memory.content())),
+        context.state().stream()
+            .map(state -> tagged("state kind=\"" + state.kind() + "\"", "state", state.content())));
+  }
+
+  private static String ambient(Ambient ambient) {
+    return tagged(ambient.kind(), ambient.kind(), ambient.content());
+  }
+
+  /** A section's text between its tags, or an empty string when there is nothing to say. */
+  private static String tagged(String opening, String closing, List<? extends Block> content) {
+    String text = text(content).strip();
+    return text.isEmpty() ? "" : "<%s>\n%s\n</%s>".formatted(opening, text, closing);
+  }
+
+  /**
+   * One user message of text blocks, or none when every section was blank. Placed between other
+   * messages it merges with a neighbouring user message in {@link #alternating}: ahead of the input
+   * it precedes, and after the tool results it follows, so a result is never separated from the
+   * call it answers.
+   */
+  private static Optional<Message> background(Stream<String> sections) {
+    List<ContentBlock> content =
+        sections.filter(section -> !section.isEmpty()).map(ContentBlock::fromText).toList();
+    return content.isEmpty()
+        ? Optional.empty()
+        : Optional.of(Message.builder().role(ConversationRole.USER).content(content).build());
   }
 
   // ---- the conversation ----------------------------------------------------------------
