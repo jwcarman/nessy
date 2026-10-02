@@ -263,7 +263,7 @@ The model is the one party that knows when the subject changed.
 DefaultDirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> config
         .backend(backend)
         .provider(providerId, provider)
-        .inference(providerId, InferenceOptions.of("claude-sonnet-5")));
+        .inference(providerId, InferenceOptions.of("claude-sonnet-5-5")));
 
 DirectHarness<String, String> harness = factory.<String>create(
         TYPE,

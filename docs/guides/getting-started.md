@@ -157,7 +157,7 @@ DirectHarness<String, String> harness = factory.<String>create(
         new AgentType("assistant"),
         config -> config
                 .systemPrompt("You are a terse assistant.")
-                .inference(in -> in.provider("anthropic").model("claude-sonnet-5"))
+                .inference(in -> in.provider("anthropic").model("claude-sonnet-5-5"))
                 .tool(new AddTool()));
 ```
 
@@ -172,7 +172,7 @@ DirectHarness<String, Verdict> reviewer = factory.<String, Verdict>create(
         new AgentType("reviewer"), Verdict.class,
         config -> config
                 .systemPrompt("You review a request and decide.")
-                .inference(in -> in.provider("anthropic").model("claude-sonnet-5")));
+                .inference(in -> in.provider("anthropic").model("claude-sonnet-5-5")));
 ```
 
 ## Asking, and getting an outcome
@@ -262,7 +262,7 @@ and the answer is narrated to listeners rather than returned:
 QueuedHarnessFactory factory = DefaultQueuedHarnessFactory.of(config -> config
         .backend(new InMemoryQueuedBackend(codecs))
         .provider(ProviderId.of("anthropic"), provider)
-        .inference(ProviderId.of("anthropic"), InferenceOptions.of("claude-sonnet-5")));
+        .inference(ProviderId.of("anthropic"), InferenceOptions.of("claude-sonnet-5-5")));
 
 QueuedHarness<String> harness = factory.create(new AgentType("watchman"), config -> config
         .systemPrompt("You watch a house."));

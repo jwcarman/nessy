@@ -27,7 +27,7 @@ spring:
     password: secret
 nessy:
   provider: anthropic
-  model: claude-sonnet-5
+  model: claude-sonnet-5-5
 ```
 
 Set `ANTHROPIC_API_KEY` and the context has a `DirectHarnessFactory` bean,

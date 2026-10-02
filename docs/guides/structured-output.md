@@ -17,7 +17,7 @@ DirectHarness<String, Weather> forecaster = factory.create(
 ```
 
 This `factory` was built with a default model, so the harness need not name
-one: `config.inference(ProviderId.of("anthropic"), InferenceOptions.of("claude-sonnet-5"))`
+one: `config.inference(ProviderId.of("anthropic"), InferenceOptions.of("claude-sonnet-5-5"))`
 beside the backend and the provider. See
 [Getting Started](getting-started.md#the-smallest-harness).
 

@@ -53,7 +53,7 @@ DirectHarness<String, String> harness = factory.<String>create(
         new AgentType("assistant"),
         config -> config
                 .systemPrompt("You are a terse assistant.")
-                .inference(in -> in.provider(providerId.value()).model("claude-sonnet-5"))
+                .inference(in -> in.provider(providerId.value()).model("claude-sonnet-5-5"))
                 .tool(new AddTool()));
 
 Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
@@ -111,7 +111,7 @@ DirectHarness<String, Verdict> harness = factory.<String, Verdict>create(
         new AgentType("reviewer"), Verdict.class,
         config -> config
                 .systemPrompt("You review a request and decide.")
-                .inference(in -> in.provider(providerId.value()).model("claude-sonnet-5")));
+                .inference(in -> in.provider(providerId.value()).model("claude-sonnet-5-5")));
 
 Outcome<Verdict> outcome = harness.ask(AgentId.random(), "may I deploy on a Friday?");
 ```
@@ -149,7 +149,7 @@ that means it must ask again.
 QueuedHarnessFactory factory = DefaultQueuedHarnessFactory.of(config -> config
         .backend(backend)
         .provider(providerId, provider)
-        .inference(providerId, InferenceOptions.of("claude-sonnet-5")));
+        .inference(providerId, InferenceOptions.of("claude-sonnet-5-5")));
 
 QueuedHarness<String> harness = factory.create(new AgentType("watchman"), config -> config
         .systemPrompt("You watch a house."));

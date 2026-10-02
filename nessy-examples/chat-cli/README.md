@@ -73,7 +73,7 @@ Against a real vendor, name its preset, set its key, and name a model —
 `chat-cli` needs both `NESSY_PROVIDER` and `NESSY_MODEL`:
 
 ```bash
-NESSY_PROVIDER=anthropic ANTHROPIC_API_KEY=… NESSY_MODEL=claude-sonnet-5 \
+NESSY_PROVIDER=anthropic ANTHROPIC_API_KEY=… NESSY_MODEL=claude-sonnet-5-5 \
   ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
 NESSY_PROVIDER=xai XAI_API_KEY=… NESSY_MODEL=grok-4 \
   ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java

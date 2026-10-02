@@ -63,7 +63,7 @@ DirectHarness<String, String> harness = factory.<String>create(
         new AgentType("assistant"),
         config -> config
                 .systemPrompt("You are a terse assistant.")
-                .inference(in -> in.provider("anthropic").model("claude-sonnet-5"))
+                .inference(in -> in.provider("anthropic").model("claude-sonnet-5-5"))
                 .tool(new AddTool()));
 
 Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
