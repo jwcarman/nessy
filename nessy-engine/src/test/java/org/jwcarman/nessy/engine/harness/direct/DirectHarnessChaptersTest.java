@@ -34,6 +34,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ChapterPolicy;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
@@ -43,6 +44,10 @@ import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.Chapter;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
@@ -54,6 +59,7 @@ import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.engine.chapter.DeclaredChapters;
 import org.jwcarman.nessy.engine.chapter.ProseSummarizer;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
+import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -89,6 +95,17 @@ class DirectHarnessChaptersTest {
     private final List<InferenceRequest> summaries = new CopyOnWriteArrayList<>();
 
     private volatile int beginsOnTurn = -1;
+    private volatile boolean callsTool;
+
+    /** From now on, the model calls {@code lookup} once in every turn before it answers. */
+    void callLookupInEveryTurn() {
+      callsTool = true;
+    }
+
+    /** A summary request is only as good as it is plain: no tool call and no round of calls. */
+    private static boolean holdsToolHistory(InferenceRequest request) {
+      return request.context().turns().stream().anyMatch(turn -> !turn.exchanges().isEmpty());
+    }
 
     /** From now on, the model calls {@code begin_chapter} first thing in turn {@code number}. */
     void beginChapterOnTurn(int number) {
@@ -99,6 +116,10 @@ class DirectHarnessChaptersTest {
     public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
       if (request.systemPrompt().value().equals(ProseSummarizer.PROMPT)) {
         summaries.add(request);
+        if (holdsToolHistory(request)) {
+          return new InferenceResult.Fault(
+              new Failure.Permanent("a tool call was sent to the summariser"), Usage.unreported());
+        }
         return new InferenceResult.Answer(
             List.of(new Block.Text("they talked")), Usage.unreported(MODEL));
       }
@@ -110,10 +131,41 @@ class DirectHarnessChaptersTest {
                 new Block.ToolCall("begin-" + turns.size(), "begin_chapter", "{\"title\":\"x\"}")),
             Usage.unreported(MODEL));
       }
+      if (callsTool && firstCallOfTheTurn) {
+        return new InferenceResult.Actions(
+            List.of(new Block.ToolCall("lookup-" + turns.size(), "lookup", "{\"q\":\"x\"}")),
+            Usage.unreported(MODEL));
+      }
       chats.add(request);
       return new InferenceResult.Answer(
           List.of(new Block.Text("answer " + chats.size())), Usage.unreported(MODEL));
     }
+  }
+
+  record Query(String q) {}
+
+  private static Tool<Query> lookup() {
+    return new Tool<>() {
+      @Override
+      public Class<Query> inputType() {
+        return Query.class;
+      }
+
+      @Override
+      public ToolName name() {
+        return new ToolName("lookup");
+      }
+
+      @Override
+      public String description() {
+        return "looks a thing up";
+      }
+
+      @Override
+      public Awaited<ToolResult> call(ToolCallRequest<Query> request) {
+        return Awaited.ready(ToolResult.ok(new Block.Text("1412 metres")));
+      }
+    };
   }
 
   private DefaultDirectHarnessFactory factory() {
@@ -201,6 +253,27 @@ class DirectHarnessChaptersTest {
       assertThat(covered.through()).isEqualTo(turns.get(2));
       assertThat(fourth.context().turns()).hasSize(1);
       assertThat(fourth.context().turns().getFirst().id()).isEqualTo(turns.get(3));
+    }
+
+    @Test
+    void a_chapter_whose_turns_called_a_tool_is_summarised() {
+      AgentId agent = AgentId.random();
+      model.callLookupInEveryTurn();
+      DirectHarness<String, String> harness =
+          harness(
+              c ->
+                  c.tool(lookup(), t -> t.action(query -> "look up " + query.q()))
+                      .chapterPolicy(ChapterPolicy.every(3)));
+
+      talk(harness, agent, 3);
+      List<Summary> written = waitForSummaries(agent, 1);
+
+      assertThat(written.getFirst().text()).isEqualTo("they talked");
+      InferenceRequest sent = model.summaries.getFirst();
+      assertThat(sent.context().activeTurn().input().blocks())
+          .singleElement()
+          .isInstanceOfSatisfying(
+              Block.Text.class, text -> assertThat(text.text()).contains("assistant did:"));
     }
 
     @Test

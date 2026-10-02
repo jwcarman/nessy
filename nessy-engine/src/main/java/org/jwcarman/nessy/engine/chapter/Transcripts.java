@@ -17,20 +17,28 @@ package org.jwcarman.nessy.engine.chapter;
 
 import java.util.List;
 import java.util.stream.Collectors;
-import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.Stringifier;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.api.turn.Exchange;
-import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 
 /**
  * How a run of turns is shown to a summarising model, shared by every summariser: one line per
- * thing that happened, and the closing ask that gives the model something to answer.
+ * thing that happened, in words.
+ *
+ * <p>A call is one line, {@code assistant did: <action> -- <how it ended>}, written from the lines
+ * recorded when it was made and when it finished. The call's raw arguments and its raw result are
+ * never shown.
  */
 public final class Transcripts {
+
+  /** A failure's message or a denial's reason: one line, both ends kept, cut like a result line. */
+  private static final Stringifier<String> ONE_LINE =
+      Stringifier.<String>byToString().dropMiddle(ToolConfig.DEFAULT_LINE_LIMIT);
 
   private Transcripts() {}
 
@@ -47,28 +55,13 @@ public final class Transcripts {
         if (!said.isBlank()) {
           out.append("assistant: ").append(said).append('\n');
         }
-        exchange
-            .calls()
-            .forEach(
-                call ->
-                    out.append("assistant called ")
-                        .append(call.name().value())
-                        .append(' ')
-                        .append(call.arguments())
-                        .append('\n'));
-        exchange
-            .outcomes()
-            .forEach(
-                outcome ->
-                    out.append("tool: ")
-                        .append(
-                            switch (outcome) {
-                              case ToolOutcome.Succeeded(var _, var blocks) -> text(blocks);
-                              case ToolOutcome.Failed(var _, String message) ->
-                                  "failed: " + message;
-                              case ToolOutcome.Denied(var _, String reason) -> "denied: " + reason;
-                            })
-                        .append('\n'));
+        for (Block.ToolCall call : exchange.calls()) {
+          out.append("assistant did: ")
+              .append(exchange.actionOf(call.id()))
+              .append(" -- ")
+              .append(ending(exchange, call.id()))
+              .append('\n');
+        }
       }
       switch (turn.result()) {
         case TurnResult.Answered(var blocks) ->
@@ -83,18 +76,22 @@ public final class Transcripts {
     return out.toString();
   }
 
-  /**
-   * The turn that asks for the summary. Every turn being folded is complete, so without it the
-   * conversation would end on the assistant's own words, and a model given nothing to answer
-   * answers nothing.
-   */
-  public static Turn ask(Turn last, String instruction) {
-    return new Turn(
-        new TurnId(last.id().value() + 1),
-        new Input(new Seq(last.id().value() + 1), List.of(new Block.Text(instruction))),
-        List.of(),
-        null,
-        0);
+  /** How one call ended, as the words that follow its action on its line. */
+  private static String ending(Exchange exchange, CallId id) {
+    ToolOutcome outcome =
+        exchange.outcomes().stream()
+            .filter(candidate -> candidate.callId().equals(id))
+            .findFirst()
+            .orElse(null);
+    return switch (outcome) {
+      case ToolOutcome.Succeeded _ -> {
+        String result = exchange.resultOf(id).orElse("");
+        yield result.isEmpty() ? "succeeded" : "succeeded: " + result;
+      }
+      case ToolOutcome.Failed(var _, String message) -> "failed: " + ONE_LINE.stringify(message);
+      case ToolOutcome.Denied(var _, String reason) -> "denied: " + ONE_LINE.stringify(reason);
+      case null -> "no outcome recorded";
+    };
   }
 
   /** The words in a run of blocks: text and commentary joined by newlines, the rest skipped. */

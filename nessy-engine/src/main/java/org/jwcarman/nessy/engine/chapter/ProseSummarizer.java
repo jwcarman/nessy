@@ -17,9 +17,13 @@ package org.jwcarman.nessy.engine.chapter;
 
 import java.util.List;
 import java.util.Objects;
+import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPrompt;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Chapter;
+import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.inference.InferenceContext;
@@ -35,6 +39,13 @@ import org.jwcarman.nessy.inference.Toolset;
  * <p>Reads the chapter's turns itself, whole, and calls the provider directly: this is not an
  * agent's conversation, so it goes through no assembler and no tool loop. No tools are offered and
  * nothing is streamed.
+ *
+ * <p><b>The chapter is sent as text, in one user message.</b> That message is {@link
+ * Transcripts#render} of the chapter's turns, a blank line, and the closing ask; the request holds
+ * no summaries, no tail, and no tool-call, tool-result or reasoning blocks. A model that is shown
+ * tool history and offered no tools may answer nothing: measured on 2026-10-02 on
+ * claude-sonnet-4-5, five empty replies of five for a chapter with tool calls. Written out as
+ * lines, a call is something the model reads rather than something it is expected to continue.
  *
  * <p><b>It returns what the model wrote, blank included.</b> Judging whether that is good enough
  * belongs to the caller, which treats blank as a failure. What it does refuse to return is a record
@@ -106,14 +117,23 @@ public final class ProseSummarizer implements Summarizer {
           "no turns from %s through %s".formatted(chapter.from(), chapter.through()));
     }
 
-    Turn asking = Transcripts.ask(turns.getLast(), ASK);
+    Turn asking =
+        new Turn(
+            new TurnId(turns.getLast().id().value() + 1),
+            new Input(
+                new Seq(turns.getLast().id().value() + 1),
+                List.of(new Block.Text(Transcripts.render(turns) + "\n" + ASK))),
+            List.of(),
+            null,
+            0);
 
     InferenceResult result =
         provider.infer(
             // A chapter is summarised once, so there is nothing here for a vendor's cache to keep.
             new InferenceRequest(
                     new SystemPrompt(prompt),
-                    new InferenceContext(List.of(), turns, List.of(), List.of(), asking, List.of()),
+                    new InferenceContext(
+                        List.of(), List.of(), List.of(), List.of(), asking, List.of()),
                     Toolset.none(),
                     options)
                 .asOneOff());

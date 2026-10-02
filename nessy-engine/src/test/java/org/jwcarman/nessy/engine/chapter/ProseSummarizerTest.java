@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
@@ -33,13 +34,17 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.turn.Chapter;
+import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Input;
+import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.store.TurnHistory;
 import org.jwcarman.nessy.inference.Failure;
+import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -58,6 +63,25 @@ class ProseSummarizerTest {
         new TurnId(id),
         new Input(new Seq(id), List.of(new Block.Text("q" + id))),
         List.of(),
+        new TurnResult.Answered(List.of(new Block.Text("a" + id))),
+        10);
+  }
+
+  /** A turn in which the model called a tool, was told "found it", and then answered. */
+  private static Turn toolTurn(long id) {
+    CallId callId = new CallId("c" + id);
+    Exchange exchange =
+        new Exchange(
+            new Seq(id),
+            List.of(new Block.ToolCall(callId.value(), "lookup", "{\"q\":\"x\"}")),
+            List.of(
+                new ToolOutcome.Succeeded(callId, List.of(new Block.Text("found it, in full")))),
+            Map.of(callId, "Lookup[q=x]"),
+            Map.of(callId, "found it"));
+    return new Turn(
+        new TurnId(id),
+        new Input(new Seq(id), List.of(new Block.Text("q" + id))),
+        List.of(exchange),
         new TurnResult.Answered(List.of(new Block.Text("a" + id))),
         10);
   }
@@ -140,20 +164,42 @@ class ProseSummarizerTest {
   class Asking_the_model {
 
     @Test
-    void sends_exactly_the_chapters_turns_followed_by_the_turn_that_asks() {
-      Story story = new Story(List.of(turn(1), turn(3), turn(5), turn(7)));
+    void a_chapter_is_sent_as_one_message_of_text() {
+      Story story = new Story(List.of(turn(1), toolTurn(3), turn(5), turn(7)));
       Scripted provider = new Scripted(_ -> answer("the record"));
 
       new ProseSummarizer(story, provider, OPTIONS).summarize(chapter(3, 5));
 
       assertThat(provider.requests).hasSize(1);
-      List<Turn> sent = provider.requests.getFirst().context().turns();
-      assertThat(sent).extracting(t -> t.id().value()).containsExactly(3L, 5L, 6L);
-      assertThat(sent.getLast().complete()).isFalse();
-      assertThat(sent.getLast().input().blocks())
-          .containsExactly(new Block.Text("Write the record of everything above now."));
-      assertThat(provider.requests.getFirst().context().summaries()).isEmpty();
+      InferenceContext context = provider.requests.getFirst().context();
+      assertThat(context.summaries()).isEmpty();
+      assertThat(context.tail()).isEmpty();
+      assertThat(context.activeTurn().exchanges()).isEmpty();
+      String rendered = Transcripts.render(List.of(toolTurn(3), turn(5)));
+      assertThat(rendered).contains("assistant did: Lookup[q=x] -- succeeded: found it");
+      assertThat(context.activeTurn().input().blocks())
+          .containsExactly(
+              new Block.Text(rendered + "\nWrite the record of everything above now."));
       assertThat(provider.requests.getFirst().context().ambient()).isEmpty();
+    }
+
+    @Test
+    void no_tool_call_tool_outcome_or_reasoning_block_is_sent() {
+      Story story = new Story(List.of(toolTurn(1)));
+      Scripted provider = new Scripted(_ -> answer("the record"));
+
+      new ProseSummarizer(story, provider, OPTIONS).summarize(chapter(1, 1));
+
+      InferenceRequest request = provider.requests.getFirst();
+      assertThat(request.toolset().offers()).isEmpty();
+      List<Turn> sent = new ArrayList<>(request.context().tail());
+      sent.add(request.context().activeTurn());
+      assertThat(sent).isNotEmpty();
+      sent.forEach(
+          turn -> {
+            assertThat(turn.exchanges()).isEmpty();
+            assertThat(turn.input().blocks()).isNotEmpty().allMatch(Block.Text.class::isInstance);
+          });
     }
 
     @Test

@@ -985,8 +985,11 @@ class ChapterLabTest {
       assertThat(result.chapters()).isEqualTo(3);
       assertThat(model.hindsights).hasSize(1);
       assertThat(model.summaries).hasSize(3);
-      assertThat(model.summaries.stream().map(r -> r.context().tail().size()).toList())
-          .containsExactly(10, 15, 15);
+      assertThat(
+              model.summaries.stream()
+                  .map(r -> textOf(r).lines().filter(line -> line.startsWith("user: ")).count())
+                  .toList())
+          .containsExactly(10L, 15L, 15L);
       assertThat(model.questions).isNotEmpty();
       assertThat(model.questions)
           .allSatisfy(
@@ -1040,10 +1043,7 @@ class ChapterLabTest {
 
       run(settings("session", "prose"), model, directory);
 
-      List<String> shown =
-          model.summaries.stream()
-              .map(request -> Transcripts.render(request.context().tail()))
-              .toList();
+      List<String> shown = model.summaries.stream().map(ChapterLabTest::textOf).toList();
       assertThat(shown).hasSize(3);
       assertThat(shown.get(0)).contains("planted tomatoes").contains("Lisbon tomorrow");
       assertThat(shown.get(1)).contains("Lisbon was warm").contains("Three hundred");
