@@ -128,7 +128,9 @@ write an effect. See [Durable Computation](durable-computation.md).
   summary it writes. A lease held by someone else is an immediate refusal,
   and the keeper does nothing: whoever holds it is doing the same work, and
   looks at the history again when it lets go, so a chapter that became due
-  while it held the lease is still closed and summarised. See
+  while it held the lease is still closed and summarised. That look finds
+  the turn the refused keeper was told about, because a turn's end is heard
+  only after it has committed. See
   [Context](context.md#chapters).
 - Your own listeners, whenever they react to an agent event with work that
   costs something and must not be done twice: a nightly report, a reflection

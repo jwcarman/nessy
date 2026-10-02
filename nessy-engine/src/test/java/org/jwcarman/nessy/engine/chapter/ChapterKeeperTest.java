@@ -125,45 +125,6 @@ class ChapterKeeperTest {
         };
   }
 
-  private TurnHistories countingReads(AtomicInteger reads) {
-    TurnHistories settled = histories();
-    return (type, agent) -> {
-      TurnHistory inner = settled.forAgent(type, agent);
-      return new TurnHistory() {
-        @Override
-        public List<TurnId> completedAfter(Optional<TurnId> through) {
-          reads.incrementAndGet();
-          return inner.completedAfter(through);
-        }
-
-        @Override
-        public List<Turn> lastTurns(int turns) {
-          throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public List<Turn> turnsFrom(long fromTurn) {
-          throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public List<Turn> lastTurnsAfter(TurnId through, int turns) {
-          throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public long turnsAfter(long through) {
-          throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public List<Turn> turnsBetween(TurnId from, TurnId through) {
-          throw new UnsupportedOperationException();
-        }
-      };
-    };
-  }
-
   private ChapterKeeper keeper(ChapterPolicy policy, Summarizer summarizer, int max) {
     return keeper(policy, summarizer, new InMemoryLeases(), max);
   }
@@ -575,17 +536,7 @@ class ChapterKeeperTest {
           };
       Counting leases = new Counting();
       ChapterKeeper keeper =
-          new ChapterKeeper(
-              TYPE,
-              policy,
-              SAYS_SOMETHING,
-              chapters,
-              leases,
-              histories(),
-              10,
-              TTL,
-              Duration.ofSeconds(5),
-              Duration.ofMillis(5));
+          new ChapterKeeper(TYPE, policy, SAYS_SOMETHING, chapters, leases, histories(), 10, TTL);
       CompletableFuture<Void> first = CompletableFuture.runAsync(() -> keeper.keep(AGENT));
       await().atMost(Duration.ofSeconds(10)).until(() -> cutting.getCount() == 0);
       completeTurns(3);
@@ -810,31 +761,6 @@ class ChapterKeeperTest {
     }
 
     @Test
-    void the_listener_hands_the_turn_that_ended_to_the_wait() {
-      completeTurns(1, 2, 3);
-      AtomicInteger reads = new AtomicInteger();
-      // Turn 3 is never visible, so a keeper that waited for turn 2 or for nothing would cut
-      // at once, while one waiting for turn 3 reads until the deadline.
-      ChapterKeeper keeper =
-          new ChapterKeeper(
-              TYPE,
-              ChapterPolicy.every(2),
-              SAYS_SOMETHING,
-              chapters,
-              new InMemoryLeases(),
-              countingReads(reads),
-              10,
-              TTL,
-              Duration.ofMillis(100),
-              Duration.ofMillis(1));
-      NarrationListener told = ((NarrationListener.Async) keeper.listener()).delegate();
-
-      told.on(TYPE, AGENT, new Narration.TurnEnded(id(99)));
-
-      assertThat(reads).hasValueGreaterThan(2);
-    }
-
-    @Test
     void the_listener_keeps_the_agent_whose_turn_ended_on_this_type() {
       NarrationListener listener = keeper().listener();
 
@@ -875,119 +801,6 @@ class ChapterKeeperTest {
       told.on(TYPE, AGENT, new Narration.TurnEnded(id(2)));
 
       assertThat(asked).containsExactly(chapter(1, 2));
-    }
-  }
-
-  @Nested
-  @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
-  class Waiting_for_the_turn_that_ended {
-
-    private static final Duration POLL = Duration.ofMillis(1);
-
-    /** Shows the newest turn only from its {@code visibleAtRead}th read of the history onward. */
-    private TurnHistories lateHistories(long newest, int visibleAtRead, AtomicInteger reads) {
-      TurnHistories settled = histories();
-      return (type, agent) ->
-          new TurnHistory() {
-            @Override
-            public List<TurnId> completedAfter(Optional<TurnId> through) {
-              boolean visible = reads.incrementAndGet() >= visibleAtRead;
-              return settled.forAgent(type, agent).completedAfter(through).stream()
-                  .filter(turn -> visible || turn.value() != newest)
-                  .toList();
-            }
-
-            @Override
-            public List<Turn> lastTurns(int turns) {
-              throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public List<Turn> turnsFrom(long fromTurn) {
-              throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public List<Turn> lastTurnsAfter(TurnId through, int turns) {
-              throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public long turnsAfter(long through) {
-              throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public List<Turn> turnsBetween(TurnId from, TurnId through) {
-              throw new UnsupportedOperationException();
-            }
-          };
-    }
-
-    private ChapterKeeper keeper(TurnHistories seen, Duration wait) {
-      return new ChapterKeeper(
-          TYPE,
-          ChapterPolicy.every(3),
-          SAYS_SOMETHING,
-          chapters,
-          new InMemoryLeases(),
-          seen,
-          10,
-          TTL,
-          wait,
-          POLL);
-    }
-
-    @Test
-    void a_turn_that_becomes_visible_late_is_cut_in_the_same_call() {
-      completeTurns(1, 2, 3);
-      AtomicInteger reads = new AtomicInteger();
-
-      keeper(lateHistories(3, 3, reads), Duration.ofSeconds(10)).keepAfter(AGENT, id(3));
-
-      assertThat(chapters.summaries(TYPE, AGENT))
-          .extracting(Summary::chapter)
-          .containsExactly(chapter(1, 3));
-      assertThat(reads).hasValueGreaterThanOrEqualTo(3);
-    }
-
-    @Test
-    void a_turn_that_never_appears_is_given_up_on_at_the_deadline_and_what_is_visible_is_cut() {
-      completeTurns(1, 2, 3);
-      AtomicInteger reads = new AtomicInteger();
-      ChapterKeeper keeper =
-          new ChapterKeeper(
-              TYPE,
-              open -> ids(2),
-              SAYS_SOMETHING,
-              chapters,
-              new InMemoryLeases(),
-              lateHistories(3, Integer.MAX_VALUE, reads),
-              10,
-              TTL,
-              Duration.ofMillis(50),
-              POLL);
-
-      keeper.keepAfter(AGENT, id(3));
-
-      assertThat(chapters.summaries(TYPE, AGENT))
-          .extracting(Summary::chapter)
-          .containsExactly(chapter(1, 2));
-      assertThat(reads).hasValueGreaterThan(1);
-    }
-
-    @Test
-    void a_turn_already_inside_a_closed_chapter_is_not_waited_for() {
-      completeTurns(1, 2, 3);
-      chapters.append(TYPE, AGENT, Optional.empty(), List.of(chapter(1, 3)));
-      AtomicInteger reads = new AtomicInteger();
-
-      keeper(lateHistories(3, Integer.MAX_VALUE, reads), Duration.ofSeconds(10))
-          .keepAfter(AGENT, id(2));
-
-      // The cut reads the open turns once and the look after it at most once; waiting would have
-      // read at least once more first.
-      assertThat(reads.get()).isLessThan(3);
     }
   }
 

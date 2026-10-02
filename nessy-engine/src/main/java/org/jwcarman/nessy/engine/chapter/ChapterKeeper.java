@@ -69,20 +69,18 @@ import org.slf4j.LoggerFactory;
  * chapter with no summary needs no look: the chapters still to be summarised are read afresh before
  * each summary, so one cut meanwhile is picked up. A summary that failed in this pass is not tried
  * again in it, a policy that closes nothing is not asked again over the same turns, and a round
- * limit stands behind both. This is enough because a turn is visible in the history before its
- * keeper asks for the lease (see below), so a keeper that was refused was refused while another
- * still held the lease, and the holder looks again only after letting go, which is after that
- * refusal, so it sees the turn. That holds for a turn the wait below found; a keeper that gave up
- * waiting, or was asked to keep with no turn named, may read too early, and the next turn's end
- * keeps what it missed. Nothing is kept in memory between passes, so this holds when the holder is
- * on another node.
+ * limit stands behind both. This is enough because a turn is committed before its end is narrated
+ * (see below), so a turn the keeper is told about is already in the history when it asks for the
+ * lease: a keeper that was refused was refused while another still held the lease, and the holder
+ * looks again only after letting go, which is after that refusal, so it sees the turn. A keeper
+ * asked to keep with no turn named reads whatever is there, and the next turn's end keeps what it
+ * missed. Nothing is kept in memory between passes, so this holds when the holder is on another
+ * node.
  *
- * <p><b>Waiting for the turn it was told about.</b> A turn's end is announced before the store that
- * holds it has committed: both doors narrate inside the lock that writes the turn, which on a
- * database is the transaction. The keeper runs on a thread of its own and could read first and not
- * see the turn it was told ended, leaving it for the next turn's end. So the listener waits,
- * briefly and with a deadline, for that turn to be visible before it cuts, and cuts with what is
- * visible if the deadline passes.
+ * <p><b>The turn it was told about is already committed.</b> Both doors tell their listeners about
+ * a step's events only after the step has committed, so the keeper, which runs on a thread of its
+ * own, never hears of a turn's end before the history can show the turn. It does not wait for the
+ * turn to appear; it reads, and the turn is there.
  */
 public final class ChapterKeeper {
 
@@ -91,12 +89,6 @@ public final class ChapterKeeper {
 
   /** How long a lease is believed held when the caller has no better figure. */
   public static final Duration DEFAULT_LEASE_TTL = Duration.ofMinutes(2);
-
-  /** The longest the listener waits for the turn it was told about to become visible. */
-  private static final Duration VISIBILITY_WAIT = Duration.ofSeconds(2);
-
-  /** How often the listener looks again while it waits. */
-  private static final Duration VISIBILITY_POLL = Duration.ofMillis(25);
 
   /** A backstop on how often one pass goes round again; each round needs new work to happen. */
   private static final int MAX_ROUNDS = 8;
@@ -111,8 +103,6 @@ public final class ChapterKeeper {
   private final TurnHistories histories;
   private final int maxChapterLength;
   private final Duration leaseTtl;
-  private final Duration visibilityWait;
-  private final Duration visibilityPoll;
 
   public ChapterKeeper(
       AgentType agentType,
@@ -123,31 +113,6 @@ public final class ChapterKeeper {
       TurnHistories histories,
       int maxChapterLength,
       Duration leaseTtl) {
-    this(
-        agentType,
-        policy,
-        summarizer,
-        chapters,
-        leases,
-        histories,
-        maxChapterLength,
-        leaseTtl,
-        VISIBILITY_WAIT,
-        VISIBILITY_POLL);
-  }
-
-  /** As above, with the wait for a just-ended turn set, so a test need not wait two seconds. */
-  ChapterKeeper(
-      AgentType agentType,
-      ChapterPolicy policy,
-      Summarizer summarizer,
-      Chapters chapters,
-      Leases leases,
-      TurnHistories histories,
-      int maxChapterLength,
-      Duration leaseTtl,
-      Duration visibilityWait,
-      Duration visibilityPoll) {
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.policy = Objects.requireNonNull(policy, "policy must not be null");
     this.summarizer = Objects.requireNonNull(summarizer, "summarizer must not be null");
@@ -163,53 +128,13 @@ public final class ChapterKeeper {
     }
     this.maxChapterLength = maxChapterLength;
     this.leaseTtl = leaseTtl;
-    this.visibilityWait = Objects.requireNonNull(visibilityWait, "visibilityWait must not be null");
-    this.visibilityPoll = Objects.requireNonNull(visibilityPoll, "visibilityPoll must not be null");
   }
 
   /** The listener to attach to a harness: hears this type's turns end, on a thread of its own. */
   public NarrationListener listener() {
     return NarrationListener.of(
-            c ->
-                c.agentType(agentType)
-                    .onTurnEnded((_, agentId, ended) -> keepAfter(agentId, ended.turn())))
+            c -> c.agentType(agentType).onTurnEnded((_, agentId, _) -> keep(agentId)))
         .async();
-  }
-
-  /**
-   * Waits for the turn that ended to be visible in the agent's history, then keeps. A turn already
-   * inside a closed chapter is visible by definition and is not waited for. If the deadline passes
-   * the keeper carries on with what is visible.
-   */
-  void keepAfter(AgentId agentId, TurnId ended) {
-    Objects.requireNonNull(agentId, "agentId must not be null");
-    Objects.requireNonNull(ended, "ended must not be null");
-    Optional<TurnId> closed = chapters.closedThrough(agentType, agentId);
-    if (closed.isEmpty() || ended.value() > closed.get().value()) {
-      awaitVisible(agentId, ended, closed);
-    }
-    keep(agentId);
-  }
-
-  private void awaitVisible(AgentId agentId, TurnId ended, Optional<TurnId> closed) {
-    long deadline = System.nanoTime() + visibilityWait.toNanos();
-    while (!histories.forAgent(agentType, agentId).completedAfter(closed).contains(ended)) {
-      if (System.nanoTime() >= deadline) {
-        LOG.debug(
-            "[{}] turn {} of agent {} was not visible after {}; keeping what is",
-            agentType.value(),
-            ended,
-            agentId,
-            visibilityWait);
-        return;
-      }
-      try {
-        Thread.sleep(visibilityPoll);
-      } catch (InterruptedException _) {
-        Thread.currentThread().interrupt();
-        return;
-      }
-    }
   }
 
   /**
