@@ -45,7 +45,6 @@ import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.StateSource;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPrompt;
-import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalEnricher;
@@ -54,6 +53,7 @@ import org.jwcarman.nessy.api.tool.ApproverConfig;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.engine.chapter.ChapterSettings;
+import org.jwcarman.nessy.engine.inference.Instructions;
 import org.jwcarman.nessy.engine.observability.ObservedApprover;
 import org.jwcarman.nessy.engine.observability.ObservedTool;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
@@ -89,7 +89,8 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
   private final JsonSchemaGenerator schemas;
 
   private final AgentType agentType;
-  private SystemPromptSource systemPrompt;
+  private SystemPrompt systemPrompt;
+  private final Instructions instructions = new Instructions();
   private InputRenderer<I> renderer = InputRenderer.asString();
   private BacklogPolicy<I> policy = BacklogPolicy.keepAll();
 
@@ -149,12 +150,13 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
 
   @Override
   public DefaultQueuedHarnessConfig<I> systemPrompt(String prompt) {
-    return systemPrompt(SystemPromptSource.constant(new SystemPrompt(prompt)));
+    this.systemPrompt = new SystemPrompt(prompt);
+    return this;
   }
 
   @Override
-  public DefaultQueuedHarnessConfig<I> systemPrompt(SystemPromptSource source) {
-    this.systemPrompt = source;
+  public DefaultQueuedHarnessConfig<I> instructions(String text) {
+    instructions.add(text);
     return this;
   }
 
@@ -408,8 +410,8 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
    * Required, and deliberately so. An agent without one works perfectly and does the wrong job: a
    * generic assistant wearing this agent type's name, with nothing in the logs to say so.
    */
-  SystemPromptSource requiredSystemPrompt() {
-    return Objects.requireNonNull(systemPrompt, "systemPrompt must be set");
+  SystemPrompt requiredSystemPrompt() {
+    return instructions.after(Objects.requireNonNull(systemPrompt, "systemPrompt must be set"));
   }
 
   static final class Inference implements InferenceConfig {

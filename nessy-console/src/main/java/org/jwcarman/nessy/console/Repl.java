@@ -97,7 +97,7 @@ public final class Repl {
           factory.<String>create(
               config.type(),
               h -> {
-                h.systemPrompt(config.systemPrompt())
+                h.systemPrompt(config.systemPrompt().value())
                     .inputRenderer(said -> List.of(new Block.Text(said)))
                     .inference(in -> in.model(model).maxTokens(config.maxTokens()))
                     .listener(narration);

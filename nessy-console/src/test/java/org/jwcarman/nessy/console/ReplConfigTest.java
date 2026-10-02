@@ -40,7 +40,6 @@ import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.StateSource;
 import org.jwcarman.nessy.api.Summarizer;
-import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalEnricher;
@@ -101,8 +100,7 @@ class ReplConfigTest {
     @Test
     void a_supplied_system_prompt_is_the_one_used() {
       config.systemPrompt("You are terse.");
-      assertThat(config.systemPrompt().forAgent(new AgentId(UUID.randomUUID())).value())
-          .isEqualTo("You are terse.");
+      assertThat(config.systemPrompt().value()).isEqualTo("You are terse.");
     }
 
     @Test
@@ -245,7 +243,7 @@ class ReplConfigTest {
       }
 
       @Override
-      public DirectHarnessConfig<String> systemPrompt(SystemPromptSource source) {
+      public DirectHarnessConfig<String> instructions(String text) {
         return this;
       }
 

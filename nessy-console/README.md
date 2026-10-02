@@ -69,7 +69,7 @@ prompt is a complete program.
 | `prompt(String)` | `"> "` |
 | `exitOn(String...)` | `exit`, `quit`, `/exit`, `/quit`, any case (end of input always works) |
 | `farewell(String)` | nothing printed |
-| `systemPrompt(String)` / `systemPrompt(SystemPromptSource)` | a generic assistant |
+| `systemPrompt(String)` | a generic assistant |
 | `tool(Tool)` / `tool(Tool, binding)` | none |
 | `agent(AgentType)` | `chat` |
 | `id(AgentId)` | a freshly minted UUIDv7 each launch; pass one to resume that conversation |

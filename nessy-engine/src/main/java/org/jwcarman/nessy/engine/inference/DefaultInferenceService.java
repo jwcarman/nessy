@@ -20,7 +20,7 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Narrator;
-import org.jwcarman.nessy.api.SystemPromptSource;
+import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
@@ -33,7 +33,7 @@ public class DefaultInferenceService implements InferenceService {
 
   private final InferenceContextAssembler assembler;
   private final InferenceProvider provider;
-  private final SystemPromptSource systemPrompt;
+  private final SystemPrompt systemPrompt;
 
   /**
    * The same offer on every call of this agent type. Varying what is on offer mid-conversation
@@ -55,7 +55,7 @@ public class DefaultInferenceService implements InferenceService {
   public DefaultInferenceService(
       InferenceContextAssembler assembler,
       InferenceProvider provider,
-      SystemPromptSource systemPrompt,
+      SystemPrompt systemPrompt,
       List<ToolOffer> tools,
       Narrator narrator,
       Optional<JsonSchema> outputSchema) {
@@ -74,11 +74,9 @@ public class DefaultInferenceService implements InferenceService {
 
   @Override
   public InferenceResult infer(InferenceInvocation invocation) {
-    // Resolved here, on the dispatcher's thread and off the agent's row lock, so a prompt
-    // that needs to look something up may.
     InferenceRequest request =
         new InferenceRequest(
-            systemPrompt.forAgent(invocation.agentId()),
+            systemPrompt,
             assembler.assemble(invocation),
             // The same tools, and a request that says to answer rather than call. Left to the
             // adapter rather than decided here: dropping the offers would throw away a cached

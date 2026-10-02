@@ -15,9 +15,11 @@
  */
 package org.jwcarman.nessy.prompt;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * What a template is rendered with: a name, answered or not. Asked by name rather than handed a
@@ -37,5 +39,22 @@ public interface PromptVariables {
 
   static PromptVariables none() {
     return _ -> Optional.empty();
+  }
+
+  /**
+   * One name, answered by asking {@code value}: a date, a counter, a setting read late. A template
+   * is rendered once, when a harness is built, so it is asked once for each hole that names it.
+   */
+  static PromptVariables supplied(String name, Supplier<String> value) {
+    Objects.requireNonNull(name, "name must not be null");
+    Objects.requireNonNull(value, "value must not be null");
+    return asked -> asked.equals(name) ? Optional.ofNullable(value.get()) : Optional.empty();
+  }
+
+  /** The first with an answer wins, in the order given. */
+  static PromptVariables firstOf(List<PromptVariables> variables) {
+    List<PromptVariables> ordered = List.copyOf(variables);
+    return name ->
+        ordered.stream().map(each -> each.variable(name)).flatMap(Optional::stream).findFirst();
   }
 }

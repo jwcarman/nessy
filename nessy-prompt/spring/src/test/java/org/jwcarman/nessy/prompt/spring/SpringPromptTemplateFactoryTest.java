@@ -18,13 +18,11 @@ package org.jwcarman.nessy.prompt.spring;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.prompt.PromptTemplate;
-import org.jwcarman.nessy.prompt.PromptVariableSource;
 import org.jwcarman.nessy.prompt.PromptVariables;
 import org.jwcarman.nessy.prompt.TemplatedSystemPrompt;
 import org.springframework.mock.env.MockEnvironment;
@@ -80,12 +78,13 @@ class SpringPromptTemplateFactoryTest {
   void the_environment_fills_holes() {
     MockEnvironment environment = new MockEnvironment().withProperty("app.persona", "a butler");
     var prompt =
-        TemplatedSystemPrompt.of(
+        TemplatedSystemPrompt.render(
             engine,
             "You are ${app.persona}; today is ${today}.",
-            EnvironmentVariables.of(environment),
-            PromptVariableSource.supplied("today", () -> "Tuesday"));
-    assertThat(prompt.forAgent(new AgentId(UUID.randomUUID())).value())
-        .isEqualTo("You are a butler; today is Tuesday.");
+            PromptVariables.firstOf(
+                List.of(
+                    EnvironmentVariables.of(environment),
+                    PromptVariables.supplied("today", () -> "Tuesday"))));
+    assertThat(prompt.value()).isEqualTo("You are a butler; today is Tuesday.");
   }
 }

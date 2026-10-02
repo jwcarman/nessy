@@ -16,20 +16,17 @@
 package org.jwcarman.nessy.spring.boot.prompt;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.SystemPromptSource;
+import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.prompt.PromptTemplateFactory;
-import org.jwcarman.nessy.prompt.PromptVariableSource;
+import org.jwcarman.nessy.prompt.PromptVariables;
 import org.jwcarman.nessy.prompt.mustache.MustachePromptTemplateFactory;
 import org.jwcarman.nessy.prompt.spring.SpringPromptTemplateFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -39,8 +36,6 @@ import org.springframework.context.annotation.Configuration;
 
 @DisplayName("The system prompt as a template")
 class PromptAutoConfigurationTest {
-
-  private static final AgentId ANY = new AgentId(UUID.randomUUID());
 
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
@@ -59,7 +54,7 @@ class PromptAutoConfigurationTest {
               assertThat(context)
                   .getBean(PromptTemplateFactory.class)
                   .isInstanceOf(SpringPromptTemplateFactory.class);
-              assertThat(context.getBean(SystemPromptSource.class).forAgent(ANY).value())
+              assertThat(context.getBean(SystemPrompt.class).value())
                   .isEqualTo("You are a lighthouse keeper.");
             });
   }
@@ -67,8 +62,8 @@ class PromptAutoConfigurationTest {
   @Configuration(proxyBeanMethods = false)
   static class ASource {
     @Bean
-    PromptVariableSource persona() {
-      return PromptVariableSource.of(Map.of("app.persona", "a butler"));
+    PromptVariables persona() {
+      return PromptVariables.of(Map.of("app.persona", "a butler"));
     }
   }
 
@@ -84,7 +79,7 @@ class PromptAutoConfigurationTest {
         .withPropertyValues("nessy.system-prompt-file=file:" + prompt, "app.persona=nobody")
         .run(
             context ->
-                assertThat(context.getBean(SystemPromptSource.class).forAgent(ANY).value())
+                assertThat(context.getBean(SystemPrompt.class).value())
                     .isEqualTo("You are a butler."));
   }
 
@@ -101,23 +96,24 @@ class PromptAutoConfigurationTest {
               assertThat(context)
                   .getBean(PromptTemplateFactory.class)
                   .isInstanceOf(MustachePromptTemplateFactory.class);
-              assertThat(context.getBean(SystemPromptSource.class).forAgent(ANY).value())
+              assertThat(context.getBean(SystemPrompt.class).value())
                   .isEqualTo("You are a lighthouse keeper.");
             });
   }
 
   @Test
-  @DisplayName("a hole nothing fills fails the render, loudly, not the startup")
-  void an_unfilled_hole_fails_at_render() {
+  @DisplayName("a hole nothing fills fails the startup, loudly, since the prompt renders once")
+  void an_unfilled_hole_fails_at_startup() {
     runner
         .withPropertyValues("nessy.system-prompt=You are ${nobody.set.this}.")
         .run(
-            context -> {
-              SystemPromptSource prompt = context.getBean(SystemPromptSource.class);
-              assertThatThrownBy(() -> prompt.forAgent(ANY))
-                  .isInstanceOf(IllegalArgumentException.class)
-                  .hasMessageContaining("nobody.set.this");
-            });
+            context ->
+                assertThat(context)
+                    .hasFailed()
+                    .getFailure()
+                    .rootCause()
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("nobody.set.this"));
   }
 
   @Test
@@ -126,6 +122,6 @@ class PromptAutoConfigurationTest {
     new ApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(PromptAutoConfiguration.class))
         .withPropertyValues("nessy.system-prompt=plain")
-        .run(context -> assertThat(context).doesNotHaveBean(SystemPromptSource.class));
+        .run(context -> assertThat(context).doesNotHaveBean(SystemPrompt.class));
   }
 }

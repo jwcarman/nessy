@@ -20,6 +20,11 @@ import java.util.Objects;
 /**
  * What an agent type is told about itself, before anything it is told about the world.
  *
+ * <p>Fixed for the life of a harness. It is the head of every request, and a provider caches a
+ * request's leading text, so a change in it invalidates everything cached for every agent of the
+ * type. What varies by agent belongs in a {@link StateSource}; what varies by the moment, in an
+ * {@link AmbientSource}.
+ *
  * <p>Blank is rejected rather than treated as absent. An application that wants no system prompt
  * says so by not setting one; a blank string is somebody's template that came out empty, and
  * sending it is worse than sending nothing -- some providers reject an empty system message, and

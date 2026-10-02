@@ -73,6 +73,20 @@ public interface HarnessConfig<SELF extends HarnessConfig<SELF>> {
   <T> SELF tool(Tool<T> tool);
 
   /**
+   * Adds a section to what this agent type is told about itself. Fixed when the harness is built:
+   * the system prompt, then each section in the order it was added, separated by blank lines.
+   *
+   * <p>For a module that has something to tell every agent of the type, such as how to use the
+   * tools it adds. Fixed for the life of the harness for the same reason the system prompt is: it
+   * is the head of every request, so a change in it invalidates everything a provider has cached
+   * for every agent of the type. What varies by agent belongs in a {@link StateSource}, and what
+   * varies by the moment in an {@link AmbientSource}.
+   *
+   * @throws IllegalArgumentException if the text is blank
+   */
+  SELF instructions(String text);
+
+  /**
    * What was recalled because it bears on the turn being answered, asked afresh on every call.
    *
    * <p>Never written into the story.

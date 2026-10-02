@@ -37,9 +37,15 @@ import org.jwcarman.nessy.api.tool.ToolConfig;
  */
 public interface DirectHarnessConfig<I> extends HarnessConfig<DirectHarnessConfig<I>> {
 
+  /**
+   * What this agent type is told about itself. Fixed for the life of the harness: set once, here,
+   * and never asked again.
+   *
+   * <p>It is the head of every request, and a provider caches a request's leading text, so a change
+   * in it invalidates everything cached for every agent of the type. What varies by agent belongs
+   * in a {@link StateSource}; what varies by the moment, in an {@link AmbientSource}.
+   */
   DirectHarnessConfig<I> systemPrompt(String prompt);
-
-  DirectHarnessConfig<I> systemPrompt(SystemPromptSource source);
 
   /** How what a caller hands in becomes what the model reads. */
   DirectHarnessConfig<I> inputRenderer(InputRenderer<I> renderer);

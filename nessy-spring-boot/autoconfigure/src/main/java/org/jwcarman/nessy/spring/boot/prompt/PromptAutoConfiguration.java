@@ -18,9 +18,9 @@ package org.jwcarman.nessy.spring.boot.prompt;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import org.jwcarman.nessy.api.SystemPromptSource;
+import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.prompt.PromptTemplateFactory;
-import org.jwcarman.nessy.prompt.PromptVariableSource;
+import org.jwcarman.nessy.prompt.PromptVariables;
 import org.jwcarman.nessy.prompt.TemplatedSystemPrompt;
 import org.jwcarman.nessy.spring.boot.NessyAutoConfiguration;
 import org.jwcarman.nessy.spring.boot.NessyProperties;
@@ -35,9 +35,13 @@ import org.springframework.core.env.Environment;
 
 /**
  * {@code nessy.system-prompt} (or {@code -file}) as a template, when an engine is there: rendered
- * per agent from every {@link PromptVariableSource} bean, in order, and then the {@code
- * Environment} -- so {@code ${app.persona}} in the prompt is whatever the properties say. An
- * application that declares its own {@link SystemPromptSource} keeps it.
+ * once, from every {@link PromptVariables} bean, in order, and then the {@code Environment} -- so
+ * {@code ${app.persona}} in the prompt is whatever the properties say. An application that declares
+ * its own {@link SystemPrompt} keeps it.
+ *
+ * <p>Rendered once because a system prompt is fixed for the life of a harness: it is the head of
+ * every request, and what varies by agent or by the moment belongs in a state or ambient source. A
+ * hole nothing fills therefore fails the application's startup.
  *
  * <p>Note that Boot resolves {@code ${...}} inside an inline {@code nessy.system-prompt} property
  * when it binds it, before any engine sees it; a prompt file reaches the engine untouched.
@@ -51,15 +55,15 @@ import org.springframework.core.env.Environment;
 public class PromptAutoConfiguration {
 
   @Bean
-  @ConditionalOnMissingBean(SystemPromptSource.class)
-  public SystemPromptSource nessySystemPrompt(
+  @ConditionalOnMissingBean(SystemPrompt.class)
+  public SystemPrompt nessySystemPrompt(
       PromptTemplateFactory engine,
       NessyProperties properties,
-      ObjectProvider<PromptVariableSource> sources,
+      ObjectProvider<PromptVariables> sources,
       Environment environment) {
-    List<PromptVariableSource> ordered = new ArrayList<>(sources.orderedStream().toList());
-    ordered.add((_, name) -> Optional.ofNullable(environment.getProperty(name)));
-    return TemplatedSystemPrompt.of(
-        engine.compile(properties.resolveSystemPrompt()), PromptVariableSource.firstOf(ordered));
+    List<PromptVariables> ordered = new ArrayList<>(sources.orderedStream().toList());
+    ordered.add(name -> Optional.ofNullable(environment.getProperty(name)));
+    return TemplatedSystemPrompt.render(
+        engine.compile(properties.resolveSystemPrompt()), PromptVariables.firstOf(ordered));
   }
 }

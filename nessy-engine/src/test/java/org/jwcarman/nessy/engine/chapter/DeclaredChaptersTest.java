@@ -280,6 +280,11 @@ class DeclaredChaptersTest {
       }
 
       @Override
+      public Recording instructions(String text) {
+        return this;
+      }
+
+      @Override
       public Recording memory(MemorySource source) {
         return this;
       }

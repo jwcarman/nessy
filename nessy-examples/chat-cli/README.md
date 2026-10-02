@@ -21,7 +21,8 @@ that is about THIS program: what it is for, and what it can do.
 
 - **A tool worth having.** `days_until` counts days to a date: something a model
   is bad at and a tool is trivially good at.
-- **A fact a tool could not fix.** The date is in the system prompt. There was a
+- **A fact a tool could not fix.** The date is an ambient source, given to the model with
+  every message. There was a
   `today` tool here first and it did not help: asked about Christmas shopping,
   the model named the wrong year and reasoned from it *without calling anything
   to check*. A tool only works if the model volunteers to use it, and that is

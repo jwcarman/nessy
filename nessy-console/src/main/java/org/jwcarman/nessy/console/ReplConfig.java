@@ -29,7 +29,6 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.SystemPrompt;
-import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
 
@@ -47,9 +46,8 @@ public final class ReplConfig {
   private final List<String> granted = new ArrayList<>();
 
   private String farewell = "";
-  private SystemPromptSource systemPrompt =
-      SystemPromptSource.constant(
-          new SystemPrompt("You are a helpful assistant in someone's terminal."));
+  private SystemPrompt systemPrompt =
+      new SystemPrompt("You are a helpful assistant in someone's terminal.");
   private AgentType type = new AgentType("chat");
   private AgentId agentId = newConversation();
   private int maxTokens = 4096;
@@ -98,16 +96,14 @@ public final class ReplConfig {
     return this;
   }
 
+  /**
+   * What the assistant is told about itself. Fixed for the life of the console: it is the head of
+   * every request, and a provider caches a request's leading text, so it cannot change from call to
+   * call.
+   */
   public ReplConfig systemPrompt(String systemPrompt) {
-    return systemPrompt(
-        SystemPromptSource.constant(
-            new SystemPrompt(
-                Objects.requireNonNull(systemPrompt, "systemPrompt must not be null"))));
-  }
-
-  /** A prompt that is decided per call -- a template, say. */
-  public ReplConfig systemPrompt(SystemPromptSource systemPrompt) {
-    this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
+    this.systemPrompt =
+        new SystemPrompt(Objects.requireNonNull(systemPrompt, "systemPrompt must not be null"));
     return this;
   }
 
@@ -197,7 +193,7 @@ public final class ReplConfig {
     return farewell;
   }
 
-  SystemPromptSource systemPrompt() {
+  SystemPrompt systemPrompt() {
     return systemPrompt;
   }
 

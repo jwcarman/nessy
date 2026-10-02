@@ -42,7 +42,6 @@ import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.StateSource;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPrompt;
-import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalEnricher;
@@ -51,6 +50,7 @@ import org.jwcarman.nessy.api.tool.ApproverConfig;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.engine.chapter.ChapterSettings;
+import org.jwcarman.nessy.engine.inference.Instructions;
 import org.jwcarman.nessy.engine.observability.ObservedApprover;
 import org.jwcarman.nessy.engine.observability.ObservedTool;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
@@ -81,8 +81,8 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
 
   private final AgentType agentType;
   private final ObservationRegistry observations;
-  private SystemPromptSource systemPrompt =
-      SystemPromptSource.constant(new SystemPrompt("You are a helpful assistant."));
+  private SystemPrompt systemPrompt = new SystemPrompt("You are a helpful assistant.");
+  private final Instructions instructions = new Instructions();
   private InputRenderer<I> renderer = InputRenderer.asString();
   private final List<NarrationListener> listeners = new ArrayList<>();
   private final List<ToolRequest<?>> tools = new ArrayList<>();
@@ -109,12 +109,13 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
 
   @Override
   public DirectHarnessConfig<I> systemPrompt(String prompt) {
-    return systemPrompt(SystemPromptSource.constant(new SystemPrompt(prompt)));
+    this.systemPrompt = new SystemPrompt(prompt);
+    return this;
   }
 
   @Override
-  public DirectHarnessConfig<I> systemPrompt(SystemPromptSource source) {
-    this.systemPrompt = Objects.requireNonNull(source, "system prompt must not be null");
+  public DirectHarnessConfig<I> instructions(String text) {
+    instructions.add(text);
     return this;
   }
 
@@ -195,8 +196,9 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     return agentType;
   }
 
-  SystemPromptSource systemPromptSource() {
-    return systemPrompt;
+  /** The prompt and every section added, as the one text this harness will send. */
+  SystemPrompt assembledSystemPrompt() {
+    return instructions.after(systemPrompt);
   }
 
   InputRenderer<I> renderer() {

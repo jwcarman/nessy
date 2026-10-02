@@ -23,6 +23,7 @@ import java.util.UUID;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.console.ConsoleApprover;
@@ -34,9 +35,6 @@ import org.jwcarman.nessy.memory.notebook.NotebookTools;
 import org.jwcarman.nessy.planning.JdbcPlans;
 import org.jwcarman.nessy.planning.PlanTools;
 import org.jwcarman.nessy.planning.Plans;
-import org.jwcarman.nessy.prompt.PromptVariableSource;
-import org.jwcarman.nessy.prompt.TemplatedSystemPrompt;
-import org.jwcarman.nessy.prompt.spring.SpringPromptTemplateFactory;
 import org.jwcarman.nessy.spring.boot.prompt.PromptAutoConfiguration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
@@ -59,7 +57,8 @@ import org.springframework.context.annotation.Bean;
 // The starter builds the direct-door factory over the JDBC backend and registers every
 // InferenceProvider bean by name; nessy.provider and nessy.model say which one answers. The prompt
 // auto-configuration is excluded because it insists on nessy.system-prompt, and this application
-// states its prompt in code, as a template filled in per call.
+// states its prompt in code, fixed for the life of the harness; the date, which changes, is an
+// ambient source.
 @SpringBootApplication(exclude = PromptAutoConfiguration.class)
 public class Chat {
 
@@ -69,8 +68,9 @@ public class Chat {
       """
       You are a concise, friendly assistant living in someone's terminal. Keep answers short \
       unless asked for more.
-      Today is ${today}. When a question turns on counting days, use the days_until tool rather \
-      than working it out yourself -- and never assume the year.
+      When a question turns on counting days, use the days_until tool rather \
+      than working it out yourself -- and never assume the year. The date is given to you with \
+      every message.
         When you are told something worth keeping -- a preference, a name, a standing fact -- \
         remember it as a note. Your notes appear as an index every time; read one in full with \
         the recall tool when it is relevant, and change one with revise using the id from that \
@@ -136,12 +136,7 @@ public class Chat {
                   .banner("nessy chat -- type /exit or press Ctrl-D to leave")
                   .prompt("> ")
                   .farewell("bye.")
-                  .systemPrompt(
-                      TemplatedSystemPrompt.of(
-                          new SpringPromptTemplateFactory(),
-                          SYSTEM_PROMPT,
-                          PromptVariableSource.supplied(
-                              "today", () -> LocalDate.now(clock).toString())))
+                  .systemPrompt(SYSTEM_PROMPT)
                   .agent(TYPE)
                   // Two sources of background: the notebook's index and the current plan. Both
                   // are ambient, so they are asked afresh every call and never written to the
@@ -152,7 +147,8 @@ public class Chat {
                               in ->
                                   in.context(
                                       ctx ->
-                                          ctx.ambient(NotebookTools.index(notebook))
+                                          ctx.ambient(today(clock))
+                                              .ambient(NotebookTools.index(notebook))
                                               .ambient(PlanTools.plan(plans)))))
                   .tool(new DaysUntilTool())
                   .tool(NotebookTools.remember(notebook))
@@ -206,6 +202,17 @@ public class Chat {
       return Optional.empty();
     }
     return Optional.of(new AgentId(UUID.fromString(resume.strip())));
+  }
+
+  /**
+   * The date, asked afresh every call. It is ambient rather than part of the system prompt because
+   * a system prompt is fixed for the life of the harness, and a date in it would change the head of
+   * every request each day and discard what the provider had cached.
+   */
+  static AmbientSource today(Clock clock) {
+    return AmbientSource.of(
+        source ->
+            source.kind("clock").text(_ -> Optional.of("Today is " + LocalDate.now(clock) + ".")));
   }
 
   @Bean

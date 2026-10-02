@@ -21,11 +21,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentId;
 
 /**
  * The whole application in one call, when there is nothing to talk to.
@@ -99,15 +97,7 @@ class ReplTest {
     void the_customizer_runs_and_then_the_same_failure_appears() {
       List<String> customizedWith = new ArrayList<>();
 
-      assertThatCode(
-              () ->
-                  Repl.run(
-                      config ->
-                          customizedWith.add(
-                              config
-                                  .systemPrompt()
-                                  .forAgent(new AgentId(UUID.randomUUID()))
-                                  .value())))
+      assertThatCode(() -> Repl.run(config -> customizedWith.add(config.systemPrompt().value())))
           .doesNotThrowAnyException();
 
       assertThat(customizedWith)

@@ -324,7 +324,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
                 new DefaultInferenceService(
                     assembler,
                     provider,
-                    config.systemPromptSource(),
+                    config.assembledSystemPrompt(),
                     tools.offers(),
                     narrator,
                     outputSchema),

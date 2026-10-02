@@ -40,11 +40,15 @@ import org.jwcarman.nessy.api.tool.ToolConfig;
  */
 public interface QueuedHarnessConfig<I> extends HarnessConfig<QueuedHarnessConfig<I>> {
 
-  /** What this agent is, in the same words for every agent of the type. */
+  /**
+   * What this agent type is told about itself. Fixed for the life of the harness: set once, here,
+   * and never asked again.
+   *
+   * <p>It is the head of every request, and a provider caches a request's leading text, so a change
+   * in it invalidates everything cached for every agent of the type. What varies by agent belongs
+   * in a {@link StateSource}; what varies by the moment, in an {@link AmbientSource}.
+   */
   QueuedHarnessConfig<I> systemPrompt(String prompt);
-
-  /** What this agent is, worked out per agent. May do I/O; it runs off the row lock. */
-  QueuedHarnessConfig<I> systemPrompt(SystemPromptSource source);
 
   /**
    * How an input becomes something a model can read.
