@@ -286,9 +286,15 @@ today: a sentence authored by the tool being governed is not a control.
 record ToolCall(CallId id, ToolName name, String action) implements ActionRequest {}
 ```
 
-It is never null and never blank; the record refuses either. It travels wherever the call already
-travels: `EffectOutcome.InferenceRequestedActions`, `AgentCommand.RequestedActions`,
-`AgentEvent.ActionsRequested` and `OutstandingAction`. The fold decides nothing by it.
+It is never null and never blank; the record refuses either. It travels from the handler to the
+event and no further: `EffectOutcome.InferenceRequestedActions`, `AgentCommand.RequestedActions`
+and `AgentEvent.ActionsRequested` carry it. The fold decides nothing by it.
+
+**It is not projected into the agent's state** (James, 2026-10-02: "we just need it in the
+events"). `OutstandingAction`, which is what the state holds for a call that has not finished,
+keeps the call's id and its tool's name and nothing else. Whoever needs the sentence reads it from
+the event, as approval does (§7). The same holds for the result line: it is on the
+`tool-succeeded` event and the state never holds it.
 
 It is written in `InferenceHandler`, when the model's reply is `InferenceResult.Actions`, for each
 `Block.ToolCall` in it. The handler is given the agent type's bound tools (`Tools`) for this. It
