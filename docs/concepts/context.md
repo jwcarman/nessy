@@ -357,6 +357,71 @@ Three things lower it:
   the front of history once.
 - The provider's entry expiring before the next call.
 
+### What caching costs and saves
+
+On Anthropic, a token read from the cache costs a tenth of a fresh one, and
+a token written to a five-minute entry costs a quarter more. Carrying a large
+history that does not change is therefore cheap. What costs money is new text
+entering the request: a tool's result the first time the model is shown it,
+and a summary when it lands.
+
+### Too short to cache
+
+A request shorter than the model's minimum is sent without caching, even
+when marked, and no error is returned. The minimums Anthropic publishes:
+
+| Model | Shortest request that is cached |
+|---|---|
+| Sonnet 5.5, Opus 5.5, Opus 5, Fable 5.1, Fable 5 | 512 tokens |
+| Sonnet 5, Sonnet 4.6, Sonnet 4.5, Opus 4.8 | 1,024 tokens |
+| Opus 4.7 | 2,048 tokens |
+| Haiku 4.5, Opus 4.6, Opus 4.5 | 4,096 tokens |
+
+An agent on Haiku 4.5 whose requests stay under 4,096 tokens pays full price
+on every call, whatever is set. A hit ratio of zero on a small agent is this,
+not a fault.
+
+### Choosing a chapter size
+
+A completed turn is shown whole, tool calls and results included, until its
+chapter is summarised. The chapter size decides how long that is:
+
+- **Smaller chapters** carry old results for fewer calls, at the price of
+  more summary calls, each of which rewrites the front of history once.
+- **Larger chapters** need fewer summaries and carry more on every call.
+
+A summary is cheaper than the turns it replaces: the summarising model is
+shown each tool call as its one-line record, not its result (see
+[The default summary](#the-default-summary)).
+
+How to choose:
+
+- Start with the default, 20.
+- An agent whose tools return large results that it rarely looks at again
+  gains from smaller chapters, such as 10.
+- An agent that mostly talks, with small tool results, gains nothing from
+  smaller chapters but extra summaries.
+- An agent that goes back to earlier results needs chapters long enough to
+  cover that stretch. A result summarised away is fetched again, at full
+  price plus a cache write.
+- Compare sizes on real traffic by total cost, summaries included. Summary
+  calls carry the purpose `summary`; see
+  [Traces and metrics](../guides/observability.md#traces-and-metrics) for
+  the query that splits spend by purpose.
+
+One measured workload, as an illustration: Sonnet 5.5, 38 turns, four tool
+results of about 3,000 tokens each in the first four turns, none needed
+again. Cost is in input-token equivalents (a cached read counts 0.1, a cache
+write 1.25, output 5), summaries included:
+
+| Chapters | Cost | Summary calls |
+|---|---|---|
+| off | 105,300 | 0 |
+| every 20 | 82,100 | 1 |
+| every 10 | 66,900 | 3 |
+
+To raise the size past 30, see [Three numbers](#three-numbers).
+
 ## Where next
 
 - [Memory](memory.md), the sources that supply memory and state, notes and embeddings
