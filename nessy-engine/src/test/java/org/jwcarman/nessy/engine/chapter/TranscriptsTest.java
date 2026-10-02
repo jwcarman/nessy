@@ -155,8 +155,12 @@ class TranscriptsTest {
 
       assertThat(line).startsWith(prefix);
       String shown = line.substring(prefix.length());
-      assertThat(shown).hasSizeLessThanOrEqualTo(255).contains("...").doesNotContain("\n");
-      assertThat(shown).startsWith("line one").endsWith("the end of it");
+      assertThat(shown)
+          .hasSizeLessThanOrEqualTo(255)
+          .contains("...")
+          .doesNotContain("\n")
+          .startsWith("line one")
+          .endsWith("the end of it");
     }
 
     @Test
@@ -179,8 +183,10 @@ class TranscriptsTest {
 
       String rendered = Transcripts.render(List.of(turn));
 
-      assertThat(rendered).isNotBlank();
-      assertThat(rendered).doesNotContain("raw-argument-text").doesNotContain("raw-result-text");
+      assertThat(rendered)
+          .isNotBlank()
+          .doesNotContain("raw-argument-text")
+          .doesNotContain("raw-result-text");
     }
   }
 
@@ -239,8 +245,8 @@ class TranscriptsTest {
               (a message was withdrawn)
               user: third question
               assistant: third answer
-              """);
-      assertThat(rendered).doesNotContain("the-refused-input");
+              """)
+          .doesNotContain("the-refused-input");
     }
 
     @Test

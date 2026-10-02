@@ -185,7 +185,7 @@ public final class ChapterKeeper {
       }
       try {
         Thread.sleep(visibilityPoll);
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
         return;
       }
@@ -295,7 +295,8 @@ public final class ChapterKeeper {
       Attempt<Boolean> attempt =
           leases.tryWithLease(
               LEASE_KIND, agentType, agentId, leaseTtl, () -> summarise(agentId, chapter));
-      if (!attempt.orElse(false)) {
+      boolean goOn = attempt.orElse(false);
+      if (!goOn) {
         return;
       }
     }

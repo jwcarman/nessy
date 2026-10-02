@@ -394,8 +394,7 @@ class AnthropicRequestsTest {
       assertThat(last.get(1).asText().cacheControl()).isEmpty();
       assertThat(last.get(2).asText().cacheControl()).isEmpty();
       var ambientTexts = last.subList(1, 3);
-      assertThat(ambientTexts).isNotEmpty();
-      assertThat(ambientTexts).noneMatch(block -> block.cacheControl().isPresent());
+      assertThat(ambientTexts).isNotEmpty().noneMatch(block -> block.cacheControl().isPresent());
     }
 
     @Test
@@ -1687,8 +1686,8 @@ class AnthropicRequestsTest {
 
       var messages = params(List.of(turn)).messages();
 
-      assertThat(messages).isNotEmpty();
       assertThat(messages)
+          .isNotEmpty()
           .allSatisfy(message -> assertThat(message.content().asBlockParams()).isNotEmpty());
       assertThat(blocksOf(params(List.of(turn)))).noneMatch(ContentBlockParam::isThinking);
     }
@@ -1745,7 +1744,7 @@ class AnthropicRequestsTest {
 
       MessageCreateParams params = thinkingWith(Map.of(pair[0], pair[1]));
 
-      assertThat(params._additionalHeaders().names()).doesNotContain("anthropic-beta");
+      assertThat(params._additionalHeaders().values("anthropic-beta")).isEmpty();
     }
 
     @Test

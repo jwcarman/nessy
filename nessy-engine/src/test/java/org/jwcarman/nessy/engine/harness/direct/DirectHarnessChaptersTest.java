@@ -324,7 +324,7 @@ class DirectHarnessChaptersTest {
           await()
               .atMost(Duration.ofSeconds(2))
               .until(() -> !chapters.summaries(TYPE, agent).isEmpty());
-        } catch (ConditionTimeoutException stillWaiting) {
+        } catch (ConditionTimeoutException _) {
           // Another turn, another chance.
         }
       }

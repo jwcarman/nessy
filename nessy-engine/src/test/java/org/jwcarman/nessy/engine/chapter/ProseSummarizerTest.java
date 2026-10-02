@@ -200,8 +200,11 @@ class ProseSummarizerTest {
 
       String sent =
           Transcripts.text(provider.requests.getFirst().context().activeTurn().input().blocks());
-      assertThat(sent).contains("(a message was withdrawn)").contains("q1").contains("q5");
-      assertThat(sent).doesNotContain("the-refused-input");
+      assertThat(sent)
+          .contains("(a message was withdrawn)")
+          .contains("q1")
+          .contains("q5")
+          .doesNotContain("the-refused-input");
     }
 
     @Test
@@ -302,9 +305,9 @@ class ProseSummarizerTest {
       Story story = new Story(List.of(turn(1)));
       Scripted provider = new Scripted(_ -> answer("Ann owes Bob 12 euros."));
 
-      String record = new ProseSummarizer(story, provider, OPTIONS).summarize(chapter(1, 1));
+      String written = new ProseSummarizer(story, provider, OPTIONS).summarize(chapter(1, 1));
 
-      assertThat(record).isEqualTo("Ann owes Bob 12 euros.");
+      assertThat(written).isEqualTo("Ann owes Bob 12 euros.");
     }
 
     @Test
@@ -312,9 +315,9 @@ class ProseSummarizerTest {
       Story story = new Story(List.of(turn(1)));
       Scripted provider = new Scripted(_ -> answer("  "));
 
-      String record = new ProseSummarizer(story, provider, OPTIONS).summarize(chapter(1, 1));
+      String written = new ProseSummarizer(story, provider, OPTIONS).summarize(chapter(1, 1));
 
-      assertThat(record).isBlank();
+      assertThat(written).isBlank();
     }
   }
 

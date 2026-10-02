@@ -96,6 +96,9 @@ public class JdbcChapters implements Chapters {
        ORDER BY from_turn
       """;
 
+  private static final String TYPE_NOT_NULL = "type must not be null";
+  private static final String AGENT_NOT_NULL = "agent must not be null";
+
   private final JdbcClient jdbc;
 
   public JdbcChapters(JdbcClient jdbc) {
@@ -109,8 +112,8 @@ public class JdbcChapters implements Chapters {
   @Override
   public boolean append(
       AgentType type, AgentId agent, Optional<TurnId> after, List<Chapter> chapters) {
-    Objects.requireNonNull(type, "type must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(type, TYPE_NOT_NULL);
+    Objects.requireNonNull(agent, AGENT_NOT_NULL);
     Objects.requireNonNull(after, "after must not be null");
     Objects.requireNonNull(chapters, "chapters must not be null");
     validate(type, agent, after, chapters);
@@ -198,8 +201,8 @@ public class JdbcChapters implements Chapters {
 
   @Override
   public Optional<TurnId> closedThrough(AgentType type, AgentId agent) {
-    Objects.requireNonNull(type, "type must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(type, TYPE_NOT_NULL);
+    Objects.requireNonNull(agent, AGENT_NOT_NULL);
     return jdbc.sql(SELECT_END)
         .params(type.value(), agent.value())
         .query((rs, _) -> rs.getLong(1))
@@ -210,8 +213,8 @@ public class JdbcChapters implements Chapters {
 
   @Override
   public List<Chapter> unsummarized(AgentType type, AgentId agent) {
-    Objects.requireNonNull(type, "type must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(type, TYPE_NOT_NULL);
+    Objects.requireNonNull(agent, AGENT_NOT_NULL);
     return new ArrayList<>(
         jdbc.sql(UNSUMMARIZED)
             .params(type.value(), agent.value())
@@ -227,8 +230,8 @@ public class JdbcChapters implements Chapters {
 
   @Override
   public List<Summary> summaries(AgentType type, AgentId agent) {
-    Objects.requireNonNull(type, "type must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(type, TYPE_NOT_NULL);
+    Objects.requireNonNull(agent, AGENT_NOT_NULL);
     return jdbc.sql(SUMMARIES)
         .params(type.value(), agent.value(), type.value(), agent.value())
         .query(

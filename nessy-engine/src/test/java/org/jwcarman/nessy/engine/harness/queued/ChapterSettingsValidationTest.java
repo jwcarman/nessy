@@ -71,8 +71,9 @@ class ChapterSettingsValidationTest {
   @Test
   void a_negative_lease_time_is_refused() {
     ContextConfig context = context();
+    Duration negative = Duration.ofSeconds(-1);
 
-    assertThatThrownBy(() -> context.chapterLeaseTtl(Duration.ofSeconds(-1)))
+    assertThatThrownBy(() -> context.chapterLeaseTtl(negative))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("must be positive");
   }

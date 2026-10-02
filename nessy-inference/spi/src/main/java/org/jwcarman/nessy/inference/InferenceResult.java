@@ -60,6 +60,10 @@ public sealed interface InferenceResult {
   /** The same result, with its cost: how an adapter attaches what the vendor counted. */
   InferenceResult withUsage(Usage usage);
 
+  private static <T> List<T> requireBlocks(List<T> blocks) {
+    return Objects.requireNonNull(blocks, "blocks must not be null");
+  }
+
   /**
    * The model stopped and owes nothing.
    *
@@ -73,7 +77,7 @@ public sealed interface InferenceResult {
 
     public Answer {
       Objects.requireNonNull(usage, USAGE_NOT_NULL);
-      Objects.requireNonNull(blocks, "blocks must not be null");
+      blocks = requireBlocks(blocks);
       blocks = List.copyOf(blocks);
     }
 
@@ -164,7 +168,7 @@ public sealed interface InferenceResult {
 
     public Actions {
       Objects.requireNonNull(usage, USAGE_NOT_NULL);
-      Objects.requireNonNull(blocks, "blocks must not be null");
+      blocks = requireBlocks(blocks);
       if (blocks.stream().noneMatch(Block.ToolCall.class::isInstance)) {
         // A request for actions that asks for nothing would move the agent into waiting
         // for work it never requested, and nothing would ever arrive to move it on.
@@ -199,7 +203,7 @@ public sealed interface InferenceResult {
 
     public Truncated {
       Objects.requireNonNull(usage, USAGE_NOT_NULL);
-      Objects.requireNonNull(blocks, "blocks must not be null");
+      blocks = requireBlocks(blocks);
       if (blocks.stream().noneMatch(Block.Text.class::isInstance)) {
         throw new IllegalArgumentException(
             "a truncated reply must contain at least one text block");

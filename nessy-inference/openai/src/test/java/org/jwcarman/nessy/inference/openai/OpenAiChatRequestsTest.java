@@ -250,8 +250,7 @@ class OpenAiChatRequestsTest {
       List<ChatCompletionMessageParam> messages =
           placed(List.of(earlier), List.of(), List.of(), active, List.of());
 
-      assertThat(messages).isEqualTo(messagesOf(List.of(earlier, active)));
-      assertThat(messages).hasSize(6);
+      assertThat(messages).isEqualTo(messagesOf(List.of(earlier, active))).hasSize(6);
       assertThat(userText(messages.get(3))).isEqualTo("look it up");
     }
 

@@ -134,9 +134,10 @@ class ChapterPolicyComparisonTest {
     void with_chapters_off_every_call_after_the_fortieth_turn_has_a_full_tail_and_no_summaries() {
       List<Call> late = off.after(40);
 
-      assertThat(late).isNotEmpty();
-      assertThat(late).allSatisfy(call -> assertThat(call.tail()).isEqualTo(40));
-      assertThat(late).allSatisfy(call -> assertThat(call.summaries()).isZero());
+      assertThat(late)
+          .isNotEmpty()
+          .allSatisfy(call -> assertThat(call.tail()).isEqualTo(40))
+          .allSatisfy(call -> assertThat(call.summaries()).isZero());
     }
 
     @Test
@@ -145,9 +146,10 @@ class ChapterPolicyComparisonTest {
       // summaries (turns 1-20 and 21-40) and the four ended turns after them: 41, 42, 43 and 44.
       List<Call> turn45 = every20.onTurn(45);
 
-      assertThat(turn45).isNotEmpty();
-      assertThat(turn45).allSatisfy(call -> assertThat(call.summaries()).isEqualTo(2));
-      assertThat(turn45).allSatisfy(call -> assertThat(call.tail()).isEqualTo(4));
+      assertThat(turn45)
+          .isNotEmpty()
+          .allSatisfy(call -> assertThat(call.summaries()).isEqualTo(2))
+          .allSatisfy(call -> assertThat(call.tail()).isEqualTo(4));
     }
 
     @Test

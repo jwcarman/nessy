@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine.chapter;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -28,10 +29,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.stream.LongStream;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.ChapterPolicy;
@@ -245,31 +250,22 @@ class ChapterKeeperTest {
       assertThat(unsummarized()).containsExactly(chapter(1, 2), chapter(3, 4));
     }
 
-    @Test
-    void an_answer_naming_a_turn_that_is_not_open_cuts_nothing() {
-      completeTurns(1, 2, 3);
-
-      keeper(open -> ids(2, 99), unwritten, 10).keep(AGENT);
-
-      assertThat(unsummarized()).isEmpty();
+    static Stream<Arguments> answersThatAreNotTheOpenTurnsInOrder() {
+      return Stream.of(
+          arguments("an answer naming a turn that is not open cuts nothing", ids(2, 99)),
+          arguments("an unordered answer cuts nothing", ids(3, 2)),
+          arguments("a repeated turn in the answer cuts nothing", ids(2, 2)));
     }
 
-    @Test
-    void an_unordered_answer_cuts_nothing() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("answersThatAreNotTheOpenTurnsInOrder")
+    void an_answer_that_is_not_the_open_turns_in_order_cuts_nothing(
+        String description, List<TurnId> answer) {
       completeTurns(1, 2, 3);
 
-      keeper(open -> ids(3, 2), unwritten, 10).keep(AGENT);
+      keeper(open -> answer, unwritten, 10).keep(AGENT);
 
-      assertThat(unsummarized()).isEmpty();
-    }
-
-    @Test
-    void a_repeated_turn_in_the_answer_cuts_nothing() {
-      completeTurns(1, 2, 3);
-
-      keeper(open -> ids(2, 2), unwritten, 10).keep(AGENT);
-
-      assertThat(unsummarized()).isEmpty();
+      assertThat(unsummarized()).as(description).isEmpty();
     }
 
     @Test

@@ -393,8 +393,9 @@ class ContextAssemblerTest {
 
       InferenceContext context = assembler.assemble(invocation());
 
-      assertThat(asked.handed).hasSize(2);
-      assertThat(asked.handed).allSatisfy(turn -> assertThat(turn.id()).isEqualTo(new TurnId(9)));
+      assertThat(asked.handed)
+          .hasSize(2)
+          .allSatisfy(turn -> assertThat(turn.id()).isEqualTo(new TurnId(9)));
       assertThat(context.memory()).containsExactly(Memory.text("episodes", "recalled episodes"));
       assertThat(context.state()).containsExactly(State.text("plan", "standing plan"));
     }

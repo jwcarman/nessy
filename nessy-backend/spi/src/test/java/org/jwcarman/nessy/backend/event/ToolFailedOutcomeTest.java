@@ -54,8 +54,11 @@ class ToolFailedOutcomeTest {
 
       String kept = new EffectOutcome.ToolFailed(CALL, message).message();
 
-      assertThat(kept).hasSize(ToolConfig.LINE_CAP).startsWith("START").endsWith("END");
-      assertThat(kept).contains("...");
+      assertThat(kept)
+          .hasSize(ToolConfig.LINE_CAP)
+          .startsWith("START")
+          .endsWith("END")
+          .contains("...");
     }
 
     @Test

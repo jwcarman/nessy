@@ -305,8 +305,7 @@ class OpenAiResponsesRequestsTest {
       List<ResponseInputItem> items =
           itemsPlaced(List.of(earlier), List.of(), List.of(), active, List.of());
 
-      assertThat(items).isEqualTo(itemsOf(List.of(earlier, active)));
-      assertThat(items).hasSize(5);
+      assertThat(items).isEqualTo(itemsOf(List.of(earlier, active))).hasSize(5);
       assertThat(userText(items.get(2))).isEqualTo("look it up");
     }
 

@@ -250,7 +250,7 @@ public final class ToolBinding<I> {
     I input;
     try {
       input = mapper.readValue(arguments, tool.inputType());
-    } catch (RuntimeException e) {
+    } catch (RuntimeException _) {
       return fallback(name + UNREADABLE);
     }
     String line;
@@ -260,7 +260,7 @@ public final class ToolBinding<I> {
       LOG.warn("the action stringifier of tool '{}' threw; recording the call without it", name, e);
       return fallback(name + COULD_NOT_SAY);
     }
-    return line == null || line.isBlank() ? fallback(name) : fallback(line);
+    return fallback(line == null || line.isBlank() ? name : line);
   }
 
   /** One line, at most the cap, whatever a stringifier or a name gave. */

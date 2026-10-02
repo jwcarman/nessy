@@ -127,8 +127,12 @@ class ToolBindingLinesTest {
 
       String line = binding.rendered(success(letters(400)));
 
-      assertThat(line).hasSize(255).startsWith("abcdefghij").contains("...").endsWith("hij");
-      assertThat(line).doesNotEndWith("...");
+      assertThat(line)
+          .hasSize(255)
+          .startsWith("abcdefghij")
+          .contains("...")
+          .endsWith("hij")
+          .doesNotEndWith("...");
     }
 
     @Test
@@ -264,8 +268,11 @@ class ToolBindingLinesTest {
 
       String line = binding.describe("not json");
 
-      assertThat(line).hasSize(1000).startsWith("nnn").endsWith("...");
-      assertThat(line).doesNotContainPattern("\\s{2}");
+      assertThat(line)
+          .hasSize(1000)
+          .startsWith("nnn")
+          .endsWith("...")
+          .doesNotContainPattern("\\s{2}");
     }
 
     @Test

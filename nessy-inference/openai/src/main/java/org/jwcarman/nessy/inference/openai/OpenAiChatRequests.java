@@ -222,15 +222,18 @@ final class OpenAiChatRequests {
    */
   private static Stream<ChatCompletionMessageParam> toMessages(
       Turn turn, String leading, String trailing) {
-    Stream<ChatCompletionMessageParam> opening =
-        turn.result() instanceof TurnResult.Refused
-            // Nothing of the withdrawn question is sent, but what was recalled for it still has
-            // to be somewhere.
-            ? (leading.isEmpty() ? Stream.empty() : Stream.of(user(leading)))
-            : Stream.of(
-                user(
-                    OpenAiRendering.opening(
-                        leading, OpenAiRendering.text(turn.input().blocks()), trailing)));
+    Stream<ChatCompletionMessageParam> opening;
+    if (turn.result() instanceof TurnResult.Refused) {
+      // Nothing of the withdrawn question is sent, but what was recalled for it still has
+      // to be somewhere.
+      opening = leading.isEmpty() ? Stream.empty() : Stream.of(user(leading));
+    } else {
+      opening =
+          Stream.of(
+              user(
+                  OpenAiRendering.opening(
+                      leading, OpenAiRendering.text(turn.input().blocks()), trailing)));
+    }
 
     // Every round, in order, between the question and whatever the model finally said. A call
     // and its result have to stay adjacent and in sequence: this wire rejects an assistant

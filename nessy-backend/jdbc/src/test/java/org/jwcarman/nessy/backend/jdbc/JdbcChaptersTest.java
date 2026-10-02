@@ -180,8 +180,9 @@ class JdbcChaptersTest {
     @Test
     void rejects_a_first_chapter_that_does_not_come_after_after() {
       List<Chapter> toStore = List.of(chapter(3, 5));
+      Optional<TurnId> after = Optional.of(turn(3));
 
-      assertThatThrownBy(() -> chapters.append(TYPE, agent, Optional.of(turn(3)), toStore))
+      assertThatThrownBy(() -> chapters.append(TYPE, agent, after, toStore))
           .isInstanceOf(IllegalArgumentException.class);
     }
   }

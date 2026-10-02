@@ -155,10 +155,6 @@ class InferenceHandlerTest {
             payloads);
   }
 
-  private static Block.ToolCall call() {
-    return new Block.ToolCall(CallId.of("c1"), ToolName.of("search"), "{}");
-  }
-
   private static Usage reading(int cached) {
     return Usage.of("model", 10, 10).withCacheRead(cached);
   }

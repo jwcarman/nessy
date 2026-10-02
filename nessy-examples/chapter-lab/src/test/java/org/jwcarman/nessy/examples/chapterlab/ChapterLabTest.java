@@ -356,8 +356,9 @@ class ChapterLabTest {
       assertThat(ends).containsExactly(turn(5), turn(12), turn(40));
       assertThat(model.hindsights).hasSize(1);
       String shown = textOf(model.hindsights.getFirst());
-      assertThat(shown).contains("[1]", "[40]", "question 40", "These are exchanges 1 to 40.");
-      assertThat(shown).doesNotContain("[41]");
+      assertThat(shown)
+          .contains("[1]", "[40]", "question 40", "These are exchanges 1 to 40.")
+          .doesNotContain("[41]");
     }
 
     @Test
@@ -784,13 +785,13 @@ class ChapterLabTest {
           Duration.ZERO);
 
       List<String> lines = Files.readAllLines(directory.resolve(settings.resultsFile()));
-      assertThat(lines).hasSize(4);
-      assertThat(lines).allSatisfy(line -> assertThat(line).contains("\"answer\":\"(no answer)\""));
+      assertThat(lines)
+          .hasSize(4)
+          .allSatisfy(line -> assertThat(line).contains("\"answer\":\"(no answer)\""));
     }
 
     @Test
-    void a_verdict_nobody_can_read_is_counted_and_graded_wrong(@TempDir Path directory)
-        throws Exception {
+    void a_verdict_nobody_can_read_is_counted_and_graded_wrong(@TempDir Path directory) {
       InferenceProvider hedging =
           except(LabPrompts.GRADE_SYSTEM, answer("Perhaps", 5, 1), new ScriptedModel());
       ChapterLab.Settings settings = settings("session", "prose");
@@ -834,8 +835,8 @@ class ChapterLabTest {
       assertThat(captured.toString(StandardCharsets.UTF_8))
           .contains("wrong (verdict not understood: Partly. It names the month.)");
       List<String> lines = Files.readAllLines(directory.resolve(settings.resultsFile()));
-      assertThat(lines).hasSize(4);
       assertThat(lines)
+          .hasSize(4)
           .allSatisfy(
               line ->
                   assertThat(line)
@@ -862,8 +863,8 @@ class ChapterLabTest {
           Duration.ZERO);
 
       List<String> lines = Files.readAllLines(directory.resolve(settings.resultsFile()));
-      assertThat(lines).hasSize(4);
       assertThat(lines)
+          .hasSize(4)
           .allSatisfy(
               line ->
                   assertThat(line)
@@ -953,8 +954,8 @@ class ChapterLabTest {
       assertThat(result.notUnderstood()).isEqualTo(4);
       assertThat(calls).hasValue(4);
       List<String> lines = Files.readAllLines(directory.resolve(settings.resultsFile()));
-      assertThat(lines).hasSize(4);
       assertThat(lines)
+          .hasSize(4)
           .allSatisfy(
               line ->
                   assertThat(line)
@@ -990,8 +991,8 @@ class ChapterLabTest {
                   .map(r -> textOf(r).lines().filter(line -> line.startsWith("user: ")).count())
                   .toList())
           .containsExactly(10L, 15L, 15L);
-      assertThat(model.questions).isNotEmpty();
       assertThat(model.questions)
+          .isNotEmpty()
           .allSatisfy(
               request -> {
                 assertThat(request.context().summaries()).hasSize(3);
@@ -1027,8 +1028,8 @@ class ChapterLabTest {
           .containsEntry(2, 0)
           .containsEntry(4, 1);
       assertThat(model.summaries).hasSize(3);
-      assertThat(model.questions).hasSize(4);
       assertThat(model.questions)
+          .hasSize(4)
           .allSatisfy(
               request -> {
                 assertThat(request.context().summaries()).hasSize(3);
@@ -1115,16 +1116,15 @@ class ChapterLabTest {
         throws Exception {
       Run run = run(settings("session", "prose"), new ScriptedModel(), directory);
 
-      assertThat(run.recorded).hasSize(4);
       assertThat(run.recorded)
+          .hasSize(4)
           .anySatisfy(
               line ->
                   assertThat(line)
                       .contains("\"question\":\"What did Ann plant?\"")
                       .contains("\"answer\":\"tomatoes\"")
                       .contains("\"correct_answer\":\"tomatoes\"")
-                      .contains("\"correct\":true"));
-      assertThat(run.recorded)
+                      .contains("\"correct\":true"))
           .anySatisfy(
               line ->
                   assertThat(line)
@@ -1142,8 +1142,8 @@ class ChapterLabTest {
 
       assertThat(run.result.chapters()).isEqualTo(2);
       assertThat(run.result.contextWords()).isEqualTo(14 + 15);
-      assertThat(model.questions).isNotEmpty();
       assertThat(model.questions)
+          .isNotEmpty()
           .allSatisfy(
               request -> {
                 assertThat(request.context().summaries()).hasSize(2);
@@ -1157,8 +1157,8 @@ class ChapterLabTest {
 
       run(settings("every:2", "index"), model, directory);
 
-      assertThat(model.summaries).hasSize(2);
       assertThat(model.summaries)
+          .hasSize(2)
           .allSatisfy(
               request ->
                   assertThat(request.systemPrompt().value()).isEqualTo(LabPrompts.INDEX_SUMMARY));
@@ -1171,12 +1171,12 @@ class ChapterLabTest {
 
       run(settings("every:2", "prose"), model, directory);
 
-      assertThat(model.summaries).isNotEmpty();
       assertThat(model.summaries)
+          .isNotEmpty()
           .allSatisfy(
               request -> assertThat(request.options().modelName()).isEqualTo("the-summary-model"));
-      assertThat(model.questions).isNotEmpty();
       assertThat(model.questions)
+          .isNotEmpty()
           .allSatisfy(request -> assertThat(request.options().modelName()).isEqualTo("the-model"));
     }
 
@@ -1189,8 +1189,8 @@ class ChapterLabTest {
       assertThat(run.result.chapters()).isZero();
       assertThat(run.result.summaryWords()).isZero();
       assertThat(model.summaries).isEmpty();
-      assertThat(model.questions).isNotEmpty();
       assertThat(model.questions)
+          .isNotEmpty()
           .allSatisfy(
               request -> {
                 assertThat(request.context().summaries()).isEmpty();

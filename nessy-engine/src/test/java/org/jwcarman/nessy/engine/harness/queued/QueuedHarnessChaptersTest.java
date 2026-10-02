@@ -202,8 +202,9 @@ class QueuedHarnessChaptersTest {
     Customizer<QueuedHarnessConfig<String>> tooShort =
         c -> c.inference(in -> in.context(ctx -> ctx.maxTail(10).maxChapterLength(10)));
     QueuedHarnessFactory harnesses = engine.harnesses();
+    AgentType tooShortType = new AgentType("too-short");
 
-    assertThatThrownBy(() -> harnesses.create(new AgentType("too-short"), String.class, tooShort))
+    assertThatThrownBy(() -> harnesses.create(tooShortType, String.class, tooShort))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("maxTail (10)")
         .hasMessageContaining("maxChapterLength (10)");

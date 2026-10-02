@@ -580,10 +580,12 @@ class DefaultDirectHarnessTest {
     assertThat(history).hasSizeGreaterThanOrEqualTo(1);
     assertThat(Transcripts.render(history.subList(0, 1)))
         .isEqualTo(
-            "user: first\n"
-                + "assistant did: do 1 -- denied: not today\n"
-                + "assistant did: read 2 -- succeeded: found it\n"
-                + "assistant: done\n");
+            """
+            user: first
+            assistant did: do 1 -- denied: not today
+            assistant did: read 2 -- succeeded: found it
+            assistant: done
+            """);
   }
 
   @Test

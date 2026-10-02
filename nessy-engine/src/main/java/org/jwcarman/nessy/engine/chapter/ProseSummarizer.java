@@ -89,7 +89,7 @@ public final class ProseSummarizer implements Summarizer {
   private final TurnHistories histories;
   private final InferenceProvider provider;
   private final InferenceOptions options;
-  private final String prompt;
+  private final String told;
 
   public ProseSummarizer(
       TurnHistories histories, InferenceProvider provider, InferenceOptions options) {
@@ -108,7 +108,7 @@ public final class ProseSummarizer implements Summarizer {
     this.histories = Objects.requireNonNull(histories, "histories must not be null");
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
     this.options = Objects.requireNonNull(options, "options must not be null");
-    this.prompt = Objects.requireNonNull(prompt, "prompt must not be null");
+    this.told = Objects.requireNonNull(prompt, "prompt must not be null");
     provider.validate(options);
   }
 
@@ -137,7 +137,7 @@ public final class ProseSummarizer implements Summarizer {
         provider.infer(
             // A chapter is summarised once, so there is nothing here for a vendor's cache to keep.
             new InferenceRequest(
-                    new SystemPrompt(prompt),
+                    new SystemPrompt(told),
                     new InferenceContext(
                         List.of(), List.of(), List.of(), List.of(), asking, List.of()),
                     Toolset.none(),
