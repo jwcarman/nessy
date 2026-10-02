@@ -55,7 +55,6 @@ import org.jwcarman.nessy.engine.chapter.ChapterSettings;
 import org.jwcarman.nessy.engine.inference.Instructions;
 import org.jwcarman.nessy.engine.observability.ObservedApprover;
 import org.jwcarman.nessy.engine.observability.ObservedTool;
-import org.jwcarman.nessy.engine.tool.SettledLines;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.inference.InferenceOptions;
 
@@ -244,8 +243,8 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
         observed.inputSchema(schemas),
         said.timeout,
         said.retryPolicy,
-        SettledLines.action(said.action),
-        SettledLines.result(said.result),
+        said.action,
+        said.result,
         List.copyOf(said.enrichers),
         // Only an approver the application chose is worth a span: the default lets every call
         // through, and an "approval" nobody was asked for would mislead a dashboard.

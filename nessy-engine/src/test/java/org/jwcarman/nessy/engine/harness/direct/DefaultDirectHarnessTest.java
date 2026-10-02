@@ -78,6 +78,7 @@ import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
+import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
@@ -86,6 +87,7 @@ import org.jwcarman.nessy.backend.inmemory.InMemoryLocks;
 import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.jwcarman.nessy.engine.chapter.Transcripts;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
@@ -231,6 +233,24 @@ class DefaultDirectHarnessTest {
             });
   }
 
+  /** A harness whose tools the test binds itself, so it can say what each one is bound with. */
+  private DirectHarness<String, String> harnessWithTools(
+      InferenceProvider model, Customizer<DirectHarnessConfig<String>> tools) {
+    return factoryFor(model, new InMemoryLocks())
+        .<String>create(
+            TYPE,
+            c -> {
+              c.systemPrompt("You are terse.")
+                  .inputRenderer(said -> List.of(new Block.Text(said)))
+                  .inference(
+                      in ->
+                          in.provider("test")
+                              .model("a-model")
+                              .context(ctx -> ctx.maxTail(MAX_TAIL)));
+              tools.customize(c);
+            });
+  }
+
   /** A harness bound to a shape at creation -- what asking for a shape means now. */
   private <T> DirectHarness<String, T> shapedHarness(InferenceProvider model, Class<T> type) {
     return factoryFor(model, new InMemoryLocks())
@@ -300,6 +320,11 @@ class DefaultDirectHarnessTest {
 
   /** A tool that answers with one line. */
   private static Tool<Lookup> tool(String result) {
+    return tool(LOOKUP, result);
+  }
+
+  /** A tool of the given name that answers with one line. */
+  private static Tool<Lookup> tool(ToolName name, String result) {
     return new Tool<Lookup>() {
       @Override
       public Class<Lookup> inputType() {
@@ -308,7 +333,7 @@ class DefaultDirectHarnessTest {
 
       @Override
       public ToolName name() {
-        return LOOKUP;
+        return name;
       }
 
       @Override
@@ -486,6 +511,79 @@ class DefaultDirectHarnessTest {
 
     assertThat(expectedAction.length()).isLessThanOrEqualTo(ToolConfig.LINE_CAP);
     assertThat(succeeded.rendered().length()).isLessThanOrEqualTo(ToolConfig.LINE_CAP);
+  }
+
+  @Test
+  @DisplayName("a stringifier named on a tool is cut at the cap by the harness's own wiring")
+  void the_harness_cuts_a_named_stringifier_at_the_cap() {
+    AgentId agent = AgentId.random();
+    Scripted model = new Scripted().then(asking("lookup")).then(answering("done"));
+
+    harnessWithTools(
+            model,
+            c ->
+                c.tool(
+                    tool("anything"),
+                    t -> t.action(x -> "a".repeat(3000)).result(x -> "r".repeat(3000))))
+        .ask(agent, "look it up");
+
+    List<AgentEvent> stream = events.readAll(TYPE, agent);
+    assertThat(stream)
+        .filteredOn(AgentEvent.ActionsRequested.class::isInstance)
+        .map(AgentEvent.ActionsRequested.class::cast)
+        .singleElement()
+        .satisfies(
+            requested ->
+                assertThat(requested.actions())
+                    .singleElement()
+                    .asInstanceOf(InstanceOfAssertFactories.type(ActionRequest.ToolCall.class))
+                    .extracting(ActionRequest.ToolCall::action)
+                    .asString()
+                    .hasSize(ToolConfig.LINE_CAP));
+    assertThat(stream)
+        .filteredOn(AgentEvent.ToolSucceeded.class::isInstance)
+        .map(AgentEvent.ToolSucceeded.class::cast)
+        .singleElement()
+        .satisfies(succeeded -> assertThat(succeeded.rendered()).hasSize(ToolConfig.LINE_CAP));
+  }
+
+  @Test
+  @DisplayName("a finished turn reads as one line per call, with each call's stored words")
+  void a_gated_and_denied_call_and_a_call_that_ran_read_as_two_lines() {
+    AgentId agent = AgentId.random();
+    ToolName gated = new ToolName("gated");
+    ToolName open = new ToolName("open");
+    InferenceResult asking =
+        new InferenceResult.Actions(
+            List.of(
+                new Block.ToolCall(new CallId("c-gated"), gated, "{\"id\":\"1\"}"),
+                new Block.ToolCall(new CallId("c-open"), open, "{\"id\":\"2\"}")),
+            Usage.unreported());
+    Scripted model =
+        new Scripted().then(asking).then(answering("done")).then(answering("done again"));
+    DirectHarness<String, String> harness =
+        harnessWithTools(
+            model,
+            c -> {
+              c.tool(
+                  tool(gated, "never"),
+                  t ->
+                      t.action(x -> "do " + x.id())
+                          .approver(_ -> Awaited.ready(ApprovalResult.denied("not today"))));
+              c.tool(tool(open, "found it"), t -> t.action(x -> "read " + x.id()));
+            });
+
+    harness.ask(agent, "first");
+    harness.ask(agent, "second");
+
+    List<Turn> history = model.seen.get(2).context().turns();
+    assertThat(history).hasSizeGreaterThanOrEqualTo(1);
+    assertThat(Transcripts.render(history.subList(0, 1)))
+        .isEqualTo(
+            "user: first\n"
+                + "assistant did: do 1 -- denied: not today\n"
+                + "assistant did: read 2 -- succeeded: found it\n"
+                + "assistant: done\n");
   }
 
   @Test
@@ -670,8 +768,9 @@ class DefaultDirectHarnessTest {
   }
 
   @Test
-  @DisplayName("a tool that fails without a message is recorded as failed and is not run again")
-  void a_tool_that_fails_without_a_message_is_recorded_as_failed_and_is_not_run_again() {
+  @DisplayName(
+      "a tool that fails without a message is recorded as failed with a message that says so")
+  void a_tool_that_fails_without_a_message_is_recorded_as_failed_with_a_message_that_says_so() {
     AgentId agent = AgentId.random();
     AtomicInteger runs = new AtomicInteger();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("sorry"));

@@ -42,9 +42,10 @@ import org.jwcarman.nessy.inference.Failure;
  * rather than routing.
  *
  * <p><b>Content by reference.</b> Content is claim-checked by the harness before it gets here, so a
- * command carries a reference to it. The text it does carry is short and bounded: for a tool call,
- * the line saying what the call would do and the line saying what it returned, each at most 1,000
- * characters.
+ * command carries a reference to it. The text it does carry is mostly short and bounded: for a tool
+ * call, the line saying what the call would do and the line saying what it returned, each at most
+ * 1,000 characters, and a failed call's message, cut to the same cap. A denial's reason is text
+ * too, and is not bounded.
  *
  * <p><b>A completion names the turn it answers.</b> Delivery is at-least-once and a door releases
  * its lock between steps, so an answer for a turn that has since closed can arrive while the agent

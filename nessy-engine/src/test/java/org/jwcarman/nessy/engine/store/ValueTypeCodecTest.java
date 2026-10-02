@@ -32,6 +32,7 @@ import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
+import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import tools.jackson.core.type.TypeReference;
@@ -197,6 +198,33 @@ class ValueTypeCodecTest {
 
     assertThat(new String(bytes, StandardCharsets.UTF_8)).contains("\"rendered\":\"80 days\"");
     assertThat(entries.decode(bytes)).isEqualTo(written);
+  }
+
+  @Test
+  void a_tool_succeeded_event_with_an_empty_rendered_line_reads_back_empty() {
+    AgentEvent.ToolSucceeded written =
+        new AgentEvent.ToolSucceeded(
+            new Seq(4), new TurnId(1), new CallId("c1"), PayloadRef.of("a3d9f0b1"), "");
+
+    byte[] bytes = entries.encode(written);
+
+    assertThat(new String(bytes, StandardCharsets.UTF_8)).contains("\"rendered\":\"\"");
+    assertThat(entries.decode(bytes)).isEqualTo(written);
+    assertThat(((AgentEvent.ToolSucceeded) entries.decode(bytes)).rendered()).isEmpty();
+  }
+
+  @Test
+  void a_tool_succeeded_outcome_with_an_empty_rendered_line_reads_back_empty() {
+    Codec<EffectOutcome> outcomes =
+        new JacksonCodecFactory(JsonMapper.builder().build()).create(EffectOutcome.class);
+    EffectOutcome.ToolSucceeded written =
+        new EffectOutcome.ToolSucceeded(new CallId("c1"), PayloadRef.of("a3d9f0b1"), "");
+
+    byte[] bytes = outcomes.encode(written);
+
+    assertThat(new String(bytes, StandardCharsets.UTF_8)).contains("\"rendered\":\"\"");
+    assertThat(outcomes.decode(bytes)).isEqualTo(written);
+    assertThat(((EffectOutcome.ToolSucceeded) outcomes.decode(bytes)).rendered()).isEmpty();
   }
 
   @Test

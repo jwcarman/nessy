@@ -64,8 +64,7 @@ public sealed interface EffectOutcome {
   // the model, the thing that ran the tool -- put what it produced away before saying so, because
   // that is the moment the content exists and the only place that has both the content and
   // somewhere to put it. What crosses into the fold is a reference, a status, a decision or a
-  // count, and, for a
-  // tool call, the one bounded line saying what the call would do or what it returned.
+  // count, and, for a tool call, the one bounded line saying what it returned or why it failed.
 
   /**
    * The model said something.

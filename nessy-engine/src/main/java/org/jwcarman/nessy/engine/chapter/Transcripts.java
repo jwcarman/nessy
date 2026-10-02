@@ -54,7 +54,7 @@ public final class Transcripts {
   /** What a refused turn is written as, whole: none of what it held is shown. */
   private static final String WITHDRAWN = "(a message was withdrawn)";
 
-  private static final Pattern LINE_BREAK = Pattern.compile("\\r\\n|\\n|\\r");
+  private static final Pattern LINE_BREAK = Pattern.compile("\\R");
 
   private Transcripts() {}
 
@@ -100,8 +100,9 @@ public final class Transcripts {
 
   /**
    * What somebody said, with every line after the first indented four spaces, so that nothing said
-   * can begin at the left margin. A blank line stays empty. Lines end at {@code \n}, {@code \r\n}
-   * or {@code \r}.
+   * can begin at the left margin. A blank line stays empty. A line ends at any line break that
+   * Java's {@code \R} matches: {@code \n}, {@code \r\n}, {@code \r}, U+2028, U+2029, U+0085, the
+   * vertical tab and the form feed.
    */
   private static String said(String text) {
     String[] lines = LINE_BREAK.split(text, -1);

@@ -36,7 +36,6 @@ import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
-import org.jwcarman.nessy.engine.tool.SettledLines;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.Failure;
@@ -97,8 +96,8 @@ class EffectTermsSourceTest {
         new JsonSchema("{\"type\":\"object\"}"),
         timeout,
         retryPolicy,
-        SettledLines.action(Optional.empty()),
-        SettledLines.result(Optional.empty()),
+        Optional.empty(),
+        Optional.empty(),
         List.of(),
         Approver.allow(),
         approvalTimeout,

@@ -52,7 +52,6 @@ import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.observability.CacheWatch;
-import org.jwcarman.nessy.engine.tool.SettledLines;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.Failure;
@@ -108,8 +107,8 @@ class InferenceHandlerTest {
         new JsonSchema("{\"type\":\"object\"}"),
         Duration.ofSeconds(30),
         new RetryPolicy.Never(),
-        SettledLines.action(Optional.ofNullable(action)),
-        SettledLines.result(Optional.empty()),
+        Optional.ofNullable(action),
+        Optional.empty(),
         List.of(),
         Approver.allow(),
         Duration.ofMinutes(10),
@@ -337,7 +336,7 @@ class InferenceHandlerTest {
                           new ActionRequest.ToolCall(
                               CallId.of("c1"),
                               ToolName.of("shout"),
-                              "shout (its arguments could not be read)")),
+                              "shout (what it would do could not be said)")),
                       reading(0))));
     }
   }

@@ -47,7 +47,6 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
-import org.jwcarman.nessy.engine.tool.SettledLines;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
 import org.jwcarman.nessy.engine.tool.Tools;
@@ -97,14 +96,14 @@ class ApprovalHandlerTest {
   }
 
   private static Tools bound(Approver approver, Duration approvalTimeout, RetryPolicy onAsking) {
-    return bound(approver, approvalTimeout, onAsking, SettledLines.action(Optional.empty()));
+    return bound(approver, approvalTimeout, onAsking, Optional.empty());
   }
 
   private static Tools bound(
       Approver approver,
       Duration approvalTimeout,
       RetryPolicy onAsking,
-      Stringifier<Query> action) {
+      Optional<Stringifier<Query>> action) {
     return new Tools(
         List.of(
             new ToolBinding<>(
@@ -114,7 +113,7 @@ class ApprovalHandlerTest {
                 Duration.ofSeconds(30),
                 new RetryPolicy.Never(),
                 action,
-                SettledLines.result(Optional.empty()),
+                Optional.empty(),
                 List.of(),
                 approver,
                 approvalTimeout,
@@ -271,7 +270,7 @@ class ApprovalHandlerTest {
             },
             Duration.ofMinutes(10),
             new RetryPolicy.Never(),
-            query -> "look up " + query.q() + " in the register"),
+            Optional.of(query -> "look up " + query.q() + " in the register")),
         story("{\"q\":\"loch ness\"}", "stored at request time"));
 
     assertThat(seen[0]).isEqualTo("stored at request time");
@@ -290,8 +289,8 @@ class ApprovalHandlerTest {
                     new JsonSchema("{\"type\":\"object\"}"),
                     Duration.ofSeconds(30),
                     new RetryPolicy.Never(),
-                    SettledLines.action(Optional.empty()),
-                    SettledLines.result(Optional.empty()),
+                    Optional.empty(),
+                    Optional.empty(),
                     List.of(request -> seen[0] = request.action()),
                     Approver.allow(),
                     Duration.ofMinutes(10),
@@ -340,6 +339,62 @@ class ApprovalHandlerTest {
               assertThat(failed.callId()).isEqualTo(new CallId("c1"));
               assertThat(failed.message()).contains("could not be read");
             });
+  }
+
+  /**
+   * A gate exists to put what a call would do in front of somebody. When the action could not be
+   * said there is no sentence to consent to, and a yes would run a call nobody could see, so nobody
+   * is asked.
+   */
+  @Test
+  void a_gated_call_whose_action_could_not_be_said_is_discharged_without_asking() {
+    boolean[] asked = {false};
+    Stringifier<Query> throwing =
+        query -> {
+          throw new IllegalStateException("boom");
+        };
+
+    EffectOutcome outcome =
+        ask(
+            bound(
+                _ -> {
+                  asked[0] = true;
+                  return Awaited.ready(ApprovalResult.approved());
+                },
+                Duration.ofMinutes(10),
+                new RetryPolicy.Never(),
+                Optional.of(throwing)),
+            story("{\"q\":\"loch ness\"}", "lookup (what it would do could not be said)"));
+
+    assertThat(asked[0]).as("nothing to consent to").isFalse();
+    assertThat(outcome)
+        .isEqualTo(
+            new EffectOutcome.ToolFailed(
+                new CallId("c1"),
+                "what the call would do could not be described, so it was not put to an approver"));
+  }
+
+  /**
+   * Saying nothing is not failing to say: the name is a sentence, and a person can decide on it.
+   */
+  @Test
+  void a_gated_call_whose_stringifier_said_nothing_is_asked_with_the_tools_name() {
+    String[] seen = new String[1];
+
+    EffectOutcome outcome =
+        ask(
+            bound(
+                request -> {
+                  seen[0] = request.action();
+                  return Awaited.ready(ApprovalResult.approved());
+                },
+                Duration.ofMinutes(10),
+                new RetryPolicy.Never(),
+                Optional.of(query -> null)),
+            story("{\"q\":\"loch ness\"}", "lookup"));
+
+    assertThat(seen[0]).isEqualTo("lookup");
+    assertThat(outcome).isEqualTo(new EffectOutcome.ToolApproved(new CallId("c1")));
   }
 
   /** The story and an effect row disagreeing is unrepairable, but the call is still owed one. */

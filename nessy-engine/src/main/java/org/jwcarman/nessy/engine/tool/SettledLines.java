@@ -38,20 +38,19 @@ import org.jwcarman.nessy.api.tool.ToolResult;
  * <p>A named stringifier that already drops at or below 1000 comes back as the same instance, so it
  * is used exactly as its author cut it.
  */
-public final class SettledLines {
+final class SettledLines {
 
   private SettledLines() {}
 
   /** The action stringifier a binding holds. */
-  public static <I> Stringifier<I> action(Optional<Stringifier<I>> named) {
+  static <I> Stringifier<I> action(Optional<Stringifier<I>> named) {
     return named
         .map(action -> action.dropTail(ToolConfig.LINE_CAP))
         .orElseGet(() -> Stringifier.<I>byToString().dropTail(ToolConfig.DEFAULT_LINE_LIMIT));
   }
 
   /** The result stringifier a binding holds. */
-  public static Stringifier<ToolResult.Success> result(
-      Optional<Stringifier<ToolResult.Success>> named) {
+  static Stringifier<ToolResult.Success> result(Optional<Stringifier<ToolResult.Success>> named) {
     return named
         .map(result -> result.dropMiddle(ToolConfig.LINE_CAP))
         .orElseGet(() -> ToolConfig.resultText().dropMiddle(ToolConfig.DEFAULT_LINE_LIMIT));

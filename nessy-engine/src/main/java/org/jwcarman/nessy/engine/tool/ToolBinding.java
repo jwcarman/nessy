@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -33,6 +34,7 @@ import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.inference.ToolOffer;
@@ -64,6 +66,14 @@ public final class ToolBinding<I> {
   private static final Logger LOG = LoggerFactory.getLogger(ToolBinding.class);
 
   private static final String UNREADABLE = " (its arguments could not be read)";
+  private static final String COULD_NOT_SAY = " (what it would do could not be said)";
+
+  /**
+   * Every fallback line goes through this: one line, cut to the cap. A tool's name is chosen by the
+   * model and is not validated, so the fallback lines that hold it are not safe as they stand.
+   */
+  private static final Stringifier<String> FALLBACK =
+      Stringifier.<String>byToString().dropTail(ToolConfig.LINE_CAP);
 
   private final Tool<I> tool;
   private final ObjectMapper mapper;
@@ -77,14 +87,19 @@ public final class ToolBinding<I> {
   private final Duration approvalTimeout;
   private final RetryPolicy approvalRetryPolicy;
 
+  /**
+   * @param action the action stringifier the tool's config named, if any; settled here, so a
+   *     binding built anywhere holds lines that are one line and within the cap
+   * @param result the result stringifier the tool's config named, if any; settled the same way
+   */
   public ToolBinding(
       Tool<I> tool,
       ObjectMapper mapper,
       JsonSchema schema,
       Duration timeout,
       RetryPolicy retryPolicy,
-      Stringifier<I> action,
-      Stringifier<ToolResult.Success> result,
+      Optional<Stringifier<I>> action,
+      Optional<Stringifier<ToolResult.Success>> result,
       List<ApprovalEnricher> enrichers,
       Approver approver,
       Duration approvalTimeout,
@@ -94,8 +109,10 @@ public final class ToolBinding<I> {
     this.schema = requireObjectAtRoot(tool, mapper, schema);
     this.timeout = Objects.requireNonNull(timeout, "timeout must not be null");
     this.retryPolicy = Objects.requireNonNull(retryPolicy, "retry policy must not be null");
-    this.action = Objects.requireNonNull(action, "action stringifier must not be null");
-    this.result = Objects.requireNonNull(result, "result stringifier must not be null");
+    this.action =
+        SettledLines.action(Objects.requireNonNull(action, "action stringifier must not be null"));
+    this.result =
+        SettledLines.result(Objects.requireNonNull(result, "result stringifier must not be null"));
     this.enrichers = List.copyOf(Objects.requireNonNull(enrichers, "enrichers must not be null"));
     this.approver = Objects.requireNonNull(approver, "approver must not be null");
     this.approvalTimeout =
@@ -172,7 +189,13 @@ public final class ToolBinding<I> {
    * again. The arguments are still read into the tool's input type here, before anyone is asked: a
    * call whose arguments will not read cannot run whatever anybody says about it, so there is
    * nothing to gate and the caller discharges it instead. The throw is Jackson's, turned into
-   * something the model reads at the one call site that catches it.
+   * something the model reads at the one call site that catches it. A call whose stored action is
+   * this binding's could-not-be-said line is refused the same way: there is no sentence to put to
+   * an approver, and a yes would run a call nobody could see. The stored action is compared, never
+   * worked out again.
+   *
+   * @throws IllegalStateException if the stored action says what the call would do could not be
+   *     said
    */
   public ApprovalRequest question(
       AgentType agentType,
@@ -184,6 +207,10 @@ public final class ToolBinding<I> {
       Instant askedAt,
       ReplyToken replyToken) {
     mapper.readValue(arguments, tool.inputType());
+    if (action.equals(fallback(tool.name().value() + COULD_NOT_SAY))) {
+      throw new IllegalStateException(
+          "what the call would do could not be described, so it was not put to an approver");
+    }
     ApprovalRequest question =
         new ApprovalRequest(
             agentType,
@@ -196,7 +223,7 @@ public final class ToolBinding<I> {
             askedAt,
             askedAt.plus(approvalTimeout),
             replyToken);
-    // After the action is rendered, so an enricher can read the sentence a person will be
+    // After the question is built, so an enricher can read the sentence a person will be
     // shown; before the approver, which is the whole ordering there is. Anything thrown here
     // reaches the handler and discharges the call as one that could not be authorised --
     // which is right, because a gatherer that broke is not a gatherer that found nothing.
@@ -210,9 +237,10 @@ public final class ToolBinding<I> {
    * What this call would do, as a line; never throws.
    *
    * <p>The arguments are read into the tool's input type and the action stringifier says it. When
-   * the stringifier gives nothing, the line is the tool's name; when the arguments do not read, or
-   * the stringifier throws, it says so after the name. A call that has no sentence is still a call,
-   * and the turn goes on.
+   * the stringifier gives nothing, the line is the tool's name; when the arguments do not read, it
+   * says so after the name; when the stringifier throws, it says what the call would do could not
+   * be said. A call that has no sentence is still a call, and the turn goes on. Every line returned
+   * is one line and at most {@link ToolConfig#LINE_CAP} characters, whichever path made it.
    */
   public String describe(String arguments) {
     String name = tool.name().value();
@@ -220,28 +248,35 @@ public final class ToolBinding<I> {
     try {
       input = mapper.readValue(arguments, tool.inputType());
     } catch (RuntimeException e) {
-      return name + UNREADABLE;
+      return fallback(name + UNREADABLE);
     }
     String line;
     try {
       line = action.stringify(input);
     } catch (RuntimeException e) {
       LOG.warn("the action stringifier of tool '{}' threw; recording the call without it", name, e);
-      return name + UNREADABLE;
+      return fallback(name + COULD_NOT_SAY);
     }
-    return line == null || line.isBlank() ? name : line;
+    return line == null || line.isBlank() ? fallback(name) : fallback(line);
+  }
+
+  /** One line, at most the cap, whatever a stringifier or a name gave. */
+  private static String fallback(String text) {
+    return FALLBACK.stringify(text);
   }
 
   /**
    * What this call returned, as a line; never throws, and may be empty.
    *
    * <p>Empty when the result stringifier throws or gives nothing: a result that cannot be said is
-   * recorded as saying nothing, and the turn goes on.
+   * recorded as saying nothing, and the turn goes on. Whatever the stringifier is, the line is one
+   * line and at most {@link ToolConfig#LINE_CAP} characters: an application's stringifier may
+   * override its droppers, so what comes back is cut here as well.
    */
   public String rendered(ToolResult.Success success) {
     try {
       String line = result.stringify(success);
-      return line == null ? "" : line;
+      return line == null ? "" : fallback(line);
     } catch (RuntimeException e) {
       LOG.warn(
           "the result stringifier of tool '{}' threw; recording the result without it",
@@ -253,7 +288,7 @@ public final class ToolBinding<I> {
 
   /** What is recorded for a call to a tool that is not bound. */
   public static String unbound(ToolName name) {
-    return name.value() + " (no such tool)";
+    return fallback(name.value() + " (no such tool)");
   }
 
   /**

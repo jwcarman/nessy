@@ -190,8 +190,14 @@ is the tool's name, alone or followed by a note of why:
 | What happens | The action line is |
 |---|---|
 | the stringifier gives nothing, or only blanks | the tool's name |
-| the arguments do not parse, or the stringifier throws | the tool's name and `(its arguments could not be read)` |
+| the arguments do not parse | the tool's name and `(its arguments could not be read)` |
+| the stringifier throws | the tool's name and `(what it would do could not be said)` |
 | no tool of that name is bound | the tool's name and `(no such tool)` |
+
+Every one of these lines is made one line and cut to 1,000 characters, because
+a tool's name is chosen by the model and may be long or hold line breaks. A
+gated call whose line says `(what it would do could not be said)` is refused
+without asking an approver; see [Authorization](authorization.md).
 
 ### Writing a good action line
 

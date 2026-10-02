@@ -58,7 +58,6 @@ import org.jwcarman.nessy.engine.chapter.ChapterSettings;
 import org.jwcarman.nessy.engine.inference.Instructions;
 import org.jwcarman.nessy.engine.observability.ObservedApprover;
 import org.jwcarman.nessy.engine.observability.ObservedTool;
-import org.jwcarman.nessy.engine.tool.SettledLines;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -254,8 +253,8 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
             observed.inputSchema(schemas),
             terms.timeout,
             terms.retryPolicy,
-            SettledLines.action(terms.action),
-            SettledLines.result(terms.result),
+            terms.action,
+            terms.result,
             terms.enrichers,
             // Only an approver the application chose is worth a span: the default lets every
             // call through, and an "approval" nobody was asked for would mislead a dashboard.

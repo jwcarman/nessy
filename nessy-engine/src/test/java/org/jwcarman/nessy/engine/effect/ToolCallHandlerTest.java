@@ -49,7 +49,6 @@ import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
-import org.jwcarman.nessy.engine.tool.SettledLines;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
 import org.jwcarman.nessy.engine.tool.Tools;
@@ -119,8 +118,8 @@ class ToolCallHandlerTest {
                 new JsonSchema("{\"type\":\"object\"}"),
                 Duration.ofSeconds(30),
                 new RetryPolicy.Never(),
-                SettledLines.action(Optional.empty()),
-                SettledLines.result(result),
+                Optional.empty(),
+                result,
                 List.of(),
                 approver,
                 Duration.ofMinutes(10),
@@ -244,6 +243,40 @@ class ToolCallHandlerTest {
     assertThat(((EffectOutcome.ToolFailed) outcome).callId()).isEqualTo(new CallId("c1"));
   }
 
+  /** A tool that fails and says nothing is still a failure the model can read, not a throw. */
+  @Test
+  void a_failure_without_a_message_comes_back_as_a_failure_and_does_not_throw() {
+    Tool<Query> failsSilently =
+        new Tool<>() {
+          @Override
+          public Class<Query> inputType() {
+            return Query.class;
+          }
+
+          @Override
+          public ToolName name() {
+            return new ToolName("lookup");
+          }
+
+          @Override
+          public String description() {
+            return "fails without a word";
+          }
+
+          @Override
+          public Awaited<ToolResult> call(ToolCallRequest<Query> request) {
+            return Awaited.ready(new ToolResult.Failure(null));
+          }
+        };
+
+    EffectOutcome outcome =
+        handle(bound(failsSilently), story(new Block.ToolCall("c1", "lookup", "{\"q\":\"x\"}")));
+
+    assertThat(outcome)
+        .isEqualTo(
+            new EffectOutcome.ToolFailed(new CallId("c1"), "the tool failed and gave no message"));
+  }
+
   /**
    * An effect row and the story disagreeing is unrepairable, but the obligation is still real.
    * Dying here would leave the call outstanding forever, which is the one outcome with no way back.
@@ -307,8 +340,8 @@ class ToolCallHandlerTest {
                     new JsonSchema("{\"type\":\"object\"}"),
                     Duration.ofSeconds(90),
                     new RetryPolicy.FixedDelay(3, Duration.ofSeconds(1), Duration.ZERO),
-                    SettledLines.action(Optional.empty()),
-                    SettledLines.result(Optional.empty()),
+                    Optional.empty(),
+                    Optional.empty(),
                     List.of(),
                     Approver.allow(),
                     Duration.ofMinutes(10),

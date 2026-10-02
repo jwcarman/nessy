@@ -114,8 +114,16 @@ large one. See [Tools](tools.md#what-a-call-leaves-behind) for the
 stringifier, the droppers and the limits.
 
 What the approver is shown is the line stored when the model asked. When a
-stringifier gives nothing, that line is the tool's name; when the arguments
-cannot be read, the name and a note saying so.
+stringifier gives nothing, that line is the tool's name, and the approver is
+shown the name.
+
+Two cases are never put to an approver. A call whose arguments do not read into
+the tool's input type could not run whatever anybody answered, so it is
+discharged as a failure the model reads. A call whose action stringifier threw
+has no sentence to consent to, and a yes would run a call nobody could see, so
+it is refused the same way, with a message saying that what the call would do
+could not be described and it was not put to an approver. Where a gate cannot be
+shown what it gates, it refuses.
 
 ## A denial is an answer
 

@@ -103,15 +103,16 @@ CREATE INDEX IF NOT EXISTS ix_nessy_agent_effect_actionable
 -- tables that describe an agent's life hold references to it. Two bounded lines of text per tool
 -- call are the exception: what a call would do and what it returned, each at most 1,000
 -- characters, kept in nessy_agent_event. The summaries of an agent's chapters are in nessy_chapter.
--- So what an agent has said is in three places, and answering what is retained means all three.
+-- So what an agent has said is in three places, and answering what is retained means all three;
+-- inputs still waiting their turn are in a fourth, nessy_agent_backlog.
 --
 -- Addressed by the hash of its own bytes, which buys idempotence: an effect retried after a
 -- failure writes the same row rather than a second copy. Scoped by agent, which buys removal of
 -- its payload rows: that is one statement over one table, with nothing shared out from under
--- another agent. It is not everything the agent said; the lines in nessy_agent_event and the
--- summaries in nessy_chapter are elsewhere. Identical content in two agents is stored twice, and that is the
--- trade -- cross-agent sharing is rare, and a deletion that has to count references is a deletion
--- somebody eventually gets wrong.
+-- another agent. It is not everything the agent said; the lines in nessy_agent_event, the
+-- summaries in nessy_chapter and the waiting inputs in nessy_agent_backlog are elsewhere.
+-- Identical content in two agents is stored twice, and that is the trade -- cross-agent sharing is
+-- rare, and a deletion that has to count references is a deletion somebody eventually gets wrong.
 CREATE TABLE IF NOT EXISTS nessy_payload
 (
     agent_id   UUID        NOT NULL,
@@ -160,14 +161,13 @@ CREATE INDEX IF NOT EXISTS nessy_agent_event_turn_starts
 -- An agent lock has no table. It is a Postgres advisory lock, taken with
 -- pg_advisory_xact_lock on a hash of (kind, agent type, agent id) and released by the database
 -- when the transaction ends -- committed, rolled back, or its connection simply dropped. There is
--- no stale holder to fence against and nothing for an expiry to time, which is the same argument
--- the row this replaces was making; the row was only ever something for FOR UPDATE to point at,
--- carried no data, and was never deleted. A lease still needs its own table, and the difference is
--- the whole distinction between the two: a lease must outlive the process that took it, so it is a
--- fact to store; a lock exists only while a transaction is running, so there is nothing to keep.
+-- no stale holder to fence against and nothing for an expiry to time. A lease needs its own table,
+-- and the difference is the whole distinction between the two: a lease must outlive the process
+-- that took it, so it is a fact to store; a lock exists only while a transaction is running, so
+-- there is nothing to keep.
 --
--- An existing database keeps its now-unused nessy_lock table; nothing reads it, and this file has
--- never destroyed anything.
+-- A database that already has a nessy_lock table keeps it: nothing reads it, and this file never
+-- drops a table.
 
 -- Work offered to an agent that is busy, waiting its turn.
 --
@@ -175,10 +175,11 @@ CREATE INDEX IF NOT EXISTS nessy_agent_event_turn_starts
 -- rather than rewriting a list. A single row holding a serialized backlog would make every
 -- strategy a read-modify-write of the whole thing.
 --
--- The input itself, NOT a claim check. This is the one place content sits in a control-plane
--- table, and it is deliberate: a backlog is a staging area rather than a record, and what is here
--- is on its way into an event where it WILL be claim-checked. Forgetting an agent has to clear
--- this table as well as its payloads.
+-- The input itself, NOT a claim check. Alongside the lines nessy_agent_event keeps, this is text
+-- held outside nessy_payload, and unlike them it is whole and not bounded: a backlog is a staging
+-- area rather than a record, and what is here is on its way into an event where it WILL be
+-- claim-checked. Removing what an agent has said means this table too, with its payloads, its
+-- events and its chapters.
 CREATE TABLE IF NOT EXISTS nessy_agent_backlog
 (
     agent_type VARCHAR(64) NOT NULL,

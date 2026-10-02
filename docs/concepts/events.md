@@ -42,9 +42,10 @@ and successful tool results are in the events only as a `PayloadRef` into
 `ActionRequest.ToolCall(CallId id, ToolName name, String action)` carries
 `action`, what the call would do. Usually the tool's binding makes it from the
 call's arguments. When the binding's stringifier gives nothing, it is the
-tool's name. When the arguments do not parse, or the stringifier throws, it is
-the name and a note that the arguments could not be read. When no tool of
-that name is bound, it is `<name> (no such tool)`. `ToolSucceeded.rendered`
+tool's name. When the arguments do not parse, it is the name and a note that
+the arguments could not be read. When the stringifier throws, it is the name and
+a note that what the call would do could not be said. When no tool of that name
+is bound, it is `<name> (no such tool)`. `ToolSucceeded.rendered`
 is what the call returned, made by the same binding from the result, and it
 may be empty. Each line is at most 1,000 characters (`ToolConfig.LINE_CAP`);
 the cap is applied when the binding is built, not by the records that carry the lines. A line is

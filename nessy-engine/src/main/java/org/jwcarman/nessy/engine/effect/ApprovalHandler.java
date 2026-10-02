@@ -132,11 +132,22 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
               resolved.action(),
               clock.instant(),
               replyTokens.mint(agentType, agentId, effect.requestSeq(), callId));
+    } catch (IllegalStateException e) {
+      // The call's stored action says what it would do could not be said. A person asked to
+      // consent to a sentence there is none of would be consenting to nothing they could see, and
+      // a yes would run the call. Discharged without asking, by the same road as a call whose
+      // arguments do not read: a gate that cannot be shown what it gates refuses.
+      log.warn(
+          "[{}] agent {}: call {} of {} has no description of what it would do",
+          agentType.value(),
+          agentId.value(),
+          callId,
+          effect.toolName());
+      return Awaited.ready(new EffectOutcome.ToolFailed(callId, e.getMessage()));
     } catch (RuntimeException e) {
       // A call whose arguments will not read into the tool's input type has no question to
       // ask about it -- and could not run whatever anybody answered. Discharged without asking: a
-      // gate exists to stop
-      // execution, and there is no execution here to stop.
+      // gate exists to stop execution, and there is no execution here to stop.
       log.warn(
           "[{}] agent {}: call {} of {} has unreadable arguments",
           agentType.value(),

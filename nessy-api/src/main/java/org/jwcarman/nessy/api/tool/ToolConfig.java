@@ -74,11 +74,18 @@ public interface ToolConfig<I> {
    * reaches every one of those readers, and a bounded copy of the line is stored in the event and
    * may be quoted in a summary. Write one for any tool a person will be asked to approve.
    *
-   * <p>Whatever is named is cut to {@link #LINE_CAP} characters, and one that writes more is cut by
+   * <p>The line is made one line -- every run of whitespace, line breaks included, becomes a single
+   * space -- and then cut, so a sentence written with line breaks reaches an approver without them.
+   * Whatever is named is cut to {@link #LINE_CAP} characters, and one that writes more is cut by
    * {@link Stringifier#dropTail}. A stringifier that already drops at or below the cap is used as
    * given. With none named a line is cut at {@link #DEFAULT_LINE_LIMIT}, keeping its start. A tool
    * that is gated should have a sentence short enough not to be cut, or name {@code dropTail}
    * itself, so the person approving sees the part that matters.
+   *
+   * <p>A stringifier that throws never fails the turn. The call is recorded as "what it would do
+   * could not be said", and a gated call so recorded is refused without asking an approver: there
+   * is no sentence to consent to. One that gives nothing records the tool's name, and that is what
+   * an approver is shown.
    *
    * <p><b>It lives on the binding, never on the {@link Tool}.</b> If the sentence a person approves
    * against were authored by the tool being governed -- an MCP server, say -- it would not be a
@@ -90,11 +97,12 @@ public interface ToolConfig<I> {
    * What a call of this tool returned, in a line, for the transcript and for the summaries written
    * from it.
    *
-   * <p>Defaults to {@link #resultText()}. Whatever is named is cut to {@link #LINE_CAP} characters,
-   * and one that writes more is cut by {@link Stringifier#dropMiddle}. A stringifier that already
-   * drops at or below the cap is used as given. With none named a line is cut at {@link
-   * #DEFAULT_LINE_LIMIT}, keeping both ends. A result that cannot be said is recorded as an empty
-   * line; it never fails the turn.
+   * <p>Defaults to {@link #resultText()}. The line is made one line -- every run of whitespace,
+   * line breaks included, becomes a single space -- and then cut. Whatever is named is cut to
+   * {@link #LINE_CAP} characters, and one that writes more is cut by {@link
+   * Stringifier#dropMiddle}. A stringifier that already drops at or below the cap is used as given.
+   * With none named a line is cut at {@link #DEFAULT_LINE_LIMIT}, keeping both ends. A result that
+   * cannot be said is recorded as an empty line; it never fails the turn.
    */
   ToolConfig<I> result(Stringifier<ToolResult.Success> result);
 
