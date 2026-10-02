@@ -283,7 +283,7 @@ measurements support it on three of four and it is the simplest thing to reason 
 |---|---|
 | Instructions | the vendor's system field, alone |
 | Summaries, tail | messages, as today |
-| Memory, State | user-side text at the head of the active turn's first message, each in a tag named for its kind |
+| Memory, State | user-side text at the head of the active turn's first message, tagged `<memory kind="...">` and `<state kind="...">` |
 | Active turn | messages, as today |
 | Ambient | user-side text at the very end of the request, after the last content of the active turn |
 
@@ -340,8 +340,8 @@ The engine class `Instructions` joins the prompt and the sections for both doors
 
 Inside a turn each request is the previous one with more at the end, so the tokens a provider
 reads from its cache should only grow from call to call. The engine remembers the last cache-read
-count per agent and turn and reports a call that reads fewer, as a warning and as the observation
-event `nessy.cache.read.fell`. Read with §6: a fall while only `active-turn` or `ambient` changed
+count per agent and turn and reports a call that reads fewer, as a warning and as a short
+observation of its own named `nessy.cache.read.fell`. Read with §6: a fall while only `active-turn` or `ambient` changed
 is the provider's cache expiring; a fall while an earlier stratum changed is ours.
 
 No narration event carries an inference's usage, so the watch (`CacheWatch`) is told directly by
@@ -371,6 +371,63 @@ anything.
    built; the measurements on chat history showed little gain from fetching.
 6. What becomes of old summaries once there are hundreds. Nothing folds them together.
 7. Whether tool-result stubbing follows the same cuts.
+
+## 2a. The whole public surface this work changes
+
+§2 names the concepts. This is the complete list of what is added, changed or removed in public
+types, for James to rule on by name. Everything here is provisional unless §2 says it was approved.
+
+**`nessy-api`**
+- Added: `Chapter` (with `covers`), `OpenTurns`, `ChapterPolicy` (`ends`, `every`), `Memory` (with
+  `text`), `MemorySource` (`kind`, `forAgent(AgentId, Turn)`, `constant`), `State` (with `text`),
+  `StateSource` (`kind`, `forAgent(AgentId, Turn)`, `constant`), `Block.MemoryContent`,
+  `Block.StateContent`.
+- Changed: `Summary` is `(Chapter chapter, String text)`; `Summarizer` is `String summarize(Chapter)`.
+- On `HarnessConfig`: `chapterPolicy`, `summarizer`, `memory`, `state`, `instructions`.
+- On `ContextConfig`: `chapterPolicy`, `summarizer`, `memory`, `state`, `maxChapterLength`,
+  `chapterLeaseTtl`, `withoutChapters`; `maxTail` defaults to 40 and counts completed turns only.
+- Removed: `SystemPromptSource`; `systemPrompt(SystemPromptSource)` on both door configs;
+  `summaries(...)` on `HarnessConfig` and `ContextConfig`; `Summarizer.none()`, `forAgent`,
+  `summarizedThrough`; `Summary.text(...)`; `Block.SummaryContent`.
+
+**`nessy-inference-spi`**
+- `InferenceContext` is `(summaries, tail, memory, state, activeTurn, ambient)`, with a derived
+  `turns()` (the tail then the active turn) and `of(List<Turn>)`, which takes the last turn as the
+  active one and refuses an empty list.
+
+**`nessy-backend-spi`**
+- Added: `Chapters` (`append`, `summarize`, `closedThrough`, `unsummarized`, `summaries`);
+  `chapters()` and `leases()` on `DirectBackend` and `QueuedBackend`. Table `nessy_chapter`.
+
+**`nessy-engine`** (public classes, not API)
+- `ChapterKeeper` (`LEASE_KIND` = `nessy.chapters`, `DEFAULT_LEASE_TTL`, `listener()`,
+  `keep(AgentId)`), `ProseSummarizer` (with `PROMPT`), `DeclaredChapters` (`TOOL_NAME`, `Beginning`,
+  `tool()`, `feature(TurnHistories)`), `ChapterSettings`, `Instructions`, `CacheWatch`,
+  `ContextFingerprint`, `Transcripts`.
+- `TurnHistory` gains `turnsBetween` and `completedAfter`, which any outside implementation must
+  now provide. `DefaultDirectHarnessFactory` gains `histories()`.
+- `ObservedSummarizer`, `ObservedChapterPolicy`, `ObservedMemorySource`, `ObservedStateSource`.
+- Both doors now refuse two sources of one kind within a stratum; the direct door did not check
+  ambient before. The direct door now refuses a `maxTail` that is not positive.
+
+**`nessy-prompt`**
+- `TemplatedSystemPrompt` no longer implements a source: it offers `render(...)`, returning a
+  `SystemPrompt`. `PromptVariableSource` is removed; `PromptVariables` gains `supplied` and
+  `firstOf`. `EnvironmentVariables.of` returns `PromptVariables`.
+
+**`nessy-console`**
+- `ReplConfig.systemPrompt(SystemPromptSource)` is removed.
+
+**`nessy-spring-boot`**
+- The starter's prompt bean is a `SystemPrompt`, rendered once at startup.
+
+**Removed modules**
+- `nessy-memory-summarizing`, `nessy-memory-episodic`.
+
+**Observation and log names**
+- `nessy.context.changed` (a key on the context-assembly observation), `nessy.cache.read.fell`,
+  `nessy.summary`, `nessy.chapter.policy`, `nessy.context memory <kind>`,
+  `nessy.context state <kind>`; the log prefix `NESSY CACHE:`.
 
 ## 9. What the build found (2026-10-02)
 
@@ -419,3 +476,25 @@ to measure live before building:
    the previous turn was rendered with them, which a stateless renderer cannot know.
 
 No shipped module supplies memory or state yet, so nothing is worse than before without it.
+
+### From the final whole-branch review
+
+Left as they are for James to decide; none is a correctness defect.
+
+- **The keeper waits its full two seconds after a turn ended by the turn policy.** Such a turn is
+  never shown as completed, so the wait cannot be satisfied.
+- **The default lease (two minutes) is shorter than the default model-call timeout (five).** A
+  summary that takes longer than the lease is started a second time at the next turn end; the
+  store keeps the first to arrive. The default summariser's model call has no deadline of the
+  engine's own.
+- **A summary that keeps failing is retried at every turn end, with no backoff.**
+- **A chapter policy that asks for chapters longer than the maximum is overridden by the forced
+  cut**, silently.
+- **The adapters differ in three places.** When a request ends on tool results, Anthropic and
+  Bedrock add the ambient text to that user message while Gemini and both OpenAI wires add a user
+  message of its own. When the active turn renders to nothing, Anthropic sends no memory or state
+  and the other four send them as a message of their own; the assembler never produces that case.
+- **No placement has met a real wire** except Anthropic's (probed) and a local OpenAI-compatible
+  server through the lab, with no tools and no ambient.
+- **A cache-fall warning is expected in two ordinary cases:** on the call after a summary lands in
+  the middle of a turn, and on an Anthropic answer-only call, which drops the tools.
