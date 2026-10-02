@@ -148,12 +148,6 @@ The trade: a fixed layout keeps cached prefixes stable and lets every
 adapter place content correctly for its vendor. The cost is that an
 application cannot try a different overall format for the context.
 
-`InferenceProvider` is a public interface and a harness takes one by
-`provider(...)`. A provider that wraps another can read and rewrite the
-`InferenceRequest` before it reaches the wire. That is an escape hatch, not
-a context feature, and what a rewritten request does to caching is for the
-application to check.
-
 See [Memory](memory.md).
 
 ## 4. Tools are just structured outputs
