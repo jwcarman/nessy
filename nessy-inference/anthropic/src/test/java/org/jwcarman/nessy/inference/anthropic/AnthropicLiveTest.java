@@ -20,7 +20,6 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -30,7 +29,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.JsonSchema;
-import org.jwcarman.nessy.api.Memory;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.Tokens;
@@ -609,58 +607,6 @@ class AnthropicLiveTest {
               Tokens.Counted.class, read -> assertThat(read.count()).isPositive());
       assertThat(third.usage().cacheReadTokens())
           .as("the third call reads the second call's prefix")
-          .isInstanceOfSatisfying(
-              Tokens.Counted.class, read -> assertThat(read.count()).isPositive());
-    }
-  }
-
-  /**
-   * Memory that differs on every turn leads the active turn's first message, so once that turn is
-   * finished everything from there on is sent differently. The first call of the next turn reads
-   * the cache only because the end of the history was marked, and this turn's tool loop is longer
-   * than the vendor's lookback of twenty blocks.
-   */
-  @Test
-  void the_first_call_of_a_turn_after_a_long_tool_loop_reads_the_cache() {
-    ToolOffer lookup =
-        new ToolOffer(
-            new ToolName("lake_depth"),
-            "returns the maximum depth of a named lake, in metres",
-            new JsonSchema(
-                """
-                {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}"""));
-    List<Exchange> rounds = new ArrayList<>();
-    for (int i = 1; i <= 25; i++) {
-      rounds.add(looked(1L + i * 2L, "call_" + i, "Loch " + i, i + "00 metres. "));
-    }
-    Input first = new Input(new Seq(1), List.of(new Block.Text("Look up twenty-five lochs.")));
-    Turn finished =
-        new Turn(
-            new TurnId(1),
-            first,
-            rounds,
-            new TurnResult.Answered(List.of(new Block.Text("Done."))),
-            0);
-    Map<String, String> cached = Map.of("anthropic.cache_control.ttl", "FIVE_MINUTES");
-
-    try (AnthropicInferenceProvider provider = provider()) {
-      InferenceResult second =
-          provider.infer(
-              new InferenceRequest(
-                  SYSTEM,
-                  new InferenceContext(
-                      List.of(),
-                      List.of(finished),
-                      List.of(Memory.text("recalled", "second turn, recalled at 10:01")),
-                      List.of(),
-                      open(2, "And Loch Ness?"),
-                      List.of()),
-                  new Toolset(List.of(lookup), ToolChoice.auto()),
-                  new InferenceOptions(MODEL, 2048, cached)));
-
-      assertThat(second).isNotInstanceOf(InferenceResult.Fault.class);
-      assertThat(second.usage().cacheReadTokens())
-          .as("the first call of the second turn reads the history the first turn wrote")
           .isInstanceOfSatisfying(
               Tokens.Counted.class, read -> assertThat(read.count()).isPositive());
     }

@@ -33,7 +33,6 @@ import com.anthropic.models.messages.ToolChoiceNone;
 import com.anthropic.models.messages.ToolResultBlockParam;
 import com.anthropic.models.messages.ToolUseBlockParam;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -208,27 +207,14 @@ public final class AnthropicRequests {
       boolean thinks,
       JsonMapper mapper) {
 
-    List<Drafted> drafts = new ArrayList<>();
-    // Where each piece of history ends: a summary is one message, a tail turn ends on its last.
-    // A turn that drafts to nothing has no end and is not counted.
-    List<Integer> historyEnds = new ArrayList<>();
-    for (Summary summary : context.summaries()) {
-      drafts.add(draftSummary(summary));
-      historyEnds.add(drafts.size() - 1);
-    }
-    for (Turn turn : context.tail()) {
-      List<Drafted> turnDrafts = draft(turn, thinks, mapper).toList();
-      if (!turnDrafts.isEmpty()) {
-        drafts.addAll(turnDrafts);
-        historyEnds.add(drafts.size() - 1);
-      }
-    }
-    int historyLength = drafts.size();
-    withLeadingStrata(draft(context.activeTurn(), thinks, mapper).toList(), context)
-        .forEach(drafts::add);
-    boolean strataLead = hasLeadingStrata(context) && drafts.size() > historyLength;
-    Set<Integer> marked =
-        marker.isPresent() ? breakpoints(drafts, historyEnds, strataLead) : Set.of();
+    List<Drafted> drafts =
+        Stream.of(
+                context.summaries().stream().map(AnthropicRequests::draftSummary),
+                context.tail().stream().flatMap(turn -> draft(turn, thinks, mapper)),
+                withLeadingStrata(draft(context.activeTurn(), thinks, mapper).toList(), context))
+            .flatMap(rendered -> rendered)
+            .toList();
+    Set<Integer> marked = marker.isPresent() ? breakpoints(drafts) : Set.of();
 
     List<MessageParam> params = new ArrayList<>(drafts.size());
     for (int i = 0; i < drafts.size(); i++) {
@@ -257,17 +243,6 @@ public final class AnthropicRequests {
    * for it go with it.
    */
   private static Stream<Drafted> withLeadingStrata(List<Drafted> active, InferenceContext context) {
-    List<ContentBlockParam> leading = leadingStrata(context);
-    if (leading.isEmpty() || active.isEmpty()) {
-      return active.stream();
-    }
-    List<ContentBlockParam> opening = new ArrayList<>(leading);
-    opening.addAll(active.getFirst().blocks());
-    return Stream.concat(
-        Stream.of(new Drafted(MessageParam.Role.USER, opening)), active.stream().skip(1));
-  }
-
-  private static List<ContentBlockParam> leadingStrata(InferenceContext context) {
     List<ContentBlockParam> leading = new ArrayList<>();
     for (Memory memory : context.memory()) {
       tagged("memory", memory.kind(), memory.content()).ifPresent(leading::add);
@@ -275,12 +250,13 @@ public final class AnthropicRequests {
     for (State state : context.state()) {
       tagged("state", state.kind(), state.content()).ifPresent(leading::add);
     }
-    return leading;
-  }
-
-  /** Whether any memory or state has text to render: blank ones are left out. */
-  private static boolean hasLeadingStrata(InferenceContext context) {
-    return !leadingStrata(context).isEmpty();
+    if (leading.isEmpty() || active.isEmpty()) {
+      return active.stream();
+    }
+    List<ContentBlockParam> opening = new ArrayList<>(leading);
+    opening.addAll(active.getFirst().blocks());
+    return Stream.concat(
+        Stream.of(new Drafted(MessageParam.Role.USER, opening)), active.stream().skip(1));
   }
 
   /** {@code <memory kind="notes">}, its text and the closing tag, or nothing for blank text. */
@@ -478,47 +454,22 @@ public final class AnthropicRequests {
   // ---- cache breakpoints ---------------------------------------------------------------
 
   /**
-   * Which messages end on a cache marker, besides the system prompt's.
+   * Which messages end on a cache marker.
    *
-   * <p>With no memory or state leading the active turn, two, and both are settled: the last
-   * message, where this request ends, and the user-side message before it, where the last request
-   * ended. The engine makes no call to the model until every result of a round is in, so a request
-   * it sends ends on a question or a complete set of results. What holds is that the blocks up to
-   * and including the marked one do not change within a turn; the message that ends a request does
-   * lose its background on the next call. The second marker sits on the prefix the last request
-   * wrote, so the vendor reads it back however many blocks the round in between added; the first
-   * alone would depend on the vendor's own search reaching back that far.
-   *
-   * <p>With memory or state leading the active turn, three: the end of the history one piece
-   * earlier, the end of the history, and the end of this request. The active turn's first message
-   * carries the memory and state only while the turn runs; once it is in the tail it is sent
-   * without them, so everything from that message on differs from what was written, and the two
-   * markers above would read nothing from inside it -- nothing at all when the turn was longer than
-   * the vendor's lookback of twenty blocks from a marker. The history, a summary or a finished
-   * turn, is what stays the same, so its end is marked, and the one before it too, so that the
-   * first call of a turn finds an entry however the turn that just ended grew. The user-side marker
-   * is not placed then: inside a tool loop the lookback from the end marker finds the previous
-   * call's entry. With the system prompt's marker that is four, the vendor's limit. A piece of
-   * history that renders to nothing is not counted; with fewer than two, only the markers that have
-   * somewhere to sit are placed.
+   * <p>Two, and both are settled: the last message, where this request ends, and the user-side
+   * message before it, where the last request ended. The engine makes no call to the model until
+   * every result of a round is in, so a request it sends ends on a question or a complete set of
+   * results. What holds is that the blocks up to and including the marked one do not change within
+   * a turn; the message that ends a request does lose its background on the next call, and the
+   * active turn's first message loses its memory and state once the turn is in the tail. The second
+   * marker sits on the prefix the last request wrote, so the vendor reads it back however many
+   * blocks the round in between added; the first alone would depend on the vendor's own search
+   * reaching back that far.
    */
-  private static Set<Integer> breakpoints(
-      List<Drafted> drafts, List<Integer> historyEnds, boolean strataLead) {
+  private static Set<Integer> breakpoints(List<Drafted> drafts) {
     int last = drafts.size() - 1;
     if (last < 0) {
       return Set.of();
-    }
-    if (strataLead) {
-      Set<Integer> marked = new HashSet<>();
-      marked.add(last);
-      int ends = historyEnds.size();
-      if (ends >= 1) {
-        marked.add(historyEnds.get(ends - 1));
-      }
-      if (ends >= 2) {
-        marked.add(historyEnds.get(ends - 2));
-      }
-      return marked;
     }
     for (int i = last - 1; i >= 0; i--) {
       if (MessageParam.Role.USER.equals(drafts.get(i).role())) {
