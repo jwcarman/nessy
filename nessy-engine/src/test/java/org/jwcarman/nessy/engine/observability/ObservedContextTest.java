@@ -217,6 +217,39 @@ class ObservedContextTest {
     assertThat(lastChange()).isEqualTo("first-call");
   }
 
+  @Test
+  void the_same_id_under_two_agent_types_is_two_agents() {
+    InferenceContextAssembler assembler =
+        ObservedInferenceContextAssembler.wrap(
+            _ -> InferenceContext.of(List.of(StoryOfOne.TURN)), registry);
+
+    assembler.assemble(invocationFor(AGENT));
+    assembler.assemble(
+        new InferenceInvocation(new AgentType("other"), AGENT, InferenceOptions.of("a-model")));
+
+    assertThat(lastChange()).isEqualTo("first-call");
+  }
+
+  /** Measuring is observability, and observability never fails the call it measures. */
+  @Test
+  void a_context_whose_change_cannot_be_measured_is_still_assembled() {
+    InferenceContext assembled = InferenceContext.of(List.of(StoryOfOne.TURN));
+    InferenceContextAssembler assembler =
+        ObservedInferenceContextAssembler.wrap(
+            _ -> assembled,
+            registry,
+            _ -> {
+              throw new IllegalStateException("cannot fingerprint");
+            });
+
+    InferenceContext returned = assembler.assemble(invocationFor(AGENT));
+
+    assertThat(returned).isSameAs(assembled);
+    assertThat(only().getContextualName()).isEqualTo("nessy.context");
+    assertThat(only().getLowCardinalityKeyValue(ObservedInferenceContextAssembler.CHANGED))
+        .isNull();
+  }
+
   /** Reading the tail says how much of the story came back, which grows with the conversation. */
   @Test
   void reading_the_tail_says_how_many_turns_it_found() {

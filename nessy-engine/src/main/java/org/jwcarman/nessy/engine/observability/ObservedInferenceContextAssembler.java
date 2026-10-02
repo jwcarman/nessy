@@ -64,8 +64,16 @@ public final class ObservedInferenceContextAssembler {
 
   public static InferenceContextAssembler wrap(
       InferenceContextAssembler delegate, ObservationRegistry observations) {
+    return wrap(delegate, observations, ContextFingerprint::of);
+  }
+
+  static InferenceContextAssembler wrap(
+      InferenceContextAssembler delegate,
+      ObservationRegistry observations,
+      Function<InferenceContext, ContextFingerprint> fingerprinter) {
     Objects.requireNonNull(delegate, "delegate must not be null");
     Objects.requireNonNull(observations, "observations must not be null");
+    Objects.requireNonNull(fingerprinter, "fingerprinter must not be null");
     Map<Whose, ContextFingerprint> last = boundedLastSeen();
     return invocation ->
         observe(
@@ -75,22 +83,32 @@ public final class ObservedInferenceContextAssembler {
             new Identity(invocation.agentType(), invocation.agentId()),
             observation -> {
               InferenceContext context = delegate.assemble(invocation);
-              String changed =
-                  changeSincePreviousCall(
-                      last, new Whose(invocation.agentType(), invocation.agentId()), context);
-              observation.lowCardinalityKeyValue(CHANGED, changed);
-              log.debug(
-                  "context for {} {} changed since the last call: {}",
-                  invocation.agentType().value(),
-                  invocation.agentId().value(),
-                  changed);
+              // Measuring is observability: it must never fail the call it measures.
+              try {
+                String changed =
+                    changeSincePreviousCall(
+                        last,
+                        new Whose(invocation.agentType(), invocation.agentId()),
+                        fingerprinter.apply(context));
+                observation.lowCardinalityKeyValue(CHANGED, changed);
+                log.debug(
+                    "context for {} {} changed since the last call: {}",
+                    invocation.agentType().value(),
+                    invocation.agentId().value(),
+                    changed);
+              } catch (RuntimeException e) {
+                log.debug(
+                    "the change in the context for {} {} could not be measured",
+                    invocation.agentType().value(),
+                    invocation.agentId().value(),
+                    e);
+              }
               return context;
             });
   }
 
   private static String changeSincePreviousCall(
-      Map<Whose, ContextFingerprint> last, Whose whose, InferenceContext context) {
-    ContextFingerprint now = ContextFingerprint.of(context);
+      Map<Whose, ContextFingerprint> last, Whose whose, ContextFingerprint now) {
     ContextFingerprint previous;
     synchronized (last) {
       previous = last.put(whose, now);
