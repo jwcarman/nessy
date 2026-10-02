@@ -274,7 +274,15 @@ final class DefaultQueuedHarness<I>
     AgentState state = turn.isEmpty() || needsRequest ? reconstitute(agentId) : null;
     Optional<TurnId> answered = turn.or(() -> turnOf(state));
     Optional<Seq> answeredRequest = needsRequest ? requestOf(state) : request;
-    if (answered.isEmpty() || (needsRequest && answeredRequest.isEmpty())) {
+    if (answered.isEmpty()) {
+      log.debug(
+          "[{}] agent {} is not on a turn; {} settles nothing",
+          agentType.value(),
+          agentId.value(),
+          outcome.getClass().getSimpleName());
+      return false;
+    }
+    if (needsRequest && answeredRequest.isEmpty()) {
       log.debug(
           "[{}] agent {} is not waiting on a request; {} settles nothing",
           agentType.value(),

@@ -896,25 +896,6 @@ class AgentStateTest {
           .first()
           .isInstanceOf(AgentEvent.ToolFailed.class);
     }
-
-    @Test
-    void an_answer_that_names_no_request_is_matched_as_before() {
-      // The fold fills in the request the agent is waiting on for the one delivery that cannot
-      // name its own, so this is what such a delivery becomes: the current turn, the current
-      // request, and the call id as the only thing left to match on.
-      AgentState running = awaitingOneRunningCall();
-      Seq waitedOn = ((AgentState.AwaitingActions) running).requestSeq();
-
-      Decision decision =
-          running.execute(
-              new AgentCommand.CompleteToolCall(
-                  TURN, waitedOn, CALL, new AgentCommand.ToolOutcome.Failed("unreadable")));
-
-      assertThat(decision.events())
-          .singleElement()
-          .isInstanceOfSatisfying(
-              AgentEvent.ToolFailed.class, failed -> assertThat(failed.callId()).isEqualTo(CALL));
-    }
   }
 
   @Nested

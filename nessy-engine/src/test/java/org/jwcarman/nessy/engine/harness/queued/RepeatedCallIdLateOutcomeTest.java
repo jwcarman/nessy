@@ -60,13 +60,16 @@ import tools.jackson.databind.json.JsonMapper;
  * finally returns, its outcome must not be taken for the second request's call.
  *
  * <p>Real dispatcher, in-memory backend, real (short) deadline. The latches decide the order of
- * everything that matters; the only wall-clock dependence is that the tool's deadline passes.
+ * everything that matters. The clock enters twice: the first invocation must outlast its deadline,
+ * and the second, under the same deadline, must be released and delivered inside it -- which takes
+ * milliseconds, against a deadline of a full second, so only a stall of that size could fail the
+ * test for a reason that is not the behaviour under test.
  */
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class RepeatedCallIdLateOutcomeTest {
 
   private static final AgentType TYPE = new AgentType("late-outcome");
-  private static final Duration TOOL_DEADLINE = Duration.ofMillis(400);
+  private static final Duration TOOL_DEADLINE = Duration.ofMillis(1000);
 
   private final CountDownLatch secondStarted = new CountDownLatch(1);
   private final CountDownLatch releaseFirst = new CountDownLatch(1);
@@ -239,6 +242,7 @@ class RepeatedCallIdLateOutcomeTest {
     // request's call is the one being waited on, and the next step does not happen until the agent
     // has said what it made of it: an answer taken for the second request's call would be recorded
     // in the story, and one that is not is logged as ignored.
+    ignored.forget();
     releaseFirst.countDown();
     await("the late answer has been dealt with")
         .until(() -> ignored.heard() || backendRecordedASecondDischarge(agent));
@@ -301,6 +305,11 @@ class RepeatedCallIdLateOutcomeTest {
       if (event.getFormattedMessage().contains("ignoring CompleteToolCall")) {
         heard.set(true);
       }
+    }
+
+    /** Forgets what an earlier duplicate delivery said, so only a later answer can be heard. */
+    void forget() {
+      heard.set(false);
     }
 
     boolean heard() {

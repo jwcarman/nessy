@@ -108,7 +108,6 @@ class AgentStateRepeatedCallIdTest {
 
     Decision decision = running.execute(duplicate);
 
-    System.out.println("TEST A1 duplicate success decided: " + describe(decision));
     assertThat(decision)
         .as(
             "request 1's outcome, re-delivered, must not become request 2's: %s",
@@ -147,7 +146,6 @@ class AgentStateRepeatedCallIdTest {
 
     Decision decision = awaiting.execute(duplicate);
 
-    System.out.println("TEST A2 duplicate failure decided: " + describe(decision));
     assertThat(decision)
         .as(
             "request 1's failure, re-delivered, must not fail request 2's call: %s",
