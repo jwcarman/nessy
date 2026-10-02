@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`AnthropicThinkingType.BETWEEN_TOOLS`** (`anthropic.thinking.type:
+  between_tools`), sent as the vendor names it. It is how thinking is turned
+  off on a model that thinks with no thinking field and refuses `disabled`, as
+  Sonnet 5.5 does: the model does not think before it responds.
 - **`InferenceRequest.oneOff`**, set with `asOneOff()`: a request that
   belongs to no series, so nothing it sends will be sent again. The Anthropic
   adapter sends no cache markers for one, whatever

@@ -26,10 +26,11 @@ import org.jwcarman.nessy.api.VendorProperty;
 public final class AnthropicProperties {
 
   /**
-   * Whether and how a model thinks. Thinking is off unless this or {@link #THINKING_BUDGET} is set;
-   * a budget alone means enabled. {@code enabled} without a budget sends 1024 tokens, which must
-   * stay below the request's maxTokens. {@code adaptive} sends no budget; {@code disabled} sends
-   * nothing.
+   * Whether and how a model thinks. No thinking field is sent unless this or {@link
+   * #THINKING_BUDGET} is set, which leaves the model to its own default; a budget alone means
+   * enabled. {@code enabled} without a budget sends 1024 tokens, which must stay below the
+   * request's maxTokens. {@code adaptive} sends no budget; {@code disabled} sends nothing; {@code
+   * between_tools} is sent as it is named and turns off the thinking before a response.
    */
   public static final VendorProperty<AnthropicThinkingType> THINKING_TYPE =
       VendorProperty.ofEnum("anthropic.thinking.type", AnthropicThinkingType.class);

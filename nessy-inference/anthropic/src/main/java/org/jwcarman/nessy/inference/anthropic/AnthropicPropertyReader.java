@@ -66,6 +66,15 @@ final class AnthropicPropertyReader {
     boolean enabled() {
       return thinking.filter(AnthropicThinkingType.ENABLED::equals).isPresent();
     }
+
+    /** Whether the request is one that thinks before it responds, and so replays old thinking. */
+    boolean thinks() {
+      return enabled() || thinking.filter(AnthropicThinkingType.ADAPTIVE::equals).isPresent();
+    }
+
+    boolean betweenTools() {
+      return thinking.filter(AnthropicThinkingType.BETWEEN_TOOLS::equals).isPresent();
+    }
   }
 
   /** The supported names of the merged provider and agent-type map, parsed. Silent. */

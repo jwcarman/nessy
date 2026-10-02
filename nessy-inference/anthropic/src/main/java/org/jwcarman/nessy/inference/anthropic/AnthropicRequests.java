@@ -110,6 +110,8 @@ public final class AnthropicRequests {
    */
   private static final String BLOCK_BINDING = "block_binding";
 
+  private static final String THINKING = "thinking";
+  private static final JsonValue BETWEEN_TOOLS = JsonValue.from(Map.of("type", "between_tools"));
   private static final JsonValue DROP_MISMATCHED =
       JsonValue.from(Map.of("prefix_mismatch_behavior", "drop_block"));
 
@@ -138,9 +140,7 @@ public final class AnthropicRequests {
     if (!system.isEmpty()) {
       builder.systemOfTextBlockParams(system);
     }
-    boolean thinks =
-        read.enabled()
-            || read.thinking().filter(AnthropicThinkingType.ADAPTIVE::equals).isPresent();
+    boolean thinks = read.thinks();
     addMessages(builder, request.context(), marker, thinks, mapper);
     // Answering now is the one choice this vendor cannot be told: measured 2026-09-20, a ban with
     // the tools still in the request ends the turn with no content at all. What works here is not
@@ -164,6 +164,11 @@ public final class AnthropicRequests {
           ThinkingConfigAdaptive.builder()
               .putAdditionalProperty(BLOCK_BINDING, DROP_MISMATCHED)
               .build());
+    } else if (read.betweenTools()) {
+      // The SDK has no type for this mode, so the field is sent as the vendor spells it. The
+      // request does not think before it responds, so it replays no thinking, like any other that
+      // does not.
+      builder.putAdditionalBodyProperty(THINKING, BETWEEN_TOOLS);
     }
     read.serviceTier().ifPresent(tier -> builder.serviceTier(serviceTier(tier)));
     return builder.build();

@@ -253,7 +253,7 @@ keyword; the other tools stay strict.
 
 | name | constant | accepts | lands in |
 |---|---|---|---|
-| `anthropic.thinking.type` | `THINKING_TYPE` | `AnthropicThinkingType`: `ENABLED` `DISABLED` `ADAPTIVE` | `enabled` needs a budget; `adaptive`; `disabled` sends no thinking |
+| `anthropic.thinking.type` | `THINKING_TYPE` | `AnthropicThinkingType`: `ENABLED` `DISABLED` `ADAPTIVE` `BETWEEN_TOOLS` | `enabled` needs a budget; `adaptive`; `disabled` sends no thinking field; `between_tools` is sent as named |
 | `anthropic.thinking.budget_tokens` | `THINKING_BUDGET` | an integer | the thinking budget; alone, it turns thinking on. Must be below the agent type's `maxTokens` |
 | `anthropic.cache_control.ttl` | `CACHE_TTL` | `AnthropicCacheTtl`: `FIVE_MINUTES` `ONE_HOUR` | the cache markers on the system prompt and the tools |
 | `anthropic.service_tier` | `SERVICE_TIER` | `AnthropicServiceTier`: `AUTO` `STANDARD_ONLY` | `service_tier` |
@@ -348,8 +348,14 @@ nessy:
 
 The defaults, when a property is absent:
 
-- Thinking is off unless `anthropic.thinking.type` or
+- No thinking field is sent unless `anthropic.thinking.type` or
   `anthropic.thinking.budget_tokens` is set; a budget alone means `enabled`.
+  With no field the model's own default applies, and Sonnet 5.5 thinks.
+- `between_tools` turns off the thinking before a response: the model does
+  not think before it responds, and the short updates it writes between tool
+  calls come back as thinking blocks. Sonnet 5.5 refuses `disabled` and names
+  this mode as its way to turn thinking off. The request replays no earlier
+  thinking, like any other that does not think.
 - `enabled` without a budget sends 1024 tokens. The reasoning is spent out of
   each call's `maxTokens`, which must exceed the budget or the request is
   refused before the call.

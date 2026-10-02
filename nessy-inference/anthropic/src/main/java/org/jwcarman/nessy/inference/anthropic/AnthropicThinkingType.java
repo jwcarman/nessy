@@ -18,9 +18,22 @@ package org.jwcarman.nessy.inference.anthropic;
 /**
  * Whether and how a model thinks, as the value of {@code anthropic.thinking.type}. {@link #ENABLED}
  * needs {@code anthropic.thinking.budget_tokens}.
+ *
+ * <p>With nothing set no thinking field is sent, and what the model then does is the model's own
+ * default: Sonnet 5.5 thinks (measured 2026-10-02).
  */
 public enum AnthropicThinkingType {
   ENABLED,
+
+  /** Sends no thinking field, exactly as when nothing is set. */
   DISABLED,
-  ADAPTIVE;
+  ADAPTIVE,
+
+  /**
+   * Sent as {@code between_tools}: the model does not think before it responds, and the short
+   * updates it writes between tool calls come back as thinking blocks. It is how thinking is turned
+   * off on a model that thinks unasked and refuses {@code disabled}, as Sonnet 5.5 does (measured
+   * 2026-10-02).
+   */
+  BETWEEN_TOOLS;
 }

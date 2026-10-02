@@ -56,6 +56,7 @@ import org.jwcarman.nessy.inference.Toolset;
 import org.jwcarman.nessy.inference.anthropic.AnthropicCacheTtl;
 import org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider;
 import org.jwcarman.nessy.inference.anthropic.AnthropicProperties;
+import org.jwcarman.nessy.inference.anthropic.AnthropicThinkingType;
 import org.jwcarman.nessy.inference.gemini.GeminiInferenceProvider;
 import org.jwcarman.nessy.inference.openai.OpenAiChatInferenceProvider;
 import org.jwcarman.nessy.inference.openai.OpenAiChatProviderConfig;
@@ -116,7 +117,8 @@ public final class ChapterLab {
                         [--conversation N] [--questions N] [--policy every:N|session|hindsight|none]
                         [--summarizer prose|index] [--summary-model NAME]
                         [--max-chapter-length N] [--max-tail N]
-                        [--base-url URL (lmstudio)] [--reasoning-effort VALUE]""";
+                        [--base-url URL (lmstudio)] [--reasoning-effort VALUE]
+                        [--thinking adaptive|disabled|between_tools (anthropic)]""";
 
   private ChapterLab() {}
 
@@ -127,6 +129,8 @@ public final class ChapterLab {
    * @param summaryModel the model that writes summaries and cuts; the answering model by default
    * @param baseUrl the address of a local server, or null for its default
    * @param reasoningEffort an {@link OpenAiReasoningEffort} name, or null to send none
+   * @param thinking an {@link AnthropicThinkingType} name, or null to leave the model to its
+   *     default
    */
   record Settings(
       File data,
@@ -140,7 +144,8 @@ public final class ChapterLab {
       int maxChapterLength,
       int maxTail,
       String baseUrl,
-      String reasoningEffort) {
+      String reasoningEffort,
+      String thinking) {
 
     Settings(
         File data,
@@ -165,6 +170,7 @@ public final class ChapterLab {
           maxChapterLength,
           maxTail,
           null,
+          null,
           null);
     }
 
@@ -175,7 +181,7 @@ public final class ChapterLab {
     /** The settings as one line. */
     String describe() {
       return ("provider %s, model %s, summary model %s, conversation %d, %d questions, policy %s,"
-              + " summarizer %s, max chapter length %d, max tail %d")
+              + " summarizer %s, max chapter length %d, max tail %d%s")
           .formatted(
               provider,
               model,
@@ -185,13 +191,19 @@ public final class ChapterLab {
               policy,
               summarizer,
               maxChapterLength,
-              maxTail);
+              maxTail,
+              thinking == null ? "" : ", thinking " + thinking);
     }
 
     /** Where the questions, answers and verdicts are appended. */
     String resultsFile() {
-      return "chapter-lab-%s-%s-%s-%s.jsonl"
-          .formatted(provider, safe(model), safe(policy), summarizer);
+      return "chapter-lab-%s-%s-%s-%s%s.jsonl"
+          .formatted(
+              provider,
+              safe(model),
+              safe(policy),
+              summarizer,
+              thinking == null ? "" : "-thinking-" + safe(thinking));
     }
 
     private static String safe(String name) {
@@ -295,7 +307,8 @@ public final class ChapterLab {
             "max-chapter-length",
             "max-tail",
             "base-url",
-            "reasoning-effort");
+            "reasoning-effort",
+            "thinking");
     for (String name : given.keySet()) {
       if (!known.contains(name)) {
         throw new IllegalArgumentException("unknown option --" + name + "; options are " + known);
@@ -326,6 +339,13 @@ public final class ChapterLab {
       }
       effort(effort);
     }
+    String thinking = given.get("thinking");
+    if (thinking != null) {
+      if (!provider.equals("anthropic")) {
+        throw new IllegalArgumentException("--thinking applies only to --provider anthropic");
+      }
+      thinking(thinking);
+    }
     Settings settings =
         new Settings(
             new File(required(given, "data")),
@@ -339,7 +359,8 @@ public final class ChapterLab {
             number(given, "max-chapter-length", 200),
             number(given, "max-tail", 400),
             baseUrl,
-            effort);
+            effort,
+            thinking);
     if (policy.startsWith("every:")
         && Integer.parseInt(policy.substring("every:".length())) > settings.maxChapterLength()) {
       throw new IllegalArgumentException(
@@ -399,12 +420,34 @@ public final class ChapterLab {
    * to set and never prints one.
    */
   static InferenceProvider provider(String name) {
-    return provider(name, null, null);
+    return provider(name, null, null, null);
   }
 
-  /** The provider {@code settings} names, with its address and reasoning effort if given. */
+  /**
+   * The provider {@code settings} names, with its address, reasoning effort and thinking if given.
+   */
   static InferenceProvider provider(Settings settings) {
-    return provider(settings.provider(), settings.baseUrl(), settings.reasoningEffort());
+    return provider(
+        settings.provider(), settings.baseUrl(), settings.reasoningEffort(), settings.thinking());
+  }
+
+  /**
+   * The thinking type named. {@code enabled} is not offered: it needs a budget, and the lab has no
+   * option for one.
+   */
+  private static AnthropicThinkingType thinking(String name) {
+    List<AnthropicThinkingType> offered =
+        List.of(
+            AnthropicThinkingType.ADAPTIVE,
+            AnthropicThinkingType.DISABLED,
+            AnthropicThinkingType.BETWEEN_TOOLS);
+    return offered.stream()
+        .filter(type -> type.name().equalsIgnoreCase(name))
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new IllegalArgumentException(
+                    "unknown thinking '%s'; choose one of %s".formatted(name, offered)));
   }
 
   private static OpenAiReasoningEffort effort(String name) {
@@ -417,16 +460,21 @@ public final class ChapterLab {
     }
   }
 
-  private static InferenceProvider provider(String name, String baseUrl, String reasoningEffort) {
+  private static InferenceProvider provider(
+      String name, String baseUrl, String reasoningEffort, String thinking) {
     return switch (name) {
       case "anthropic" ->
           // Every question is asked with the same context ahead of it, so the vendor's cache is on:
           // the first question writes that context and the rest read it back.
           AnthropicInferenceProvider.of(
-              c ->
-                  c.fromEnv()
-                      .timeout(TRANSPORT)
-                      .property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.FIVE_MINUTES));
+              c -> {
+                c.fromEnv()
+                    .timeout(TRANSPORT)
+                    .property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.FIVE_MINUTES);
+                if (thinking != null) {
+                  c.property(AnthropicProperties.THINKING_TYPE, thinking(thinking));
+                }
+              });
       case "openai" ->
           OpenAiChatInferenceProvider.of(
               c -> {

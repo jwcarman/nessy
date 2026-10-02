@@ -551,6 +551,45 @@ class ChapterLabTest {
     }
 
     @Test
+    void anthropic_may_be_told_how_to_think_and_the_results_are_kept_apart() {
+      ChapterLab.Settings settings = ChapterLab.parse(with("--thinking", "between_tools"));
+
+      assertThat(settings.thinking()).isEqualTo("between_tools");
+      assertThat(settings.describe()).endsWith(", thinking between_tools");
+      assertThat(settings.resultsFile()).endsWith("-thinking-between_tools.jsonl");
+    }
+
+    @Test
+    void with_no_thinking_named_the_settings_and_the_results_file_say_nothing_of_it() {
+      ChapterLab.Settings settings = ChapterLab.parse(with("--policy", "every:20"));
+
+      assertThat(settings.thinking()).isNull();
+      assertThat(settings.describe()).doesNotContain("thinking");
+      assertThat(settings.resultsFile()).doesNotContain("thinking");
+    }
+
+    @Test
+    void an_unknown_thinking_is_refused_with_the_choices() {
+      String[] args = with("--thinking", "enabled");
+
+      assertThatThrownBy(() -> ChapterLab.parse(args))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("unknown thinking 'enabled'")
+          .hasMessageContaining("BETWEEN_TOOLS");
+    }
+
+    @Test
+    void thinking_for_another_provider_is_refused() {
+      String[] args = {
+        "--data", "x.json", "--provider", "openai", "--model", "m", "--thinking", "adaptive"
+      };
+
+      assertThatThrownBy(() -> ChapterLab.parse(args))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("--thinking applies only to --provider anthropic");
+    }
+
+    @Test
     void a_base_url_for_a_hosted_provider_is_refused() {
       String[] args = with("--base-url", "http://box:9000/v1");
 

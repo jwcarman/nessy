@@ -1300,7 +1300,34 @@ class AnthropicRequestsTest {
       assertThat(params.thinking().orElseThrow().isAdaptive()).isTrue();
     }
 
-    /** A thinking type is one of the three the wire knows; anything else is refused. */
+    /**
+     * The mode that turns off the thinking before a response on a model that thinks unasked. The
+     * SDK has no type for it, so it travels as a body property spelled as the vendor spells it.
+     */
+    @Test
+    void between_tools_is_sent_as_the_vendor_names_it() {
+      MessageCreateParams params = paramsFor(Map.of("anthropic.thinking.type", "between_tools"));
+
+      assertThat(params.thinking()).isEmpty();
+      assertThat(params._additionalBodyProperties())
+          .containsOnlyKeys("thinking")
+          .containsEntry("thinking", JsonValue.from(Map.of("type", "between_tools")));
+    }
+
+    @Test
+    void between_tools_over_a_provider_that_thinks_sends_only_between_tools() {
+      MessageCreateParams params =
+          paramsFor(
+              Map.of(
+                  "anthropic.thinking.type", "enabled", "anthropic.thinking.budget_tokens", "512"),
+              Map.of("anthropic.thinking.type", "between_tools"));
+
+      assertThat(params.thinking()).isEmpty();
+      assertThat(params._additionalBodyProperties())
+          .containsEntry("thinking", JsonValue.from(Map.of("type", "between_tools")));
+    }
+
+    /** A thinking type is one of the four this adapter knows; anything else is refused. */
     @Test
     void a_thinking_type_that_is_not_enabled_adaptive_or_disabled_is_refused() {
       Map<String, String> properties =
@@ -1311,8 +1338,8 @@ class AnthropicRequestsTest {
       assertThatThrownBy(() -> AnthropicRequests.toParams(request, Map.of(), MAPPER))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage(
-              "property 'anthropic.thinking.type' must be one of [ENABLED, DISABLED, ADAPTIVE],"
-                  + " was 'interleaved'");
+              "property 'anthropic.thinking.type' must be one of [ENABLED, DISABLED, ADAPTIVE,"
+                  + " BETWEEN_TOOLS], was 'interleaved'");
     }
 
     @Test
@@ -1514,6 +1541,24 @@ class AnthropicRequestsTest {
 
       assertThat(blocks).hasSize(1);
       assertThat(blocks.getFirst().asText().text()).isEqualTo("1412 metres");
+    }
+
+    /** Between tools is a request that does not think before it responds, so it replays none. */
+    @Test
+    void an_agent_type_that_thinks_only_between_tools_replays_none_of_the_history() {
+      var params =
+          AnthropicRequests.toParams(
+              new InferenceRequest(
+                  SYSTEM,
+                  InferenceContext.of(List.of(thoughtThenAnswered())),
+                  Toolset.none(),
+                  new InferenceOptions(
+                      "claude-sonnet", 1024, Map.of("anthropic.thinking.type", "between_tools"))),
+              THINKING,
+              MAPPER);
+
+      assertThat(params.thinking()).isEmpty();
+      assertThat(blocksOf(params)).hasSize(3).noneMatch(ContentBlockParam::isThinking);
     }
 
     @Test
