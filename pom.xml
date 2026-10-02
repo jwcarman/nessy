@@ -969,6 +969,7 @@ limitations under the License.]]></inlineHeader>
                 <excludeArtifact>nessy-prompt-parent</excludeArtifact>
                 <excludeArtifact>nessy-coverage</excludeArtifact>
                 <excludeArtifact>nessy-examples</excludeArtifact>
+                <excludeArtifact>nessy-example-chapter-lab</excludeArtifact>
                 <excludeArtifact>nessy-example-chat-cli</excludeArtifact>
                 <excludeArtifact>nessy-example-chat-web</excludeArtifact>
                 <excludeArtifact>nessy-example-mcp</excludeArtifact>

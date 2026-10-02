@@ -68,12 +68,26 @@ public final class ProseSummarizer implements Summarizer {
   private final TurnHistories histories;
   private final InferenceProvider provider;
   private final InferenceOptions options;
+  private final String prompt;
 
   public ProseSummarizer(
       TurnHistories histories, InferenceProvider provider, InferenceOptions options) {
+    this(histories, provider, options, PROMPT);
+  }
+
+  /**
+   * As above, telling the model {@code prompt} in place of {@link #PROMPT}: the same reading of the
+   * chapter's turns and the same closing ask, with a different idea of what the record is for.
+   */
+  public ProseSummarizer(
+      TurnHistories histories,
+      InferenceProvider provider,
+      InferenceOptions options,
+      String prompt) {
     this.histories = Objects.requireNonNull(histories, "histories must not be null");
     this.provider = Objects.requireNonNull(provider, "provider must not be null");
     this.options = Objects.requireNonNull(options, "options must not be null");
+    this.prompt = Objects.requireNonNull(prompt, "prompt must not be null");
     provider.validate(options);
   }
 
@@ -93,7 +107,7 @@ public final class ProseSummarizer implements Summarizer {
     InferenceResult result =
         provider.infer(
             new InferenceRequest(
-                new SystemPrompt(PROMPT),
+                new SystemPrompt(prompt),
                 new InferenceContext(List.of(), turns, List.of(), List.of(), asking, List.of()),
                 Toolset.none(),
                 options));

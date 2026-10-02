@@ -157,6 +157,30 @@ class ProseSummarizerTest {
     }
 
     @Test
+    void sends_the_prompt_it_was_given_in_place_of_the_default() {
+      Story story = new Story(List.of(turn(1)));
+      Scripted provider = new Scripted(_ -> answer("the entry"));
+
+      new ProseSummarizer(story, provider, OPTIONS, "Write an index entry.")
+          .summarize(chapter(1, 1));
+
+      assertThat(provider.requests).hasSize(1);
+      assertThat(provider.requests.getFirst().systemPrompt().value())
+          .isEqualTo("Write an index entry.");
+    }
+
+    @Test
+    void sends_the_default_prompt_when_none_is_given() {
+      Story story = new Story(List.of(turn(1)));
+      Scripted provider = new Scripted(_ -> answer("the record"));
+
+      new ProseSummarizer(story, provider, OPTIONS).summarize(chapter(1, 1));
+
+      assertThat(provider.requests.getFirst().systemPrompt().value())
+          .isEqualTo(ProseSummarizer.PROMPT);
+    }
+
+    @Test
     void reads_the_story_of_the_chapters_own_agent() {
       Story story = new Story(List.of(turn(1)));
       Scripted provider = new Scripted(_ -> answer("the record"));

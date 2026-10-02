@@ -46,6 +46,7 @@
     <module>policy</module>
     <module>mcp</module>
     <module>chat-cli</module>
+    <module>chapter-lab</module>
     <module>chat-web</module>
     <module>watchman</module>
   </modules>
