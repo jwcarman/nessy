@@ -45,11 +45,13 @@ import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Chapter;
 import org.jwcarman.nessy.api.turn.Summary;
+import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.backend.inmemory.InMemoryAgentEvents;
 import org.jwcarman.nessy.backend.inmemory.InMemoryChapters;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLeases;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLocks;
 import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
+import org.jwcarman.nessy.engine.chapter.DeclaredChapters;
 import org.jwcarman.nessy.engine.chapter.ProseSummarizer;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceNarrator;
@@ -86,12 +88,27 @@ class DirectHarnessChaptersTest {
     private final List<InferenceRequest> chats = new CopyOnWriteArrayList<>();
     private final List<InferenceRequest> summaries = new CopyOnWriteArrayList<>();
 
+    private volatile int beginsOnTurn = -1;
+
+    /** From now on, the model calls {@code begin_chapter} first thing in turn {@code number}. */
+    void beginChapterOnTurn(int number) {
+      beginsOnTurn = number;
+    }
+
     @Override
     public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
       if (request.systemPrompt().value().equals(ProseSummarizer.PROMPT)) {
         summaries.add(request);
         return new InferenceResult.Answer(
             List.of(new Block.Text("they talked")), Usage.unreported(MODEL));
+      }
+      List<Turn> turns = request.context().turns();
+      boolean firstCallOfTheTurn = turns.getLast().exchanges().isEmpty();
+      if (firstCallOfTheTurn && turns.size() == beginsOnTurn) {
+        return new InferenceResult.Actions(
+            List.of(
+                new Block.ToolCall("begin-" + turns.size(), "begin_chapter", "{\"title\":\"x\"}")),
+            Usage.unreported(MODEL));
       }
       chats.add(request);
       return new InferenceResult.Answer(
@@ -255,6 +272,30 @@ class DirectHarnessChaptersTest {
       assertThat(written.getFirst().text()).isEqualTo("they talked");
       assertThat(model.summaries).isNotEmpty();
       assertThat(model.summaries.getFirst().options().modelName()).isEqualTo(MODEL);
+    }
+  }
+
+  @Nested
+  @DisplayName("Chapters the model declares")
+  class Declared {
+
+    @Test
+    void a_model_that_begins_a_chapter_closes_the_one_before() {
+      AgentId agent = AgentId.random();
+      DirectHarness<String, String> harness =
+          harness(c -> DeclaredChapters.feature(factory.histories()).customize(c));
+      model.beginChapterOnTurn(3);
+
+      talk(harness, agent, 3);
+      waitForSummaries(agent, 1);
+
+      List<TurnId> turns = completedTurns(agent);
+      assertThat(turns).hasSize(3);
+      List<Summary> written = chapters.summaries(TYPE, agent);
+      assertThat(written).hasSize(1);
+      Chapter covered = written.getFirst().chapter();
+      assertThat(covered.from()).isEqualTo(turns.get(0));
+      assertThat(covered.through()).isEqualTo(turns.get(1));
     }
   }
 
