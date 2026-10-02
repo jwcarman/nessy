@@ -308,7 +308,7 @@ bean rather than taking a free one: the starter's factory binds tools with
 no gate, and an email tool needs an approver. The configuration reads
 `NessyProperties.model()`, `.maxTokens()` and `.resolveSystemPrompt()`
 itself and passes them to the factory's `create(...)` call, the same way
-any application layers a notebook, a plan and a summariser onto the door
+any application layers a notebook, a plan and ambient background onto the door
 the starter hands it. `nessy-examples/watchman` is the same shape, doing
 rounds on a timer against a real host.
 

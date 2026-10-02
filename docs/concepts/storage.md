@@ -10,13 +10,13 @@ it is read, and there is no abstraction between the engine and its SQL.
 | Content: what a message or a tool result actually said | `nessy_payload` | forever, unless you prune it |
 | Work an agent owes, with its deadline | `nessy_agent_effect` | until it completes or is given up on |
 | Work offered to a busy agent, waiting its turn (queued door only) | `nessy_agent_backlog` | until it is claimed or coalesced away |
-| One rolling summary per agent | `nessy_summary` | replaced as the story grows |
-| Episodes, each with its summary and the summary's embedding | `nessy_episode` | forever, unless you prune it |
+| Closed chapters of an agent's history, each with the summary that stands in for it once written | `nessy_chapter` | forever, unless you prune it |
 | Notes and plan tasks | `nessy_note`, `nessy_plan_task` | as their modules decide |
 | Background work claimed once, see [Leases](leases.md) | `nessy_lease` | its TTL |
 
-Every module that needs a table ships it in its own `nessy-schema.sql`; the
-first six come from `nessy-backend-jdbc`, the rest from `nessy-memory-*`
+Every module that needs a table ships it in its own `nessy-schema.sql`.
+The story, the outbox, the backlog, the chapters and the leases come from
+`nessy-backend-jdbc`; notes and plan tasks come from `nessy-memory-notebook`
 and `nessy-planning`.
 
 ## PostgreSQL, and only PostgreSQL
@@ -160,6 +160,23 @@ deadline that never moves, the W3C trace context of the turn it belongs to,
 and beside the payload a second blob, `failure_payload`, saying what to
 tell the agent if the work can never be dispatched at all. See
 [Durable Computation](durable-computation.md).
+
+## Chapters
+
+`nessy_chapter` has one row per closed chapter, keyed by agent type, agent id
+and `from_turn`, with `through_turn`, `after_turn` (where the agent's previous
+chapter ended, or zero), `closed_at`, and `summary` and `summarized_at`,
+which are null until the summary is written. A chapter's bounds are never
+changed. Its summary is written once, by an update that only touches a row
+whose summary is still null.
+
+Two constraints keep an agent's chapters contiguous: the primary key, and a
+unique `(agent_type, agent_id, after_turn)`. A chapter is stored only if the
+agent's closed chapters still end where the caller said they did, so two
+processes that cut the same turns differently cannot both succeed, and
+neither leaves a gap or an overlap. The `Chapters` interface in
+`nessy-backend-spi`, reached as `backend.chapters()`, is how the engine reads
+and writes this table. See [Memory](memory.md#chapters).
 
 ## Retention
 

@@ -10,8 +10,9 @@ public interface InferenceProvider {
 }
 ```
 
-The engine builds the request (system prompt, summaries, the tail of turns,
-ambient blocks, the tools on offer, the model and token cap) and the adapter
+The engine builds the request (the system prompt, then the context's strata:
+summaries, the tail of turns, memory, state, the active turn and ambient
+blocks; the tools on offer, the model and token cap) and the adapter
 turns it into the vendor's wire shape, narrates the deltas as they stream,
 and hands back one of four results: an `Answer`, `Actions` the model wants
 taken, a `Refusal`, or a `Fault` with a `Failure` that says whether retrying
@@ -63,6 +64,54 @@ lot, not because it changes billing.
 `totalTokens()` covers `inputTokens` plus `outputTokens` only. Cache and
 reasoning counts are already inside one of those two numbers, so adding
 them again would double-count.
+
+## Where each stratum goes
+
+The context a request carries has six strata, in a fixed order (see
+[Memory](../concepts/memory.md)). Every adapter places them the same way,
+because a provider caches a request's leading text and the strata are
+ordered by how often each changes:
+
+- **Instructions** are the system field and nothing else. It is fixed for
+  the life of the harness, so the cache that starts with it survives.
+- **Summaries and the tail** follow, unchanged from call to call. A summary
+  is a user-role message of text tagged
+  `<summary from="12" through="31">`, standing where the turns it replaces
+  once stood.
+- **Memory and state** are text at the head of the active turn's first
+  message, ahead of the question, tagged `<memory kind="...">` and
+  `<state kind="...">`. Memory comes first, then state. Once the turn has
+  finished and moved into the tail, it is sent without them.
+- **Ambient** is text at the very end of the request, one section per
+  source, tagged by its kind (`<clock>`, `<plan>`). It is last because it
+  can change on every call, and anything after it would be re-read every
+  time. A section with blank text is left out.
+
+| Provider | Instructions | Ambient joins |
+|---|---|---|
+| Anthropic | the `system` field, one text block | the last message's blocks when it is a user message, otherwise a user message of its own |
+| OpenAI Chat Completions | the system message | the question's message while the request ends on the question, otherwise a user message of its own |
+| OpenAI Responses | `instructions` | the same as Chat Completions, as input items |
+| Gemini | `systemInstruction` | the last content when it is a user content of text alone, otherwise a user content of its own |
+| Bedrock | the system list | the last user message, otherwise a user message of its own |
+
+Ambient no longer travels in the system prompt on any provider.
+
+Where Anthropic's cache markers go, when caching is on: the system prompt, the
+tool list, the last message before the ambient text is added, and the user
+message before that. The ambient text is appended after the markers are
+chosen, so none sits on it and the cached prefix never contains it.
+
+**Thinking and background.** Anthropic binds a replayed thinking block to
+everything before it. With any ambient background present, the message that
+ends one request is sent on the next call without it, so the text ahead of
+the reasoning differs and the vendor drops the replayed thinking blocks on
+later calls, the active turn's own included. Memory and state do the same to
+a turn once it is finished, since the first message that carried them is
+sent without them from then on. The adapter's `drop_block` setting makes
+that a drop rather than a refusal; a block whose prefix is intact is kept.
+An agent that relies on its reasoning being replayed to the model should
+carry no ambient sources.
 
 ## Naming providers
 
@@ -311,12 +360,15 @@ The defaults, when a property is absent:
   betas the client already sends. Anthropic binds a thinking block to the
   system prompt, tools and messages before it; with this setting it drops
   thinking whose prefix changed in place of rejecting the request, and the
-  adapter logs how many blocks were dropped at `DEBUG`. A gateway or proxy
+  adapter logs how many blocks were dropped at `DEBUG`. With ambient
+  background present this is every replayed block on later calls; see
+  [Where each stratum goes](#where-each-stratum-goes). A gateway or proxy
   reached through `baseUrl` receives both. A request that does not think
   replays no thinking.
 - Prompt caching is off unless `anthropic.cache_control.ttl` is set
-  (`FIVE_MINUTES` or `ONE_HOUR`); it marks the system prompt and the tool list
-  as cacheable.
+  (`FIVE_MINUTES` or `ONE_HOUR`); it marks the system prompt, the tool list
+  and two messages of the conversation as cacheable, none of them the
+  ambient text.
 
 The constants are `THINKING_TYPE`, `THINKING_BUDGET` and `CACHE_TTL` on
 `AnthropicProperties`. An agent type's property overrides the provider's, so
@@ -517,7 +569,7 @@ Bedrock call, so a short-term key from the Bedrock console's API keys page
 plus `AWS_REGION` is enough to run the adapter and its live tests.
 
 Two things this wire does that the adapter absorbs. Roles must alternate, so
-a summary and the observation after it, both user-role, are merged into one
+a summary and the input after it, both user-role, are merged into one
 message before sending. And a model that reasons here, Claude with extended
 thinking on, returns signed reasoning content that must go back untouched;
 it travels as a `Block.Provider` block tagged `aws.bedrock`. A guardrail
@@ -532,8 +584,9 @@ function tools only over this API.
 It is stateless. Every call sends the whole context with `store: false`, and
 nothing in the adapter can name a previous response or a conversation, so
 Nessy's event log stays the only record of the conversation: replay,
-summarisers, turn policy and switching providers all work from it. The
-system prompt and ambient background go in `instructions`.
+chapter summaries, turn policy and switching providers all work from it.
+`instructions` holds the system prompt alone; memory and state lead the
+question in the input, and ambient background ends it.
 
 A reasoning model's encrypted reasoning items are asked for on every call
 and each one is stored in the transcript as a `Block.Provider` block tagged
@@ -783,10 +836,13 @@ public interface InferenceProvider {
 - Translate the request in a class of its own that never touches the
   network, so the projection is testable without a key: summaries first, as
   user-role text tagged with the turn range they stand for; then each turn
-  as its observation, its exchanges (the request for actions, then the
-  outcomes quoting the calls they answer) and its result; ambient blocks
-  into the system field, labelled by kind. Leave a refused turn out whole and
-  answer for a failed one, so two questions never run together.
+  as its input, its exchanges (the request for actions, then the
+  outcomes quoting the calls they answer) and its result. Put the system
+  prompt in the system field and nothing else. Put memory and state, tagged
+  `memory` and `state` with their kind, at the head of the active turn's
+  first message, and ambient text, labelled by kind, at the very end of the
+  request. Leave a refused turn out whole and answer for a failed one, so
+  two questions never run together.
 - Decide the shape of the reply on what the wire offers: a provider-level
   stop or block is a `Refusal` named by the vendor's own reason; a reply with
   tool calls is `Actions`, with any prose beside them as `Commentary`; prose

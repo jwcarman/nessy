@@ -141,7 +141,7 @@ Every event has a `Seq`, and a turn's id is the `Seq` of the input that
 opened it — `AgentState.Idle.execute` mints it as `seq.next()` and hands it
 back as the `TurnId` that names the turn. Turn ids are therefore positions,
 not counts: turns 1, 3, 5 are consecutive when each took one exchange.
-Summaries and tails are stated in turn ids, so "through turn 38" means the
+Chapters, their summaries and tails are stated in turn ids, so "through turn 38" means the
 same thing forever, whatever is appended afterwards.
 
 ## The type is the key

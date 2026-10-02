@@ -89,7 +89,7 @@ public static void main(String[] args) {
 
 ## Try it
 
-`nessy-examples` has five modules. The ones that talk to a model want an
+`nessy-examples` has six modules. The ones that talk to a model want an
 OpenAI-compatible endpoint, [LM Studio](https://lmstudio.ai) on `:1234`
 or [Ollama](https://ollama.ai) on `:11434` works and costs nothing, and a
 PostgreSQL to keep the agents in:
@@ -103,16 +103,16 @@ export SPRING_DATASOURCE_USERNAME=nessy
 export SPRING_DATASOURCE_PASSWORD=secret
 ```
 
-**`chat-cli`**: a terminal agent with a notebook, a plan and a templated
-prompt, gated on a tool that asks at the prompt:
+**`chat-cli`**: a terminal agent with a notebook, a plan and the date as
+ambient background, gated on a tool that asks at the prompt:
 
 ```bash
 ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
 ```
 
-**`chat-web`**: the same agent as a page, plus a head summariser that folds
-old turns into one rolling summary: streamed answers over SSE, an approval
-desk you click, and `Last-Event-ID` resume when a browser reconnects.
+**`chat-web`**: the same agent as a page: streamed answers over SSE, an
+approval desk you click, and `Last-Event-ID` resume when a browser
+reconnects.
 
 ```bash
 cd nessy-examples/chat-web && ../../mvnw spring-boot:run
@@ -140,6 +140,11 @@ a timer, proposes remediations it is not allowed to run itself, and waits
 for a person to answer through a page. `nessy-examples/watchman/soak.sh`
 runs it and then **asserts what happened**, including that something
 actually parked.
+
+**`chapter-lab`**: a command-line lab that replays one long recorded
+conversation through the engine under the chapter policy and summariser you
+choose, then asks questions with known answers from the context the engine
+built. Its own README says what it needs and how to run it.
 
 ## Install
 
@@ -171,7 +176,7 @@ add `nessy-inference-spi`; an application building an agent depends on
 |---|---|
 | `nessy-api` | the shared vocabulary: `Tool`, `Approver`, `Awaited`, blocks, `NarrationListener`, `Outcome` |
 | `nessy-inference-spi` | adapter authors: `InferenceProvider` |
-| `nessy-backend-spi` | backend authors: `DirectBackend`, `QueuedBackend`, and `Leases` for work that must run once across processes |
+| `nessy-backend-spi` | backend authors: `DirectBackend`, `QueuedBackend`, `Chapters` for an agent's closed chapters, and `Leases` for work that must run once across processes |
 | `nessy-backend-jdbc` | one PostgreSQL `DataSource` behind either door, and `Schemas` |
 | `nessy-backend-inmemory` | the same stores with nothing behind them but the process |
 | `nessy-engine` | the two doors' factories, and the fold behind them |
@@ -182,8 +187,6 @@ add `nessy-inference-spi`; an application building an agent depends on
 | `nessy-prompt`, `nessy-prompt-spring`, `nessy-prompt-mustache` | prompts as templates, and two engines |
 | `nessy-embedding-spi`, `nessy-embedding-openai`, `nessy-embedding-gemini`, `nessy-embedding-bedrock`, `nessy-embedding-voyage` | text into vectors: the `Embedder` seam, and four embedders; the OpenAI one reaches any OpenAI-compatible endpoint |
 | `nessy-memory-notebook` | notes an agent keeps and recalls by heading |
-| `nessy-memory-summarizing` | one rolling summary per agent, replaced as the story grows |
-| `nessy-memory-episodic` | the story cut into episodes the model names; each summarised when it closes and shown again when it is relevant, ranked by embedding when the store has one |
 | `nessy-planning` | the Planning pattern: a plan an agent writes and works through across turns |
 | `nessy-narration-odyssey` | agent events as resumable streams, for a browser |
 | `nessy-approval-risk` | the risk gate: two thresholds with a person in between |
@@ -200,11 +203,11 @@ add `nessy-inference-spi`; an application building an agent depends on
 | Tools: structured calls, typed inputs, and deferring to the world | [Tools](https://jwcarman.github.io/nessy/concepts/tools/) |
 | Authorization: approvers, reply tokens, and describing what a person is consenting to | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/) |
 | Risk: an assessment over the NIST SP 800-30 matrix, and two thresholds with a person in between | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/#gating-on-risk) |
-| Memory: summaries, the tail and ambient, and a head summariser that runs itself | [Memory](https://jwcarman.github.io/nessy/concepts/memory/) |
+| Memory: six strata, from instructions to ambient, and history cut into summarised chapters | [Memory](https://jwcarman.github.io/nessy/concepts/memory/) |
 | Planning: a plan the model holds, and the family of patterns to come | [Planning](https://jwcarman.github.io/nessy/concepts/planning/) |
 | Storage: a table per thing, a codec seam for encryption, every model call on record | [Storage](https://jwcarman.github.io/nessy/concepts/storage/) |
 | Providers: four adapter modules, both OpenAI shapes, every OpenAI-compatible endpoint, and thinking as a provider setting | [Providers](https://jwcarman.github.io/nessy/guides/providers/) |
-| Prompts: templates with holes, and sources for the values | [Prompts](https://jwcarman.github.io/nessy/guides/prompts/) |
+| Prompts: a system prompt fixed at build, as a template with holes and variables for the values | [Prompts](https://jwcarman.github.io/nessy/guides/prompts/) |
 | Narration: listeners, the builder, and streams a browser can resume | [Narration](https://jwcarman.github.io/nessy/guides/narration/) |
 | MCP: import a remote server's tools as ordinary tools | [MCP Clients](https://jwcarman.github.io/nessy/guides/mcp-clients/) |
 | The harness: two doors, kept not closed; outcomes, coalescing, and approval desks | [The Harness](https://jwcarman.github.io/nessy/guides/harness/) |

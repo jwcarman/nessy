@@ -2,8 +2,8 @@
 
 An agent narrates what it is doing as `Narration`, and a `NarrationListener`
 is whoever hears it. That is how a page streams a reply, how a console
-prints a session, and how background work such as summarising knows a turn
-has ended.
+prints a session, and how background work such as cutting history into chapters
+knows a turn has ended.
 
 ```java
 public interface NarrationListener {
@@ -27,7 +27,7 @@ DefaultDirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> c
 At a harness, to hear its agents alone:
 
 ```java
-factory.create(config -> config.listener(summarizer.listener()) ...);
+factory.create(config -> config.listener(reporter.listener()) ...);
 ```
 
 The engine's listeners are told first, then the harness's own, in the order
@@ -46,7 +46,7 @@ A listener that does real work — a model call, a slow write — wraps itself:
 ```java
 NarrationListener listener = NarrationListener.of(on -> on
         .agentType(TYPE)
-        .onTurnEnded((type, id, ended) -> summarizer.summarizeIfDue(id)))
+        .onTurnEnded((type, id, ended) -> reporter.reportIfDue(id)))
     .async();
 ```
 
@@ -89,7 +89,7 @@ NarrationListener console = NarrationListener.of(on -> on
 | `Answered` | the turn produced an answer |
 | `TurnFailed(reason)` | the turn ended without an answer |
 | `TurnRefused(category)` | the model declined to answer |
-| `TurnEnded(turn)` | the turn is over, however it ended; the one a summariser listens for |
+| `TurnEnded(turn)` | the turn is over, however it ended; the one the engine's chapter keeper listens for |
 | `Terminated` | the agent will accept nothing further |
 
 `Answered` carries no text: the direct door hands the answer back to the

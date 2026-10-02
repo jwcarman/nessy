@@ -32,8 +32,7 @@ is given. A provider is wrapped with
 provider auto-configurations return their providers already wrapped when
 there is a registry, so the engine and anything else the application hands
 one to report its calls; without Boot, wrap the provider where you build
-it. The summarisers wrap the provider they are given when handed a
-registry. An already-wrapped provider is returned as it is, so wrapping
+it. An already-wrapped provider is returned as it is, so wrapping
 twice never doubles a span. The provider reports its own vendor through
 `InferenceProvider.vendor()`; each adapter returns semconv's value,
 and a provider written by hand is named for the class that wrote it. Each
@@ -78,7 +77,7 @@ readable on the span.
 A listener marked `async()` runs on a thread of its own, and that thread's
 trace is deliberately **not** nested under the turn that caused it.
 
-An episode summary, say, is a model call of its own, triggered by a turn
+A chapter summary, say, is a model call of its own, triggered by a turn
 ending but not waited for by anything — it can begin after the turn's own
 span has closed and outlive it. Nesting it anyway used to make a 1.45
 second span appear inside a 1.12 second one: the longest bar in a trace is
@@ -128,12 +127,55 @@ which call it was for. That is what keeps a dashboard reading the same
 words whichever door performed the work.
 
 **Building a request is visible too.** Inside `nessy.effect infer`, before
-`chat`, assembling the request is `nessy.context`: the verbatim tail
-(`nessy.context history`, with `nessy.context.turns`), each summary source
-as semconv's `search_memory` (`gen_ai.operation.name=search_memory`, with
-`gen_ai.memory.record.count`), and each ambient source as
-`nessy.context ambient <kind>`, named for what it returned. Time spent in
-any of these is time the model did not take.
+`chat`, assembling the request is `nessy.context`: reading the history
+(`nessy.context history`, with `nessy.context.turns`), and each memory,
+state and ambient source as `nessy.context memory <kind>`,
+`nessy.context state <kind>` and `nessy.context ambient <kind>`, named for
+the source's kind. A source that has nothing to say this call still gets a
+span, which is the case worth seeing, since it cost time for no reason.
+Time spent in any of these is time the model did not take.
+
+**Chapters are visible.** Each chapter a summariser writes is a
+`nessy.summary` span, tagged with the agent and, as high-cardinality
+attributes, `nessy.summary.from` and `nessy.summary.through`; the model call
+inside it is an ordinary `chat` span. Each question put to the chapter
+policy is a `nessy.chapter.policy` span, with `nessy.chapter.open` (how many
+turns were open) and `nessy.chapter.closed` (how many chapters it closed). A
+policy may call a model, so what it costs is worth seeing. Both are roots of
+their own trace; see [Background work](#background-work).
+
+## What changed in the context, and whether the cache held
+
+A provider caches the leading text of a request. These two signals say
+whether that held, and why not.
+
+**`nessy.context.changed`** is a low-cardinality tag on the `nessy.context`
+span: the earliest stratum of the context that differs from the previous
+call for the same agent. Its values are `first-call`, `none`, `history`,
+`memory`, `state`, `active-turn` and `ambient`. The strata are laid out
+most stable first, so the earliest change decides how much of the cache
+survives; changes later in the order cost nothing extra. Within a turn the
+healthy values are `active-turn` and `ambient`. `memory` or `state` in the
+middle of a turn means a source is not holding still. The same value is
+logged at `DEBUG` with the agent type and id.
+
+**`nessy.cache.read.fell`** is an observation recorded, and a warning logged,
+when a provider reports fewer cached tokens on a call than on the call
+before it in the same turn. Inside a turn each request is the previous one
+with more at the end, so cached tokens should only grow. A fall means the
+leading text changed or the provider's cache entry expired. Each is tagged
+with the agent type (`gen_ai.agent.name`), so any handler on the registry
+can count them, and the warning is logged as `NESSY CACHE:` followed by
+the agent type, agent, turn and both counts.
+
+Read the two together: a `nessy.cache.read.fell` with a `nessy.context.changed`
+of `history`, `memory` or `state` points at the stratum that moved.
+
+A fall is a warning and a count, never an error. Anthropic reports cache
+reads dependably. OpenAI and Gemini cache implicitly and sometimes report
+none for no visible reason, and a call that reports no count is neither
+compared nor remembered. The watch holds the last count for at most 10,000
+agents, least recently used out first.
 
 **Embedding calls** are spans. `DefaultEmbedderFactory` wraps every embedder
 it mints in `ObservedEmbedder`, over the registry it was given:
@@ -155,9 +197,9 @@ doubles the spans. Each call is
 embedder reports itself), `gen_ai.request.model` and
 `gen_ai.embeddings.dimension.count`, timed by the same
 `gen_ai.client.operation.duration` histogram as model calls, and it carries
-the agent tags of the span it opens under. Ranking episodes by relevance
-embeds the turn being answered inside `search_memory`, so an embedding
-endpoint that is slow shows up where it costs.
+the agent tags of the span it opens under. A memory source that embeds the
+turn being answered does it inside its own `nessy.context memory <kind>`
+span, so an embedding endpoint that is slow shows up where it costs.
 
 **Writing trace headers without a span.** Micrometer's Observation API can
 only have trace headers written by starting an observation, so on its own

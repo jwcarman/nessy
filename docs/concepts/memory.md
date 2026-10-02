@@ -1,193 +1,265 @@
 # Memory
 
-What a model is shown on each call is built from three things, in this
-order, and the engine builds it the same way every time:
+What a model is shown on each call is built in six strata, in this order,
+and the engine builds it the same way every time:
 
 ```
-summaries    whatever every Summarizer returns, oldest first
-tail         the most recent turns of the story, whole
-ambient      whatever every AmbientSource has to say right now
+instructions   the system prompt: fixed when the harness is built
+history        summaries of closed chapters, then the tail of completed turns
+memory         what was recalled because it bears on this turn
+state          the agent's standing situation
+active turn    the turn being answered, whole
+ambient        whatever can change while the agent is working
 ```
+
+The order is the order of how often each changes, least first. A provider
+caches a request's leading text, so the more stable a stratum is, the
+earlier it goes and the more of the cache survives when something later
+changes.
 
 The story itself, one row per event in `nessy_agent_event` with its content
 in `nessy_payload`, is appended and never rewritten. Everything on this page
 is a policy about how much of it a model sees and what stands in for the
 rest. See [Storage](storage.md).
 
+## What each stratum holds
+
+| Stratum | Holds | Changes |
+|---|---|---|
+| Instructions | What this agent type is for. See [Prompts](../guides/prompts.md) | Never, once the harness is built |
+| History | Closed chapters as summaries, then the completed turns after them, whole | Only at the end: a turn completes, a chapter closes |
+| Memory | What was recalled because it bears on the turn being answered | From turn to turn |
+| State | The agent's standing situation: settings, facts about its user | Rarely, and only between turns |
+| Active turn | The question and every round of calls made so far | On every call |
+| Ambient | The clock, a plan the agent edits, a notebook index | Whenever it likes, including mid-turn |
+
+Memory, state and ambient are none of them part of the story. Each source
+is asked again on every call, what it returns is shown and thrown away, and
+nothing holds an earlier answer for it. A view of the world that was
+recorded forever would stop being one.
+
+## Which stratum something belongs in
+
+Ask four questions, in this order:
+
+1. Is it the same for every agent of the type, always? It is
+   **instructions**.
+2. Can it change while the agent is working on a turn? It is **ambient**.
+3. Is it chosen because of what was just asked? It is **memory**.
+4. Otherwise it is **state**.
+
+A plan the agent updates with a tool is ambient, because it changes
+mid-turn. The user's preferred language, read from a profile, is state. The
+three notes that match the question are memory. A date is ambient: it can
+change under a long-running agent.
+
+The reason is the cache. Putting something that changes mid-turn in an
+early stratum makes every later call in the turn re-read everything after
+it. State answers as of the start of the turn it is handed, so it holds
+still for the whole of the turn without anything being kept on its behalf.
+
+## History: summaries and the tail
+
+A turn is an input, the exchanges it caused (each request for actions and
+the outcomes that answered it), and how it ended. History is built from
+two parts:
+
+- **Summaries**, one per closed chapter, oldest first, each standing in for
+  the turns of that chapter.
+- **The tail**: the completed turns after the last summarised chapter, whole,
+  newest `maxTail` of them. The boundary lands between turns, never inside
+  one, so the model is never shown a request for actions without the
+  results that answered it.
+
+`maxTail` counts completed turns only; the active turn is sent besides.
+The default is 40. With chapters off, history is only the tail, and
+everything before it is not shown. The story is still there.
+
+## Chapters
+
+A chapter is a run of whole turns, `from` one turn id `through` another.
+Turn ids are story positions, so "turns 12 through 31" means the same thing
+forever, whatever else is appended. Chapters are contiguous and never
+overlap, and the last one never reaches the turn in flight.
+
+Two things decide how history is cut, and both are one method:
+
 ```java
-config.inference(in -> in.context(ctx -> ctx
-        .summaries(summaries)                  // a Summarizer
-        .maxTail(20)                           // turns shown whole
-        .ambient(NotebookTools.index(notebook))
-        .ambient(PlanTools.plan(plans))));
-```
+public interface ChapterPolicy {
+  List<TurnId> ends(OpenTurns open);
+  static ChapterPolicy every(int turns) { ... }
+}
 
-## The tail
-
-A turn is an observation, the exchanges it caused (each request for actions
-and the outcomes that answered it), and how it ended. The tail is the last
-`maxTail` turns, whole: the boundary lands between turns, never inside one,
-so the model is never shown a request for actions without the results that
-answered it.
-
-The default is 20 turns. Without a summarizer, that is all a long-lived
-agent ever sees, and the rest is simply not shown. The story is still there.
-
-## Summaries stand in for what is not shown
-
-A `Summarizer` says what came before the tail:
-
-```java
 public interface Summarizer {
-  List<Summary> forAgent(AgentId agentId);
-  default List<Summary> forAgent(AgentId agentId, Turn current) { ... }
-  default Optional<TurnId> summarizedThrough(AgentId agentId) { ... }
+  String summarize(Chapter chapter);
 }
 ```
 
-The engine asks the two-argument form, handing over the turn being answered,
-so a source that ranks by relevance has something to rank against; a source
-that does not rank inherits the default and never sees it.
+- A **`ChapterPolicy`** says where chapters end. It is shown the completed
+  turns that are not yet in a chapter, as ids, and answers with the turns
+  that each end a chapter. An empty answer closes nothing. It may answer
+  behind the newest turn, naming the fourth of six open turns to close a
+  chapter over the first four, and it may name several turns to close
+  several chapters at once. `ChapterPolicy.every(20)` closes the oldest
+  twenty open turns once there are that many.
+- A **`Summarizer`** writes the text that stands in for one closed chapter.
+  It is handed the `Chapter` and nothing else, so one that wants the
+  chapter's turns loads them itself. Blank text counts as a failure.
 
-A `Summary` covers a run of turns, `from` one turn id `through` another,
-and carries the text that stands in for them. The assembler shows every
-summary first, then starts the tail after the furthest turn any summary
-reaches, so nothing is shown twice and nothing is dropped between a summary
-and the turns after it. Several summarizers may be added and their results
-are concatenated in order. A summary that overlaps another, or that reaches
-the turn being answered, is refused at assembly rather than sent.
+Both are called when a turn ends, off the agent's own thread, so a model
+call never waits on either and either may block or call a model. The
+engine's `ChapterKeeper` listens for the end of each turn, takes a lease
+for the agent under the kind `nessy.chapters`, cuts what the policy says is
+due, and then summarises, oldest chapter first and one at a time. See
+[Leases](leases.md).
 
-Turn ids are story positions, so a summary "through turn 38" means the same
-thing forever, whatever else is appended.
+A policy that returns a turn that is not open, or names turns out of order,
+or throws, closes nothing, and the keeper logs a warning.
 
-## The head summarizer
+### Closed is not the same as summarised
 
-`nessy-memory-summarizing` keeps one rolling summary per agent and replaces
-it as the story grows. Every time a turn ends, it counts the turns after
-what the summary already covers; past `maxTail` it folds the oldest of them
-into the previous summary, leaving `minTail` turns shown whole.
+Closing a chapter is quick and decided from the turns alone. Writing its
+summary can be slow and can fail. So the two are separate steps, and the
+keeper stores the chapter before the text exists.
 
-```java
-JdbcSummaries summaries = new JdbcSummaries(dataSource, TYPE);
+Until a chapter's summary is written, its turns are still shown, whole, in
+the tail. A slow or failing summariser costs a larger context on some
+calls and never a hole. A failed summary is tried again at a later turn
+end.
 
-HeadSummarizer summarizer = HeadSummarizer.of(c -> c
-        .agentType(TYPE)
-        .summaries(summaries)
-        .histories(factory.histories())
-        .leases(leases)
-        .inference(provider, InferenceOptions.of("claude-haiku-4-5"))
-        .tail(20, 8));
+History shows the unbroken run of summarised chapters from the first. A
+chapter with no summary ends the run, even if a later chapter has one, so
+nothing is shown out of order.
 
-QueuedHarness<String> harness = factory.create(TYPE, h -> h
-        .listener(summarizer.listener())
-        .inference(in -> in.context(ctx -> ctx.summaries(summaries).maxTail(20))));
-```
+### Chapters are on by default
 
-This is the queued door: the summariser hears a turn end asynchronously and
-nobody is waiting on that call, which is the case it is built for. Three
-things about how it runs:
-
-- **Event-driven, off the fold.** It is a `NarrationListener` on the
-  turn-ended `Narration`, wrapped `async()`, so the model call it makes never
-  holds up the agent. The next call the agent makes sees the new summary.
-- **Under a lease.** Two processes hearing the same turn end do not both
-  fold; `Leases.tryRun` lets one through per agent and the other finds
-  nothing left to do. See [Leases](leases.md).
-- **On record.** Given an observation registry, each fold is a
-  `nessy.summary` span with the model call inside it. See
-  [Observability](../guides/observability.md#background-work).
-- **It replaces, never appends.** The fold request is the previous summary
-  plus the turns being cut, with the instruction to write the summary of
-  everything so far. One row per agent, in `nessy_summary`, replaced only
-  if the new one reaches further.
-
-Because it is its own next input, every generation is lossy over the last.
-An agent does not forget suddenly; it fades. The default prompt asks for
-names, identifiers, decisions, commitments and open questions rather than a
-retelling, for exactly that reason. A summary that arrives late costs a
-larger context on one call, not a wrong one.
-
-## Episodes
-
-`nessy-memory-episodic` cuts the story where the model says it changes
-subject, summarises each piece once it closes, and on every call shows the
-pieces that bear on what is being asked now. Where the head summariser fades
-the whole past into one paragraph, episodes keep each stretch of work as its
-own summary that can come back whole when it is relevant again.
-
-The model draws the boundaries. `begin_episode(title, reason)` records that a
-distinct piece of work has begun at this turn: the open episode closes at the
-turn before, a new one opens, and the tool returns. Nothing else happens
-inside the call. The first boundary an agent draws may come well into its
-story, so that call also records an opening episode, "The opening", from turn
-one through the turn before: the turns before the model thought to name
-anything are summarised like the rest rather than falling out of the tail
-unsummarised. The summary is written later by the `EpisodeSummarizer`, a
-listener like the head summariser's: it hears a turn end, sees a closed
-episode with no summary, takes the `episode` lease for the agent and asks the
-model for a title and the summary of that episode's turns alone. The title
-replaces the one the model gave at the boundary, because something that has
-read the whole episode knows better what it was about than the model did when
-it began; what it was opened as is kept beside it. Until it has one, the
-episode's turns are still shown verbatim, so a slow summary costs a larger
-context on a few calls and never a hole. An episode index is ambient, kind
-`episodes`, listing every episode by number and title and which one is under
-way, and ending with the question the model has to answer on every call: with
-nothing open, whether this message starts a piece of work; with one open,
-whether this message is still about it, naming it. The system prompt can say
-"begin an episode when the subject changes"; only the ambient can say what
-the subject currently is. `recall_episode(n)` reads any summary the store did
-not choose to show.
-
-`JdbcEpisodes` is the `Summarizer`. Its candidates are the summarised
-episodes from the start of the story up to the first that is open or not yet
-summarised; the tail begins after the last of them. Of the candidates it
-shows at most `shown` (five by default): always the most recent, because the
-story just left it, and the rest chosen by relevance when the store has an
-`Embedder`, by recency when it has not. Relevance is the cosine between the
-summary's embedding, written beside it when the summary was, and the
-embedding of the observation being answered: one embedding call per model
-call, against one agent's rows. A summary embedded by a different model than
-the store's current embedder cannot be compared and ranks last; the model's
-name is stored beside every vector so the store knows which.
+An agent that sets nothing gets a chapter every 20 turns, with a prose
+summary written by the agent's own provider and model (`ProseSummarizer`).
+**That spends tokens on every closed chapter.** Turn chapters off with
+`withoutChapters()`:
 
 ```java
-AgentType SUPPORT = new AgentType("support");
-
-EmbedderFactory embedders = DefaultEmbedderFactory.of(f -> f
-        .provider(ProviderId.of("openai"), OpenAiEmbeddingProvider.fromEnv())
-        .embedding(ProviderId.of("openai"), EmbeddingOptions.of("text-embedding-3-small")));
-Embedder embedder = embedders.create(c -> c.dimension(512));
-
-JdbcEpisodes episodes = JdbcEpisodes.of(c -> c
-        .dataSource(dataSource)
-        .agentType(SUPPORT)
-        .embedder(embedder)
-        .shown(5));
-
-EpisodeSummarizer summarizer = EpisodeSummarizer.of(c -> c
-        .agentType(SUPPORT)
-        .episodes(episodes)
-        .histories(factory.histories())
-        .leases(new JdbcLeases(dataSource))
-        .inference(provider, InferenceOptions.of("claude-sonnet-5")));
-
-factory.create(SUPPORT, h -> h
-        .tool(EpisodeTools.begin(episodes))
-        .tool(EpisodeTools.recall(episodes))
-        .inference(in -> in.context(ctx -> ctx
-                .summaries(episodes)
-                .ambient(EpisodeTools.index(episodes))))
-        .listener(summarizer.listener()));
+factory.<String>create(TYPE, config -> config
+        .systemPrompt("You are a terse assistant.")
+        .inference(in -> in.context(ctx -> ctx.withoutChapters().maxTail(50))));
 ```
 
-This is the queued door again, for the same reason: the summariser reacts to
-a turn ending, off to one side of whoever is talking to the agent.
+The settings, on the harness config and the context config:
 
-Run episodes or the head summariser on an agent type, not both: the head
-would fold turns an episode already stands in for. Episodes suit an agent
-whose work comes in distinguishable pieces and whose distant pieces come back;
-the head summariser suits one long thread that only ever moves forward.
+| Setting | On | Default | What it decides |
+|---|---|---|---|
+| `chapterPolicy(ChapterPolicy)` | harness, context | `ChapterPolicy.every(20)` | Where chapters end; turns chapters on |
+| `summarizer(Summarizer)` | harness, context | `ProseSummarizer` over the agent's model | What stands in for a closed chapter; turns chapters on |
+| `maxChapterLength(int)` | context | 30 | The most turns in any one chapter |
+| `maxTail(int)` | context | 40 | The most completed turns shown whole |
+| `chapterLeaseTtl(Duration)` | context | two minutes | How long a lease is believed held for one step |
+| `withoutChapters()` | context | | Nothing is cut or summarised |
+
+Between `withoutChapters()` and `chapterPolicy` or `summarizer`, the last
+call wins.
+
+### Three numbers
+
+`chapterPolicy` says when to cut. `maxChapterLength` bounds any one
+chapter whatever the policy says: when the policy closes nothing and that
+many turns are open, the oldest that many close anyway, and a chapter the
+policy made longer is split. A summariser is never shown more than that.
+`maxTail` bounds the tail.
+
+The tail must be longer than a chapter can be, or a chapter could leave
+the tail before it was summarised and the model would be shown neither. A
+harness whose `maxTail` is not greater than its `maxChapterLength`, with
+chapters on, **refuses to build**.
+
+### The default summary
+
+`ProseSummarizer` shows the model the chapter's turns and asks for a record
+that stands alone. Its prompt asks for names, identifiers, numbers and
+dates exactly as given, decisions and what they were for, commitments in
+either direction, and open questions. It writes no narration. The summary
+is written once and never revised.
+
+Another model, or another prompt, is a `Summarizer` of your own, since it
+is one method. `ProseSummarizer` takes a prompt of its own as a fourth
+constructor argument, with the same reading of the chapter's turns:
+
+```java
+config.summarizer(new ProseSummarizer(factory.histories(), provider, options, prompt));
+```
+
+Here `provider` is an `InferenceProvider`, `options` its `InferenceOptions`
+and `prompt` the text the model is told.
+
+### Letting the model declare chapters
+
+The model is the one party that knows when the subject changed.
+`DeclaredChapters` in `nessy-engine` equips an agent with a tool,
+`begin_chapter`, and a policy that reads for it:
+
+```java
+DefaultDirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> config
+        .backend(backend)
+        .provider(providerId, provider));
+
+DirectHarness<String, String> harness = factory.<String>create(
+        TYPE,
+        config -> DeclaredChapters.feature(factory.histories()).customize(config));
+```
+
+`histories()` is on the two default factories, `DefaultDirectHarnessFactory`
+and `DefaultQueuedHarnessFactory`; the policy reads the open turns through it.
+
+The model calls `begin_chapter(title)` at the start of the turn that opens
+a new chapter. The policy closes the chapter at the turn before. The tool
+itself only acknowledges: the call, found in the turn's own record, is the
+signal, so the decision can be replayed from the history alone. The first
+open turn is never a boundary, since nothing precedes it to close.
+`maxChapterLength` still applies.
+
+## Memory and state
+
+`MemorySource` and `StateSource` have the same shape. Each names a `kind`
+and is handed the agent and the turn being answered:
+
+```java
+public interface StateSource {
+  String kind();
+  Optional<State> forAgent(AgentId agentId, Turn current);
+}
+```
+
+`MemorySource` is the same with `Optional<Memory>`. A source is asked on
+the dispatcher's thread, off the agent's row lock, once per call to the
+model, so it may read a table or call a service. It is handed the current
+turn so that memory can choose what bears on the question, and so that
+state can answer as of the start of that turn.
+
+```java
+StateSource persona = new StateSource() {
+  @Override
+  public String kind() { return "persona"; }
+
+  @Override
+  public Optional<State> forAgent(AgentId agentId, Turn current) {
+    return personas.forAgent(agentId).map(text -> State.text("persona", text));
+  }
+};
+
+config.state(persona);
+```
+
+Here `personas` is a lookup of your own. `config.memory(source)` and
+`config.state(source)` are on both the harness config and the context
+config, beside `ambient(...)`. `MemorySource.constant(memory)` and
+`StateSource.constant(state)` are for text that is the same for every agent
+and turn.
+
+A source with nothing to say returns empty. A `Memory` or `State` with no
+content is refused, because a label with nothing under it reads to a model
+as a claim, where absence is not.
+
+Two sources of the same stratum may not offer the same `kind`: the harness
+refuses to build. The same kind in two different strata is allowed.
 
 ## Ambient: true now, never written down
 
@@ -196,16 +268,26 @@ appended to the story:
 
 ```java
 public interface AmbientSource {
+  String kind();
   Optional<Ambient> forAgent(AgentId agentId);
 }
 ```
 
-That is where a fact that changes belongs. A plan written into the story
-would be re-sent as it was when written, so a task finished on turn four
-would read as pending forever. Asked afresh, it is the current plan or
-nothing. Each source names a `kind`, two sources may not claim the same
-one, and each provider adapter renders the kinds the way its vendor
-prefers. A source with nothing to say returns empty and contributes nothing.
+That is where a fact that changes mid-turn belongs. A plan written into
+the story would be re-sent as it was when written, so a task finished on
+turn four would read as pending forever. Asked afresh, it is the current
+plan or nothing. Each source names a `kind`, two ambient sources may not
+claim the same one, and each provider adapter renders the kinds the way its
+vendor prefers. See [Providers](../guides/providers.md#where-each-stratum-goes).
+
+`AmbientSource.of(...)` makes a small one inline. The date, as
+`nessy-examples/chat-cli` gives it to the model:
+
+```java
+AmbientSource clock = AmbientSource.of(source -> source
+        .kind("clock")
+        .text(_ -> Optional.of("Today is " + LocalDate.now() + ".")));
+```
 
 ## Notes and plans
 
@@ -236,12 +318,16 @@ it gets idempotence for free.
 
 ## Embeddings
 
-Relevance is the end state for every store on this page: the episodes, notes
-and lessons that bear on what the agent is doing now, chosen by meaning, and
-the rest reachable on demand. `Embedder` (in `nessy-api`) and `EmbeddingProvider` (in
-`nessy-embedding-spi`) are the seam for that, kept apart from inference on purpose: not every inference vendor embeds, and
-the embedding model belongs to the store that holds the vectors, not to the
-agent that talks, because every vector in a table must come from one model.
+`Embedder` (in `nessy-api`) and `EmbeddingProvider` (in
+`nessy-embedding-spi`) are the seam for choosing what to recall by meaning,
+kept apart from inference on purpose: not every inference vendor embeds,
+and the embedding model belongs to the store that holds the vectors, not to
+the agent that talks, because every vector in a table must come from one
+model.
+
+No store that ships in Nessy uses an `Embedder` yet. The seam, the four
+providers and the Boot wiring are in place for a `MemorySource` or a store
+of your own.
 
 ```java
 public interface Embedder {
@@ -280,7 +366,7 @@ EmbedderFactory embedders = DefaultEmbedderFactory.of(f -> f
                 .apiKey("lm-studio").baseUrl("http://localhost:1234/v1").vendor("lmstudio")))
         .embedding(ProviderId.of("openai"), EmbeddingOptions.of("text-embedding-3-small")));
 
-Embedder forEpisodes = embedders.create(c -> {});
+Embedder forDocs = embedders.create(c -> {});
 Embedder forNotes = embedders.create(c -> c.provider("local").model("text-embedding-nomic-embed-text-v1.5"));
 ```
 
@@ -293,28 +379,28 @@ with embedders registered from `nessy.embedders.<id>` and the default from
 `nessy.embedder` and `nessy.embedding-model`; see
 [Providers](../guides/providers.md#embedders).
 
-Changing a store's embedder is a ranking consequence, not a loss: the next
-summary is embedded by the new model and ranks, and every earlier summary
-ranks last.
-
 An `Embedding` carries its model's name and compares by content; its
 `similarity` is the cosine between two vectors and refuses a pair from
-different models. Episodes rank by it, as described above. A store with no
-embedder ranks by recency, and the model can always recall by title.
+different models.
 
 ## Writing your own
 
-A `Summarizer` and an `AmbientSource` are each one method, and both may do
-I/O: they are asked on the dispatcher's virtual thread, off the agent's row
-lock. A vector store behind an ambient source, a sliding window of summaries,
-a retrieval step over the story: the engine cannot tell, and does not ask.
+A `MemorySource`, a `StateSource`, an `AmbientSource`, a `ChapterPolicy`
+and a `Summarizer` are each one method, and all may do I/O. The three
+sources are asked on the dispatcher's virtual thread, off the agent's row
+lock; the policy and the summariser are asked off the agent's thread
+altogether. A vector store behind a memory source, a retrieval step over
+the story, a policy that asks a model whether the subject changed: the
+engine cannot tell, and does not ask.
 
-Two things to keep. A summary must run forwards and must not overlap
-another. An ambient source must answer from what is true now, because the
-engine will not ask twice for one call.
+Two things to keep. A source must answer from what is true now, because the
+engine will not ask twice for one call and nothing is kept for it. And a
+state source that wants to hold still for a turn does so by answering as of
+the turn it is handed, not by remembering.
 
 ## Where next
 
 - [Planning](planning.md), the plan an agent works through
 - [Storage](storage.md), the tables behind all of this
+- [Leases](leases.md), how the chapter keeper runs once
 - [The Harness](../guides/harness.md), the context settings in place

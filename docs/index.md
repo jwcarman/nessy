@@ -130,7 +130,7 @@ See [Authorization](concepts/authorization.md).
 |---|---|
 | `nessy-api` | tool and policy authors: `Tool`, `Approver`, `Awaited`, `NarrationListener`, `Outcome`, the block vocabulary |
 | `nessy-inference-spi` | adapter authors: `InferenceProvider` |
-| `nessy-backend-spi` | backend authors: `DirectBackend`, `QueuedBackend`, and `Leases` for background work that must run once across processes |
+| `nessy-backend-spi` | backend authors: `DirectBackend`, `QueuedBackend`, `Chapters` for an agent's closed chapters, and `Leases` for background work that must run once across processes |
 | `nessy-backend-jdbc` | one PostgreSQL `DataSource` behind either door, and `Schemas` |
 | `nessy-backend-inmemory` | the same stores with nothing behind them but the process |
 | `nessy-engine` | application builders: `DefaultDirectHarnessFactory`, `DefaultQueuedHarnessFactory`, and the fold behind them |
@@ -141,8 +141,6 @@ See [Authorization](concepts/authorization.md).
 | `nessy-prompt`, `nessy-prompt-spring`, `nessy-prompt-mustache` | prompts as templates, and two engines |
 | `nessy-embedding-spi`, `nessy-embedding-openai`, `nessy-embedding-gemini`, `nessy-embedding-bedrock`, `nessy-embedding-voyage` | text into vectors: the `Embedder` seam, and four embedders; the OpenAI one reaches any OpenAI-compatible endpoint |
 | `nessy-memory-notebook` | agents that keep notes |
-| `nessy-memory-summarizing` | long-lived agents: one rolling summary per agent, replaced as the story grows |
-| `nessy-memory-episodic` | the story cut into episodes the model names; each summarised when it closes and shown again when it is relevant, ranked by embedding when the store has one |
 | `nessy-planning` | agents that write a plan and work through it |
 | `nessy-narration-odyssey` | events as resumable streams, for a browser |
 | `nessy-approval-risk` | the risk gate: two thresholds with a person in between |
@@ -173,7 +171,7 @@ See [Authorization](concepts/authorization.md).
 
 - **[Memory](concepts/memory.md)**
 
-    Summaries, the tail and ambient: what a model call is built from.
+    The six strata of a model call, and history cut into summarised chapters.
 
 - **[Leases](concepts/leases.md)**
 

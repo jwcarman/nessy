@@ -82,6 +82,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`Dimension`**, in `org.jwcarman.nessy.api.embedding`: how many
   coordinates a vector has, at least 1. `EmbedderConfig.dimension(Dimension)`
   takes it; `dimension(int)` remains as the convenience.
+- **Chapters.** History is cut into chapters when a turn ends, and a closed
+  chapter is replaced in the context by a summary. `ChapterPolicy` says where
+  a chapter ends (`ends(OpenTurns)`, with `ChapterPolicy.every(int)`) and
+  `Summarizer` writes the text that stands in for one
+  (`summarize(Chapter)`); `Chapter` and `Summary` are in
+  `org.jwcarman.nessy.api.turn`. Both run off the agent's thread, under a
+  `nessy.chapters` lease, driven by the engine's `ChapterKeeper`. Closed
+  chapters and their summaries are kept by the backend, as `Chapters` in
+  `nessy-backend-spi` (reached as `backend.chapters()`) and, for JDBC, the
+  table `nessy_chapter`, which `Schemas.initialize` creates. A chapter that is
+  closed but not yet summarised is still shown as turns, and a failed summary
+  is tried again at a later turn end.
+- **Chapter settings.** `chapterPolicy(...)` and `summarizer(...)` on the
+  harness config; `maxChapterLength(int)` (default 30),
+  `chapterLeaseTtl(Duration)` (default two minutes), `maxTail(int)` and
+  `withoutChapters()` on the context config. A harness refuses to build when
+  `maxTail` is not greater than `maxChapterLength` with chapters on.
+- **`ProseSummarizer`**, the default summariser: a prose record of the
+  chapter, written by the agent's own provider and model.
+- **`DeclaredChapters`**, which lets the model say where chapters begin:
+  `DeclaredChapters.feature(histories)` installs the tool `begin_chapter` and
+  a policy that closes the chapter before any turn that called it.
+- **The context has six strata, in a fixed order:** instructions; history
+  (summaries of closed chapters, then the tail of completed turns); memory;
+  state; the active turn; ambient. `InferenceContext` is now
+  `(summaries, tail, memory, state, activeTurn, ambient)`.
+- **`MemorySource` and `StateSource`**, beside `AmbientSource`, with the
+  records `Memory` and `State` and `memory(...)` and `state(...)` on the
+  harness and context configs. Both are asked with
+  `forAgent(AgentId, Turn current)`, once per call, and nothing holds an
+  earlier answer for them. Two sources of the same stratum may not offer the
+  same kind.
+- **`instructions(String)` on `HarnessConfig`**, which adds a section after the
+  system prompt, fixed when the harness is built.
+- **`PromptVariables.supplied(...)`, `firstOf(...)` and `none()`**, and
+  `TemplatedSystemPrompt.render(...)`, which renders a template once.
+- **`nessy.context.changed`**, a tag on the `nessy.context` span: the
+  earliest stratum that changed since the previous call for the agent
+  (`first-call`, `none`, `history`, `memory`, `state`, `active-turn` or
+  `ambient`).
+- **`nessy.cache.read.fell`**, an observation recorded, and a warning logged,
+  when a provider reports fewer cached tokens on a call than on the call
+  before it in the same turn.
+- **Spans for chapters and sources:** `nessy.summary` for each summary
+  written, `nessy.chapter.policy` for each question put to the policy, and
+  `nessy.context memory <kind>` and `nessy.context state <kind>` beside the
+  ambient ones.
+- **`nessy-examples/chapter-lab`**, a command-line lab that replays a long
+  recorded conversation under different chapter policies and summarisers.
 
 ### Changed
 
@@ -92,6 +141,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rejects strict mode.
 - Anthropic `enabled` thinking with no budget sends 1024 tokens instead of
   refusing at build; the budget must still be below `maxTokens`.
+- **Ambient no longer travels in the system prompt, on any provider.** The
+  system field carries the instructions alone. Memory and state are text at the
+  head of the active turn's first message, tagged `<memory kind="...">` and
+  `<state kind="...">`, and ambient is text at the very end of the request. On
+  Anthropic the cache markers are chosen before the ambient text is appended,
+  so none sits on it. A consequence on Anthropic: with any ambient background
+  present, the vendor drops replayed thinking blocks on later calls.
+- **Chapters are on by default.** An agent that sets nothing gets a chapter
+  every 20 turns, summarised by its own provider and model, so it spends
+  tokens on summaries unless `withoutChapters()` is set.
+- **The default `maxTail` is 40**, down from 50. It counts completed turns;
+  the turn being answered is sent besides.
+- **The system prompt is fixed when a harness is built.** It was resolved on
+  every call. What varies by agent belongs in a `StateSource`, and what
+  varies by the moment in an `AmbientSource`.
+- **Spring Boot renders `nessy.system-prompt` once, at startup,** from every
+  `PromptVariables` bean and then the `Environment`, and publishes a
+  `SystemPrompt` bean. A hole nothing fills fails startup.
+- **`DirectBackend` and `QueuedBackend` declare `chapters()` and `leases()`.**
 
 ### Fixed
 
@@ -191,6 +259,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED)`,
   `THINKING_BUDGET` and `CACHE_TTL`. Thinking and caching stay off unless a
   property turns them on.
+- **`nessy-memory-summarizing` is removed**, with `HeadSummarizer`,
+  `JdbcSummaries` and the table `nessy_summary`. Chapters replace it, and are on
+  by default. Existing `nessy_summary` rows are no longer read.
+- **`nessy-memory-episodic` is removed**, with `EpisodeSummarizer`,
+  `EpisodeTools`, `JdbcEpisodes`, the tools `begin_episode` and
+  `recall_episode`, and the table `nessy_episode`. Chapters replace it; to let
+  the model draw the boundaries, use `DeclaredChapters.feature(histories)` and
+  its `begin_chapter`. Existing `nessy_episode` rows are no longer read.
+- **`Summarizer` is a different interface.** The read-side `Summarizer`
+  (`forAgent`, `summarizedThrough`) is gone; `org.jwcarman.nessy.api.Summarizer`
+  now has one method, `String summarize(Chapter)`, and writes a chapter's
+  summary. A source that supplied recollections to a turn is a `MemorySource`.
+- **`summaries(...)` is removed** from `HarnessConfig` and `ContextConfig`. Use
+  `chapterPolicy(...)` and `summarizer(...)` to decide what stands in for old
+  history, or `memory(...)` to offer recalled text.
+- **`Block.SummaryContent` is removed.** A `Summary` is now
+  `Summary(Chapter chapter, String text)`.
+- **`InferenceContext` has new components:** `(summaries, tail, memory, state,
+  activeTurn, ambient)`. A provider adapter that reads its parts must place
+  the new strata; see the providers guide.
+- **Ambient background is no longer in the system prompt.** An adapter written
+  against the old context, or an application that relied on ambient text
+  being part of the system field, sees a different request.
+- **`SystemPromptSource` is removed**, with `systemPrompt(SystemPromptSource)`
+  on both doors and on `ReplConfig`. Use `systemPrompt(String)`, adding
+  sections with `instructions(String)`; anything that varied per agent or per
+  call becomes a `StateSource` or an `AmbientSource`.
+- **`PromptVariableSource` is removed.** Its factories are on `PromptVariables`
+  (`of`, `supplied`, `firstOf`, `none`), which no longer takes an agent.
+  `EnvironmentVariables.of(...)` returns a `PromptVariables`.
+- **`TemplatedSystemPrompt.of(...)` is replaced by `render(...)`,** which
+  renders once and returns a `SystemPrompt`.
+- **The starter's `SystemPromptSource` bean is now a `SystemPrompt` bean,**
+  and `PromptVariableSource` beans are no longer consulted: declare
+  `PromptVariables` beans.
+- **A backend implementation must provide `chapters()` and `leases()`** on
+  `DirectBackend` and `QueuedBackend`.
 
 ## [0.2.0] - 2026-09-29
 

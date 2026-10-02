@@ -219,10 +219,14 @@ rendered to the model at all.
 
 ## Configuration surface
 
-Both configs share `agentType()`, `tool(...)`, `ambient(...)` and
-`summaries(...)` (declared on the common `HarnessConfig<SELF>`), plus a
+Both configs share `agentType()`, `tool(...)`, `instructions(...)`,
+`memory(...)`, `state(...)`, `ambient(...)`, `chapterPolicy(...)` and
+`summarizer(...)` (declared on the common `HarnessConfig<SELF>`), plus a
 system prompt, an `inputRenderer`, an `inference(...)` customizer and a
-`listener(...)`. What differs is what each door alone can produce:
+`listener(...)`. The system prompt is fixed when the harness is built; see
+[Prompts](prompts.md). The rest of the context settings (`maxTail`,
+`maxChapterLength`, `chapterLeaseTtl`, `withoutChapters`) are on
+`in.context(...)` inside the `inference(...)` customizer. What differs is what each door alone can produce:
 
 **`DirectHarnessConfig<I>`**
 
@@ -240,7 +244,10 @@ system prompt, an `inputRenderer`, an `inference(...)` customizer and a
 
 The defaults that matter on both doors: a tool call gets 30 seconds, an
 approver 10 minutes, a model call 5 minutes, none of them retried by
-default; the tail shown to the model is the last 20 turns.
+default. History is cut into chapters every 20 turns, each summarised by the
+agent's own model, and the tail shown whole is at most 40 completed turns.
+Chapters are on unless `withoutChapters()` is set, so an agent spends tokens
+on summaries by default. See [Memory](../concepts/memory.md#chapters).
 
 ## Writing an approver
 
@@ -338,7 +345,7 @@ public static void main(String[] args) {
 ```
 
 `nessy-examples/chat-cli` is exactly the first shape, with a notebook, a
-plan and a templated prompt added.
+plan and the date, given as ambient background, added.
 
 ## Where next
 

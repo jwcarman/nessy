@@ -18,36 +18,26 @@ shipped, and the design specs under `docs/superpowers/specs/` record why.
 ## Memory
 
 Memory Management, in the canonical vocabulary: what an agent carries between
-turns and how it is compressed. `nessy-memory` holds the notebook and the
-summarisers; the plan lives under [Planning](#planning).
+turns and how it is compressed. `nessy-memory` holds the notebook; history is
+cut into summarised chapters by the engine; the plan lives under
+[Planning](#planning).
 
-- **Episodic summaries** *(shipped 2026-09-16 as `nessy-memory-episodic`)* —
-  `begin_episode(title, reason)` records a boundary and nothing else; the
-  `EpisodeSummarizer` listener writes each closed episode's summary in the
-  background under the `episode` lease; `JdbcEpisodes` is a `Summarizer` that
-  shows the most recent episode plus the most relevant of the rest, ranked by
-  cosine against the turn being answered when it has an `Embedder`, by recency
-  when not; `recall_episode(n)` reads the ones it did not show. Only the model
-  opens episodes, and episodes and the head summariser are one-or-the-other per
-  agent type. Still open: an idle-gap or length cutoff that closes an episode
-  the model forgot to, and re-embedding rows written by a previous embedder.
-- **Sliding-window summaries** — a sibling of the head summariser that keeps a
-  window of several summaries and folds the oldest, for agents whose story is
-  long but whose distant past still matters.
+- **Sliding-window summaries** — history shows one summary for every closed
+  chapter, for as long as the agent lives; a window that folds the oldest
+  summaries together, for agents whose story is long but whose distant past
+  still matters.
 - **Reflection** *(designed)* — an automatic critic reviews settled
   conversations (failures always, successes opt-in) and writes durable lessons
   into the agent's Notebook; the Notebook learns authorship (`source`) so an
   agent can't erase its own performance reviews.
-- **Embeddings-ranked recall** — semantic retrieval over notes, episodes and
-  lessons. The `Embedder` seam shipped 2026-09-16 (`nessy-api`, with
-  `nessy-embedding-spi` for providers),
-  with OpenAI-compatible, Gemini, Bedrock and Voyage embedders beside it, and
-  `Summarizer` now receives the turn being answered; episodes rank by it. What
-  remains: the same for `AmbientSource` and the notebook, a `pgvector` index
-  once an agent's episodes are more than a scan (the vectors are stored as
-  plain arrays beside the model's name today), an in-process ONNX embedder for
-  air-gapped and test use, and a `Reranker` seam later. Recall degrades to
-  recency and titles when no embedder is present.
+- **Embeddings-ranked recall** — semantic retrieval over notes and lessons.
+  The `Embedder` seam shipped 2026-09-16 (`nessy-api`, with
+  `nessy-embedding-spi` for providers), with OpenAI-compatible, Gemini,
+  Bedrock and Voyage embedders beside it, and a `MemorySource` receives the
+  turn being answered so that it can rank by it. No store uses an `Embedder`
+  yet. What remains: a memory source over the notebook that ranks by meaning,
+  a `pgvector` index once an agent's notes are more than a scan, an in-process
+  ONNX embedder for air-gapped and test use, and a `Reranker` seam later.
 - **Lesson retention** — pruning, capping, or expiry policies for notebook
   entries, before reflection's index grows without bound.
 - **Blackboard** — a shared, structured working memory several agents (or
@@ -94,7 +84,7 @@ Work an agent does when nobody is talking to it, and the primitives that keep
 two copies of that work from colliding.
 
 - **Leases** *(shipped 2026-09-15, `nessy-lease`)* — `tryRun(kind, key, ttl,
-  work)` over a `nessy_lease` row; the head summariser runs under one.
+  work)` over a `nessy_lease` row; the chapter keeper runs under one.
 - **Alarms** — durable timers that wake an agent (an observation at a time)
   so follow-ups, deadlines and "check back in an hour" survive a restart.
 - **Blackboard** — see [Memory](#memory).
@@ -131,7 +121,7 @@ the fold, where every other obligation lives:
   for delegation and for evals.
 - **Remote delegation (A2A)** — the cross-harness mirror, later.
 
-Built after episodes and replanning, because hierarchical planning is what
+Built after replanning, because hierarchical planning is what
 makes delegation earn its keep.
 
 ## Providers
@@ -225,9 +215,6 @@ The first three ship together as `0.3.0`, in this order.
   tool-call arguments before binding plus Jakarta validation on the bound
   input object, failures compacted into `ToolResult.error` for model
   self-correction.
-- **Docs catch-up** — `docs/concepts/memory.md` still describes the retired
-  `Memory` / `ContextTransformer` SPI; rewrite around `Summarizer`, `maxTail`
-  and ambient sources.
 - **GraalVM native-image support** — runtime hints so agents compile to native
   executables.
 - **First release** — `0.1.0` to Maven Central once the surface above

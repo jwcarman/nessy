@@ -3,8 +3,8 @@
 A lease is how background work runs once when several processes could all
 do it. It is one interface with one method, and it exists because of one
 fact about deployments: an agent's events are heard by every instance of
-the application, and some of what those events trigger, a summary, a sweep,
-a report, is work that should happen exactly once, not once per instance.
+the application, and some of what those events trigger, a chapter summary,
+a sweep, a report, is work that should happen exactly once, not once per instance.
 
 ## The problem it solves
 
@@ -12,13 +12,13 @@ The engine's own work never needs a lease. A model call, a tool call, an
 approval: each is an effect, a row one process claims with its deadline, and
 the engine guarantees it is performed. That is work the agent is *owed*.
 
-Background work is different. When a turn ends, the head summariser asks
-whether the story has outgrown the tail; the episode summariser asks whether
-any closed episode still has no summary. Three instances hear the same turn
-end and all three ask the same question and get the same answer. Without a
-lease, three summaries are written of the same turns, three model calls are
-paid for, and the last writer wins. With one, the first asker does the work
-and the other two find nothing left to do.
+Background work is different. When a turn ends, the chapter keeper asks
+whether the chapter policy says a chapter is due, and whether any closed
+chapter still has no summary. Three instances hear the same turn end and all
+three ask the same question and get the same answer. Without a lease, three
+summaries are written of the same turns and three model calls are paid for.
+With one, the first asker does the work and the other two find nothing left
+to do.
 
 The distinction is the design: **an effect is work somebody is owed; a lease
 is work anybody may do, once.** Nothing waits on a lease, nothing queues
@@ -38,9 +38,9 @@ public interface Leases {
 }
 ```
 
-A lease is keyed on three things, not two: `kind` names the activity (a
-head summary and an episode summary of the same agent are two leases, not
-one), and `type` plus `agent` name whose work it is. `ttl` is how long the
+A lease is keyed on three things, not two: `kind` names the activity (the
+chapter keeper's `nessy.chapters` and a nightly report for the same agent
+are two leases, not one), and `type` plus `agent` name whose work it is. `ttl` is how long the
 caller believes it will hold the lease before another process may assume it
 died. `work` runs if the lease was taken; the return value is an `Attempt<T>`
 rather than a boolean, because "nobody ran it" and "it ran and returned
@@ -104,13 +104,17 @@ Work that outlives its TTL is no longer protected, and a second process may
 start the same job. So two rules for anything that runs under one:
 
 - **Choose the TTL for the slow case.** A summary by a hosted model takes
-  seconds; the same summary by a local thinking model over a long episode
-  takes minutes. Size the TTL to the slowest model the work will run on.
-- **Make the write idempotent anyway.** The episode summary is written with
-  `WHERE summary IS NULL`; the head summary only ever replaces one that
-  reaches less far. The lease makes duplicate work rare; the guarded write
-  makes it harmless. The lease is an optimisation over correctness that is
-  already there, which is the right way round.
+  seconds; the same summary by a local thinking model over a long chapter
+  takes minutes. Size the TTL to the slowest model the work will run on. For
+  chapters it is `chapterLeaseTtl(Duration)` on the context config, two
+  minutes by default, and it applies to each step the keeper takes (the cut,
+  and each summary) rather than to the pass as a whole.
+- **Make the write idempotent anyway.** A chapter's summary is written with
+  `WHERE summary IS NULL`, and a chapter is stored only if the closed
+  chapters still end where the caller said they did. The lease makes
+  duplicate work rare; the guarded write makes it harmless. The lease is an
+  optimisation over correctness that is already there, which is the right
+  way round.
 
 There is no queue, no fairness, and no waiting. A caller that finds the
 lease held gets `Attempt.Ignored` and nothing else, which is exactly what
@@ -119,13 +123,19 @@ write an effect. See [Durable Computation](durable-computation.md).
 
 ## Where it is used
 
-- The head summariser takes a lease per agent when the story has outgrown
-  the tail. See [Memory](memory.md#the-head-summarizer).
-- The episode summariser takes a lease per agent when a closed episode has
-  no summary. See [Memory](memory.md#episodes).
+- The chapter keeper takes a lease per agent, under the kind
+  `nessy.chapters`, to cut the history into chapters, and again for each
+  summary it writes. A lease held by someone else is an immediate refusal,
+  and the keeper does nothing: whoever holds it is doing the same work. See
+  [Memory](memory.md#chapters).
 - Your own listeners, whenever they react to an agent event with work that
   costs something and must not be done twice: a nightly report, a reflection
   pass, an export.
+
+The engine reaches leases through the backend it was given, as
+`backend.leases()`, beside `backend.chapters()`, so a backend whose stores
+are durable never pairs them with leases that only exclude work in one
+process.
 
 In a Boot application a `Leases` bean is contributed by whichever backend
 auto-configuration fires — `JdbcBackendAutoConfiguration` (an
@@ -138,5 +148,5 @@ There is no separate module or property to add; see
 ## Where next
 
 - [Durable Computation](durable-computation.md), the effects a lease is not
-- [Memory](memory.md), the two summarisers that run under one
+- [Memory](memory.md), the chapter keeper that runs under one
 - [Storage](storage.md), the table

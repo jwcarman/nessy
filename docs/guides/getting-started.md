@@ -198,8 +198,8 @@ export NESSY_PROVIDER=ollama
 export NESSY_MODEL=<a model id your Ollama instance serves>
 ```
 
-`nessy-examples/chat-cli` is exactly this, with a notebook, a plan and a
-templated prompt added.
+`nessy-examples/chat-cli` is exactly this, with a notebook, a plan and the
+date, given as ambient background, added.
 
 ## Telling it something instead
 

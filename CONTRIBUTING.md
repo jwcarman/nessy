@@ -46,6 +46,17 @@ Run tests with:
 mvn clean verify
 ```
 
+A change to how history is cut into chapters, or to the shape of the context,
+can be compared against the alternatives with `ChapterPolicyComparisonTest` in
+`nessy-engine`. It replays one scripted conversation through the real direct
+harness under different chapter policies, with no model and no database, and
+prints how much each policy sends and how much of it is unchanged from the
+call before:
+
+```bash
+./mvnw -q -pl :nessy-engine -am test -Dtest=ChapterPolicyComparisonTest
+```
+
 ## Code Style and Conventions
 
 - **Java 25+**: Use modern Java features judiciously -- prefer clarity and simplicity
