@@ -68,24 +68,25 @@ low-cardinality key `nessy.inference.purpose`. Two values are supplied:
 ASCII letters, digits, `-` and `_`, and each one in use is a series in both
 metrics, so the set stays small. The purpose is never sent to the vendor.
 Prometheus spells the key `nessy_inference_purpose` and the token type
-`gen_ai_token_type`; the series below are the token histogram's sum, with the
-unit it is recorded in appended to its name.
+`gen_ai_token_type`; the series below are the token histogram's sum, named as
+it arrives over OTLP in the stack `chat-web` runs. Another exporter may spell
+the series differently; the labels are the same.
 
 Spend by purpose, in tokens over the last day:
 
 ```
 sum by (nessy_inference_purpose, gen_ai_token_type) (
-  increase(gen_ai_client_token_usage_token_sum[1d]))
+  increase(gen_ai_client_token_usage_sum[1d]))
 ```
 
 The cache hit ratio of answering calls only, so a summary's uncached calls do
 not pull it down:
 
 ```
-sum(increase(gen_ai_client_token_usage_token_sum{
+sum(increase(gen_ai_client_token_usage_sum{
       gen_ai_token_type="cache_read", nessy_inference_purpose="answer"}[1d]))
 /
-sum(increase(gen_ai_client_token_usage_token_sum{
+sum(increase(gen_ai_client_token_usage_sum{
       gen_ai_token_type="input", nessy_inference_purpose="answer"}[1d]))
 ```
 
