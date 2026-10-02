@@ -41,6 +41,7 @@ import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
+import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -667,6 +668,105 @@ class AnthropicLiveTest {
       assertThat(List.of(first.usage().cacheWriteTokens(), second.usage().cacheReadTokens()))
           .as("the prefix was written to the cache, or read back from it")
           .anyMatch(count -> count instanceof Tokens.Counted(int value) && value > 0);
+    }
+  }
+
+  // ---- a reply cut off at the output limit ----------------------------------------------
+
+  private static final String LISTING =
+      "Write the numbers 1 to 2000, one per line, each followed by a colon and its square,"
+          + " for example '12: 144'. Output only those lines.";
+
+  private static final String NOTE_REQUEST =
+      "Call save_note once, now. Its text must be the numbers 1 to 2000, one per line, each"
+          + " followed by a colon and its square.";
+
+  private static final ToolOffer SAVE_NOTE =
+      new ToolOffer(
+          new ToolName("save_note"),
+          "saves a note",
+          new JsonSchema(
+              """
+              {"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}"""));
+
+  private static InferenceRequest limited(String question, Toolset toolset) {
+    return new InferenceRequest(
+        new SystemPrompt("You are a terse assistant."),
+        InferenceContext.of(List.of(open(1, question))),
+        toolset,
+        new InferenceOptions(MODEL, 1500));
+  }
+
+  /**
+   * A reply the vendor cut off at the output limit comes back as {@code Truncated}, holding what
+   * was written, and is neither an answer nor a fault.
+   *
+   * <p>The full listing needs far more than the 1500 tokens allowed, and 1500 leaves room for a
+   * model that reasons a little before it writes.
+   */
+  @Test
+  void an_answer_cut_off_at_the_output_limit_is_truncated_and_keeps_what_was_written() {
+    try (AnthropicInferenceProvider provider = provider()) {
+      InferenceResult result = provider.infer(limited(LISTING, Toolset.none()));
+
+      assertThat(result)
+          .as("the reply, whole: %s", result)
+          .isInstanceOf(InferenceResult.Truncated.class);
+      InferenceResult.Truncated truncated = (InferenceResult.Truncated) result;
+      assertThat(truncated.blocks()).isNotEmpty();
+      assertThat(truncated.blocks())
+          .filteredOn(Block.Text.class::isInstance)
+          .isNotEmpty()
+          .anySatisfy(
+              block -> {
+                String written = ((Block.Text) block).text();
+                assertThat(written).isNotBlank();
+                assertThat(written.strip()).startsWith("1: 1");
+              });
+      assertThat(truncated.usage().outputTokens())
+          .as("the reply was written, and the vendor counted it")
+          .isInstanceOfSatisfying(
+              Tokens.Counted.class, written -> assertThat(written.count()).isPositive());
+    }
+  }
+
+  /**
+   * A tool call cut off at the output limit is a permanent fault and is never a call to run.
+   *
+   * <p>One tool, {@code save_note}, is offered and the model is required to call it with {@link
+   * ToolChoice.Named}, the same way {@code
+   * requiring_one_tool_by_name_overrides_what_the_model_would_have_picked} does. The text it is
+   * asked to carry cannot fit in 1500 tokens, so the call is cut off mid-argument. What matters is
+   * the first assertion: a call whose arguments are incomplete, or empty, must never be handed over
+   * to run. The wire's own wording for the cut-off varies by model, so only {@code tool call} is
+   * asserted of the reason.
+   *
+   * <p>Measured 2026-10-02 by a raw-HTTP probe: the non-streamed Messages API returned a cut-off
+   * call as {@code tool_use} with {@code input: {}}, which parses, so a reader that trusted the
+   * block would have run the tool with no arguments.
+   */
+  @Test
+  void a_tool_call_cut_off_at_the_output_limit_is_a_fault_and_is_never_a_call_to_run() {
+    try (AnthropicInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(
+              limited(
+                  NOTE_REQUEST,
+                  new Toolset(
+                      List.of(SAVE_NOTE), new ToolChoice.Named(new ToolName("save_note")))));
+
+      assertThat(result)
+          .as(
+              "a call cut off at the output limit must never be handed over to run; result: %s",
+              result)
+          .isNotInstanceOf(InferenceResult.Actions.class);
+      assertThat(result)
+          .as("the reply, whole: %s", result)
+          .isInstanceOf(InferenceResult.Fault.class);
+      assertThat(((InferenceResult.Fault) result).failure())
+          .isInstanceOfSatisfying(
+              Failure.Permanent.class,
+              failure -> assertThat(failure.reason()).contains("tool call"));
     }
   }
 }

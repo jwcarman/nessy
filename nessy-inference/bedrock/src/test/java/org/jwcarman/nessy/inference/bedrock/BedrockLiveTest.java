@@ -28,12 +28,16 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.jwcarman.nessy.inference.ToolChoice;
+import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.Toolset;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -188,5 +192,111 @@ class BedrockLiveTest {
         .map(Block.Text.class::cast)
         .map(Block.Text::text)
         .collect(Collectors.joining());
+  }
+
+  // ---- a reply cut off at the output limit ----------------------------------------------
+
+  private static final String LISTING =
+      "Write the numbers 1 to 2000, one per line, each followed by a colon and its square,"
+          + " for example '12: 144'. Output only those lines.";
+
+  private static final String NOTE_REQUEST =
+      "Call save_note once, now. Its text must be the numbers 1 to 2000, one per line, each"
+          + " followed by a colon and its square.";
+
+  private static final ToolOffer SAVE_NOTE =
+      new ToolOffer(
+          new ToolName("save_note"),
+          "saves a note",
+          new JsonSchema(
+              """
+              {"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}"""));
+
+  private static InferenceRequest limited(String question, Toolset toolset) {
+    return new InferenceRequest(
+        new SystemPrompt("You are a terse assistant."),
+        InferenceContext.of(
+            List.of(
+                new Turn(
+                    new TurnId(1),
+                    new Input(new Seq(1), List.of(new Block.Text(question))),
+                    List.of(),
+                    null,
+                    0))),
+        toolset,
+        new InferenceOptions(MODEL, 1500));
+  }
+
+  /**
+   * A reply the vendor cut off at the output limit comes back as {@code Truncated}, holding what
+   * was written, and is neither an answer nor a fault.
+   *
+   * <p>The full listing needs far more than the 1500 tokens allowed, and 1500 leaves room for a
+   * model that reasons a little before it writes.
+   *
+   * <p>This wire had not been measured when the test was written.
+   */
+  @Test
+  void an_answer_cut_off_at_the_output_limit_is_truncated_and_keeps_what_was_written() {
+    try (BedrockInferenceProvider provider = provider()) {
+      InferenceResult result = provider.infer(limited(LISTING, Toolset.none()));
+
+      assertThat(result)
+          .as("the reply, whole: %s", result)
+          .isInstanceOf(InferenceResult.Truncated.class);
+      InferenceResult.Truncated truncated = (InferenceResult.Truncated) result;
+      assertThat(truncated.blocks()).isNotEmpty();
+      assertThat(truncated.blocks())
+          .filteredOn(Block.Text.class::isInstance)
+          .isNotEmpty()
+          .anySatisfy(
+              block -> {
+                String written = ((Block.Text) block).text();
+                assertThat(written).isNotBlank();
+                assertThat(written.strip()).startsWith("1: 1");
+              });
+      assertThat(truncated.usage().model())
+          .as("the vendor named the model that wrote it")
+          .isNotBlank();
+    }
+  }
+
+  /**
+   * A tool call cut off at the output limit is a permanent fault and is never a call to run.
+   *
+   * <p>One tool, {@code save_note}, is offered and the model is required to call it with {@link
+   * ToolChoice.Named}; this class has no other test that requires a tool. The text it is asked to
+   * carry cannot fit in 1500 tokens, so the call is cut off mid-argument. What matters is the first
+   * assertion: a call whose arguments are incomplete, or empty, must never be handed over to run.
+   * The wire's own wording for the cut-off varies by model, so only {@code tool call} is asserted
+   * of the reason.
+   *
+   * <p>This wire had not been measured when the test was written. A cut-off call may surface as
+   * {@code max_tokens} with a call present, or as arguments that {@code did not parse}; both give a
+   * permanent fault whose reason says {@code tool call}.
+   */
+  @Test
+  void a_tool_call_cut_off_at_the_output_limit_is_a_fault_and_is_never_a_call_to_run() {
+    try (BedrockInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(
+              limited(
+                  NOTE_REQUEST,
+                  new Toolset(
+                      List.of(SAVE_NOTE), new ToolChoice.Named(new ToolName("save_note")))));
+
+      assertThat(result)
+          .as(
+              "a call cut off at the output limit must never be handed over to run; result: %s",
+              result)
+          .isNotInstanceOf(InferenceResult.Actions.class);
+      assertThat(result)
+          .as("the reply, whole: %s", result)
+          .isInstanceOf(InferenceResult.Fault.class);
+      assertThat(((InferenceResult.Fault) result).failure())
+          .isInstanceOfSatisfying(
+              Failure.Permanent.class,
+              failure -> assertThat(failure.reason()).contains("tool call"));
+    }
   }
 }

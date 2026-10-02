@@ -41,6 +41,7 @@ import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -544,6 +545,107 @@ class OpenAiResponsesLiveTest {
       assertThat(((InferenceResult.Answer) result).blocks())
           .as("the encrypted reasoning item is kept beside the answer: " + result)
           .anyMatch(Block.Provider.class::isInstance);
+    }
+  }
+
+  // ---- a reply cut off at the output limit ----------------------------------------------
+
+  private static final String LISTING =
+      "Write the numbers 1 to 2000, one per line, each followed by a colon and its square,"
+          + " for example '12: 144'. Output only those lines.";
+
+  private static final String NOTE_REQUEST =
+      "Call save_note once, now. Its text must be the numbers 1 to 2000, one per line, each"
+          + " followed by a colon and its square.";
+
+  private static final ToolOffer SAVE_NOTE =
+      new ToolOffer(
+          new ToolName("save_note"),
+          "saves a note",
+          new JsonSchema(
+              """
+              {"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}"""));
+
+  private static InferenceRequest limited(String question, Toolset toolset) {
+    return new InferenceRequest(
+        new SystemPrompt("You are a terse assistant."),
+        InferenceContext.of(List.of(turn(question, List.of()))),
+        toolset,
+        new InferenceOptions(MODEL, 1500));
+  }
+
+  /**
+   * A reply the vendor cut off at the output limit comes back as {@code Truncated}, holding what
+   * was written, and is neither an answer nor a fault.
+   *
+   * <p>The full listing needs far more than the 1500 tokens allowed, and 1500 leaves room for a
+   * model that reasons a little before it writes.
+   *
+   * <p>This wire had not been measured when the test was written: what the adapter does with an
+   * {@code incomplete} response is read from its code and the SDK, not from a probe.
+   */
+  @Test
+  void an_answer_cut_off_at_the_output_limit_is_truncated_and_keeps_what_was_written() {
+    try (OpenAiResponsesInferenceProvider provider = provider()) {
+      InferenceResult result = provider.infer(limited(LISTING, Toolset.none()));
+
+      assertThat(result)
+          .as("the reply, whole: %s", result)
+          .isInstanceOf(InferenceResult.Truncated.class);
+      InferenceResult.Truncated truncated = (InferenceResult.Truncated) result;
+      assertThat(truncated.blocks()).isNotEmpty();
+      assertThat(truncated.blocks())
+          .filteredOn(Block.Text.class::isInstance)
+          .isNotEmpty()
+          .anySatisfy(
+              block -> {
+                String written = ((Block.Text) block).text();
+                assertThat(written).isNotBlank();
+                assertThat(written.strip()).startsWith("1: 1");
+              });
+      assertThat(truncated.usage().outputTokens().orZero())
+          .as("the reply was written, and the vendor counted it")
+          .isPositive();
+    }
+  }
+
+  /**
+   * A tool call cut off at the output limit is a permanent fault and is never a call to run.
+   *
+   * <p>One tool, {@code save_note}, is offered and the model is required to call it with {@link
+   * ToolChoice.Named}, the same way {@code
+   * requiring_one_tool_by_name_overrides_what_the_model_would_have_picked} does. The text it is
+   * asked to carry cannot fit in 1500 tokens, so the call is cut off mid-argument. What matters is
+   * the first assertion: a call whose arguments are incomplete, or empty, must never be handed over
+   * to run. The wire's own wording for the cut-off varies by model, so only {@code tool call} is
+   * asserted of the reason.
+   *
+   * <p>This wire had not been measured when the test was written. The reason text comes from the
+   * adapter's reading of {@code incomplete_details}, not from a probe of what the vendor sends for
+   * a cut-off call.
+   */
+  @Test
+  void a_tool_call_cut_off_at_the_output_limit_is_a_fault_and_is_never_a_call_to_run() {
+    try (OpenAiResponsesInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(
+              limited(
+                  NOTE_REQUEST,
+                  new Toolset(
+                      List.of(SAVE_NOTE), new ToolChoice.Named(new ToolName("save_note")))));
+
+      assertThat(result)
+          .as(
+              "a call cut off at the output limit must never be handed over to run; result: %s",
+              result)
+          .isNotInstanceOf(InferenceResult.Actions.class);
+      assertThat(result)
+          .as("the reply, whole: %s", result)
+          .isInstanceOf(InferenceResult.Fault.class);
+      assertThat(((InferenceResult.Fault) result).failure())
+          .isInstanceOfSatisfying(
+              Failure.Permanent.class,
+              failure -> assertThat(failure.reason()).contains("tool call"));
     }
   }
 }
