@@ -35,8 +35,11 @@ import org.jwcarman.nessy.backend.payload.Payloads;
 /**
  * The event stream, read back as the conversation a model is shown.
  *
- * <p>Events carry identifiers, status and references; a provider wants {@link Turn}s full of
- * blocks. This is the one place the claim check is read, and the only place the two shapes meet.
+ * <p>Events carry identifiers, status, references and a little text; a provider wants {@link Turn}s
+ * full of blocks. This is the one place the claim check is read, and the only place the two shapes
+ * meet. The text it reads from events is the line saying what a call would do, from {@code
+ * ActionsRequested}, and the line saying what it returned, from {@code ToolSucceeded}; it hands
+ * both to {@link Exchange}.
  *
  * <p><b>Content arrays come back whole and in order.</b> A vendor signature may cover an entire
  * array -- {@code Block.Provider}'s javadoc is explicit that order is part of the payload and that

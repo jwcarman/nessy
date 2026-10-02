@@ -218,5 +218,55 @@ class EventStreamHistoryTest {
       assertThat(exchange.resultOf(refund)).contains("refunded");
       assertThat(exchange.resultOf(audit)).isEmpty();
     }
+
+    @Test
+    void lines_are_kept_for_the_request_they_came_in_when_a_call_id_repeats() {
+      CallId id = new CallId("call-1");
+      ToolName tool = new ToolName("refund");
+      PayloadRef input = payloads.put(List.of(new Block.Text("q1")));
+      PayloadRef request = payloads.put(List.of(new Block.ToolCall(id, tool, "{}")));
+      PayloadRef result = payloads.put(List.of(new Block.Text("done")));
+      PayloadRef answer = payloads.put(List.of(new Block.Text("a1")));
+      PayloadRef laterInput = payloads.put(List.of(new Block.Text("q7")));
+      append(
+          new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), input, Instant.now()),
+          new AgentEvent.ActionsRequested(
+              new Seq(2),
+              new TurnId(1),
+              request,
+              List.of(new ActionRequest.ToolCall(id, tool, "refund the first")),
+              Usage.unreported()),
+          new AgentEvent.ToolSucceeded(new Seq(3), new TurnId(1), id, result, "first"),
+          new AgentEvent.ActionsRequested(
+              new Seq(4),
+              new TurnId(1),
+              request,
+              List.of(new ActionRequest.ToolCall(id, tool, "refund the second")),
+              Usage.unreported()),
+          new AgentEvent.ToolFailed(new Seq(5), new TurnId(1), id, "no such buyer"),
+          new AgentEvent.InferenceAnswered(new Seq(6), new TurnId(1), answer, Usage.unreported()),
+          new AgentEvent.TurnStarted(new Seq(7), new TurnId(7), laterInput, Instant.now()),
+          new AgentEvent.ActionsRequested(
+              new Seq(8),
+              new TurnId(7),
+              request,
+              List.of(new ActionRequest.ToolCall(id, tool, "refund the third")),
+              Usage.unreported()),
+          new AgentEvent.InferenceAnswered(new Seq(9), new TurnId(7), answer, Usage.unreported()));
+
+      List<Turn> found = history().turnsBetween(new TurnId(1), new TurnId(7));
+
+      assertThat(found).hasSize(2);
+      List<Exchange> firstTurn = found.getFirst().exchanges();
+      assertThat(firstTurn).hasSize(2);
+      assertThat(firstTurn.get(0).actionOf(id)).isEqualTo("refund the first");
+      assertThat(firstTurn.get(0).resultOf(id)).contains("first");
+      assertThat(firstTurn.get(1).actionOf(id)).isEqualTo("refund the second");
+      assertThat(firstTurn.get(1).resultOf(id)).isEmpty();
+      List<Exchange> secondTurn = found.getLast().exchanges();
+      assertThat(secondTurn).hasSize(1);
+      assertThat(secondTurn.getFirst().actionOf(id)).isEqualTo("refund the third");
+      assertThat(secondTurn.getFirst().resultOf(id)).isEmpty();
+    }
   }
 }

@@ -129,9 +129,11 @@ class ExchangeTest {
 
     assertThat(exchange.actionOf(FIRST)).isEqualTo("refund forty dollars");
     assertThat(exchange.resultOf(SECOND)).isEmpty();
-    assertThatThrownBy(() -> exchange.actions().put(FIRST, "changed"))
+    Map<CallId, String> exposedActions = exchange.actions();
+    Map<CallId, String> exposedResults = exchange.results();
+    assertThatThrownBy(() -> exposedActions.put(FIRST, "changed"))
         .isInstanceOf(UnsupportedOperationException.class);
-    assertThatThrownBy(() -> exchange.results().put(SECOND, "changed"))
+    assertThatThrownBy(() -> exposedResults.put(SECOND, "changed"))
         .isInstanceOf(UnsupportedOperationException.class);
   }
 
