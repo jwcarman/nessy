@@ -32,7 +32,10 @@ import org.jwcarman.nessy.api.block.Block;
  */
 public interface ToolConfig<I> {
 
-  /** The most characters a recorded line may have, whatever the application's stringifier says. */
+  /**
+   * The most characters a recorded line may have, whatever the application's stringifier says. It
+   * also bounds a failed call's message.
+   */
   int LINE_CAP = 1000;
 
   /** The most characters a recorded line may have when the application named no stringifier. */

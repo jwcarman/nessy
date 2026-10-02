@@ -77,6 +77,7 @@ import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
@@ -323,6 +324,30 @@ class DefaultDirectHarnessTest {
   }
 
   /** A tool that throws, to prove a broken tool is told to the model rather than ending a turn. */
+  private static Tool<Lookup> failing(String message) {
+    return new Tool<Lookup>() {
+      @Override
+      public Class<Lookup> inputType() {
+        return Lookup.class;
+      }
+
+      @Override
+      public ToolName name() {
+        return LOOKUP;
+      }
+
+      @Override
+      public String description() {
+        return "reports a failure";
+      }
+
+      @Override
+      public Awaited<ToolResult> call(ToolCallRequest<Lookup> request) {
+        return Awaited.ready(new ToolResult.Failure(message));
+      }
+    };
+  }
+
   private static Tool<Lookup> broken(String message) {
     return new Tool<Lookup>() {
       @Override
@@ -601,6 +626,40 @@ class DefaultDirectHarnessTest {
     assertThat(events.readAll(TYPE, agent))
         .extracting(e -> e.getClass().getSimpleName())
         .contains("ToolFailed");
+  }
+
+  @Test
+  @DisplayName(
+      "a tool that fails with a long message leaves at most the cap in its event and in what the"
+          + " model reads")
+  void
+      a_tool_that_fails_with_a_long_message_leaves_at_most_the_cap_in_its_event_and_in_what_the_model_reads() {
+    AgentId agent = AgentId.random();
+    String message = "START" + "x".repeat(4_990) + "END";
+    Scripted model = new Scripted().then(asking("lookup")).then(answering("sorry"));
+
+    harness(model, failing(message)).ask(agent, "try");
+
+    List<AgentEvent.ToolFailed> failures =
+        events.readAll(TYPE, agent).stream()
+            .filter(AgentEvent.ToolFailed.class::isInstance)
+            .map(AgentEvent.ToolFailed.class::cast)
+            .toList();
+    assertThat(failures).singleElement().satisfies(f -> assertThat(f.message()).hasSize(1_000));
+    String stored = failures.getFirst().message();
+    assertThat(stored).startsWith("START").endsWith("END").contains("...");
+    assertThat(model.seen.get(1).context().turns())
+        .singleElement()
+        .satisfies(
+            turn ->
+                assertThat(turn.exchanges())
+                    .singleElement()
+                    .satisfies(
+                        exchange ->
+                            assertThat(exchange.outcomes())
+                                .singleElement()
+                                .isEqualTo(
+                                    new ToolOutcome.Failed(failures.getFirst().callId(), stored))));
   }
 
   @Test

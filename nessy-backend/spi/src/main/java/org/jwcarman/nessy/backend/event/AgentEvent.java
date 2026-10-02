@@ -222,7 +222,9 @@ public sealed interface AgentEvent {
    * going to read this, and what matters is that it can tell what to do next.
    *
    * <p>This is free text, kept in the clear for a long time, so it names what went wrong and never
-   * the values involved.
+   * the values involved. It is at most 1,000 characters: a longer message has its middle dropped
+   * and {@code ...} in the gap before it is stored, and what is stored is the text the model reads
+   * back for the call.
    */
   record ToolFailed(Seq seq, TurnId turn, CallId callId, String message) implements AgentEvent {}
 

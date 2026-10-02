@@ -46,9 +46,11 @@ same binding from the result. Each line is at most 1,000 characters
 (`ToolConfig.LINE_CAP`); the cap is applied when the binding is built, not by
 the records. A line is fixed when it is written and never worked out again.
 
-Events hold other short text too, and it is not bounded: a failed call's
-message, a denial's reason and its reference, why a turn failed, a refusal's
-category and a failure's reason.
+Events hold other text too. A failed call's message is at most 1,000
+characters; a longer one has its middle dropped and `...` in the gap, and the
+shortened text is what the model reads back for the call. A denial's reason and
+its reference, why a turn failed, a refusal's category and a failure's reason
+are not bounded.
 
 So an agent's content is in three places: its payload rows, the lines and
 sentences in its events, and the summaries of its chapters in

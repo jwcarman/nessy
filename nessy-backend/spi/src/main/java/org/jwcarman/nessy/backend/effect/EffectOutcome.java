@@ -21,8 +21,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.api.Truncator;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.inference.Failure;
 
@@ -148,8 +150,19 @@ public sealed interface EffectOutcome {
    * matters is whether retrying could work; a failed tool call is the <em>model's</em> problem, it
    * is going to read this, and what matters is that it can tell what to do next. Whether the
    * attempt is worth repeating was settled before this was minted.
+   *
+   * <p>The {@code message} is at most {@link ToolConfig#LINE_CAP} (1,000) characters. A longer one
+   * has its middle dropped and {@code ...} in the gap, whitespace untouched, and the shortened text
+   * is what is stored and what the model reads back for the call. Every failure is made here, so
+   * every failure is bounded wherever it was built.
    */
-  record ToolFailed(CallId callId, String message) implements EffectOutcome {}
+  record ToolFailed(CallId callId, String message) implements EffectOutcome {
+    public ToolFailed {
+      Objects.requireNonNull(callId, "callId must not be null");
+      Objects.requireNonNull(message, "message must not be null");
+      message = Truncator.dropMiddle().truncate(message, ToolConfig.LINE_CAP);
+    }
+  }
 
   /** A call was never run, because an approver said no. */
   record ToolDenied(CallId callId, String reason, Optional<String> reference)

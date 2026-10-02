@@ -127,8 +127,8 @@ CREATE TABLE IF NOT EXISTS nessy_payload
 -- What happened to an agent, in order, append-only. Facts about a life rather than a copy of it:
 -- every block is a reference into nessy_payload. It also holds short text: for a tool call, a line
 -- saying what the call would do and a line saying what it returned, each at most 1,000 characters,
--- and a failed call's message, a denial's reason, why a turn failed, a refusal's
--- category and a failure's reason. Those last are not bounded.
+-- and a failed call's message, at most 1,000 characters as well. A denial's reason, why a turn
+-- failed, a refusal's category and a failure's reason are also text, and are not bounded.
 --
 -- The primary key is the concurrency control. Two writers that decided from the same state mint
 -- the same seq, so the second one violates it and takes its own transaction down -- which is the

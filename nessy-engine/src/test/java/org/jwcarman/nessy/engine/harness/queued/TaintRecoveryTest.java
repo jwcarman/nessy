@@ -190,8 +190,8 @@ class TaintRecoveryTest {
    * What an event says, in words.
    *
    * <p>An event names its content rather than carrying it, so anything asserting on what was
-   * actually said has to go and get it. Events that hold no content answer with themselves, which
-   * is what a caller scanning the whole story wants.
+   * actually said has to go and get it. Events whose text is their own, or that hold no content,
+   * answer with themselves, which is what a caller scanning the whole story wants.
    */
   private String textOf(AgentId agentId, AgentEvent message) {
     return switch (message) {

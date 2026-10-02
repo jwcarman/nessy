@@ -154,8 +154,9 @@ that is the trade.
 
 That statement is not everything the agent said. For each tool call the
 events also hold two lines of text, what the call would do and what it
-returned, each at most 1,000 characters, and they hold other short text: a
-failed call's message, a denial's reason, why a turn failed. The summaries
+returned, each at most 1,000 characters, and they hold other text: a
+failed call's message, also at most 1,000 characters, and a denial's reason and
+why a turn failed, which are not bounded. The summaries
 of the agent's chapters are in `nessy_chapter`. An agent's content is in
 those three places, its payload rows, its events and its chapters. Nothing
 in the engine deletes any of it today.

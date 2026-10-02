@@ -114,6 +114,10 @@ a thrown exception is the engine's problem and gets retried with the
 identical bad arguments; a failure is the model's problem, and the model is
 the one who can fix it.
 
+A failure's message is cut to 1,000 characters, its middle dropped and `...` in
+the gap. That holds for a thrown exception's message too. Output the model
+must read in full belongs in a successful result, which is not cut.
+
 The same is true of a refusal. A denied call is a completed call whose
 outcome says it was denied, with the reason; the model gets to respond to
 that, and it is not a failed turn.

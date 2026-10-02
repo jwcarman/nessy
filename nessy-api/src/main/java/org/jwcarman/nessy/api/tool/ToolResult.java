@@ -22,6 +22,16 @@ public sealed interface ToolResult {
 
   record Success(List<Block.ToolResultContent> blocks) implements ToolResult {}
 
+  /**
+   * The call did not produce content, and this is what the model reads about why.
+   *
+   * <p>The message is kept to at most {@link ToolConfig#LINE_CAP} characters: a longer one has its
+   * middle dropped and {@code ...} in the gap, and so does the message of an exception a tool
+   * throws. Output the model must read in full belongs in a {@link Success} result, which is not
+   * cut.
+   *
+   * @param message what went wrong
+   */
   record Failure(String message) implements ToolResult {}
 
   static ToolResult ok(Block.ToolResultContent block) {
