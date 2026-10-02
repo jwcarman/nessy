@@ -259,25 +259,40 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
         kept.ifPresent(reasoning::add);
       }
     }
+    String stopped =
+        "status="
+            + response.status().map(ResponseStatus::asString).orElse("unknown")
+            + ", reason="
+            + response
+                .incompleteDetails()
+                .flatMap(Response.IncompleteDetails::reason)
+                .map(Response.IncompleteDetails.Reason::asString)
+                .orElse("none");
+    boolean cutOff =
+        response.status().filter(ResponseStatus.INCOMPLETE::equals).isPresent()
+            && response
+                .incompleteDetails()
+                .flatMap(Response.IncompleteDetails::reason)
+                .filter(Response.IncompleteDetails.Reason.MAX_OUTPUT_TOKENS::equals)
+                .isPresent();
     if (called) {
+      if (cutOff) {
+        // A call cut off inside its arguments can still parse (measured: {}) and would run.
+        return new InferenceResult.Fault(
+            new Failure.Permanent(
+                "the reply was cut off at the output limit in the middle of a tool call ("
+                    + stopped
+                    + ")"));
+      }
       return new InferenceResult.Actions(inOrder);
     }
     if (said.toString().isBlank()) {
       return new InferenceResult.Fault(
-          new Failure.Permanent(
-              "model returned an empty answer (status="
-                  + response.status().map(ResponseStatus::asString).orElse("unknown")
-                  + ", reason="
-                  + response
-                      .incompleteDetails()
-                      .flatMap(Response.IncompleteDetails::reason)
-                      .map(Response.IncompleteDetails.Reason::asString)
-                      .orElse("none")
-                  + ")"));
+          new Failure.Permanent("model returned an empty answer (" + stopped + ")"));
     }
     List<Block.AnswerContent> answer = new ArrayList<>(reasoning);
     answer.add(new Block.Text(said.toString()));
-    return new InferenceResult.Answer(answer);
+    return cutOff ? new InferenceResult.Truncated(answer) : new InferenceResult.Answer(answer);
   }
 
   private static String textOf(ResponseOutputMessage message) {

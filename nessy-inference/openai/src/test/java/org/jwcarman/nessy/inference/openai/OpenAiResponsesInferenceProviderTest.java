@@ -324,6 +324,95 @@ class OpenAiResponsesInferenceProviderTest {
   }
 
   @Nested
+  class A_reply_cut_off_at_the_output_limit {
+
+    private Map<String, Object> cutOff(List<Map<String, Object>> output, String reason) {
+      Map<String, Object> cut = response("incomplete", output, null);
+      cut.put("incomplete_details", fields("reason", reason));
+      return cut;
+    }
+
+    @Test
+    void prose_that_stopped_mid_sentence_is_truncated_not_answered() {
+      InferenceResult result =
+          inferReplying(
+              cutOff(
+                  List.of(message("msg_1", "The loch is about two hundred and")),
+                  "max_output_tokens"));
+
+      assertThat(result)
+          .isInstanceOf(InferenceResult.Truncated.class)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(
+              new InferenceResult.Truncated(
+                  List.of(new Block.Text("The loch is about two hundred and"))));
+    }
+
+    @Test
+    void reasoning_is_kept_ahead_of_the_text_as_it_is_for_an_answer() {
+      InferenceResult result =
+          inferReplying(
+              cutOff(
+                  List.of(reasoning("rs_1", "AAAA", "weighing it"), message("msg_1", "Paris is")),
+                  "max_output_tokens"));
+
+      List<Block.AnswerContent> blocks = ((InferenceResult.Truncated) result).blocks();
+      assertThat(blocks).hasSize(2);
+      assertThat(blocks.get(0)).isInstanceOf(Block.Provider.class);
+      assertThat(blocks.get(1)).isEqualTo(new Block.Text("Paris is"));
+    }
+
+    @Test
+    void a_tool_call_cut_off_inside_its_arguments_is_a_fault_not_actions() {
+      InferenceResult result =
+          inferReplying(
+              cutOff(List.of(functionCall("call_1", "lookup", "{}")), "max_output_tokens"));
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> {
+                assertThat(fault.failure()).isInstanceOf(Failure.Permanent.class);
+                assertThat(fault.failure().reason())
+                    .contains("cut off")
+                    .contains("tool call")
+                    .contains("status=incomplete")
+                    .contains("reason=max_output_tokens");
+              });
+    }
+
+    @Test
+    void nothing_but_reasoning_is_the_empty_answer_fault_and_not_truncated() {
+      InferenceResult result =
+          inferReplying(
+              cutOff(List.of(reasoning("rs_1", "AAAA", "weighing it")), "max_output_tokens"));
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> {
+                assertThat(fault.failure()).isInstanceOf(Failure.Permanent.class);
+                assertThat(fault.failure().reason())
+                    .contains("empty")
+                    .contains("max_output_tokens");
+              });
+    }
+
+    @Test
+    void incomplete_for_another_reason_is_not_truncated() {
+      InferenceResult result =
+          inferReplying(cutOff(List.of(message("msg_1", "I cannot say")), "content_filter"));
+
+      assertThat(result)
+          .isInstanceOf(InferenceResult.Answer.class)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("I cannot say"))));
+    }
+  }
+
+  @Nested
   class ReasoningItems {
 
     @Test

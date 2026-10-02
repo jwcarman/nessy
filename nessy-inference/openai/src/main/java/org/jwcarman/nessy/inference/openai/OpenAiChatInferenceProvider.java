@@ -351,6 +351,13 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
    * <p>Otherwise the choice is made on the presence of {@code tool_calls} rather than on {@code
    * finish_reason}: the content is the thing that has to be answered, and several OpenAI-compatible
    * servers report the reason inconsistently while all of them put the calls in the same place.
+   *
+   * <p>The one thing {@code finish_reason} is trusted for is {@code length}, and only when the
+   * server actually reports it: the same inconsistent servers mean nothing by an absent reason, by
+   * {@code stop} where the reply was cut, or by one they made up, so each of those reads exactly as
+   * it did before. Reported, {@code length} says the reply stopped at the output limit, so calls
+   * beside it cannot be trusted (a cut-off call can carry arguments that still parse and would run)
+   * and text without calls is {@link InferenceResult.Truncated}, not an answer.
    */
   private static InferenceResult read(ChatCompletion.Choice choice) {
     ChatCompletionMessage message = choice.message();
@@ -359,6 +366,16 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
     }
     String said = message.content().orElse("");
     List<ChatCompletionMessageToolCall> calls = message.toolCalls().orElseGet(List::of);
+    // Not ==: the SDK's accumulator makes this with FinishReason.of(...), a new instance.
+    boolean cutOff = ChatCompletion.Choice.FinishReason.LENGTH.equals(choice.finishReason());
+    if (cutOff && !calls.isEmpty()) {
+      return new InferenceResult.Fault(
+          new Failure.Permanent(
+              "the reply was cut off at the output limit in the middle of a tool call"
+                  + " (finish_reason="
+                  + choice.finishReason()
+                  + ")"));
+    }
     if (calls.isEmpty()) {
       if (said.isBlank()) {
         // A 200 with nothing in it. A reasoning model that spent its whole token budget thinking
@@ -367,6 +384,9 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
         return new InferenceResult.Fault(
             new Failure.Permanent(
                 "model returned an empty answer (finish_reason=" + choice.finishReason() + ")"));
+      }
+      if (cutOff) {
+        return new InferenceResult.Truncated(List.of(new Block.Text(said)));
       }
       return new InferenceResult.Answer(List.of(new Block.Text(said)));
     }

@@ -269,13 +269,19 @@ class OpenAiChatInferenceProviderTest {
 
   /** One completion carrying one choice, which is the only shape this adapter reads. */
   private static ChatCompletion completionOf(ChatCompletionMessage message) {
+    return completionOf(message, ChatCompletion.Choice.FinishReason.STOP);
+  }
+
+  /** The same, finishing for the reason the server gave. */
+  private static ChatCompletion completionOf(
+      ChatCompletionMessage message, ChatCompletion.Choice.FinishReason reason) {
     return ChatCompletion.builder()
         .id("chatcmpl-test")
         .created(0L)
         .model("gpt-4o")
         .addChoice(
             ChatCompletion.Choice.builder()
-                .finishReason(ChatCompletion.Choice.FinishReason.STOP)
+                .finishReason(reason)
                 .index(0L)
                 .message(message)
                 .logprobs(Optional.empty())
@@ -318,6 +324,142 @@ class OpenAiChatInferenceProviderTest {
             .infer(REQUEST);
     assertThat(result).isInstanceOf(InferenceResult.Fault.class);
     return ((InferenceResult.Fault) result).failure();
+  }
+
+  @Nested
+  class A_reply_cut_off_at_the_output_limit {
+
+    private InferenceResult inferCutOff(ChatCompletionMessage message) {
+      return new OpenAiChatProviderConfig()
+          .client(
+              fakeClient(
+                  params -> completionOf(message, ChatCompletion.Choice.FinishReason.LENGTH)))
+          .build()
+          .infer(REQUEST);
+    }
+
+    private ChatCompletionMessage saying(String text) {
+      return ChatCompletionMessage.builder()
+          .content(text)
+          .refusal(Optional.<String>empty())
+          .build();
+    }
+
+    @Test
+    void prose_that_stopped_mid_sentence_is_truncated_not_answered() {
+      InferenceResult result = inferCutOff(saying("The loch is about two hundred and"));
+
+      assertThat(result)
+          .isInstanceOf(InferenceResult.Truncated.class)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(
+              new InferenceResult.Truncated(
+                  List.of(new Block.Text("The loch is about two hundred and"))));
+    }
+
+    @Test
+    void the_usage_of_the_cut_off_call_is_kept() {
+      InferenceResult result = inferCutOff(saying("The loch is about"));
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Truncated.class,
+              truncated -> assertThat(truncated.usage()).isEqualTo(Usage.unreported("gpt-4o")));
+    }
+
+    @Test
+    void a_tool_call_cut_off_inside_its_arguments_is_a_fault_not_actions() {
+      InferenceResult result =
+          inferCutOff(
+              ChatCompletionMessage.builder()
+                  .content(Optional.<String>empty())
+                  .refusal(Optional.<String>empty())
+                  .addToolCall(
+                      ChatCompletionMessageFunctionToolCall.builder()
+                          .id("call_1")
+                          .function(
+                              ChatCompletionMessageFunctionToolCall.Function.builder()
+                                  .name("lookup")
+                                  .arguments("{}")
+                                  .build())
+                          .build())
+                  .build());
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> {
+                assertThat(fault.failure()).isInstanceOf(Failure.Permanent.class);
+                assertThat(fault.failure().reason())
+                    .contains("cut off")
+                    .contains("tool call")
+                    .contains("finish_reason=length");
+              });
+    }
+
+    @Test
+    void nothing_but_silence_is_the_empty_answer_fault_and_not_truncated() {
+      InferenceResult result = inferCutOff(saying(""));
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> {
+                assertThat(fault.failure()).isInstanceOf(Failure.Permanent.class);
+                assertThat(fault.failure().reason()).contains("empty").contains("length");
+              });
+    }
+
+    /**
+     * The SDK's accumulator hands over no completion at all for a stream that never reported a
+     * finish reason (a fault before this adapter reads anything), so the reachable "not length"
+     * case is a reason this adapter has no name for, which compatible servers do invent.
+     */
+    @Test
+    void a_server_that_reports_a_finish_reason_of_its_own_still_answers() {
+      List<ChatCompletionChunk> chunks =
+          List.of(
+              chunk(
+                  ChatCompletionChunk.Choice.Delta.builder()
+                      .role(ChatCompletionChunk.Choice.Delta.Role.ASSISTANT)
+                      .content("1412 metres")
+                      .build(),
+                  null),
+              chunk(
+                  ChatCompletionChunk.Choice.Delta.builder().build(),
+                  ChatCompletionChunk.Choice.FinishReason.of("eos")));
+      InferenceResult result =
+          new OpenAiChatProviderConfig()
+              .client(fakeStreamingClient(params -> chunks))
+              .build()
+              .infer(REQUEST);
+
+      assertThat(result)
+          .isInstanceOf(InferenceResult.Answer.class)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("1412 metres"))));
+    }
+
+    @Test
+    void a_finish_reason_of_stop_still_answers() {
+      InferenceResult result =
+          new OpenAiChatProviderConfig()
+              .client(
+                  fakeClient(
+                      params ->
+                          completionOf(
+                              saying("1412 metres"), ChatCompletion.Choice.FinishReason.STOP)))
+              .build()
+              .infer(REQUEST);
+
+      assertThat(result)
+          .isInstanceOf(InferenceResult.Answer.class)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(new InferenceResult.Answer(List.of(new Block.Text("1412 metres"))));
+    }
   }
 
   @Nested
