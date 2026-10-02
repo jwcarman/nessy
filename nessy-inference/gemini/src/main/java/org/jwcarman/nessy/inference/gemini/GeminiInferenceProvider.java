@@ -90,6 +90,8 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
    * so a caller can tell a safety block from a recitation block without this adapter inventing a
    * taxonomy.
    */
+  private static final String MAX_TOKENS = "MAX_TOKENS";
+
   private static final Set<String> REFUSALS =
       Set.of(
           "SAFETY",
@@ -326,6 +328,10 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
    * <p>Gemini has no finish reason for "the model called a tool" -- a turn that calls a function
    * still finishes with {@code STOP} -- so the choice between an answer and a request for actions
    * is made on the presence of a function-call part.
+   *
+   * <p>A reply whose finish reason is {@code MAX_TOKENS} was cut off at the output limit. With
+   * prose in it that is a {@link InferenceResult.Truncated}; with a function call in it, a fault,
+   * because the call's arguments are incomplete; with neither, the empty-answer fault.
    */
   private InferenceResult read(GenerateContentResponse response) {
     List<Candidate> candidates = response.candidates().orElse(List.of());
@@ -347,6 +353,14 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
       return new InferenceResult.Refusal(finish);
     }
 
+    boolean cutOff = MAX_TOKENS.equals(finish);
+    if (asking && cutOff) {
+      // The arguments of a call cut off mid-way can still parse, as an empty object, and run.
+      return new InferenceResult.Fault(
+          new Failure.Permanent(
+              "model reply was cut off inside a tool call (finish_reason=" + finish + ")"));
+    }
+
     List<Block> blocks = new ArrayList<>();
     for (Part part : parts) {
       add(part, asking, blocks);
@@ -359,8 +373,13 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
         return new InferenceResult.Fault(
             new Failure.Permanent("model returned an empty answer (finish_reason=" + finish + ")"));
       }
-      return new InferenceResult.Answer(
-          blocks.stream().map(Block.AnswerContent.class::cast).toList());
+      List<Block.AnswerContent> content =
+          blocks.stream().map(Block.AnswerContent.class::cast).toList();
+      boolean hasText = content.stream().anyMatch(Block.Text.class::isInstance);
+      if (cutOff && hasText) {
+        return new InferenceResult.Truncated(content);
+      }
+      return new InferenceResult.Answer(content);
     }
     return new InferenceResult.Actions(
         blocks.stream().map(Block.ActionRequestContent.class::cast).toList());

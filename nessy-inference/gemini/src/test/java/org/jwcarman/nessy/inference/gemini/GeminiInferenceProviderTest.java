@@ -486,6 +486,72 @@ class GeminiInferenceProviderTest {
   }
 
   @Nested
+  class WhenTheReplyWasCutOffAtTheOutputLimit {
+
+    @Test
+    void prose_cut_off_is_a_truncated_reply_not_an_answer() {
+      InferenceResult result =
+          infer(reply(new FinishReason("MAX_TOKENS"), Part.fromText("the lake is deep and")));
+
+      assertThat(result).isInstanceOf(InferenceResult.Truncated.class);
+      assertThat(result)
+          .usingRecursiveComparison()
+          .ignoringFields("usage")
+          .isEqualTo(
+              new InferenceResult.Truncated(List.of(new Block.Text("the lake is deep and"))));
+    }
+
+    @Test
+    void a_function_call_cut_off_is_a_fault_not_actions() {
+      Part call =
+          Part.builder()
+              .functionCall(
+                  FunctionCall.builder().id("call_1").name("depth").args(Map.of()).build())
+              .build();
+
+      InferenceResult result = infer(reply(new FinishReason("MAX_TOKENS"), call));
+
+      assertThat(result).isInstanceOf(InferenceResult.Fault.class);
+      assertThat(((InferenceResult.Fault) result).failure())
+          .isInstanceOf(Failure.Permanent.class)
+          .extracting(Failure::reason)
+          .asString()
+          .contains("cut off")
+          .contains("tool call")
+          .contains("finish_reason=MAX_TOKENS");
+    }
+
+    @Test
+    void prose_before_a_cut_off_function_call_does_not_make_it_truncated() {
+      Part call =
+          Part.builder()
+              .functionCall(
+                  FunctionCall.builder().id("call_1").name("depth").args(Map.of()).build())
+              .build();
+
+      InferenceResult result =
+          infer(reply(new FinishReason("MAX_TOKENS"), Part.fromText("looking"), call));
+
+      assertThat(result).isInstanceOf(InferenceResult.Fault.class);
+    }
+
+    @Test
+    void reasoning_alone_cut_off_is_the_empty_answer_fault() {
+      Part thought = Part.builder().text("hmm, a lake").thought(true).build();
+
+      InferenceResult result = infer(reply(new FinishReason("MAX_TOKENS"), thought));
+
+      assertThat(result).isInstanceOf(InferenceResult.Fault.class);
+      assertThat(((InferenceResult.Fault) result).failure())
+          .isInstanceOf(Failure.Permanent.class)
+          .extracting(Failure::reason)
+          .asString()
+          .contains("empty answer")
+          .contains("MAX_TOKENS");
+    }
+  }
+
+  @Nested
   class WhatAFailureMeans {
 
     @Test
