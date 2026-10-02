@@ -57,6 +57,22 @@ CHAT_MODEL_ID=gpt-4o-mini \
   ./mvnw -q -pl :nessy-example-chat-web spring-boot:run
 ```
 
+Anthropic works the same way: export `ANTHROPIC_API_KEY` and name the `anthropic`
+provider. This also turns on the prompt cache and closes a chapter of the
+conversation every four turns, so a few messages are enough to see one cut and
+summarised:
+
+```bash
+CHAT_PROVIDER=anthropic \
+CHAT_MODEL_ID=claude-sonnet-5-5 \
+CHAT_CHAPTER_TURNS=4 \
+  ./mvnw -q -pl :nessy-example-chat-web spring-boot:run \
+  -Dspring-boot.run.arguments="--nessy.providers.anthropic.properties.anthropic.cache_control.ttl=FIVE_MINUTES"
+```
+
+`CHAT_CHAPTER_TURNS` is how many turns make a chapter; it defaults to the
+engine's 20.
+
 ## What it does not do
 
 **It needs Postgres.** Agents, their stories, notes, plans and

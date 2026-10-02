@@ -20,6 +20,7 @@ import java.util.List;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.ChapterPolicy;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.block.Block;
@@ -33,6 +34,7 @@ import org.jwcarman.nessy.planning.JdbcPlans;
 import org.jwcarman.nessy.planning.PlanTools;
 import org.jwcarman.nessy.planning.Plans;
 import org.jwcarman.nessy.spring.boot.NessyProperties;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -85,6 +87,10 @@ public class ChatConfiguration {
    * <p>Somebody is in the browser waiting, which is what this door is for. The turn runs on the
    * request thread and the answer is the return value; the SSE stream carries what is happening
    * while it runs, which is narration rather than delivery.
+   *
+   * <p>A chapter of the conversation closes every {@code chat.chapter-turns} turns and is
+   * summarised off the request thread. The default is the engine's own twenty; a small number
+   * closes one after a few messages, which is how to watch a chapter being cut.
    */
   @Bean
   public DirectHarness<String, String> harness(
@@ -93,7 +99,8 @@ public class ChatConfiguration {
       SendEmailTool email,
       Approver desk,
       Notebook notebook,
-      Plans plans) {
+      Plans plans,
+      @Value("${chat.chapter-turns:20}") int chapterTurns) {
     return factory.<String>create(
         TYPE,
         config ->
@@ -112,6 +119,7 @@ public class ChatConfiguration {
                                     // A local thinking model can take minutes to write a chapter's
                                     // summary, so the lease outlasts the two-minute default.
                                     ctx.chapterLeaseTtl(Duration.ofMinutes(10))
+                                        .chapterPolicy(ChapterPolicy.every(chapterTurns))
                                         .ambient(NotebookTools.index(notebook))
                                         .ambient(PlanTools.plan(plans))))
                 .tool(new DaysUntilTool())

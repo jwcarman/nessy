@@ -32,6 +32,12 @@ management:
     sampling:
       probability: 1.0
 
+chat:
+  # How many turns make a chapter. A chapter is summarised when it closes, and the summary stands in
+  # for its turns from then on. The engine's default is 20; a small number closes one after a few
+  # messages.
+  chapter-turns: ${CHAT_CHAPTER_TURNS:20}
+
 nessy:
   type: chat
   # Which registered InferenceProvider answers. lmstudio is a preset the starter lights below;
