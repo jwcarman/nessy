@@ -176,38 +176,31 @@ turns were open) and `nessy.chapter.closed` (how many chapters it closed). A
 policy may call a model, so what it costs is worth seeing. Both are roots of
 their own trace; see [Background work](#background-work).
 
-## What changed in the context, and whether the cache held
+## Whether the cache held
 
-A provider caches the leading text of a request. These two signals say
-whether that held, and why not.
+A provider caches the leading text of a request. Each model call reports the
+tokens it read from that cache and the tokens it wrote to it, on the `chat`
+span as `gen_ai.usage.cache_read_tokens` and `gen_ai.usage.cache_write_tokens`,
+and in the `gen_ai.client.token.usage` histogram with `gen_ai.token.type` set
+to `cache_read` or `cache_write`. A lost cache shows in those numbers: the
+share of input read from the cache (`cache_read / input`) falling, or the share
+written (`cache_write / input`) rising.
 
-**`nessy.context.changed`** is a low-cardinality tag on the `nessy.context`
-span: the earliest stratum of the context that differs from the previous
-call for the same agent. Its values are `first-call`, `none`, `history`,
-`memory`, `state`, `active-turn` and `ambient`. The strata are laid out
-most stable first, so the earliest change decides how much of the cache
-survives; changes later in the order cost nothing extra. Within a turn the
-healthy values are `active-turn` and `ambient`. `memory` or `state` in the
-middle of a turn means a source is not holding still. The same value is
-logged at `DEBUG` with the agent type and id.
+```promql
+# share of input read from the cache, per agent type
+sum by (gen_ai_agent_name) (rate(gen_ai_client_token_usage_tokens_sum{gen_ai_token_type="cache_read"}[15m]))
+  / sum by (gen_ai_agent_name) (rate(gen_ai_client_token_usage_tokens_sum{gen_ai_token_type="input"}[15m]))
 
-**`nessy.cache.read.fell`** is an observation recorded, and a warning logged,
-when a provider reports fewer cached tokens on a call than on the call
-before it in the same turn. Inside a turn each request is the previous one
-with more at the end, so cached tokens should only grow. A fall means the
-leading text changed or the provider's cache entry expired. Each is tagged
-with the agent type (`gen_ai.agent.name`), so any handler on the registry
-can count them, and the warning is logged as `NESSY CACHE:` followed by
-the agent type, agent, turn and both counts.
+# share of input written to the cache, per agent type
+sum by (gen_ai_agent_name) (rate(gen_ai_client_token_usage_tokens_sum{gen_ai_token_type="cache_write"}[15m]))
+  / sum by (gen_ai_agent_name) (rate(gen_ai_client_token_usage_tokens_sum{gen_ai_token_type="input"}[15m]))
+```
 
-Read the two together: a `nessy.cache.read.fell` with a `nessy.context.changed`
-of `history`, `memory` or `state` points at the stratum that moved.
-
-A fall is a warning and a count, never an error. Anthropic reports cache
-reads dependably. OpenAI and Gemini cache implicitly and sometimes report
-none for no visible reason, and a call that reports no count is neither
-compared nor remembered. The watch holds the last count for at most 10,000
-agents, least recently used out first.
+The engine itself keeps nothing between calls to compare with: it reports
+what each call reported, and the comparison is made over those numbers. A
+vendor that reports no cache count gives no sample, so a missing series means
+the vendor said nothing, not that nothing was cached. Anthropic reports cache
+reads dependably; OpenAI and Gemini cache implicitly and sometimes report none.
 
 **Embedding calls** are spans. `DefaultEmbedderFactory` wraps every embedder
 it mints in `ObservedEmbedder`, over the registry it was given:

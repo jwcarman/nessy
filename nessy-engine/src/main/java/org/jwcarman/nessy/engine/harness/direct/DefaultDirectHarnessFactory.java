@@ -56,7 +56,6 @@ import org.jwcarman.nessy.engine.inference.ContextAssembler;
 import org.jwcarman.nessy.engine.inference.DefaultInferenceService;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
 import org.jwcarman.nessy.engine.narration.Listeners;
-import org.jwcarman.nessy.engine.observability.CacheWatch;
 import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
 import org.jwcarman.nessy.engine.observability.ObservedMemorySource;
@@ -130,9 +129,8 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
   private final ObservationRegistry observations;
 
   /** One for the factory, keyed by agent inside: every harness's inferences are told to it. */
-  private final CacheWatch cacheWatch;
-
   private final List<Customizer<HarnessConfig<?>>> features;
+
   private final List<Customizer<DirectHarnessConfig<?>>> harnesses;
 
   /**
@@ -165,7 +163,6 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
     this.mapper = config.mapper();
     this.clock = config.clock();
     this.observations = config.observations();
-    this.cacheWatch = new CacheWatch(observations);
     this.providers = config.providers().observed(observations);
     this.defaultProvider = config.defaultProvider();
     this.defaultOptions = config.defaultOptions();
@@ -332,7 +329,6 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
                 terms,
                 payloads,
                 narrator,
-                cacheWatch,
                 tools),
             new ApprovalHandler(
                 config.agentType(), tools, calls, replyTokens, narrator, terms, clock),

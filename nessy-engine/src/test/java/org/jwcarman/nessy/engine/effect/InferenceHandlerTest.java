@@ -17,16 +17,12 @@ package org.jwcarman.nessy.engine.effect;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.micrometer.observation.Observation;
-import io.micrometer.observation.ObservationHandler;
-import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Nested;
@@ -51,10 +47,8 @@ import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.payload.Payloads;
-import org.jwcarman.nessy.engine.observability.CacheWatch;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
-import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceResult;
 import tools.jackson.databind.json.JsonMapper;
@@ -65,9 +59,7 @@ class InferenceHandlerTest {
   private static final AgentType TYPE = new AgentType("support");
   private static final AgentId AGENT = AgentId.random();
 
-  private final List<Observation.Context> stopped = new CopyOnWriteArrayList<>();
   private final Deque<InferenceResult> script = new ArrayDeque<>();
-  private final ObservationRegistry registry = ObservationRegistry.create();
 
   private final List<List<? extends Block>> stored = new ArrayList<>();
 
@@ -130,25 +122,10 @@ class InferenceHandlerTest {
             new RetryPolicy.Never()),
         payloads,
         (type, id, event) -> {},
-        new CacheWatch(registry),
         tools);
   }
 
   InferenceHandlerTest() {
-    registry
-        .observationConfig()
-        .observationHandler(
-            new ObservationHandler<>() {
-              @Override
-              public void onStop(Observation.Context context) {
-                stopped.add(context);
-              }
-
-              @Override
-              public boolean supportsContext(Observation.Context context) {
-                return true;
-              }
-            });
     Payloads payloads =
         new Payloads() {
           @Override
@@ -184,71 +161,6 @@ class InferenceHandlerTest {
 
   private static Usage reading(int cached) {
     return Usage.of("model", 10, 10).withCacheRead(cached);
-  }
-
-  private void inferTwice(InferenceResult first, InferenceResult second, long secondTurn) {
-    script.add(first);
-    script.add(second);
-    handler.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)));
-    handler.handle(AGENT, new AgentEffect.Infer(TurnId.of(secondTurn)));
-  }
-
-  @Nested
-  class Tells_the_watch_the_usage_of_each_kind_of_result {
-
-    @Test
-    void an_answer() {
-      inferTwice(
-          new InferenceResult.Answer(List.of(new Block.Text("a")), reading(100)),
-          new InferenceResult.Answer(List.of(new Block.Text("b")), reading(10)),
-          1);
-
-      assertThat(stopped).hasSize(1);
-    }
-
-    @Test
-    void a_refusal() {
-      inferTwice(
-          new InferenceResult.Refusal("policy", reading(100)),
-          new InferenceResult.Refusal("policy", reading(10)),
-          1);
-
-      assertThat(stopped).hasSize(1);
-    }
-
-    @Test
-    void a_request_for_actions() {
-      inferTwice(
-          new InferenceResult.Actions(List.of(call()), reading(100)),
-          new InferenceResult.Actions(List.of(call()), reading(10)),
-          1);
-
-      assertThat(stopped).hasSize(1);
-    }
-
-    @Test
-    void a_fault() {
-      inferTwice(
-          new InferenceResult.Fault(new Failure.Permanent("no"), reading(100)),
-          new InferenceResult.Fault(new Failure.Permanent("no"), reading(10)),
-          1);
-
-      assertThat(stopped).hasSize(1);
-    }
-  }
-
-  @Nested
-  class Tells_the_watch_the_turn {
-
-    @Test
-    void so_a_new_turn_reading_less_is_not_a_fall() {
-      inferTwice(
-          new InferenceResult.Refusal("policy", reading(100)),
-          new InferenceResult.Refusal("policy", reading(10)),
-          2);
-
-      assertThat(stopped).isEmpty();
-    }
   }
 
   @Nested

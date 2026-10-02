@@ -140,13 +140,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   system prompt, fixed when the harness is built.
 - **`PromptVariables.supplied(...)`, `firstOf(...)` and `none()`**, and
   `TemplatedSystemPrompt.render(...)`, which renders a template once.
-- **`nessy.context.changed`**, a tag on the `nessy.context` span: the
-  earliest stratum that changed since the previous call for the agent
-  (`first-call`, `none`, `history`, `memory`, `state`, `active-turn` or
-  `ambient`).
-- **`nessy.cache.read.fell`**, an observation recorded, and a warning logged,
-  when a provider reports fewer cached tokens on a call than on the call
-  before it in the same turn.
 - **Spans for chapters and sources:** `nessy.summary` for each summary
   written, `nessy.chapter.policy` for each question put to the policy, and
   `nessy.context memory <kind>` and `nessy.context state <kind>` beside the

@@ -29,7 +29,6 @@ import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.inference.InferenceInvocation;
 import org.jwcarman.nessy.engine.inference.InferenceService;
-import org.jwcarman.nessy.engine.observability.CacheWatch;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -67,9 +66,6 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
   /** What says, for each call the model makes, what it would do. */
   private final Tools tools;
 
-  /** Told every inference's usage, to notice cached tokens falling inside a turn. */
-  private final CacheWatch cacheWatch;
-
   public InferenceHandler(
       AgentType agentType,
       InferenceService inference,
@@ -77,9 +73,7 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
       EffectTermsSource terms,
       Payloads payloads,
       Narrator narrator,
-      CacheWatch cacheWatch,
       Tools tools) {
-    this.cacheWatch = Objects.requireNonNull(cacheWatch, "cacheWatch must not be null");
     this.agentType = agentType;
     this.inference = inference;
     this.options = options;
@@ -104,7 +98,6 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
   public Awaited<EffectOutcome> handle(AgentId agentId, AgentEffect.Infer effect) {
     InferenceResult result =
         inference.infer(new InferenceInvocation(agentType, agentId, options, effect.answerOnly()));
-    cacheWatch.saw(agentType, agentId, effect.turn(), result.usage());
     // Always ready. A provider call blocks until it answers or fails, and there is nobody who
     // could come back about it afterwards -- so the one thing this cannot return is the one
     // thing the wrapper makes explicit.

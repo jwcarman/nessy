@@ -17,17 +17,9 @@ package org.jwcarman.nessy.engine.observability;
 
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
-import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.engine.inference.ContextFingerprint;
 import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
-import org.jwcarman.nessy.inference.InferenceContext;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Everything the model is shown, assembled in one {@code nessy.context} span, with each read
@@ -35,98 +27,25 @@ import org.slf4j.LoggerFactory;
  *
  * <p>What this measures is the part of a model call that is not the model: before today it was
  * indistinguishable from the provider's own latency.
- *
- * <p>The span also carries {@code nessy.context.changed}: the earliest stratum of the context that
- * differs from the previous call for the same agent, or {@code first-call} when there was none. Its
- * values are {@code none}, {@code history}, {@code memory}, {@code state}, {@code active-turn} and
- * {@code ambient}. A provider caches a request's leading text, and the context is laid out
- * most-stable-first, so the earliest change decides how much of that cache survives; later changes
- * cost nothing extra. Within a turn the healthy answers are {@code active-turn} and {@code
- * ambient}: {@code memory} or {@code state} in the middle of a turn means a source is not holding
- * still. The same value is logged at DEBUG with the agent type and agent.
- *
- * <p>The last fingerprint for each agent is kept in a bounded map, least recently used out first.
  */
 public final class ObservedInferenceContextAssembler {
 
   public static final String CONTEXT = "nessy.context";
 
-  /** The low-cardinality key naming the earliest stratum that changed since the previous call. */
-  public static final String CHANGED = "nessy.context.changed";
-
-  private static final String FIRST_CALL = "first-call";
-  private static final int MAX_AGENTS = 10_000;
-
-  private static final Logger log =
-      LoggerFactory.getLogger(ObservedInferenceContextAssembler.class);
-
   private ObservedInferenceContextAssembler() {}
 
   public static InferenceContextAssembler wrap(
       InferenceContextAssembler delegate, ObservationRegistry observations) {
-    return wrap(delegate, observations, ContextFingerprint::of);
-  }
-
-  static InferenceContextAssembler wrap(
-      InferenceContextAssembler delegate,
-      ObservationRegistry observations,
-      Function<InferenceContext, ContextFingerprint> fingerprinter) {
     Objects.requireNonNull(delegate, "delegate must not be null");
     Objects.requireNonNull(observations, "observations must not be null");
-    Objects.requireNonNull(fingerprinter, "fingerprinter must not be null");
-    Map<Whose, ContextFingerprint> last = boundedLastSeen();
     return invocation ->
         observe(
             observations,
             CONTEXT,
             CONTEXT,
             new Identity(invocation.agentType(), invocation.agentId()),
-            observation -> {
-              InferenceContext context = delegate.assemble(invocation);
-              // Measuring is observability: it must never fail the call it measures.
-              try {
-                String changed =
-                    changeSincePreviousCall(
-                        last,
-                        new Whose(invocation.agentType(), invocation.agentId()),
-                        fingerprinter.apply(context));
-                observation.lowCardinalityKeyValue(CHANGED, changed);
-                log.debug(
-                    "context for {} {} changed since the last call: {}",
-                    invocation.agentType().value(),
-                    invocation.agentId().value(),
-                    changed);
-              } catch (RuntimeException e) {
-                log.debug(
-                    "the change in the context for {} {} could not be measured",
-                    invocation.agentType().value(),
-                    invocation.agentId().value(),
-                    e);
-              }
-              return context;
-            });
+            _ -> delegate.assemble(invocation));
   }
-
-  private static String changeSincePreviousCall(
-      Map<Whose, ContextFingerprint> last, Whose whose, ContextFingerprint now) {
-    ContextFingerprint previous;
-    synchronized (last) {
-      previous = last.put(whose, now);
-    }
-    return previous == null ? FIRST_CALL : now.firstChangeSince(previous);
-  }
-
-  /** Access-ordered, so the agents not heard from for longest are the ones forgotten. */
-  private static Map<Whose, ContextFingerprint> boundedLastSeen() {
-    return new LinkedHashMap<>(16, 0.75f, true) {
-      @Override
-      protected boolean removeEldestEntry(Map.Entry<Whose, ContextFingerprint> eldest) {
-        return size() > MAX_AGENTS;
-      }
-    };
-  }
-
-  private record Whose(AgentType agentType, AgentId agentId) {}
 
   /**
    * Opens one span and runs the work in it. No guard: {@code createNotStarted} answers a no-op

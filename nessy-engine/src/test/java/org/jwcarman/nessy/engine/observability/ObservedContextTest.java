@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.observability;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
@@ -25,11 +26,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Memory;
 import org.jwcarman.nessy.api.MemorySource;
@@ -144,110 +143,30 @@ class ObservedContextTest {
   void assembling_a_context_is_one_span_over_the_reads() {
     ObservedInferenceContextAssembler.wrap(
             _ -> InferenceContext.of(List.of(StoryOfOne.TURN)), registry)
-        .assemble(
-            new org.jwcarman.nessy.engine.inference.InferenceInvocation(
-                TYPE, AGENT, InferenceOptions.of("a-model")));
+        .assemble(invocationFor(AGENT));
 
     assertThat(only().getContextualName()).isEqualTo("nessy.context");
     assertThat(only().getLowCardinalityKeyValue(Identity.AGENT_NAME).getValue()).isEqualTo("chat");
   }
 
+  @Test
+  void a_failure_in_assembling_propagates_and_the_span_still_closes() {
+    InferenceContextAssembler assembler =
+        ObservedInferenceContextAssembler.wrap(
+            _ -> {
+              throw new IllegalStateException("no context");
+            },
+            registry);
+    InferenceInvocation invocation = invocationFor(AGENT);
+
+    assertThatThrownBy(() -> assembler.assemble(invocation))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("no context");
+    assertThat(only().getContextualName()).isEqualTo("nessy.context");
+  }
+
   private static InferenceInvocation invocationFor(AgentId agent) {
     return new InferenceInvocation(TYPE, agent, InferenceOptions.of("a-model"));
-  }
-
-  private String lastChange() {
-    return stopped
-        .getLast()
-        .getLowCardinalityKeyValue(ObservedInferenceContextAssembler.CHANGED)
-        .getValue();
-  }
-
-  /** What a provider's cache can keep depends on the earliest thing that moved between calls. */
-  @Test
-  void the_first_call_for_an_agent_reports_first_call() {
-    InferenceContextAssembler assembler =
-        ObservedInferenceContextAssembler.wrap(
-            _ -> InferenceContext.of(List.of(StoryOfOne.TURN)), registry);
-
-    assembler.assemble(invocationFor(AGENT));
-
-    assertThat(lastChange()).isEqualTo("first-call");
-  }
-
-  @Test
-  void a_second_identical_call_reports_none() {
-    InferenceContextAssembler assembler =
-        ObservedInferenceContextAssembler.wrap(
-            _ -> InferenceContext.of(List.of(StoryOfOne.TURN)), registry);
-
-    assembler.assemble(invocationFor(AGENT));
-    assembler.assemble(invocationFor(AGENT));
-
-    assertThat(stopped).hasSize(2);
-    assertThat(lastChange()).isEqualTo("none");
-  }
-
-  @Test
-  void a_changed_ambient_on_the_second_call_reports_ambient() {
-    AtomicReference<String> clock = new AtomicReference<>("noon");
-    InferenceContextAssembler assembler =
-        ObservedInferenceContextAssembler.wrap(
-            _ ->
-                new InferenceContext(
-                    List.of(StoryOfOne.TURN), List.of(Ambient.text("clock", clock.get()))),
-            registry);
-
-    assembler.assemble(invocationFor(AGENT));
-    clock.set("one");
-    assembler.assemble(invocationFor(AGENT));
-
-    assertThat(lastChange()).isEqualTo("ambient");
-  }
-
-  @Test
-  void two_agents_do_not_affect_each_other() {
-    InferenceContextAssembler assembler =
-        ObservedInferenceContextAssembler.wrap(
-            _ -> InferenceContext.of(List.of(StoryOfOne.TURN)), registry);
-
-    assembler.assemble(invocationFor(AGENT));
-    assembler.assemble(invocationFor(new AgentId(UUID.randomUUID())));
-
-    assertThat(lastChange()).isEqualTo("first-call");
-  }
-
-  @Test
-  void the_same_id_under_two_agent_types_is_two_agents() {
-    InferenceContextAssembler assembler =
-        ObservedInferenceContextAssembler.wrap(
-            _ -> InferenceContext.of(List.of(StoryOfOne.TURN)), registry);
-
-    assembler.assemble(invocationFor(AGENT));
-    assembler.assemble(
-        new InferenceInvocation(new AgentType("other"), AGENT, InferenceOptions.of("a-model")));
-
-    assertThat(lastChange()).isEqualTo("first-call");
-  }
-
-  /** Measuring is observability, and observability never fails the call it measures. */
-  @Test
-  void a_context_whose_change_cannot_be_measured_is_still_assembled() {
-    InferenceContext assembled = InferenceContext.of(List.of(StoryOfOne.TURN));
-    InferenceContextAssembler assembler =
-        ObservedInferenceContextAssembler.wrap(
-            _ -> assembled,
-            registry,
-            _ -> {
-              throw new IllegalStateException("cannot fingerprint");
-            });
-
-    InferenceContext returned = assembler.assemble(invocationFor(AGENT));
-
-    assertThat(returned).isSameAs(assembled);
-    assertThat(only().getContextualName()).isEqualTo("nessy.context");
-    assertThat(only().getLowCardinalityKeyValue(ObservedInferenceContextAssembler.CHANGED))
-        .isNull();
   }
 
   /** Reading the tail says how much of the story came back, which grows with the conversation. */
