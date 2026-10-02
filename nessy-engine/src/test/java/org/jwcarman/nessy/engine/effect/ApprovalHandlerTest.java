@@ -375,6 +375,47 @@ class ApprovalHandlerTest {
   }
 
   /**
+   * A gatherer that broke without saying why is still a gatherer that broke: the call is discharged
+   * with a message, nobody is asked, and so nothing is approved to run.
+   */
+  @Test
+  void an_enricher_that_throws_without_a_message_still_discharges_the_call() {
+    boolean[] asked = {false};
+    Tools tools =
+        new Tools(
+            List.of(
+                new ToolBinding<>(
+                    tool(),
+                    JsonMapper.builder().build(),
+                    new JsonSchema("{\"type\":\"object\"}"),
+                    Duration.ofSeconds(30),
+                    new RetryPolicy.Never(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    List.of(
+                        _ -> {
+                          throw new IllegalStateException();
+                        }),
+                    _ -> {
+                      asked[0] = true;
+                      return Awaited.ready(ApprovalResult.approved());
+                    },
+                    Duration.ofMinutes(10),
+                    new RetryPolicy.Never())));
+
+    EffectOutcome outcome = ask(tools);
+
+    assertThat(asked[0]).as("nobody was asked, so nothing was approved").isFalse();
+    assertThat(outcome)
+        .asInstanceOf(type(EffectOutcome.ToolFailed.class))
+        .satisfies(
+            failed -> {
+              assertThat(failed.callId()).isEqualTo(new CallId("c1"));
+              assertThat(failed.message()).isNotNull().isNotBlank();
+            });
+  }
+
+  /**
    * Saying nothing is not failing to say: the name is a sentence, and a person can decide on it.
    */
   @Test

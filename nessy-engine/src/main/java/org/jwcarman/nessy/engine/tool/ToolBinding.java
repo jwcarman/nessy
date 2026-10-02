@@ -190,12 +190,9 @@ public final class ToolBinding<I> {
    * call whose arguments will not read cannot run whatever anybody says about it, so there is
    * nothing to gate and the caller discharges it instead. The throw is Jackson's, turned into
    * something the model reads at the one call site that catches it. A call whose stored action is
-   * this binding's could-not-be-said line is refused the same way: there is no sentence to put to
-   * an approver, and a yes would run a call nobody could see. The stored action is compared, never
-   * worked out again.
-   *
-   * @throws IllegalStateException if the stored action says what the call would do could not be
-   *     said
+   * the could-not-be-said line must not reach here: the caller asks {@link #couldNotBeSaid(String)}
+   * first and discharges it, because there is no sentence to put to an approver and a yes would run
+   * a call nobody could see.
    */
   public ApprovalRequest question(
       AgentType agentType,
@@ -207,10 +204,6 @@ public final class ToolBinding<I> {
       Instant askedAt,
       ReplyToken replyToken) {
     mapper.readValue(arguments, tool.inputType());
-    if (action.equals(fallback(tool.name().value() + COULD_NOT_SAY))) {
-      throw new IllegalStateException(
-          "what the call would do could not be described, so it was not put to an approver");
-    }
     ApprovalRequest question =
         new ApprovalRequest(
             agentType,
@@ -231,6 +224,16 @@ public final class ToolBinding<I> {
       enricher.enrich(question);
     }
     return question;
+  }
+
+  /**
+   * Whether a stored action is this binding's line for a call whose action could not be said.
+   *
+   * <p>Compared with what {@link #describe(String)} writes in that case, never worked out again. A
+   * call for which this is true is not put to an approver: there is no sentence to consent to.
+   */
+  public boolean couldNotBeSaid(String action) {
+    return action.equals(fallback(tool.name().value() + COULD_NOT_SAY));
   }
 
   /**

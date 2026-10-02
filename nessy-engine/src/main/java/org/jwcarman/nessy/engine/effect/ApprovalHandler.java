@@ -53,6 +53,9 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
 
   private static final Logger log = LoggerFactory.getLogger(ApprovalHandler.class);
 
+  private static final String COULD_NOT_BE_DESCRIBED =
+      "what the call would do could not be described, so it was not put to an approver";
+
   private final AgentType agentType;
   private final Tools tools;
   private final ToolCalls calls;
@@ -120,6 +123,19 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
     ToolCalls.ResolvedCall resolved = found.get();
 
     ToolBinding<?> binding = bound.get();
+    if (binding.couldNotBeSaid(resolved.action())) {
+      // The call's stored action says what it would do could not be said. A person asked to
+      // consent to a sentence there is none of would be consenting to nothing they could see, and
+      // a yes would run the call. Discharged without asking, by the same road as a call whose
+      // arguments do not read: a gate that cannot be shown what it gates refuses.
+      log.warn(
+          "[{}] agent {}: call {} of {} has no description of what it would do",
+          agentType.value(),
+          agentId.value(),
+          callId,
+          effect.toolName());
+      return Awaited.ready(new EffectOutcome.ToolFailed(callId, COULD_NOT_BE_DESCRIBED));
+    }
     ApprovalRequest question;
     try {
       question =
@@ -132,22 +148,13 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
               resolved.action(),
               clock.instant(),
               replyTokens.mint(agentType, agentId, effect.requestSeq(), callId));
-    } catch (IllegalStateException e) {
-      // The call's stored action says what it would do could not be said. A person asked to
-      // consent to a sentence there is none of would be consenting to nothing they could see, and
-      // a yes would run the call. Discharged without asking, by the same road as a call whose
-      // arguments do not read: a gate that cannot be shown what it gates refuses.
-      log.warn(
-          "[{}] agent {}: call {} of {} has no description of what it would do",
-          agentType.value(),
-          agentId.value(),
-          callId,
-          effect.toolName());
-      return Awaited.ready(new EffectOutcome.ToolFailed(callId, e.getMessage()));
     } catch (RuntimeException e) {
       // A call whose arguments will not read into the tool's input type has no question to
       // ask about it -- and could not run whatever anybody answered. Discharged without asking: a
-      // gate exists to stop execution, and there is no execution here to stop.
+      // gate exists to stop execution, and there is no execution here to stop. The same road for
+      // whatever else building the question threw, an enricher included: the call is not put to an
+      // approver, so nothing says yes to it. The exception's message may be null; the text is
+      // built, never passed on.
       log.warn(
           "[{}] agent {}: call {} of {} has unreadable arguments",
           agentType.value(),
