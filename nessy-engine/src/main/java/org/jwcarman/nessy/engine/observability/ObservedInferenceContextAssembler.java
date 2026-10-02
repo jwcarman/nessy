@@ -25,8 +25,8 @@ import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
  * Everything the model is shown, assembled in one {@code nessy.context} span, with each read
  * beneath it.
  *
- * <p>What this measures is the part of a model call that is not the model: before today it was
- * indistinguishable from the provider's own latency.
+ * <p>What this measures is the part of a model call that is not the model: without it, the time
+ * spent assembling cannot be told from the provider's own latency.
  */
 public final class ObservedInferenceContextAssembler {
 

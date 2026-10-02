@@ -109,10 +109,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   private final ThreadPoolTaskScheduler scheduler;
   private final Traces traces;
   private final ObservationRegistry observations;
-
-  /** One for the factory, keyed by agent inside: every harness's inferences are told to it. */
   private final ProviderRegistry.Resolved providers;
-
   private final DefaultQueuedHarnessConfig.Defaults defaults;
   private final List<DefaultQueuedHarness<?>> harnesses = new CopyOnWriteArrayList<>();
   private final List<Listeners> tellers = new CopyOnWriteArrayList<>();

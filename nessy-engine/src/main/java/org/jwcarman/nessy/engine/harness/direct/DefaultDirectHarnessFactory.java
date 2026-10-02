@@ -127,10 +127,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
   private final ObjectMapper mapper;
   private final Clock clock;
   private final ObservationRegistry observations;
-
-  /** One for the factory, keyed by agent inside: every harness's inferences are told to it. */
   private final List<Customizer<HarnessConfig<?>>> features;
-
   private final List<Customizer<DirectHarnessConfig<?>>> harnesses;
 
   /**
