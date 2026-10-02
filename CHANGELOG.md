@@ -226,6 +226,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A chapter that was due at a turn's end could be left open until the next
+  turn when two turns ended close together.** The keeper that found the
+  agent's lease held gave up, and the keeper holding it had read the history
+  before the later turn. It now asks for the lease again for up to two
+  seconds, before the cut and before each summary.
 - **A chapter whose turns called a tool could not be summarised on Anthropic.**
   The summary request carried tool history and offered no tools, and the model
   answered nothing.

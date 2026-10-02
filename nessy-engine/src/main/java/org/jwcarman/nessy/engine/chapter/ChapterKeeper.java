@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.ChapterPolicy;
@@ -57,8 +58,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p><b>Leases.</b> The cut holds the lease for the agent, and so does each summary, one at a time,
  * so a model call is never made outside one and the lease is never taken from inside itself (a
- * {@link Leases} must not be re-entered). A lease held by someone else is an immediate refusal, and
- * the keeper does nothing: whoever holds it is doing the same work.
+ * {@link Leases} must not be re-entered). A lease held by someone else is asked for again until the
+ * keeper's wait is spent, because the holder may have read the history before the turn this pass
+ * was told about; past that the keeper does nothing, and the next turn's end tries again.
  *
  * <p><b>Waiting for the turn it was told about.</b> A turn's end is announced before the store that
  * holds it has committed: both doors narrate inside the lock that writes the turn, which on a
@@ -192,15 +194,58 @@ public final class ChapterKeeper {
     }
   }
 
-  /** Cuts what is due, then writes what is unwritten. Public so a caller may ask outright. */
+  /**
+   * Cuts what is due, then writes what is unwritten. Public so a caller may ask outright.
+   *
+   * <p>A pass that finds the lease held by another does not give up at once: whoever holds it may
+   * have read the turns before the one this pass was told about, so a chapter that turn made due
+   * would be left open. It asks again every poll interval until the lease is free or the keeper's
+   * wait (two seconds by default, the same as for a turn to become visible) is spent, which is long
+   * for a cut and short for a summary. If the wait is spent the pass does nothing and says so at
+   * DEBUG; the next turn's end keeps. The same wait applies before each summary. Nothing is
+   * remembered between passes, so this holds when the holder is on another node.
+   */
   public void keep(AgentId agentId) {
     Objects.requireNonNull(agentId, "agentId must not be null");
-    Attempt<Void> cut =
-        leases.tryWithLease(LEASE_KIND, agentType, agentId, leaseTtl, () -> cut(agentId));
-    if (cut instanceof Attempt.Ignored<Void>) {
-      LOG.debug("[{}] chapters of agent {} are being kept elsewhere", agentType.value(), agentId);
+    Attempt<Boolean> cut =
+        withLease(
+            agentId,
+            () -> {
+              cut(agentId);
+              return true;
+            });
+    if (cut instanceof Attempt.Ignored<Boolean>) {
+      LOG.debug(
+          "[{}] chapters of agent {} were still being kept elsewhere after {}; the next turn's end"
+              + " will keep",
+          agentType.value(),
+          agentId,
+          visibilityWait);
     }
     summarise(agentId);
+  }
+
+  /**
+   * The work under the agent's lease, asking again while another holds it, up to the keeper's
+   * patience. A holder that is mid-cut read the turns before the one this pass was told about, so
+   * giving up at the first refusal would leave what that turn made due for the next turn's end.
+   * Nothing is remembered between passes, for the holder may be on another node; the lease is the
+   * only thing that is shared, so it is asked again. A refusal that outlasts the patience, or an
+   * interrupt, is answered as a refusal.
+   */
+  private <T> Attempt<T> withLease(AgentId agentId, Supplier<T> work) {
+    long deadline = System.nanoTime() + visibilityWait.toNanos();
+    Attempt<T> attempt = leases.tryWithLease(LEASE_KIND, agentType, agentId, leaseTtl, work);
+    while (attempt instanceof Attempt.Ignored<T> && System.nanoTime() < deadline) {
+      try {
+        Thread.sleep(visibilityPoll);
+      } catch (InterruptedException _) {
+        Thread.currentThread().interrupt();
+        return attempt;
+      }
+      attempt = leases.tryWithLease(LEASE_KIND, agentType, agentId, leaseTtl, work);
+    }
+    return attempt;
   }
 
   private void cut(AgentId agentId) {
@@ -292,9 +337,7 @@ public final class ChapterKeeper {
 
   private void summarise(AgentId agentId) {
     for (Chapter chapter : chapters.unsummarized(agentType, agentId)) {
-      Attempt<Boolean> attempt =
-          leases.tryWithLease(
-              LEASE_KIND, agentType, agentId, leaseTtl, () -> summarise(agentId, chapter));
+      Attempt<Boolean> attempt = withLease(agentId, () -> summarise(agentId, chapter));
       boolean goOn = attempt.orElse(false);
       if (!goOn) {
         return;

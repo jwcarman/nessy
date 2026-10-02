@@ -25,7 +25,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.stream.LongStream;
@@ -64,7 +67,7 @@ class ChapterKeeperTest {
   private static final Duration TTL = Duration.ofMinutes(1);
 
   private final Chapters chapters = new InMemoryChapters();
-  private final List<Long> completed = new ArrayList<>();
+  private final List<Long> completed = new CopyOnWriteArrayList<>();
 
   private static TurnId id(long value) {
     return new TurnId(value);
@@ -533,6 +536,70 @@ class ChapterKeeperTest {
 
       assertThat(asked).isEmpty();
       assertThat(unsummarized()).containsExactly(chapter(1, 1));
+    }
+
+    /** A lease that counts every refusal, so a test can tell when a pass has been turned away. */
+    private static final class Counting implements Leases {
+      private final InMemoryLeases real = new InMemoryLeases();
+      private final AtomicInteger refused = new AtomicInteger();
+
+      @Override
+      public <T> Attempt<T> tryWithLease(
+          LeaseKind kind, AgentType type, AgentId agent, Duration ttl, Supplier<T> work) {
+        Attempt<T> attempt = real.tryWithLease(kind, type, agent, ttl, work);
+        if (attempt instanceof Attempt.Ignored<T>) {
+          refused.incrementAndGet();
+        }
+        return attempt;
+      }
+    }
+
+    @Test
+    void a_pass_turned_away_by_a_cut_in_progress_still_closes_the_chapter_that_became_due() {
+      completeTurns(1, 2);
+      CountDownLatch cutting = new CountDownLatch(1);
+      CountDownLatch release = new CountDownLatch(1);
+      // The first pass reads two open turns and is held there; the policy closes a chapter
+      // only once three are open, which the second pass alone can see.
+      ChapterPolicy policy =
+          open -> {
+            if (open.turns().size() == 2) {
+              cutting.countDown();
+              try {
+                release.await(10, TimeUnit.SECONDS);
+              } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+              }
+            }
+            return open.turns().size() >= 3 ? ids(3) : List.of();
+          };
+      Counting leases = new Counting();
+      ChapterKeeper keeper =
+          new ChapterKeeper(
+              TYPE,
+              policy,
+              SAYS_SOMETHING,
+              chapters,
+              leases,
+              histories(),
+              10,
+              TTL,
+              Duration.ofSeconds(5),
+              Duration.ofMillis(5));
+      CompletableFuture<Void> first = CompletableFuture.runAsync(() -> keeper.keep(AGENT));
+      await().atMost(Duration.ofSeconds(10)).until(() -> cutting.getCount() == 0);
+      completeTurns(3);
+      CompletableFuture<Void> second = CompletableFuture.runAsync(() -> keeper.keep(AGENT));
+      await().atMost(Duration.ofSeconds(10)).until(() -> leases.refused.get() >= 1);
+
+      release.countDown();
+      first.join();
+      second.join();
+
+      assertThat(chapters.closedThrough(TYPE, AGENT)).contains(id(3));
+      assertThat(chapters.summaries(TYPE, AGENT))
+          .extracting(Summary::chapter)
+          .containsExactly(chapter(1, 3));
     }
 
     @Test
