@@ -148,7 +148,9 @@ What the cut-off result is depends on what the reply held when it stopped:
   with no function call and no text in the reply (measured on 2026-10-02 on
   `gemini-3.1-pro-preview`), so the Gemini adapter returns the `Fault` for that
   finish reason whatever the reply holds, and its message says the call was
-  malformed and was not run.
+  malformed and was not run. `gemini-3.6-flash` instead ended on `MAX_TOKENS`
+  with no function call and no text (measured the same day), which is the
+  empty-answer `Fault` naming that finish reason.
 - **Nothing but reasoning.** The result is the empty-answer `Fault`, naming
   the stop reason. There is no text to keep.
 

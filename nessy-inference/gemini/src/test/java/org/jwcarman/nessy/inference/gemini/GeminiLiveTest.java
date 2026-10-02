@@ -347,13 +347,14 @@ class GeminiLiveTest {
    * ToolChoice.Named}; this class has no other test that requires a tool. The text it is asked to
    * carry cannot fit in 1500 tokens, so the call is cut off mid-argument. What matters is the first
    * assertion: a call whose arguments are incomplete, or empty, must never be handed over to run.
-   * The wire's own wording for the cut-off varies by model, so only {@code tool call} is asserted
-   * of the reason.
    *
-   * <p>Measured 2026-10-02 by a raw-HTTP probe: Gemini 3.1 Pro returned {@code
-   * MALFORMED_FUNCTION_CALL} with no call at all, so the fault may read {@code tool call was
-   * malformed} where a model that does finish its call's JSON gives {@code MAX_TOKENS}. Both
-   * contain {@code tool call}, which is all this asserts.
+   * <p>How this wire reports the cut-off varies by model, and each way is a permanent fault.
+   * Measured 2026-10-02: Gemini 3.1 Pro, by a raw-HTTP probe, returned {@code
+   * MALFORMED_FUNCTION_CALL} with no call at all, which reads {@code tool call was malformed};
+   * Gemini 3.6 Flash, through this test, returned {@code MAX_TOKENS} with no call and no text,
+   * which is the empty-answer fault naming that finish reason. A model that sends the call it was
+   * writing gives the fault that names a tool call. So the reason is one that names a tool call, or
+   * the empty answer at {@code MAX_TOKENS}.
    */
   @Test
   void a_tool_call_cut_off_at_the_output_limit_is_a_fault_and_is_never_a_call_to_run() {
@@ -374,9 +375,12 @@ class GeminiLiveTest {
           .as("the reply, whole: %s", result)
           .isInstanceOf(InferenceResult.Fault.class);
       assertThat(((InferenceResult.Fault) result).failure())
+          .as("the reply, whole: %s", result)
           .isInstanceOfSatisfying(
               Failure.Permanent.class,
-              failure -> assertThat(failure.reason()).contains("tool call"));
+              failure ->
+                  assertThat(failure.reason())
+                      .containsAnyOf("tool call", "empty answer (finish_reason=MAX_TOKENS)"));
     }
   }
 }
