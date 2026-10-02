@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.engine.harness.queued;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
@@ -30,7 +32,10 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.ChapterPolicy;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.QueuedHarnessConfig;
+import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
@@ -94,26 +99,47 @@ class QueuedHarnessChaptersTest {
                         .chapterPolicy(ChapterPolicy.every(3))
                         .effects(e -> e.pollInterval(Duration.ofMillis(100))));
 
-    // This door tells a listener a turn ended inside the transaction that ended it, so the keeper
-    // can run before that turn is readable and sees it only at the next turn's end: the chapter
-    // over turns one to three closes when the fifth ends.
-    for (int turn = 1; turn <= 4; turn++) {
+    for (int turn = 1; turn <= 3; turn++) {
       tellAndWait(harness, agent, turn);
     }
     await()
         .atMost(PATIENCE)
         .untilAsserted(() -> assertThat(engine.chapters().summaries(TYPE, agent)).hasSize(1));
-    tellAndWait(harness, agent, 5);
+    tellAndWait(harness, agent, 4);
 
     List<TurnId> turns = engine.history().forAgent(TYPE, agent).completedAfter(Optional.empty());
-    InferenceRequest fifth = chats.getLast();
-    assertThat(fifth.context().summaries()).hasSize(1);
-    Summary summary = fifth.context().summaries().getFirst();
+    InferenceRequest fourth = chats.getLast();
+    assertThat(fourth.context().summaries()).hasSize(1);
+    Summary summary = fourth.context().summaries().getFirst();
     Chapter covered = summary.chapter();
     assertThat(summary.text()).isEqualTo("they talked");
     assertThat(covered.from()).isEqualTo(turns.get(0));
     assertThat(covered.through()).isEqualTo(turns.get(2));
-    assertThat(fifth.context().turns()).hasSize(2);
-    assertThat(fifth.context().turns().getFirst().id()).isEqualTo(turns.get(3));
+    assertThat(fourth.context().turns()).hasSize(1);
+    assertThat(fourth.context().turns().getFirst().id()).isEqualTo(turns.get(3));
+  }
+
+  @Test
+  void max_tail_must_exceed_the_maximum_chapter_length() {
+    Customizer<QueuedHarnessConfig<String>> tooShort =
+        c -> c.inference(in -> in.context(ctx -> ctx.maxTail(10).maxChapterLength(10)));
+    QueuedHarnessFactory harnesses = engine.harnesses();
+
+    assertThatThrownBy(() -> harnesses.create(new AgentType("too-short"), String.class, tooShort))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("maxTail (10)")
+        .hasMessageContaining("maxChapterLength (10)");
+  }
+
+  @Test
+  void a_short_tail_is_allowed_without_chapters() {
+    Customizer<QueuedHarnessConfig<String>> noChapters =
+        c ->
+            c.systemPrompt("You are terse.")
+                .inference(in -> in.context(ctx -> ctx.withoutChapters().maxTail(10)));
+    QueuedHarnessFactory harnesses = engine.harnesses();
+
+    assertThatCode(() -> harnesses.create(new AgentType("no-chapters"), String.class, noChapters))
+        .doesNotThrowAnyException();
   }
 }

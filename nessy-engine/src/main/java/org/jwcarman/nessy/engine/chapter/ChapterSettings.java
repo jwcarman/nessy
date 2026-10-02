@@ -35,7 +35,12 @@ import org.jwcarman.nessy.inference.InferenceProvider;
  *
  * <p>Shared by both doors' configurations, so a setting means the same thing on each and the rules
  * about it are written once. Chapters are on unless {@link #off()} is called; saying a policy or a
- * summariser turns them back on.
+ * summariser turns them back on, so between the two the last call wins.
+ *
+ * <p><b>The engine's own, not part of the API.</b> It is public only because the two doors'
+ * configurations live in other packages. An application says all of this through {@code
+ * ContextConfig} and {@code HarnessConfig}, never through this class, and nothing here is promised
+ * to stay as it is.
  */
 public final class ChapterSettings {
 
@@ -51,16 +56,19 @@ public final class ChapterSettings {
   private int maxLength = DEFAULT_MAX_LENGTH;
   private Duration leaseTtl = ChapterKeeper.DEFAULT_LEASE_TTL;
 
+  /** Where history is cut; turns chapters on. Refuses null. */
   public void policy(ChapterPolicy policy) {
     this.policy = Objects.requireNonNull(policy, "policy must not be null");
     this.on = true;
   }
 
+  /** What writes each chapter's summary instead of the default; turns chapters on. Refuses null. */
   public void summarizer(Summarizer summarizer) {
     this.summarizer = Objects.requireNonNull(summarizer, "summarizer must not be null");
     this.on = true;
   }
 
+  /** The most turns one chapter may hold. Refuses anything under one. */
   public void maxLength(int turns) {
     if (turns < 1) {
       throw new IllegalArgumentException("a chapter holds at least one turn: " + turns);
@@ -68,6 +76,7 @@ public final class ChapterSettings {
     this.maxLength = turns;
   }
 
+  /** How long the lease for one model call is believed held. Refuses null, zero and negative. */
   public void leaseTtl(Duration ttl) {
     Objects.requireNonNull(ttl, "ttl must not be null");
     if (ttl.isZero() || ttl.isNegative()) {
@@ -76,6 +85,7 @@ public final class ChapterSettings {
     this.leaseTtl = ttl;
   }
 
+  /** No chapters: nothing is cut or summarised. */
   public void off() {
     this.on = false;
   }

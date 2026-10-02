@@ -59,6 +59,13 @@ import org.slf4j.LoggerFactory;
  * so a model call is never made outside one and the lease is never taken from inside itself (a
  * {@link Leases} must not be re-entered). A lease held by someone else is an immediate refusal, and
  * the keeper does nothing: whoever holds it is doing the same work.
+ *
+ * <p><b>Waiting for the turn it was told about.</b> A turn's end is announced before the store that
+ * holds it has committed: both doors narrate inside the lock that writes the turn, which on a
+ * database is the transaction. The keeper runs on a thread of its own and could read first and not
+ * see the turn it was told ended, leaving it for the next turn's end. So the listener waits,
+ * briefly and with a deadline, for that turn to be visible before it cuts, and cuts with what is
+ * visible if the deadline passes.
  */
 public final class ChapterKeeper {
 
@@ -67,6 +74,12 @@ public final class ChapterKeeper {
 
   /** How long a lease is believed held when the caller has no better figure. */
   public static final Duration DEFAULT_LEASE_TTL = Duration.ofMinutes(2);
+
+  /** The longest the listener waits for the turn it was told about to become visible. */
+  private static final Duration VISIBILITY_WAIT = Duration.ofSeconds(2);
+
+  /** How often the listener looks again while it waits. */
+  private static final Duration VISIBILITY_POLL = Duration.ofMillis(25);
 
   private static final Logger LOG = LoggerFactory.getLogger(ChapterKeeper.class);
 
@@ -78,6 +91,8 @@ public final class ChapterKeeper {
   private final TurnHistories histories;
   private final int maxChapterLength;
   private final Duration leaseTtl;
+  private final Duration visibilityWait;
+  private final Duration visibilityPoll;
 
   public ChapterKeeper(
       AgentType agentType,
@@ -88,6 +103,31 @@ public final class ChapterKeeper {
       TurnHistories histories,
       int maxChapterLength,
       Duration leaseTtl) {
+    this(
+        agentType,
+        policy,
+        summarizer,
+        chapters,
+        leases,
+        histories,
+        maxChapterLength,
+        leaseTtl,
+        VISIBILITY_WAIT,
+        VISIBILITY_POLL);
+  }
+
+  /** As above, with the wait for a just-ended turn set, so a test need not wait two seconds. */
+  ChapterKeeper(
+      AgentType agentType,
+      ChapterPolicy policy,
+      Summarizer summarizer,
+      Chapters chapters,
+      Leases leases,
+      TurnHistories histories,
+      int maxChapterLength,
+      Duration leaseTtl,
+      Duration visibilityWait,
+      Duration visibilityPoll) {
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.policy = Objects.requireNonNull(policy, "policy must not be null");
     this.summarizer = Objects.requireNonNull(summarizer, "summarizer must not be null");
@@ -103,13 +143,53 @@ public final class ChapterKeeper {
     }
     this.maxChapterLength = maxChapterLength;
     this.leaseTtl = leaseTtl;
+    this.visibilityWait = Objects.requireNonNull(visibilityWait, "visibilityWait must not be null");
+    this.visibilityPoll = Objects.requireNonNull(visibilityPoll, "visibilityPoll must not be null");
   }
 
   /** The listener to attach to a harness: hears this type's turns end, on a thread of its own. */
   public NarrationListener listener() {
     return NarrationListener.of(
-            c -> c.agentType(agentType).onTurnEnded((_, agentId, _) -> keep(agentId)))
+            c ->
+                c.agentType(agentType)
+                    .onTurnEnded((_, agentId, ended) -> keepAfter(agentId, ended.turn())))
         .async();
+  }
+
+  /**
+   * Waits for the turn that ended to be visible in the agent's history, then keeps. A turn already
+   * inside a closed chapter is visible by definition and is not waited for. If the deadline passes
+   * the keeper carries on with what is visible.
+   */
+  void keepAfter(AgentId agentId, TurnId ended) {
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    Objects.requireNonNull(ended, "ended must not be null");
+    Optional<TurnId> closed = chapters.closedThrough(agentType, agentId);
+    if (closed.isEmpty() || ended.value() > closed.get().value()) {
+      awaitVisible(agentId, ended, closed);
+    }
+    keep(agentId);
+  }
+
+  private void awaitVisible(AgentId agentId, TurnId ended, Optional<TurnId> closed) {
+    long deadline = System.nanoTime() + visibilityWait.toNanos();
+    while (!histories.forAgent(agentType, agentId).completedAfter(closed).contains(ended)) {
+      if (System.nanoTime() >= deadline) {
+        LOG.debug(
+            "[{}] turn {} of agent {} was not visible after {}; keeping what is",
+            agentType.value(),
+            ended,
+            agentId,
+            visibilityWait);
+        return;
+      }
+      try {
+        Thread.sleep(visibilityPoll);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return;
+      }
+    }
   }
 
   /** Cuts what is due, then writes what is unwritten. Public so a caller may ask outright. */

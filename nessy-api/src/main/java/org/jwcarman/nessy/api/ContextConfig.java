@@ -44,6 +44,9 @@ import java.time.Duration;
  * chapter can be, or a chapter could be hidden from the tail before it was summarised, and a
  * harness whose numbers say otherwise is refused when it is built.
  *
+ * <p>Chapters are on unless {@link #withoutChapters()} is called. Between it and {@link
+ * #chapterPolicy} or {@link #summarizer}, which turn them back on, the last call wins.
+ *
  * <p>Nothing here reads history except the summaries and the tail.
  */
 public interface ContextConfig {

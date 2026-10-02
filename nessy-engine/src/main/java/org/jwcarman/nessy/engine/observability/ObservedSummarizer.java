@@ -25,8 +25,9 @@ import org.jwcarman.nessy.api.turn.Chapter;
  * A summariser whose every chapter is a {@code nessy.summary} span: whose chapter it was, and which
  * turns it covered. The model call inside it is a {@code chat} span like any other, nested here.
  *
- * <p>A summary is written when a turn ends, on a thread of its own, and the engine carries the
- * observation current at that moment onto it, so this span hangs off the turn that triggered it.
+ * <p>A summary is written when a turn ends, on a thread of its own, and the engine deliberately
+ * does not carry a trace onto an asynchronous listener, so this span is a root of its own rather
+ * than a child of the turn that triggered it. Which agent it was for is on its tags.
  */
 public final class ObservedSummarizer implements Summarizer {
 
@@ -41,13 +42,14 @@ public final class ObservedSummarizer implements Summarizer {
   }
 
   /**
-   * The summariser, observed once: given back unchanged when the registry records nothing or when
-   * it is already observed.
+   * The summariser, observed once: given back unchanged when it is already observed. There is no
+   * guard on the registry here: a registry with no handlers YET looks no-op, and a no-op
+   * observation costs nothing per call.
    */
   public static Summarizer wrap(Summarizer delegate, ObservationRegistry observations) {
     Objects.requireNonNull(delegate, "delegate must not be null");
     Objects.requireNonNull(observations, "observations must not be null");
-    if (observations.isNoop() || delegate instanceof ObservedSummarizer) {
+    if (delegate instanceof ObservedSummarizer) {
       return delegate;
     }
     return new ObservedSummarizer(delegate, observations);

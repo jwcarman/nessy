@@ -40,13 +40,14 @@ public final class ObservedChapterPolicy implements ChapterPolicy {
   }
 
   /**
-   * The policy, observed once: given back unchanged when the registry records nothing or when it is
-   * already observed.
+   * The policy, observed once: given back unchanged when it is already observed. There is no guard
+   * on the registry here: a registry with no handlers YET looks no-op, and a no-op observation
+   * costs nothing per call.
    */
   public static ChapterPolicy wrap(ChapterPolicy delegate, ObservationRegistry observations) {
     Objects.requireNonNull(delegate, "delegate must not be null");
     Objects.requireNonNull(observations, "observations must not be null");
-    if (observations.isNoop() || delegate instanceof ObservedChapterPolicy) {
+    if (delegate instanceof ObservedChapterPolicy) {
       return delegate;
     }
     return new ObservedChapterPolicy(delegate, observations);

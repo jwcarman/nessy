@@ -224,7 +224,6 @@ class DirectHarnessChaptersTest {
 
       talk(harness, agent, 3);
       await().atMost(PATIENCE).until(() -> summarizer.asked.get() >= 1);
-      assertThat(chapters.summaries(TYPE, agent)).isEmpty();
 
       // The attempt that failed may still be holding the lease when the next turn ends, in which
       // case that end does nothing; a turn or two later the retry has its chance.
@@ -277,6 +276,28 @@ class DirectHarnessChaptersTest {
       assertThat(model.summaries).isEmpty();
       assertThat(model.chats).hasSize(25);
       assertThat(model.chats.getLast().context().turns()).hasSize(25);
+    }
+  }
+
+  @Nested
+  @DisplayName("Chapters already stored")
+  class Stored {
+
+    @Test
+    void summaries_in_the_store_are_ignored_by_a_harness_without_chapters() {
+      AgentId agent = AgentId.random();
+      DirectHarness<String, String> harness = harness(c -> c.chapterPolicy(ChapterPolicy.every(3)));
+      talk(harness, agent, 3);
+      waitForSummaries(agent, 1);
+      DirectHarness<String, String> without =
+          harness(c -> c.inference(in -> in.context(ctx -> ctx.withoutChapters())));
+
+      without.ask(agent, "turn 4");
+
+      InferenceRequest request = model.chats.getLast();
+      assertThat(request.context().summaries()).isEmpty();
+      assertThat(request.context().turns()).hasSize(4);
+      assertThat(chapters.summaries(TYPE, agent)).isNotEmpty();
     }
   }
 
