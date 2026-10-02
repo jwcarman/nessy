@@ -113,7 +113,7 @@ in an `AmbientSource`.
 The cost: an application can read and test its own prompts, but it cannot
 rewrite every sentence the model sees. See
 [Prompts](../guides/prompts.md#why-it-cannot-change) and
-[Memory](memory.md#the-default-summary).
+[Context](context.md#the-default-summary).
 
 ## 3. Own your context window
 
@@ -148,7 +148,7 @@ The trade: a fixed layout keeps cached prefixes stable and lets every
 adapter place content correctly for its vendor. The cost is that an
 application cannot try a different overall format for the context.
 
-See [Memory](memory.md).
+See [Context](context.md).
 
 ## 4. Tools are just structured outputs
 
@@ -477,7 +477,7 @@ Things to know:
   story.
 - Where it lands matters for caching. Memory and state sit at the head of the
   active turn, and ambient sits at the very end of the request. See
-  [Which stratum something belongs in](memory.md#which-stratum-something-belongs-in).
+  [Which stratum something belongs in](context.md#which-stratum-something-belongs-in).
 
 To record the fetched data in the story instead, fetch it before `ask` and
 put it in the input, which `inputRenderer(...)` turns into blocks.
@@ -486,6 +486,7 @@ See [Memory](memory.md#memory-and-state).
 
 ## Where next
 
-- [Memory](memory.md), the six strata and the sources an application fills
+- [Context](context.md), the six strata and how a request is built
+- [Memory](memory.md), the sources an application fills
 - [Durable Computation](durable-computation.md), parking, deadlines and answering from outside
 - [Turn Policy](turn-policy.md), the bound an application sets on a turn
