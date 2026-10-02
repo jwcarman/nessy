@@ -241,13 +241,14 @@ public interface MemorySource {
 
 public interface StateSource {
   String kind();
-  Optional<State> forAgent(AgentId agentId);
+  Optional<State> forAgent(AgentId agentId, Turn current);
 }
 ```
 
 - **Memory** is what was recalled because it bears on this turn, so its source is handed the turn
   being answered.
-- **State** is the agent's standing situation.
+- **State** is the agent's standing situation. Its source is handed the turn being answered too, so
+  it can answer as of the start of that turn and hold still for the whole of it.
 - **Ambient** is unchanged: what is true right now.
 
 There is no framework snapshot. A source returns what is current each time it is asked, which is

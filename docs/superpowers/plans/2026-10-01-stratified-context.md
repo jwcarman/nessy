@@ -585,7 +585,7 @@ public interface MemorySource {
 public record State(String kind, List<Block.StateContent> content) { public static State text(String kind, String text); }
 public interface StateSource {
   String kind();
-  Optional<State> forAgent(AgentId agentId);
+  Optional<State> forAgent(AgentId agentId, Turn current);
 }
 
 // on HarnessConfig<SELF>:  SELF memory(MemorySource source);  SELF state(StateSource source);
@@ -610,9 +610,9 @@ public record InferenceContext(
 
 **Behaviour.**
 - `Memory` and `State` mirror `Ambient` exactly: the same kind pattern and its safety reasoning, non-empty content, a defensive copy, a `text` factory. Their javadoc says what each stratum is. Memory: what was recalled because it bears on this turn. State: the agent's standing situation. Both say that a source returns what is current each time it is asked and that nothing holds an earlier answer for it.
-- `MemorySource` and `StateSource` mirror `AmbientSource`'s contract and javadoc (asked on the dispatcher's thread, off the agent's row lock, once per call to the model; empty is the right answer for nothing to say; two sources may not share a kind). `MemorySource` is also handed the turn being answered. No `of(Customizer)` builder and no config class for these two; a `constant(...)` static on each is enough.
+- `MemorySource` and `StateSource` mirror `AmbientSource`'s contract and javadoc (asked on the dispatcher's thread, off the agent's row lock, once per call to the model; empty is the right answer for nothing to say; two sources may not share a kind). Both are also handed the turn being answered: a memory source to choose what bears on it, and a state source so that it can answer as of the start of that turn (the notes written before it, say) and so hold still for the whole of it without anything being kept on its behalf. No `of(Customizer)` builder and no config class for these two; a `constant(...)` static on each is enough.
 - `InferenceContext`: all lists copied and null-checked; `activeTurn` required. Keep `of(List<Turn>)` (throws `IllegalArgumentException` on an empty list). Keep the existing convenience constructors' call sites compiling by offering the same argument lists with the last turn taken as the active one, or change the call sites; choose whichever leaves the tests clearest, and do not leave a constructor nobody calls. Keep `hasSummaries()` and `hasAmbient()` only if something calls them. Rewrite the record's javadoc to describe the six strata, their order, and that placement on the wire is the adapter's.
-- `ContextAssembler`: reads `maxTail + 1` newest turns after the summaries; the newest is the active turn and the rest are the tail, so `maxTail` now counts completed turns only. Asks each memory source with the active turn, each state source, each ambient source, in the order they were bound.
+- `ContextAssembler`: reads `maxTail + 1` newest turns after the summaries; the newest is the active turn and the rest are the tail, so `maxTail` now counts completed turns only. Asks each memory source and each state source with the active turn, then each ambient source, in the order they were bound.
 - Both configs refuse two sources of the same kind within a stratum when the source is added, with the message the ambient check uses today, naming the stratum. The same kind in two different strata is allowed.
 - `ObservedMemorySource` and `ObservedStateSource` follow `ObservedAmbientSource`.
 - Adapters in this task change only enough to compile and keep behaviour: render `summaries`, then `tail` and `activeTurn` as the turns were rendered before, and ambient where it is today. They do not render memory or state yet; Tasks 8 to 11 do. Do not add placeholder rendering.
@@ -621,7 +621,7 @@ public record InferenceContext(
 **Tests.**
 - `MemoryAndStateTest`: the kind pattern, empty content, the copy, the `text` factory and `constant` source, for both.
 - `InferenceTypesTest`: `of` splits the last turn off as active; `of` on an empty list throws; `turns()` is tail then active.
-- `ContextAssemblerTest`: the active turn is the newest turn; the tail excludes it and is capped at `maxTail`; a memory source is handed the active turn; sources are asked in bound order; a duplicate kind within a stratum is refused when added (test on each config); the same kind in two strata is accepted.
+- `ContextAssemblerTest`: the active turn is the newest turn; the tail excludes it and is capped at `maxTail`; a memory source and a state source are each handed the active turn; sources are asked in bound order; a duplicate kind within a stratum is refused when added (test on each config); the same kind in two strata is accepted.
 - Every adapter's existing request tests still pass unchanged in what they assert.
 
 - [ ] **Step 1:** API types and tests.
