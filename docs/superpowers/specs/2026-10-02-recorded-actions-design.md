@@ -330,7 +330,25 @@ Neither line is worked out again. This is the rule `ApprovalRequest.action` has 
 same reason and one more: bindings change between deployments, and a line re-rendered later would
 describe the call with a stringifier that did not exist when the call was made.
 
-### 6.4 Who reads them
+### 6.4 The lines are content, and they are in the events
+
+Ruled by James on 2026-10-02, after the build's review of the stored action raised it: the two
+lines stay in the events themselves. They are not stored as payloads with a reference.
+
+That changes what three places say, and each is corrected to say what is true:
+
+- `AgentEvent`'s documentation ("No payloads").
+- The schema's comment on `nessy_payload` (content "lives here and nowhere else").
+- The schema's comment on `nessy_agent_event` ("No content").
+
+What is true: an event carries identifiers, status, a human decision, a count, a reference where
+content would otherwise be, and, for a tool call, two bounded lines of text made from the call's
+arguments and its result, each at most 1,000 characters. So an agent's content is in three
+places: its payload rows, the action and result lines in its events, and the summaries of its
+chapters in `nessy_chapter`. Removing everything an agent said means all three. Nothing in the
+engine deletes an agent's content today; this is a statement of where it is.
+
+### 6.5 Who reads them
 
 `ActionRenderer`'s documentation names three readers, "none of them the model". The summarising
 model is now a fourth, and `ToolConfig.action`, which inherits that documentation, says so. What matters is untouched: the
