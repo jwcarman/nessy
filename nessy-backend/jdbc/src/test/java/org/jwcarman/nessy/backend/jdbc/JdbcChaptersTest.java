@@ -373,6 +373,48 @@ class JdbcChaptersTest {
     }
 
     @Test
+    void of_many_cutting_the_same_turns_differently_one_callers_chapters_are_stored_whole()
+        throws Exception {
+      List<List<Chapter>> cuts = new ArrayList<>();
+      for (int i = 0; i < CALLERS; i++) {
+        // All start at turn 1 or 2, so some share a first from_turn; each cuts 1..12 its own way.
+        long start = 1 + (i % 2);
+        long first = start + 1 + (i % 3);
+        long second = first + 2 + (i % 4);
+        cuts.add(
+            i % 2 == 0
+                ? List.of(
+                    chapter(start, first), chapter(first + 1, second), chapter(second + 1, 20))
+                : List.of(chapter(start, first), chapter(first + 1, 20)));
+      }
+      List<Future<Boolean>> outcomes = new ArrayList<>();
+      try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
+        CountDownLatch go = new CountDownLatch(1);
+        for (List<Chapter> cut : cuts) {
+          outcomes.add(
+              callers.submit(
+                  () -> {
+                    go.await();
+                    return chapters.append(TYPE, agent, Optional.empty(), cut);
+                  }));
+        }
+        go.countDown();
+      }
+
+      int winner = -1;
+      int stored = 0;
+      for (int i = 0; i < outcomes.size(); i++) {
+        if (outcomes.get(i).get()) {
+          stored++;
+          winner = i;
+        }
+      }
+
+      assertThat(stored).isEqualTo(1);
+      assertThat(chapters.unsummarized(TYPE, agent)).isEqualTo(cuts.get(winner));
+    }
+
+    @Test
     void a_call_that_loses_stores_none_of_its_chapters() {
       appendAfter(Optional.empty(), chapter(1, 3));
 

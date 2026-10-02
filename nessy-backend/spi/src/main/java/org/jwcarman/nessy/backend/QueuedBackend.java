@@ -33,7 +33,7 @@ import org.jwcarman.nessy.backend.payload.Payloads;
  * <p><b>Not a {@link DirectBackend}, by ruling.</b> Nothing ever takes a {@code DirectBackend} and
  * hopes to be handed a queued one, so asserting "a queued backend is a kind of direct backend" buys
  * nothing today -- and it would run out of luck the day a third door appears whose needs are not a
- * superset of either. The cost of the two interfaces declaring three signatures in common is the
+ * superset of either. The cost of the two interfaces declaring five signatures in common is the
  * price of not asserting a relationship that nothing needs.
  */
 public interface QueuedBackend {

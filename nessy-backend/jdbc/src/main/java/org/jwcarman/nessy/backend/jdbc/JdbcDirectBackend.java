@@ -29,7 +29,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * A {@link DirectBackend} over one PostgreSQL {@link DataSource}: {@link JdbcAgentEvents}, {@link
- * JdbcPayloads} and {@link JdbcRowLocks}, built from it once and held.
+ * JdbcPayloads}, {@link JdbcRowLocks}, {@link JdbcChapters} and {@link JdbcLeases}, built from it
+ * once and held.
  *
  * <p><b>Shared and durable.</b> Every instance pointed at the same database sees the same rows, and
  * the rows outlive any one process -- which is what lets {@link JdbcRowLocks} exclude two instances

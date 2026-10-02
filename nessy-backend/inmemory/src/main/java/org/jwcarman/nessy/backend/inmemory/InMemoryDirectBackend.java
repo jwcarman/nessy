@@ -24,8 +24,9 @@ import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 
 /**
- * A {@link DirectBackend} over {@link InMemoryLocks}, {@link InMemoryAgentEvents} and {@link
- * InMemoryPayloads}: everything in one process and nothing written down.
+ * A {@link DirectBackend} over {@link InMemoryLocks}, {@link InMemoryAgentEvents}, {@link
+ * InMemoryPayloads}, {@link InMemoryChapters} and {@link InMemoryLeases}: everything in one process
+ * and nothing written down.
  *
  * <p>For a CLI, a test, or a one-shot -- the whole reason {@code
  * DefaultDirectHarnessFactory.inMemory(...)} is one line: nothing here is durable, and nothing here

@@ -41,8 +41,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * commits, stores nothing.
  *
  * <p>A chapter after the first is stored only if the one before it was, so a call stores all of its
- * chapters or none. If a later chapter is still refused, by a key the guard cannot see, what the
- * call stored is deleted again.
+ * chapters or none. A partial count cannot happen unless the chain is broken, and is reported as an
+ * {@link IllegalStateException} rather than repaired.
  */
 public class JdbcChapters implements Chapters {
 
@@ -67,13 +67,6 @@ public class JdbcChapters implements Chapters {
        WHERE EXISTS (SELECT 1 FROM %s)
       ON CONFLICT DO NOTHING
       RETURNING 1
-      """;
-
-  private static final String DELETE_MINE =
-      """
-      DELETE FROM nessy_chapter
-       WHERE agent_type = ? AND agent_id = ? AND from_turn = ? AND through_turn = ?
-         AND after_turn = ? AND summary IS NULL
       """;
 
   private static final String SELECT_END =
@@ -162,26 +155,13 @@ public class JdbcChapters implements Chapters {
       return true;
     }
     if (stored > 0) {
-      // Only a later chapter's own key can have refused it while the first stored, and then the
-      // list is not stored whole. Taking back exactly what this call wrote leaves none of it.
-      undo(type, agent, afterValue, chapters);
+      // Each chapter stores only if the one before it did, so a partial count means the chain
+      // broke in the database. Failing loudly beats tidying rows another reader may have seen.
+      throw new IllegalStateException(
+          "appending to agent %s/%s stored %d of %d chapters"
+              .formatted(type.value(), agent.value(), stored, chapters.size()));
     }
     return false;
-  }
-
-  private void undo(AgentType type, AgentId agent, long afterValue, List<Chapter> chapters) {
-    long previous = afterValue;
-    for (Chapter chapter : chapters) {
-      jdbc.sql(DELETE_MINE)
-          .params(
-              type.value(),
-              agent.value(),
-              chapter.from().value(),
-              chapter.through().value(),
-              previous)
-          .update();
-      previous = chapter.through().value();
-    }
   }
 
   private static void validate(

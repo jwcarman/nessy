@@ -34,8 +34,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * A {@link QueuedBackend} over one PostgreSQL {@link DataSource}: {@link JdbcAgentEvents}, {@link
- * JdbcPayloads}, {@link JdbcRowLocks}, {@link JdbcAgents}, {@link JdbcEffects} and a {@link
- * JdbcBacklog} per agent, built from it once and held.
+ * JdbcPayloads}, {@link JdbcRowLocks}, {@link JdbcAgents}, {@link JdbcEffects}, {@link
+ * JdbcChapters}, {@link JdbcLeases} and a {@link JdbcBacklog} per agent, built from it once and
+ * held.
  *
  * <p><b>Shared and durable.</b> Every instance pointed at the same database sees the same rows and
  * the rows outlive any one process, which is what a queue answering hours or days later depends on.
