@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.api;
 
+import java.util.Objects;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +45,10 @@ final class TruncatingStringifier<T> implements Stringifier<T> {
     }
     String line = WHITESPACE.matcher(written).replaceAll(" ").strip();
     String cut = truncator.truncate(line, limit);
+    if (cut == null) {
+      LOG.warn("a truncator returned null for a limit of {}; the line is empty", limit);
+      return "";
+    }
     int length = cut.codePointCount(0, cut.length());
     if (length > limit) {
       LOG.warn(
@@ -57,6 +62,7 @@ final class TruncatingStringifier<T> implements Stringifier<T> {
 
   @Override
   public Stringifier<T> truncated(Truncator other, int asked) {
+    Objects.requireNonNull(other, "truncator must not be null");
     if (asked >= limit) {
       return this;
     }

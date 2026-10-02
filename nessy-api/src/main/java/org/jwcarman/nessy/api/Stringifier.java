@@ -29,7 +29,8 @@ import tools.jackson.databind.json.JsonMapper;
  * of whitespace, line breaks included, into one space and trimming the ends, and cuts it to the
  * limit with a {@link Truncator}. A limit below 1 is refused when the wrapper is made. A truncator
  * that returns more than the limit has a bug: the wrapper cuts what it returned to the limit,
- * keeping the start, and logs a warning.
+ * keeping the start, and logs a warning. A truncator that returns null is treated the same way as
+ * one that misbehaves: the line is the empty string, a warning is logged, and nothing is thrown.
  *
  * <p><b>A wrapper asked to drop to a limit it is already within returns itself.</b> What it writes
  * already fits, and how it was cut is left as its author chose. Asked for a smaller limit, it wraps

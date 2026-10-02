@@ -27,8 +27,11 @@ package org.jwcarman.nessy.api;
  * the limit with no marker: below 4 for {@link #dropTail()} and {@link #dropHead()}, below 5 for
  * {@link #dropMiddle()}.
  *
+ * <p>The three supplied ones throw {@link IllegalArgumentException} for a limit below 1 and {@link
+ * NullPointerException} for null text.
+ *
  * <p>A truncator of an application's own may do anything that honours the limit: cut on words, on
- * lines, on a tokeniser's count.
+ * lines, on a tokeniser's count. It must return text no longer than the limit.
  */
 @FunctionalInterface
 public interface Truncator {

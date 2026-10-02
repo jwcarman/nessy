@@ -67,6 +67,8 @@ class TruncatorTest {
         assertNoLoneSurrogate(cut);
         assertThat(cut.codePointCount(0, cut.length())).isLessThanOrEqualTo(limit);
       }
+      assertThat(truncator.truncate(text, 6)).isEqualTo("abc...");
+      assertThat(truncator.truncate(text, 7)).isEqualTo("abc😀...");
     }
 
     @Test
@@ -131,6 +133,8 @@ class TruncatorTest {
         assertNoLoneSurrogate(cut);
         assertThat(cut.codePointCount(0, cut.length())).isLessThanOrEqualTo(limit);
       }
+      assertThat(truncator.truncate(text, 8)).isEqualTo("...defgh");
+      assertThat(truncator.truncate(text, 9)).isEqualTo(text);
     }
 
     @Test
@@ -192,6 +196,8 @@ class TruncatorTest {
         assertNoLoneSurrogate(cut);
         assertThat(cut.codePointCount(0, cut.length())).isLessThanOrEqualTo(limit);
       }
+      assertThat(truncator.truncate(text, 8)).isEqualTo("abc...gh");
+      assertThat(truncator.truncate(text, 9)).isEqualTo(text);
     }
 
     @Test

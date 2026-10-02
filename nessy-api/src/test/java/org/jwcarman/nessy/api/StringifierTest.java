@@ -80,7 +80,7 @@ class StringifierTest {
 
     @Test
     void whitespace_that_is_not_ascii_counts() {
-      assertThat(plain.dropTail(100).stringify("a  b c")).isEqualTo("a b c");
+      assertThat(plain.dropTail(100).stringify("a\u2003\u2003b\u00a0c")).isEqualTo("a b c");
     }
 
     @Test
@@ -121,6 +121,20 @@ class StringifierTest {
     }
 
     @Test
+    void the_guard_against_a_truncator_that_returns_too_much_cuts_between_whole_characters() {
+      String cut = plain.truncated(UNCHANGED, 3).stringify("ab😀cd");
+
+      assertThat(cut).isEqualTo("ab😀");
+      assertThat(cut.codePointCount(0, cut.length())).isEqualTo(3);
+      assertThat(Character.isHighSurrogate(cut.charAt(cut.length() - 1))).isFalse();
+    }
+
+    @Test
+    void a_truncator_that_returns_null_gives_an_empty_line() {
+      assertThat(plain.truncated((text, limit) -> null, 5).stringify("abcdefghij")).isEmpty();
+    }
+
+    @Test
     void a_null_from_the_wrapped_stringifier_is_an_empty_line() {
       Stringifier<String> nothing = value -> null;
 
@@ -154,6 +168,24 @@ class StringifierTest {
       String text = "x".repeat(500);
       assertThat(smaller.stringify(text)).hasSize(50);
       assertThat(smaller.stringify(text)).endsWith("...");
+    }
+
+    @Test
+    void asked_for_a_smaller_limit_applies_both_cuts() {
+      Stringifier<String> head = plain.dropHead(10);
+
+      Stringifier<String> both = head.dropTail(8);
+
+      assertThat(head.stringify("abcdefghijklmnopqrstuvwxyz")).isEqualTo("...tuvwxyz");
+      assertThat(both.stringify("abcdefghijklmnopqrstuvwxyz")).isEqualTo("...tu...");
+    }
+
+    @Test
+    void a_null_truncator_is_refused_by_a_wrapper_too() {
+      Stringifier<String> middle = plain.dropMiddle(200);
+
+      assertThatThrownBy(() -> middle.truncated(null, 500))
+          .isInstanceOf(NullPointerException.class);
     }
 
     @Test
