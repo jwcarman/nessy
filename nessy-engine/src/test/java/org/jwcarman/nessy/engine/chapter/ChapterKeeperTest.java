@@ -265,6 +265,61 @@ class ChapterKeeperTest {
     }
 
     @Test
+    void a_policy_that_throws_at_the_maximum_still_closes_a_chapter_over_the_oldest_turns() {
+      completeTurns(1, 2, 3, 4);
+      ChapterPolicy throwing =
+          open -> {
+            throw new IllegalStateException("the policy broke");
+          };
+
+      keeper(throwing, unwritten, 3).keep(AGENT);
+
+      assertThat(unsummarized()).containsExactly(chapter(1, 3));
+    }
+
+    @Test
+    void an_invalid_answer_at_the_maximum_still_closes_a_chapter_over_the_oldest_turns() {
+      completeTurns(1, 2, 3, 4);
+
+      keeper(open -> ids(99), unwritten, 3).keep(AGENT);
+
+      assertThat(unsummarized()).containsExactly(chapter(1, 3));
+    }
+
+    @Test
+    void a_null_answer_cuts_nothing_below_the_maximum_and_summarising_still_runs() {
+      assertThat(chapters.append(TYPE, AGENT, Optional.empty(), List.of(chapter(1, 2)))).isTrue();
+      completeTurns(1, 2, 3);
+
+      keeper(open -> null, SAYS_SOMETHING, 10).keep(AGENT);
+
+      assertThat(chapters.closedThrough(TYPE, AGENT)).contains(id(2));
+      assertThat(chapters.summaries(TYPE, AGENT)).hasSize(1);
+    }
+
+    @Test
+    void an_answer_holding_a_null_cuts_nothing_below_the_maximum_and_summarising_still_runs() {
+      assertThat(chapters.append(TYPE, AGENT, Optional.empty(), List.of(chapter(1, 2)))).isTrue();
+      completeTurns(1, 2, 3);
+      List<TurnId> holdingNull = new ArrayList<>();
+      holdingNull.add(null);
+
+      keeper(open -> holdingNull, SAYS_SOMETHING, 10).keep(AGENT);
+
+      assertThat(chapters.closedThrough(TYPE, AGENT)).contains(id(2));
+      assertThat(chapters.summaries(TYPE, AGENT)).hasSize(1);
+    }
+
+    @Test
+    void a_null_answer_at_the_maximum_still_closes_a_chapter_over_the_oldest_turns() {
+      completeTurns(1, 2, 3);
+
+      keeper(open -> null, unwritten, 3).keep(AGENT);
+
+      assertThat(unsummarized()).containsExactly(chapter(1, 3));
+    }
+
+    @Test
     void a_policy_that_throws_still_leaves_the_summarising_step_to_run() {
       assertThat(chapters.append(TYPE, AGENT, Optional.empty(), List.of(chapter(1, 2)))).isTrue();
       completeTurns(1, 2, 3);
@@ -445,6 +500,42 @@ class ChapterKeeperTest {
     }
 
     @Test
+    void a_chapter_summarised_by_someone_else_before_the_work_runs_is_not_summarised_again() {
+      Chapter closed = chapter(1, 2);
+      assertThat(chapters.append(TYPE, AGENT, Optional.empty(), List.of(closed))).isTrue();
+      InMemoryLeases real = new InMemoryLeases();
+      Leases rival =
+          new Leases() {
+            @Override
+            public <T> Attempt<T> tryWithLease(
+                LeaseKind kind, AgentType type, AgentId agent, Duration ttl, Supplier<T> work) {
+              return real.tryWithLease(
+                  kind,
+                  type,
+                  agent,
+                  ttl,
+                  () -> {
+                    chapters.summarize(new Summary(closed, "first"));
+                    return work.get();
+                  });
+            }
+          };
+      List<Chapter> asked = new ArrayList<>();
+      Summarizer recording =
+          chapter -> {
+            asked.add(chapter);
+            return "second";
+          };
+
+      keeper(open -> List.of(), recording, rival, 10).keep(AGENT);
+
+      assertThat(asked).isEmpty();
+      assertThat(chapters.summaries(TYPE, AGENT))
+          .extracting(Summary::text)
+          .containsExactly("first");
+    }
+
+    @Test
     void the_policy_and_the_summariser_are_each_called_inside_the_lease_and_never_nested() {
       completeTurns(1, 2);
       Watching leases = new Watching();
@@ -540,17 +631,14 @@ class ChapterKeeperTest {
 
     @Test
     void a_lease_time_that_is_not_positive_is_rejected() {
+      ChapterPolicy policy = open -> List.of();
+      Leases leases = new InMemoryLeases();
+      TurnHistories histories = histories();
+
       assertThatThrownBy(
               () ->
                   new ChapterKeeper(
-                      TYPE,
-                      open -> List.of(),
-                      SAYS_SOMETHING,
-                      chapters,
-                      new InMemoryLeases(),
-                      histories(),
-                      3,
-                      Duration.ZERO))
+                      TYPE, policy, SAYS_SOMETHING, chapters, leases, histories, 3, Duration.ZERO))
           .isInstanceOf(IllegalArgumentException.class);
     }
   }

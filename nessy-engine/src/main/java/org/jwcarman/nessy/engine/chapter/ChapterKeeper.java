@@ -44,11 +44,12 @@ import org.slf4j.LoggerFactory;
  *
  * <p><b>Cutting.</b> The turns completed since the last closed chapter are shown to the {@link
  * ChapterPolicy}, which names the turns that each end a chapter. The keeper stores those chapters.
- * An answer naming a turn that is not open, or naming turns out of order, is logged and treated as
- * no answer; so is a policy that throws. When the policy closes nothing and {@code
- * maxChapterLength} turns are open, the oldest {@code maxChapterLength} close anyway, and a chapter
- * the policy made longer than that is split into chapters of at most that many turns, so no chapter
- * outgrows what a summariser can be shown.
+ * An answer that is null, holds a null, names a turn that is not open or names turns out of order
+ * is logged and treated as closing nothing; so is a policy that throws. When the policy closes
+ * nothing, whether by answering so or by being treated so, and {@code maxChapterLength} turns are
+ * open, the oldest {@code maxChapterLength} close anyway, and a chapter the policy made longer than
+ * that is split into chapters of at most that many turns, so no chapter outgrows what a summariser
+ * can be shown.
  *
  * <p><b>Summarising.</b> Chapters without a summary are summarised oldest first, one at a time. A
  * blank summary, a summariser that throws or a refused lease stops the pass, so a later chapter is
@@ -158,7 +159,7 @@ public final class ChapterKeeper {
       ends = policy.ends(new OpenTurns(agentType, agentId, open));
     } catch (RuntimeException e) {
       LOG.warn(
-          "[{}] the chapter policy threw for agent {}; nothing is cut",
+          "[{}] the chapter policy threw for agent {}; treating it as closing nothing",
           agentType.value(),
           agentId,
           e);
@@ -167,17 +168,20 @@ public final class ChapterKeeper {
     if (!valid(ends, open)) {
       LOG.warn(
           "[{}] the chapter policy answered with turns that are not open and in order for agent {}:"
-              + " answered {}, open {}",
+              + " treating it as closing nothing; answered {}, open {}",
           agentType.value(),
           agentId,
-          ends.stream().map(TurnId::value).toList(),
-          open.stream().map(TurnId::value).toList());
+          ends,
+          open);
       return List.of();
     }
     return ends;
   }
 
   private static boolean valid(List<TurnId> ends, List<TurnId> open) {
+    if (ends == null) {
+      return false;
+    }
     Set<TurnId> known = new HashSet<>(open);
     TurnId previous = null;
     for (TurnId end : ends) {
@@ -244,13 +248,21 @@ public final class ChapterKeeper {
           agentId);
       return false;
     }
-    chapters.summarize(new Summary(chapter, text));
-    LOG.info(
-        "[{}] wrote the summary of turns {}..{} of agent {}",
-        agentType.value(),
-        chapter.from(),
-        chapter.through(),
-        agentId);
+    if (chapters.summarize(new Summary(chapter, text))) {
+      LOG.info(
+          "[{}] wrote the summary of turns {}..{} of agent {}",
+          agentType.value(),
+          chapter.from(),
+          chapter.through(),
+          agentId);
+    } else {
+      LOG.debug(
+          "[{}] turns {}..{} of agent {} were summarised by someone else first",
+          agentType.value(),
+          chapter.from(),
+          chapter.through(),
+          agentId);
+    }
     return true;
   }
 }
