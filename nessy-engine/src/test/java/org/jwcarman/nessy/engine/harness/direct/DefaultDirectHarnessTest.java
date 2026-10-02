@@ -49,6 +49,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.ContextConfig;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
@@ -1130,6 +1131,10 @@ class DefaultDirectHarnessTest {
    * LAST terminal event on the stream. A read that took the latest one would hand this caller
    * somebody else's answer; the store below makes exactly that window happen, at the moment the
    * caller's own turn has ended and the door is about to look.
+   *
+   * <p>Chapters are off for this harness: the chapter keeper reads the stream on a thread of its
+   * own once a turn ends, and an unrelated reader would spring the intrusion at a moment other than
+   * the door's final read -- or two readers at once would both spring it.
    */
   @Test
   @DisplayName("a caller is handed its own turn's answer, though a later turn has ended since")
@@ -1150,7 +1155,11 @@ class DefaultDirectHarnessTest {
                 c ->
                     c.systemPrompt("You are terse.")
                         .inputRenderer(said -> List.of(new Block.Text(said)))
-                        .inference(in -> in.provider("test").model("a-model")));
+                        .inference(
+                            in ->
+                                in.provider("test")
+                                    .model("a-model")
+                                    .context(ContextConfig::withoutChapters)));
 
     Outcome<String> outcome = harness.ask(agent, "mine, please");
 
@@ -1175,7 +1184,7 @@ class DefaultDirectHarnessTest {
 
     private final AgentEvents delegate;
     private final Payloads payloads;
-    private boolean intruded;
+    private final AtomicBoolean intruded = new AtomicBoolean();
 
     IntrudingEvents(AgentEvents delegate, Payloads payloads) {
       this.delegate = delegate;
@@ -1215,10 +1224,10 @@ class DefaultDirectHarnessTest {
      */
     private void intrude(AgentType type, AgentId agent) {
       List<AgentEvent> stream = delegate.readAll(type, agent);
-      if (intruded || stream.stream().noneMatch(AgentEvent.InferenceAnswered.class::isInstance)) {
+      if (stream.stream().noneMatch(AgentEvent.InferenceAnswered.class::isInstance)
+          || !intruded.compareAndSet(false, true)) {
         return;
       }
-      intruded = true;
       Seq last = stream.getLast().seq();
       Seq opening = last.next();
       delegate.append(
@@ -1526,7 +1535,11 @@ class DefaultDirectHarnessTest {
                 c ->
                     c.systemPrompt("You are terse.")
                         .inputRenderer(said -> List.of(new Block.Text(said)))
-                        .inference(in -> in.provider("test").model("a-model")));
+                        .inference(
+                            in ->
+                                in.provider("test")
+                                    .model("a-model")
+                                    .context(ContextConfig::withoutChapters)));
 
     for (int i = 0; i < 4; i++) {
       harness.ask(agent, "question " + i);
