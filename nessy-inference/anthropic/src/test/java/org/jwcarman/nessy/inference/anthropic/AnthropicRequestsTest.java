@@ -1039,6 +1039,245 @@ class AnthropicRequestsTest {
     }
   }
 
+  /**
+   * Memory and state lead the active turn's first message and are gone from it once the turn is in
+   * the tail, so the end of the history, and the end of it one piece earlier, are what the next
+   * request can still read.
+   */
+  @Nested
+  class CachingWithMemoryOrState {
+
+    private static final Memory RECALLED = Memory.text("recalled", "the lake is deep");
+    private static final State SITUATION = State.text("situation", "the deploy is frozen");
+    private static final Map<String, String> FIVE_MINUTES = caching(AnthropicCacheTtl.FIVE_MINUTES);
+
+    private static Turn refused(long id) {
+      return new Turn(
+          new TurnId(id), asked(id, "question " + id), List.of(), new TurnResult.Refused(), 0);
+    }
+
+    private static MessageCreateParams built(
+        List<Summary> summaries,
+        List<Turn> tail,
+        List<Memory> memory,
+        List<State> state,
+        Turn active,
+        List<Ambient> ambient,
+        Map<String, String> properties) {
+      return AnthropicRequests.toParams(
+          new InferenceRequest(
+              SYSTEM,
+              new InferenceContext(summaries, tail, memory, state, active, ambient),
+              Toolset.none(),
+              options()),
+          properties,
+          MAPPER);
+    }
+
+    private static MessageCreateParams withMemory(List<Summary> summaries, List<Turn> tail) {
+      return built(
+          summaries,
+          tail,
+          List.of(RECALLED),
+          List.of(),
+          open(9, "the question"),
+          List.of(),
+          FIVE_MINUTES);
+    }
+
+    /** Each marked block as "message:block", in order. */
+    private static List<String> markedAt(MessageCreateParams params) {
+      List<String> marked = new ArrayList<>();
+      List<MessageParam> messages = params.messages();
+      for (int m = 0; m < messages.size(); m++) {
+        List<ContentBlockParam> blocks = messages.get(m).content().asBlockParams();
+        for (int b = 0; b < blocks.size(); b++) {
+          if (blocks.get(b).cacheControl().isPresent()) {
+            marked.add(m + ":" + b);
+          }
+        }
+      }
+      return marked;
+    }
+
+    private static List<Turn> three() {
+      return List.of(
+          answered(1, "question 1", "answer 1"),
+          answered(2, "question 2", "answer 2"),
+          answered(3, "question 3", "answer 3"));
+    }
+
+    /** question 1, answer 1, question 2, answer 2, question 3, answer 3, then the active turn. */
+    @Test
+    void a_tail_of_three_turns_marks_the_ends_of_the_last_two_and_of_the_request() {
+      var params = withMemory(List.of(), three());
+
+      assertThat(markedAt(params)).containsExactly("3:0", "5:0", "6:1");
+    }
+
+    @Test
+    void state_alone_does_the_same() {
+      var params =
+          built(
+              List.of(),
+              three(),
+              List.of(),
+              List.of(SITUATION),
+              open(9, "the question"),
+              List.of(),
+              FIVE_MINUTES);
+
+      assertThat(markedAt(params)).containsExactly("3:0", "5:0", "6:1");
+    }
+
+    /** The system prompt's marker and these three are the four the vendor allows. */
+    @Test
+    void with_the_system_prompt_there_are_never_more_than_four() {
+      var params =
+          built(
+              List.of(new Summary(chapter(1, 2), "earlier")),
+              three(),
+              List.of(RECALLED),
+              List.of(SITUATION),
+              open(9, "the question"),
+              List.of(Ambient.text("clock", "it is Tuesday")),
+              FIVE_MINUTES);
+
+      boolean systemMarked =
+          params.system().orElseThrow().asTextBlockParams().getFirst().cacheControl().isPresent();
+
+      assertThat(systemMarked).isTrue();
+      assertThat(markedAt(params)).hasSize(3);
+    }
+
+    @Test
+    void background_never_carries_one() {
+      var params =
+          built(
+              List.of(),
+              three(),
+              List.of(RECALLED),
+              List.of(),
+              open(9, "the question"),
+              List.of(Ambient.text("clock", "it is Tuesday")),
+              FIVE_MINUTES);
+
+      // memory, question, background: the request's marker is on the question
+      assertThat(params.messages().getLast().content().asBlockParams()).hasSize(3);
+      assertThat(markedAt(params)).containsExactly("3:0", "5:0", "6:1");
+    }
+
+    /** With one tail turn and a summary, one turn earlier is the summary's message. */
+    @Test
+    void a_summary_stands_for_the_turn_before_a_single_tail_turn() {
+      var params =
+          withMemory(
+              List.of(new Summary(chapter(1, 5), "what came before")),
+              List.of(answered(6, "question 6", "answer 6")));
+
+      // summary, question 6, answer 6, the active turn
+      assertThat(markedAt(params)).containsExactly("0:0", "2:0", "3:1");
+    }
+
+    @Test
+    void a_single_tail_turn_alone_has_no_turn_before_it() {
+      var params = withMemory(List.of(), List.of(answered(1, "question 1", "answer 1")));
+
+      assertThat(markedAt(params)).containsExactly("1:0", "2:1");
+    }
+
+    /** The first turn of a conversation: only the end of this request has somewhere to sit. */
+    @Test
+    void an_empty_tail_marks_only_the_end_of_the_request() {
+      var params = withMemory(List.of(), List.of());
+
+      assertThat(markedAt(params)).containsExactly("0:1");
+    }
+
+    /** A refused turn renders to nothing, so it is neither the last turn nor the one before. */
+    @Test
+    void a_tail_whose_last_turn_was_refused_skips_it() {
+      var params =
+          withMemory(
+              List.of(),
+              List.of(
+                  answered(1, "question 1", "answer 1"),
+                  answered(2, "question 2", "answer 2"),
+                  refused(3)));
+
+      // question 1, answer 1, question 2, answer 2, the active turn
+      assertThat(markedAt(params)).containsExactly("1:0", "3:0", "4:1");
+    }
+
+    @Test
+    void a_tail_whose_last_turn_ends_on_reasoning_marks_the_block_before_it() {
+      Turn thought =
+          new Turn(
+              new TurnId(2),
+              asked(2, "question 2"),
+              List.of(),
+              new TurnResult.Answered(
+                  List.of(new Block.Text("answer 2"), thinking("let me recall", "sig-abc"))),
+              0);
+      var params =
+          built(
+              List.of(),
+              List.of(answered(1, "question 1", "answer 1"), thought),
+              List.of(RECALLED),
+              List.of(),
+              open(9, "the question"),
+              List.of(),
+              Map.of(
+                  "anthropic.thinking.type", "adaptive",
+                  "anthropic.cache_control.ttl", "FIVE_MINUTES"));
+
+      // question 1, answer 1, question 2, answer 2 (text, reasoning), the active turn
+      assertThat(params.messages().get(3).content().asBlockParams().get(1).isThinking()).isTrue();
+      assertThat(markedAt(params)).containsExactly("1:0", "3:0", "4:1");
+    }
+
+    /** Memory that renders as nothing is no memory, and the markers are today's. */
+    @Test
+    void blank_memory_and_state_leave_the_markers_where_they_were() {
+      var blank =
+          built(
+              List.of(),
+              three(),
+              List.of(Memory.text("recalled", "  ")),
+              List.of(State.text("situation", " \n ")),
+              open(9, "the question"),
+              List.of(),
+              FIVE_MINUTES);
+      var none =
+          built(
+              List.of(),
+              three(),
+              List.of(),
+              List.of(),
+              open(9, "the question"),
+              List.of(),
+              FIVE_MINUTES);
+
+      assertThat(markedAt(blank)).containsExactly("4:0", "6:0").isEqualTo(markedAt(none));
+    }
+
+    /** Inside a tool loop the vendor's lookback from the end marker finds the previous call. */
+    @Test
+    void a_tool_loop_in_the_active_turn_marks_only_the_end_of_history_and_the_request() {
+      Exchange round =
+          new Exchange(
+              new Seq(100L),
+              List.of(new Block.ToolCall(new CallId("c1"), new ToolName("lookup"), "{}")),
+              List.of(new ToolOutcome.Succeeded(new CallId("c1"), List.of(new Block.Text("r")))));
+      Turn active = new Turn(new TurnId(9), asked(9, "go"), List.of(round, round), null, 0);
+      var params =
+          built(List.of(), three(), List.of(RECALLED), List.of(), active, List.of(), FIVE_MINUTES);
+
+      // six history messages, then question, call, result, call, result
+      assertThat(markedAt(params)).containsExactly("3:0", "5:0", "10:0");
+    }
+  }
+
   @Nested
   class TheEdges {
 
