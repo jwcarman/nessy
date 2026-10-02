@@ -150,17 +150,40 @@ class ToolBindingLinesTest {
     }
 
     @Test
-    void a_named_stringifier_already_dropping_below_the_cap_is_used_as_given() {
-      ToolBinding<Order> binding = bind(order -> letters(3000), result -> "unused");
-      ToolBinding<Order> middle = bind(order -> letters(3000), null);
-      Stringifier<Order> dropsMiddle = order -> letters(3000);
-      ToolBinding<Order> given = bind(dropsMiddle.dropMiddle(200), null);
+    void a_named_action_stringifier_already_dropping_below_the_cap_is_used_as_given() {
+      Stringifier<Order> named = order -> letters(3000);
+      Stringifier<Order> dropsMiddle = named.dropMiddle(200);
 
-      String action = given.describe(ORDER_JSON);
+      Stringifier<Order> settled = SettledLines.action(Optional.of(dropsMiddle));
+      String action = bind(dropsMiddle, null).describe(ORDER_JSON);
 
-      assertThat(binding.describe(ORDER_JSON)).hasSize(1000);
-      assertThat(middle.describe(ORDER_JSON)).hasSize(1000);
+      assertThat(settled).isSameAs(dropsMiddle);
       assertThat(action).hasSize(200).contains("...").doesNotEndWith("...");
+    }
+
+    @Test
+    void a_named_result_stringifier_already_dropping_below_the_cap_is_used_as_given() {
+      Stringifier<ToolResult.Success> named = result -> letters(3000);
+      Stringifier<ToolResult.Success> dropsTail = named.dropTail(200);
+
+      Stringifier<ToolResult.Success> settled = SettledLines.result(Optional.of(dropsTail));
+      String line = bind(null, dropsTail).rendered(success("anything"));
+
+      assertThat(settled).isSameAs(dropsTail);
+      assertThat(line).hasSize(200).endsWith("...");
+    }
+
+    @Test
+    void a_named_result_stringifier_dropping_above_the_cap_is_cut_to_the_cap() {
+      Stringifier<ToolResult.Success> named = result -> letters(3000);
+      Stringifier<ToolResult.Success> dropsHead = named.dropHead(2000);
+
+      Stringifier<ToolResult.Success> settled = SettledLines.result(Optional.of(dropsHead));
+      String line = settled.stringify(success("anything"));
+
+      assertThat(settled).isNotSameAs(dropsHead);
+      assertThat(line).hasSize(1000).startsWith("...").endsWith("hij");
+      assertThat(line.indexOf("...", 3)).isPositive();
     }
 
     @Test
@@ -210,6 +233,23 @@ class ToolBindingLinesTest {
     void arguments_of_the_wrong_shape_say_they_could_not_be_read() {
       assertThat(bindingNamingNone().describe("{\"id\":\"ord_88\",\"cents\":\"many\"}"))
           .isEqualTo(UNREADABLE);
+    }
+
+    @Test
+    void empty_arguments_say_they_could_not_be_read() {
+      assertThat(bindingNamingNone().describe("")).isEqualTo(UNREADABLE);
+    }
+
+    @Test
+    void arguments_that_are_the_json_null_give_the_default_stringifiers_null() {
+      assertThat(bindingNamingNone().describe("null")).isEqualTo("null");
+    }
+
+    @Test
+    void arguments_that_are_the_json_null_and_a_stringifier_that_reads_the_input_say_so() {
+      ToolBinding<Order> binding = bind(order -> "refund " + order.id(), null);
+
+      assertThat(binding.describe("null")).isEqualTo(UNREADABLE);
     }
 
     @Test
