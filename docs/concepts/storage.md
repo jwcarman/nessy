@@ -96,10 +96,10 @@ List<Turn> turns = story.turnsFrom(0);
 In a Boot application this is the `TurnHistories` bean contributed by
 `QueuedHarnessAutoConfiguration`.
 
-## Rows are Jackson, then whatever you say
+## Content is Jackson, then whatever you say
 
-Every payload column is bytes: the row encoded by Jackson, then passed
-through whatever `Codec<byte[]>` the backend was built with. A backend built
+Every column that holds content is bytes: the value encoded by Jackson, then
+passed through whatever `Codec<byte[]>` the store was built with. A store built
 from a Boot application's `CodecFactory` bean gets whatever the
 `StorageCodecConfigurer` bean appended:
 
@@ -111,12 +111,46 @@ StorageCodecConfigurer storage() {
 ```
 
 That is the seam for compression and for encryption at rest, and it covers
-every store a backend builds — the story, the payloads, and for the queued
-door the effects and the backlog too. `nessy_agent_backlog` is the one
-table the schema flags as holding raw user text ahead of an event, so it is
-the one table a storage transform must never skip. It is fixed for the life
-of the data: rows written under one transform are unreadable under another,
-which is the same fact as an encryption key.
+every piece of content Nessy stores:
+
+| Content | Column |
+|---|---|
+| What happened to an agent | `nessy_agent_event.payload` |
+| What a message or a tool result said | `nessy_payload.content` |
+| Work an agent owes, and what to tell it if that work can never run | `nessy_agent_effect.payload`, `failure_payload`, `failed_attempts` |
+| Input waiting its turn | `nessy_agent_backlog.payload` |
+| A chapter's summary | `nessy_chapter.summary` |
+| A note's hook and body | `nessy_note.hook`, `nessy_note.body` |
+| A plan task's title | `nessy_plan_task.title` |
+
+`nessy_agent_backlog` is the table the schema flags as holding raw user text
+ahead of an event, so it is one a storage transform must never skip. The notebook
+and the plan take the same `CodecFactory` as the backend, as a constructor
+argument (`new JdbcNotebook(dataSource, TYPE, codecs)`), and a Spring Boot
+application passes the context's `CodecFactory` bean to them. The in-memory
+backend applies the codec to everything it holds as well, a chapter's summary
+included.
+
+Everything else is stored as itself, and is what a query needs to find, order
+or fence a row, or is plumbing:
+
+- identifiers: the agent type and agent id on every table, a note's id, a
+  lease's kind and holder, and the hash that addresses a payload;
+- sequence numbers, turn bounds and positions: `seq`, `from_turn`,
+  `through_turn`, `after_turn`, and the ordinal of a backlog item, a note and a
+  plan task;
+- timestamps and counters: `created_at`, `written_at`, `arrived_at`,
+  `closed_at`, `summarized_at`, `terminated_at`, `deadline`, `actionable_at`,
+  `expires_at`, `attempts_made`, `timeout_millis` and `takeovers`;
+- statuses: an effect's `status` and a plan task's `status`, which is one of
+  three fixed words;
+- the `starts_turn` flag on an event;
+- `trace_context` on an effect, the W3C trace parent of the turn it belongs to.
+
+An application's own tables are its own: Nessy neither creates them nor
+encodes them. The codec is fixed for the life of the data: rows written under
+one transform are unreadable under another, which is the same fact as an
+encryption key.
 
 ## What an agent's row holds
 
@@ -180,7 +214,9 @@ and `from_turn`, with `through_turn`, `after_turn` (where the agent's previous
 chapter ended, or zero), `closed_at`, and `summary` and `summarized_at`,
 which are null until the summary is written. A chapter's bounds are never
 changed. Its summary is written once, by an update that only touches a row
-whose summary is still null.
+whose summary is still null. The summary is bytes through the storage codec;
+whether it has been written is whether the column is null, which needs no
+decoding to ask.
 
 Two constraints keep an agent's chapters contiguous: the primary key, and a
 unique `(agent_type, agent_id, after_turn)`. A chapter is stored only if the

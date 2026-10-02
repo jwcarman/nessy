@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS nessy_plan_task (
   agent_type TEXT   NOT NULL,
   agent_id   TEXT   NOT NULL,
   ordinal    BIGINT NOT NULL,
-  title      TEXT   NOT NULL,
+  title      BYTEA  NOT NULL,
   status     TEXT   NOT NULL,
   PRIMARY KEY (agent_type, agent_id, ordinal)
 );

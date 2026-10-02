@@ -62,7 +62,7 @@ public final class JdbcDirectBackend implements DirectBackend {
     this.events = new JdbcAgentEvents(jdbc, codecs);
     this.payloads = new JdbcPayloads(jdbc, codecs);
     this.locks = new JdbcRowLocks(dataSource, transactions);
-    this.chapters = new JdbcChapters(jdbc);
+    this.chapters = new JdbcChapters(jdbc, codecs);
     this.leases = new JdbcLeases(jdbc);
   }
 

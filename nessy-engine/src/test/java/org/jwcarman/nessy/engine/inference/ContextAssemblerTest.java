@@ -25,6 +25,7 @@ import java.util.UUID;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
@@ -46,6 +47,7 @@ import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.store.TurnHistory;
 import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The tail, then background -- and what an assembler ASKS FOR matters as much as what it returns.
@@ -207,7 +209,8 @@ class ContextAssemblerTest {
 
   /** Chapters closed over turns 1..10 and 11..20, with summaries as given. */
   private static InMemoryChapters closed(int summarised) {
-    InMemoryChapters chapters = new InMemoryChapters();
+    InMemoryChapters chapters =
+        new InMemoryChapters(new JacksonCodecFactory(JsonMapper.builder().build()));
     Chapter first = new Chapter(TYPE, AGENT, new TurnId(1), new TurnId(10));
     Chapter second = new Chapter(TYPE, AGENT, new TurnId(11), new TurnId(20));
     chapters.append(TYPE, AGENT, Optional.empty(), List.of(first, second));
@@ -270,7 +273,12 @@ class ContextAssemblerTest {
 
       InferenceContext context =
           new ContextAssembler(
-                  histories, new InMemoryChapters(), 5, List.of(), List.of(), List.of())
+                  histories,
+                  new InMemoryChapters(new JacksonCodecFactory(JsonMapper.builder().build())),
+                  5,
+                  List.of(),
+                  List.of(),
+                  List.of())
               .assemble(invocation());
 
       assertThat(context.summaries()).isEmpty();

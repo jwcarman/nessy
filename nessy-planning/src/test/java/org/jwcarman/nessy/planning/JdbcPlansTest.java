@@ -18,12 +18,16 @@ package org.jwcarman.nessy.planning;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.springframework.jdbc.core.simple.JdbcClient;
 
 @DisplayName("The plan an agent keeps")
 class JdbcPlansTest {
@@ -39,7 +43,7 @@ class JdbcPlansTest {
 
   @BeforeEach
   void fresh() {
-    plans = new JdbcPlans(Calls.database(), Calls.TYPE);
+    plans = new JdbcPlans(Calls.database(), Calls.TYPE, Calls.codecs());
   }
 
   @Test
@@ -99,12 +103,71 @@ class JdbcPlansTest {
   @Test
   @DisplayName("two agent types keep separate plans even under the same id")
   void the_agent_type_scopes_the_store() {
-    javax.sql.DataSource shared = Calls.database();
-    Plans chat = new JdbcPlans(shared, new AgentType("chat"));
-    Plans watchman = new JdbcPlans(shared, new AgentType("watchman"));
+    DataSource shared = Calls.database();
+    Plans chat = new JdbcPlans(shared, new AgentType("chat"), Calls.codecs());
+    Plans watchman = new JdbcPlans(shared, new AgentType("watchman"), Calls.codecs());
     chat.save(agentOne, new Plan(List.of(WRITE)));
 
     assertThat(watchman.find(agentOne)).isEmpty();
+  }
+
+  @Nested
+  @DisplayName("with a storage transform applied")
+  class Encoded {
+
+    private final DataSource database = Calls.database();
+    private final Plans encoded = new JdbcPlans(database, Calls.TYPE, Calls.transforming());
+    private final Plan plan =
+        new Plan(
+            List.of(
+                new Plan.Task(
+                    "Email Ms. Okonkwo-Reyes about invoice 9087-1123", Plan.Status.PENDING),
+                new Plan.Task("Close ticket Bluebird-4471", Plan.Status.IN_PROGRESS)));
+
+    private List<String> rawTitles() {
+      return JdbcClient.create(database)
+          .sql("SELECT title FROM nessy_plan_task WHERE agent_id = ? ORDER BY ordinal")
+          .params(agentOne.value().toString())
+          .query(byte[].class)
+          .list()
+          .stream()
+          .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
+          .toList();
+    }
+
+    @Test
+    void the_stored_titles_do_not_contain_the_text() {
+      encoded.save(agentOne, plan);
+
+      List<String> titles = rawTitles();
+
+      assertThat(titles).hasSize(2);
+      assertThat(titles)
+          .noneMatch(title -> title.contains("Okonkwo"))
+          .noneMatch(title -> title.contains("9087-1123"))
+          .noneMatch(title -> title.contains("Bluebird"));
+    }
+
+    @Test
+    void the_status_stays_readable_in_its_own_column() {
+      encoded.save(agentOne, plan);
+
+      List<String> statuses =
+          JdbcClient.create(database)
+              .sql("SELECT status FROM nessy_plan_task WHERE agent_id = ? ORDER BY ordinal")
+              .params(agentOne.value().toString())
+              .query(String.class)
+              .list();
+
+      assertThat(statuses).containsExactly("PENDING", "IN_PROGRESS");
+    }
+
+    @Test
+    void the_plan_reads_its_own_writes_back_exactly() {
+      encoded.save(agentOne, plan);
+
+      assertThat(encoded.find(agentOne)).contains(plan);
+    }
   }
 
   @Test

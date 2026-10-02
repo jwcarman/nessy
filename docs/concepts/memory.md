@@ -56,11 +56,13 @@ refuses to build. The same kind in two different strata is allowed.
 heading. `Notebook` is the store, `JdbcNotebook` the one that ships, scoped
 to an agent type and keyed by agent id, with `write`, `revise`, `forget`,
 `find` and `headings`. The index is ambient: `headings()` is `SELECT
-note_id, hook`, so a body cannot reach the model by accident. The agent
+note_id, hook`, so a body cannot reach the model by accident. The hook and the body are
+stored through the application's `CodecFactory`, the one the backend is built
+from, in a column each. The agent
 recalls a note when it wants one, through four tools:
 
 ```java
-Notebook notebook = new JdbcNotebook(dataSource, TYPE);
+Notebook notebook = new JdbcNotebook(dataSource, TYPE, codecs);
 
 config.inference(in -> in.context(ctx -> ctx.ambient(NotebookTools.index(notebook))))
       .tool(NotebookTools.remember(notebook))

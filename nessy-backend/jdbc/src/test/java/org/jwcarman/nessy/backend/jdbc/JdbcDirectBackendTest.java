@@ -18,8 +18,10 @@ package org.jwcarman.nessy.backend.jdbc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -28,6 +30,9 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
@@ -35,10 +40,13 @@ import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.turn.Chapter;
+import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.lock.LockKind;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -90,6 +98,59 @@ class JdbcDirectBackendTest {
 
     assertThat(backend.chapters()).isInstanceOf(JdbcChapters.class);
     assertThat(backend.leases()).isInstanceOf(JdbcLeases.class);
+  }
+
+  @Test
+  @DisplayName("a chapter's summary is stored through the codec the backend was built with")
+  void summaries_go_through_the_backends_codec() {
+    CodecFactory jackson = new JacksonCodecFactory(JsonMapper.builder().build());
+    Codec<byte[]> flip =
+        new Codec<>() {
+          @Override
+          public byte[] encode(byte[] bytes) {
+            return xor(bytes);
+          }
+
+          @Override
+          public byte[] decode(byte[] bytes) {
+            return xor(bytes);
+          }
+        };
+    DirectBackend backend =
+        new JdbcDirectBackend(
+            dataSource,
+            new JdbcTransactionManager(dataSource),
+            new CodecFactory() {
+              @Override
+              public <T> Codec<T> create(TypeRef<T> type) {
+                return jackson.create(type).andThen(flip);
+              }
+            });
+    AgentId agent = AgentId.random();
+    Chapter chapter = new Chapter(TYPE, agent, new TurnId(1), new TurnId(2));
+    backend.chapters().append(TYPE, agent, Optional.empty(), List.of(chapter));
+
+    backend.chapters().summarize(new Summary(chapter, "Ms. Okonkwo-Reyes, invoice 9087-1123"));
+
+    byte[] raw =
+        JdbcClient.create(dataSource)
+            .sql("SELECT summary FROM nessy_chapter WHERE agent_id = ?")
+            .params(agent.value())
+            .query(byte[].class)
+            .single();
+    assertThat(new String(raw, StandardCharsets.UTF_8))
+        .doesNotContain("Okonkwo")
+        .doesNotContain("9087-1123");
+    assertThat(backend.chapters().summaries(TYPE, agent))
+        .containsExactly(new Summary(chapter, "Ms. Okonkwo-Reyes, invoice 9087-1123"));
+  }
+
+  private static byte[] xor(byte[] bytes) {
+    byte[] out = new byte[bytes.length];
+    for (int i = 0; i < bytes.length; i++) {
+      out[i] = (byte) (bytes[i] ^ 0x5A);
+    }
+    return out;
   }
 
   @Test

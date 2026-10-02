@@ -35,10 +35,10 @@ import org.jwcarman.nessy.backend.payload.Payloads;
 public final class InMemoryDirectBackend implements DirectBackend {
 
   private final Locks locks = new InMemoryLocks();
-  private final Chapters chapters = new InMemoryChapters();
   private final Leases leases = new InMemoryLeases();
   private final AgentEvents events;
   private final Payloads payloads;
+  private final Chapters chapters;
 
   /**
    * The same factory every other backend is handed, so a transform an application configures
@@ -48,6 +48,7 @@ public final class InMemoryDirectBackend implements DirectBackend {
   public InMemoryDirectBackend(CodecFactory codecs) {
     this.events = new InMemoryAgentEvents(codecs);
     this.payloads = new InMemoryPayloads(codecs);
+    this.chapters = new InMemoryChapters(codecs);
   }
 
   @Override

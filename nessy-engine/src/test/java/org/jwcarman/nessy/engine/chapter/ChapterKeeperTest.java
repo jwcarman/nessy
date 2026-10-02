@@ -40,6 +40,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.ChapterPolicy;
@@ -58,6 +59,7 @@ import org.jwcarman.nessy.backend.lease.LeaseKind;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.store.TurnHistory;
+import tools.jackson.databind.json.JsonMapper;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class ChapterKeeperTest {
@@ -66,7 +68,8 @@ class ChapterKeeperTest {
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
   private static final Duration TTL = Duration.ofMinutes(1);
 
-  private final Chapters chapters = new InMemoryChapters();
+  private final Chapters chapters =
+      new InMemoryChapters(new JacksonCodecFactory(JsonMapper.builder().build()));
   private final List<Long> completed = new CopyOnWriteArrayList<>();
 
   private static TurnId id(long value) {

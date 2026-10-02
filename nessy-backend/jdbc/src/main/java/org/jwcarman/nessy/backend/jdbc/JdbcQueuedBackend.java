@@ -73,7 +73,7 @@ public final class JdbcQueuedBackend implements QueuedBackend {
     this.events = new JdbcAgentEvents(jdbc, codecs);
     this.payloads = new JdbcPayloads(jdbc, codecs);
     this.locks = new JdbcRowLocks(dataSource, transactions);
-    this.chapters = new JdbcChapters(jdbc);
+    this.chapters = new JdbcChapters(jdbc, codecs);
     this.leases = new JdbcLeases(jdbc);
     this.agents = new JdbcAgents(jdbc);
     this.effects = new JdbcEffects(jdbc, codecs);

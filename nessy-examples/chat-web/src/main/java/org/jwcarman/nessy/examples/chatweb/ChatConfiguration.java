@@ -18,6 +18,7 @@ package org.jwcarman.nessy.examples.chatweb;
 import java.time.Duration;
 import java.util.List;
 import javax.sql.DataSource;
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ChapterPolicy;
@@ -57,8 +58,8 @@ public class ChatConfiguration {
   }
 
   @Bean
-  public Notebook notebook(DataSource dataSource) {
-    return new JdbcNotebook(dataSource, TYPE);
+  public Notebook notebook(DataSource dataSource, CodecFactory codecs) {
+    return new JdbcNotebook(dataSource, TYPE, codecs);
   }
 
   /**
@@ -77,8 +78,8 @@ public class ChatConfiguration {
   }
 
   @Bean
-  public Plans plans(DataSource dataSource) {
-    return new JdbcPlans(dataSource, TYPE);
+  public Plans plans(DataSource dataSource, CodecFactory codecs) {
+    return new JdbcPlans(dataSource, TYPE, codecs);
   }
 
   /**

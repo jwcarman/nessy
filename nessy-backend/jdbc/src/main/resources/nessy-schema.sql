@@ -233,7 +233,7 @@ CREATE TABLE IF NOT EXISTS nessy_chapter
     from_turn     BIGINT      NOT NULL,
     through_turn  BIGINT      NOT NULL,
     after_turn    BIGINT      NOT NULL,
-    summary       TEXT,
+    summary       BYTEA,
     closed_at     TIMESTAMP WITH TIME ZONE NOT NULL,
     summarized_at TIMESTAMP WITH TIME ZONE,
     PRIMARY KEY (agent_type, agent_id, from_turn),

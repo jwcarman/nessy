@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -36,7 +37,7 @@ class JdbcNotebookTest {
 
   @BeforeEach
   void fresh() {
-    notebook = new JdbcNotebook(Calls.database(), Calls.TYPE);
+    notebook = new JdbcNotebook(Calls.database(), Calls.TYPE, Calls.codecs());
   }
 
   @Test
@@ -144,6 +145,73 @@ class JdbcNotebookTest {
 
     assertThat(notebook.headings(agentTwo)).isEmpty();
     assertThat(notebook.find(agentTwo, mine.id())).isEmpty();
+  }
+
+  @Nested
+  @DisplayName("with a storage transform applied")
+  class Encoded {
+
+    private static final String HOOK = "Prefers Bluebird-4471 over every other bird";
+    private static final String BODY = "Account 9087-1123 belongs to Ms. Okonkwo-Reyes";
+
+    private final DataSource database = Calls.database();
+    private final Notebook encoded = new JdbcNotebook(database, Calls.TYPE, Calls.transforming());
+
+    private String rawColumn(String column, Notebook.Entry entry) {
+      return Calls.raw(
+          database,
+          "SELECT " + column + " FROM nessy_note WHERE agent_id = ? AND note_id = ?",
+          agentOne.value().toString(),
+          entry.id());
+    }
+
+    @Test
+    void the_stored_hook_does_not_contain_the_text() {
+      Notebook.Entry written = encoded.write(agentOne, HOOK, BODY);
+
+      assertThat(rawColumn("hook", written))
+          .doesNotContain("Bluebird")
+          .doesNotContain("4471")
+          .doesNotContain("Prefers");
+    }
+
+    @Test
+    void the_stored_body_does_not_contain_the_text() {
+      Notebook.Entry written = encoded.write(agentOne, HOOK, BODY);
+
+      assertThat(rawColumn("body", written))
+          .doesNotContain("9087-1123")
+          .doesNotContain("Okonkwo")
+          .doesNotContain("Account");
+    }
+
+    @Test
+    void a_revision_is_stored_through_the_codec_too() {
+      Notebook.Entry written = encoded.write(agentOne, "first hook", "first body");
+
+      encoded.revise(agentOne, written.id(), HOOK, BODY);
+
+      assertThat(rawColumn("hook", written)).doesNotContain("Bluebird");
+      assertThat(rawColumn("body", written)).doesNotContain("Okonkwo");
+    }
+
+    @Test
+    void the_notebook_reads_its_own_writes_back_exactly() {
+      Notebook.Entry written = encoded.write(agentOne, HOOK, BODY);
+
+      assertThat(encoded.find(agentOne, written.id())).contains(written);
+      assertThat(encoded.headings(agentOne))
+          .containsExactly(new Notebook.Heading(written.id(), HOOK));
+    }
+
+    @Test
+    void a_notebook_built_without_the_transform_cannot_read_what_it_wrote() {
+      Notebook.Entry written = encoded.write(agentOne, HOOK, BODY);
+      Notebook plain = new JdbcNotebook(database, Calls.TYPE, Calls.codecs());
+      String id = written.id();
+
+      assertThatThrownBy(() -> plain.find(agentOne, id)).isInstanceOf(RuntimeException.class);
+    }
   }
 
   @Nested

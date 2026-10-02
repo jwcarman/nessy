@@ -4,7 +4,7 @@ The Planning pattern, as `nessy-planning`: a plan the model writes, holds
 across turns, and works through.
 
 ```java
-Plans plans = new JdbcPlans(dataSource, TYPE);
+Plans plans = new JdbcPlans(dataSource, TYPE, codecs);
 
 QueuedHarness<String> harness = factory.create(TYPE, h -> h
         .systemPrompt(prompt)
@@ -17,7 +17,9 @@ that puts the agent's current plan in front of it on every call.
 `PlanTools.updatePlan(store)` is the write half, one tool named
 `update_plan` that replaces the plan wholesale. `Plans` is the store
 interface and `JdbcPlans` the one that ships, keyed by agent type and agent
-id over `nessy_plan_task`.
+id over `nessy_plan_task`. A task's title is stored through the
+application's `CodecFactory`, the one the backend is built from; its status
+stays a plain column.
 
 ## The plan is minimal on purpose
 

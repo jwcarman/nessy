@@ -53,10 +53,10 @@ public final class InMemoryQueuedBackend implements QueuedBackend {
   private record Key(AgentType type, AgentId agent) {}
 
   private final Locks locks = new InMemoryLocks();
-  private final Chapters chapters = new InMemoryChapters();
   private final Leases leases = new InMemoryLeases();
   private final AgentEvents events;
   private final Payloads payloads;
+  private final Chapters chapters;
   private final Effects effects;
   private final InMemoryAgents agents;
 
@@ -74,6 +74,7 @@ public final class InMemoryQueuedBackend implements QueuedBackend {
     Objects.requireNonNull(codecs, "codecs must not be null");
     this.events = new InMemoryAgentEvents(codecs);
     this.payloads = new InMemoryPayloads(codecs);
+    this.chapters = new InMemoryChapters(codecs);
     this.effects = new InMemoryEffects(codecs);
     this.agents = new InMemoryAgents(this::clear);
   }

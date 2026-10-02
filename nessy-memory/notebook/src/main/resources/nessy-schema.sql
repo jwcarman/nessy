@@ -25,8 +25,8 @@ CREATE TABLE IF NOT EXISTS nessy_note (
   agent_type TEXT   NOT NULL,
   agent_id   TEXT   NOT NULL,
   note_id    TEXT   NOT NULL,
-  hook       TEXT   NOT NULL,
-  body       TEXT   NOT NULL,
+  hook       BYTEA  NOT NULL,
+  body       BYTEA  NOT NULL,
   -- Insertion order, which the index the model reads depends on. A note is written once and revised
   -- in place, so its position never changes and a revision cannot reshuffle the list.
   ordinal    BIGINT NOT NULL,

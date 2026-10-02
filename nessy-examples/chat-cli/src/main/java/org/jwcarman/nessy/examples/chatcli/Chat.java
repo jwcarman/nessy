@@ -21,6 +21,7 @@ import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
@@ -98,14 +99,14 @@ public class Chat {
   }
 
   @Bean
-  public Notebook notebook(DataSource database) {
+  public Notebook notebook(DataSource database, CodecFactory codecs) {
     Schemas.initialize(database);
-    return new JdbcNotebook(database, TYPE);
+    return new JdbcNotebook(database, TYPE, codecs);
   }
 
   @Bean
-  public Plans plans(DataSource database) {
-    return new JdbcPlans(database, TYPE);
+  public Plans plans(DataSource database, CodecFactory codecs) {
+    return new JdbcPlans(database, TYPE, codecs);
   }
 
   /**

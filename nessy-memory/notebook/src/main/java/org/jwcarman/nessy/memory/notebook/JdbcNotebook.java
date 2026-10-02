@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -32,6 +34,12 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * is enforced by the query rather than by remembering to project after loading. That is the whole
  * argument for a table shaped for its own reads: the old store returned whole entries and trimmed
  * them in Java, which worked exactly as long as nobody edited it carelessly.
+ *
+ * <p><b>What a note says is encoded.</b> The hook and the body go through the application's codec,
+ * each in a column of its own, so a storage transform (compression, encryption) covers them exactly
+ * as it covers an agent's events, and the index still reads the hook without touching a body. What
+ * stays plain is what finds and orders a note: the agent type and id, the note's id, and its
+ * position.
  *
  * <p><b>A note is user data.</b> Nothing rebuilds one, so nothing here expires, and a notebook is
  * not scratch space however much it looks like the claim store next door.
@@ -69,11 +77,17 @@ public final class JdbcNotebook implements Notebook {
 
   private final JdbcClient jdbc;
   private final String agentType;
+  private final Codec<String> codec;
 
-  public JdbcNotebook(DataSource dataSource, AgentType agentType) {
+  /**
+   * @param codecs the application's factory, the one the backend is built from, so the storage
+   *     transform it carries applies to a note's hook and body
+   */
+  public JdbcNotebook(DataSource dataSource, AgentType agentType, CodecFactory codecs) {
     this.jdbc =
         JdbcClient.create(Objects.requireNonNull(dataSource, "dataSource must not be null"));
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null").value();
+    this.codec = Objects.requireNonNull(codecs, "codecs must not be null").create(String.class);
   }
 
   /**
@@ -89,7 +103,9 @@ public final class JdbcNotebook implements Notebook {
     Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
     return jdbc.sql(SELECT_HEADINGS)
         .params(agentType, key(agentId))
-        .query((row, number) -> new Heading(row.getString("note_id"), row.getString("hook")))
+        .query(
+            (row, number) ->
+                new Heading(row.getString("note_id"), codec.decode(row.getBytes("hook"))))
         .list();
   }
 
@@ -101,7 +117,10 @@ public final class JdbcNotebook implements Notebook {
         .params(agentType, key(agentId), id)
         .query(
             (row, number) ->
-                new Entry(row.getString("note_id"), row.getString("hook"), row.getString("body")))
+                new Entry(
+                    row.getString("note_id"),
+                    codec.decode(row.getBytes("hook")),
+                    codec.decode(row.getBytes("body"))))
         .optional();
   }
 
@@ -111,7 +130,13 @@ public final class JdbcNotebook implements Notebook {
     // Constructed first, so a blank hook or body is refused before anything is written.
     Entry entry = new Entry(mintUnusedIn(agentId), hook, body);
     jdbc.sql(INSERT)
-        .params(agentType, key(agentId), entry.id(), hook, body, nextOrdinal(agentId))
+        .params(
+            agentType,
+            key(agentId),
+            entry.id(),
+            codec.encode(hook),
+            codec.encode(body),
+            nextOrdinal(agentId))
         .update();
     return entry;
   }
@@ -122,7 +147,10 @@ public final class JdbcNotebook implements Notebook {
     Objects.requireNonNull(id, ID_NOT_NULL);
     Entry revised = new Entry(id, hook, body);
     // No ordinal touched: a revision replaces what a note says, never where it sits in the index.
-    int changed = jdbc.sql(UPDATE).params(hook, body, agentType, key(agentId), id).update();
+    int changed =
+        jdbc.sql(UPDATE)
+            .params(codec.encode(hook), codec.encode(body), agentType, key(agentId), id)
+            .update();
     return changed == 0 ? Optional.empty() : Optional.of(revised);
   }
 

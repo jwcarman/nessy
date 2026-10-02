@@ -80,7 +80,8 @@ class DirectHarnessChaptersTest {
   private static final String MODEL = "the-agents-model";
   private static final Duration PATIENCE = Duration.ofSeconds(10);
 
-  private final InMemoryChapters chapters = new InMemoryChapters();
+  private final InMemoryChapters chapters =
+      new InMemoryChapters(new JacksonCodecFactory(JsonMapper.builder().build()));
   private final ScriptedModel model = new ScriptedModel();
   private final DefaultDirectHarnessFactory factory = factory();
 

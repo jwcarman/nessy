@@ -172,6 +172,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before it. Another agent's narration is never held up. The chapter keeper
   no longer waits for the turn it was told about to become visible, because
   it already is.
+- **Every piece of content Nessy stores goes through the storage codec.**
+  A chapter's summary (`nessy_chapter.summary`), a note's hook and body
+  (`nessy_note.hook`, `nessy_note.body`) and a plan task's title
+  (`nessy_plan_task.title`) were `TEXT`; they are now `BYTEA`, encoded with
+  the application's `CodecFactory`, so a `StorageCodecConfigurer`'s compression
+  or encryption covers them as it covers the events and the payloads.
+  `JdbcNotebook` and `JdbcPlans` take a `CodecFactory` as a third constructor
+  argument, `JdbcChapters` takes one as its second, and `InMemoryChapters`
+  takes one, so each holds the encoded bytes of a summary as the in-memory
+  payload store holds content. The constructors without one are removed. A
+  database written by an earlier build must be recreated.
 - **A reply cut off at the output limit is `Truncated`.** It was an `Answer`.
 - **A tool call cut off at the output limit is a `Fault`.** It was `Actions`,
   carrying arguments that could parse as `{}` and run.

@@ -28,6 +28,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.ChapterPolicy;
@@ -42,6 +43,7 @@ import org.jwcarman.nessy.backend.inmemory.InMemoryLeases;
 import org.jwcarman.nessy.engine.chapter.ChapterKeeper;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.store.TurnHistory;
+import tools.jackson.databind.json.JsonMapper;
 
 /** What the summariser and the chapter policy report when the keeper asks them something. */
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
@@ -149,7 +151,7 @@ class ObservedChaptersTest {
 
   @Test
   void a_keeper_over_a_wrapped_policy_that_answers_null_cuts_nothing_below_the_maximum() {
-    Chapters chapters = new InMemoryChapters();
+    Chapters chapters = new InMemoryChapters(new JacksonCodecFactory(JsonMapper.builder().build()));
     ChapterPolicy observed = ObservedChapterPolicy.wrap(open -> null, registry);
     ChapterKeeper keeper =
         new ChapterKeeper(

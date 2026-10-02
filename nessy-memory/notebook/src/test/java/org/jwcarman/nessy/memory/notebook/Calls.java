@@ -15,9 +15,14 @@
  */
 package org.jwcarman.nessy.memory.notebook;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
 import javax.sql.DataSource;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.codec.TypeRef;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
@@ -26,8 +31,10 @@ import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * What the engine hands a running tool, and somewhere to keep what the tool writes.
@@ -64,6 +71,51 @@ final class Calls {
             POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
     Schemas.initialize(database);
     return database;
+  }
+
+  /** The codec factory an application would hand the store: Jackson, nothing appended. */
+  static CodecFactory codecs() {
+    return new JacksonCodecFactory(JsonMapper.builder().build());
+  }
+
+  /**
+   * The same factory with every byte XORed after Jackson, so a stored value is visibly not what was
+   * written. Not a cipher; enough to make a row unreadable to anyone who does not undo it.
+   */
+  static CodecFactory transforming() {
+    CodecFactory jackson = codecs();
+    Codec<byte[]> xor =
+        new Codec<>() {
+          @Override
+          public byte[] encode(byte[] bytes) {
+            return flip(bytes);
+          }
+
+          @Override
+          public byte[] decode(byte[] bytes) {
+            return flip(bytes);
+          }
+        };
+    return new CodecFactory() {
+      @Override
+      public <T> Codec<T> create(TypeRef<T> type) {
+        return jackson.create(type).andThen(xor);
+      }
+    };
+  }
+
+  private static byte[] flip(byte[] bytes) {
+    byte[] out = new byte[bytes.length];
+    for (int i = 0; i < bytes.length; i++) {
+      out[i] = (byte) (bytes[i] ^ 0x5A);
+    }
+    return out;
+  }
+
+  /** What a column holds, as text, read with plain JDBC and no codec. */
+  static String raw(DataSource database, String sql, Object... params) {
+    byte[] bytes = JdbcClient.create(database).sql(sql).params(params).query(byte[].class).single();
+    return new String(bytes, StandardCharsets.UTF_8);
   }
 
   static <I> ToolCallRequest<I> by(AgentId agentId, I input) {

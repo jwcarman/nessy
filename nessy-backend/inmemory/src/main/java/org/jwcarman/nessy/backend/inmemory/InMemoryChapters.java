@@ -21,6 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
@@ -40,10 +42,20 @@ public final class InMemoryChapters implements Chapters {
 
   private record Key(AgentType type, AgentId agent) {}
 
-  /** A closed chapter and its text, which is null until it has been written. */
-  private record Entry(Chapter chapter, String text) {}
+  /** A closed chapter and its encoded text, which is null until it has been written. */
+  private record Entry(Chapter chapter, byte[] text) {}
 
   private final Map<Key, List<Entry>> closed = new HashMap<>();
+  private final Codec<String> codec;
+
+  /**
+   * The same factory every other store is handed. A summary is kept as the bytes the codec made of
+   * it, exactly as {@link InMemoryPayloads} keeps content, so this stands in for the durable store
+   * without standing in for a kinder one.
+   */
+  public InMemoryChapters(CodecFactory codecs) {
+    this.codec = Objects.requireNonNull(codecs, "codecs must not be null").create(String.class);
+  }
 
   @Override
   public synchronized boolean append(
@@ -101,7 +113,7 @@ public final class InMemoryChapters implements Chapters {
         if (entry.text() != null) {
           return false;
         }
-        entries.set(i, new Entry(chapter, summary.text()));
+        entries.set(i, new Entry(chapter, codec.encode(summary.text())));
         return true;
       }
     }
@@ -125,7 +137,7 @@ public final class InMemoryChapters implements Chapters {
   public synchronized List<Summary> summaries(AgentType type, AgentId agent) {
     return entries(type, agent).stream()
         .takeWhile(entry -> entry.text() != null)
-        .map(entry -> new Summary(entry.chapter(), entry.text()))
+        .map(entry -> new Summary(entry.chapter(), codec.decode(entry.text())))
         .toList();
   }
 

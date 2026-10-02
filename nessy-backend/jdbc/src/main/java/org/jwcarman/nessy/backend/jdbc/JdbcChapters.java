@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
@@ -30,6 +32,12 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
  * {@link Chapters} over rows in {@code nessy_chapter}.
+ *
+ * <p><b>A summary is content, so it is encoded.</b> It holds names, identifiers and numbers exactly
+ * as the conversation gave them, and goes through the same codec as the payloads. What stays in
+ * plain columns is what finds, orders and fences a row: the agent, the turn bounds, and when it was
+ * closed and summarised. Whether a summary has been written is the column being null, which needs
+ * no decoding to ask.
  *
  * <p><b>One statement to append.</b> No transaction is available here, so the whole of {@link
  * #append} is a single SQL statement, and the database serialises the callers that race. The guard
@@ -100,13 +108,22 @@ public class JdbcChapters implements Chapters {
   private static final String AGENT_NOT_NULL = "agent must not be null";
 
   private final JdbcClient jdbc;
+  private final Codec<String> codec;
 
-  public JdbcChapters(JdbcClient jdbc) {
+  /**
+   * @param codecs the application's factory; a summary is encoded with it, so whatever storage
+   *     transform the application declared (compression, encryption) is applied to it exactly as it
+   *     is to the payloads
+   */
+  public JdbcChapters(JdbcClient jdbc, CodecFactory codecs) {
     this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
+    this.codec = Objects.requireNonNull(codecs, "codecs must not be null").create(String.class);
   }
 
-  public JdbcChapters(DataSource dataSource) {
-    this(JdbcClient.create(Objects.requireNonNull(dataSource, "dataSource must not be null")));
+  public JdbcChapters(DataSource dataSource, CodecFactory codecs) {
+    this(
+        JdbcClient.create(Objects.requireNonNull(dataSource, "dataSource must not be null")),
+        codecs);
   }
 
   @Override
@@ -190,7 +207,7 @@ public class JdbcChapters implements Chapters {
     Chapter chapter = summary.chapter();
     return jdbc.sql(SUMMARIZE)
             .params(
-                summary.text(),
+                codec.encode(summary.text()),
                 chapter.agentType().value(),
                 chapter.agentId().value(),
                 chapter.from().value(),
@@ -242,7 +259,7 @@ public class JdbcChapters implements Chapters {
                         agent,
                         new TurnId(rs.getLong("from_turn")),
                         new TurnId(rs.getLong("through_turn"))),
-                    rs.getString("summary")))
+                    codec.decode(rs.getBytes("summary"))))
         .list();
   }
 }

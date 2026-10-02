@@ -41,7 +41,7 @@ class PlanToolsTest {
 
   @BeforeEach
   void fresh() {
-    plans = new JdbcPlans(Calls.database(), Calls.TYPE);
+    plans = new JdbcPlans(Calls.database(), Calls.TYPE, Calls.codecs());
   }
 
   /** What the engine hands a running tool. No mocking library, and none needed. */

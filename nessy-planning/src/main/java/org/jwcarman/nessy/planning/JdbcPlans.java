@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -33,6 +35,11 @@ import org.springframework.transaction.support.TransactionTemplate;
  * identical plan. Here that means deleting this agent's rows and inserting the new list, in ONE
  * transaction — otherwise a crash between the two leaves an agent with no plan at all, which is a
  * worse answer than either the old plan or the new one.
+ *
+ * <p><b>A task's title is encoded.</b> It goes through the application's codec, so a storage
+ * transform (compression, encryption) covers it as it covers an agent's events. The status stays a
+ * plain column: it is one of three fixed words, and carries no content. So do the agent type and id
+ * and the task's position, which is what finds and orders the rows.
  *
  * <p>Rows rather than a blob so the order the model sent is a column rather than a list's
  * incidental order, and so a plan can be read in a database without a running JVM.
@@ -51,12 +58,18 @@ public final class JdbcPlans implements Plans {
   private final JdbcClient jdbc;
   private final TransactionTemplate transactions;
   private final String agentType;
+  private final Codec<String> codec;
 
-  public JdbcPlans(DataSource dataSource, AgentType agentType) {
+  /**
+   * @param codecs the application's factory, the one the backend is built from, so the storage
+   *     transform it carries applies to a task's title
+   */
+  public JdbcPlans(DataSource dataSource, AgentType agentType, CodecFactory codecs) {
     Objects.requireNonNull(dataSource, "dataSource must not be null");
     this.jdbc = JdbcClient.create(dataSource);
     this.transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null").value();
+    this.codec = Objects.requireNonNull(codecs, "codecs must not be null").create(String.class);
   }
 
   /**
@@ -76,7 +89,8 @@ public final class JdbcPlans implements Plans {
             .query(
                 (row, number) ->
                     new Plan.Task(
-                        row.getString("title"), Plan.Status.valueOf(row.getString("status"))))
+                        codec.decode(row.getBytes("title")),
+                        Plan.Status.valueOf(row.getString("status"))))
             .list();
     // An empty plan reads as NO plan: "cleared" and "never written" are one state, and nothing
     // downstream can tell them apart anyway.
@@ -94,7 +108,12 @@ public final class JdbcPlans implements Plans {
           for (int ordinal = 0; ordinal < tasks.size(); ordinal++) {
             Plan.Task task = tasks.get(ordinal);
             jdbc.sql(INSERT)
-                .params(agentType, key(agentId), ordinal, task.title(), task.status().name())
+                .params(
+                    agentType,
+                    key(agentId),
+                    ordinal,
+                    codec.encode(task.title()),
+                    task.status().name())
                 .update();
           }
         });

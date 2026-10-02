@@ -18,6 +18,7 @@ package org.jwcarman.nessy.backend.jdbc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -32,6 +33,10 @@ import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.codec.TypeRef;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
@@ -41,6 +46,7 @@ import org.jwcarman.nessy.backend.chapter.Chapters;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.json.JsonMapper;
 
 @Tag("container")
 @DisplayName("Chapters kept in a database")
@@ -64,9 +70,11 @@ class JdbcChaptersTest {
     return database;
   }
 
+  private static final CodecFactory CODECS = new JacksonCodecFactory(JsonMapper.builder().build());
+
   private final DataSource database = database();
   private final JdbcClient jdbc = JdbcClient.create(database);
-  private final Chapters chapters = new JdbcChapters(database);
+  private final Chapters chapters = new JdbcChapters(database, CODECS);
 
   /** An agent nobody else in the shared database is using. */
   private final AgentId agent = AgentId.random();
@@ -81,6 +89,84 @@ class JdbcChaptersTest {
 
   private boolean appendAfter(Optional<TurnId> after, Chapter... toStore) {
     return chapters.append(TYPE, agent, after, List.of(toStore));
+  }
+
+  @Nested
+  @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
+  class With_a_storage_transform_applied {
+
+    private static final String TEXT =
+        "Ms. Okonkwo-Reyes asked about invoice 9087-1123, ticket Bluebird-4471.";
+
+    private final Chapters encoded = new JdbcChapters(database, transforming());
+
+    private static CodecFactory transforming() {
+      Codec<byte[]> xor =
+          new Codec<>() {
+            @Override
+            public byte[] encode(byte[] bytes) {
+              return flip(bytes);
+            }
+
+            @Override
+            public byte[] decode(byte[] bytes) {
+              return flip(bytes);
+            }
+          };
+      return new CodecFactory() {
+        @Override
+        public <T> Codec<T> create(TypeRef<T> type) {
+          return CODECS.create(type).andThen(xor);
+        }
+      };
+    }
+
+    private static byte[] flip(byte[] bytes) {
+      byte[] out = new byte[bytes.length];
+      for (int i = 0; i < bytes.length; i++) {
+        out[i] = (byte) (bytes[i] ^ 0x5A);
+      }
+      return out;
+    }
+
+    private void summarizeOne() {
+      encoded.append(TYPE, agent, Optional.empty(), List.of(chapter(1, 3)));
+      encoded.summarize(new Summary(chapter(1, 3), TEXT));
+    }
+
+    @Test
+    void the_stored_summary_does_not_contain_the_text() {
+      summarizeOne();
+
+      byte[] raw =
+          jdbc.sql("SELECT summary FROM nessy_chapter WHERE agent_id = ?")
+              .params(agent.value())
+              .query(byte[].class)
+              .single();
+
+      assertThat(new String(raw, StandardCharsets.UTF_8))
+          .doesNotContain("Okonkwo")
+          .doesNotContain("9087-1123")
+          .doesNotContain("Bluebird");
+    }
+
+    @Test
+    void the_summary_reads_back_exactly() {
+      summarizeOne();
+
+      assertThat(encoded.summaries(TYPE, agent)).containsExactly(new Summary(chapter(1, 3), TEXT));
+    }
+
+    @Test
+    void whether_a_chapter_is_summarised_is_still_answered_without_decoding() {
+      encoded.append(TYPE, agent, Optional.empty(), List.of(chapter(1, 3)));
+
+      assertThat(encoded.unsummarized(TYPE, agent)).containsExactly(chapter(1, 3));
+
+      encoded.summarize(new Summary(chapter(1, 3), TEXT));
+
+      assertThat(encoded.unsummarized(TYPE, agent)).isEmpty();
+    }
   }
 
   @Nested

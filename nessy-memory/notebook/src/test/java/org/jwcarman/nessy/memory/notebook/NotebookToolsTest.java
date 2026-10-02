@@ -39,7 +39,7 @@ class NotebookToolsTest {
 
   @BeforeEach
   void fresh() {
-    notebook = new JdbcNotebook(Calls.database(), Calls.TYPE);
+    notebook = new JdbcNotebook(Calls.database(), Calls.TYPE, Calls.codecs());
   }
 
   /**

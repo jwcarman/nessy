@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.engine.harness.direct;
 
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.chapter.Chapters;
 import org.jwcarman.nessy.backend.event.AgentEvents;
@@ -23,6 +24,7 @@ import org.jwcarman.nessy.backend.inmemory.InMemoryLeases;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * A {@link DirectBackend} over three stores a test already holds, so a test can keep asserting on
@@ -35,6 +37,11 @@ record FixedDirectBackend(
 
   /** For a test that cares about the three stores and not about chapters or leases. */
   FixedDirectBackend(Locks locks, AgentEvents events, Payloads payloads) {
-    this(locks, events, payloads, new InMemoryChapters(), new InMemoryLeases());
+    this(
+        locks,
+        events,
+        payloads,
+        new InMemoryChapters(new JacksonCodecFactory(JsonMapper.builder().build())),
+        new InMemoryLeases());
   }
 }

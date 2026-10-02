@@ -39,6 +39,10 @@
       <artifactId>spring-jdbc</artifactId>
     </dependency>
     <dependency>
+      <groupId>org.jwcarman.codec</groupId>
+      <artifactId>codec-core</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-api</artifactId>
       <version>${project.version}</version>
@@ -52,6 +56,17 @@
     </dependency>
     <!-- Real PostgreSQL: H2 coerces a UUID into a TEXT column that PostgreSQL refuses, and hid
          exactly that bug in this store. -->
+    <!-- Test only: a CodecFactory to hand the store, which is what an application's is built on. -->
+    <dependency>
+      <groupId>org.jwcarman.codec</groupId>
+      <artifactId>codec-jackson</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>tools.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>testcontainers-postgresql</artifactId>

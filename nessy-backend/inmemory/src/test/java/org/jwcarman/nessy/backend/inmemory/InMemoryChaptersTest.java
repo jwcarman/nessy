@@ -20,17 +20,23 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.codec.TypeRef;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.turn.Chapter;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.backend.chapter.Chapters;
+import tools.jackson.databind.json.JsonMapper;
 
 @DisplayName("Chapters held in this process")
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
@@ -39,7 +45,8 @@ class InMemoryChaptersTest {
   private static final AgentType TYPE = new AgentType("chat");
   private static final AgentType OTHER_TYPE = new AgentType("support");
 
-  private final Chapters chapters = new InMemoryChapters();
+  private final Chapters chapters =
+      new InMemoryChapters(new JacksonCodecFactory(JsonMapper.builder().build()));
   private final AgentId agent = AgentId.random();
 
   private static TurnId turn(long value) {
@@ -52,6 +59,47 @@ class InMemoryChaptersTest {
 
   private boolean appendAfter(Optional<TurnId> after, Chapter... toStore) {
     return chapters.append(TYPE, agent, after, List.of(toStore));
+  }
+
+  @Nested
+  @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
+  class With_a_codec_that_marks_what_it_encodes {
+
+    private final AtomicInteger encoded = new AtomicInteger();
+
+    private CodecFactory counting() {
+      JacksonCodecFactory jackson = new JacksonCodecFactory(JsonMapper.builder().build());
+      return new CodecFactory() {
+        @Override
+        public <T> Codec<T> create(TypeRef<T> type) {
+          Codec<T> inner = jackson.create(type);
+          return new Codec<>() {
+            @Override
+            public byte[] encode(T value) {
+              encoded.incrementAndGet();
+              return inner.encode(value);
+            }
+
+            @Override
+            public T decode(byte[] bytes) {
+              return inner.decode(bytes);
+            }
+          };
+        }
+      };
+    }
+
+    @Test
+    void a_summary_is_encoded_when_it_is_stored_and_reads_back_exactly() {
+      Chapters counted = new InMemoryChapters(counting());
+      counted.append(TYPE, agent, Optional.empty(), List.of(chapter(1, 3)));
+
+      counted.summarize(new Summary(chapter(1, 3), "Ms. Okonkwo-Reyes, invoice 9087-1123"));
+
+      assertThat(encoded.get()).isEqualTo(1);
+      assertThat(counted.summaries(TYPE, agent))
+          .containsExactly(new Summary(chapter(1, 3), "Ms. Okonkwo-Reyes, invoice 9087-1123"));
+    }
   }
 
   @Nested
