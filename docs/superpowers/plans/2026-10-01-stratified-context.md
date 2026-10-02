@@ -986,3 +986,27 @@ java -jar nessy-example-chapter-lab.jar \
 - [ ] Tests, implementation, README with the commands above and what each option does, `./mvnw spotless:apply license:format`, `pgrep -fl nessy-example; ./mvnw -q clean verify`, commit.
 
 Commit: `feat: a lab that tries chapter policies and summarisers on a recorded conversation`
+
+---
+
+### Task 19: Anthropic marks the end of history when memory or state is present
+
+**Files:**
+- Modify: `nessy-inference/anthropic/src/main/java/org/jwcarman/nessy/inference/anthropic/AnthropicRequests.java`
+- Test: `nessy-inference/anthropic/src/test/java/org/jwcarman/nessy/inference/anthropic/AnthropicRequestsTest.java`, `AnthropicLiveTest.java` (one live test, not run)
+
+**Why.** Memory and State sit at the head of the active turn's first user message. Once that turn is finished it is rendered without them, so on the first call of the next turn everything from that message on differs from what was written to the cache. The two markers used today (the end of this request and the end of the last one) then read nothing from inside the previous turn, and if the previous turn is longer than the vendor's 20-block lookback they read nothing at all: the whole conversation is rewritten. Measured on 2026-10-01: without a marker at the end of history one turn earlier, the first call of every turn that followed a long tool loop read 0% (8 of 8 turns).
+
+**Behaviour.**
+- When the context carries no memory and no state, the markers are exactly what they are today.
+- When it carries either, the message markers are, in order of position: the last block of the tail's second-to-last turn (the end of history one turn earlier), the last block of the tail's last turn (the end of history), and the end of this request (before any background). The system prompt's marker is unchanged, which makes four markers, the vendor's limit. The marker on the previous user-side message is not placed in that case; inside a tool loop the vendor's lookback from the end marker finds the previous call's entry.
+- A marker never sits on a thinking block (the existing fallback in `endingOnMarker` applies), never on a background block, and a turn of the tail that renders to nothing (a refused one) is skipped when choosing "the last turn" and "the second-to-last turn".
+- With fewer than two rendered turns in the tail, only the markers that have somewhere to sit are placed. Summaries count as history: with one tail turn and at least one summary, "one turn earlier" is the last summary's message.
+- Rewrite the javadoc on `breakpoints` (or what replaces it) to say which markers are placed when and why.
+
+**Tests** (a nested class `CachingWithMemoryOrState`): exact marker positions (message index and block index) for: a tail of three turns with memory; the same with state only; a tail of one turn and one summary; an empty tail (first turn of a conversation); a tail whose last turn was refused; a tail whose last turn ends on a thinking block; and with no memory or state the positions are exactly those of the existing `ConversationCaching` tests. Never more than four markers in a request, counting the system prompt's.
+Live, tagged `live`, not run: two turns with a memory source whose text differs per turn, the first turn a tool loop of twenty-five calls to a trivial tool; assert the first call of the second turn reports cache-read input tokens greater than zero.
+
+- [ ] Tests first, implementation, `./mvnw spotless:apply license:format`, `pgrep -fl nessy-example; ./mvnw -q clean verify`, commit.
+
+Commit: `feat: Anthropic marks the end of history when memory or state leads the active turn`
