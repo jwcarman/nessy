@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`InferenceResult.Truncated`**, a reply the vendor cut off at the output
+  limit. It holds the blocks written before it stopped, at least one of them
+  text. All five adapters return it (Anthropic `max_tokens`, OpenAI chat
+  `length`, OpenAI Responses `max_output_tokens`, Gemini `MAX_TOKENS`,
+  Bedrock `max_tokens`). An agent's turn delivers it as the answer, logs a
+  WARN and reports `length` as the finish reason.
 - **`AnthropicThinkingType.BETWEEN_TOOLS`** (`anthropic.thinking.type:
   between_tools`), sent as the vendor names it. It is how thinking is turned
   off on a model that thinks with no thinking field and refuses `disabled`, as
@@ -143,6 +149,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A reply cut off at the output limit is `Truncated`.** It was an `Answer`.
+- **A tool call cut off at the output limit is a `Fault`.** It was `Actions`,
+  carrying arguments that could parse as `{}` and run.
+- **A custom `InferenceProvider`, or a `switch` over `InferenceResult`, needs
+  the new arm.** A provider returns `Truncated` when its vendor says the
+  output limit was reached and the reply holds text.
+- **A chapter summary cut off at the output limit is refused.** It used to be
+  stored. The chapter stays unsummarised and is tried again when a later turn
+  ends, so an agent type's `maxTokens` has to leave room for the summary.
 - **The `openai` preset sends strict function tools**
   (`openai.tools.strict=true` by default). Set
   `nessy.providers.openai.properties.openai.tools.strict: "false"` to turn

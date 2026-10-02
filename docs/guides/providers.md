@@ -14,9 +14,10 @@ The engine builds the request (the system prompt, then the context's strata:
 summaries, the tail of turns, memory, state, the active turn and ambient
 blocks; the tools on offer, the model and token cap) and the adapter
 turns it into the vendor's wire shape, narrates the deltas as they stream,
-and hands back one of four results: an `Answer`, `Actions` the model wants
-taken, a `Refusal`, or a `Fault` with a `Failure` that says whether retrying
-could help. Whichever it is, the result carries a `Usage`; the engine
+and hands back one of five results: an `Answer`, `Actions` the model wants
+taken, a `Refusal`, a `Truncated` reply the vendor cut off at the output
+limit (see [Truncated replies](#truncated-replies)), or a `Fault` with a
+`Failure` that says whether retrying could help. Whichever it is, the result carries a `Usage`; the engine
 records it and puts it on the call's span. See [Usage](#usage) below for
 what it holds.
 
@@ -112,6 +113,55 @@ Measured on Anthropic, with background in the messages every replayed
 thinking block was dropped (193 of 193), and none were with no background
 present. An agent whose work depends on reasoning carried from call to call
 pays for ambient content with that reasoning.
+
+## Truncated replies
+
+`InferenceResult.Truncated` is a reply the vendor stopped at the
+output-token limit. It carries the blocks written before it stopped, and at
+least one of them is text. It is not an answer: the text may end
+mid-sentence, and nothing in the result says what was left unsaid. A caller
+that keeps one must decide to, which is why it is an arm of its own and not a
+flag on `Answer`: every `switch` over `InferenceResult` has to say what it
+does with a reply that is not whole.
+
+Each adapter reads the cut-off from the vendor's own field:
+
+| Adapter | Field | Value taken as a cut-off |
+|---|---|---|
+| Anthropic | `stop_reason` | `max_tokens` |
+| OpenAI Chat Completions | `finish_reason` | `length` |
+| OpenAI Responses | `status` and `incomplete_details.reason` | `incomplete` and `max_output_tokens` |
+| Gemini | `finishReason` | `MAX_TOKENS` |
+| Bedrock Converse | `stopReason` | `max_tokens` |
+
+What the cut-off result is depends on what the reply held when it stopped:
+
+- **Text.** The result is `Truncated`.
+- **A tool call.** The result is a `Fault` with a `Permanent` failure, never
+  `Actions`. A call cut off inside its arguments is not trusted. Measured on
+  2026-10-02, Anthropic returns such a call with empty arguments (`{}`),
+  which parses and would run.
+- **Nothing but reasoning.** The result is the empty-answer `Fault` it always
+  was, naming the stop reason. There is no text to keep.
+
+On the OpenAI chat wire only a reported `length` is trusted. Compatible
+servers report the finish reason inconsistently, so an absent one, `stop`
+for a reply that was cut, or any reason the adapter does not know reads
+exactly as it did before: a reply with text is an `Answer`.
+
+### What the engine does with one
+
+In an agent's turn the engine delivers a `Truncated` reply as the turn's
+answer. It logs a WARN naming the agent, and the call's span reports `length`
+as its finish reason. Nothing in the agent's recorded history marks the reply
+as partial; the WARN and the span are where it is told apart.
+
+The chapter summariser does not accept one. `ProseSummarizer` throws when the
+summary is cut off at the output limit, the chapter stays unsummarised, and
+the keeper stops that pass. It tries again when a later turn ends, and the
+chapters behind it wait. An agent type's `maxTokens` therefore has to leave
+room for a chapter's summary: one that never fits is attempted, and cut off
+again, at every turn's end.
 
 ## Naming providers
 
@@ -392,7 +442,8 @@ Both adapters treat an answer with no content as a `Fault` with a
 `Permanent` failure naming the finish reason, rather than a turn that ended
 in silence. The usual cause is a thinking model that spent the whole token
 cap on reasoning; raise `maxTokens` or turn the reasoning off at the
-provider.
+provider. A reply cut off with text in it is a `Truncated`, not this fault;
+see [Truncated replies](#truncated-replies).
 
 ## Boot auto-configuration
 
@@ -666,7 +717,8 @@ zero-code Boot citizen too.
 
 A local thinking model, such as the Qwen 3 family, spends reasoning tokens
 out of the same cap as its answer. With a small `maxTokens` the answer never
-arrives, and the adapter reports a `Fault` naming `finish_reason=length`.
+arrives, and the adapter reports a `Fault` naming `finish_reason=length`. A
+reply that got some text out before the cap is a `Truncated` instead.
 Raise the cap for that harness, or serve a model that does not reason by
 default.
 
@@ -857,6 +909,10 @@ public interface InferenceProvider {
   stop or block is a `Refusal` named by the vendor's own reason; a reply with
   tool calls is `Actions`, with any prose beside them as `Commentary`; prose
   alone is an `Answer`; an empty reply is a `Fault` naming the finish reason.
+  When the vendor says the output limit was reached, a reply that holds text
+  is `Truncated`; one that holds a tool call is a `Fault`, because its
+  arguments cannot be trusted; one that holds only reasoning is the empty
+  reply's `Fault`.
 - Keep vendor state whole. Anything the vendor wants back untouched, a
   thinking signature, a thought signature, travels as a `Block.Provider`
   tagged with your provider name, and you replay only your own tag. Return
