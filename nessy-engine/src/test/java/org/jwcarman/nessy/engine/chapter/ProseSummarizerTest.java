@@ -184,6 +184,26 @@ class ProseSummarizerTest {
     }
 
     @Test
+    void the_input_of_a_refused_turn_is_not_sent() {
+      Turn refused =
+          new Turn(
+              new TurnId(3),
+              new Input(new Seq(3), List.of(new Block.Text("the-refused-input"))),
+              List.of(),
+              new TurnResult.Refused(),
+              10);
+      Story story = new Story(List.of(turn(1), refused, turn(5)));
+      Scripted provider = new Scripted(_ -> answer("the record"));
+
+      new ProseSummarizer(story, provider, OPTIONS).summarize(chapter(1, 5));
+
+      String sent =
+          Transcripts.text(provider.requests.getFirst().context().activeTurn().input().blocks());
+      assertThat(sent).contains("(a message was withdrawn)").contains("q1").contains("q5");
+      assertThat(sent).doesNotContain("the-refused-input");
+    }
+
+    @Test
     void no_tool_call_tool_outcome_or_reasoning_block_is_sent() {
       Story story = new Story(List.of(toolTurn(1)));
       Scripted provider = new Scripted(_ -> answer("the record"));

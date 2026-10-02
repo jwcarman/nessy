@@ -35,7 +35,7 @@ import tools.jackson.databind.node.ObjectNode;
  *
  * <p><b>{@link #action()} is fixed here, at ask time, and never re-derived.</b> A person must be
  * answering the same sentence that was shown to them, not one recomputed later from arguments whose
- * meaning may have moved, by a renderer somebody has since edited.
+ * meaning may have moved, by a stringifier somebody has since edited.
  *
  * <p><b>A carrier, not a value.</b> The engine builds the question; {@link ApprovalEnricher}s add
  * to it. {@link #fact(String, JsonNode)} writes onto this request in place, and whatever has been

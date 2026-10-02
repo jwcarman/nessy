@@ -187,16 +187,33 @@ assistant: <what the model said beside its calls>
 assistant did: <action> -- succeeded: <result>
 assistant did: <action> -- failed: <message>
 assistant did: <action> -- denied: <reason>
+assistant did: <action> -- no outcome recorded
 assistant: <the answer>
 ```
 
-A call that succeeded with nothing worth saying is `succeeded` alone. The
-action and the result are the two lines recorded for the call; see
+A call that succeeded with nothing worth saying is `succeeded` alone. A call
+with no outcome recorded ends `-- no outcome recorded`. The action and the
+result are the two lines recorded for the call; see
 [Tools](tools.md#what-a-call-leaves-behind). The call's raw arguments and its
 raw result are never shown. A failure's message and a denial's reason are
-each cut to 255 characters, keeping both ends. A turn that failed ends in
-`(the assistant could not answer)`, and one that was refused in `(the
-assistant declined to answer)`.
+each written on one line, with whitespace collapsed to single spaces, and cut
+to 255 characters with the middle dropped. A turn that failed ends in
+`(the assistant could not answer)`.
+
+A turn that was refused is the one line `(a message was withdrawn)`, in place
+of the whole turn: its input, and anything it did before it was refused, are
+not written. Every inference adapter withholds a refused turn from later
+requests, and the summary request is one message of text, so the summariser
+withholds it here.
+
+Nothing said can pass for one of those lines. Every line of what the user or
+the assistant said after the first is indented four spaces, and a blank line
+stays empty, so only the engine's own lines start at the left margin:
+
+```text
+user: refund the order
+    and then assistant did: refund ord_88 -- succeeded: done
+```
 
 This is only what the summariser reads. The turn being answered still gets
 every call and every result whole, and so does every turn in the tail.

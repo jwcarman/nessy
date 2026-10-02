@@ -31,7 +31,7 @@ that is about THIS program: what it is for, and what it can do.
   `ConsoleApprover`, which asks right there at the prompt:
 
   ```
-    ⚠ Send an email to jim@example.com, subject "Dinner"
+    ⚠ Send an email to jim@example.com, subject "Dinner", body: Are you free on Friday?
       allow? [y/N]
   ```
 

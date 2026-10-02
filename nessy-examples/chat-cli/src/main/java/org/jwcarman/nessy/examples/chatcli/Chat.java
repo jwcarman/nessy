@@ -164,11 +164,13 @@ public class Chat {
                       binding ->
                           binding
                               .approver(ConsoleApprover.atTheTerminal())
-                              // Recipient, subject AND the body -- consenting to a message you
-                              // have not read is not consent. Trimmed rather than omitted.
+                              // One sentence, since a stringifier's line is one line with its
+                              // whitespace collapsed. Recipient, subject AND the body --
+                              // consenting to a message you have not read is not consent. The
+                              // body is trimmed rather than omitted.
                               .action(
                                   input ->
-                                      "Send an email to %s%n    subject: %s%n    body: %s"
+                                      "Send an email to %s, subject \"%s\", body: %s"
                                           .formatted(
                                               input.to(),
                                               input.subject(),

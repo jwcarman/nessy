@@ -185,7 +185,7 @@ a different way.
 
 A stringifier that throws or returns null never fails a turn. A result line
 that cannot be made is the empty string. An action line that cannot be made
-is the tool's name:
+is the tool's name, alone or followed by a note of why:
 
 | What happens | The action line is |
 |---|---|

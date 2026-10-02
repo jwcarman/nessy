@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.chapter;
 
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.Stringifier;
 import org.jwcarman.nessy.api.block.Block;
@@ -33,12 +34,27 @@ import org.jwcarman.nessy.api.turn.TurnResult;
  * <p>A call is one line, {@code assistant did: <action> -- <how it ended>}, written from the lines
  * recorded when it was made and when it finished. The call's raw arguments and its raw result are
  * never shown.
+ *
+ * <p><b>A refused turn is the one line {@code (a message was withdrawn)}</b>, in place of the whole
+ * turn: its input, and anything it did before it was refused, are not written. Every inference
+ * adapter withholds a refused turn from later requests, because sending it again can get the new
+ * request refused; the transcript is one text message, so it is withheld here.
+ *
+ * <p><b>Nothing said can pass for one of the engine's own lines.</b> Every line of what the user or
+ * the assistant said after the first is indented four spaces (a blank line stays empty), so the
+ * only lines that begin at the left margin are the ones written here: {@code user: }, {@code
+ * assistant: }, {@code assistant did: } and the parenthesised notes.
  */
 public final class Transcripts {
 
   /** A failure's message or a denial's reason: one line, both ends kept, cut like a result line. */
   private static final Stringifier<String> ONE_LINE =
       Stringifier.<String>byToString().dropMiddle(ToolConfig.DEFAULT_LINE_LIMIT);
+
+  /** What a refused turn is written as, whole: none of what it held is shown. */
+  private static final String WITHDRAWN = "(a message was withdrawn)";
+
+  private static final Pattern LINE_BREAK = Pattern.compile("\\r\\n|\\n|\\r");
 
   private Transcripts() {}
 
@@ -49,11 +65,15 @@ public final class Transcripts {
   public static String render(List<Turn> turns) {
     StringBuilder out = new StringBuilder();
     for (Turn turn : turns) {
-      out.append("user: ").append(text(turn.input().blocks())).append('\n');
+      if (turn.result() instanceof TurnResult.Refused) {
+        out.append(WITHDRAWN).append('\n');
+        continue;
+      }
+      out.append("user: ").append(said(text(turn.input().blocks()))).append('\n');
       for (Exchange exchange : turn.exchanges()) {
         String said = text(exchange.request());
         if (!said.isBlank()) {
-          out.append("assistant: ").append(said).append('\n');
+          out.append("assistant: ").append(said(said)).append('\n');
         }
         for (Block.ToolCall call : exchange.calls()) {
           out.append("assistant did: ")
@@ -65,12 +85,31 @@ public final class Transcripts {
       }
       switch (turn.result()) {
         case TurnResult.Answered(var blocks) ->
-            out.append("assistant: ").append(text(blocks)).append('\n');
+            out.append("assistant: ").append(said(text(blocks))).append('\n');
         case TurnResult.Failed _ -> out.append("(the assistant could not answer)\n");
-        case TurnResult.Refused _ -> out.append("(the assistant declined to answer)\n");
+        case TurnResult.Refused _ -> {
+          // Written whole, above, and never reaches here.
+        }
         case null -> {
           // Still under way; never summarised.
         }
+      }
+    }
+    return out.toString();
+  }
+
+  /**
+   * What somebody said, with every line after the first indented four spaces, so that nothing said
+   * can begin at the left margin. A blank line stays empty. Lines end at {@code \n}, {@code \r\n}
+   * or {@code \r}.
+   */
+  private static String said(String text) {
+    String[] lines = LINE_BREAK.split(text, -1);
+    StringBuilder out = new StringBuilder(lines[0]);
+    for (int i = 1; i < lines.length; i++) {
+      out.append('\n');
+      if (!lines[i].isEmpty()) {
+        out.append("    ").append(lines[i]);
       }
     }
     return out.toString();

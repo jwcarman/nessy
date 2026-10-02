@@ -47,6 +47,11 @@ import org.jwcarman.nessy.inference.Toolset;
  * claude-sonnet-4-5, five empty replies of five for a chapter with tool calls. Written out as
  * lines, a call is something the model reads rather than something it is expected to continue.
  *
+ * <p><b>A refused turn is the one line {@code (a message was withdrawn)}</b>, and its input is not
+ * in the message. <b>Nothing said in the chapter can pass for one of the engine's lines:</b> every
+ * line of what the user or the assistant said after the first is indented four spaces, so only the
+ * engine's own lines begin at the left margin.
+ *
  * <p><b>It returns what the model wrote, blank included.</b> Judging whether that is good enough
  * belongs to the caller, which treats blank as a failure. What it does refuse to return is a record
  * the model never wrote: a chapter with no turns, or a call that came back as anything but an
