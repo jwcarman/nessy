@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine.harness.queued;
 
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -184,9 +185,6 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     customizer.customize(config);
 
     Tools tools = config.tools();
-    // Everyone who hears this harness's agents: the engine's listeners, then its own.
-    Listeners narrator = new Listeners(listeners, config.listeners());
-    tellers.add(narrator);
     // Built here because it needs the store, which a caller has no handle on.
     DefaultQueuedHarnessConfig.Inference inference = config.inference();
     DefaultQueuedHarnessConfig.Inference.Context context = inference.context();
@@ -198,6 +196,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     InferenceOptions options = inference.options();
     InferenceProvider provider = providers.resolve(agentType, providerId);
     validate(agentType, provider, options);
+    context.chapters().requireTail(agentType, context.maxTail());
     if (log.isInfoEnabled()) {
       log.info(
           "NESSY INFERENCE: agent type '{}' -> {} / {}, up to {} tokens{}",
@@ -222,14 +221,28 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     // Observed as they are handed over, the way a tool is wrapped as it is bound: what the
     // engine is given reports its own work, and the assembler knows nothing about spans.
     Payloads payloads = backend.payloads();
+    TurnHistories histories = ObservedTurnHistories.wrap(histories(), observations);
+    // Everyone who hears this harness's agents: the engine's listeners, then its own, which
+    // include the keeper that cuts and summarises this agent type's history when a turn ends.
+    List<NarrationListener> own = new ArrayList<>(config.listeners());
+    context
+        .chapters()
+        .keeper(
+            agentType,
+            backend.chapters(),
+            backend.leases(),
+            histories,
+            provider,
+            options,
+            observations)
+        .ifPresent(keeper -> own.add(keeper.listener()));
+    Listeners narrator = new Listeners(listeners, own);
+    tellers.add(narrator);
     InferenceContextAssembler assembler =
         ObservedInferenceContextAssembler.wrap(
             new ContextAssembler(
-                ObservedTurnHistories.wrap(
-                    (type, id) ->
-                        new EventStreamHistory(
-                            backend.events(), new Transcript(payloads.forAgent(id)), type, id),
-                    observations),
+                histories,
+                context.chapters().on() ? backend.chapters() : null,
                 context.maxTail(),
                 context.ambient().stream()
                     .map(source -> ObservedAmbientSource.wrap(source, observations))

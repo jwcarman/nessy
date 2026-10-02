@@ -79,4 +79,16 @@ public interface HarnessConfig<SELF extends HarnessConfig<SELF>> {
    * true when a turn began.
    */
   SELF ambient(AmbientSource source);
+
+  /**
+   * Where this agent's history is cut into chapters. Defaults to {@link ChapterPolicy#every(int)}
+   * at twenty.
+   */
+  SELF chapterPolicy(ChapterPolicy policy);
+
+  /**
+   * What writes the text that stands in for a closed chapter. Defaults to a prose summary written
+   * by this agent's own model.
+   */
+  SELF summarizer(Summarizer summarizer);
 }

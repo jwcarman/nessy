@@ -37,6 +37,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Replies;
+import org.jwcarman.nessy.backend.chapter.Chapters;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.jdbc.JdbcAgentEvents;
@@ -86,6 +87,7 @@ public final class EngineFixture implements AutoCloseable {
   private final TurnHistories history;
   private final AgentEvents events;
   private final Payloads payloads;
+  private final Chapters chapters;
   private final JdbcClient jdbc;
 
   public EngineFixture(InferenceProvider provider, NarrationListener listener) {
@@ -143,13 +145,14 @@ public final class EngineFixture implements AutoCloseable {
         (type, id) ->
             new EventStreamHistory(events, new Transcript(payloads.forAgent(id)), type, id);
 
+    JdbcQueuedBackend backend =
+        new JdbcQueuedBackend(dataSource, new JdbcTransactionManager(dataSource), codecs);
+    this.chapters = backend.chapters();
     this.harnesses =
         DefaultQueuedHarnessFactory.of(
             engine -> {
               engine
-                  .backend(
-                      new JdbcQueuedBackend(
-                          dataSource, new JdbcTransactionManager(dataSource), codecs))
+                  .backend(backend)
                   .provider(ProviderId.of("test"), provider)
                   .inference(ProviderId.of("test"), InferenceOptions.of("a-model"))
                   .listener(listener)
@@ -173,6 +176,11 @@ public final class EngineFixture implements AutoCloseable {
   /** The events themselves, for a test asserting on the story rather than on the turns. */
   public AgentEvents events() {
     return events;
+  }
+
+  /** The closed chapters and their summaries, from the backend the harnesses write them to. */
+  public Chapters chapters() {
+    return chapters;
   }
 
   public Payloads payloads() {

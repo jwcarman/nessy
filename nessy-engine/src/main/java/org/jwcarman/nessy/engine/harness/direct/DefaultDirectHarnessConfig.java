@@ -27,6 +27,7 @@ import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
+import org.jwcarman.nessy.api.ChapterPolicy;
 import org.jwcarman.nessy.api.ContextConfig;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
@@ -35,6 +36,7 @@ import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.TurnPolicy;
@@ -44,6 +46,7 @@ import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.ApproverConfig;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
+import org.jwcarman.nessy.engine.chapter.ChapterSettings;
 import org.jwcarman.nessy.engine.observability.ObservedApprover;
 import org.jwcarman.nessy.engine.observability.ObservedTool;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
@@ -127,6 +130,16 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
   @Override
   public DirectHarnessConfig<I> ambient(AmbientSource source) {
     return inference(in -> in.context(ctx -> ctx.ambient(source)));
+  }
+
+  @Override
+  public DirectHarnessConfig<I> chapterPolicy(ChapterPolicy policy) {
+    return inference(in -> in.context(ctx -> ctx.chapterPolicy(policy)));
+  }
+
+  @Override
+  public DirectHarnessConfig<I> summarizer(Summarizer summarizer) {
+    return inference(in -> in.context(ctx -> ctx.summarizer(summarizer)));
   }
 
   @Override
@@ -295,6 +308,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     private int maxTokens = 4096;
     private final Map<String, String> properties = new LinkedHashMap<>();
     private int maxTail = 40;
+    private final ChapterSettings chapters = new ChapterSettings();
     private final List<AmbientSource> ambient = new ArrayList<>();
     private Duration timeout = DEFAULT_INFERENCE_TIMEOUT;
     private RetryPolicy retryPolicy = DEFAULT_RETRY_POLICY;
@@ -374,6 +388,40 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
     public ContextConfig ambient(AmbientSource source) {
       ambient.add(source);
       return this;
+    }
+
+    @Override
+    public ContextConfig chapterPolicy(ChapterPolicy policy) {
+      this.chapters.policy(policy);
+      return this;
+    }
+
+    @Override
+    public ContextConfig summarizer(Summarizer summarizer) {
+      this.chapters.summarizer(summarizer);
+      return this;
+    }
+
+    @Override
+    public ContextConfig maxChapterLength(int turns) {
+      this.chapters.maxLength(turns);
+      return this;
+    }
+
+    @Override
+    public ContextConfig chapterLeaseTtl(Duration ttl) {
+      this.chapters.leaseTtl(ttl);
+      return this;
+    }
+
+    @Override
+    public ContextConfig withoutChapters() {
+      this.chapters.off();
+      return this;
+    }
+
+    ChapterSettings chapters() {
+      return chapters;
     }
 
     String modelName() {

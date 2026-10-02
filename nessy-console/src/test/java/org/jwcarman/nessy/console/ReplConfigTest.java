@@ -30,12 +30,14 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.ChapterPolicy;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.InferenceConfig;
 import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPromptSource;
 import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.api.tool.ActionRenderer;
@@ -202,6 +204,16 @@ class ReplConfigTest {
 
       @Override
       public DirectHarnessConfig<String> ambient(AmbientSource source) {
+        return this;
+      }
+
+      @Override
+      public DirectHarnessConfig<String> chapterPolicy(ChapterPolicy policy) {
+        return this;
+      }
+
+      @Override
+      public DirectHarnessConfig<String> summarizer(Summarizer summarizer) {
         return this;
       }
 

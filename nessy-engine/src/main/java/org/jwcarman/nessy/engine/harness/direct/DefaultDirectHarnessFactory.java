@@ -20,6 +20,7 @@ import io.micrometer.context.ContextExecutorService;
 import io.micrometer.context.ContextSnapshotFactory;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -58,6 +59,7 @@ import org.jwcarman.nessy.engine.narration.Listeners;
 import org.jwcarman.nessy.engine.observability.ObservedAmbientSource;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceContextAssembler;
 import org.jwcarman.nessy.engine.observability.ObservedTurnHistories;
+import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
@@ -267,19 +269,31 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
             DefaultDirectHarnessConfig.DEFAULT_RETRY_POLICY,
             inference.timeout(),
             inference.retryPolicy());
-    Listeners narrator = new Listeners(listeners, config.listeners());
+    inference.chapters().requireTail(agentType, inference.maxTail());
     Payloads payloads = backend.payloads();
+    TurnHistories histories = ObservedTurnHistories.wrap(histories(payloads), observations);
+    // The keeper hears this harness's turns end alongside whoever else the harness named.
+    List<NarrationListener> own = new ArrayList<>(config.listeners());
+    inference
+        .chapters()
+        .keeper(
+            agentType,
+            backend.chapters(),
+            backend.leases(),
+            histories,
+            provider,
+            options,
+            observations)
+        .ifPresent(keeper -> own.add(keeper.listener()));
+    Listeners narrator = new Listeners(listeners, own);
     // Observed as they are handed over, the way a tool is wrapped as it is bound (§4g): what the
     // engine is given reports its own work, and the assembler knows nothing about spans. The same
     // recipe the queued factory uses, so a second implementation of it does not drift.
     InferenceContextAssembler assembler =
         ObservedInferenceContextAssembler.wrap(
             new ContextAssembler(
-                ObservedTurnHistories.wrap(
-                    (type, id) ->
-                        new EventStreamHistory(
-                            backend.events(), new Transcript(payloads.forAgent(id)), type, id),
-                    observations),
+                histories,
+                inference.chapters().on() ? backend.chapters() : null,
                 inference.maxTail(),
                 inference.ambient().stream()
                     .map(source -> ObservedAmbientSource.wrap(source, observations))
@@ -320,6 +334,20 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
         config.maxInFlight(),
         observations,
         config.turnPolicy());
+  }
+
+  /**
+   * The story, for reading. An application that shows what its agents said reads it through this
+   * rather than opening the stores itself, so what it reads is what the engine wrote, decoded the
+   * way the engine decodes it.
+   */
+  public TurnHistories histories() {
+    return histories(backend.payloads());
+  }
+
+  private TurnHistories histories(Payloads payloads) {
+    return (type, id) ->
+        new EventStreamHistory(backend.events(), new Transcript(payloads.forAgent(id)), type, id);
   }
 
   /**

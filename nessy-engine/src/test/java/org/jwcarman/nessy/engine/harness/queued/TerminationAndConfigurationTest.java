@@ -179,7 +179,7 @@ class TerminationAndConfigurationTest {
                                     .maxTokens(64)
                                     .timeout(Duration.ofSeconds(30))
                                     .retryPolicy(new RetryPolicy.Never())
-                                    .context(ctx -> ctx.maxTail(5)))
+                                    .context(ctx -> ctx.withoutChapters().maxTail(5)))
                         .effects(e -> e.pollInterval(Duration.ofMillis(100)).maxInFlight(2))
                         .tool(
                             new PingTool(),

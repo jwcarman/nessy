@@ -1402,7 +1402,19 @@ class DefaultDirectHarnessTest {
   }
 
   private DirectHarness<String, String> harnessKeeping(Scripted model, int maxTail) {
-    return harness(model, List.of(), Approver.allow(), new InMemoryLocks(), maxTail, List.of());
+    // A tail this short is only allowed where nothing is cut into chapters: a chapter could
+    // otherwise be longer than the tail.
+    return factoryFor(model, new InMemoryLocks())
+        .<String>create(
+            TYPE,
+            c ->
+                c.systemPrompt("You are terse.")
+                    .inputRenderer(said -> List.of(new Block.Text(said)))
+                    .inference(
+                        in ->
+                            in.provider("test")
+                                .model("a-model")
+                                .context(ctx -> ctx.withoutChapters().maxTail(maxTail))));
   }
 
   @Test
@@ -1828,7 +1840,12 @@ class DefaultDirectHarnessTest {
       Judging model = new Judging();
 
       factory(model, InferenceOptions.of("a-model"))
-          .<String>create(TYPE, agentType(in -> in.property("openai.seed", "7")));
+          .<String>create(
+              TYPE,
+              // Without chapters, whose default summariser validates the same terms again when it
+              // is built; this counts the factory's own check.
+              agentType(
+                  in -> in.property("openai.seed", "7").context(ctx -> ctx.withoutChapters())));
 
       assertThat(model.validated)
           .singleElement()

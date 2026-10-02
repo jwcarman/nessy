@@ -85,6 +85,31 @@ class ValueValidationTest {
           }
 
           @Override
+          public ContextConfig chapterPolicy(ChapterPolicy policy) {
+            return this;
+          }
+
+          @Override
+          public ContextConfig summarizer(Summarizer summarizer) {
+            return this;
+          }
+
+          @Override
+          public ContextConfig maxChapterLength(int turns) {
+            return this;
+          }
+
+          @Override
+          public ContextConfig chapterLeaseTtl(Duration ttl) {
+            return this;
+          }
+
+          @Override
+          public ContextConfig withoutChapters() {
+            return this;
+          }
+
+          @Override
           public ContextConfig ambient(AmbientSource source) {
             added.add(source);
             return this;

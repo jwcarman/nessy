@@ -32,9 +32,12 @@ import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.turn.Chapter;
 import org.jwcarman.nessy.api.turn.Input;
+import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
+import org.jwcarman.nessy.backend.inmemory.InMemoryChapters;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.store.TurnHistory;
 import org.jwcarman.nessy.inference.InferenceContext;
@@ -170,6 +173,97 @@ class ContextAssemblerTest {
 
       assertThat(context.turns()).isEmpty();
     }
+  }
+
+  /** Chapters closed over turns 1..10 and 11..20, with summaries as given. */
+  private static InMemoryChapters closed(int summarised) {
+    InMemoryChapters chapters = new InMemoryChapters();
+    Chapter first = new Chapter(TYPE, AGENT, new TurnId(1), new TurnId(10));
+    Chapter second = new Chapter(TYPE, AGENT, new TurnId(11), new TurnId(20));
+    chapters.append(TYPE, AGENT, Optional.empty(), List.of(first, second));
+    if (summarised >= 1) {
+      chapters.summarize(new Summary(first, "the first ten"));
+    }
+    if (summarised >= 2) {
+      chapters.summarize(new Summary(second, "the second ten"));
+    }
+    return chapters;
+  }
+
+  @Nested
+  class With_chapters {
+
+    @Test
+    void the_summaries_come_first_and_the_tail_begins_after_the_last_of_them() {
+      RecordingHistories histories = new RecordingHistories(turns(1, 25));
+
+      InferenceContext context =
+          new ContextAssembler(histories, closed(2), 40, List.of()).assemble(invocation());
+
+      assertThat(context.summaries())
+          .extracting(Summary::text)
+          .containsExactly("the first ten", "the second ten");
+      assertThat(ids(context.turns())).containsExactly(21L, 22L, 23L, 24L, 25L);
+      assertThat(histories.tailsAfter).containsExactly(20L);
+    }
+
+    @Test
+    void an_unwritten_summary_leaves_its_turns_in_the_tail() {
+      RecordingHistories histories = new RecordingHistories(turns(1, 25));
+
+      InferenceContext context =
+          new ContextAssembler(histories, closed(1), 40, List.of()).assemble(invocation());
+
+      assertThat(context.summaries()).extracting(Summary::text).containsExactly("the first ten");
+      assertThat(ids(context.turns())).hasSize(15).startsWith(11L).endsWith(25L);
+    }
+
+    @Test
+    void the_tail_after_a_summary_is_capped() {
+      RecordingHistories histories = new RecordingHistories(turns(1, 30));
+
+      InferenceContext context =
+          new ContextAssembler(histories, closed(2), 3, List.of()).assemble(invocation());
+
+      assertThat(ids(context.turns())).containsExactly(28L, 29L, 30L);
+      assertThat(histories.tailCaps).containsExactly(3);
+    }
+
+    @Test
+    void with_no_summary_the_tail_is_the_last_maxTail_turns() {
+      RecordingHistories histories = new RecordingHistories(turns(1, 30));
+
+      InferenceContext context =
+          new ContextAssembler(histories, new InMemoryChapters(), 5, List.of())
+              .assemble(invocation());
+
+      assertThat(context.summaries()).isEmpty();
+      assertThat(ids(context.turns())).containsExactly(26L, 27L, 28L, 29L, 30L);
+    }
+
+    @Test
+    void a_summary_that_reaches_the_turn_being_answered_is_refused() {
+      RecordingHistories histories = new RecordingHistories(turns(1, 20));
+      ContextAssembler assembler = new ContextAssembler(histories, closed(2), 40, List.of());
+      InferenceInvocation invocation = invocation();
+
+      assertThatThrownBy(() -> assembler.assemble(invocation))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage(
+              "a summary reaches the turn being answered: nothing is left after turn "
+                  + new TurnId(20));
+    }
+  }
+
+  @Test
+  void without_chapters_the_stored_summaries_are_not_read_and_the_story_is_cut_at_the_cap() {
+    RecordingHistories histories = new RecordingHistories(turns(1, 30));
+    ContextAssembler assembler = new ContextAssembler(histories, null, 5, List.of());
+
+    InferenceContext context = assembler.assemble(invocation());
+
+    assertThat(context.summaries()).isEmpty();
+    assertThat(ids(context.turns())).containsExactly(26L, 27L, 28L, 29L, 30L);
   }
 
   @Test
