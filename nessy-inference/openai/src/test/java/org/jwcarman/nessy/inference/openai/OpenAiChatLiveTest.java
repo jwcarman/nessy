@@ -514,8 +514,9 @@ class OpenAiChatLiveTest {
   // ---- a reply cut off at the output limit ----------------------------------------------
 
   private static final String LISTING =
-      "Write the numbers 1 to 2000, one per line, each followed by a colon and its square,"
-          + " for example '12: 144'. Output only those lines.";
+      "Write the numbers 1 to 500, one per line, each followed by a colon and its square, for"
+          + " example '12: 144'. Write every line yourself, starting now: no program, no"
+          + " explanation, nothing but those lines.";
 
   private static final String NOTE_REQUEST =
       "Call save_note once, now. Its text must be the numbers 1 to 2000, one per line, each"
