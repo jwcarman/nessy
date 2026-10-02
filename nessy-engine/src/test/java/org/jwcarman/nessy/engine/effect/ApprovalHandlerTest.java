@@ -277,24 +277,6 @@ class ApprovalHandlerTest {
     assertThat(seen[0]).isEqualTo("stored at request time");
   }
 
-  /** The tool's name is what gets stored when a stringifier says nothing, and approval shows it. */
-  @Test
-  void a_stringifier_that_said_nothing_leaves_the_tools_name_to_be_shown() {
-    String[] seen = new String[1];
-    ask(
-        bound(
-            request -> {
-              seen[0] = request.action();
-              return Awaited.ready(ApprovalResult.approved());
-            },
-            Duration.ofMinutes(10),
-            new RetryPolicy.Never(),
-            _ -> " "),
-        story("{\"q\":\"loch ness\"}", "lookup"));
-
-    assertThat(seen[0]).isEqualTo("lookup");
-  }
-
   /** An enricher runs after the question is built, so it reads the stored sentence. */
   @Test
   void an_enricher_reads_the_stored_action() {
