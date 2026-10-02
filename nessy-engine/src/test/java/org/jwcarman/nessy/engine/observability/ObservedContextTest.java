@@ -25,9 +25,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Memory;
 import org.jwcarman.nessy.api.MemorySource;
@@ -37,6 +39,8 @@ import org.jwcarman.nessy.api.StateSource;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Turn;
+import org.jwcarman.nessy.engine.inference.InferenceContextAssembler;
+import org.jwcarman.nessy.engine.inference.InferenceInvocation;
 import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
 
@@ -146,6 +150,71 @@ class ObservedContextTest {
 
     assertThat(only().getContextualName()).isEqualTo("nessy.context");
     assertThat(only().getLowCardinalityKeyValue(Identity.AGENT_NAME).getValue()).isEqualTo("chat");
+  }
+
+  private static InferenceInvocation invocationFor(AgentId agent) {
+    return new InferenceInvocation(TYPE, agent, InferenceOptions.of("a-model"));
+  }
+
+  private String lastChange() {
+    return stopped
+        .getLast()
+        .getLowCardinalityKeyValue(ObservedInferenceContextAssembler.CHANGED)
+        .getValue();
+  }
+
+  /** What a provider's cache can keep depends on the earliest thing that moved between calls. */
+  @Test
+  void the_first_call_for_an_agent_reports_first_call() {
+    InferenceContextAssembler assembler =
+        ObservedInferenceContextAssembler.wrap(
+            _ -> InferenceContext.of(List.of(StoryOfOne.TURN)), registry);
+
+    assembler.assemble(invocationFor(AGENT));
+
+    assertThat(lastChange()).isEqualTo("first-call");
+  }
+
+  @Test
+  void a_second_identical_call_reports_none() {
+    InferenceContextAssembler assembler =
+        ObservedInferenceContextAssembler.wrap(
+            _ -> InferenceContext.of(List.of(StoryOfOne.TURN)), registry);
+
+    assembler.assemble(invocationFor(AGENT));
+    assembler.assemble(invocationFor(AGENT));
+
+    assertThat(stopped).hasSize(2);
+    assertThat(lastChange()).isEqualTo("none");
+  }
+
+  @Test
+  void a_changed_ambient_on_the_second_call_reports_ambient() {
+    AtomicReference<String> clock = new AtomicReference<>("noon");
+    InferenceContextAssembler assembler =
+        ObservedInferenceContextAssembler.wrap(
+            _ ->
+                new InferenceContext(
+                    List.of(StoryOfOne.TURN), List.of(Ambient.text("clock", clock.get()))),
+            registry);
+
+    assembler.assemble(invocationFor(AGENT));
+    clock.set("one");
+    assembler.assemble(invocationFor(AGENT));
+
+    assertThat(lastChange()).isEqualTo("ambient");
+  }
+
+  @Test
+  void two_agents_do_not_affect_each_other() {
+    InferenceContextAssembler assembler =
+        ObservedInferenceContextAssembler.wrap(
+            _ -> InferenceContext.of(List.of(StoryOfOne.TURN)), registry);
+
+    assembler.assemble(invocationFor(AGENT));
+    assembler.assemble(invocationFor(new AgentId(UUID.randomUUID())));
+
+    assertThat(lastChange()).isEqualTo("first-call");
   }
 
   /** Reading the tail says how much of the story came back, which grows with the conversation. */
