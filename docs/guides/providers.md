@@ -139,15 +139,18 @@ What the cut-off result is depends on what the reply held when it stopped:
 - **Text.** The result is `Truncated`.
 - **A tool call.** The result is a `Fault` with a `Permanent` failure, never
   `Actions`. A call cut off inside its arguments is not trusted. Measured on
-  2026-10-02, Anthropic returns such a call with empty arguments (`{}`),
-  which parses and would run.
-- **Nothing but reasoning.** The result is the empty-answer `Fault` it always
-  was, naming the stop reason. There is no text to keep.
+  2026-10-02, the non-streamed Anthropic Messages API returns such a call
+  with `input: {}`. On the streamed API, which the adapter uses, the
+  arguments arrive as a JSON fragment and the SDK's `MessageAccumulator`
+  substitutes an empty object when it does not parse. Either way the adapter
+  sees `{}`, which parses and would run.
+- **Nothing but reasoning.** The result is the empty-answer `Fault`, naming
+  the stop reason. There is no text to keep.
 
 On the OpenAI chat wire only a reported `length` is trusted. Compatible
 servers report the finish reason inconsistently, so an absent one, `stop`
-for a reply that was cut, or any reason the adapter does not know reads
-exactly as it did before: a reply with text is an `Answer`.
+for a reply that was cut, or any reason the adapter does not know is read as if the reply were whole: a reply with
+text is an `Answer`, and tool calls are `Actions`.
 
 ### What the engine does with one
 
@@ -162,6 +165,12 @@ the keeper stops that pass. It tries again when a later turn ends, and the
 chapters behind it wait. An agent type's `maxTokens` therefore has to leave
 room for a chapter's summary: one that never fits is attempted, and cut off
 again, at every turn's end.
+
+While a chapter's summary does not fit, that chapter and every chapter after
+it stay unsummarised. The context holds only the newest `maxTail` completed
+turns after the last written summary, so once more than `maxTail` turns have
+completed since then, the oldest of them are sent neither as a summary nor in
+the tail.
 
 ## Naming providers
 

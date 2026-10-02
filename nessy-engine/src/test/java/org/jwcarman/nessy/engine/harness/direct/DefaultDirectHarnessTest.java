@@ -1635,6 +1635,38 @@ class DefaultDirectHarnessTest {
   }
 
   @Nested
+  @DisplayName("A reply the model was cut off in the middle of")
+  class ATruncatedReply {
+
+    private static InferenceResult cutOffSaying(String text) {
+      return new InferenceResult.Truncated(List.of(new Block.Text(text)), Usage.unreported());
+    }
+
+    @Test
+    void an_unstructured_answer_cut_off_is_delivered_as_the_answer() {
+      DirectHarness<String, String> harness =
+          harness((request, narrator) -> cutOffSaying("the lake is deep and"));
+
+      Outcome<String> outcome = harness.ask(AgentId.random(), "how deep?");
+
+      assertThat(outcome)
+          .usingRecursiveComparison()
+          .ignoringFields("stats")
+          .isEqualTo(new Outcome.Answered<>("the lake is deep and", ANY_STATS));
+    }
+
+    @Test
+    void a_structured_answer_cut_off_fails_because_it_does_not_parse() {
+      DirectHarness<String, Lookup> harness =
+          shapedHarness((request, narrator) -> cutOffSaying("{\"id\": \"4"), Lookup.class);
+
+      Outcome<Lookup> outcome = harness.ask(AgentId.random(), "which one?");
+
+      assertThat(outcome).isInstanceOf(Outcome.Failed.class);
+    }
+  }
+
+  @Nested
   @DisplayName("A factory holds its providers by name, and an agent type says which")
   class AFactoryHoldsItsProvidersByName {
 

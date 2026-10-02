@@ -635,6 +635,28 @@ class AnthropicInferenceProviderTest {
                               assertThat(permanent.reason())
                                   .contains("cut off")
                                   .contains("tool call")));
+      // The call was made and billed, so the fault says what it cost.
+      assertThat(result.usage().counted()).isTrue();
+      assertThat(result.usage().model()).isEqualTo("claude-sonnet");
+    }
+
+    @Test
+    void thinking_before_text_cut_off_is_carried_into_the_truncated_reply() {
+      InferenceResult result =
+          inferAnswering(
+              reply()
+                  .stopReason(StopReason.MAX_TOKENS)
+                  .addContent(
+                      ThinkingBlock.builder().thinking("let me think").signature("sig").build())
+                  .addContent(text("The loch is"))
+                  .build());
+
+      assertThat(result).isInstanceOf(InferenceResult.Truncated.class);
+      List<Block.AnswerContent> blocks = ((InferenceResult.Truncated) result).blocks();
+      assertThat(blocks).hasSize(2);
+      assertThat(blocks.get(0)).isInstanceOf(Block.Provider.class);
+      assertThat(((Block.Provider) blocks.get(0)).payload()).contains("let me think");
+      assertThat(blocks.get(1)).isEqualTo(new Block.Text("The loch is"));
     }
 
     @Test

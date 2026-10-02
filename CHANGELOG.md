@@ -158,6 +158,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A chapter summary cut off at the output limit is refused.** It used to be
   stored. The chapter stays unsummarised and is tried again when a later turn
   ends, so an agent type's `maxTokens` has to leave room for the summary.
+  While a summary does not fit, that chapter and every chapter after it stay
+  unsummarised, and once more than `maxTail` turns have completed since the
+  last written summary, the oldest of them are sent neither as a summary nor
+  in the tail.
 - **The `openai` preset sends strict function tools**
   (`openai.tools.strict=true` by default). Set
   `nessy.providers.openai.properties.openai.tools.strict: "false"` to turn

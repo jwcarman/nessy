@@ -359,7 +359,9 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
       // The arguments of a call cut off mid-way can still parse, as an empty object, and run.
       return new InferenceResult.Fault(
           new Failure.Permanent(
-              "model reply was cut off inside a tool call (finish_reason=" + finish + ")"));
+              "the reply was cut off at the output limit inside a tool call (finish_reason="
+                  + finish
+                  + ")"));
     }
 
     List<Block> blocks = new ArrayList<>();
@@ -376,8 +378,8 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
       }
       List<Block.AnswerContent> content =
           blocks.stream().map(Block.AnswerContent.class::cast).toList();
-      boolean hasText = content.stream().anyMatch(Block.Text.class::isInstance);
-      if (cutOff && hasText) {
+      // Not asking, so every block is text (see add): a non-empty reply here holds text.
+      if (cutOff) {
         return new InferenceResult.Truncated(content);
       }
       return new InferenceResult.Answer(content);

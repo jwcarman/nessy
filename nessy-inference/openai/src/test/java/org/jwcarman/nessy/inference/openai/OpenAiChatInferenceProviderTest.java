@@ -338,6 +338,22 @@ class OpenAiChatInferenceProviderTest {
           .infer(REQUEST);
     }
 
+    private InferenceResult inferCutOffCounting(ChatCompletionMessage message) {
+      ChatCompletion counted =
+          completionOf(message, ChatCompletion.Choice.FinishReason.LENGTH).toBuilder()
+              .usage(
+                  CompletionUsage.builder()
+                      .promptTokens(3L)
+                      .completionTokens(5L)
+                      .totalTokens(8L)
+                      .build())
+              .build();
+      return new OpenAiChatProviderConfig()
+          .client(fakeClient(params -> counted))
+          .build()
+          .infer(REQUEST);
+    }
+
     private ChatCompletionMessage saying(String text) {
       return ChatCompletionMessage.builder()
           .content(text)
@@ -371,7 +387,7 @@ class OpenAiChatInferenceProviderTest {
     @Test
     void a_tool_call_cut_off_inside_its_arguments_is_a_fault_not_actions() {
       InferenceResult result =
-          inferCutOff(
+          inferCutOffCounting(
               ChatCompletionMessage.builder()
                   .content(Optional.<String>empty())
                   .refusal(Optional.<String>empty())
@@ -396,6 +412,7 @@ class OpenAiChatInferenceProviderTest {
                     .contains("tool call")
                     .contains("finish_reason=length");
               });
+      assertThat(result.usage()).isEqualTo(Usage.of("gpt-4o", 3, 5));
     }
 
     @Test

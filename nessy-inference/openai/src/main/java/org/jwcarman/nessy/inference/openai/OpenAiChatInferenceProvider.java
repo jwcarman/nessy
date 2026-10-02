@@ -354,10 +354,11 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
    *
    * <p>The one thing {@code finish_reason} is trusted for is {@code length}, and only when the
    * server actually reports it: the same inconsistent servers mean nothing by an absent reason, by
-   * {@code stop} where the reply was cut, or by one they made up, so each of those reads exactly as
-   * it did before. Reported, {@code length} says the reply stopped at the output limit, so calls
-   * beside it cannot be trusted (a cut-off call can carry arguments that still parse and would run)
-   * and text without calls is {@link InferenceResult.Truncated}, not an answer.
+   * {@code stop} where the reply was cut, or by one they made up, so each of those is read from the
+   * content: text is an {@link InferenceResult.Answer} and tool calls are {@link
+   * InferenceResult.Actions}. Reported, {@code length} says the reply stopped at the output limit,
+   * so calls beside it cannot be trusted (a cut-off call can carry arguments that parse and would
+   * run) and text without calls is {@link InferenceResult.Truncated}, not an answer.
    */
   private static InferenceResult read(ChatCompletion.Choice choice) {
     ChatCompletionMessage message = choice.message();
@@ -371,7 +372,7 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
     if (cutOff && !calls.isEmpty()) {
       return new InferenceResult.Fault(
           new Failure.Permanent(
-              "the reply was cut off at the output limit in the middle of a tool call"
+              "the reply was cut off at the output limit inside a tool call"
                   + " (finish_reason="
                   + choice.finishReason()
                   + ")"));

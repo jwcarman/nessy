@@ -509,7 +509,17 @@ class GeminiInferenceProviderTest {
                   FunctionCall.builder().id("call_1").name("depth").args(Map.of()).build())
               .build();
 
-      InferenceResult result = infer(reply(new FinishReason("MAX_TOKENS"), call));
+      GenerateContentResponse cut =
+          reply(new FinishReason("MAX_TOKENS"), call).toBuilder()
+              .usageMetadata(
+                  GenerateContentResponseUsageMetadata.builder()
+                      .promptTokenCount(5)
+                      .candidatesTokenCount(7)
+                      .thoughtsTokenCount(2)
+                      .build())
+              .build();
+
+      InferenceResult result = infer(cut);
 
       assertThat(result).isInstanceOf(InferenceResult.Fault.class);
       assertThat(((InferenceResult.Fault) result).failure())
@@ -519,6 +529,7 @@ class GeminiInferenceProviderTest {
           .contains("cut off")
           .contains("tool call")
           .contains("finish_reason=MAX_TOKENS");
+      assertThat(result.usage()).isEqualTo(new Usage("gemini-3.6-flash", 5, 9, null, null, 2));
     }
 
     @Test

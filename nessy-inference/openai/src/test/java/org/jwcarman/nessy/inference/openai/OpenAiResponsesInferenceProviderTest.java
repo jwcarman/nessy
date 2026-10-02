@@ -327,7 +327,12 @@ class OpenAiResponsesInferenceProviderTest {
   class A_reply_cut_off_at_the_output_limit {
 
     private Map<String, Object> cutOff(List<Map<String, Object>> output, String reason) {
-      Map<String, Object> cut = response("incomplete", output, null);
+      return cutOff(output, reason, null);
+    }
+
+    private Map<String, Object> cutOff(
+        List<Map<String, Object>> output, String reason, Map<String, Object> counted) {
+      Map<String, Object> cut = response("incomplete", output, counted);
       cut.put("incomplete_details", fields("reason", reason));
       return cut;
     }
@@ -367,7 +372,10 @@ class OpenAiResponsesInferenceProviderTest {
     void a_tool_call_cut_off_inside_its_arguments_is_a_fault_not_actions() {
       InferenceResult result =
           inferReplying(
-              cutOff(List.of(functionCall("call_1", "lookup", "{}")), "max_output_tokens"));
+              cutOff(
+                  List.of(functionCall("call_1", "lookup", "{}")),
+                  "max_output_tokens",
+                  usage(3, 5)));
 
       assertThat(result)
           .isInstanceOfSatisfying(
@@ -380,6 +388,7 @@ class OpenAiResponsesInferenceProviderTest {
                     .contains("status=incomplete")
                     .contains("reason=max_output_tokens");
               });
+      assertThat(result.usage()).isEqualTo(Usage.of("gpt-4o", 3, 5));
     }
 
     @Test

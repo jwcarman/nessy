@@ -64,10 +64,10 @@ public sealed interface InferenceResult {
    * The model stopped and owes nothing.
    *
    * <p>Carries blocks rather than a message, and never a string. Not a string because content is
-   * wire content: today only text, and the grammar says so -- {@code Block.AnswerContent} permits
-   * {@code Block.Text} alone, and widening that one clause is the whole change when an answer may
-   * carry more. Not a message because where it sits in the story is the fold's to decide, and a
-   * provider adapter has no business knowing a seq.
+   * wire content, and the grammar says which: {@code Block.AnswerContent} permits {@code
+   * Block.Text}, {@code Block.Provider} and {@code Block.Commentary}, and widening that one clause
+   * is the whole change when an answer may carry more. Not a message because where it sits in the
+   * story is the fold's to decide, and a provider adapter has no business knowing a seq.
    */
   record Answer(List<Block.AnswerContent> blocks, Usage usage) implements InferenceResult {
 

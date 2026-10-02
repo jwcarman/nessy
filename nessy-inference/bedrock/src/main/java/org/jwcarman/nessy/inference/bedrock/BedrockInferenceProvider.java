@@ -62,6 +62,7 @@ import software.amazon.awssdk.services.bedrockruntime.model.StopReason;
 import software.amazon.awssdk.services.bedrockruntime.model.ThrottlingException;
 import software.amazon.awssdk.services.bedrockruntime.model.TokenUsage;
 import software.amazon.awssdk.services.bedrockruntime.model.ToolUseBlock;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -174,7 +175,8 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
             new Failure.Permanent("the stream ended before the answer was complete"));
       }
       ConverseResponse response = folded.response();
-      return read(response).withUsage(usageOf(response, request.options().modelName()));
+      return read(response, folded.toolInputUnparsed())
+          .withUsage(usageOf(response, request.options().modelName()));
     } catch (SdkException e) {
       return new InferenceResult.Fault(classify(e));
     }
@@ -228,6 +230,7 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
     private StopReason stop;
     private TokenUsage usage;
     private boolean any;
+    private boolean toolInputUnparsed;
 
     Folded(InferenceNarrator narrator, JsonMapper mapper) {
       this.narrator = narrator;
@@ -292,8 +295,18 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
     private void close(Integer index) {
       Pending pending = open.remove(index);
       if (pending != null) {
+        if (!pending.parses(mapper)) {
+          toolInputUnparsed = true;
+        }
         closed.put(index, pending.block(mapper));
       }
+    }
+
+    /**
+     * Whether any tool call's arguments arrived as text that is not JSON, as a cut-off one does.
+     */
+    boolean toolInputUnparsed() {
+      return toolInputUnparsed;
     }
 
     ConverseResponse response() {
@@ -320,10 +333,26 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
     String signature;
     SdkBytes redacted;
 
+    /** False for a tool call whose arguments are text that does not parse as JSON. */
+    boolean parses(JsonMapper mapper) {
+      if (toolUseId == null || toolInput.isEmpty()) {
+        return true;
+      }
+      try {
+        mapper.readValue(toolInput.toString(), Object.class);
+        return true;
+      } catch (JacksonException _) {
+        return false;
+      }
+    }
+
+    /**
+     * The block this became. A tool call whose arguments do not parse carries no arguments here;
+     * {@link #parses} is what says so, and the reply is never read as a request to run it.
+     */
     ContentBlock block(JsonMapper mapper) {
       if (toolUseId != null) {
-        Object input =
-            toolInput.isEmpty() ? Map.of() : mapper.readValue(toolInput.toString(), Object.class);
+        Object input = parses(mapper) && !toolInput.isEmpty() ? parsed(mapper) : Map.of();
         return ContentBlock.fromToolUse(
             ToolUseBlock.builder()
                 .toolUseId(toolUseId)
@@ -345,6 +374,10 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
       }
       return ContentBlock.fromText(text.toString());
     }
+
+    private Object parsed(JsonMapper mapper) {
+      return mapper.readValue(toolInput.toString(), Object.class);
+    }
   }
 
   /**
@@ -355,13 +388,17 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
    * Otherwise the choice is made on the presence of a tool-use block, as on every wire that can
    * carry one.
    *
+   * <p>A tool call whose arguments did not parse as JSON is never run: cut off at the output limit
+   * that is the cut-off fault below, and for any other stop reason it is a permanent fault of its
+   * own.
+   *
    * <p>A reply the vendor cut off at the output limit ({@code max_tokens}) is never taken for a
    * complete one. Cut off inside a tool call it is a permanent fault, since the call's arguments
-   * cannot be trusted and would parse as {@code {}}. Cut off in prose it is {@link
-   * InferenceResult.Truncated}, carrying what was written; with no text in it, only reasoning, it
-   * is the empty-answer fault.
+   * cannot be trusted; on this wire they arrive as a fragment that does not parse. Cut off in prose
+   * it is {@link InferenceResult.Truncated}, carrying what was written; with no text in it, only
+   * reasoning, it is the empty-answer fault.
    */
-  private InferenceResult read(ConverseResponse response) {
+  private InferenceResult read(ConverseResponse response, boolean toolInputUnparsed) {
     StopReason stop = response.stopReason();
     if (stop == StopReason.GUARDRAIL_INTERVENED || stop == StopReason.CONTENT_FILTERED) {
       return new InferenceResult.Refusal(response.stopReasonAsString());
@@ -369,11 +406,19 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
     List<ContentBlock> content = contentOf(response);
     boolean asking = content.stream().anyMatch(block -> block.toolUse() != null);
     boolean cutOff = stop == StopReason.MAX_TOKENS;
-    if (cutOff && asking) {
+    if (cutOff && (asking || toolInputUnparsed)) {
       return new InferenceResult.Fault(
           new Failure.Permanent(
               "the reply was cut off at the output limit inside a tool call"
                   + " (stop_reason="
+                  + response.stopReasonAsString()
+                  + ")"));
+    }
+
+    if (toolInputUnparsed) {
+      return new InferenceResult.Fault(
+          new Failure.Permanent(
+              "a tool call's arguments did not parse as JSON (stop_reason="
                   + response.stopReasonAsString()
                   + ")"));
     }

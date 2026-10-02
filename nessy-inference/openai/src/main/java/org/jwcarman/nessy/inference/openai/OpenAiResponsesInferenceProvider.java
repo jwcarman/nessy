@@ -279,12 +279,10 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
                 .isPresent();
     if (called) {
       if (cutOff) {
-        // A call cut off inside its arguments can still parse (measured: {}) and would run.
+        // A call cut off at the limit cannot be trusted to be complete.
         return new InferenceResult.Fault(
             new Failure.Permanent(
-                "the reply was cut off at the output limit in the middle of a tool call ("
-                    + stopped
-                    + ")"));
+                "the reply was cut off at the output limit inside a tool call (" + stopped + ")"));
       }
       return new InferenceResult.Actions(inOrder);
     }

@@ -466,7 +466,7 @@ class BedrockInferenceProviderTest {
     }
 
     @Test
-    void a_tool_call_cut_off_is_a_fault_and_is_not_run() {
+    void a_complete_tool_call_cut_off_after_its_arguments_is_a_fault_and_is_not_run() {
       ContentBlock use =
           ContentBlock.fromToolUse(
               ToolUseBlock.builder()
@@ -475,13 +475,74 @@ class BedrockInferenceProviderTest {
                   .input(Document.fromMap(Map.of()))
                   .build());
 
-      InferenceResult result =
-          infer(reply(StopReason.MAX_TOKENS, ContentBlock.fromText("looking"), use));
+      ConverseResponse cut =
+          reply(StopReason.MAX_TOKENS, ContentBlock.fromText("looking"), use).toBuilder()
+              .usage(TokenUsage.builder().inputTokens(4).outputTokens(6).totalTokens(10).build())
+              .build();
+
+      InferenceResult result = infer(cut);
 
       assertThat(result).isInstanceOf(InferenceResult.Fault.class);
       Failure failure = ((InferenceResult.Fault) result).failure();
       assertThat(failure).isInstanceOf(Failure.Permanent.class);
       assertThat(failure.reason()).contains("cut off", "tool call", "stop_reason=max_tokens");
+      assertThat(result.usage()).isEqualTo(new Usage("us.amazon.nova-lite", 4, 6, 0, 0, null));
+    }
+
+    @Test
+    void thinking_before_text_cut_off_is_carried_into_the_truncated_reply() {
+      ContentBlock reasoning =
+          ContentBlock.fromReasoningContent(
+              ReasoningContentBlock.fromReasoningText(
+                  ReasoningTextBlock.builder().text("hmm").signature("sig").build()));
+
+      InferenceResult result =
+          infer(reply(StopReason.MAX_TOKENS, reasoning, ContentBlock.fromText("the lake is")));
+
+      assertThat(result).isInstanceOf(InferenceResult.Truncated.class);
+      List<Block.AnswerContent> blocks = ((InferenceResult.Truncated) result).blocks();
+      assertThat(blocks).hasSize(2);
+      assertThat(blocks.get(0)).isInstanceOf(Block.Provider.class);
+      assertThat(((Block.Provider) blocks.get(0)).payload()).contains("\"signature\":\"sig\"");
+      assertThat(blocks.get(1)).isEqualTo(new Block.Text("the lake is"));
+    }
+
+    /** A tool-use block whose input arrives as this JSON text, whole or in part. */
+    private static InferenceResult inferToolInput(String json, StopReason stop) {
+      List<ConverseStreamOutput> events =
+          List.of(
+              MessageStartEvent.builder().role(ConversationRole.ASSISTANT).build(),
+              ContentBlockStartEvent.builder()
+                  .contentBlockIndex(0)
+                  .start(ContentBlockStart.fromToolUse(b -> b.toolUseId("call_1").name("depth")))
+                  .build(),
+              ContentBlockDeltaEvent.builder()
+                  .contentBlockIndex(0)
+                  .delta(ContentBlockDelta.fromToolUse(b -> b.input(json)))
+                  .build(),
+              ContentBlockStopEvent.builder().contentBlockIndex(0).build(),
+              MessageStopEvent.builder().stopReason(stop).build());
+      return new BedrockInferenceProvider(new ScriptedEvents(events), MAPPER).infer(request());
+    }
+
+    @Test
+    void a_tool_call_cut_off_mid_arguments_is_a_fault_and_is_not_run() {
+      InferenceResult result = inferToolInput("{\"key\": \"K0", StopReason.MAX_TOKENS);
+
+      assertThat(result).isInstanceOf(InferenceResult.Fault.class);
+      Failure failure = ((InferenceResult.Fault) result).failure();
+      assertThat(failure).isInstanceOf(Failure.Permanent.class);
+      assertThat(failure.reason()).contains("cut off", "tool call", "stop_reason=max_tokens");
+    }
+
+    @Test
+    void tool_arguments_that_do_not_parse_are_a_fault_whatever_stopped_the_reply() {
+      InferenceResult result = inferToolInput("{\"key\": \"K0", StopReason.TOOL_USE);
+
+      assertThat(result).isInstanceOf(InferenceResult.Fault.class);
+      Failure failure = ((InferenceResult.Fault) result).failure();
+      assertThat(failure).isInstanceOf(Failure.Permanent.class);
+      assertThat(failure.reason()).contains("did not parse", "stop_reason=tool_use");
     }
 
     @Test

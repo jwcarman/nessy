@@ -324,8 +324,11 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
    * not have to.
    *
    * <p>A reply the vendor cut off at the output limit ({@code max_tokens}) is read by what it was
-   * doing when it stopped. Inside a tool call it is a fault, because the vendor closes the call
-   * with empty arguments that parse and would run. With prose written it is {@code Truncated}. With
+   * doing when it stopped. Inside a tool call it is a fault, because its arguments cannot be
+   * trusted: measured on 2026-10-02, the non-streamed API returns such a call with {@code input:
+   * {}}, and on the streamed API, which this adapter uses, they arrive as a fragment that the SDK's
+   * accumulator replaces with an empty object when it does not parse. Either way the adapter sees
+   * {@code {}}, which parses and would run. With prose written it is {@code Truncated}. With
    * nothing but reasoning it is the empty answer.
    *
    * <p>Otherwise the choice is made on the presence of a tool-use block. Reasoning and prose are
@@ -341,7 +344,8 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
     boolean cutOff = message.stopReason().filter(StopReason.MAX_TOKENS::equals).isPresent();
     boolean asking = message.content().stream().anyMatch(ContentBlock::isToolUse);
     if (cutOff && asking) {
-      // The vendor closes a call it was writing with empty arguments, which parse and would run.
+      // The streamed arguments of a cut-off call are a fragment; the SDK's accumulator turns that
+      // into {}, which parses and would run.
       return new InferenceResult.Fault(
           new Failure.Permanent(
               "the reply was cut off at the output limit inside a tool call"
