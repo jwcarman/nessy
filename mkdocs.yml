@@ -91,6 +91,7 @@ nav:
       - Events: concepts/events.md
       - Storage: concepts/storage.md
       - Leases: concepts/leases.md
+      - 12-Factor Agents: concepts/twelve-factor-agents.md
   - Guides:
       - Getting Started: guides/getting-started.md
       - Harness: guides/harness.md

@@ -183,4 +183,9 @@ See [Authorization](concepts/authorization.md).
     The tables, the codec seam, and how to apply the schema to your own
     database.
 
+- **[12-Factor Agents](concepts/twelve-factor-agents.md)**
+
+    A factor-by-factor check of Nessy against the 12-Factor Agents
+    principles: what it meets, what it does in part, and what it does not.
+
 </div>
