@@ -27,8 +27,8 @@ import tools.jackson.databind.node.ObjectNode;
  * says <em>document</em> and does not leave this package.
  *
  * <p>Named for what it DOES rather than what it produces — the document is the noun, this renders
- * one — matching {@code ActionRenderer}, which renders the sentence a person consents to. One
- * request, two audiences: a person reads the action, a policy engine reads this.
+ * one — matching the action stringifier on a tool's binding, which renders the sentence a person
+ * consents to. One request, two audiences: a person reads the action, a policy engine reads this.
  *
  * <p><b>This is where a capability can leak.</b> {@link ApprovalRequest#replyToken()} settles the
  * call, and a policy engine logs its input and is frequently somebody else's service. Neither

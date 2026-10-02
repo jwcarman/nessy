@@ -33,9 +33,9 @@ import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.Stringifier;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -47,6 +47,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
+import org.jwcarman.nessy.engine.tool.SettledLines;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
 import org.jwcarman.nessy.engine.tool.Tools;
@@ -96,14 +97,14 @@ class ApprovalHandlerTest {
   }
 
   private static Tools bound(Approver approver, Duration approvalTimeout, RetryPolicy onAsking) {
-    return bound(approver, approvalTimeout, onAsking, ActionRenderer.byToString());
+    return bound(approver, approvalTimeout, onAsking, SettledLines.action(Optional.empty()));
   }
 
   private static Tools bound(
       Approver approver,
       Duration approvalTimeout,
       RetryPolicy onAsking,
-      ActionRenderer<Query> action) {
+      Stringifier<Query> action) {
     return new Tools(
         List.of(
             new ToolBinding<>(
@@ -113,6 +114,7 @@ class ApprovalHandlerTest {
                 Duration.ofSeconds(30),
                 new RetryPolicy.Never(),
                 action,
+                SettledLines.result(Optional.empty()),
                 List.of(),
                 approver,
                 approvalTimeout,

@@ -36,7 +36,6 @@ import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -48,6 +47,7 @@ import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
+import org.jwcarman.nessy.engine.tool.SettledLines;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
 import org.jwcarman.nessy.engine.tool.Tools;
@@ -112,7 +112,8 @@ class ToolCallHandlerTest {
                 new JsonSchema("{\"type\":\"object\"}"),
                 Duration.ofSeconds(30),
                 new RetryPolicy.Never(),
-                ActionRenderer.byToString(),
+                SettledLines.action(Optional.empty()),
+                SettledLines.result(Optional.empty()),
                 List.of(),
                 approver,
                 Duration.ofMinutes(10),
@@ -261,7 +262,8 @@ class ToolCallHandlerTest {
                     new JsonSchema("{\"type\":\"object\"}"),
                     Duration.ofSeconds(90),
                     new RetryPolicy.FixedDelay(3, Duration.ofSeconds(1), Duration.ZERO),
-                    ActionRenderer.byToString(),
+                    SettledLines.action(Optional.empty()),
+                    SettledLines.result(Optional.empty()),
                     List.of(),
                     Approver.allow(),
                     Duration.ofMinutes(10),

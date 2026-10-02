@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -32,7 +33,6 @@ import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
@@ -99,7 +99,8 @@ class ToolInputSchemaTest {
         schema,
         Duration.ofSeconds(30),
         new RetryPolicy.Never(),
-        ActionRenderer.byToString(),
+        SettledLines.action(Optional.empty()),
+        SettledLines.result(Optional.empty()),
         List.of(),
         Approver.allow(),
         Duration.ofMinutes(10),

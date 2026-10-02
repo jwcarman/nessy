@@ -18,6 +18,8 @@ package org.jwcarman.nessy.api.tool;
 import java.time.Duration;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.Stringifier;
+import org.jwcarman.nessy.api.block.Block;
 
 /**
  * How one tool is bound to an agent type: how long a call may take, how hard to try it, and who may
@@ -29,6 +31,12 @@ import org.jwcarman.nessy.api.RetryPolicy;
  * @param <I> the tool's bound input
  */
 public interface ToolConfig<I> {
+
+  /** The most characters a recorded line may have, whatever the application's stringifier says. */
+  int LINE_CAP = 1000;
+
+  /** The most characters a recorded line may have when the application named no stringifier. */
+  int DEFAULT_LINE_LIMIT = 255;
 
   /**
    * How long a call of this tool is worth waiting for. Reaches the tool as {@link
@@ -47,16 +55,63 @@ public interface ToolConfig<I> {
   ToolConfig<I> retryPolicy(RetryPolicy retryPolicy);
 
   /**
-   * What a call of this tool would actually do, in words a person can consent to.
+   * What a call of this tool would actually do, in a line a person can read and consent to.
+   *
+   * <p>Named for what it produces -- {@link ApprovalRequest#action()} -- and not for rendering,
+   * because a {@link Tool} already has a description and it means something else: what the tool IS,
+   * written for the model. This is what one call, with these arguments, would actually do.
+   *
+   * <p>Four readers, none of them the model that made the call: an approvals page, where a person
+   * cannot consent to {@code {"customer_id":"cus_8823","op":"purge"}} but can consent to
+   * "permanently delete Acme Corp's record"; a UI narrating tool use; a log line; and the model
+   * that summarises a chapter, which reads the line stored in the event.
    *
    * <p>Defaults to the input's own {@code toString()}, which reads well for a record and badly for
-   * anything else. Write one for any tool a person will be asked to approve: nobody can consent to
-   * {@code {"customer_id":"cus_8823","op":"purge"}}.
+   * anything else. It prints every component, so a field holding a credential or a customer's email
+   * reaches every one of those readers, and a bounded copy of the line is stored in the event and
+   * may be quoted in a summary. Write one for any tool a person will be asked to approve.
    *
-   * <p>Here rather than on the {@link Tool}, because a sentence authored by the tool being governed
-   * is not a control.
+   * <p>Whatever is named is cut to {@link #LINE_CAP} characters, and one that writes more is cut by
+   * {@link Stringifier#dropTail}. A stringifier that already drops at or below the cap is used as
+   * given. With none named a line is cut at {@link #DEFAULT_LINE_LIMIT}, keeping its start. A tool
+   * that is gated should have a sentence short enough not to be cut, or name {@code dropTail}
+   * itself, so the person approving sees the part that matters.
+   *
+   * <p><b>It lives on the binding, never on the {@link Tool}.</b> If the sentence a person approves
+   * against were authored by the tool being governed -- an MCP server, say -- it would not be a
+   * control. The application states what a call means, per tool it offers.
    */
-  ToolConfig<I> action(ActionRenderer<I> action);
+  ToolConfig<I> action(Stringifier<I> action);
+
+  /**
+   * What a call of this tool returned, in a line, for the transcript and for the summaries written
+   * from it.
+   *
+   * <p>Defaults to {@link #resultText()}. Whatever is named is cut to {@link #LINE_CAP} characters,
+   * and one that writes more is cut by {@link Stringifier#dropMiddle}. A stringifier that already
+   * drops at or below the cap is used as given. With none named a line is cut at {@link
+   * #DEFAULT_LINE_LIMIT}, keeping both ends. A result that cannot be said is recorded as an empty
+   * line; it never fails the turn.
+   */
+  ToolConfig<I> result(Stringifier<ToolResult.Success> result);
+
+  /**
+   * The text of a result: its text blocks, joined by a space. Blocks that are not text are skipped.
+   */
+  static Stringifier<ToolResult.Success> resultText() {
+    return success -> {
+      StringBuilder joined = new StringBuilder();
+      for (Block.ToolResultContent block : success.blocks()) {
+        if (block instanceof Block.Text(String text)) {
+          if (!joined.isEmpty()) {
+            joined.append(' ');
+          }
+          joined.append(text);
+        }
+      }
+      return joined.toString();
+    };
+  }
 
   /**
    * Adds something to the question before the approver sees it. May be called more than once; they

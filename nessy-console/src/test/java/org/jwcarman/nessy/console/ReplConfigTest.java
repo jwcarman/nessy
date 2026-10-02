@@ -39,9 +39,9 @@ import org.jwcarman.nessy.api.MemorySource;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.StateSource;
+import org.jwcarman.nessy.api.Stringifier;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.TurnPolicy;
-import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalEnricher;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.ApproverConfig;
@@ -290,7 +290,12 @@ class ReplConfigTest {
               }
 
               @Override
-              public ToolConfig<I> action(ActionRenderer<I> action) {
+              public ToolConfig<I> action(Stringifier<I> action) {
+                return this;
+              }
+
+              @Override
+              public ToolConfig<I> result(Stringifier<ToolResult.Success> result) {
                 return this;
               }
 

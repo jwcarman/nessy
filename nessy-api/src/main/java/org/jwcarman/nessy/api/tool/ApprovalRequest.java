@@ -63,7 +63,7 @@ import tools.jackson.databind.node.ObjectNode;
  * @param arguments what it asked for, as the model wrote it -- unparsed, and shown rather than
  *     trusted
  * @param action what will actually happen if this is approved, in words a person can consent to;
- *     the binding's {@link ActionRenderer} produced it
+ *     the binding's action stringifier ({@link ToolConfig#action}) produced it
  * @param askedAt when the question was raised -- dwell time on an approvals page, and the fixed
  *     point the deadline was measured from, so a restart cannot silently extend one
  * @param deadline when the question stops standing

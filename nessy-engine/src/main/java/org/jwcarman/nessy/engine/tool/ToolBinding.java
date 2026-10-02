@@ -24,8 +24,8 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.Stringifier;
 import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalEnricher;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
@@ -36,6 +36,8 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.inference.ToolOffer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -59,12 +61,17 @@ import tools.jackson.databind.ObjectMapper;
  */
 public final class ToolBinding<I> {
 
+  private static final Logger LOG = LoggerFactory.getLogger(ToolBinding.class);
+
+  private static final String UNREADABLE = " (its arguments could not be read)";
+
   private final Tool<I> tool;
   private final ObjectMapper mapper;
   private final JsonSchema schema;
   private final Duration timeout;
   private final RetryPolicy retryPolicy;
-  private final ActionRenderer<I> action;
+  private final Stringifier<I> action;
+  private final Stringifier<ToolResult.Success> result;
   private final List<ApprovalEnricher> enrichers;
   private final Approver approver;
   private final Duration approvalTimeout;
@@ -76,7 +83,8 @@ public final class ToolBinding<I> {
       JsonSchema schema,
       Duration timeout,
       RetryPolicy retryPolicy,
-      ActionRenderer<I> action,
+      Stringifier<I> action,
+      Stringifier<ToolResult.Success> result,
       List<ApprovalEnricher> enrichers,
       Approver approver,
       Duration approvalTimeout,
@@ -86,7 +94,8 @@ public final class ToolBinding<I> {
     this.schema = requireObjectAtRoot(tool, mapper, schema);
     this.timeout = Objects.requireNonNull(timeout, "timeout must not be null");
     this.retryPolicy = Objects.requireNonNull(retryPolicy, "retry policy must not be null");
-    this.action = Objects.requireNonNull(action, "action renderer must not be null");
+    this.action = Objects.requireNonNull(action, "action stringifier must not be null");
+    this.result = Objects.requireNonNull(result, "result stringifier must not be null");
     this.enrichers = List.copyOf(Objects.requireNonNull(enrichers, "enrichers must not be null"));
     this.approver = Objects.requireNonNull(approver, "approver must not be null");
     this.approvalTimeout =
@@ -161,7 +170,7 @@ public final class ToolBinding<I> {
    *
    * <p>The arguments are read here, before anyone is asked, because the sentence a person consents
    * to is rendered from the tool's own input type rather than from the model's JSON -- which is the
-   * point of {@link ActionRenderer}. A call whose arguments will not read cannot run whatever
+   * point of the action stringifier. A call whose arguments will not read cannot run whatever
    * anybody says about it, so there is nothing to gate and the caller discharges it instead. The
    * throw is Jackson's, turned into something the model reads at the one call site that catches it.
    */
@@ -181,7 +190,7 @@ public final class ToolBinding<I> {
             callId,
             tool.name(),
             arguments,
-            action.render(mapper.readValue(arguments, tool.inputType())),
+            action.stringify(mapper.readValue(arguments, tool.inputType())),
             askedAt,
             askedAt.plus(approvalTimeout),
             replyToken);
@@ -193,6 +202,56 @@ public final class ToolBinding<I> {
       enricher.enrich(question);
     }
     return question;
+  }
+
+  /**
+   * What this call would do, as a line; never throws.
+   *
+   * <p>The arguments are read into the tool's input type and the action stringifier says it. When
+   * the stringifier gives nothing, the line is the tool's name; when the arguments do not read, or
+   * the stringifier throws, it says so after the name. A call that has no sentence is still a call,
+   * and the turn goes on.
+   */
+  public String describe(String arguments) {
+    String name = tool.name().value();
+    I input;
+    try {
+      input = mapper.readValue(arguments, tool.inputType());
+    } catch (RuntimeException e) {
+      return name + UNREADABLE;
+    }
+    String line;
+    try {
+      line = action.stringify(input);
+    } catch (RuntimeException e) {
+      LOG.warn("the action stringifier of tool '{}' threw; recording the call without it", name, e);
+      return name + UNREADABLE;
+    }
+    return line == null || line.isBlank() ? name : line;
+  }
+
+  /**
+   * What this call returned, as a line; never throws, and may be empty.
+   *
+   * <p>Empty when the result stringifier throws or gives nothing: a result that cannot be said is
+   * recorded as saying nothing, and the turn goes on.
+   */
+  public String rendered(ToolResult.Success success) {
+    try {
+      String line = result.stringify(success);
+      return line == null ? "" : line;
+    } catch (RuntimeException e) {
+      LOG.warn(
+          "the result stringifier of tool '{}' threw; recording the result without it",
+          tool.name().value(),
+          e);
+      return "";
+    }
+  }
+
+  /** What is recorded for a call to a tool that is not bound. */
+  public static String unbound(ToolName name) {
+    return name.value() + " (no such tool)";
   }
 
   /**

@@ -23,6 +23,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.jwcarman.codec.TypeRef;
@@ -43,19 +44,21 @@ import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.QueuedHarnessConfig;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.StateSource;
+import org.jwcarman.nessy.api.Stringifier;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPrompt;
 import org.jwcarman.nessy.api.TurnPolicy;
-import org.jwcarman.nessy.api.tool.ActionRenderer;
 import org.jwcarman.nessy.api.tool.ApprovalEnricher;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.ApproverConfig;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.chapter.ChapterSettings;
 import org.jwcarman.nessy.engine.inference.Instructions;
 import org.jwcarman.nessy.engine.observability.ObservedApprover;
 import org.jwcarman.nessy.engine.observability.ObservedTool;
+import org.jwcarman.nessy.engine.tool.SettledLines;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -251,7 +254,8 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
             observed.inputSchema(schemas),
             terms.timeout,
             terms.retryPolicy,
-            terms.action,
+            SettledLines.action(terms.action),
+            SettledLines.result(terms.result),
             terms.enrichers,
             // Only an approver the application chose is worth a span: the default lets every
             // call through, and an "approval" nobody was asked for would mislead a dashboard.
@@ -316,7 +320,8 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
 
     private Duration timeout;
     private RetryPolicy retryPolicy;
-    private ActionRenderer<I> action = ActionRenderer.byToString();
+    private Optional<Stringifier<I>> action = Optional.empty();
+    private Optional<Stringifier<ToolResult.Success>> result = Optional.empty();
     private final List<ApprovalEnricher> enrichers = new ArrayList<>();
     private Approver approver = Approver.allow();
     private boolean approverChosen;
@@ -341,8 +346,14 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
     }
 
     @Override
-    public ToolConfig<I> action(ActionRenderer<I> action) {
-      this.action = action;
+    public ToolConfig<I> action(Stringifier<I> action) {
+      this.action = Optional.of(action);
+      return this;
+    }
+
+    @Override
+    public ToolConfig<I> result(Stringifier<ToolResult.Success> result) {
+      this.result = Optional.of(result);
       return this;
     }
 
