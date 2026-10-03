@@ -350,16 +350,18 @@ public class EffectDispatcher {
           attempt.agentId().value(),
           attempt.attemptsMade());
       switch (handlers.perform(attempt.agentId(), effect)) {
-        case Awaited.Ready<EffectOutcome>(EffectOutcome outcome) when worthAnotherGo(outcome) -> {
+        case Awaited.Ready<EffectOutcome>(EffectOutcome.InferenceFailed failed)
+            when worthAnotherGo(failed) -> {
           // True whatever the policy then decides. Saying "it will be tried again" here would
           // be a promise this line is not in a position to make: with the default policy it
           // will not be, and the next line would contradict this one.
           log.warn(
-              "[{}] effect {} failed on attempt {}; the provider called it transient",
+              "[{}] effect {} failed on attempt {}; the provider called it {}",
               agentType.value(),
               attempt.effectId(),
-              attempt.attemptsMade());
-          settle(attempt, effect, () -> outcome);
+              attempt.attemptsMade(),
+              failed.failure().getClass().getSimpleName());
+          settle(attempt, effect, () -> failed);
         }
         case Awaited.Ready<EffectOutcome>(EffectOutcome outcome) -> {
           // The outcome is folded first: if that commits and this crashes, the row comes
@@ -411,18 +413,21 @@ public class EffectDispatcher {
    * bring -- could never ask for one. So the classification the adapters were carefully producing
    * decided nothing: a call the provider itself said would probably work next time ended the turn.
    *
-   * <p>Only {@link Failure.Transient} qualifies, because it is the only one of the four arms that
-   * asserts trying again could help. {@link Failure.Permanent} says the identical request fails
-   * identically, and its own javadoc rules out consulting a policy at all. {@link Failure.Rejected}
-   * names content that will fail every time it is sent, so another go is the same failure arriving
-   * later -- the answer there is quarantine, not retry. {@link Failure.Unknown} is the one worth
-   * arguing about -- nobody found out whether the work happened -- and it stays terminal here
-   * because repeating work that may already have run is a decision that belongs to the kind of work
-   * rather than to this switch.
+   * <p>{@link Failure.Transient} qualifies because it asserts trying again could help. {@link
+   * Failure.Unknown} qualifies because the work is a model call: nobody found out whether it ran,
+   * and running it again changes nothing in the world but the bill. Every adapter reports a dropped
+   * connection this way, so leaving it out made a dropped connection end the turn whatever the
+   * policy said. Whether another go is worth its cost is the policy's question, as {@link
+   * Failure.Unknown} says: a budget above one attempt is the declaration that repeating is safe.
+   *
+   * <p>{@link Failure.Permanent} says the identical request fails identically, and its own javadoc
+   * rules out consulting a policy at all. {@link Failure.Rejected} names content that will fail
+   * every time it is sent, so another go is the same failure arriving later -- the answer there is
+   * quarantine, not retry.
    */
-  private static boolean worthAnotherGo(EffectOutcome outcome) {
-    return outcome instanceof EffectOutcome.InferenceFailed failed
-        && failed.failure() instanceof Failure.Transient;
+  private static boolean worthAnotherGo(EffectOutcome.InferenceFailed failed) {
+    return failed.failure() instanceof Failure.Transient
+        || failed.failure() instanceof Failure.Unknown;
   }
 
   /**
