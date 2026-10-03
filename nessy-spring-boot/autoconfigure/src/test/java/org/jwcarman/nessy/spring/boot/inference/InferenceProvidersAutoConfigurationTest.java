@@ -24,12 +24,15 @@ import ch.qos.logback.core.read.ListAppender;
 import io.micrometer.observation.ObservationRegistry;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.anthropic.AnthropicInferenceProvider;
 import org.jwcarman.nessy.inference.openai.OpenAiProperties;
@@ -58,6 +61,39 @@ class InferenceProvidersAutoConfigurationTest {
       new ApplicationContextRunner()
           .withConfiguration(AutoConfigurations.of(InferenceProvidersAutoConfiguration.class))
           .withBean(ObservationRegistry.class, ObservationRegistry::create);
+
+  /** A provider holding a client, as every vendor adapter does. */
+  private static final class Holding implements InferenceProvider, AutoCloseable {
+
+    private boolean closed;
+
+    @Override
+    public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
+      return new InferenceResult.Answer(List.of());
+    }
+
+    @Override
+    public void close() {
+      closed = true;
+    }
+  }
+
+  /**
+   * Registered as {@code ProviderRegistrar} registers a provider: observed, from a supplier. The
+   * container closes the bean at shutdown, and the client inside goes with it.
+   */
+  @Test
+  void the_client_inside_an_observed_provider_bean_is_closed_with_the_context() {
+    Holding holding = new Holding();
+
+    new ApplicationContextRunner()
+        .withBean(
+            InferenceProvider.class,
+            () -> ObservedInferenceProvider.wrap(holding, ObservationRegistry.NOOP))
+        .run(context -> assertThat(holding.closed).isFalse());
+
+    assertThat(holding.closed).isTrue();
+  }
 
   @Test
   void nothing_configured_registers_nothing() {
