@@ -67,6 +67,29 @@ leaves out falls back to what the factory was given through
 queued door has. With neither, `create` throws `IllegalStateException`,
 because nothing names a provider.
 
+### Never inside a transaction
+
+`ask` throws `IllegalStateException` when the calling thread has a
+transaction open, before it writes anything. A turn makes at least one
+model call, a network call that can take seconds, and a transaction should
+not stay open across one. On a JDBC store it would not work either: the
+turn's first step joins the caller's transaction, and the model call runs on
+another connection that cannot see what that step wrote. Nessy sees any
+transaction Spring manages. If you manage JDBC transactions by hand, keep the
+rule yourself.
+
+To ask from code that runs inside a transaction, suspend it for the call:
+
+```java
+TransactionTemplate outside = new TransactionTemplate(transactionManager);
+outside.setPropagationBehavior(TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
+Outcome<String> outcome = outside.execute(status -> harness.ask(agent, input));
+```
+
+The queued door is the other way round: `tell` joins the caller's
+transaction on purpose, so consuming a message and telling an agent about it
+commit or roll back together.
+
 ### Outcome
 
 `ask` never throws for anything it understands. What it hands back is one of

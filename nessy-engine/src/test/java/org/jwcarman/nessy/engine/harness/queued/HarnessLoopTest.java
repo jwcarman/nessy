@@ -48,6 +48,8 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.springframework.jdbc.support.JdbcTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -101,6 +103,26 @@ class HarnessLoopTest {
   /** The whole record, flattened -- what was stored, not what would be sent. */
   private List<AgentEvent> story(AgentType agentType, AgentId agentId) {
     return engine.story(agentType, agentId);
+  }
+
+  /**
+   * The queued door joins a caller's transaction on purpose, so consuming a message and telling an
+   * agent about it commit or roll back together. Only the direct door, which makes its model call
+   * inline, refuses one; this pins that the queued door still does not.
+   */
+  @Test
+  void aTellInsideACallersTransactionRollsBackWithIt() {
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    TransactionTemplate transaction =
+        new TransactionTemplate(new JdbcTransactionManager(engine.dataSource()));
+
+    transaction.executeWithoutResult(
+        status -> {
+          harness.tell(agentId, "what is nessy?");
+          status.setRollbackOnly();
+        });
+
+    assertThat(story(CHAT, agentId)).as("the tell went with the caller's rollback").isEmpty();
   }
 
   @Test

@@ -334,6 +334,13 @@
         <artifactId>spring-core</artifactId>
         <version>${spring-framework.version}</version>
       </dependency>
+      <!-- Pinned at the same line as spring-jdbc, per the policy above: the direct door asks
+           whether a caller's transaction is open, and refuses to run a model call inside one. -->
+      <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-tx</artifactId>
+        <version>${spring-framework.version}</version>
+      </dependency>
       <dependency>
         <groupId>com.h2database</groupId>
         <artifactId>h2</artifactId>

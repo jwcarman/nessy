@@ -48,9 +48,9 @@ public final class InMemoryChapters implements Chapters {
 
     @Override
     public boolean equals(Object other) {
-      return other instanceof Entry that
-          && chapter.equals(that.chapter)
-          && Arrays.equals(text, that.text);
+      return other instanceof Entry(Chapter otherChapter, byte[] otherText)
+          && chapter.equals(otherChapter)
+          && Arrays.equals(text, otherText);
     }
 
     @Override

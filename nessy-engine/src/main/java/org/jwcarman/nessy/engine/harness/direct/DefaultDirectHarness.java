@@ -71,6 +71,7 @@ import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * A turn, run as a sequence of short locked steps with the slow work performed between them.
@@ -269,6 +270,18 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   @Override
   public Outcome<O> ask(AgentId agent, I input) {
+    // Before anything is written: a turn inside a caller's transaction would hold it across a
+    // model call, and on JDBC the model call could not see the turn's first step (nessy-ap F14).
+    // Only a transaction Spring manages is visible here.
+    if (TransactionSynchronizationManager.isActualTransactionActive()) {
+      throw new IllegalStateException(
+          "agent type '"
+              + agentType.value()
+              + "': the direct door cannot run inside a caller's transaction. A turn makes a"
+              + " model call, a network call nothing should hold a transaction open across, and"
+              + " on JDBC the model call cannot see what the turn's first step wrote. Call ask"
+              + " outside the transaction, or suspend it (PROPAGATION_NOT_SUPPORTED).");
+    }
     if (observations.isNoop()) {
       return asking(agent, input);
     }

@@ -17,6 +17,7 @@
 package org.jwcarman.nessy.engine.harness.direct;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.time.Instant;
 import java.util.List;
@@ -36,6 +37,7 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLocks;
 import org.jwcarman.nessy.backend.jdbc.JdbcAgentEvents;
+import org.jwcarman.nessy.backend.jdbc.JdbcDirectBackend;
 import org.jwcarman.nessy.backend.jdbc.JdbcPayloads;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.backend.payload.Payloads;
@@ -44,7 +46,9 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -187,5 +191,44 @@ class DurableDirectHarnessTest {
         .usingRecursiveComparison()
         .ignoringFields("stats")
         .isEqualTo(new Outcome.Refused<String>("terminated", ANY_STATS));
+  }
+
+  /**
+   * The case nessy-ap met (F14): a Spring application calls the direct door from inside its own
+   * transaction, on the same transaction manager the store uses. The turn's first step would join
+   * that transaction, and the model call, on another connection, could not see it, failing with "no
+   * event at 1". It is refused, plainly, before anything is written.
+   */
+  @Test
+  void a_turn_asked_inside_a_callers_transaction_is_refused_and_writes_nothing() {
+    DataSourceTransactionManager transactions = new DataSourceTransactionManager(database);
+    DirectHarness<String, String> harness =
+        DefaultDirectHarnessFactory.of(
+                f ->
+                    f.backend(new JdbcDirectBackend(database, transactions, codecs))
+                        .provider(ProviderId.of("test"), saying("the capital is Paris"))
+                        .schemas(new VictoolsJsonSchemaGenerator())
+                        .mapper(JsonMapper.builder().build()))
+            .<String>create(
+                TYPE,
+                c ->
+                    c.systemPrompt("You are terse.")
+                        .inputRenderer(said -> List.of(new Block.Text(said)))
+                        .inference(in -> in.provider("test").model("a-model")));
+    AgentId agent = AgentId.random();
+
+    Throwable refused =
+        new TransactionTemplate(transactions)
+            .execute(status -> catchThrowable(() -> harness.ask(agent, "capital of France?")));
+
+    assertThat(refused)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("cannot run inside a caller's transaction");
+    assertThat(events.readAll(TYPE, agent)).as("nothing was written").isEmpty();
+    assertThat(harness.ask(agent, "capital of France?"))
+        .as("outside the transaction the same call answers")
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("the capital is Paris", ANY_STATS));
   }
 }

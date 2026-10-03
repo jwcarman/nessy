@@ -61,6 +61,14 @@ public interface DirectHarness<I, O> {
    * <p>Support for a shape is not universal and is sometimes per model: a vendor that will not
    * constrain an answer, or a model that answers around the shape, ends the turn {@link
    * Outcome.Failed} rather than handing back something that does not fit.
+   *
+   * <p><b>Never inside a caller's transaction.</b> A turn makes at least one model call, a network
+   * call that can take seconds, and nothing should hold a transaction open across one; on a JDBC
+   * store it cannot work either, because the model call runs on another connection and cannot see
+   * what the turn wrote on the caller's. A transaction Spring manages is refused before anything is
+   * written. To call this from inside one, suspend it first ({@code PROPAGATION_NOT_SUPPORTED}).
+   *
+   * @throws IllegalStateException if a transaction is open on the calling thread
    */
   Outcome<O> ask(AgentId agent, I input);
 

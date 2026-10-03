@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine.harness.direct;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
@@ -97,6 +98,10 @@ import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.AbstractPlatformTransactionManager;
+import org.springframework.transaction.support.DefaultTransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -2222,6 +2227,72 @@ class DefaultDirectHarnessTest {
           .isEqualTo(", properties [anthropic.top_k, openai.user]");
       assertThat(DefaultDirectHarnessFactory.propertyNames(InferenceOptions.of("a-model")))
           .isEmpty();
+    }
+  }
+
+  /**
+   * A turn makes a model call, and nothing should hold a transaction open across a network call.
+   * The direct door refuses one before it writes anything, whatever store is behind it.
+   */
+  @Nested
+  class InsideACallersTransaction {
+
+    /** A real Spring transaction with no database behind it: what the door sees is the thread. */
+    private static final class Bare extends AbstractPlatformTransactionManager {
+      @Override
+      protected Object doGetTransaction() {
+        return new Object();
+      }
+
+      @Override
+      protected void doBegin(Object transaction, TransactionDefinition definition) {
+        // Nothing to open.
+      }
+
+      @Override
+      protected void doCommit(DefaultTransactionStatus status) {
+        // Nothing to commit.
+      }
+
+      @Override
+      protected void doRollback(DefaultTransactionStatus status) {
+        // Nothing to roll back.
+      }
+    }
+
+    private final TransactionTemplate transaction = new TransactionTemplate(new Bare());
+
+    @Test
+    void ask_is_refused_before_anything_is_asked_or_written() {
+      Scripted model = new Scripted().then(answering("forty two"));
+      DirectHarness<String, String> harness = harness(model);
+      AgentId agent = AgentId.random();
+
+      Throwable refused =
+          transaction.execute(
+              status -> catchThrowable(() -> harness.ask(agent, "what is the answer?")));
+
+      assertThat(refused)
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("cannot run inside a caller's transaction")
+          .hasMessageContaining("PROPAGATION_NOT_SUPPORTED");
+      assertThat(model.seen).as("no model call was made").isEmpty();
+    }
+
+    @Test
+    void the_same_agent_answers_once_the_transaction_is_over() {
+      Scripted model = new Scripted().then(answering("forty two"));
+      DirectHarness<String, String> harness = harness(model);
+      AgentId agent = AgentId.random();
+      transaction.executeWithoutResult(
+          status -> catchThrowable(() -> harness.ask(agent, "what is the answer?")));
+
+      Outcome<String> outcome = harness.ask(agent, "what is the answer?");
+
+      assertThat(outcome)
+          .usingRecursiveComparison()
+          .ignoringFields("stats")
+          .isEqualTo(new Outcome.Answered<>("forty two", ANY_STATS));
     }
   }
 }
