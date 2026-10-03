@@ -26,6 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
@@ -156,7 +157,7 @@ public final class AfterCommit implements Narrator, AutoCloseable {
     Step step = new Step(new Key(type, agent), State.OPEN);
     enqueue(step);
     try {
-      step.watch = watchdog.schedule(step::expire, bound.toNanos(), TimeUnit.NANOSECONDS);
+      step.watch.set(watchdog.schedule(step::expire, bound.toNanos(), TimeUnit.NANOSECONDS));
     } catch (RuntimeException e) {
       // Already in line: a step that cannot be watched must not stay there, or it holds back
       // every narration of its agent for as long as the process runs.
@@ -169,7 +170,7 @@ public final class AfterCommit implements Narrator, AutoCloseable {
   private void enqueue(Step step) {
     while (true) {
       Line line = lines.computeIfAbsent(step.key, Line::new);
-      synchronized (line) {
+      synchronized (line.monitor) {
         if (!line.retired) {
           step.line = line;
           line.queue.addLast(step);
@@ -181,7 +182,7 @@ public final class AfterCommit implements Narrator, AutoCloseable {
 
   /** Tells, in order, everything at the front of the line that is settled. One thread at a time. */
   private void drain(Line line) {
-    synchronized (line) {
+    synchronized (line.monitor) {
       if (line.draining) {
         return;
       }
@@ -191,7 +192,7 @@ public final class AfterCommit implements Narrator, AutoCloseable {
     try {
       while (true) {
         List<Step> settled = new ArrayList<>();
-        synchronized (line) {
+        synchronized (line.monitor) {
           while (!line.queue.isEmpty() && line.queue.peekFirst().state != State.OPEN) {
             settled.add(line.queue.pollFirst());
           }
@@ -211,7 +212,7 @@ public final class AfterCommit implements Narrator, AutoCloseable {
       // Something other than a RuntimeException escaped a delivery. The line must not stay
       // marked as being drained, or nothing for this agent would ever be told again.
       if (!finished) {
-        synchronized (line) {
+        synchronized (line.monitor) {
           line.draining = false;
         }
       }
@@ -249,6 +250,9 @@ public final class AfterCommit implements Narrator, AutoCloseable {
   private record Held(Narration event, ContextSnapshot snapshot) {}
 
   private static final class Line {
+    /** The one lock of this line: guards the queue, draining, retired and its steps' states. */
+    private final Object monitor = new Object();
+
     private final Key key;
     private final ArrayDeque<Step> queue = new ArrayDeque<>();
     private boolean draining;
@@ -270,7 +274,7 @@ public final class AfterCommit implements Narrator, AutoCloseable {
     private final Key key;
     private final List<Held> held = new ArrayList<>();
     private volatile State state;
-    private volatile ScheduledFuture<?> watch;
+    private final AtomicReference<ScheduledFuture<?>> watch = new AtomicReference<>();
     private Line line;
 
     private Step(Key key, State state) {
@@ -306,14 +310,14 @@ public final class AfterCommit implements Narrator, AutoCloseable {
 
     private boolean resolve(State to) {
       boolean changed;
-      synchronized (line) {
+      synchronized (line.monitor) {
         changed = state == State.OPEN;
         if (changed) {
           state = to;
         }
       }
       if (changed) {
-        ScheduledFuture<?> pending = watch;
+        ScheduledFuture<?> pending = watch.get();
         if (pending != null) {
           pending.cancel(false);
         }

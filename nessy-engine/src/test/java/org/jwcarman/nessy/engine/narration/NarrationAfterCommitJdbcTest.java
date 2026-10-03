@@ -100,7 +100,7 @@ class NarrationAfterCommitJdbcTest {
       if (waiting != null) {
         try {
           waiting.await(PATIENCE_FOR_THE_LISTENER.toMillis(), TimeUnit.MILLISECONDS);
-        } catch (InterruptedException interrupted) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
         }
       }

@@ -141,8 +141,8 @@ class JdbcPlansTest {
 
       List<String> titles = rawTitles();
 
-      assertThat(titles).hasSize(2);
       assertThat(titles)
+          .hasSize(2)
           .noneMatch(title -> title.contains("Okonkwo"))
           .noneMatch(title -> title.contains("9087-1123"))
           .noneMatch(title -> title.contains("Bluebird"));

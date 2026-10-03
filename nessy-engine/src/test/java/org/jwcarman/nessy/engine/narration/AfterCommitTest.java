@@ -98,7 +98,7 @@ class AfterCommitTest {
             step.narrate(ended(1));
             try {
               throw new IllegalStateException("handled inside the work");
-            } catch (IllegalStateException handled) {
+            } catch (IllegalStateException _) {
               step.narrate(ended(2));
             }
             return null;
@@ -121,10 +121,12 @@ class AfterCommitTest {
 
     @Test
     void whose_work_throws_after_narrating_is_never_heard() {
+      InMemoryLocks locks = new InMemoryLocks();
+
       assertThatThrownBy(
               () ->
                   narration.locked(
-                      new InMemoryLocks(),
+                      locks,
                       TYPE,
                       agent,
                       step -> {
@@ -174,7 +176,7 @@ class AfterCommitTest {
                         step.narrate(ended(1));
                         try {
                           throw new IllegalArgumentException("handled inside the work");
-                        } catch (IllegalArgumentException handled) {
+                        } catch (IllegalArgumentException _) {
                           return null;
                         }
                       }))

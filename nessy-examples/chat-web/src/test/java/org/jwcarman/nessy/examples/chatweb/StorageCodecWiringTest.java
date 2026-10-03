@@ -106,11 +106,9 @@ class StorageCodecWiringTest {
 
     assertThat(notebook.find(agent, written.id())).contains(written);
     List<String> hooks = raw("SELECT hook FROM nessy_note WHERE agent_id = ?", agent);
-    assertThat(hooks).hasSize(1);
-    assertThat(hooks).noneMatch(hook -> hook.contains("Bluebird"));
+    assertThat(hooks).hasSize(1).noneMatch(hook -> hook.contains("Bluebird"));
     List<String> bodies = raw("SELECT body FROM nessy_note WHERE agent_id = ?", agent);
-    assertThat(bodies).hasSize(1);
-    assertThat(bodies).noneMatch(body -> body.contains("Okonkwo"));
+    assertThat(bodies).hasSize(1).noneMatch(body -> body.contains("Okonkwo"));
   }
 
   @Test
@@ -123,7 +121,6 @@ class StorageCodecWiringTest {
 
     assertThat(plans.find(agent)).contains(plan);
     List<String> titles = raw("SELECT title FROM nessy_plan_task WHERE agent_id = ?", agent);
-    assertThat(titles).hasSize(1);
-    assertThat(titles).noneMatch(title -> title.contains("Okonkwo"));
+    assertThat(titles).hasSize(1).noneMatch(title -> title.contains("Okonkwo"));
   }
 }

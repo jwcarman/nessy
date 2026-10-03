@@ -99,8 +99,9 @@ class RepeatedCallIdLateOutcomeTest {
 
   private static void pause(Duration time) {
     try {
-      Thread.sleep(time);
-    } catch (InterruptedException e) {
+      // A latch nobody releases: the wait lasts exactly as long as the model is meant to take.
+      new CountDownLatch(1).await(time.toNanos(), TimeUnit.NANOSECONDS);
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
     }
   }
@@ -135,7 +136,7 @@ class RepeatedCallIdLateOutcomeTest {
           secondStarted.countDown();
           releaseSecond.await(60, TimeUnit.SECONDS);
           return Awaited.ready(ToolResult.ok(new Block.Text("SECOND")));
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
           return Awaited.ready(new ToolResult.Failure("interrupted: invocation " + mine));
         }
@@ -191,7 +192,9 @@ class RepeatedCallIdLateOutcomeTest {
                 .append(f.message())
                 .append("'");
         case AgentEvent.ActionsRequested r -> out.append(" actions=").append(r.actions());
-        default -> {}
+        default -> {
+          // The other events have nothing of their own to print.
+        }
       }
       out.append('\n');
     }

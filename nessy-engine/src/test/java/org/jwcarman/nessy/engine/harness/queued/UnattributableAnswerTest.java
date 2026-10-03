@@ -113,7 +113,7 @@ class UnattributableAnswerTest {
   private static void await(CountDownLatch latch) {
     try {
       latch.await(60, TimeUnit.SECONDS);
-    } catch (InterruptedException e) {
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
     }
   }

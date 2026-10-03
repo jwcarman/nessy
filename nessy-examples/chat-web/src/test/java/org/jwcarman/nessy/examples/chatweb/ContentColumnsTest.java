@@ -101,8 +101,7 @@ class ContentColumnsTest {
         columnsOfType(
             "data_type IN ('text', 'character varying', 'character', 'json', 'jsonb', 'xml', 'ARRAY')");
 
-    assertThat(textColumns).isNotEmpty();
-    assertThat(textColumns).isSubsetOf(NOT_CONTENT);
+    assertThat(textColumns).isNotEmpty().isSubsetOf(NOT_CONTENT);
   }
 
   @Test

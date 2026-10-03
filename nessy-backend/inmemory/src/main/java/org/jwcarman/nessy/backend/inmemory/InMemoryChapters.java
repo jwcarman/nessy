@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.backend.inmemory;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +44,26 @@ public final class InMemoryChapters implements Chapters {
   private record Key(AgentType type, AgentId agent) {}
 
   /** A closed chapter and its encoded text, which is null until it has been written. */
-  private record Entry(Chapter chapter, byte[] text) {}
+  private record Entry(Chapter chapter, byte[] text) {
+
+    @Override
+    public boolean equals(Object other) {
+      return other instanceof Entry that
+          && chapter.equals(that.chapter)
+          && Arrays.equals(text, that.text);
+    }
+
+    @Override
+    public int hashCode() {
+      return 31 * chapter.hashCode() + Arrays.hashCode(text);
+    }
+
+    @Override
+    public String toString() {
+      return "Entry[chapter=%s, text=%s]"
+          .formatted(chapter, text == null ? "unwritten" : text.length + " bytes");
+    }
+  }
 
   private final Map<Key, List<Entry>> closed = new HashMap<>();
   private final Codec<String> codec;

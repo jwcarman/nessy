@@ -302,7 +302,8 @@ public final class ChapterKeeper {
       if (attempt instanceof Attempt.Ignored<Boolean>) {
         return false;
       }
-      if (!attempt.orElse(false)) {
+      boolean summarised = attempt.orElse(false);
+      if (!summarised) {
         failed.add(chapter);
         return true;
       }
