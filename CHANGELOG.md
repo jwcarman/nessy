@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-03
+
 ### Breaking changes
 
 - **`ApprovalRequest.callKey()` is replaced by `idempotencyKey()`**, a typed
@@ -651,6 +653,7 @@ Nessy is an agent harness framework for Java. This is the first release.
 - Java 25.
 - Spring Boot 4.1 (optional — only needed for `nessy-spring-boot-starter`).
 
+[0.4.0]: https://github.com/jwcarman/nessy/releases/tag/0.4.0
 [0.3.0]: https://github.com/jwcarman/nessy/releases/tag/0.3.0
 [0.2.0]: https://github.com/jwcarman/nessy/releases/tag/0.2.0
 [0.1.1]: https://github.com/jwcarman/nessy/releases/tag/0.1.1
