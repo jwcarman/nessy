@@ -363,6 +363,44 @@ class DispatcherFailureTest {
     assertThat(delivered.outcomes).isEmpty();
   }
 
+  /**
+   * A claim that hands back more rows than it was asked for must not cost the dispatcher its
+   * capacity. Handing back the difference would be negative, the semaphore would throw, and the
+   * permits drained for the pass would never come back: the agent type would stop dispatching for
+   * good. The rows beyond the batch are put straight back, due now, for the next pass; left marked,
+   * they would come due only at their deadline and be given up on unrun.
+   */
+  @Test
+  void a_claim_that_returns_more_than_its_batch_loses_no_capacity() {
+    Effects effects = new Effects();
+    List<Attempt> claimed =
+        List.of(
+            attempt(NOW.plusSeconds(600), 1),
+            attempt(NOW.plusSeconds(600), 1),
+            attempt(NOW.plusSeconds(600), 1),
+            attempt(NOW.plusSeconds(600), 1),
+            attempt(NOW.plusSeconds(600), 1),
+            attempt(NOW.plusSeconds(600), 1));
+    effects.due = claimed;
+    EffectDispatcher dispatcher = dispatcherFor(effects, answering());
+
+    assertThatCode(dispatcher::dispatch).doesNotThrowAnyException();
+    assertThat(effects.rescheduled)
+        .as("the surplus goes straight back, due now")
+        .containsExactly(claimed.get(4).effectId(), claimed.get(5).effectId());
+    assertThat(effects.rescheduledAt).containsOnly(NOW);
+
+    effects.due = List.of();
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(
+            () -> {
+              dispatcher.dispatch();
+              assertThat(effects.batchSizes.getLast()).isEqualTo(PERMITS);
+            });
+    assertThat(delivered.outcomes).hasSize(PERMITS);
+  }
+
   // ---------------------------------------------------------------- fixture
 
   private EffectDispatcher dispatcherFor(
@@ -545,6 +583,7 @@ class DispatcherFailureTest {
     private final List<Integer> batchSizes = new CopyOnWriteArrayList<>();
     private final List<UUID> retired = new CopyOnWriteArrayList<>();
     private final List<UUID> rescheduled = new CopyOnWriteArrayList<>();
+    private final List<Instant> rescheduledAt = new CopyOnWriteArrayList<>();
 
     private Effects() {
       super(TYPE, null, null);
@@ -585,6 +624,7 @@ class DispatcherFailureTest {
     public boolean reschedule(
         UUID effectId, int attemptsMade, Instant at, List<FailedAttempt> failedAttempts) {
       rescheduled.add(effectId);
+      rescheduledAt.add(at);
       return rescheduleWins;
     }
 

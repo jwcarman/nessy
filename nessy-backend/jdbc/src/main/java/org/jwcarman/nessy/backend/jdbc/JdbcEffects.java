@@ -88,23 +88,30 @@ public class JdbcEffects implements Effects {
    * is already holding is passed over rather than waited for. The status filter matters as much --
    * a {@code RUNNING} row that is due again is an attempt nobody finished, and taking it is how
    * that recovers.
+   *
+   * <p>The rows are picked and locked in a {@code MATERIALIZED} CTE, evaluated once per statement,
+   * and the update joins to that fixed set. An {@code IN (SELECT ... FOR UPDATE SKIP LOCKED LIMIT
+   * ?)} subquery gives no such promise: on a plan that rescans it for each outer row, concurrent
+   * claims skip different rows on each rescan and the update takes more than the limit.
    */
   private static final String MARK_RUNNING =
       """
-            UPDATE nessy_agent_effect
-            SET status = ?,
-                attempts_made = attempts_made + 1,
-                actionable_at = LEAST(
-                    ? + (timeout_millis * INTERVAL '1 millisecond'), deadline),
-                updated_at = ?
-            WHERE effect_id IN (
+            WITH claimed AS MATERIALIZED (
                 SELECT effect_id FROM nessy_agent_effect
                 WHERE agent_type = ? AND status IN (?, ?) AND actionable_at <= ?
                 ORDER BY actionable_at
                 FOR UPDATE SKIP LOCKED
                 LIMIT ?)
-            RETURNING effect_id, agent_id, payload, failure_payload, attempts_made, deadline,
-                      trace_context, failed_attempts
+            UPDATE nessy_agent_effect e
+            SET status = ?,
+                attempts_made = e.attempts_made + 1,
+                actionable_at = LEAST(
+                    ? + (e.timeout_millis * INTERVAL '1 millisecond'), e.deadline),
+                updated_at = ?
+            FROM claimed
+            WHERE e.effect_id = claimed.effect_id
+            RETURNING e.effect_id, e.agent_id, e.payload, e.failure_payload, e.attempts_made,
+                      e.deadline, e.trace_context, e.failed_attempts
             """;
 
   /**
@@ -225,7 +232,7 @@ public class JdbcEffects implements Effects {
   public List<Attempt> markRunning(AgentType agentType, Instant now, int batchSize) {
     return jdbc.sql(MARK_RUNNING)
         .params(
-            RUNNING, utc(now), utc(now), agentType.value(), PENDING, RUNNING, utc(now), batchSize)
+            agentType.value(), PENDING, RUNNING, utc(now), batchSize, RUNNING, utc(now), utc(now))
         .query(
             (rs, n) ->
                 new Attempt(
