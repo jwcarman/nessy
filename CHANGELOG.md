@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   call, and a transaction should not stay open across a network call; on JDBC
   the call failed anyway, with "no event at 1 for agent ...". Suspend the
   transaction for the call (`PROPAGATION_NOT_SUPPORTED`). The queued door's
-  `tell` still joins the caller's transaction.
+  `tell` still joins the caller's transaction. `nessy-engine` now depends on
+  `spring-tx` for this check, as it already does on `spring-context`.
 - **Anthropic prompt caching is on by default.** With
   `anthropic.cache_control.ttl` absent, a request now carries `FIVE_MINUTES`
   cache markers; before, it carried none. A one-off request still carries
