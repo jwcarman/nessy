@@ -226,13 +226,22 @@ public class EffectDispatcher {
       // A claim must never hand back more than it was asked for, but if one does, handing back
       // the difference would be negative: the semaphore throws, the permits drained above are
       // never returned, and this agent type stops dispatching for good. Run what there is
-      // capacity for; the rest stay marked, and their watchdog brings them round again.
+      // capacity for and put the rest straight back, due now. Left marked, a surplus row would
+      // come due only at its deadline and be given up on without ever having run. The reschedule
+      // is fenced on the attempt this claim made, so it cannot touch a row someone else holds.
       log.warn(
-          "[{}] claimed {} effect(s) when asked for {}; leaving {} to their watchdog",
+          "[{}] claimed {} effect(s) when asked for {}; returning {} to the queue",
           agentType.value(),
           attempts.size(),
           batchSize,
           attempts.size() - batchSize);
+      for (Attempt surplus : attempts.subList(batchSize, attempts.size())) {
+        effects.reschedule(
+            surplus.effectId(),
+            surplus.attemptsMade(),
+            clock.instant(),
+            effects.attemptsOf(surplus));
+      }
       attempts = attempts.subList(0, batchSize);
     } else {
       inFlight.release(batchSize - attempts.size());

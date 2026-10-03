@@ -48,6 +48,10 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * A claim takes at most the batch it was asked for, however many passes claim at once.
  *
+ * <p>Contract tests, not a reproduction: the overshoot that stalled a live dispatcher depends on
+ * the query plan of a grown table, and neither test here fails against the old statement. What
+ * proves the dispatcher survives an overshoot is {@code DispatcherFailureTest}.
+ *
  * <p>The dispatcher drains its permits, claims that many rows, and hands back the difference. A
  * claim that returns more rows than it was asked for makes that difference negative: the semaphore
  * throws, the drained permits are never returned, and the agent type stops dispatching for good.

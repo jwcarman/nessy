@@ -88,16 +88,15 @@ public class JdbcEffects implements Effects {
    * is already holding is passed over rather than waited for. The status filter matters as much --
    * a {@code RUNNING} row that is due again is an attempt nobody finished, and taking it is how
    * that recovers.
-   */
-  /**
-   * Claims up to a batch of due rows. The rows are picked and locked in a CTE, which Postgres
-   * evaluates exactly once, and the update joins to that fixed set. An {@code IN (SELECT ... FOR
-   * UPDATE SKIP LOCKED LIMIT ?)} subquery gives no such promise: depending on the plan it can be
-   * evaluated again within the statement and claim more rows than the limit.
+   *
+   * <p>The rows are picked and locked in a {@code MATERIALIZED} CTE, evaluated once per statement,
+   * and the update joins to that fixed set. An {@code IN (SELECT ... FOR UPDATE SKIP LOCKED LIMIT
+   * ?)} subquery gives no such promise: on a plan that rescans it for each outer row, concurrent
+   * claims skip different rows on each rescan and the update takes more than the limit.
    */
   private static final String MARK_RUNNING =
       """
-            WITH claimed AS (
+            WITH claimed AS MATERIALIZED (
                 SELECT effect_id FROM nessy_agent_effect
                 WHERE agent_type = ? AND status IN (?, ?) AND actionable_at <= ?
                 ORDER BY actionable_at
