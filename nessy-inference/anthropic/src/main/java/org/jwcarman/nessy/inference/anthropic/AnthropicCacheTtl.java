@@ -15,8 +15,12 @@
  */
 package org.jwcarman.nessy.inference.anthropic;
 
-/** How long the prompt-cache marker lasts, as the value of {@code anthropic.cache_control.ttl}. */
+/**
+ * How long the prompt-cache marker lasts, as the value of {@code anthropic.cache_control.ttl}, or
+ * {@link #DISABLED} for no marker at all.
+ */
 public enum AnthropicCacheTtl {
   FIVE_MINUTES,
-  ONE_HOUR;
+  ONE_HOUR,
+  DISABLED;
 }

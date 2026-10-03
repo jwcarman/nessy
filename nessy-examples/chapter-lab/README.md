@@ -128,7 +128,7 @@ The prompts are the ones the Python probe used, in `LabPrompts`.
 
 ## Caching
 
-With `--provider anthropic` the lab turns the provider's prompt cache on, with the five-minute
+With `--provider anthropic` the lab uses the provider's prompt cache, with the five-minute
 lifetime. Every question is asked with the same context ahead of it, so the first question writes
 that context to the cache and the rest read it back. The other providers are left as they are.
 

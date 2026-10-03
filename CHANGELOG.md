@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking changes
+
+- **Anthropic prompt caching is on by default.** With
+  `anthropic.cache_control.ttl` absent, a request now carries `FIVE_MINUTES`
+  cache markers; before, it carried none. A one-off request still carries
+  none, and neither does a request that asks for an answer
+  (`ToolChoice.Answer`), which is sent without its tools.
+
+### Added
+
+- **`AnthropicCacheTtl.DISABLED`** turns Anthropic prompt caching off. Set it on
+  the provider, or on one agent type to override a provider that caches.
+
 ### Fixed
 
 - **The Boot starter closes every inference provider's client at shutdown.**

@@ -193,7 +193,7 @@ class AnthropicRequestsTest {
     }
 
     @Test
-    void is_marked_for_caching_only_when_asked_for() {
+    void is_marked_for_caching_unless_caching_is_off() {
       assertThat(
               params(List.of(open(1, "hi")))
                   .system()
@@ -201,15 +201,15 @@ class AnthropicRequestsTest {
                   .asTextBlockParams()
                   .getFirst()
                   .cacheControl())
-          .isEmpty();
+          .isPresent();
       assertThat(
-              params(List.of(open(1, "hi")), AnthropicCacheTtl.FIVE_MINUTES)
+              params(List.of(open(1, "hi")), AnthropicCacheTtl.DISABLED)
                   .system()
                   .orElseThrow()
                   .asTextBlockParams()
                   .getFirst()
                   .cacheControl())
-          .isPresent();
+          .isEmpty();
     }
 
     @Test
@@ -805,7 +805,7 @@ class AnthropicRequestsTest {
      * before it. Marking every tool would spend four breakpoints on one prefix.
      */
     @Test
-    void only_the_last_is_marked_for_caching_and_only_when_asked_for() {
+    void only_the_last_is_marked_for_caching_and_none_when_caching_is_off() {
       var cached =
           withTools(
                   List.of(offer("first"), offer("second")), caching(AnthropicCacheTtl.FIVE_MINUTES))
@@ -814,7 +814,10 @@ class AnthropicRequestsTest {
       assertThat(cached.get(0).asTool().cacheControl()).isEmpty();
       assertThat(cached.get(1).asTool().cacheControl()).isPresent();
 
-      var plain = withTools(List.of(offer("first"), offer("second"))).tools().orElseThrow();
+      var plain =
+          withTools(List.of(offer("first"), offer("second")), caching(AnthropicCacheTtl.DISABLED))
+              .tools()
+              .orElseThrow();
       assertThat(plain)
           .isNotEmpty()
           .allSatisfy(tool -> assertThat(tool.asTool().cacheControl()).isEmpty());
@@ -861,13 +864,45 @@ class AnthropicRequestsTest {
           .toList();
     }
 
-    /** Caching costs more to write than an ordinary token, so it is never on by default. */
     @Test
-    void nothing_is_marked_when_caching_was_not_asked_for() {
-      var blocks = blocksOf(params(conversation(15)));
+    void nothing_is_marked_when_caching_is_off() {
+      var blocks = blocksOf(params(conversation(15), AnthropicCacheTtl.DISABLED));
 
       assertThat(blocks).isNotEmpty();
       assertThat(markedIn(blocks)).isEmpty();
+    }
+
+    /**
+     * A one-off pays no cache write, and a series pays it once and reads it back on the next call,
+     * so a request that says nothing is cached for the short lifetime.
+     */
+    @Test
+    void a_request_that_says_nothing_is_marked_as_five_minutes_would_be() {
+      assertThat(markedIn(blocksOf(params(conversation(15))))).isNotEmpty();
+      assertThat(params(conversation(15)))
+          .isEqualTo(params(conversation(15), AnthropicCacheTtl.FIVE_MINUTES));
+    }
+
+    @Test
+    void nothing_is_marked_on_a_one_off_that_says_nothing_about_caching() {
+      InferenceRequest oneOff =
+          new InferenceRequest(
+                  SYSTEM,
+                  InferenceContext.of(conversation(15)),
+                  Toolset.of(List.of(ABoundTool.offer("lookup"))),
+                  options())
+              .asOneOff();
+
+      MessageCreateParams params = AnthropicRequests.toParams(oneOff, NONE, MAPPER);
+
+      assertThat(blocksOf(params)).isNotEmpty();
+      assertThat(markedIn(blocksOf(params))).isEmpty();
+      assertThat(params.system().orElseThrow().asTextBlockParams())
+          .isNotEmpty()
+          .allSatisfy(block -> assertThat(block.cacheControl()).isEmpty());
+      assertThat(params.tools().orElseThrow())
+          .isNotEmpty()
+          .allSatisfy(tool -> assertThat(tool.asTool().cacheControl()).isEmpty());
     }
 
     /** Nothing a one-off sends is sent again, so a marker would pay for a write nobody reads. */
@@ -892,6 +927,29 @@ class AnthropicRequestsTest {
       assertThat(params.tools().orElseThrow())
           .isNotEmpty()
           .allSatisfy(tool -> assertThat(tool.asTool().cacheControl()).isEmpty());
+    }
+
+    /**
+     * Answering drops the tools, and every other request leads with them, so nothing would read
+     * back a write made here.
+     */
+    @Test
+    void nothing_is_marked_on_a_request_that_asks_for_an_answer() {
+      InferenceRequest answering =
+          new InferenceRequest(
+              SYSTEM,
+              InferenceContext.of(conversation(15)),
+              new Toolset(List.of(ABoundTool.offer("lookup")), new ToolChoice.Answer()),
+              options());
+
+      MessageCreateParams params =
+          AnthropicRequests.toParams(answering, caching(AnthropicCacheTtl.FIVE_MINUTES), MAPPER);
+
+      assertThat(blocksOf(params)).isNotEmpty();
+      assertThat(markedIn(blocksOf(params))).isEmpty();
+      assertThat(params.system().orElseThrow().asTextBlockParams())
+          .isNotEmpty()
+          .allSatisfy(block -> assertThat(block.cacheControl()).isEmpty());
     }
 
     /** The lifetime in the request's own options is a setting; being a one-off is a fact. */
@@ -1750,18 +1808,22 @@ class AnthropicRequestsTest {
    * else is an edit to the prefix, and an edit costs the model the reasoning it did earlier in the
    * turn.
    *
-   * <p>These requests are uncached, and say nothing about cached ones: with {@code
-   * anthropic.cache_control.ttl} set the cache marker moves to a later block as the turn grows, so
-   * a cached request is not byte-identical to the last one. Anthropic documents adding, moving or
-   * removing cache markers as valid under replayed thinking, and a tool loop with the tail marker
-   * moving on every call, thinking replayed and the prefix check enforced was run live on
-   * 2026-10-01 without a rejection on Sonnet 5.5 or Fable 5.1.
+   * <p>These requests are uncached, and say nothing about cached ones: unless {@code
+   * anthropic.cache_control.ttl} is {@code DISABLED} the cache marker moves to a later block as the
+   * turn grows, so a cached request is not byte-identical to the last one. Anthropic documents
+   * adding, moving or removing cache markers as valid under replayed thinking, and a tool loop with
+   * the tail marker moving on every call, thinking replayed and the prefix check enforced was run
+   * live on 2026-10-01 without a rejection on Sonnet 5.5 or Fable 5.1.
    */
   @Nested
   class ATurnThatGrows {
 
     private static final Block.ToolCall LOOKUP =
         new Block.ToolCall(new CallId("call_1"), new ToolName("lookup"), "{\"q\":\"loch ness\"}");
+
+    private static MessageCreateParams params(List<Turn> turns) {
+      return AnthropicRequestsTest.params(turns, AnthropicCacheTtl.DISABLED);
+    }
 
     private static Turn asking() {
       return new Turn(new TurnId(1), asked(1, "how deep is it?"), List.of(), null);

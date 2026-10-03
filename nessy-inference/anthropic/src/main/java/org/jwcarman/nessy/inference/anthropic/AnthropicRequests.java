@@ -130,9 +130,16 @@ public final class AnthropicRequests {
     // Refused here as well as at validate, for a caller that never validated (a summariser).
     AnthropicPropertyReader.requireHeadroom(read, options);
 
-    // A one-off is never sent again, so a marker on it would buy a cache write nobody reads back.
+    // Answering now is the one choice this vendor cannot be told: measured 2026-09-20, a ban with
+    // the tools still in the request ends the turn with no content at all. What works here is not
+    // offering them, so that is what this adapter does -- and the cached prefix is the price, paid
+    // only on the turns a bound actually fires.
+    boolean answering = request.toolset().choice() instanceof ToolChoice.Answer;
+    // A one-off is never sent again, so a marker on it would buy a cache write nobody reads back;
+    // nor would one on an answer-only request, whose prefix lacks the tools every other one leads
+    // with.
     Optional<CacheControlEphemeral> marker =
-        request.oneOff() ? Optional.empty() : read.cacheTtl().map(AnthropicRequests::cacheMarker);
+        request.oneOff() || answering ? Optional.empty() : cacheMarker(read.cacheTtl());
     MessageCreateParams.Builder builder =
         MessageCreateParams.builder().model(options.modelName()).maxTokens(options.maxTokens());
 
@@ -142,11 +149,6 @@ public final class AnthropicRequests {
     }
     boolean thinks = read.thinks();
     addMessages(builder, request.context(), marker, thinks, mapper);
-    // Answering now is the one choice this vendor cannot be told: measured 2026-09-20, a ban with
-    // the tools still in the request ends the turn with no content at all. What works here is not
-    // offering them, so that is what this adapter does -- and the cached prefix is the price, paid
-    // only on the turns a bound actually fires.
-    boolean answering = request.toolset().choice() instanceof ToolChoice.Answer;
     if (!answering) {
       addTools(builder, request.toolset().offers(), marker, mapper);
       chooseTool(builder, request.toolset().offers(), request.toolset().choice());
@@ -181,12 +183,17 @@ public final class AnthropicRequests {
     };
   }
 
-  /** The cache marker for a ttl: {@code 5m} is today's default marker, {@code 1h} the long one. */
-  private static CacheControlEphemeral cacheMarker(AnthropicCacheTtl ttl) {
+  /**
+   * The cache marker for a ttl: {@code 5m} is today's default marker, {@code 1h} the long one, and
+   * {@code DISABLED} none.
+   */
+  private static Optional<CacheControlEphemeral> cacheMarker(AnthropicCacheTtl ttl) {
     return switch (ttl) {
-      case FIVE_MINUTES -> CacheControlEphemeral.builder().build();
+      case FIVE_MINUTES -> Optional.of(CacheControlEphemeral.builder().build());
       case ONE_HOUR ->
-          CacheControlEphemeral.builder().ttl(CacheControlEphemeral.Ttl.TTL_1H).build();
+          Optional.of(
+              CacheControlEphemeral.builder().ttl(CacheControlEphemeral.Ttl.TTL_1H).build());
+      case DISABLED -> Optional.empty();
     };
   }
 

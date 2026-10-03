@@ -60,7 +60,7 @@ final class AnthropicPropertyReader {
   record Read(
       Optional<AnthropicThinkingType> thinking,
       OptionalInt budget,
-      Optional<AnthropicCacheTtl> cacheTtl,
+      AnthropicCacheTtl cacheTtl,
       Optional<AnthropicServiceTier> serviceTier) {
 
     boolean enabled() {
@@ -94,7 +94,7 @@ final class AnthropicPropertyReader {
     return new Read(
         thinking.filter(value -> value != AnthropicThinkingType.DISABLED),
         budget.map(OptionalInt::of).orElseGet(OptionalInt::empty),
-        AnthropicProperties.CACHE_TTL.in(merged),
+        AnthropicProperties.CACHE_TTL.in(merged).orElse(AnthropicCacheTtl.FIVE_MINUTES),
         AnthropicProperties.SERVICE_TIER.in(merged));
   }
 

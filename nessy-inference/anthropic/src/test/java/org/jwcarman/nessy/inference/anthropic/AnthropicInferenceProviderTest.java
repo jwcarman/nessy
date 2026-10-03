@@ -763,7 +763,7 @@ class AnthropicInferenceProviderTest {
       assertThatThrownBy(config::build)
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage(
-              "property 'anthropic.cache_control.ttl' must be one of [FIVE_MINUTES, ONE_HOUR], was '2h'");
+              "property 'anthropic.cache_control.ttl' must be one of [FIVE_MINUTES, ONE_HOUR, DISABLED], was '2h'");
     }
 
     @Test
@@ -1218,8 +1218,40 @@ class AnthropicInferenceProviderTest {
     }
 
     @Test
-    void caching_is_off_when_no_ttl_property_is_set_anywhere() {
+    void caching_is_five_minutes_when_no_ttl_property_is_set_anywhere() {
       MessageCreateParams params = sentBy(new AnthropicProviderConfig(), carrying(Map.of()));
+
+      assertThat(
+              params
+                  .system()
+                  .orElseThrow()
+                  .asTextBlockParams()
+                  .getFirst()
+                  .cacheControl()
+                  .orElseThrow()
+                  .ttl())
+          .isEmpty();
+    }
+
+    @Test
+    void an_agent_type_that_caches_overrides_a_provider_that_does_not() {
+      MessageCreateParams params =
+          sentBy(
+              new AnthropicProviderConfig()
+                  .property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.DISABLED),
+              carrying(Map.of("anthropic.cache_control.ttl", "FIVE_MINUTES")));
+
+      assertThat(params.system().orElseThrow().asTextBlockParams().getFirst().cacheControl())
+          .isPresent();
+    }
+
+    @Test
+    void an_agent_type_that_turns_caching_off_overrides_a_provider_that_caches_for_an_hour() {
+      MessageCreateParams params =
+          sentBy(
+              new AnthropicProviderConfig()
+                  .property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.ONE_HOUR),
+              carrying(Map.of("anthropic.cache_control.ttl", "DISABLED")));
 
       assertThat(params.system().orElseThrow().asTextBlockParams().getFirst().cacheControl())
           .isEmpty();
