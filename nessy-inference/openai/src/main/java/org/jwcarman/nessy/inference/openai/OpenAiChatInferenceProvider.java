@@ -286,8 +286,10 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
     try {
       completion = accumulator.chatCompletion();
     } catch (IllegalStateException incomplete) {
-      // Nobody knows whether the model finished: the connection went before it said so. A model
-      // call that runs twice changes nothing but the bill, so the retry policy decides.
+      // The SDK throws here only when the final chunk never arrived; a finished stream that cannot
+      // be built fails inside accumulate() instead. So nobody knows whether the model finished:
+      // the connection went before it said so. A model call that runs twice changes nothing but
+      // the bill, so the retry policy decides.
       return new InferenceResult.Fault(
           new Failure.Unknown(
               "the stream ended before the answer was complete: " + incomplete.getMessage()));

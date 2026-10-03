@@ -193,8 +193,11 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
         return new InferenceResult.Fault(
             OpenAiFailures.classify(error.code().orElse("unknown"), ended + error.message()));
       }
-      // Nobody knows whether the model finished: the connection went before it said so. A model
-      // call that runs twice changes nothing but the bill, so the retry policy decides.
+      // The SDK throws here only when the terminal event never arrived; a finished stream that
+      // cannot
+      // be built fails inside accumulate() instead. So nobody knows whether the model finished:
+      // the connection went before it said so. A model call that runs twice changes nothing but
+      // the bill, so the retry policy decides.
       return new InferenceResult.Fault(new Failure.Unknown(ended + incomplete.getMessage()));
     }
     Usage usage = usageOf(response, modelOf(response, asked));
