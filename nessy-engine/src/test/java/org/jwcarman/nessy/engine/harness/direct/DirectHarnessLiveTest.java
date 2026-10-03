@@ -78,7 +78,7 @@ class DirectHarnessLiveTest {
   private static final String BASE_URL =
       System.getenv().getOrDefault("CHAT_MODEL_URL", "http://localhost:1234/v1");
   private static final String MODEL =
-      System.getenv().getOrDefault("CHAT_MODEL_ID", "qwen/qwen3.6-35b-a3b");
+      System.getenv().getOrDefault("CHAT_MODEL_ID", "qwen/qwen3-coder-30b");
 
   /** Narrow on purpose: a model that answers around this has visibly not been constrained. */
   record Capital(String city, String country) {}

@@ -65,7 +65,7 @@ runtime, which costs nothing, using the keyless `lmstudio` preset:
 ```bash
 NESSY_PROVIDERS_LMSTUDIO_ENABLED=true \
 NESSY_PROVIDER=lmstudio \
-NESSY_MODEL=qwen/qwen3.6-35b-a3b \
+NESSY_MODEL=qwen/qwen3-coder-30b \
   ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
 ```
 

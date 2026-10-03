@@ -61,10 +61,22 @@ beside another one that does the same.
 Then open <http://localhost:8080>. Ask it to email someone and watch the card
 appear.
 
+Locally, `qwen/qwen3-coder-30b` answers well and makes its tool calls quickly,
+but it does not write summaries: asked for one, it repeats the transcript. Have
+a second model write them, and load both in LM Studio first, so that it keeps
+both in memory instead of unloading one to load the other:
+
+```bash
+~/.lmstudio/bin/lms load qwen/qwen3-coder-30b --context-length 32768 -y
+~/.lmstudio/bin/lms load google/gemma-4-e4b --context-length 32768 -y
+CHAT_SUMMARY_MODEL_ID=google/gemma-4-e4b \
+  ./mvnw -q -pl :nessy-example-chat-web spring-boot:run
+```
+
 | Variable | Default | What it sets |
 |---|---|---|
 | `CHAT_PROVIDER` | `lmstudio` | which registered provider answers |
-| `CHAT_MODEL_ID` | `qwen/qwen3.6-35b-a3b` | the model |
+| `CHAT_MODEL_ID` | `qwen/qwen3-coder-30b` | the model |
 | `CHAT_MODEL_URL` | `http://localhost:1234/v1` | the base URL of the `lmstudio` preset |
 | `CHAT_CHAPTER_TURNS` | `20` | turns per chapter |
 | `CHAT_SUMMARY_MODEL_ID` | the agent's model | the model that writes chapter summaries, on the same provider |

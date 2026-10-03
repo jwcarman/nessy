@@ -45,7 +45,7 @@ nessy:
   # Which registered InferenceProvider answers. lmstudio is a preset the starter lights below;
   # nessy.provider names the one this agent type uses.
   provider: ${CHAT_PROVIDER:lmstudio}
-  model: ${CHAT_MODEL_ID:qwen/qwen3.6-35b-a3b}
+  model: ${CHAT_MODEL_ID:qwen/qwen3-coder-30b}
   providers:
     lmstudio:
       enabled: true

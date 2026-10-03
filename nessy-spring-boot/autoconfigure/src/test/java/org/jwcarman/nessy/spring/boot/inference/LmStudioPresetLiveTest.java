@@ -70,7 +70,7 @@ import tools.jackson.databind.json.JsonMapper;
 class LmStudioPresetLiveTest {
 
   private static final AgentType TYPE = new AgentType("chat");
-  private static final String MODEL = "qwen/qwen3.6-35b-a3b";
+  private static final String MODEL = "qwen/qwen3-coder-30b";
 
   /** A local model can be slow to a first token; five minutes is generous, not tight. */
   private static final Duration INFERENCE_TIMEOUT = Duration.ofMinutes(5);
