@@ -363,6 +363,38 @@ class DispatcherFailureTest {
     assertThat(delivered.outcomes).isEmpty();
   }
 
+  /**
+   * A claim that hands back more rows than it was asked for must not cost the dispatcher its
+   * capacity. Handing back the difference would be negative, the semaphore would throw, and the
+   * permits drained for the pass would never come back: the agent type would stop dispatching for
+   * good. The rows beyond the batch are left marked, for their watchdog to recover.
+   */
+  @Test
+  void a_claim_that_returns_more_than_its_batch_loses_no_capacity() {
+    Effects effects = new Effects();
+    effects.due =
+        List.of(
+            attempt(NOW.plusSeconds(600), 1),
+            attempt(NOW.plusSeconds(600), 1),
+            attempt(NOW.plusSeconds(600), 1),
+            attempt(NOW.plusSeconds(600), 1),
+            attempt(NOW.plusSeconds(600), 1),
+            attempt(NOW.plusSeconds(600), 1));
+    EffectDispatcher dispatcher = dispatcherFor(effects, answering());
+
+    assertThatCode(dispatcher::dispatch).doesNotThrowAnyException();
+
+    effects.due = List.of();
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(
+            () -> {
+              dispatcher.dispatch();
+              assertThat(effects.batchSizes.getLast()).isEqualTo(PERMITS);
+            });
+    assertThat(delivered.outcomes).hasSize(PERMITS);
+  }
+
   // ---------------------------------------------------------------- fixture
 
   private EffectDispatcher dispatcherFor(

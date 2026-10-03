@@ -222,7 +222,21 @@ public class EffectDispatcher {
       inFlight.release(batchSize);
       throw e;
     }
-    inFlight.release(batchSize - attempts.size());
+    if (attempts.size() > batchSize) {
+      // A claim must never hand back more than it was asked for, but if one does, handing back
+      // the difference would be negative: the semaphore throws, the permits drained above are
+      // never returned, and this agent type stops dispatching for good. Run what there is
+      // capacity for; the rest stay marked, and their watchdog brings them round again.
+      log.warn(
+          "[{}] claimed {} effect(s) when asked for {}; leaving {} to their watchdog",
+          agentType.value(),
+          attempts.size(),
+          batchSize,
+          attempts.size() - batchSize);
+      attempts = attempts.subList(0, batchSize);
+    } else {
+      inFlight.release(batchSize - attempts.size());
+    }
     if (attempts.isEmpty()) {
       return;
     }

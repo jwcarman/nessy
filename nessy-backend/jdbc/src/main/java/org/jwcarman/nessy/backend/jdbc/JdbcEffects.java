@@ -89,22 +89,30 @@ public class JdbcEffects implements Effects {
    * a {@code RUNNING} row that is due again is an attempt nobody finished, and taking it is how
    * that recovers.
    */
+  /**
+   * Claims up to a batch of due rows. The rows are picked and locked in a CTE, which Postgres
+   * evaluates exactly once, and the update joins to that fixed set. An {@code IN (SELECT ... FOR
+   * UPDATE SKIP LOCKED LIMIT ?)} subquery gives no such promise: depending on the plan it can be
+   * evaluated again within the statement and claim more rows than the limit.
+   */
   private static final String MARK_RUNNING =
       """
-            UPDATE nessy_agent_effect
-            SET status = ?,
-                attempts_made = attempts_made + 1,
-                actionable_at = LEAST(
-                    ? + (timeout_millis * INTERVAL '1 millisecond'), deadline),
-                updated_at = ?
-            WHERE effect_id IN (
+            WITH claimed AS (
                 SELECT effect_id FROM nessy_agent_effect
                 WHERE agent_type = ? AND status IN (?, ?) AND actionable_at <= ?
                 ORDER BY actionable_at
                 FOR UPDATE SKIP LOCKED
                 LIMIT ?)
-            RETURNING effect_id, agent_id, payload, failure_payload, attempts_made, deadline,
-                      trace_context, failed_attempts
+            UPDATE nessy_agent_effect e
+            SET status = ?,
+                attempts_made = e.attempts_made + 1,
+                actionable_at = LEAST(
+                    ? + (e.timeout_millis * INTERVAL '1 millisecond'), e.deadline),
+                updated_at = ?
+            FROM claimed
+            WHERE e.effect_id = claimed.effect_id
+            RETURNING e.effect_id, e.agent_id, e.payload, e.failure_payload, e.attempts_made,
+                      e.deadline, e.trace_context, e.failed_attempts
             """;
 
   /**
@@ -225,7 +233,7 @@ public class JdbcEffects implements Effects {
   public List<Attempt> markRunning(AgentType agentType, Instant now, int batchSize) {
     return jdbc.sql(MARK_RUNNING)
         .params(
-            RUNNING, utc(now), utc(now), agentType.value(), PENDING, RUNNING, utc(now), batchSize)
+            agentType.value(), PENDING, RUNNING, utc(now), batchSize, RUNNING, utc(now), utc(now))
         .query(
             (rs, n) ->
                 new Attempt(
