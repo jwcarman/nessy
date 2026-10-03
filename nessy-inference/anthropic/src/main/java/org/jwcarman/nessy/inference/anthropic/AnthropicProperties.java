@@ -43,9 +43,9 @@ public final class AnthropicProperties {
       VendorProperty.ofInteger("anthropic.thinking.budget_tokens");
 
   /**
-   * How long the prompt-cache marker lasts; absent means {@code FIVE_MINUTES}, and {@code OFF}
-   * sends no marker. A one-off request never carries a marker, whatever this says: it is never sent
-   * again, so nothing would read the write back.
+   * How long the prompt-cache marker lasts; absent means {@code FIVE_MINUTES}, and {@code DISABLED}
+   * sends no marker. A one-off request, and one that asks for an answer with no tools, never
+   * carries a marker, whatever this says: nothing would read the write back.
    */
   public static final VendorProperty<AnthropicCacheTtl> CACHE_TTL =
       VendorProperty.ofEnum("anthropic.cache_control.ttl", AnthropicCacheTtl.class);

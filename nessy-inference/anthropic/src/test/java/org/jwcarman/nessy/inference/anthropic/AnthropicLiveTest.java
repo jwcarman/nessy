@@ -706,21 +706,22 @@ class AnthropicLiveTest {
   }
 
   /**
-   * {@code OFF} sends no marker, so the same long prefix asked twice is neither written nor read.
+   * {@code DISABLED} sends no marker, so the same long prefix asked twice is neither written nor
+   * read.
    */
   @Test
-  void off_caches_nothing() {
+  void disabled_caches_nothing() {
     SystemPrompt longPrompt =
         new SystemPrompt(
             "You are a terse assistant. "
                 + "Background you may ignore: the loch is long and narrow. ".repeat(300));
-    Map<String, String> off = Map.of("anthropic.cache_control.ttl", "OFF");
+    Map<String, String> disabled = Map.of("anthropic.cache_control.ttl", "DISABLED");
 
     try (AnthropicInferenceProvider provider = provider()) {
       InferenceResult first =
-          provider.infer(carrying(longPrompt, List.of(open(1, "Say hello.")), off));
+          provider.infer(carrying(longPrompt, List.of(open(1, "Say hello.")), disabled));
       InferenceResult second =
-          provider.infer(carrying(longPrompt, List.of(open(1, "Say hello.")), off));
+          provider.infer(carrying(longPrompt, List.of(open(1, "Say hello.")), disabled));
 
       List<Tokens> counts =
           List.of(

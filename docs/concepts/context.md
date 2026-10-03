@@ -323,7 +323,7 @@ after it. The order above keeps the early strata still.
 
 Anthropic caches with five-minute markers unless told otherwise. Set
 `anthropic.cache_control.ttl` to `ONE_HOUR` for the long lifetime, or to
-`OFF` for no markers, on the provider or on one agent type:
+`DISABLED` for no markers, on the provider or on one agent type:
 
 ```java
 InferenceProvider provider = AnthropicInferenceProvider.of(c -> c
@@ -336,7 +336,7 @@ nessy:
   providers:
     anthropic:
       properties:
-        anthropic.cache_control.ttl: OFF
+        anthropic.cache_control.ttl: DISABLED
 ```
 
 OpenAI and Gemini cache implicitly, with nothing to set. A one-off request,

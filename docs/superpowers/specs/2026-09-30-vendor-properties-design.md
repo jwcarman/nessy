@@ -129,6 +129,16 @@ above disagree with this one, this one holds.
   `enabled` without a budget sends 1024 (no longer a build-time refusal), with the headroom check
   against `maxTokens` unchanged; caching is off unless `anthropic.cache_control.ttl` is set.
 
+## Amendment, 2026-10-03: caching is on by default
+
+James ruled on 2026-10-03 that `anthropic.cache_control.ttl` absent means `FIVE_MINUTES`, and
+added a third value, `DISABLED`, for no markers (`OFF` was approved first and replaced the same
+day: YAML 1.1 reads an unquoted `OFF` as the boolean `false`). This overrides "caching is off
+unless `anthropic.cache_control.ttl` is set" above and "Absent means off" in §7. The reason
+for off-by-default, that a cache write costs more than an ordinary token, stopped holding once
+one-off requests sent no markers. A request that asks for an answer with no tools sends no
+markers either.
+
 ---
 
 ## 1. The problem
