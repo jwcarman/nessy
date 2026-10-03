@@ -7,6 +7,133 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-02
+
+### Breaking changes
+
+- **A database written by an earlier build cannot be read and must be
+  recreated.**
+- **Every piece of content Nessy stores goes through the storage codec.**
+  A chapter's summary (`nessy_chapter.summary`), a note's hook and body
+  (`nessy_note.hook`, `nessy_note.body`) and a plan task's title
+  (`nessy_plan_task.title`) were `TEXT`; they are now `BYTEA`, encoded with
+  the application's `CodecFactory`, so a `StorageCodecConfigurer`'s compression
+  or encryption covers them as it covers the events and the payloads.
+  `JdbcNotebook` and `JdbcPlans` take a `CodecFactory` as a third constructor
+  argument, `JdbcChapters` takes one as its second, and `InMemoryChapters`
+  takes one, so each holds the encoded bytes of a summary as the in-memory
+  payload store holds content. The constructors without one are removed. A
+  database written by an earlier build must be recreated.
+- **A custom `InferenceProvider`, or a `switch` over `InferenceResult`, needs
+  the new arm.** A provider returns `Truncated` when its vendor says the
+  output limit was reached and the reply holds text.
+- **`ToolConfig.action` takes a `Stringifier` of the tool's input.** A line is
+  one line of at most 1,000 characters; with none named it is cut at 255,
+  keeping its start.
+- **`Exchange`, `ActionRequest.ToolCall` and `ToolSucceeded` each gained
+  components:** `actions` and `results`, `action`, and `rendered`.
+- **`ActionRenderer` is removed.** A `Stringifier<I>` takes its place.
+- **`nessy-approval-intent` is removed**, with `Intent`, `Intents`,
+  `JdbcIntents`, `IntentTool`, `IntentEnricher`, `IntentPolicy` and the
+  `nessy_intent` table.
+- **`Embedder.dimension()` returns `Optional<Dimension>`,** not `int` (0 for
+  not learned yet): empty until the first reply when no width was asked for.
+  `Embedding.dimension()`, a vector's length, stays `int`.
+- **`EmbeddingOptions.dimension` is `Optional<Dimension>`,** not `OptionalInt`.
+- **`InferenceOptions` and `EmbeddingOptions` gain a `properties`
+  component.** Their existing constructors and `of(...)` still work;
+  a record pattern over either (`InferenceOptions(var model, var max)`)
+  needs the third component.
+- **The `openai` wire is now `openai-chat`.** A custom provider with
+  `nessy.providers.<id>.wire: openai` fails at startup; write `openai-chat`.
+  Presets are unaffected, and the startup report now prints `openai-chat`.
+- **`OpenAiInferenceProvider` is now `OpenAiChatInferenceProvider`, and
+  `OpenAiProviderConfig` is now `OpenAiChatProviderConfig`.** Same factories,
+  same setters, same behaviour.
+- **`OpenAiRequests` is no longer public.** It was the chat adapter's
+  internal projection and is now the package-private `OpenAiChatRequests`.
+- **`DefaultEmbedderFactory`'s three constructors are gone**; build it with
+  `DefaultEmbedderFactory.of(f -> f.provider(id, provider).embedding(id,
+  EmbeddingOptions.of(model)))`. Every embedder it mints is now an
+  `ObservedEmbedder`.
+- **An embedding provider holds nothing about a model.** `model(...)` and
+  `dimension(...)` are gone from `OpenAiEmbedderConfig`,
+  `GeminiEmbedderConfig`, `BedrockEmbedderConfig` and `VoyageEmbedderConfig`,
+  and `defaultModel()` / `defaultDimension()` from the four providers. The
+  `DEFAULT_MODEL` constants stay, to cite: `EmbeddingOptions.of(
+  OpenAiEmbedderConfig.DEFAULT_MODEL)`.
+- **An embedder that asked for a width and got another fails**, naming both
+  (`asked for 256 coordinates, the model returned 768`), on every call.
+- **A Bedrock embedder over a model of neither family fails when it is
+  made**, not at its first call.
+- **`nessy.embedding.*` is replaced by `nessy.embedders.*`**, with no
+  aliases:
+
+  | old | new |
+  |---|---|
+  | `nessy.embedding.openai.model` | `nessy.embedder: openai` + `nessy.embedding-model: <model>` |
+  | `nessy.embedding.openai.dimension` | `nessy.embedding-dimension: <n>` |
+  | `openai.api-key` + `openai.base-url` + `nessy.embedding.openai.model` | a custom embedder (`nessy.embedders.local.wire: openai`, `.base-url`, `.api-key`, `.vendor`) plus the pair naming it; or the `openai` preset with `openai.base-url`, plus the pair |
+  | `nessy.embedding.gemini.model` | `nessy.embedder: gemini` + `nessy.embedding-model: <model>` |
+  | `nessy.embedding.gemini.dimension` | `nessy.embedding-dimension: <n>` |
+  | `nessy.embedding.voyage.api-key` | `voyage.api-key` (`VOYAGE_API_KEY`), or `nessy.embedders.voyage.api-key` |
+  | `nessy.embedding.voyage.model` | `nessy.embedder: voyage` + `nessy.embedding-model: <model>` |
+  | `nessy.embedding.voyage.dimension` | `nessy.embedding-dimension: <n>` |
+  | a key alone, with the vendor's default model | a key registers the provider; minting an embedder needs a model, from the store or the pair |
+- **`VoyageEmbeddingAutoConfiguration`, `OpenAiEmbeddingAutoConfiguration`
+  and `GeminiEmbeddingAutoConfiguration` are replaced by
+  `EmbeddingProvidersAutoConfiguration`**; update any
+  `spring.autoconfigure.exclude` naming them. Several keys set now register
+  several embedders instead of the first in auto-configuration order.
+- **The starter's `EmbedderFactory` bean is always present.** A store that
+  decided "no embeddings" by the factory's absence now asks whether
+  `nessy.embedder` is set. An application `EmbedderFactory` bean still
+  replaces the starter's factory, and no longer switches the presets off.
+- **Anthropic's typed setters are removed.** `AnthropicProviderConfig`
+  `thinking(boolean)`, `thinkingBudget(int)` and `promptCaching(PromptCaching)`
+  are gone, as is the `PromptCaching` enum; so are `AnthropicRequests.Features`
+  and `AnthropicRequests.toParams(InferenceRequest, Features, JsonMapper)`. Use
+  `property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED)`,
+  `THINKING_BUDGET` and `CACHE_TTL`. Thinking and caching stay off unless a
+  property turns them on.
+- **`nessy-memory-summarizing` is removed**, with `HeadSummarizer`,
+  `JdbcSummaries` and the table `nessy_summary`. Chapters replace it, and are on
+  by default. Existing `nessy_summary` rows are no longer read.
+- **`nessy-memory-episodic` is removed**, with `EpisodeSummarizer`,
+  `EpisodeTools`, `JdbcEpisodes`, the tools `begin_episode` and
+  `recall_episode`, and the table `nessy_episode`. Chapters replace it; to let
+  the model draw the boundaries, use `DeclaredChapters.feature(histories)` and
+  its `begin_chapter`. Existing `nessy_episode` rows are no longer read.
+- **`Summarizer` is a different interface.** The read-side `Summarizer`
+  (`forAgent`, `summarizedThrough`) is gone; `org.jwcarman.nessy.api.Summarizer`
+  now has one method, `String summarize(Chapter)`, and writes a chapter's
+  summary. A source that supplied recollections to a turn is a `MemorySource`.
+- **`summaries(...)` is removed** from `HarnessConfig` and `ContextConfig`. Use
+  `chapterPolicy(...)` and `summarizer(...)` to decide what stands in for old
+  history, or `memory(...)` to offer recalled text.
+- **`Block.SummaryContent` is removed.** A `Summary` is now
+  `Summary(Chapter chapter, String text)`.
+- **`InferenceContext` has new components:** `(summaries, tail, memory, state,
+  activeTurn, ambient)`. A provider adapter that reads its parts must place
+  the new strata; see the providers guide.
+- **Ambient background is no longer in the system prompt.** An adapter written
+  against the old context, or an application that relied on ambient text
+  being part of the system field, sees a different request.
+- **`SystemPromptSource` is removed**, with `systemPrompt(SystemPromptSource)`
+  on both doors and on `ReplConfig`. Use `systemPrompt(String)`, adding
+  sections with `instructions(String)`; anything that varied per agent or per
+  call becomes a `StateSource` or an `AmbientSource`.
+- **`PromptVariableSource` is removed.** Its factories are on `PromptVariables`
+  (`of`, `supplied`, `firstOf`, `none`), which no longer takes an agent.
+  `EnvironmentVariables.of(...)` returns a `PromptVariables`.
+- **`TemplatedSystemPrompt.of(...)` is replaced by `render(...)`,** which
+  renders once and returns a `SystemPrompt`.
+- **The starter's `SystemPromptSource` bean is now a `SystemPrompt` bean,**
+  and `PromptVariableSource` beans are no longer consulted: declare
+  `PromptVariables` beans.
+- **A backend implementation must provide `chapters()` and `leases()`** on
+  `DirectBackend` and `QueuedBackend`.
+
 ### Added
 
 - **`InferencePurpose`**, what a model call is for, with the supplied values
@@ -100,7 +227,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `voyage` preset.
 - **`OpenAiEmbedderConfig.vendor(String)`**, for a custom `openai`-wire
   embedder that is somebody else.
-
 - **`Dimension`**, in `org.jwcarman.nessy.api.embedding`: how many
   coordinates a vector has, at least 1. `EmbedderConfig.dimension(Dimension)`
   takes it; `dimension(int)` remains as the convenience.
@@ -160,6 +286,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   again.
 - **`Exchange.actionOf(CallId)` and `Exchange.resultOf(CallId)`**, the two
   lines for a call in a turn's history.
+- **chat-web: `chat.summary-model`** (`CHAT_SUMMARY_MODEL_ID`) names a second
+  model on the same provider to write chapter summaries. The local default
+  model of chat-web, watchman and chat-cli is `qwen/qwen3-coder-30b`.
 
 ### Changed
 
@@ -172,26 +301,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before it. Another agent's narration is never held up. The chapter keeper
   no longer waits for the turn it was told about to become visible, because
   it already is.
-- **Every piece of content Nessy stores goes through the storage codec.**
-  A chapter's summary (`nessy_chapter.summary`), a note's hook and body
-  (`nessy_note.hook`, `nessy_note.body`) and a plan task's title
-  (`nessy_plan_task.title`) were `TEXT`; they are now `BYTEA`, encoded with
-  the application's `CodecFactory`, so a `StorageCodecConfigurer`'s compression
-  or encryption covers them as it covers the events and the payloads.
-  `JdbcNotebook` and `JdbcPlans` take a `CodecFactory` as a third constructor
-  argument, `JdbcChapters` takes one as its second, and `InMemoryChapters`
-  takes one, so each holds the encoded bytes of a summary as the in-memory
-  payload store holds content. The constructors without one are removed. A
-  database written by an earlier build must be recreated.
 - **A reply cut off at the output limit is `Truncated`.** It was an `Answer`.
 - **A tool call cut off at the output limit is a `Fault`.** It was `Actions`,
   carrying arguments that could parse as `{}` and run.
 - **Gemini's `MALFORMED_FUNCTION_CALL` is a `Fault` that says a tool call was
   malformed and was not run.** It was the empty-answer fault. Gemini reports a
   tool call cut off at the output limit this way.
-- **A custom `InferenceProvider`, or a `switch` over `InferenceResult`, needs
-  the new arm.** A provider returns `Truncated` when its vendor says the
-  output limit was reached and the reply holds text.
 - **A chapter summary cut off at the output limit is refused.** It used to be
   stored. The chapter stays unsummarised and is tried again when a later turn
   ends, so an agent type's `maxTokens` has to leave room for the summary.
@@ -225,24 +340,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Spring Boot renders `nessy.system-prompt` once, at startup,** from every
   `PromptVariables` bean and then the `Environment`, and publishes a
   `SystemPrompt` bean. A hole nothing fills fails startup.
-- **`DirectBackend` and `QueuedBackend` declare `chapters()` and `leases()`.**
-- **`ToolConfig.action` takes a `Stringifier` of the tool's input.** A line is
-  one line of at most 1,000 characters; with none named it is cut at 255,
-  keeping its start.
 - **A chapter is summarised from text.** `ProseSummarizer` writes the chapter's
   turns out as lines, each call as `assistant did: <action> -- succeeded:
   <result>`, and sends them as one user message. Nothing changes for the turn
   being answered: the adapters still receive every call and result whole.
-- **`Exchange`, `ActionRequest.ToolCall` and `ToolSucceeded` each gained
-  components:** `actions` and `results`, `action`, and `rendered`.
 - **A failed call's message is at most 1,000 characters,** its middle dropped
   and `...` in the gap. That is the text the model reads back for the call.
-- **A database written by an earlier build cannot be read and must be
-  recreated.**
-
-### Removed
-
-- **`ActionRenderer`.** A `Stringifier<I>` takes its place.
+- **A refused turn reads as one line in a chapter's transcript,**
+  `(a message was withdrawn)`, and a line that runs onto more than one is
+  indented four spaces after its first, so the summariser can tell where each
+  line ends.
 
 ### Fixed
 
@@ -298,109 +405,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a tool call or an approval now names the request it answers, and one for
   another request is ignored.
 
-### Breaking changes
+### Documentation
 
-- **`nessy-approval-intent` is removed**, with `Intent`, `Intents`,
-  `JdbcIntents`, `IntentTool`, `IntentEnricher`, `IntentPolicy` and the
-  `nessy_intent` table.
-- **`Embedder.dimension()` returns `Optional<Dimension>`,** not `int` (0 for
-  not learned yet): empty until the first reply when no width was asked for.
-  `Embedding.dimension()`, a vector's length, stays `int`.
-- **`EmbeddingOptions.dimension` is `Optional<Dimension>`,** not `OptionalInt`.
-- **`InferenceOptions` and `EmbeddingOptions` gain a `properties`
-  component.** Their existing constructors and `of(...)` still work;
-  a record pattern over either (`InferenceOptions(var model, var max)`)
-  needs the third component.
-- **The `openai` wire is now `openai-chat`.** A custom provider with
-  `nessy.providers.<id>.wire: openai` fails at startup; write `openai-chat`.
-  Presets are unaffected, and the startup report now prints `openai-chat`.
-- **`OpenAiInferenceProvider` is now `OpenAiChatInferenceProvider`, and
-  `OpenAiProviderConfig` is now `OpenAiChatProviderConfig`.** Same factories,
-  same setters, same behaviour.
-- **`OpenAiRequests` is no longer public.** It was the chat adapter's
-  internal projection and is now the package-private `OpenAiChatRequests`.
-- **`DefaultEmbedderFactory`'s three constructors are gone**; build it with
-  `DefaultEmbedderFactory.of(f -> f.provider(id, provider).embedding(id,
-  EmbeddingOptions.of(model)))`. Every embedder it mints is now an
-  `ObservedEmbedder`.
-- **An embedding provider holds nothing about a model.** `model(...)` and
-  `dimension(...)` are gone from `OpenAiEmbedderConfig`,
-  `GeminiEmbedderConfig`, `BedrockEmbedderConfig` and `VoyageEmbedderConfig`,
-  and `defaultModel()` / `defaultDimension()` from the four providers. The
-  `DEFAULT_MODEL` constants stay, to cite: `EmbeddingOptions.of(
-  OpenAiEmbedderConfig.DEFAULT_MODEL)`.
-- **An embedder that asked for a width and got another fails**, naming both
-  (`asked for 256 coordinates, the model returned 768`), on every call.
-- **A Bedrock embedder over a model of neither family fails when it is
-  made**, not at its first call.
-- **`nessy.embedding.*` is replaced by `nessy.embedders.*`**, with no
-  aliases:
-
-  | old | new |
-  |---|---|
-  | `nessy.embedding.openai.model` | `nessy.embedder: openai` + `nessy.embedding-model: <model>` |
-  | `nessy.embedding.openai.dimension` | `nessy.embedding-dimension: <n>` |
-  | `openai.api-key` + `openai.base-url` + `nessy.embedding.openai.model` | a custom embedder (`nessy.embedders.local.wire: openai`, `.base-url`, `.api-key`, `.vendor`) plus the pair naming it; or the `openai` preset with `openai.base-url`, plus the pair |
-  | `nessy.embedding.gemini.model` | `nessy.embedder: gemini` + `nessy.embedding-model: <model>` |
-  | `nessy.embedding.gemini.dimension` | `nessy.embedding-dimension: <n>` |
-  | `nessy.embedding.voyage.api-key` | `voyage.api-key` (`VOYAGE_API_KEY`), or `nessy.embedders.voyage.api-key` |
-  | `nessy.embedding.voyage.model` | `nessy.embedder: voyage` + `nessy.embedding-model: <model>` |
-  | `nessy.embedding.voyage.dimension` | `nessy.embedding-dimension: <n>` |
-  | a key alone, with the vendor's default model | a key registers the provider; minting an embedder needs a model, from the store or the pair |
-
-- **`VoyageEmbeddingAutoConfiguration`, `OpenAiEmbeddingAutoConfiguration`
-  and `GeminiEmbeddingAutoConfiguration` are replaced by
-  `EmbeddingProvidersAutoConfiguration`**; update any
-  `spring.autoconfigure.exclude` naming them. Several keys set now register
-  several embedders instead of the first in auto-configuration order.
-- **The starter's `EmbedderFactory` bean is always present.** A store that
-  decided "no embeddings" by the factory's absence now asks whether
-  `nessy.embedder` is set. An application `EmbedderFactory` bean still
-  replaces the starter's factory, and no longer switches the presets off.
-- **Anthropic's typed setters are removed.** `AnthropicProviderConfig`
-  `thinking(boolean)`, `thinkingBudget(int)` and `promptCaching(PromptCaching)`
-  are gone, as is the `PromptCaching` enum; so are `AnthropicRequests.Features`
-  and `AnthropicRequests.toParams(InferenceRequest, Features, JsonMapper)`. Use
-  `property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED)`,
-  `THINKING_BUDGET` and `CACHE_TTL`. Thinking and caching stay off unless a
-  property turns them on.
-- **`nessy-memory-summarizing` is removed**, with `HeadSummarizer`,
-  `JdbcSummaries` and the table `nessy_summary`. Chapters replace it, and are on
-  by default. Existing `nessy_summary` rows are no longer read.
-- **`nessy-memory-episodic` is removed**, with `EpisodeSummarizer`,
-  `EpisodeTools`, `JdbcEpisodes`, the tools `begin_episode` and
-  `recall_episode`, and the table `nessy_episode`. Chapters replace it; to let
-  the model draw the boundaries, use `DeclaredChapters.feature(histories)` and
-  its `begin_chapter`. Existing `nessy_episode` rows are no longer read.
-- **`Summarizer` is a different interface.** The read-side `Summarizer`
-  (`forAgent`, `summarizedThrough`) is gone; `org.jwcarman.nessy.api.Summarizer`
-  now has one method, `String summarize(Chapter)`, and writes a chapter's
-  summary. A source that supplied recollections to a turn is a `MemorySource`.
-- **`summaries(...)` is removed** from `HarnessConfig` and `ContextConfig`. Use
-  `chapterPolicy(...)` and `summarizer(...)` to decide what stands in for old
-  history, or `memory(...)` to offer recalled text.
-- **`Block.SummaryContent` is removed.** A `Summary` is now
-  `Summary(Chapter chapter, String text)`.
-- **`InferenceContext` has new components:** `(summaries, tail, memory, state,
-  activeTurn, ambient)`. A provider adapter that reads its parts must place
-  the new strata; see the providers guide.
-- **Ambient background is no longer in the system prompt.** An adapter written
-  against the old context, or an application that relied on ambient text
-  being part of the system field, sees a different request.
-- **`SystemPromptSource` is removed**, with `systemPrompt(SystemPromptSource)`
-  on both doors and on `ReplConfig`. Use `systemPrompt(String)`, adding
-  sections with `instructions(String)`; anything that varied per agent or per
-  call becomes a `StateSource` or an `AmbientSource`.
-- **`PromptVariableSource` is removed.** Its factories are on `PromptVariables`
-  (`of`, `supplied`, `firstOf`, `none`), which no longer takes an agent.
-  `EnvironmentVariables.of(...)` returns a `PromptVariables`.
-- **`TemplatedSystemPrompt.of(...)` is replaced by `render(...)`,** which
-  renders once and returns a `SystemPrompt`.
-- **The starter's `SystemPromptSource` bean is now a `SystemPrompt` bean,**
-  and `PromptVariableSource` beans are no longer consulted: declare
-  `PromptVariables` beans.
-- **A backend implementation must provide `chapters()` and `leases()`** on
-  `DirectBackend` and `QueuedBackend`.
+- **Context**, a concepts page for the six strata, chapters, and how to keep
+  a conversation cacheable: what caching costs and saves, each Claude model's
+  minimum cacheable size, and how to choose a chapter size, with measured runs.
+- **12-Factor Agents**, a factor-by-factor check of Nessy against the
+  12-Factor Agents principles.
+- Every example on the site compiles, and every command runs.
 
 ## [0.2.0] - 2026-09-29
 
@@ -557,6 +569,7 @@ Nessy is an agent harness framework for Java. This is the first release.
 - Java 25.
 - Spring Boot 4.1 (optional — only needed for `nessy-spring-boot-starter`).
 
+[0.3.0]: https://github.com/jwcarman/nessy/releases/tag/0.3.0
 [0.2.0]: https://github.com/jwcarman/nessy/releases/tag/0.2.0
 [0.1.1]: https://github.com/jwcarman/nessy/releases/tag/0.1.1
 [0.1.0]: https://github.com/jwcarman/nessy/releases/tag/0.1.0
