@@ -397,7 +397,9 @@ So the answer is read from the terminal event's `Response`, and the deltas exist
 The reading, in `read(...)`, mirrors the chat adapter's three shapes decided on content:
 
 - no terminal event: `Fault(Permanent("the stream ended before the answer was complete: ..."))`,
-  the chat adapter's own words for the same case;
+  the chat adapter's own words for the same case. **Amended 2026-10-03:** James ruled that a stream
+  cut short is a dropped connection, so it is `Unknown` and the retry policy decides; a stream with
+  no events at all stays `Permanent` ("model returned no reply"), as it is on the chat wire;
 - `response.error()` present (a `response.failed`): `Fault` classified from the error's code and
   message, `Permanent` unless the code names a rate limit or a server-side failure;
 - output items walked in order: a `message` item's `output_text` parts are the said text and a

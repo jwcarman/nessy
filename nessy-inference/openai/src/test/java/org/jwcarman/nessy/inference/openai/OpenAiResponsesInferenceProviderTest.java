@@ -44,6 +44,7 @@ import com.openai.errors.UnprocessableEntityException;
 import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.ResponseInputItem;
 import com.openai.models.responses.ResponseReasoningItem;
+import com.openai.models.responses.ResponseStreamEvent;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -313,7 +314,7 @@ class OpenAiResponsesInferenceProviderTest {
     }
 
     @Test
-    void a_stream_with_no_terminal_event_is_a_fault_that_says_it_ended_early() {
+    void a_stream_of_nothing_is_a_permanent_fault() {
       InferenceResult result = provider(ResponseStreams.client(params -> List.of())).infer(REQUEST);
 
       assertThat(result)
@@ -321,6 +322,27 @@ class OpenAiResponsesInferenceProviderTest {
               InferenceResult.Fault.class,
               fault -> {
                 assertThat(fault.failure()).isInstanceOf(Failure.Permanent.class);
+                assertThat(fault.failure().reason()).contains("no reply");
+              });
+    }
+
+    /**
+     * The connection went before the model said it was done, so nobody knows whether it finished. A
+     * model call that runs twice changes nothing but the bill, so the retry policy decides.
+     */
+    @Test
+    void a_stream_with_no_terminal_event_is_an_unknown_fault_that_says_it_ended_early() {
+      List<ResponseStreamEvent> events =
+          ResponseStreams.eventsOf(
+              ResponseStreams.completed(List.of(ResponseStreams.message("msg_1", "Nessie"))));
+      List<ResponseStreamEvent> cut = events.subList(0, events.size() - 1);
+      InferenceResult result = provider(ResponseStreams.client(params -> cut)).infer(REQUEST);
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> {
+                assertThat(fault.failure()).isInstanceOf(Failure.Unknown.class);
                 assertThat(fault.failure().reason()).contains("ended before");
               });
     }

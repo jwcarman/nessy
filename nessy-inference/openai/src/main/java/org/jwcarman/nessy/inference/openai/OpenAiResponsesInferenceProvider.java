@@ -153,11 +153,13 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
             .createStreaming(
                 OpenAiResponsesRequests.toParams(request, vendor, properties, mapper))) {
       ResponseAccumulator accumulator = ResponseAccumulator.create();
+      boolean[] any = {false};
       boolean[] ended = {false};
       ResponseErrorEvent[] error = {null};
       stream.stream()
           .forEach(
               event -> {
+                any[0] = true;
                 accumulator.accumulate(event);
                 if (!ended[0]) {
                   narrate(event, narrator);
@@ -165,6 +167,10 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
                 event.error().ifPresent(e -> error[0] = e);
                 ended[0] |= event.isCompleted() || event.isFailed() || event.isIncomplete();
               });
+      if (!any[0]) {
+        // A stream that ended before it began: nothing to fold. Asking again returns the same.
+        return new InferenceResult.Fault(new Failure.Permanent("model returned no reply"));
+      }
       return read(accumulator, error[0], request.options().modelName());
     } catch (OpenAIException e) {
       return new InferenceResult.Fault(OpenAiFailures.classify(e));
@@ -187,7 +193,9 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
         return new InferenceResult.Fault(
             OpenAiFailures.classify(error.code().orElse("unknown"), ended + error.message()));
       }
-      return new InferenceResult.Fault(new Failure.Permanent(ended + incomplete.getMessage()));
+      // Nobody knows whether the model finished: the connection went before it said so. A model
+      // call that runs twice changes nothing but the bill, so the retry policy decides.
+      return new InferenceResult.Fault(new Failure.Unknown(ended + incomplete.getMessage()));
     }
     Usage usage = usageOf(response, modelOf(response, asked));
     if (response.error().isPresent()) {

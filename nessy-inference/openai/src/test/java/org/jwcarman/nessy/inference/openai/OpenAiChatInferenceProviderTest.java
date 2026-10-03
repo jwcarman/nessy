@@ -776,11 +776,40 @@ class OpenAiChatInferenceProviderTest {
               .infer(REQUEST);
 
       assertThat(result)
-          // Streamed, a reply with no choices is a stream that never reaches a finish reason.
           .isInstanceOfSatisfying(
               InferenceResult.Fault.class,
               fault -> {
                 assertThat(fault.failure()).isInstanceOf(Failure.Permanent.class);
+                assertThat(fault.failure().reason()).contains("no choices");
+              });
+    }
+
+    /**
+     * A choice that started and never reached a finish reason: the connection went before the model
+     * said it was done, so nobody knows whether it finished, and the retry policy decides.
+     */
+    @Test
+    void a_stream_cut_short_mid_answer_is_an_unknown_fault() {
+      List<ChatCompletionChunk> chunks =
+          chunksOf(
+              completionOf(
+                  ChatCompletionMessage.builder()
+                      .content("a lake monster")
+                      .refusal(Optional.<String>empty())
+                      .build()));
+      List<ChatCompletionChunk> cut = chunks.subList(0, chunks.size() - 1);
+
+      InferenceResult result =
+          new OpenAiChatProviderConfig()
+              .client(fakeStreamingClient(params -> cut))
+              .build()
+              .infer(REQUEST);
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> {
+                assertThat(fault.failure()).isInstanceOf(Failure.Unknown.class);
                 assertThat(fault.failure().reason()).contains("ended before");
               });
     }

@@ -368,7 +368,10 @@ class BedrockInferenceProviderTest {
       assertThat(inferNarrating(early))
           .isInstanceOfSatisfying(
               InferenceResult.Fault.class,
-              fault -> assertThat(fault.failure().reason()).contains("ended before"));
+              fault -> {
+                assertThat(fault.failure()).isInstanceOf(Failure.Unknown.class);
+                assertThat(fault.failure().reason()).contains("ended before");
+              });
     }
   }
 

@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Gemini no longer returns half a reply as the answer.** A stream that
+  stopped before its finish reason was read as a complete answer. It is now a
+  fault.
+- **A stream cut short is `Failure.Unknown`, not `Permanent`**, on Anthropic,
+  OpenAI Chat, OpenAI Responses, Bedrock and Gemini. A server that closes the
+  stream mid-answer is a dropped connection, so a retry policy can now try
+  again. A stream that delivers no answer at all is still `Permanent`.
 - **A dropped connection to the model can be retried.** Every adapter
   reports a dropped connection as `Failure.Unknown`, and the dispatcher sent
   only `Failure.Transient` to the retry policy, so a dropped connection ended
