@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Boot starter closes every inference provider's client at shutdown.**
+  Each provider bean is an `ObservedInferenceProvider`, which was not
+  `AutoCloseable`, so the container never closed the adapter inside it and
+  the adapter's HTTP client leaked. The wrapper now closes what it wraps, as
+  `ObservedEmbedder` already did.
+
 ## [0.3.0] - 2026-10-02
 
 ### Breaking changes

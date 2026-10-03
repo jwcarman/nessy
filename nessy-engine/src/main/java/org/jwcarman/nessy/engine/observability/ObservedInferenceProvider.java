@@ -45,7 +45,7 @@ import org.jwcarman.nessy.inference.InferenceResult;
  * that has a meter registry to record semconv's {@code gen_ai.client.token.usage} histogram -- the
  * Boot starter registers one.
  */
-public final class ObservedInferenceProvider implements InferenceProvider {
+public final class ObservedInferenceProvider implements InferenceProvider, AutoCloseable {
 
   /** Semconv's histogram of how long a GenAI operation took. */
   public static final String DURATION = "gen_ai.client.operation.duration";
@@ -86,6 +86,17 @@ public final class ObservedInferenceProvider implements InferenceProvider {
   @Override
   public String vendor() {
     return delegate.vendor();
+  }
+
+  /**
+   * Closes the provider it wraps, when that one holds something to close. A container that manages
+   * the observed provider closes it, and the client inside would otherwise leak.
+   */
+  @Override
+  public void close() throws Exception {
+    if (delegate instanceof AutoCloseable closeable) {
+      closeable.close();
+    }
   }
 
   /** Not observed: nothing is called, and a refusal is the build's failure, not a span's. */

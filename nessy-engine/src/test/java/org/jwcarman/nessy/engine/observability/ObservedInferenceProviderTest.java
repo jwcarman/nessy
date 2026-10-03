@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.observability;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
@@ -34,6 +35,7 @@ import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceContext;
+import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferencePurpose;
@@ -138,6 +140,46 @@ class ObservedInferenceProviderTest {
       assertThat(recorded).hasSize(1);
       assertThat(recorded.getFirst().getLowCardinalityKeyValue(PURPOSE).getValue())
           .isEqualTo("summary");
+    }
+  }
+
+  @Nested
+  class Closing {
+
+    /** A provider holding a client, as every vendor adapter does. */
+    private static final class Holding implements InferenceProvider, AutoCloseable {
+
+      private boolean closed;
+
+      @Override
+      public InferenceResult infer(InferenceRequest request, InferenceNarrator narrator) {
+        return new InferenceResult.Answer(List.of(new Block.Text("done")));
+      }
+
+      @Override
+      public void close() {
+        closed = true;
+      }
+    }
+
+    @Test
+    void closes_the_provider_it_wraps() throws Exception {
+      Holding holding = new Holding();
+      InferenceProvider observed =
+          ObservedInferenceProvider.wrap(holding, ObservationRegistry.NOOP);
+
+      ((AutoCloseable) observed).close();
+
+      assertThat(holding.closed).isTrue();
+    }
+
+    @Test
+    void closes_quietly_when_the_provider_it_wraps_holds_nothing() {
+      InferenceProvider plain = (_, _) -> new InferenceResult.Answer(List.of());
+      AutoCloseable observed =
+          (AutoCloseable) ObservedInferenceProvider.wrap(plain, ObservationRegistry.NOOP);
+
+      assertThatCode(observed::close).doesNotThrowAnyException();
     }
   }
 }
