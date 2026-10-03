@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.api.UsageReports;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
@@ -39,6 +40,7 @@ import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.backend.inmemory.InMemoryQueuedBackend;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
+import org.jwcarman.nessy.engine.usage.EventUsageReports;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.spring.boot.inference.InferenceProvidersAutoConfiguration;
@@ -142,6 +144,29 @@ class NessyAutoConfigurationTest {
               assertThat(context).hasSingleBean(QueuedBackend.class);
               assertThat(context.getBean(QueuedBackend.class))
                   .isInstanceOf(InMemoryQueuedBackend.class);
+            });
+  }
+
+  /** Usage reports read both doors' stories, with or without a database. */
+  @Test
+  void usage_reports_are_offered_over_the_stored_events_of_both_doors() {
+    new ApplicationContextRunner()
+        .withConfiguration(
+            AutoConfigurations.of(
+                JacksonAutoConfiguration.class,
+                DataSourceTransactionManagerAutoConfiguration.class,
+                ObservationAutoConfiguration.class,
+                NessyAutoConfiguration.class,
+                JdbcBackendAutoConfiguration.class,
+                InMemoryBackendAutoConfiguration.class,
+                QueuedHarnessAutoConfiguration.class,
+                UsageReportsAutoConfiguration.class))
+        .withUserConfiguration(AnInferenceProvider.class)
+        .withPropertyValues(MODEL, PROVIDER, PROMPT, NO_SCHEMA)
+        .run(
+            context -> {
+              assertThat(context).hasSingleBean(UsageReports.class);
+              assertThat(context.getBean(UsageReports.class)).isInstanceOf(EventUsageReports.class);
             });
   }
 
