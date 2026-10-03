@@ -245,8 +245,8 @@ Things to know:
   for an approver by default, set on the binding. When it passes, the call is
   recorded as failed.
 - Execution is at-least-once. A tool that was running when its process died
-  runs again; `turn()` and `callId()` together are stable across a re-drive
-  so a tool can deduplicate.
+  runs again; `idempotencyKey()` is the same on every run, so a tool can
+  deduplicate on it.
 
 See [Durable Computation](durable-computation.md#deferring) and
 [Two Doors](two-doors.md).

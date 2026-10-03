@@ -55,9 +55,8 @@ import tools.jackson.databind.node.ObjectNode;
  * @param agentType what kind of agent is asking -- a shared approvals page shows calls from several
  *     kinds side by side, and an id alone does not say which is which
  * @param agentId which agent is asking
- * @param turn the turn this call belongs to, which is the seq of the input that opened it -- with
- *     {@code callId} it identifies the call across a restart, since a model's call ids are unique
- *     within one response and two turns can each produce a {@code "call_1"}
+ * @param turn the turn this call belongs to, which is the seq of the input that opened it; to tell
+ *     one call from another, use {@code idempotencyKey}, not this with {@code callId}
  * @param callId which call within that turn, by the id the model gave it
  * @param idempotencyKey the call's own key, the same here as on the {@link ToolCallRequest} that
  *     runs it, and on every ask of it -- see {@link IdempotencyKey}
