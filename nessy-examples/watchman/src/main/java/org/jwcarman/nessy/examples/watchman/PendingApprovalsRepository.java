@@ -28,6 +28,7 @@ import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -42,34 +43,36 @@ import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 public class PendingApprovalsRepository {
 
   private static final String COLUMNS =
-      "call_id, agent_type, agent_id, tool, action, asked_at, expires_at, reply_token, answer,"
-          + " note, answered_at";
+      "idempotency_key, call_id, agent_type, agent_id, tool, action, asked_at, expires_at,"
+          + " reply_token, answer, note, answered_at";
 
   private static final String PENDING =
       "SELECT "
           + COLUMNS
           + " FROM watchman_pending_approval WHERE answer IS NULL ORDER BY asked_at";
 
-  private static final String BY_CALL =
-      "SELECT "
-          + COLUMNS
-          + " FROM watchman_pending_approval"
-          + " WHERE agent_type = ? AND agent_id = ? AND call_id = ?";
+  private static final String BY_KEY =
+      "SELECT " + COLUMNS + " FROM watchman_pending_approval WHERE idempotency_key = ?";
 
   private static final String INSERT =
-      "INSERT INTO watchman_pending_approval (agent_type, agent_id, call_id, tool, action,"
-          + " asked_at, expires_at, reply_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+      "INSERT INTO watchman_pending_approval (idempotency_key, agent_type, agent_id, call_id, tool,"
+          + " action, asked_at, expires_at, reply_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
   // A recovered turn asks again, with a fresh token and deadline: the row it wrote before is
   // brought up to date rather than duplicated, and one already answered is left alone.
   private static final String REFRESH =
       "UPDATE watchman_pending_approval SET reply_token = ?, expires_at = ?"
-          + " WHERE agent_type = ? AND agent_id = ? AND call_id = ? AND answer IS NULL";
+          + " WHERE idempotency_key = ? AND answer IS NULL";
 
   private static final String EXISTS =
-      "SELECT count(*) FROM watchman_pending_approval"
-          + " WHERE agent_type = ? AND agent_id = ? AND call_id = ?";
+      "SELECT count(*) FROM watchman_pending_approval WHERE idempotency_key = ?";
 
+  private static final String ANSWER_BY_KEY =
+      "UPDATE watchman_pending_approval SET answer = ?, note = ?, answered_at = ?"
+          + " WHERE idempotency_key = ? AND answer IS NULL";
+
+  // The engine narrates a decision by call id alone. Only one call of an agent with a given id can
+  // be waiting at once, so the row still waiting is the one meant.
   private static final String ANSWER =
       "UPDATE watchman_pending_approval SET answer = ?, note = ?, answered_at = ?"
           + " WHERE agent_type = ? AND agent_id = ? AND call_id = ? AND answer IS NULL";
@@ -90,28 +93,21 @@ public class PendingApprovalsRepository {
     return jdbc.sql(PENDING).query(MAPPER).list();
   }
 
-  public Optional<PendingApproval> byCallId(AgentType agentType, AgentId agentId, CallId callId) {
-    return jdbc.sql(BY_CALL)
-        .params(agentType.value(), key(agentId), callId.value())
-        .query(MAPPER)
-        .optional();
+  public Optional<PendingApproval> byIdempotencyKey(IdempotencyKey key) {
+    return jdbc.sql(BY_KEY).params(text(key)).query(MAPPER).optional();
   }
 
   public void asked(PendingApproval row) {
     int refreshed =
         jdbc.sql(REFRESH)
-            .params(
-                row.replyToken(),
-                utc(row.expiresAt()),
-                row.agentType().value(),
-                key(row.agentId()),
-                row.callId().value())
+            .params(row.replyToken(), utc(row.expiresAt()), text(row.idempotencyKey()))
             .update();
-    if (refreshed > 0 || alreadyDecided(row.agentType(), row.agentId(), row.callId())) {
+    if (refreshed > 0 || alreadyDecided(row.idempotencyKey())) {
       return;
     }
     jdbc.sql(INSERT)
         .params(
+            text(row.idempotencyKey()),
             row.agentType().value(),
             key(row.agentId()),
             row.callId().value(),
@@ -123,12 +119,13 @@ public class PendingApprovalsRepository {
         .update();
   }
 
-  private boolean alreadyDecided(AgentType agentType, AgentId agentId, CallId callId) {
-    return jdbc.sql(EXISTS)
-            .params(agentType.value(), key(agentId), callId.value())
-            .query(Long.class)
-            .single()
-        > 0;
+  private boolean alreadyDecided(IdempotencyKey key) {
+    return jdbc.sql(EXISTS).params(text(key)).query(Long.class).single() > 0;
+  }
+
+  /** What a person decided, on the page: the row is named by its key, which the page links to. */
+  public void answered(IdempotencyKey key, String answer, String note, Instant when) {
+    jdbc.sql(ANSWER_BY_KEY).params(answer, note, utc(when), text(key)).update();
   }
 
   public void answered(
@@ -147,6 +144,7 @@ public class PendingApprovalsRepository {
 
   private static PendingApproval map(ResultSet row, int rowNumber) throws SQLException {
     return new PendingApproval(
+        IdempotencyKey.of(UUID.fromString(row.getString("idempotency_key"))),
         new CallId(row.getString("call_id")),
         new AgentType(row.getString("agent_type")),
         new AgentId(UUID.fromString(row.getString("agent_id"))),
@@ -164,6 +162,10 @@ public class PendingApprovalsRepository {
   /** The id as the TEXT column holds it; a bare UUID is not text to PostgreSQL. */
   private static String key(AgentId agentId) {
     return agentId.value().toString();
+  }
+
+  private static String text(IdempotencyKey key) {
+    return key.value().toString();
   }
 
   private static OffsetDateTime utc(Instant instant) {

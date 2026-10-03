@@ -9,9 +9,12 @@
 -- after the process that asked has forgotten, and it is sealed with the application's own key.
 -- Anyone who can read this table can approve anything still waiting.
 --
--- Keyed on the AGENT and the call, never the call alone. A model's call id is unique within one
--- response and no further, so two agents can each be waiting on a "call_1".
+-- Keyed on the call's idempotency key, which Nessy makes once per call and hands to every ask of
+-- it. Not on the call id: a model's call id is unique within one of its replies and no further, so
+-- one agent can be asked about a second "call_1" after the first was answered, and two agents can
+-- each be waiting on one. The call id is kept to show, not to find a row by.
 CREATE TABLE IF NOT EXISTS watchman_pending_approval (
+  idempotency_key TEXT    PRIMARY KEY,
   agent_type  TEXT        NOT NULL,
   agent_id    TEXT        NOT NULL,
   call_id     TEXT        NOT NULL,
@@ -22,8 +25,7 @@ CREATE TABLE IF NOT EXISTS watchman_pending_approval (
   reply_token TEXT        NOT NULL,
   answer      TEXT,
   note        TEXT,
-  answered_at TIMESTAMPTZ,
-  PRIMARY KEY (agent_type, agent_id, call_id)
+  answered_at TIMESTAMPTZ
 );
 
 -- The page asks for what is still waiting, oldest first, and that is the only query it makes often.

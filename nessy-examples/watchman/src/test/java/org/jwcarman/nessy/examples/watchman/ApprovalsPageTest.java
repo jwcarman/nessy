@@ -43,6 +43,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -57,6 +58,7 @@ class ApprovalsPageTest {
   private static final Pattern INPUT_NAME = Pattern.compile("<input[^>]*name=\"([^\"]+)\"");
 
   private final AgentId house = AgentId.random();
+  private final IdempotencyKey first = IdempotencyKey.of(UUID.randomUUID());
   private MockMvc mvc;
   private PendingApprovalsRepository approvals;
   private ApprovalsController controller;
@@ -68,6 +70,7 @@ class ApprovalsPageTest {
     approvals = new PendingApprovalsRepository(database);
     approvals.asked(
         new PendingApproval(
+            first,
             new CallId("call-1"),
             Watchman.TYPE,
             house,
@@ -177,17 +180,16 @@ class ApprovalsPageTest {
   void a_malformed_id_in_the_address_bar_is_a_bad_request() throws Exception {
     // An agent id is a UUID. Without a handler this leaves the controller as an
     // IllegalArgumentException and reaches the operator as "the watchman is broken".
-    mvc.perform(post("/approve/watchman/not-a-uuid/call-1")).andExpect(status().isBadRequest());
+    mvc.perform(post("/approve/not-a-uuid")).andExpect(status().isBadRequest());
   }
 
   @Test
-  @DisplayName("the buttons post to a URL naming the type, the agent AND the call")
-  void the_decide_links_carry_the_whole_identity() throws Exception {
-    // The id alone cannot find the row it came from: an id is unique only within its type.
-    String id = house.value().toString();
+  @DisplayName("the buttons post to a URL naming the call by its idempotency key")
+  void the_decide_links_carry_the_calls_key() throws Exception {
+    // A call id is unique only within one model reply; the key is unique across every call.
     mvc.perform(get("/"))
-        .andExpect(content().string(containsString("/approve/watchman/" + id + "/call-1")))
-        .andExpect(content().string(containsString("/deny/watchman/" + id + "/call-1")));
+        .andExpect(content().string(containsString("/approve/" + first)))
+        .andExpect(content().string(containsString("/deny/" + first)));
   }
 
   @Nested
@@ -207,23 +209,15 @@ class ApprovalsPageTest {
     @DisplayName("the row is gone from the board once the decision has been recorded")
     void answering_takes_the_question_off_the_board() {
       assertThat(waitingOnHouse()).hasSize(1);
-      controller.recordLocally(
-          Watchman.TYPE,
-          house,
-          new CallId("call-1"),
-          ApprovalResult.denied("that seems dangerous"));
+      controller.recordLocally(first, ApprovalResult.denied("that seems dangerous"));
       assertThat(waitingOnHouse()).isEmpty();
     }
 
     @Test
     @DisplayName("the reason survives, so the two writers agree rather than race")
     void the_recorded_answer_is_the_one_that_was_sent() {
-      controller.recordLocally(
-          Watchman.TYPE,
-          house,
-          new CallId("call-1"),
-          ApprovalResult.denied("that seems dangerous"));
-      var row = approvals.byCallId(Watchman.TYPE, house, new CallId("call-1")).orElseThrow();
+      controller.recordLocally(first, ApprovalResult.denied("that seems dangerous"));
+      var row = approvals.byIdempotencyKey(first).orElseThrow();
       assertThat(row.answer()).contains("denied");
       assertThat(row.note()).contains("that seems dangerous");
     }
@@ -231,11 +225,7 @@ class ApprovalsPageTest {
     @Test
     @DisplayName("the desk writing the same decision afterwards changes nothing")
     void whichever_writer_arrives_second_is_a_no_op() {
-      controller.recordLocally(
-          Watchman.TYPE,
-          house,
-          new CallId("call-1"),
-          ApprovalResult.denied("that seems dangerous"));
+      controller.recordLocally(first, ApprovalResult.denied("that seems dangerous"));
       // What the desk does when the engine narrates the denial a few milliseconds later.
       approvals.answered(
           Watchman.TYPE,
@@ -244,7 +234,7 @@ class ApprovalsPageTest {
           "denied",
           "that seems dangerous",
           NOW.plusSeconds(1));
-      var row = approvals.byCallId(Watchman.TYPE, house, new CallId("call-1")).orElseThrow();
+      var row = approvals.byIdempotencyKey(first).orElseThrow();
       assertThat(row.answeredAt()).contains(NOW);
       assertThat(waitingOnHouse()).isEmpty();
     }
@@ -260,6 +250,7 @@ class ApprovalsPageTest {
       AgentId other = new AgentId(UUID.randomUUID());
       approvals.asked(
           new PendingApproval(
+              IdempotencyKey.of(UUID.randomUUID()),
               new CallId("call-1"),
               Watchman.TYPE,
               other,
@@ -275,6 +266,38 @@ class ApprovalsPageTest {
           .as("one row would mean one house's question silently replaced the other's")
           .extracting(PendingApproval::agentId)
           .contains(house, other);
+    }
+
+    /**
+     * A model's call id repeats: a later request in the same agent can be "call-1" again. Keyed on
+     * the call id, the answered row was found and the new question was never shown, so it timed out
+     * unanswered.
+     */
+    @Test
+    @DisplayName("a second call-1 from the same agent is shown after the first was answered")
+    void a_repeated_call_id_is_a_new_question() {
+      controller.recordLocally(first, ApprovalResult.approved());
+      IdempotencyKey second = IdempotencyKey.of(UUID.randomUUID());
+
+      approvals.asked(
+          new PendingApproval(
+              second,
+              new CallId("call-1"),
+              Watchman.TYPE,
+              house,
+              "prune_images",
+              "docker image prune -af",
+              NOW,
+              NOW.plusSeconds(3600),
+              "token-3",
+              Optional.empty(),
+              Optional.empty(),
+              Optional.empty()));
+
+      assertThat(approvals.pending())
+          .filteredOn(row -> row.agentId().equals(house))
+          .extracting(PendingApproval::idempotencyKey)
+          .containsExactly(second);
     }
   }
 }

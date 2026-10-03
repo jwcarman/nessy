@@ -50,6 +50,7 @@ public class ApprovalsDesk implements Approver, NarrationListener {
   public Awaited<ApprovalResult> approve(ApprovalRequest request) {
     repository.asked(
         new PendingApproval(
+            request.idempotencyKey(),
             request.callId(),
             request.agentType(),
             request.agentId(),

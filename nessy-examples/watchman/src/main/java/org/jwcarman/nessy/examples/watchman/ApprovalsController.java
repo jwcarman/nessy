@@ -22,11 +22,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.tool.ReplyToken;
@@ -63,6 +62,7 @@ public class ApprovalsController {
 
   /** A row as the page draws it: strings, because a template renders what toString says. */
   public record Row(
+      String idempotencyKey,
       String agentType,
       String agentId,
       String callId,
@@ -93,6 +93,7 @@ public class ApprovalsController {
             .map(
                 row ->
                     new Row(
+                        row.idempotencyKey().toString(),
                         row.agentType().value(),
                         row.agentId().value().toString(),
                         row.callId().value(),
@@ -160,45 +161,34 @@ public class ApprovalsController {
         .collect(Collectors.joining("\n"));
   }
 
-  // The type is in the path with the id, because an id names an agent only within its type. A
-  // link that carried the id alone could not find the row it came from once two kinds of agent
-  // are asking.
-  @PostMapping("/approve/{agentType}/{agentId}/{callId}")
-  public String approve(
-      @PathVariable("agentType") String agentType,
-      @PathVariable("agentId") String agentId,
-      @PathVariable("callId") String callId) {
-    return answer(
-        new AgentType(agentType), agent(agentId), new CallId(callId), ApprovalResult.approved());
+  // The call's idempotency key is the whole of the path: unique across every agent and every call,
+  // where a call id is unique only within one model reply.
+  @PostMapping("/approve/{key}")
+  public String approve(@PathVariable("key") String key) {
+    return answer(idempotencyKey(key), ApprovalResult.approved());
   }
 
-  @PostMapping("/deny/{agentType}/{agentId}/{callId}")
+  @PostMapping("/deny/{key}")
   public String deny(
-      @PathVariable("agentType") String agentType,
-      @PathVariable("agentId") String agentId,
-      @PathVariable("callId") String callId,
+      @PathVariable("key") String key,
       // "reason", the word the form uses and the word ApprovalResult.Denied uses. It read "note"
       // and the form has always sent "reason", so every denial a person typed was bound to
       // nothing and recorded as the literal "denied" -- the one thing a denial exists to carry,
       // dropped in silence.
       @RequestParam(name = "reason", defaultValue = "") String reason) {
-    return answer(
-        new AgentType(agentType),
-        agent(agentId),
-        new CallId(callId),
-        ApprovalResult.denied(reason.isBlank() ? "denied" : reason));
+    return answer(idempotencyKey(key), ApprovalResult.denied(reason.isBlank() ? "denied" : reason));
   }
 
-  private String answer(
-      AgentType agentType, AgentId agentId, CallId callId, ApprovalResult result) {
-    PendingApproval row = approvals.byCallId(agentType, agentId, callId).orElse(null);
+  private String answer(IdempotencyKey key, ApprovalResult result) {
+    PendingApproval row = approvals.byIdempotencyKey(key).orElse(null);
     if (row == null || !row.waiting()) {
-      LOG.info("[watchman] {} answered {}, which was not waiting", SOMEBODY, callId.value());
+      LOG.info("[watchman] {} answered {}, which was not waiting", SOMEBODY, key);
       return "redirect:/";
     }
+    CallId callId = row.callId();
     LOG.info("[watchman] {} answered {} with {}", SOMEBODY, callId.value(), result);
     switch (replies.approve(new ReplyToken(row.replyToken()), result)) {
-      case ReplyOutcome.Settled _ -> recordLocally(agentType, agentId, callId, result);
+      case ReplyOutcome.Settled _ -> recordLocally(key, result);
       // The agent gets the last word on whether an answer landed, and it can refuse: a call whose
       // term expired seconds ago has already been denied on this person's behalf. Recording
       // regardless is how the board came to show decisions that never reached the agent.
@@ -222,11 +212,9 @@ public class ApprovalsController {
    * lands before the narration does, and the person who just clicked must not be shown the question
    * they have already answered. Whichever writer arrives second changes nothing.
    */
-  void recordLocally(AgentType agentType, AgentId agentId, CallId callId, ApprovalResult result) {
+  void recordLocally(IdempotencyKey key, ApprovalResult result) {
     approvals.answered(
-        agentType,
-        agentId,
-        callId,
+        key,
         result instanceof ApprovalResult.Approved ? "approved" : "denied",
         result instanceof ApprovalResult.Denied denied ? denied.reason() : null,
         clock.instant());
@@ -244,9 +232,9 @@ public class ApprovalsController {
     return (hours / 24) + "d " + (hours % 24) + "h";
   }
 
-  /** An id from the address bar; UUID.fromString refuses what is not one, and that is a 400. */
-  private static AgentId agent(String id) {
-    return new AgentId(UUID.fromString(id));
+  /** A key from the address bar; UUID.fromString refuses what is not one, and that is a 400. */
+  private static IdempotencyKey idempotencyKey(String key) {
+    return IdempotencyKey.of(UUID.fromString(key));
   }
 
   @ExceptionHandler(IllegalArgumentException.class)
