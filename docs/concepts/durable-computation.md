@@ -79,7 +79,9 @@ nothing but the bill, so whether to try again is the policy's question.
 request fails identically. `Rejected` names content that will fail every time
 it is sent, so the answer is to quarantine it rather than send it again. Each
 retried model call is recorded as an `InferenceAttempted`; see
-[Events](events.md).
+[Events](events.md). Narration is not durable: a call that fails partway
+through its answer and is tried again narrates the new attempt from the
+start, so a listener can see the first part twice.
 
 Retries belong to the queued door. A `DirectHarness` retries nothing: not a
 tool, not an approver, not a model call. A retry policy set on a binding is
