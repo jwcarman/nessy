@@ -113,12 +113,11 @@ class GeminiRequestsTest {
         new TurnId(id),
         asked(id, question),
         List.of(),
-        new TurnResult.Answered(List.of(new Block.Text(answer))),
-        0);
+        new TurnResult.Answered(List.of(new Block.Text(answer))));
   }
 
   private static Turn open(long id, String question) {
-    return new Turn(new TurnId(id), asked(id, question), List.of(), null, 0);
+    return new Turn(new TurnId(id), asked(id, question), List.of(), null);
   }
 
   private static String textOf(Content content) {
@@ -163,9 +162,8 @@ class GeminiRequestsTest {
 
     @Test
     void a_failed_turn_is_answered_for_and_a_refused_one_is_left_out() {
-      Turn failed = new Turn(new TurnId(1), asked(1, "one"), List.of(), new TurnResult.Failed(), 0);
-      Turn refused =
-          new Turn(new TurnId(3), asked(3, "two"), List.of(), new TurnResult.Refused(), 0);
+      Turn failed = new Turn(new TurnId(1), asked(1, "one"), List.of(), new TurnResult.Failed());
+      Turn refused = new Turn(new TurnId(3), asked(3, "two"), List.of(), new TurnResult.Refused());
 
       List<Content> contents =
           GeminiRequests.toContents(request(List.of(failed, refused, open(5, "three"))), MAPPER);
@@ -193,7 +191,7 @@ class GeminiRequestsTest {
               List.of(
                   new ToolOutcome.Succeeded(
                       new CallId("call_1"), List.of(new Block.Text("230m")))));
-      return new Turn(new TurnId(1), asked(1, "how deep?"), List.of(exchange), null, 0);
+      return new Turn(new TurnId(1), asked(1, "how deep?"), List.of(exchange), null);
     }
 
     @Test
@@ -261,7 +259,7 @@ class GeminiRequestsTest {
               List.of(
                   new ToolOutcome.Failed(new CallId("c1"), "boom"),
                   new ToolOutcome.Denied(new CallId("c2"), "not today")));
-      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(exchange), null, 0);
+      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(exchange), null);
 
       List<Content> contents = GeminiRequests.toContents(request(List.of(turn)), MAPPER);
 
@@ -300,7 +298,7 @@ class GeminiRequestsTest {
                   new ToolOutcome.Succeeded(new CallId("call_1"), List.of(new Block.Text("230m"))))
               : List.of();
       Exchange exchange = exchangeOf(new Seq(2), asking, outcomes);
-      return new Turn(new TurnId(1), asked(1, "how deep?"), List.of(exchange), null, 0);
+      return new Turn(new TurnId(1), asked(1, "how deep?"), List.of(exchange), null);
     }
 
     private Block.Provider signed(byte[] signature) {
@@ -505,7 +503,7 @@ class GeminiRequestsTest {
     void a_call_still_awaiting_its_results_is_sent_alone() {
       Exchange asking =
           exchangeOf(new Seq(2), List.of(new Block.ToolCall("c1", "lookup", "{}")), List.of());
-      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(asking), null, 0);
+      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(asking), null);
 
       List<Content> contents = GeminiRequests.toContents(request(List.of(turn)), MAPPER);
 
@@ -521,7 +519,7 @@ class GeminiRequestsTest {
               new Seq(2),
               List.of(new Block.ToolCall("c1", "lookup", "{}")),
               List.of(new ToolOutcome.Succeeded(new CallId("c9"), List.of(new Block.Text("?")))));
-      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(odd), null, 0);
+      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(odd), null);
       InferenceRequest request = request(List.of(turn));
 
       org.assertj.core.api.Assertions.assertThatThrownBy(
@@ -541,7 +539,7 @@ class GeminiRequestsTest {
               new Seq(2),
               List.of(new Block.ToolCall("c1", "lookup", "{}"), broken),
               List.of(new ToolOutcome.Succeeded(new CallId("c1"), List.of(new Block.Text("ok")))));
-      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(exchange), null, 0);
+      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(exchange), null);
 
       List<Content> contents = GeminiRequests.toContents(request(List.of(turn)), MAPPER);
 

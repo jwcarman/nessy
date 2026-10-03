@@ -128,11 +128,7 @@ class OpenAiResponsesLiveTest {
 
   private static Turn turn(String question, List<Exchange> exchanges) {
     return new Turn(
-        new TurnId(1),
-        new Input(new Seq(1), List.of(new Block.Text(question))),
-        exchanges,
-        null,
-        0);
+        new TurnId(1), new Input(new Seq(1), List.of(new Block.Text(question))), exchanges, null);
   }
 
   private static InferenceRequest asking(

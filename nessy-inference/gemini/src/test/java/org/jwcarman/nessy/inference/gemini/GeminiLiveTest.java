@@ -66,8 +66,7 @@ class GeminiLiveTest {
                     new TurnId(1),
                     new Input(new Seq(1), List.of(new Block.Text(question))),
                     List.of(),
-                    null,
-                    0))),
+                    null))),
         Toolset.none(),
         new InferenceOptions(MODEL, maxTokens));
   }
@@ -81,8 +80,7 @@ class GeminiLiveTest {
                     new TurnId(1),
                     new Input(new Seq(1), List.of(new Block.Text(question))),
                     List.of(),
-                    null,
-                    0))),
+                    null))),
         Toolset.none(),
         new InferenceOptions(MODEL, 1024),
         Optional.of(shape));
@@ -219,8 +217,7 @@ class GeminiLiveTest {
                             new Block.Text(
                                 "What is 17 times 23? Work it out, then give the number."))),
                     List.of(),
-                    null,
-                    0))),
+                    null))),
         Toolset.none(),
         new InferenceOptions(MODEL, 2048, properties));
   }
@@ -307,8 +304,7 @@ class GeminiLiveTest {
                     new TurnId(1),
                     new Input(new Seq(1), List.of(new Block.Text(question))),
                     List.of(),
-                    null,
-                    0))),
+                    null))),
         toolset,
         new InferenceOptions(MODEL, maxTokens, properties));
   }

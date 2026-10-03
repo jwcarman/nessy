@@ -135,16 +135,15 @@ class OpenAiResponsesRequestsTest {
         new TurnId(id),
         asked(id, question),
         List.of(),
-        new TurnResult.Answered(List.of(new Block.Text(answer))),
-        0);
+        new TurnResult.Answered(List.of(new Block.Text(answer))));
   }
 
   private static Turn open(long id, String question) {
-    return new Turn(new TurnId(id), asked(id, question), List.of(), null, 0);
+    return new Turn(new TurnId(id), asked(id, question), List.of(), null);
   }
 
   private static Turn inFlight(List<Exchange> exchanges) {
-    return new Turn(new TurnId(1), asked(1, "look it up"), exchanges, null, 0);
+    return new Turn(new TurnId(1), asked(1, "look it up"), exchanges, null);
   }
 
   private static Exchange exchange(
@@ -384,8 +383,7 @@ class OpenAiResponsesRequestsTest {
 
     @Test
     void that_failed_is_explained_by_a_system_item_rather_than_left_silent() {
-      Turn failed =
-          new Turn(new TurnId(1), asked(1, "hello"), List.of(), new TurnResult.Failed(), 0);
+      Turn failed = new Turn(new TurnId(1), asked(1, "hello"), List.of(), new TurnResult.Failed());
 
       List<ResponseInputItem> items = itemsOf(List.of(failed, open(2, "again")));
 
@@ -398,11 +396,7 @@ class OpenAiResponsesRequestsTest {
     void that_was_refused_drops_its_question_and_says_so_in_its_place() {
       Turn refused =
           new Turn(
-              new TurnId(1),
-              asked(1, "something disallowed"),
-              List.of(),
-              new TurnResult.Refused(),
-              0);
+              new TurnId(1), asked(1, "something disallowed"), List.of(), new TurnResult.Refused());
 
       List<ResponseInputItem> items = itemsOf(List.of(refused, open(2, "next")));
 
@@ -528,8 +522,7 @@ class OpenAiResponsesRequestsTest {
               List.of(
                   exchange(
                       2, List.of(new Block.Provider(VENDOR, REASONING), call("call_1")), "call_1")),
-              new TurnResult.Answered(List.of(new Block.Text("done"))),
-              0);
+              new TurnResult.Answered(List.of(new Block.Text("done"))));
 
       List<ResponseInputItem> items = itemsOf(List.of(earlier, open(3, "and now?")));
 
@@ -547,8 +540,7 @@ class OpenAiResponsesRequestsTest {
               asked(1, "hello"),
               List.of(),
               new TurnResult.Answered(
-                  List.of(new Block.Provider(VENDOR, REASONING), new Block.Text("the answer"))),
-              0);
+                  List.of(new Block.Provider(VENDOR, REASONING), new Block.Text("the answer"))));
 
       List<ResponseInputItem> items = itemsOf(List.of(earlier, open(2, "and now?")));
 

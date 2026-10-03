@@ -55,7 +55,7 @@ final class Models {
   /** A turn nobody has answered yet, whose input is {@code text}. */
   static Turn asking(long id, String text) {
     return new Turn(
-        new TurnId(id), new Input(new Seq(id), List.of(new Block.Text(text))), List.of(), null, 0);
+        new TurnId(id), new Input(new Seq(id), List.of(new Block.Text(text))), List.of(), null);
   }
 
   /** A request whose whole context is one question under a system prompt. */

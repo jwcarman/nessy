@@ -89,8 +89,7 @@ class OpenAiChatLiveTest {
                     new TurnId(1),
                     new Input(new Seq(1), List.of(new Block.Text(question))),
                     List.of(),
-                    null,
-                    0))),
+                    null))),
         Toolset.none(),
         InferenceOptions.of(MODEL),
         Optional.of(shape));
@@ -106,8 +105,7 @@ class OpenAiChatLiveTest {
                     new TurnId(1),
                     new Input(new Seq(1), List.of(new Block.Text(question))),
                     List.of(),
-                    null,
-                    0))),
+                    null))),
         new Toolset(tools, choice),
         InferenceOptions.of(MODEL));
   }
@@ -388,8 +386,7 @@ class OpenAiChatLiveTest {
                     new TurnId(1),
                     new Input(new Seq(1), List.of(new Block.Text(question))),
                     List.of(),
-                    null,
-                    0))),
+                    null))),
         new Toolset(tools, choice),
         new InferenceOptions(model, 1024, properties));
   }
@@ -539,8 +536,7 @@ class OpenAiChatLiveTest {
                     new TurnId(1),
                     new Input(new Seq(1), List.of(new Block.Text(question))),
                     List.of(),
-                    null,
-                    0))),
+                    null))),
         toolset,
         new InferenceOptions(MODEL, 1500));
   }

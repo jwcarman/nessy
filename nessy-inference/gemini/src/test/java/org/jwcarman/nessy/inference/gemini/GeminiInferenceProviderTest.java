@@ -64,11 +64,7 @@ class GeminiInferenceProviderTest {
   private static InferenceRequest request() {
     Turn open =
         new Turn(
-            new TurnId(1),
-            new Input(new Seq(1), List.of(new Block.Text("hi"))),
-            List.of(),
-            null,
-            0);
+            new TurnId(1), new Input(new Seq(1), List.of(new Block.Text("hi"))), List.of(), null);
     return new InferenceRequest(
         new SystemPrompt("be brief"),
         InferenceContext.of(List.of(open)),

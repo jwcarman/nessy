@@ -298,8 +298,7 @@ class OpenAiChatInferenceProviderTest {
                       new TurnId(1),
                       new Input(new Seq(1), List.of(new Block.Text("hello"))),
                       List.of(),
-                      null,
-                      0))),
+                      null))),
           Toolset.none(),
           InferenceOptions.of("gpt-4o"));
 

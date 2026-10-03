@@ -44,11 +44,7 @@ class MemoryAndStateTest {
 
   private static Turn turn(long id) {
     return new Turn(
-        new TurnId(id),
-        new Input(new Seq(id), List.of(new Block.Text("q" + id))),
-        List.of(),
-        null,
-        10);
+        new TurnId(id), new Input(new Seq(id), List.of(new Block.Text("q" + id))), List.of(), null);
   }
 
   @Nested

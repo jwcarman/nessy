@@ -110,11 +110,7 @@ class AnthropicLiveTest {
 
   private static Turn open(long id, String question) {
     return new Turn(
-        new TurnId(id),
-        new Input(new Seq(id), List.of(new Block.Text(question))),
-        List.of(),
-        null,
-        0);
+        new TurnId(id), new Input(new Seq(id), List.of(new Block.Text(question))), List.of(), null);
   }
 
   private static InferenceRequest asking(List<Turn> turns, List<ToolOffer> tools) {
@@ -249,8 +245,7 @@ class AnthropicLiveTest {
                   List.of(
                       new Block.Text("Think about it, then say how many continents there are."))),
               List.of(),
-              new TurnResult.Answered(answered),
-              0);
+              new TurnResult.Answered(answered));
 
       InferenceResult second =
           provider.infer(asking(List.of(done, open(3, "And how many oceans?")), List.of()));
@@ -300,8 +295,7 @@ class AnthropicLiveTest {
               new TurnId(1),
               new Input(new Seq(1), List.of(new Block.Text(question))),
               List.of(),
-              new TurnResult.Answered(answered),
-              0);
+              new TurnResult.Answered(answered));
       SystemPrompt changed =
           new SystemPrompt(SYSTEM.value() + "\n<plan>\nStep 2 of 3: report the total.\n</plan>");
 
@@ -554,8 +548,8 @@ class AnthropicLiveTest {
         new Input(new Seq(1), List.of(new Block.Text("How deep are Loch Ness and Loch Morar?")));
     Exchange ness = looked(2, "call_ness", "Loch Ness", "230 metres. ");
     Exchange morar = looked(4, "call_morar", "Loch Morar", "310 metres. ");
-    Turn afterOneRound = new Turn(new TurnId(1), question, List.of(ness), null, 0);
-    Turn afterTwoRounds = new Turn(new TurnId(1), question, List.of(ness, morar), null, 0);
+    Turn afterOneRound = new Turn(new TurnId(1), question, List.of(ness), null);
+    Turn afterTwoRounds = new Turn(new TurnId(1), question, List.of(ness, morar), null);
     Map<String, String> cached = Map.of("anthropic.cache_control.ttl", "FIVE_MINUTES");
 
     try (AnthropicInferenceProvider provider = provider()) {
@@ -598,21 +592,21 @@ class AnthropicLiveTest {
       InferenceResult first =
           provider.infer(
               withClock(
-                  new Turn(new TurnId(1), question, List.of(ness), null, 0),
+                  new Turn(new TurnId(1), question, List.of(ness), null),
                   lookup,
                   cached,
                   "it is 10:00"));
       InferenceResult second =
           provider.infer(
               withClock(
-                  new Turn(new TurnId(1), question, List.of(ness, morar), null, 0),
+                  new Turn(new TurnId(1), question, List.of(ness, morar), null),
                   lookup,
                   cached,
                   "it is 10:01"));
       InferenceResult third =
           provider.infer(
               withClock(
-                  new Turn(new TurnId(1), question, List.of(ness, morar, lomond), null, 0),
+                  new Turn(new TurnId(1), question, List.of(ness, morar, lomond), null),
                   lookup,
                   cached,
                   "it is 10:02"));

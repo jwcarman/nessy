@@ -221,12 +221,12 @@ public final class Transcript {
 
     Turn closed(TurnResult result) {
       flush();
-      return new Turn(started.turn(), input, List.copyOf(exchanges), result, 0);
+      return new Turn(started.turn(), input, List.copyOf(exchanges), result);
     }
 
     Turn stillOpen() {
       flush();
-      return new Turn(started.turn(), input, List.copyOf(exchanges), null, 0);
+      return new Turn(started.turn(), input, List.copyOf(exchanges), null);
     }
 
     private void flush() {

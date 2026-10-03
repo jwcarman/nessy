@@ -130,8 +130,7 @@ public final class ProseSummarizer implements Summarizer {
                 new Seq(turns.getLast().id().value() + 1),
                 List.of(new Block.Text(Transcripts.render(turns) + "\n" + ASK))),
             List.of(),
-            null,
-            0);
+            null);
 
     InferenceResult result =
         provider.infer(
