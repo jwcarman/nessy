@@ -566,8 +566,8 @@ public final class AnthropicRequests {
   private static void askForShape(
       MessageCreateParams.Builder builder, JsonSchema schema, JsonMapper mapper) {
     JsonOutputFormat.Schema.Builder shape = JsonOutputFormat.Schema.builder();
-    Map<String, Object> properties = mapper.readValue(schema.json(), new TypeReference<>() {});
-    properties.forEach((name, value) -> shape.putAdditionalProperty(name, JsonValue.from(value)));
+    AnthropicSchemas.forAnswer(schema, mapper)
+        .forEach((name, value) -> shape.putAdditionalProperty(name, JsonValue.from(value)));
 
     builder.outputConfig(
         OutputConfig.builder()

@@ -18,8 +18,10 @@ package org.jwcarman.nessy.inference.anthropic;
 import com.anthropic.core.JsonValue;
 import com.anthropic.models.messages.Tool;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jwcarman.nessy.api.JsonSchema;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
@@ -35,6 +37,18 @@ public final class AnthropicSchemas {
 
   private static final String PROPERTIES = "properties";
   private static final String REQUIRED = "required";
+  private static final String TYPE = "type";
+  private static final String ADDITIONAL_PROPERTIES = "additionalProperties";
+
+  /** Keywords whose value maps names to schemas. */
+  private static final Set<String> SCHEMA_MAPS =
+      Set.of(PROPERTIES, "$defs", "definitions", "patternProperties");
+
+  /** Keywords whose value is a list of schemas. */
+  private static final Set<String> SCHEMA_LISTS = Set.of("anyOf", "oneOf", "allOf", "prefixItems");
+
+  /** Keywords whose value is one schema. */
+  private static final Set<String> SCHEMAS = Set.of("items", ADDITIONAL_PROPERTIES, "not");
 
   /**
    * Everything else the generator emits that a model still needs.
@@ -77,5 +91,50 @@ public final class AnthropicSchemas {
       }
     }
     return input.build();
+  }
+
+  /**
+   * An answer's schema, as {@code output_config.format} accepts one.
+   *
+   * <p>This wire refuses an object schema that does not say {@code "additionalProperties": false}
+   * (measured 2026-10-03: a 400 naming {@code output_config.format.schema}), and the generator
+   * writes none. So every object in the document gets it -- the root, each property, array items,
+   * {@code $defs} and every branch -- unless it already says what it allows, which is left as
+   * written for the vendor to judge. Only schema positions are walked, so a property that happens
+   * to be named {@code type} or {@code properties} is never mistaken for a schema.
+   */
+  static Map<String, Object> forAnswer(JsonSchema schema, JsonMapper mapper) {
+    Map<String, Object> document = mapper.readValue(schema.json(), new TypeReference<>() {});
+    return closed(document);
+  }
+
+  private static Map<String, Object> closed(Map<?, ?> node) {
+    Map<String, Object> copy = new LinkedHashMap<>();
+    node.forEach(
+        (key, value) -> copy.put(String.valueOf(key), closedAt(String.valueOf(key), value)));
+    if ("object".equals(copy.get(TYPE)) || copy.containsKey(PROPERTIES)) {
+      copy.putIfAbsent(ADDITIONAL_PROPERTIES, false);
+    }
+    return copy;
+  }
+
+  /** The value under {@code key} in a schema, with any schema inside it closed. */
+  private static Object closedAt(String key, Object value) {
+    if (SCHEMA_MAPS.contains(key) && value instanceof Map<?, ?> named) {
+      Map<String, Object> each = new LinkedHashMap<>();
+      named.forEach((name, schema) -> each.put(String.valueOf(name), closedSchema(schema)));
+      return each;
+    }
+    if (SCHEMA_LISTS.contains(key) && value instanceof List<?> branches) {
+      return branches.stream().map(AnthropicSchemas::closedSchema).toList();
+    }
+    if (SCHEMAS.contains(key)) {
+      return closedSchema(value);
+    }
+    return value;
+  }
+
+  private static Object closedSchema(Object value) {
+    return value instanceof Map<?, ?> schema ? closed(schema) : value;
   }
 }
