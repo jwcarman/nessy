@@ -683,6 +683,58 @@ class AnthropicLiveTest {
     }
   }
 
+  /**
+   * With no ttl property anywhere, the prefix is cached all the same: five minutes is the default.
+   */
+  @Test
+  void a_request_that_says_nothing_about_caching_caches_the_prefix() {
+    SystemPrompt longPrompt =
+        new SystemPrompt(
+            "You are a terse assistant. "
+                + "Background you may ignore: the loch is wide and dark. ".repeat(300));
+
+    try (AnthropicInferenceProvider provider = provider()) {
+      InferenceResult first =
+          provider.infer(carrying(longPrompt, List.of(open(1, "Say hello.")), Map.of()));
+      InferenceResult second =
+          provider.infer(carrying(longPrompt, List.of(open(1, "Say hello.")), Map.of()));
+
+      assertThat(List.of(first.usage().cacheWriteTokens(), second.usage().cacheReadTokens()))
+          .as("the prefix was written to the cache, or read back from it")
+          .anyMatch(count -> count instanceof Tokens.Counted(int value) && value > 0);
+    }
+  }
+
+  /**
+   * {@code OFF} sends no marker, so the same long prefix asked twice is neither written nor read.
+   */
+  @Test
+  void off_caches_nothing() {
+    SystemPrompt longPrompt =
+        new SystemPrompt(
+            "You are a terse assistant. "
+                + "Background you may ignore: the loch is long and narrow. ".repeat(300));
+    Map<String, String> off = Map.of("anthropic.cache_control.ttl", "OFF");
+
+    try (AnthropicInferenceProvider provider = provider()) {
+      InferenceResult first =
+          provider.infer(carrying(longPrompt, List.of(open(1, "Say hello.")), off));
+      InferenceResult second =
+          provider.infer(carrying(longPrompt, List.of(open(1, "Say hello.")), off));
+
+      List<Tokens> counts =
+          List.of(
+              first.usage().cacheWriteTokens(),
+              first.usage().cacheReadTokens(),
+              second.usage().cacheWriteTokens(),
+              second.usage().cacheReadTokens());
+      assertThat(counts)
+          .as("nothing was written to the cache or read from it")
+          .isNotEmpty()
+          .noneMatch(count -> count instanceof Tokens.Counted(int value) && value > 0);
+    }
+  }
+
   // ---- a reply cut off at the output limit ----------------------------------------------
 
   private static final String LISTING =
