@@ -58,6 +58,12 @@ That backlog is what a direct call never needs and a queued one cannot do
 without: nothing on the direct door holds work for later, because nobody
 who isn't waiting sent it.
 
+**What each door can park and retry.** Only the queued door can defer a
+call or retry work. On the direct door a tool or approver that returns
+`Awaited.deferred()` produces a failed call, because a caller already
+waiting has nowhere for a late answer to arrive, and no work is ever
+attempted twice. See [Durable Computation](durable-computation.md).
+
 **What the caller can learn about failure.** `ask` gets the reason
 directly, as `Outcome.Failed(reason)` or `Outcome.Refused(category)`. A
 `tell` caller gets nothing back at all — not even a promise to poll —
@@ -69,8 +75,8 @@ happened by watching instead of asking.
 ## What is shared, and what is not
 
 Both doors fold the same commands into the same events. `StartTurn`,
-`CompleteInference`, `CompleteApproval` and `CompleteToolCall` are the
-whole of `AgentCommand`, whichever door presents one, and the same
+`CompleteInference`, `CompleteApproval`, `CompleteToolCall` and `Terminate`
+are the whole of `AgentCommand`, whichever door presents one, and the same
 `AgentState` accepts them and produces the same `AgentEvent` stream either
 way. A turn started through one door leaves exactly the same trail a turn
 started through the other would.
@@ -103,8 +109,9 @@ all. The only place the reason is said is narration: `Narration.TurnFailed`
 carries the same text the direct door would have returned, and
 `Narration.TurnRefused` carries the same category — but only to whoever
 is listening when it is announced. A queued agent that fails with nobody
-watching still recorded a `TurnFailed` fact in its event stream; the reason
-just was not narrated to anyone in particular. See
+watching still recorded the failure in its event stream, as an
+`InferenceFailed` fact; the reason just was not narrated to anyone in
+particular. See
 [Narration](../guides/narration.md) for the listener side of this.
 
 ## The backends mirror the split
@@ -113,10 +120,11 @@ just was not narrated to anyone in particular. See
 doors' needs written down as interfaces. They are deliberately not one
 interface with the queued door as a superset: `DirectBackend` needs
 `AgentEvents`, `Payloads` and `Locks` — enough to fold a turn and lock
-around it. `QueuedBackend` needs those same three, plus `Agents` (whether
-an agent has been told to end), `Effects` (the outbox a queued turn's work
-is dispatched through) and `backlogs(TypeRef<I>)` (the waiting-input store
-above). Nothing takes a `DirectBackend` hoping to be handed a queued one:
+around it — plus `Chapters` (an agent's closed chapters) and `Leases`
+(background work that must run once). `QueuedBackend` needs those same five,
+plus `Agents` (whether an agent has been told to end), `Effects` (the outbox
+a queued turn's work is dispatched through) and `backlogs(TypeRef<I>)` (the
+waiting-input store above). Nothing takes a `DirectBackend` hoping to be handed a queued one:
 a backend that can do more than a direct door needs is not a direct
 backend that happens to also work, it is a different kind of thing, and
 the two interfaces say so by not extending each other.

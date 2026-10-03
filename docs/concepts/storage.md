@@ -56,14 +56,16 @@ added later brings its table with it.
 `nessy-backend-inmemory` implements both in-process for a test or a CLI
 with nothing behind them but this JVM.
 
-A `DirectBackend` needs only the story and the lock: `JdbcDirectBackend`
-touches `nessy_agent_event`, `nessy_payload` and the advisory lock, and
+A `DirectBackend` exposes five stores: `events()`, `payloads()`, `locks()`,
+`chapters()` and `leases()`. `JdbcDirectBackend` touches `nessy_agent_event`,
+`nessy_payload`, the advisory lock, `nessy_chapter` and `nessy_lease`, and
 nothing else — the direct door never names `nessy_agent`, `nessy_agent_effect`
 or `nessy_agent_backlog`, so a caller that only ever builds a direct backend
-is not handed tables it will never write a row to. A `QueuedBackend` needs
-the rest as well: `JdbcQueuedBackend` adds `nessy_agent` (something to lock
-even between turns), `nessy_agent_effect` (the outbox a dispatcher polls)
-and `nessy_agent_backlog` (work offered to a busy agent).
+is not handed tables it will never write a row to. A `QueuedBackend` exposes
+those five and adds `agents()`, `effects()` and `backlogs(...)`:
+`JdbcQueuedBackend` adds `nessy_agent` (a record that an agent was told to
+end), `nessy_agent_effect` (the outbox a dispatcher polls) and
+`nessy_agent_backlog` (work offered to a busy agent).
 
 ```java
 JdbcQueuedBackend backend =
@@ -84,8 +86,8 @@ or `DefaultQueuedHarnessFactory`. See [Spring Boot](../guides/spring-boot.md).
 
 ## Reading the story back
 
-Only the queued door's factory exposes a read side, because only it keeps
-work alive across a restart for something outside the engine to inspect:
+Both doors' factories, `DefaultDirectHarnessFactory` and
+`DefaultQueuedHarnessFactory`, expose a read side:
 
 ```java
 TurnHistories histories = factory.histories();
@@ -93,8 +95,9 @@ TurnHistory story = histories.forAgent(agentType, agentId);
 List<Turn> turns = story.turnsFrom(0);
 ```
 
-In a Boot application this is the `TurnHistories` bean contributed by
-`QueuedHarnessAutoConfiguration`.
+In a Boot application the `TurnHistories` bean is contributed by
+`QueuedHarnessAutoConfiguration`, so it exists when the queued door is
+configured.
 
 ## Content is Jackson, then whatever you say
 
@@ -156,18 +159,19 @@ encryption key.
 ## What an agent's row holds
 
 `nessy_agent` is small on purpose: `agent_type`, `agent_id`, `created_at`,
-and `terminated_at`, set once and never cleared. It exists only so there is
-something to lock — `pg_advisory_xact_lock` is taken against a hash of
-`(kind, agent_type, agent_id)` and needs no row of its own to be true of,
-but the queued door still needs a durable place to record that an agent was
+and `terminated_at`, set once and never cleared. It is not what is locked:
+`pg_advisory_xact_lock` is taken against a hash of
+`(kind, agent_type, agent_id)` and needs no row of its own to be true of.
+The queued door still needs a durable place to record that an agent was
 told to end, since ending cannot be delivered mid-turn and has to be
 remembered until the agent is next idle.
 
 Where an agent actually *is* — idle, inferring, or waiting on a named set of
 outstanding calls — is not stored anywhere as a row. It is rebuilt by
-replaying `nessy_agent_event` from the start, which is why that table has
-no update statement in its schema: reconstitution is a loop over history,
-not a read of a snapshot. See [Agent as Scope](agent-as-scope.md).
+replaying the events since the agent's last turn started
+(`AgentEvents.sinceLastTurnStarted`) from `nessy_agent_event`, which is why
+that table has no update statement in its schema: reconstitution is a loop
+over recent history, not a read of a snapshot. See [Agent as Scope](agent-as-scope.md).
 
 ## The story
 

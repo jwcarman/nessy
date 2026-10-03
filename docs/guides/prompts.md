@@ -113,6 +113,12 @@ config.systemPrompt(prompt.value());
 
 An application that declares its own `SystemPrompt` bean keeps it.
 
+With a prompt engine on the classpath, one of `nessy.system-prompt` and
+`nessy.system-prompt-file` is required at startup, and startup fails with
+neither. A prompt set only in code, with `config.systemPrompt(...)`, does not
+satisfy that: declare your own `SystemPrompt` bean, or leave `nessy-prompt-spring` and
+`nessy-prompt-mustache` off the classpath.
+
 ## In the console
 
 `ReplConfig.systemPrompt(String)` takes the text. `nessy-examples/chat-cli`

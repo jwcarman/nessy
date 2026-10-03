@@ -73,15 +73,13 @@ look a tool up.
   single request/response round trip — `Awaited.ready(...)`, never a
   park. MCP elicitation (a server asking the *caller* a question
   mid-call) would pair naturally with nessy's `Awaited.deferred()` and the
-  durable HITL flow, but that pairing touches approval UX and is its own
-  generation of work — banked, not forgotten. Sampling (a server asking
-  the caller's *model* to complete something) is banked alongside it.
+  durable HITL flow, but it is not built. Sampling (a server asking
+  the caller's *model* to complete something) is not built either.
 - **The SDK's 20-second request/init timeout applies as-is.** `McpToolbox.connect` builds the
   client with `McpClient.sync(transport).build()`'s own defaults; neither `connect` nor
   `McpToolbox` exposes a way to raise them yet. Real MCP tools (web search, code execution)
   routinely run longer than 20 seconds, so a slow server or a slow tool call can time out
-  before it answers. Configurability arrives with the starter wiring, a later generation —
-  not this one.
+  before it answers. Raising the binding's timeout does not raise this limit.
 - **Progress notifications are not forwarded anywhere.**
   The SDK's sync client (`McpSyncClient`) exposes only a session-global
   progress consumer, registered once at client build time and applied to
@@ -113,7 +111,7 @@ build. Discovery, schema fidelity, a failed handshake, execution
 closed-toolbox behavior are all proven against that real server.
 
 There is no wrapper class under test for governance — approval, action
-rendering, timeouts — because there is no wrapper: an `McpTool` is bound
+lines, timeouts — because there is no wrapper: an `McpTool` is bound
 to a harness exactly the way a hand-written `Tool` is, and the engine's
 own tool-binding tests cover what binding does. This module's job ends
 at producing an ordinary `Tool<JsonNode>`.

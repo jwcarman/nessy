@@ -14,7 +14,7 @@ then pick the artifacts the application actually needs.
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-bom</artifactId>
-      <version>0.2.0</version>
+      <version>0.3.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -277,7 +277,7 @@ configuration surface.
 ## Where next
 
 - [The Harness](harness.md), both doors and their full configuration surface
-- [Agent as Scope](../concepts/agent-as-scope.md), one locked row per id, phases as data
+- [Agent as Scope](../concepts/agent-as-scope.md), one lock per id, phases as data
 - [Tools](../concepts/tools.md), deferring, and answering from outside
 - [Authorization](../concepts/authorization.md), approvers and reply tokens
 - [Spring Boot](spring-boot.md), the starter

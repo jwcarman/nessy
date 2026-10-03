@@ -30,7 +30,9 @@ Approver always = request -> Awaited.ready(ApprovalResult.approved());
 Approver never  = request -> Awaited.ready(ApprovalResult.denied("not in this tenant"));
 ```
 
-or defer to a person, and answer days later:
+or defer to a person, and answer days later. Deferral works only on the
+queued door. On the direct door a deferred call becomes a failed call, because
+a caller already waiting has nowhere for a late answer to arrive:
 
 ```java
 Approver desk = request -> {
@@ -66,7 +68,7 @@ public record ApprovalRequest(
     ObjectNode facts) {
 
   Optional<JsonNode> fact(String name);
-  ApprovalRequest fact(String name, JsonNode value);   // a copy, with the fact added
+  ApprovalRequest fact(String name, JsonNode value);   // adds the fact to this request and returns it
   String callKey();                                     // turn + "/" + callId
 }
 ```

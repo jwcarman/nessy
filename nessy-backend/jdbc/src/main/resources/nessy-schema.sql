@@ -2,12 +2,12 @@
 -- column name wherever it appears, primary key or foreign key. That is what lets a
 -- query say USING (agent_id) rather than spelling out a join condition.
 
--- An agent, so there is something to lock and something to point at.
+-- An agent, so there is something to point at and a place to record that it has ended.
 --
--- Taken with SELECT ... FOR UPDATE, which holds for exactly the transaction and is released by the
--- database when a connection dies -- no time-to-live to tune, and none of the trouble a lease has
--- telling a slow holder from a dead one. It has to be a row that always exists: locking the
--- backlog rows instead would leave two arrivals to an empty backlog with nothing to contend for.
+-- The lock that serialises an agent is not taken on this row. It is a Postgres advisory
+-- transaction lock, pg_advisory_xact_lock, keyed by the agent's type and id. It holds for exactly
+-- the transaction and is released by the database when a connection dies -- no time-to-live to
+-- tune, and none of the trouble a lease has telling a slow holder from a dead one.
 CREATE TABLE IF NOT EXISTS nessy_agent
 (
     agent_type   VARCHAR(64) NOT NULL,

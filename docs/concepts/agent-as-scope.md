@@ -62,17 +62,19 @@ sealed interface AgentState {
 }
 ```
 
-Nothing here is a row. `AgentState` is rebuilt by replaying
-`nessy_agent_event` from the start onto `AgentState.idle(...)`, so where an
-agent is is a fact reconstituted every time it is needed, not one read off
-a snapshot. No history lives on it either: the story is its own table, one
+Nothing here is a row. `AgentState` is rebuilt by replaying the events
+since the agent's last turn started (`AgentEvents.sinceLastTurnStarted`)
+from `nessy_agent_event` onto `AgentState.idle(...)`, so where an agent is
+is a fact reconstituted every time it is needed, not one read off a
+snapshot. The cost of reading it back is the length of one turn, not the
+length of the agent's life. No history lives on it either: the story is its own table, one
 row per event, and a decision says what to append by returning it, so the
 state stays the size of a phase rather than growing with every turn the
 agent has had.
 
 **`AwaitingActions` names every call it is waiting for.** Each leaves the
-map exactly once, when its outcome is folded — approved, denied, succeeded
-or failed — which is what makes a redelivered outcome harmless rather than
+map exactly once, when its outcome is folded — denied, succeeded or failed;
+an approval marks the call running and keeps it in the map — which is what makes a redelivered outcome harmless rather than
 a second result the provider will reject. The constructor refuses to build
 an instance whose map is empty: an agent awaiting nothing is not awaiting,
 because nothing would ever arrive to move it on.

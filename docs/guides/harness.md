@@ -226,8 +226,9 @@ rendered to the model at all.
 ## Configuration surface
 
 Both configs share `agentType()`, `tool(...)`, `instructions(...)`,
-`memory(...)`, `state(...)`, `ambient(...)`, `chapterPolicy(...)` and
-`summarizer(...)` (declared on the common `HarnessConfig<SELF>`), plus a
+`memory(...)`, `state(...)`, `ambient(...)`, `chapterPolicy(...)`,
+`summarizer(...)` and `turnPolicy(...)` (declared on the common
+`HarnessConfig<SELF>`; see [Turn Policy](../concepts/turn-policy.md)), plus a
 system prompt, an `inputRenderer`, an `inference(...)` customizer and a
 `listener(...)`. The system prompt is fixed when the harness is built; see
 [Prompts](prompts.md). The rest of the context settings (`maxTail`,
@@ -251,7 +252,9 @@ system prompt, an `inputRenderer`, an `inference(...)` customizer and a
 The defaults that matter on both doors: a tool call gets 30 seconds, an
 approver 10 minutes, a model call 5 minutes, none of them retried by
 default. History is cut into chapters every 20 turns, each summarised by the
-agent's own model, and the tail shown whole is at most 40 completed turns.
+agent's own model, a chapter is at most 30 turns long unless `maxChapterLength` says
+otherwise (so a `ChapterPolicy.every(50)` is cut at 30), and the tail shown whole is at most
+40 completed turns.
 Chapters are on unless `withoutChapters()` is set, so an agent spends tokens
 on summaries by default. See [Context](../concepts/context.md#chapters).
 
@@ -310,8 +313,10 @@ A person consents to a sentence, so write the sentence:
 ```
 
 Consenting to a message you have not read is not consent. Include the body.
-The sentence is stored as one line of at most 1,000 characters, and the model
-that summarises a chapter reads it too. See
+The sentence is stored as one line. With a stringifier named, a line is cut
+to at most 1,000 characters; with none named, the cut is at 255. The model
+that summarises a chapter reads it too. A stringifier that throws makes a
+gated call refused without asking the approver. See
 [Tools](../concepts/tools.md#what-a-call-leaves-behind) for the limits and for
 how to cut it.
 

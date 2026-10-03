@@ -94,8 +94,8 @@ try (McpToolbox toolbox = McpToolbox.connect(transport, mapper)) {
 `read_wiki_structure` and `read_wiki_contents` are free. `ask_question` is
 DeepWiki's own AI-in-the-loop tool, spending DeepWiki's model budget, so it
 is the one gated behind an approver. If DeepWiki ever renames or removes one
-of these tools, `toolbox.tool(name)` fails at connect time, before the
-first turn ever runs.
+of these tools, `toolbox.tool(name)` fails when the agent is configured,
+after the connection is made and before the first turn ever runs.
 
 ## Boundaries
 
@@ -106,8 +106,11 @@ first turn ever runs.
 - **Never a park.** Every `McpTool.call` is a single request and response.
   MCP elicitation would pair naturally with `Awaited.deferred()` and is not
   built yet.
-- **The SDK's request timeout applies as-is.** Real MCP tools can run
-  longer than it; set the binding's timeout with that in mind.
+- **The SDK's 20-second request timeout applies as-is.** `McpToolbox.connect`
+  builds the client with the SDK's defaults, a 20-second request timeout and a
+  20-second initialization timeout, and nothing in `connect` or `McpToolbox`
+  changes them. A tool call that runs longer than 20 seconds times out,
+  and raising the binding's timeout does not raise that limit.
 
 ## Where next
 

@@ -22,16 +22,17 @@ where it lives.
 harness.tell(agentId, "the porch light came on");
 ```
 
-One agent is one locked row in PostgreSQL, and it works one turn at a time.
-Its state is a phase, a position in its story and the calls it is waiting
-on, a few hundred bytes that do not grow with what the agent does. See
+One agent is one id under a PostgreSQL advisory lock, and it works one turn
+at a time. Its state is a phase, a position in its story and the calls it
+is waiting on, a few hundred bytes that do not grow with what the agent
+does. See
 [Agent as Scope](concepts/agent-as-scope.md) for the model and
 [Durable Computation](concepts/durable-computation.md) for what survives a
 crash.
 
 **Prior art, in one paragraph.** `(AgentType, AgentId)` plays the role of
-Orleans' grain type and key, and a `SELECT ... FOR UPDATE` on the agent's
-row gives the single-activation guarantee outright: exactly one worker
+Orleans' grain type and key, and a PostgreSQL advisory transaction lock on
+the agent's id gives the single-activation guarantee outright: exactly one worker
 touches an agent at a time, from any process that can reach the database.
 On the durable side, a parked tool call is what Restate or DBOS would call a
 durable promise: it survives the process that opened it, because its
@@ -166,7 +167,7 @@ See [Authorization](concepts/authorization.md).
 
 - **[Agent as Scope](concepts/agent-as-scope.md)**
 
-    The core model: one locked row per agent, phases as data, and a fold
+    The core model: one lock per agent, phases as data, and a fold
     that is a pure function.
 
 - **[Durable Computation](concepts/durable-computation.md)**

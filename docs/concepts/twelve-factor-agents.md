@@ -346,8 +346,9 @@ asks that failures be put into the context, compactly, so the model can
 correct itself, with a limit on consecutive errors.
 
 Tool failures reach the model. `ToolResult.Failure(message)` is a result,
-not an exception, and the turn carries on. A thrown exception is retried
-under the binding's `RetryPolicy` (default `Never`), then reported as `the
+not an exception, and the turn carries on. On the queued door, a thrown
+exception is retried under the binding's `RetryPolicy` (default `Never`);
+the direct door never retries. It is then reported as `the
 call failed: <message>`. A call that outlives its deadline is reported as
 `the call did not complete before its deadline; whether it ran is not known`.
 A denial reaches the model with its reason. Every failure message is capped

@@ -96,9 +96,9 @@ Everything below is read from `nessy.*`, bound by `NessyProperties`.
 | `nessy.embedding-model` | none; paired with `nessy.embedder` | the same factory default: the model a store falls back on |
 | `nessy.embedding-dimension` | none; only beside the pair | the same factory default's width |
 | `nessy.embedders.<id>.api-key`, `.enabled`, `.wire`, `.base-url`, `.vendor`, `.properties.*` | none | turns an embedding preset on or declares a custom embedder, registered as an `EmbeddingProvider` bean named `<id>Embeddings`; see [Providers](providers.md#embedders) |
-| `nessy.system-prompt` | none | your own configuration, via `NessyProperties.resolveSystemPrompt()`; also the prompt-template auto-configuration when a prompt engine is on the classpath |
+| `nessy.system-prompt` | none | your own configuration, via `NessyProperties.resolveSystemPrompt()`; also the prompt-template auto-configuration when a prompt engine is on the classpath, where one of the two prompt properties is required at startup unless you declare your own `SystemPrompt` bean |
 | `nessy.system-prompt-file` | none; a `Resource`. **Setting both is an error** | the same places as `nessy.system-prompt` |
-| `nessy.type` | `agent` | bound and validated, but not read by any bean the starter builds today — an agent's type is named when you call `factory.create(agentType, ...)`, not from a property |
+| `nessy.type` | `agent` | ignored: nothing reads it. An agent's type is named when you call `factory.create(agentType, ...)`, not from a property |
 | `nessy.initialize-schema` | `true`: apply every module's `nessy-schema.sql` at startup | `JdbcBackendAutoConfiguration`'s schema bean |
 | `nessy.reply-token-encryption-keys` | ephemeral; see below | the `ReplyTokens` bean, which only the queued door's factory is given |
 | `nessy.prompt.engine` | `spring`, or `mustache` | `PromptEngineAutoConfiguration` |
@@ -144,10 +144,8 @@ rest. A name with neither binds from the environment. To take any value from
 the environment, name the property in the file and let the environment
 supply the value: `openai.service_tier: ${OPENAI_SERVICE_TIER}`.
 
-`nessy.type` looks like it should name an agent type the way
-`nessy.model` names a model, and it does not: it is validated at startup
-(blank becomes `agent`) and then nothing asks for it. Treat it as reserved
-rather than load-bearing until an auto-configuration reads it.
+`nessy.type` does not name an agent type the way `nessy.model` names a
+model. Nothing reads it, so setting it has no effect.
 
 ## Every bean backs off
 

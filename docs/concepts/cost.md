@@ -39,9 +39,9 @@ Tokens.none().plus(Tokens.none());  // Uncounted
 wasted — clamped at zero rather than allowed to go negative.
 
 On the wire, `Tokens` is a bare number or nothing at all: `Counted` writes
-its count and `Uncounted` writes `null`, the same shape a nullable count
-had before this type existed. The distinction it protects is a distinction
-in Java; the JSON was never ambiguous.
+its count and `Uncounted` writes `null`, the same shape as a nullable count.
+The distinction it protects is a distinction in Java; the JSON is not
+ambiguous.
 
 ## `Usage`
 

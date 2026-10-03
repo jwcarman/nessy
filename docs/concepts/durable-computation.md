@@ -13,14 +13,16 @@ own transaction is ever told about a decision except by a row landing in
 this table: it is a transactional outbox, and a crash between the decision
 and the work cannot happen because there is no between.
 
-Each harness runs a dispatcher on a schedule, every 250 milliseconds by
-default, that claims due rows with `FOR UPDATE SKIP LOCKED` (so any number
+Each harness runs a dispatcher on a schedule, once a second by default,
+that claims due rows with `FOR UPDATE SKIP LOCKED` (so any number
 of processes may poll at once), marks each one running, and performs it on
-its own virtual thread. At most `maxInFlight` rows are performed at once
-per harness, and a permit is taken *before* a row is claimed, so nothing is
+its own virtual thread. Writes from the same process nudge the dispatcher at
+once, so the poll only bounds how late it finds retries coming due, timeouts
+and rows another process wrote. At most `maxInFlight` rows, four by default,
+are performed at once per harness, and a permit is taken *before* a row is claimed, so nothing is
 ever marked running while it waits for a thread.
 
-## One column, three meanings
+## One column, two meanings
 
 A row's `actionable_at` is when it is next due, and what "due" means
 depends on its status:
@@ -65,22 +67,23 @@ something an engine can assume.
 
 **What counts as a failure worth repeating depends on what failed.** A tool
 or an approver that throws has told you nothing, so the policy decides. A
-model call is different, and stricter: its adapter catches its vendor's
-exception and classifies what went wrong, and a model call only reaches
-the retry policy at all when its adapter classified the failure
-`Failure.Transient` — a value returned, not an exception thrown, saying
-the call might work next time. `Permanent`, `Rejected` and `Unknown` all
-stay terminal and never reach the policy. `Permanent` means the identical
-request fails identically. `Rejected` names content that will fail every
-time it is sent, so the answer is to quarantine it rather than send it
-again. `Unknown` means nobody found out whether the call happened, and
-repeating work that may already have run is not a chance this engine
-takes on its own.
+model call has two paths. If it throws, the engine records the failure as
+`Failure.Unknown` and the policy decides, as it does for a tool. If its
+adapter catches its vendor's exception and classifies what went wrong, the
+adapter returns a failure as a value, and only `Failure.Transient`, a value
+saying the call might work next time, reaches the policy. `Permanent`,
+`Rejected` and a *returned* `Unknown` stay terminal. `Permanent` means the
+identical request fails identically. `Rejected` names content that will fail
+every time it is sent, so the answer is to quarantine it rather than send it
+again. A returned `Unknown` means nobody found out whether the call
+happened, and repeating work that may already have run is not a chance this
+engine takes on its own. Each retried model call is recorded as an
+`InferenceAttempted`; see [Events](events.md).
 
-Retries belong to the queued door. A `DirectHarness` performs its effects
-on its own threads while a caller waits, and it does not retry a failed
-inference — the caller is standing right there, and asking again is theirs
-to decide.
+Retries belong to the queued door. A `DirectHarness` retries nothing: not a
+tool, not an approver, not a model call. A retry policy set on a binding is
+stored and read back, but a direct harness never honours it. The caller is
+standing right there, and asking again is theirs to decide.
 
 Giving up is not silence. Beside every effect row sits a second blob,
 `failure_payload`, written at emit time: what to tell the agent if this
@@ -92,13 +95,20 @@ the model is told the call failed and the turn carries on.
 
 ## Deferring
 
-A tool or an approver that returns `Awaited.deferred()` has parked the
-call. The row stays running, its `actionable_at` set to the binding's
+Deferral works only on the queued door. On a `DirectHarness`, a tool or
+approver that returns `Awaited.deferred()` does not park anything: the call
+becomes a failed call, with the message "the effect was deferred, and
+nothing here can wait for it". A caller at the direct door is already
+waiting and has nowhere for a late answer to arrive.
+
+On the queued door, a tool or an approver that returns `Awaited.deferred()`
+has parked the call. The row stays running, its `actionable_at` set to the binding's
 timeout, and the agent moves on to whatever else its turn is waiting for.
 Nothing holds a thread. The fold deliberately cannot tell a tool that takes
 three days from one that takes 200 milliseconds and should not learn; the
-one place "awaiting a person" appears is the event stream, as
-`ApprovalDeferred` or `CallDeferred` with the moment the question expires.
+one place "awaiting a person" appears is narration, as `ApprovalDeferred`
+or `CallDeferred` with the moment the question expires. See
+[Narration](../guides/narration.md).
 
 If the term passes with no answer, the stored failure reaches the agent and
 the turn carries on with a failed call. Whether a timeout should be a
@@ -117,8 +127,8 @@ replies.approve(token, ApprovalResult.approved());
 
 The token names logical coordinates, agent type, agent id, request and
 call, sealed with AES-GCM so the holder can neither read nor forge them. No
-process needs to still be waiting: an answer arriving is what locks the
-agent's row and folds the outcome in, whichever process happens to receive
+process needs to still be waiting: an answer arriving is what takes the
+agent's lock and folds the outcome in, whichever process happens to receive
 it. Answering returns a `ReplyOutcome`: `Settled`, `NotAwaiting` for a call
 already settled or expired, or `Unreadable` for a token this engine did not
 issue. An HTTP handler can report each one honestly.

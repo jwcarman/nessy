@@ -30,6 +30,8 @@ public interface QueuedBackend {
   Locks locks();
   Agents agents();
   Effects effects();
+  Chapters chapters();
+  Leases leases();
   <I> Backlogs<I> backlogs(TypeRef<I> inputType);
 }
 ```
@@ -44,8 +46,8 @@ not a clock read while queuing, but the arriving item's own timestamp, so
 anything that reasons about age (a policy expiring stale entries, say) is a
 pure function of what it was handed rather than of when it happens to run.
 
-The schema calls out this table specifically as the one place a
-control-plane store holds raw user text, which is why a harness never
+The schema comment describes this table as text held outside
+`nessy_payload`, whole and not bounded, which is why a harness never
 builds its own codec for it: `QueuedBackend.backlogs` takes a `TypeRef`,
 not a `Codec`, so the backend can compose Jackson with the application's
 storage transform itself, and a caller can't bypass encryption for exactly

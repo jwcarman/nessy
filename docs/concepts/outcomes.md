@@ -27,6 +27,12 @@ the answer's shape, the parsed shape when something was. Either way it's
 the same arm, because a caller that asked for an invoice wants an invoice,
 not one it has to parse out of a string.
 
+A reply the model cut off at the output limit also arrives as `Answered`.
+The engine delivers the partial text as the answer, logs a WARN, and
+reports the finish reason `length` on the inference span. Nothing in the
+outcome marks it. The limit is the `maxTokens` of the agent's inference
+options, 4096 by default, so a long answer needs a larger one.
+
 **`Refused<T>`** is not a failure. The turn ran, the model read it, and
 chose not to answer — and would decline again if asked the same way. The
 call succeeded at the thing a call is for: it got the model's actual
@@ -42,10 +48,15 @@ wasn't the thing requested, which is a failure of the asking rather than a
 refusal by the model. Handing back something that doesn't fit the caller's
 type would be far less honest than saying the shape wasn't met.
 
-**`Busy<T>`** is the one arm that means no turn happened at all: somebody
-else is already running a turn on this scope, so nothing was appended and
-nothing was spent. It's also the only one worth simply retrying — the other
-three are answers, and asking again just gets another one.
+**`Busy<T>`** means no turn happened: somebody else is already running a
+turn on this scope, so nothing was appended and nothing was spent. It's
+also the only one worth simply retrying — the other three are answers, and
+asking again just gets another one.
+
+`Refused` has one case with no turn behind it, too. Asking an agent that
+has been terminated returns `Refused` with the category `terminated`. No
+turn runs, and its `TurnStats` is empty. A caller that shows "the model
+declined" for every `Refused` will say that about a dead agent.
 
 **`Answered`, `Refused` and `Failed` each carry a `TurnStats`** — what the
 turn that produced them did, and what it cost. A caller who waited for the
@@ -55,7 +66,8 @@ tally matters as much as an answered one's: a turn that failed expensively
 is a different problem from one that failed at once. `Busy` carries none —
 **the one arm with no tally**, deliberately. There was no turn, and an
 empty tally would read as a turn that ran and spent nothing rather than as
-a turn that never was. See [Cost](cost.md) for what `TurnStats` holds and
+a turn that never was. (`Refused("terminated")` carries an empty tally,
+because the arm's shape requires one.) See [Cost](cost.md) for what `TurnStats` holds and
 how to read it.
 
 ## `TerminationOutcome`

@@ -170,7 +170,7 @@ actually needs:
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-bom</artifactId>
-      <version>0.2.0</version>
+      <version>0.3.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -208,7 +208,7 @@ add `nessy-inference-spi`; an application building an agent depends on
 
 | Capability | Site page |
 |---|---|
-| Agent as scope: one locked row per id, durable state instead of a live instance | [Agent as Scope](https://jwcarman.github.io/nessy/concepts/agent-as-scope/) |
+| Agent as scope: one lock per id, durable state instead of a live instance | [Agent as Scope](https://jwcarman.github.io/nessy/concepts/agent-as-scope/) |
 | Durable computation: effects as rows, deadlines as columns, recovery without a sweep | [Durable Computation](https://jwcarman.github.io/nessy/concepts/durable-computation/) |
 | Tools: structured calls, typed inputs, and deferring to the world | [Tools](https://jwcarman.github.io/nessy/concepts/tools/) |
 | Authorization: approvers, reply tokens, and describing what a person is consenting to | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/) |

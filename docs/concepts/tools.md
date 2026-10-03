@@ -81,6 +81,10 @@ or a process. How long it may wait is the binding's `timeout`, decided when
 the call was asked, so a deferral cannot extend it and there is nothing to
 negotiate.
 
+Deferral works only on the queued door. On a `DirectHarness` a deferred call
+becomes a failed call, because a caller already waiting has nowhere for a
+late answer to arrive. The direct door also never retries.
+
 Whoever will answer needs an address, and that is the `ReplyToken`:
 
 ```java
@@ -109,10 +113,11 @@ new ToolResult.Failure("the host did not respond");
 
 A failure is a **result**, not an exception: the model is told the call
 failed and decides what to do about it. The turn carries on. A tool that
-throws is caught and reported the same way, and retried under the binding's
-policy first, so a failure a tool can name is better returned than thrown:
-a thrown exception is the engine's problem and gets retried with the
-identical bad arguments; a failure is the model's problem, and the model is
+throws is caught and reported the same way. On the queued door it is
+retried under the binding's policy first; the direct door never retries. So
+a failure a tool can name is better returned than thrown: a thrown
+exception is the engine's problem and, on the queued door, gets retried with
+the identical bad arguments; a failure is the model's problem, and the model is
 the one who can fix it.
 
 A failure's message is cut to 1,000 characters, its middle dropped and `...` in

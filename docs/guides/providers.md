@@ -32,15 +32,17 @@ also speaks, and `OpenAiResponsesInferenceProvider` for the
 
 ## Usage
 
-`Usage` is a model name plus five nullable token counts: `inputTokens`,
+`Usage` is a model name plus five token counts: `inputTokens`,
 `outputTokens`, `cacheReadTokens`, `cacheWriteTokens` and
-`reasoningTokens`. A null count means the provider did not say, not that
-it was zero — a reply that genuinely cost nothing and a reply nobody
-measured are different facts, and only a nullable count can tell them
-apart. `Usage.unreported()` is nothing counted and no model named, for an
-effect that never reached a vendor; `Usage.unreported(String model)` is a
-call that was really made but came back with no count at all, on a model
-worth naming.
+`reasoningTokens`. Each is a `Tokens`, either `Counted` or `Uncounted`.
+An uncounted value means the provider did not say, not that it was zero —
+a reply that genuinely cost nothing and a reply nobody measured are
+different facts, and only a type with an uncounted case can tell them
+apart. `Tokens.reported(Integer)` turns a nullable count into one, and a
+secondary `Usage` constructor takes nullable integers. `Usage.unreported()`
+is nothing counted and no model named, for an effect that never reached a
+vendor; `Usage.unreported(String model)` is a call that was really made but
+came back with no count at all, on a model worth naming.
 
 `inputTokens` is normalised to mean ALL input processed, cache reads
 included, because the vendors disagree about what their own input count
@@ -62,9 +64,9 @@ magnitude, so a single input count cannot be turned into money.
 it answers whether an expensive turn thought a lot rather than produced a
 lot, not because it changes billing.
 
-`totalTokens()` covers `inputTokens` plus `outputTokens` only. Cache and
-reasoning counts are already inside one of those two numbers, so adding
-them again would double-count.
+`totalTokens()` returns a `Tokens` covering `inputTokens` plus `outputTokens`
+only. Cache and reasoning counts are already inside one of those two
+numbers, so adding them again would double-count.
 
 ## Where each stratum goes
 
@@ -326,13 +328,14 @@ keyword; the other tools stay strict.
 
 | name | constant | accepts | lands in |
 |---|---|---|---|
-| `anthropic.thinking.type` | `THINKING_TYPE` | `AnthropicThinkingType`: `ENABLED` `DISABLED` `ADAPTIVE` `BETWEEN_TOOLS` | `enabled` needs a budget; `adaptive`; `disabled` sends no thinking field; `between_tools` is sent as named |
+| `anthropic.thinking.type` | `THINKING_TYPE` | `AnthropicThinkingType`: `ENABLED` `DISABLED` `ADAPTIVE` `BETWEEN_TOOLS` | `enabled` sends a budget of 1,024 unless one is set; `adaptive`; `disabled` sends no thinking field; `between_tools` is sent as named |
 | `anthropic.thinking.budget_tokens` | `THINKING_BUDGET` | an integer | the thinking budget; alone, it turns thinking on. Must be below the agent type's `maxTokens` |
 | `anthropic.cache_control.ttl` | `CACHE_TTL` | `AnthropicCacheTtl`: `FIVE_MINUTES` `ONE_HOUR` | the cache markers on the system prompt and the tools |
 | `anthropic.service_tier` | `SERVICE_TIER` | `AnthropicServiceTier`: `AUTO` `STANDARD_ONLY` | `service_tier` |
 
-`anthropic.thinking.type=enabled` without a budget is refused, and so is a
-budget that is not below the agent type's `maxTokens`, at harness build.
+`anthropic.thinking.type=enabled` without a budget sends a budget of 1,024.
+A budget that is not below the agent type's `maxTokens` is refused, at
+harness build.
 
 ### Gemini
 
@@ -484,7 +487,7 @@ bean the application declares itself.
 ### Presets
 
 A preset is a catalogue entry the starter already knows the wire for, and
-for four of them the base URL too. It becomes a provider once its
+for eight of them the base URL too. It becomes a provider once its
 *ingredient* — a key, or an explicit `enabled` — is supplied:
 
 | id | wire | base URL | vendor | ingredient |
@@ -506,7 +509,7 @@ Every field is overridable under `nessy.providers.<id>.*`: a different
 `openai` endpoint that is really somebody else, or
 `nessy.providers.<id>.api-key` in place of the vendor's own environment
 variable. `openai.base-url` (`OPENAI_BASE_URL`) still overrides the
-`openai` preset's endpoint on its own, the way it always has.
+`openai` preset's endpoint on its own.
 
 A key set under `nessy.providers.<id>.api-key` binds from the environment
 with the property flattened, not underscore-joined at each dot: `xai`'s is
@@ -750,6 +753,47 @@ arrives, and the adapter reports a `Fault` naming `finish_reason=length`. A
 reply that got some text out before the cap is a `Truncated` instead.
 Raise the cap for that harness, or serve a model that does not reason by
 default.
+
+#### LM Studio: a reasoning model and a structured answer
+
+LM Studio has an open bug
+([lmstudio-bug-tracker issue #1773](https://github.com/lmstudio-ai/lmstudio-bug-tracker/issues/1773)).
+A reasoning model asked for a structured answer, that is an output schema,
+puts the answer in its reasoning and returns an empty answer. Nessy reports
+that as a failure. Setting `OpenAiProperties.REASONING_EFFORT` to `NONE`
+avoids it:
+
+```java
+config.inference(in -> in
+        .provider("lmstudio")
+        .model("<your-reasoning-model>")
+        .property(OpenAiProperties.REASONING_EFFORT, OpenAiReasoningEffort.NONE));
+```
+
+The same setting in YAML, under the provider:
+
+```yaml
+nessy:
+  providers:
+    lmstudio:
+      properties:
+        openai.reasoning.effort: none
+```
+
+Models that do not reason are not affected.
+
+#### LM Studio: one model at a time
+
+LM Studio loads a model on demand and keeps one loaded at a time by
+default. An agent model and a summary model are two models. A call for the
+model that is not loaded makes LM Studio unload the other one to load it,
+and calls in flight on the unloaded model fail with "Model unloaded". To
+use both at once, load both explicitly first:
+
+```bash
+lms load <agent-model> --context-length 32768
+lms load <summary-model> --context-length 32768
+```
 
 ### Anthropic-compatible endpoints
 

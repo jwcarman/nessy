@@ -2,9 +2,10 @@
 
 A lease is how background work runs once when several processes could all
 do it. It is one interface with one method, and it exists because of one
-fact about deployments: an agent's events are heard by every instance of
-the application, and some of what those events trigger, a chapter summary,
-a sweep, a report, is work that should happen exactly once, not once per instance.
+fact about deployments: an agent is not tied to one instance of the
+application. Its turns can end on different instances, and some of what a
+turn ending triggers, a chapter summary, a sweep, a report, is work that
+should happen exactly once, not once per instance.
 
 ## The problem it solves
 
@@ -14,11 +15,13 @@ the engine guarantees it is performed. That is work the agent is *owed*.
 
 Background work is different. When a turn ends, the chapter keeper asks
 whether the chapter policy says a chapter is due, and whether any closed
-chapter still has no summary. Three instances hear the same turn end and all
-three ask the same question and get the same answer. Without a lease, three
-summaries are written of the same turns and three model calls are paid for.
-With one, the first asker does the work and the other two find nothing left
-to do.
+chapter still has no summary. Narration reaches the listeners of the
+harness that committed the turn, but two turns of one agent can end on
+different instances close together, and a summary can still be running when
+the next turn ends. Both instances ask the same question and get the same
+answer. Without a lease, two summaries are written of the same turns and two
+model calls are paid for. With one, the first asker does the work and the
+other finds nothing left to do.
 
 The distinction is the design: **an effect is work somebody is owed; a lease
 is work anybody may do, once.** Nothing waits on a lease, nothing queues

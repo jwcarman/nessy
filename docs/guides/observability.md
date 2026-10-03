@@ -1,6 +1,6 @@
 # Observability
 
-Three separate things, and it helps to keep them apart:
+Four separate things, and it helps to keep them apart:
 
 - **Narration**: what an agent is doing, for a person or a UI, delivered as
   it happens. That is [Narration](narration.md).
@@ -27,13 +27,11 @@ turn started and that it ended, and can time the gap, but a turn that calls
 tools makes several model calls inside that gap, and narration draws no
 boundary around any of them. So the collaborators are wrapped, and the
 engine does the wrapping: the harness observes every tool and approver it
-is given. A provider is wrapped with
-`ObservedInferenceProvider.wrap(provider, registry)`. The Boot starter's
-provider auto-configurations return their providers already wrapped when
-there is a registry, so the engine and anything else the application hands
-one to report its calls; without Boot, wrap the provider where you build
-it. An already-wrapped provider is returned as it is, so wrapping
-twice never doubles a span. The provider reports its own vendor through
+is given. The factories also wrap every provider they hold, with
+`ObservedInferenceProvider.wrap(provider, registry)`, so handing the factory
+an `ObservationRegistry` is all an application has to do; it does not wrap
+its providers itself. An already-wrapped provider is returned as it is, so
+wrapping twice never doubles a span. The provider reports its own vendor through
 `InferenceProvider.vendor()`; each adapter returns semconv's value,
 and a provider written by hand is named for the class that wrote it. Each
 call becomes an observation with a name and tags a dashboard already
@@ -45,7 +43,8 @@ A model call is `chat <model>` with `gen_ai.operation.name`,
 `gen_ai.provider.name`, `gen_ai.request.model`,
 `gen_ai.response.finish_reasons` and `gen_ai.client.operation.duration`; a
 tool call is `execute_tool <name>` with the outcome; an approval is
-`nessy.approval` with `nessy.approval.answer`. A dashboard that already
+an observation named `nessy.approval`, whose span is `approve <tool>`, with
+`nessy.approval.answer`. A dashboard that already
 groups by provider, or an alert that already watches operation duration,
 works on a Nessy application without being taught anything. What a call
 cost is on the `chat` span as `gen_ai.usage.input_tokens` and

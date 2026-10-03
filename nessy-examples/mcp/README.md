@@ -43,8 +43,8 @@ document rather than guessing, so a person always sees what they are
 approving.
 
 **Names verified against the live server.** `McpToolbox#tool(String)` fails
-at connect time if DeepWiki renames a tool, so a drifted remote toolbox
-breaks the wiring loudly at startup rather than quietly mid-turn.
+when the agent is configured if DeepWiki renames a tool, so a drifted remote
+toolbox breaks the wiring loudly at startup rather than quietly mid-turn.
 
 ## Something worth knowing
 
