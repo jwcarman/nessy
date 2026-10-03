@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A dropped connection to the model can be retried.** Every adapter
+  reports a dropped connection as `Failure.Unknown`, and the dispatcher sent
+  only `Failure.Transient` to the retry policy, so a dropped connection ended
+  the turn whatever the policy said. An `Unknown` model failure now reaches
+  the policy too: a model call that runs twice changes nothing but the bill.
+  The default policy is still `Never`; set one with
+  `InferenceConfig.retryPolicy` for the queued door to try again.
 - **The Boot starter closes every inference provider's client at shutdown.**
   Each provider bean is an `ObservedInferenceProvider`, which was not
   `AutoCloseable`, so the container never closed the adapter inside it and

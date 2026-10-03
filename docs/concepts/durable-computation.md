@@ -70,15 +70,18 @@ or an approver that throws has told you nothing, so the policy decides. A
 model call has two paths. If it throws, the engine records the failure as
 `Failure.Unknown` and the policy decides, as it does for a tool. If its
 adapter catches its vendor's exception and classifies what went wrong, the
-adapter returns a failure as a value, and only `Failure.Transient`, a value
-saying the call might work next time, reaches the policy. `Permanent`,
-`Rejected` and a *returned* `Unknown` stay terminal. `Permanent` means the
-identical request fails identically. `Rejected` names content that will fail
-every time it is sent, so the answer is to quarantine it rather than send it
-again. A returned `Unknown` means nobody found out whether the call
-happened, and repeating work that may already have run is not a chance this
-engine takes on its own. Each retried model call is recorded as an
-`InferenceAttempted`; see [Events](events.md).
+adapter returns a failure as a value, and `Failure.Transient` and
+`Failure.Unknown` reach the policy. `Transient` says the call might work next
+time. `Unknown` says nobody found out whether the call happened; every adapter
+reports a dropped connection this way. A model call that runs twice changes
+nothing but the bill, so whether to try again is the policy's question.
+`Permanent` and `Rejected` stay terminal. `Permanent` means the identical
+request fails identically. `Rejected` names content that will fail every time
+it is sent, so the answer is to quarantine it rather than send it again. Each
+retried model call is recorded as an `InferenceAttempted`; see
+[Events](events.md). Narration is not durable: a call that fails partway
+through its answer and is tried again narrates the new attempt from the
+start, so a listener can see the first part twice.
 
 Retries belong to the queued door. A `DirectHarness` retries nothing: not a
 tool, not an approver, not a model call. A retry policy set on a binding is

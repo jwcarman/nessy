@@ -82,8 +82,10 @@ count, so without this event the tokens spent on the attempts before it
 are invisible to anything asking what a turn has spent — precisely the
 reading a budget needs most, since a turn that is thrashing is spending
 where nobody is looking. Two classifications reach it: `Failure.Transient`,
-a provider saying the call might work next time, and `Failure.Unknown`, an
-attempt that threw and whose usage is therefore always unreported.
+a provider saying the call might work next time, and `Failure.Unknown`, a
+call nobody heard back from. A provider returns `Unknown` for a dropped
+connection, with whatever usage it reported; an attempt that threw is
+recorded as `Unknown` too, with its usage unreported.
 
 **`TurnFailed` is a turn ended by a policy** — see
 [Turn Policy](turn-policy.md) — rather than an inference that failed:

@@ -327,12 +327,11 @@ class DispatcherFailureTest {
   }
 
   /**
-   * Nobody found out whether the work happened, and repeating work that may already have run is a
-   * question about the kind of work rather than one this dispatcher answers. Pinned because the
-   * decision is currently defended only in prose, and widening the guard would break no other test.
+   * A dropped connection is reported as unknown: nobody found out whether the model ran. Running a
+   * model call again changes nothing but the bill, so the policy decides, as it does for transient.
    */
   @Test
-  void an_unknown_model_failure_is_not_tried_again() {
+  void an_unknown_model_failure_is_tried_again() {
     Effects effects = new Effects();
     effects.due = List.of(attempt(NOW.plusSeconds(600), 1));
 
@@ -340,8 +339,27 @@ class DispatcherFailureTest {
 
     await()
         .atMost(Duration.ofSeconds(5))
+        .untilAsserted(() -> assertThat(effects.rescheduled).hasSize(1));
+    assertThat(effects.retired).as("it has not been given up on").isEmpty();
+    assertThat(delivered.outcomes).as("the turn has not been told anything yet").isEmpty();
+  }
+
+  /** With its attempts spent, an unknown failure reaches the fold as the provider reported it. */
+  @Test
+  void an_unknown_failure_that_runs_out_of_attempts_reaches_the_fold_with_what_it_learned() {
+    Effects effects = new Effects();
+    effects.due = List.of(attempt(NOW.plusSeconds(600), 1));
+    EffectOutcome.InferenceFailed failed =
+        new EffectOutcome.InferenceFailed(
+            new Failure.Unknown("no answer from the model"), Usage.unreported());
+
+    dispatcherFor(effects, failingOnceWith(failed)).dispatch();
+
+    await()
+        .atMost(Duration.ofSeconds(5))
         .untilAsserted(() -> assertThat(delivered.outcomes).hasSize(1));
-    assertThat(effects.rescheduled).as("it may already have happened once").isEmpty();
+    assertThat(delivered.outcomes.getFirst()).isEqualTo(failed);
+    assertThat(effects.rescheduled).as("the one attempt it was allowed is spent").isEmpty();
   }
 
   /**

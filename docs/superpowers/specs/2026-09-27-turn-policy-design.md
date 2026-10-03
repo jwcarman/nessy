@@ -154,6 +154,10 @@ sends a returned `InferenceFailed` whose `Failure` is `Transient` through the sa
 throw always took; a returned `Permanent`, `Rejected` or `Unknown` stays terminal. (A throw still
 reaches `settle` as it always did, classified `Unknown` by
 `EffectTermsSource.InferenceTerms.failed`; it is the *returned* `Unknown` that is terminal.)
+**Amended 2026-10-03 (nessy-ap finding F15):** James ruled that a returned `Unknown` reaches
+`settle` too. Every adapter returns `Unknown` for a dropped connection, and a model call that runs
+twice changes nothing but the bill, so the policy decides; only `Permanent` and `Rejected` stay
+terminal.
 `settle` then does one of two things. On `RetryDecision.RetryAfter` it reschedules the row and
 delivers nothing -- `DispatcherFailureTest` pins that the turn *"has not been told anything
 yet"*. On `RetryDecision.GiveUp` it delivers the handler's own outcome for the last attempt,
