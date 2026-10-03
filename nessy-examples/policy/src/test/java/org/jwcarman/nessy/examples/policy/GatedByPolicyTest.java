@@ -63,7 +63,7 @@ class GatedByPolicyTest {
 
   @Container
   static final GenericContainer<?> OPA =
-      new GenericContainer<>("openpolicyagent/opa:0.68.0")
+      new GenericContainer<>("openpolicyagent/opa:1.21.1")
           .withCopyFileToContainer(
               MountableFile.forClasspathResource("policy/nessy.rego"), "/policy/nessy.rego")
           .withCommand("run", "--server", "--addr=0.0.0.0:8181", "/policy")
