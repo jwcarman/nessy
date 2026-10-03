@@ -253,6 +253,43 @@ class GeminiInferenceProviderTest {
               fault -> assertThat(fault.failure()).isInstanceOf(Failure.Permanent.class));
       assertThat(narrated.fragments()).isEmpty();
     }
+
+    /**
+     * The finish reason comes on the last partial, so a stream without one stopped partway. What
+     * arrived is half a reply, never the answer; nobody knows whether the model finished, so the
+     * retry policy decides.
+     */
+    @Test
+    void a_stream_cut_short_is_an_unknown_fault_rather_than_half_an_answer() {
+      List<GenerateContentResponse> partials =
+          partialsOf(reply(new FinishReason("STOP"), Part.fromText("a lake monster")));
+      List<GenerateContentResponse> cut = partials.subList(0, partials.size() - 1);
+      GeminiClient early =
+          new GeminiClient() {
+            @Override
+            public Stream<GenerateContentResponse> generateContentStream(
+                String model,
+                List<Content> contents,
+                com.google.genai.types.GenerateContentConfig config) {
+              return cut.stream();
+            }
+
+            @Override
+            public void close() {
+              // Nothing to close.
+            }
+          };
+
+      InferenceResult result = new GeminiInferenceProvider(early, MAPPER).infer(request());
+
+      assertThat(result)
+          .isInstanceOfSatisfying(
+              InferenceResult.Fault.class,
+              fault -> {
+                assertThat(fault.failure()).isInstanceOf(Failure.Unknown.class);
+                assertThat(fault.failure().reason()).contains("ended before");
+              });
+    }
   }
 
   @Nested

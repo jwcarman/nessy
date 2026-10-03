@@ -185,6 +185,7 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
             .createStreaming(OpenAiChatRequests.toParams(request, properties, mapper))) {
       ChatCompletionAccumulator accumulator = ChatCompletionAccumulator.create();
       boolean[] any = {false};
+      boolean[] chose = {false};
       boolean[] finished = {false};
       CompletionUsage[] earlyUsage = {null};
       stream.stream()
@@ -197,12 +198,14 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
                   chunk.usage().ifPresent(usage -> earlyUsage[0] = usage);
                   return;
                 }
+                chose[0] |= !chunk.choices().isEmpty();
                 accumulator.accumulate(strippedOfEarlyUsage(chunk, earlyUsage));
                 finished[0] = finishes(chunk);
                 narrate(chunk, narrator);
               });
-      if (!any[0]) {
-        // A stream that ended before it began: nothing to fold. Asking again returns the same.
+      if (!any[0] || !chose[0]) {
+        // A stream that ended before it began, or a 200 that carries no choice: nothing to fold.
+        // Asking again returns the same. A choice that started and never finished is read below.
         return new InferenceResult.Fault(new Failure.Permanent("model returned no choices"));
       }
       return read(accumulator, earlyUsage[0]);
@@ -283,8 +286,12 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
     try {
       completion = accumulator.chatCompletion();
     } catch (IllegalStateException incomplete) {
+      // The SDK throws here only when the final chunk never arrived; a finished stream that cannot
+      // be built fails inside accumulate() instead. So nobody knows whether the model finished:
+      // the connection went before it said so. A model call that runs twice changes nothing but
+      // the bill, so the retry policy decides.
       return new InferenceResult.Fault(
-          new Failure.Permanent(
+          new Failure.Unknown(
               "the stream ended before the answer was complete: " + incomplete.getMessage()));
     }
     if (completion.usage().isEmpty() && earlyUsage != null) {

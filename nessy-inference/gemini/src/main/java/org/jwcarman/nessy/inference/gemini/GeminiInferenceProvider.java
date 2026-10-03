@@ -187,6 +187,14 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
         return noReply();
       }
       GenerateContentResponse response = folded.response();
+      if (folded.candidate && folded.finish.isEmpty()) {
+        // The last partial carries the finish reason, so a stream without one stopped partway:
+        // what arrived is half a reply, not the answer. Nobody knows whether the model finished,
+        // and a model call that runs twice changes nothing but the bill, so the policy decides.
+        return new InferenceResult.Fault(
+                new Failure.Unknown("the stream ended before the answer was complete"))
+            .withUsage(usageOf(response, request.options().modelName()));
+      }
       return read(response).withUsage(usageOf(response, request.options().modelName()));
     } catch (ApiException | GenAiIOException e) {
       return new InferenceResult.Fault(classify(e));
@@ -252,6 +260,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
     private Optional<GenerateContentResponsePromptFeedback> feedback = Optional.empty();
     private Optional<GenerateContentResponseUsageMetadata> usage = Optional.empty();
     private boolean any;
+    private boolean candidate;
 
     void take(GenerateContentResponse partial, InferenceNarrator narrator) {
       any = true;
@@ -266,11 +275,12 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
       if (candidates.isEmpty()) {
         return;
       }
-      Candidate candidate = candidates.getFirst();
-      if (candidate.finishReason().isPresent()) {
-        finish = candidate.finishReason();
+      Candidate first = candidates.getFirst();
+      candidate = true;
+      if (first.finishReason().isPresent()) {
+        finish = first.finishReason();
       }
-      for (Part part : candidate.content().flatMap(Content::parts).orElse(List.of())) {
+      for (Part part : first.content().flatMap(Content::parts).orElse(List.of())) {
         narrate(part, narrator);
         fold(part);
       }

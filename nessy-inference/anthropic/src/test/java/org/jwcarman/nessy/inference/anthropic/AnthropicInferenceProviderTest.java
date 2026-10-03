@@ -408,7 +408,7 @@ class AnthropicInferenceProviderTest {
     }
 
     @Test
-    void a_stream_that_stops_early_is_a_fault_rather_than_half_an_answer() {
+    void a_stream_that_stops_early_is_an_unknown_fault_rather_than_half_an_answer() {
       List<RawMessageStreamEvent> cut =
           eventsOf(reply().addContent(text("a lake monster")).build()).subList(0, 3);
       InferenceResult result =
@@ -420,7 +420,10 @@ class AnthropicInferenceProviderTest {
       assertThat(result)
           .isInstanceOfSatisfying(
               InferenceResult.Fault.class,
-              fault -> assertThat(fault.failure().reason()).contains("ended before"));
+              fault -> {
+                assertThat(fault.failure()).isInstanceOf(Failure.Unknown.class);
+                assertThat(fault.failure().reason()).contains("ended before");
+              });
     }
   }
 

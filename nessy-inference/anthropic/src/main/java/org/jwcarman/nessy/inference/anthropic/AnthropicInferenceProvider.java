@@ -278,8 +278,12 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
     try {
       message = accumulator.message();
     } catch (IllegalStateException incomplete) {
+      // The SDK throws here only when the message_stop never arrived; a finished stream that cannot
+      // be built fails inside accumulate() instead. So nobody knows whether the model finished:
+      // the connection went before it said so. A model call that runs twice changes nothing but
+      // the bill, so the retry policy decides.
       return new InferenceResult.Fault(
-          new Failure.Permanent(
+          new Failure.Unknown(
               "the stream ended before the answer was complete: " + incomplete.getMessage()));
     }
     return read(message).withUsage(usageOf(message));

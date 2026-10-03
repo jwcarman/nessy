@@ -171,8 +171,10 @@ public final class BedrockInferenceProvider implements InferenceProvider, AutoCl
       }
       if (folded.stop == null) {
         // The stream closed before messageStop: half a reply, which the story could not hold.
+        // Nobody knows whether the model finished, and a model call that runs twice changes
+        // nothing but the bill, so the retry policy decides.
         return new InferenceResult.Fault(
-            new Failure.Permanent("the stream ended before the answer was complete"));
+            new Failure.Unknown("the stream ended before the answer was complete"));
       }
       ConverseResponse response = folded.response();
       return read(response, folded.toolInputUnparsed())
