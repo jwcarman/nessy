@@ -12,10 +12,11 @@ active turn    the turn being answered, whole
 ambient        whatever can change while the agent is working
 ```
 
-The order is the order of how often each changes, least first. A provider
-caches a request's leading text, so the more stable a stratum is, the
-earlier it goes and the more of the cache survives when something later
-changes.
+The early strata change least. A provider caches a request's leading text,
+so the more stable the head of a request is, the more of the cache survives
+when something later changes. Memory and state come after history because
+history grows at every turn boundary. Both are fixed for the whole of a
+turn, so their order relative to each other costs nothing.
 
 The story itself, one row per event in `nessy_agent_event` with its content
 in `nessy_payload` and two short lines for each tool call, is appended and
