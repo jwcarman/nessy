@@ -67,6 +67,7 @@ appear.
 | `CHAT_MODEL_ID` | `qwen/qwen3.6-35b-a3b` | the model |
 | `CHAT_MODEL_URL` | `http://localhost:1234/v1` | the base URL of the `lmstudio` preset |
 | `CHAT_CHAPTER_TURNS` | `20` | turns per chapter |
+| `CHAT_SUMMARY_MODEL_ID` | the agent's model | the model that writes chapter summaries, on the same provider |
 | `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | the compose file's database | where the agents are kept |
 | `OTLP_TRACES_URL` | `http://localhost:4318/v1/traces` | where traces go |
 

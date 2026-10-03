@@ -15,19 +15,26 @@
  */
 package org.jwcarman.nessy.examples.chatweb;
 
+import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ChapterPolicy;
+import org.jwcarman.nessy.api.ContextConfig;
 import org.jwcarman.nessy.api.DirectHarness;
-import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.backend.jdbc.JdbcRowLocks;
 import org.jwcarman.nessy.backend.lock.Locks;
+import org.jwcarman.nessy.engine.chapter.ProseSummarizer;
+import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
+import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
@@ -92,16 +99,23 @@ public class ChatConfiguration {
    * <p>A chapter of the conversation closes every {@code chat.chapter-turns} turns and is
    * summarised off the request thread. The default is the engine's own twenty; a small number
    * closes one after a few messages, which is how to watch a chapter being cut.
+   *
+   * <p>A chapter is summarised by the agent's own model unless {@code chat.summary-model} names
+   * another, on the same provider. Locally that lets one model answer and a second, better at
+   * prose, write the summaries.
    */
   @Bean
   public DirectHarness<String, String> harness(
-      DirectHarnessFactory factory,
+      DefaultDirectHarnessFactory factory,
       NessyProperties properties,
+      Map<String, InferenceProvider> providers,
+      ObservationRegistry observations,
       SendEmailTool email,
       Approver desk,
       Notebook notebook,
       Plans plans,
-      @Value("${chat.chapter-turns:20}") int chapterTurns) {
+      @Value("${chat.chapter-turns:20}") int chapterTurns,
+      @Value("${chat.summary-model:}") String summaryModel) {
     return factory.<String>create(
         TYPE,
         config ->
@@ -119,8 +133,14 @@ public class ChatConfiguration {
                                 ctx ->
                                     // A local thinking model can take minutes to write a chapter's
                                     // summary, so the lease outlasts the two-minute default.
-                                    ctx.chapterLeaseTtl(Duration.ofMinutes(10))
-                                        .chapterPolicy(ChapterPolicy.every(chapterTurns))
+                                    summaries(
+                                            ctx.chapterLeaseTtl(Duration.ofMinutes(10))
+                                                .chapterPolicy(ChapterPolicy.every(chapterTurns)),
+                                            factory,
+                                            properties,
+                                            providers,
+                                            observations,
+                                            summaryModel)
                                         .ambient(NotebookTools.index(notebook))
                                         .ambient(PlanTools.plan(plans))))
                 .tool(new DaysUntilTool())
@@ -174,5 +194,28 @@ public class ChatConfiguration {
       desk.card(request.callId()).ifPresent(card -> streams.asked(request.agentId(), card));
       return Awaited.ready(desk.await(request.callId(), PATIENCE));
     };
+  }
+
+  /** The agent's own model writes the summaries, unless {@code summaryModel} names another. */
+  private static ContextConfig summaries(
+      ContextConfig ctx,
+      DefaultDirectHarnessFactory factory,
+      NessyProperties properties,
+      Map<String, InferenceProvider> providers,
+      ObservationRegistry observations,
+      String summaryModel) {
+    if (summaryModel.isBlank()) {
+      return ctx;
+    }
+    InferenceProvider provider = providers.get(properties.provider());
+    if (provider == null) {
+      throw new IllegalStateException(
+          "chat.summary-model is set, but no provider named '" + properties.provider() + "' is");
+    }
+    return ctx.summarizer(
+        new ProseSummarizer(
+            factory.histories(),
+            ObservedInferenceProvider.wrap(provider, observations),
+            new InferenceOptions(summaryModel, properties.maxTokens())));
   }
 }
