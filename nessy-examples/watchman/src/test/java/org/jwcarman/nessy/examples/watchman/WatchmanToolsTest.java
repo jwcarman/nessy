@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +32,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
@@ -65,6 +67,12 @@ class WatchmanToolsTest {
         @Override
         public CallId callId() {
           return new CallId("c1");
+        }
+
+        @Override
+        public IdempotencyKey idempotencyKey() {
+
+          return IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
         }
 
         @Override

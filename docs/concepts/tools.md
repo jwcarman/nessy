@@ -253,10 +253,22 @@ watchdog passes, because nothing recorded that it had finished. No marker
 fixes this; a "started" marker only moves the ambiguity. So it is stated as
 a contract rather than hidden.
 
-The mitigation is in the request: `turn()` and `callId()` together are
-stable across a re-drive, so a tool that cares can deduplicate on them. The
-turn is in there because a model's call id is unique within one response;
-two turns can each produce a `call_1`.
+The mitigation is in the request: `idempotencyKey()` is the same on every
+run of a call, and unique across every agent the application runs. A tool
+that changes something in the world can deduplicate on it, or hand it to an
+API that takes an idempotency key:
+
+```java
+public Awaited<ToolResult> call(ToolCallRequest<Refund> request) {
+    payments.refund(request.input(), request.idempotencyKey().toString());
+    return Awaited.ready(ToolResult.ok(new Block.Text("refunded")));
+}
+```
+
+The key is made once, when the model's request is recorded, and the call's
+`ApprovalRequest` carries the same one, so a tool can also find what was
+decided about it. Do not deduplicate on `callId()`: it is the model's id,
+unique only within one of its replies.
 
 ## One request
 

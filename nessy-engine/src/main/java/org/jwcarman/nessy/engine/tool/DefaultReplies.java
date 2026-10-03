@@ -254,9 +254,9 @@ public final class DefaultReplies implements Replies {
   /** Whether an effect is for the call these coordinates name. */
   private static boolean names(AgentEffect effect, ReplyTokens.Coordinates where) {
     return switch (effect) {
-      case AgentEffect.Approve(_, Seq requestSeq, CallId callId, _) ->
+      case AgentEffect.Approve(_, Seq requestSeq, CallId callId, _, _) ->
           requestSeq.equals(where.requestSeq()) && callId.equals(where.callId());
-      case AgentEffect.CallTool(_, Seq requestSeq, CallId callId, _) ->
+      case AgentEffect.CallTool(_, Seq requestSeq, CallId callId, _, _) ->
           requestSeq.equals(where.requestSeq()) && callId.equals(where.callId());
       // Nothing else can be deferred, so nothing else can be answered late.
       case AgentEffect.Infer _ -> false;

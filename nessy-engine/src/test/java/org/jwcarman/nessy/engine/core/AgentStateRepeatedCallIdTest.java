@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.PayloadRef;
@@ -27,6 +28,7 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
@@ -38,6 +40,10 @@ import org.jwcarman.nessy.backend.event.AgentEvent;
  */
 @DisplayName("A call id that repeats across two requests of one turn")
 class AgentStateRepeatedCallIdTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private static final PayloadRef MAIL = PayloadRef.of("mail");
   private static final PayloadRef FIRST_RESULT = PayloadRef.of("result-of-request-1");
@@ -65,7 +71,7 @@ class AgentStateRepeatedCallIdTest {
                 TURN,
                 new AgentCommand.InferenceOutcome.RequestedActions(
                     MAIL,
-                    List.of(new ActionRequest.ToolCall(C, TOOL, "tool")),
+                    List.of(new ActionRequest.ToolCall(C, TOOL, "tool", KEY)),
                     Usage.unreported()))));
   }
 

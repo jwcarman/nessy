@@ -39,6 +39,7 @@ import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -226,26 +227,31 @@ class InferenceHandlerTest {
 
     @Test
     void a_stringifier_that_throws_does_not_fail_the_request() {
-      script.add(
-          new InferenceResult.Actions(
-              List.of(
-                  new Block.ToolCall(CallId.of("c1"), ToolName.of("shout"), "{\"query\":\"x\"}")),
-              reading(0)));
+      List<ActionRequest> requested =
+          requestedFor(
+              new Block.ToolCall(CallId.of("c1"), ToolName.of("shout"), "{\"query\":\"x\"}"));
 
-      Awaited<EffectOutcome> outcome =
-          handlerWithTools.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)));
+      assertThat(actionsOf(requested))
+          .containsExactly("shout (what it would do could not be said)");
+    }
 
-      assertThat(outcome)
-          .isEqualTo(
-              Awaited.ready(
-                  new EffectOutcome.InferenceRequestedActions(
-                      PayloadRef.of("p"),
-                      List.of(
-                          new ActionRequest.ToolCall(
-                              CallId.of("c1"),
-                              ToolName.of("shout"),
-                              "shout (what it would do could not be said)")),
-                      reading(0))));
+    /**
+     * The key is made here, once per call, and every later approval and run reads it back from the
+     * record; two calls in one request never share one.
+     */
+    @Test
+    void each_requested_call_gets_its_own_idempotency_key() {
+      List<ActionRequest> requested =
+          requestedFor(
+              new Block.ToolCall(CallId.of("c1"), ToolName.of("search"), "{\"query\":\"a\"}"),
+              new Block.ToolCall(CallId.of("c2"), ToolName.of("search"), "{\"query\":\"b\"}"));
+
+      List<IdempotencyKey> keys =
+          requested.stream()
+              .map(ActionRequest.ToolCall.class::cast)
+              .map(ActionRequest.ToolCall::idempotencyKey)
+              .toList();
+      assertThat(keys).hasSize(2).doesNotHaveDuplicates();
     }
   }
 }

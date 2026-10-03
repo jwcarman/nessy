@@ -23,6 +23,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
@@ -38,6 +39,7 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
@@ -65,6 +67,10 @@ import org.jwcarman.nessy.inference.Toolset;
  * that is gone along with the machinery it tested.
  */
 class ObservedTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private static final String DURATION = "gen_ai.client.operation.duration";
 
@@ -338,6 +344,7 @@ class ObservedTest {
         new AgentId(java.util.UUID.randomUUID()),
         new TurnId(1),
         new CallId("c1"),
+        KEY,
         new ToolName("restart"),
         "{}",
         "restart prod-eu",
@@ -366,6 +373,12 @@ class ObservedTest {
       @Override
       public CallId callId() {
         return new CallId("c1");
+      }
+
+      @Override
+      public IdempotencyKey idempotencyKey() {
+
+        return IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
       }
 
       @Override

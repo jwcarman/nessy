@@ -39,6 +39,7 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
@@ -52,6 +53,10 @@ import tools.jackson.databind.json.JsonMapper;
 /** A tool bound on the harness by hand is observed by the harness, approver included. */
 @DisplayName("The harness observes its tools")
 class HarnessObservesToolsTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private final List<Observation.Context> stopped = new CopyOnWriteArrayList<>();
   private final ObservationRegistry observations = ObservationRegistry.create();
@@ -170,6 +175,7 @@ class HarnessObservesToolsTest {
             agent,
             new TurnId(1),
             new CallId("c1"),
+            IdempotencyKey.of(UUID.randomUUID()),
             new ToolName("echo"),
             "\"hi\"",
             Instant.now().plusSeconds(30),
@@ -192,6 +198,7 @@ class HarnessObservesToolsTest {
             new AgentId(UUID.randomUUID()),
             new TurnId(1),
             new CallId("c1"),
+            KEY,
             new ToolName("echo"),
             "{}",
             "echo hi",
@@ -217,6 +224,7 @@ class HarnessObservesToolsTest {
             new AgentId(UUID.randomUUID()),
             new TurnId(1),
             new CallId("c2"),
+            KEY,
             new ToolName("ungated"),
             "{}",
             "ungated hi",

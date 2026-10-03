@@ -40,6 +40,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -64,6 +65,10 @@ import tools.jackson.databind.json.JsonMapper;
  * the story does not have the call. All of them are things a live model will cause.
  */
 class ToolCallHandlerTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private static final AgentType TYPE = new AgentType("tools");
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
@@ -155,7 +160,7 @@ class ToolCallHandlerTest {
         .handle(
             AGENT,
             new AgentEffect.CallTool(
-                new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
+                new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));
   }
 
   private EffectOutcome handle(Tools tools, ToolCalls calls) {
@@ -352,7 +357,7 @@ class ToolCallHandlerTest {
                 TYPE, tools, nothing(), TOKENS, Narrator.silent(), terms(tools), CLOCK, PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(
-                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
+                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));
 
     assertThat(resolved.timeout()).isEqualTo(Duration.ofSeconds(90));
     assertThat(resolved.retryPolicy()).isInstanceOf(RetryPolicy.FixedDelay.class);
@@ -376,7 +381,7 @@ class ToolCallHandlerTest {
                 PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(
-                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone")));
+                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone"), KEY));
 
     assertThat(resolved.timeout()).isEqualTo(Duration.ofSeconds(30));
   }
@@ -400,7 +405,7 @@ class ToolCallHandlerTest {
                 PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(
-                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
+                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));
 
     assertThat(resolved.undispatchable())
         .asInstanceOf(type(EffectOutcome.ToolFailed.class))

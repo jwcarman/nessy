@@ -645,14 +645,24 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   /**
    * The effect one outstanding call implies, so its terms can be looked up the way §4c does.
    *
-   * <p>Built from the call's id and tool name, which is all the state keeps of it.
+   * <p>Built from the call's id, tool name and idempotency key, which is all the state keeps of it.
    */
   private static AgentEffect effectFor(TurnId turn, Seq requestSeq, OutstandingAction outstanding) {
     return switch (outstanding.phase()) {
       case AWAITING_APPROVAL ->
-          new AgentEffect.Approve(turn, requestSeq, outstanding.callId(), outstanding.toolName());
+          new AgentEffect.Approve(
+              turn,
+              requestSeq,
+              outstanding.callId(),
+              outstanding.toolName(),
+              outstanding.idempotencyKey());
       case RUNNING ->
-          new AgentEffect.CallTool(turn, requestSeq, outstanding.callId(), outstanding.toolName());
+          new AgentEffect.CallTool(
+              turn,
+              requestSeq,
+              outstanding.callId(),
+              outstanding.toolName(),
+              outstanding.idempotencyKey());
     };
   }
 

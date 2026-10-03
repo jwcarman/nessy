@@ -32,6 +32,7 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolName;
 import tools.jackson.databind.node.JsonNodeFactory;
@@ -46,6 +47,10 @@ import tools.jackson.databind.node.ObjectNode;
 @DisplayName("An approver that asks a policy")
 class PolicyApproverTest {
 
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
+
   private static final Instant NOW = Instant.parse("2026-09-02T12:00:00Z");
 
   private static ApprovalRequest asking() {
@@ -54,6 +59,7 @@ class PolicyApproverTest {
         new AgentId(UUID.randomUUID()),
         new TurnId(1),
         new CallId("call-1"),
+        KEY,
         new ToolName("prune_images"),
         "{}",
         "docker image prune -af",

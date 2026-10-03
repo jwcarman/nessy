@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+- **`ApprovalRequest.callKey()` is replaced by `idempotencyKey()`**, a typed
+  `IdempotencyKey` wrapping a UUID. `callKey()` was `turn/callId`: unique only
+  within one agent, and not even there when a model repeats a call id within
+  a turn. The new key is made once per call when the model's request is
+  recorded, stays the same across retries and restarts, and is unique across
+  every agent. `ToolCallRequest.idempotencyKey()` carries the same key, so a
+  tool can deduplicate on it and find its own approval. **Stored events and
+  effects change shape; recreate the database.**
 - **`DirectHarness.ask` refuses to run inside a caller's transaction.** It
   throws `IllegalStateException` before writing anything. A turn makes a model
   call, and a transaction should not stay open across a network call; on JDBC

@@ -73,6 +73,13 @@ public interface ToolCallRequest<I> {
   CallId callId();
 
   /**
+   * The key that makes running this call again safe: the same on every attempt, after a restart,
+   * and on the {@link ApprovalRequest} that let it run. Hand it to anything that takes an
+   * idempotency key -- see {@link IdempotencyKey}.
+   */
+  IdempotencyKey idempotencyKey();
+
+  /**
    * The name this tool was called by.
    *
    * <p>Not necessarily the tool's own {@link Tool#name()}: one implementation may be bound under

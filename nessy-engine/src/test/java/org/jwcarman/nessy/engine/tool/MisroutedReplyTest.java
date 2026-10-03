@@ -32,6 +32,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -61,6 +62,10 @@ import tools.jackson.databind.json.JsonMapper;
  * would take a tool past its gate instead of through it.
  */
 class MisroutedReplyTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private static final AgentType TYPE = new AgentType("replying");
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
@@ -101,7 +106,7 @@ class MisroutedReplyTest {
   void anAnswerDeliveredAsItsRowWasTakenOverIsStillSettled() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.Approve(TURN, REQUEST, CALL, TOOL);
+    rows.effect = new AgentEffect.Approve(TURN, REQUEST, CALL, TOOL, KEY);
     rows.completeWins = false;
 
     assertThat(replies.approve(token(), ApprovalResult.approved()))
@@ -114,7 +119,7 @@ class MisroutedReplyTest {
   void anAnswerForAnotherCallOfTheSameRequestMatchesNothing() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.Approve(TURN, REQUEST, new CallId("c2"), TOOL);
+    rows.effect = new AgentEffect.Approve(TURN, REQUEST, new CallId("c2"), TOOL, KEY);
 
     assertThat(replies.approve(token(), ApprovalResult.approved()))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);
@@ -126,7 +131,7 @@ class MisroutedReplyTest {
   void anAnswerForTheSameCallOfAnEarlierRequestMatchesNothing() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.Approve(TURN, new Seq(7), CALL, TOOL);
+    rows.effect = new AgentEffect.Approve(TURN, new Seq(7), CALL, TOOL, KEY);
 
     assertThat(replies.approve(token(), ApprovalResult.approved()))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);
@@ -138,7 +143,7 @@ class MisroutedReplyTest {
   void aResultForAnotherCallOfTheSameRequestMatchesNothing() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, new CallId("c2"), TOOL);
+    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, new CallId("c2"), TOOL, KEY);
 
     assertThat(replies.complete(token(), ToolResult.ok(new Block.Text("done"))))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);
@@ -148,7 +153,7 @@ class MisroutedReplyTest {
   void aResultForTheSameCallOfAnEarlierRequestMatchesNothing() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.CallTool(TURN, new Seq(7), CALL, TOOL);
+    rows.effect = new AgentEffect.CallTool(TURN, new Seq(7), CALL, TOOL, KEY);
 
     assertThat(replies.complete(token(), ToolResult.ok(new Block.Text("done"))))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);
@@ -158,7 +163,7 @@ class MisroutedReplyTest {
   void a_result_for_a_tool_that_is_no_longer_bound_still_gets_its_line() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL);
+    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL, KEY);
     PayloadRef ref = payloads.put(List.of(new Block.Text("done")));
 
     assertThat(replies.complete(token(), ToolResult.ok(new Block.Text("done"))))
@@ -171,7 +176,7 @@ class MisroutedReplyTest {
   void a_reply_for_the_current_request_is_delivered_with_that_request() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL);
+    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL, KEY);
 
     assertThat(replies.complete(token(), ToolResult.ok(new Block.Text("done"))))
         .isInstanceOf(ReplyOutcome.Settled.class);
@@ -182,7 +187,7 @@ class MisroutedReplyTest {
   void a_verdict_for_the_current_request_is_delivered_with_that_request() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.Approve(TURN, REQUEST, CALL, TOOL);
+    rows.effect = new AgentEffect.Approve(TURN, REQUEST, CALL, TOOL, KEY);
 
     assertThat(replies.approve(token(), ApprovalResult.approved()))
         .isInstanceOf(ReplyOutcome.Settled.class);
@@ -193,7 +198,7 @@ class MisroutedReplyTest {
   void a_deferred_failure_without_a_message_is_recorded_with_one() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL);
+    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL, KEY);
 
     assertThat(replies.complete(token(), new ToolResult.Failure(null)))
         .isInstanceOf(ReplyOutcome.Settled.class);
@@ -209,7 +214,7 @@ class MisroutedReplyTest {
   void aVerdictCannotSettleACallThatIsAlreadyRunning() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL);
+    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL, KEY);
 
     assertThat(replies.approve(token(), ApprovalResult.approved()))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);

@@ -36,6 +36,7 @@ import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
@@ -60,6 +61,10 @@ import org.jwcarman.nessy.inference.ToolOffer;
  * never speak again.
  */
 class ToolCallingTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private EngineFixture engine;
 
@@ -194,6 +199,9 @@ class ToolCallingTest {
         .as("one turn throughout: asking for work does not start a new one")
         .isEqualTo(new TurnId(1));
     assertThat(story.get(1))
+        .as("the key is made when the call is recorded, so which one it got is not the point")
+        .usingRecursiveComparison()
+        .ignoringFields("actions.idempotencyKey")
         .isEqualTo(
             new AgentEvent.ActionsRequested(
                 new Seq(2),
@@ -205,7 +213,7 @@ class ToolCallingTest {
                         new Block.ToolCall("call_1", "lookup", "{\"q\":\"loch ness\"}"))),
                 List.of(
                     new ActionRequest.ToolCall(
-                        new CallId("call_1"), new ToolName("lookup"), "Query[q=loch ness]")),
+                        new CallId("call_1"), new ToolName("lookup"), "Query[q=loch ness]", KEY)),
                 Usage.unreported()));
     assertThat(story.get(2))
         .as("the grant, written before the call was dispatched")

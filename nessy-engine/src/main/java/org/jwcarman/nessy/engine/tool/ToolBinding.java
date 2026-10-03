@@ -32,6 +32,7 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
@@ -199,6 +200,7 @@ public final class ToolBinding<I> {
       AgentId agentId,
       TurnId turn,
       CallId callId,
+      IdempotencyKey idempotencyKey,
       String arguments,
       String action,
       Instant askedAt,
@@ -210,6 +212,7 @@ public final class ToolBinding<I> {
             agentId,
             turn,
             callId,
+            idempotencyKey,
             tool.name(),
             arguments,
             action,
@@ -348,6 +351,7 @@ public final class ToolBinding<I> {
       AgentId agentId,
       TurnId turn,
       CallId callId,
+      IdempotencyKey idempotencyKey,
       ToolName toolName,
       String json,
       Instant deadline,
@@ -360,6 +364,15 @@ public final class ToolBinding<I> {
           new ToolResult.Failure("the arguments could not be read: " + e.getMessage()));
     }
     return tool.call(
-        new CallRequest<>(agentType, agentId, turn, callId, toolName, input, deadline, replyToken));
+        new CallRequest<>(
+            agentType,
+            agentId,
+            turn,
+            callId,
+            idempotencyKey,
+            toolName,
+            input,
+            deadline,
+            replyToken));
   }
 }

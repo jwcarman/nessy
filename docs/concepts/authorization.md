@@ -59,6 +59,7 @@ public record ApprovalRequest(
     AgentId agentId,
     TurnId turn,
     CallId callId,
+    IdempotencyKey idempotencyKey,   // the call's own key; the same on the ToolCallRequest that runs it
     ToolName toolName,
     String arguments,      // the call's JSON, as the model wrote it
     String action,         // the sentence the binding's stringifier wrote
@@ -69,7 +70,6 @@ public record ApprovalRequest(
 
   Optional<JsonNode> fact(String name);
   ApprovalRequest fact(String name, JsonNode value);   // adds the fact to this request and returns it
-  String callKey();                                     // turn + "/" + callId
 }
 ```
 
