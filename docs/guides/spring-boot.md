@@ -189,6 +189,9 @@ started, so a listener may depend on the factory without a cycle.
 
 Every `NarrationListener` bean is attached to it the same way.
 
+**With either backend** (`UsageReportsAutoConfiguration`): a `UsageReports` bean, the usage of
+each agent by model, projected from the stored events of both doors.
+
 **With a `DataSource` bean and `nessy-backend-jdbc` on the classpath**
 (`JdbcBackendAutoConfiguration`):
 

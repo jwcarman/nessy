@@ -99,6 +99,28 @@ In a Boot application the `TurnHistories` bean is contributed by
 `QueuedHarnessAutoConfiguration`, so it exists when the queued door is
 configured.
 
+## Usage, read from the story
+
+Every event that records an inference carries the usage its provider reported: an answer, a
+request for actions, a refusal, a failure, and an attempt that was retried. `UsageReports` is a
+projection over those events:
+
+```java
+UsageReport report = usageReports.of(agentType, agentId);
+for (ModelUsage model : report.byModel()) {
+  // model.model(), model.inferences(), model.input(), model.output(), ...
+}
+```
+
+It reads the stored events, so it counts every inference the engine recorded and gives the same
+answer after a restart. That makes it fit for cost accounting; narration is not, because it is
+announced once and a listener can miss it. Models are never added together: each `ModelUsage`
+is one model id. A kind that no inference reported stays not reported, never zero, and
+`unreported()` counts inferences whose provider reported nothing.
+
+An agent's story is in one door's store. On JDBC both doors read the same tables, so the
+projection reads the first store that holds the agent and never two.
+
 ## Content is Jackson, then whatever you say
 
 Every column that holds content is bytes: the value encoded by Jackson, then
