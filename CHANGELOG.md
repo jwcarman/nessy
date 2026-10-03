@@ -52,6 +52,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The watchman example no longer hides a repeated call id.** Its approvals
+  board was keyed on the model's call id, so once an agent's `call_1` was
+  answered, a later `call_1` from the same agent was never shown and timed
+  out. The board is now keyed on the call's `IdempotencyKey`, and its
+  approve and deny URLs carry that key. Drop `watchman_pending_approval` (or
+  recreate the watchman's database) before running it.
 - **Gemini no longer returns half a reply as the answer.** A stream that
   stopped before its finish reason was read as a complete answer. It is now a
   fault.

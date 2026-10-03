@@ -78,11 +78,7 @@ class WatchmanRoundIntegrationTest {
     // ...a person approves it from the page...
     RestClient.create("http://localhost:" + port)
         .post()
-        .uri(
-            "/approve/{t}/{a}/{c}",
-            Watchman.TYPE.value(),
-            Watchman.AGENT.value().toString(),
-            waiting.callId().value())
+        .uri("/approve/{key}", waiting.idempotencyKey().toString())
         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
         .exchange((request, response) -> response.getStatusCode());
 
@@ -100,11 +96,7 @@ class WatchmanRoundIntegrationTest {
                   .anySatisfy(text -> assertThat(text).contains("Total reclaimed space: 4.2GB"))
                   .contains("Rounds complete. Nothing needs your attention.");
             });
-    assertThat(
-            approvals
-                .byCallId(Watchman.TYPE, Watchman.AGENT, waiting.callId())
-                .orElseThrow()
-                .answer())
+    assertThat(approvals.byIdempotencyKey(waiting.idempotencyKey()).orElseThrow().answer())
         .contains("approved");
   }
 

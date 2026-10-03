@@ -187,7 +187,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
         return noReply();
       }
       GenerateContentResponse response = folded.response();
-      if (folded.candidate && folded.finish.isEmpty()) {
+      if (folded.sawCandidate && folded.finish.isEmpty()) {
         // The last partial carries the finish reason, so a stream without one stopped partway:
         // what arrived is half a reply, not the answer. Nobody knows whether the model finished,
         // and a model call that runs twice changes nothing but the bill, so the policy decides.
@@ -260,7 +260,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
     private Optional<GenerateContentResponsePromptFeedback> feedback = Optional.empty();
     private Optional<GenerateContentResponseUsageMetadata> usage = Optional.empty();
     private boolean any;
-    private boolean candidate;
+    private boolean sawCandidate;
 
     void take(GenerateContentResponse partial, InferenceNarrator narrator) {
       any = true;
@@ -276,7 +276,7 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
         return;
       }
       Candidate first = candidates.getFirst();
-      candidate = true;
+      sawCandidate = true;
       if (first.finishReason().isPresent()) {
         finish = first.finishReason();
       }

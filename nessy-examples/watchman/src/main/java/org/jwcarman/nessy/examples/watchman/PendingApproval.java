@@ -20,9 +20,11 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 
 /** One question put to a person, as the board keeps it. */
 public record PendingApproval(
+    IdempotencyKey idempotencyKey,
     CallId callId,
     AgentType agentType,
     AgentId agentId,
