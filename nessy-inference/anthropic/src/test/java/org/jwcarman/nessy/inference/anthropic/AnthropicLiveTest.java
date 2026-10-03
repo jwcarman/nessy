@@ -489,6 +489,33 @@ class AnthropicLiveTest {
     }
   }
 
+  /**
+   * A shape as the schema generator writes one: no {@code additionalProperties} anywhere, and an
+   * object nested inside. The two tests above hand-write a tidier schema than any caller sends, so
+   * they passed while every generated answer type was refused with a 400 (found 2026-10-03).
+   */
+  @Test
+  void a_generated_shape_with_a_nested_object_is_accepted() {
+    JsonSchema shape =
+        new JsonSchema(
+            """
+            {"$schema":"https://json-schema.org/draft/2020-12/schema",
+             "type":"object",
+             "properties":{"city":{"type":"string"},
+                           "where":{"type":"object",
+                                    "properties":{"country":{"type":"string"}}}}}""");
+
+    try (AnthropicInferenceProvider provider = provider()) {
+      InferenceResult result =
+          provider.infer(askingFor(List.of(open(1, "What is the capital of France?")), shape));
+
+      assertThat(result).isInstanceOf(InferenceResult.Answer.class);
+      JsonNode parsed =
+          JsonMapper.builder().build().readTree(textOf((InferenceResult.Answer) result));
+      assertThat(parsed.get("city").asString()).containsIgnoringCase("Paris");
+    }
+  }
+
   private static String textOf(InferenceResult.Answer answer) {
     return answer.blocks().stream()
         .filter(Block.Text.class::isInstance)

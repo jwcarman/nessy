@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.JsonSchema;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -135,5 +136,54 @@ class AnthropicSchemasTest {
                     "properties",
                     Map.of("inner", Map.of("type", "array", "items", Map.of("type", "string"))))));
     assertThat(List.of()).isEmpty();
+  }
+
+  /**
+   * An answer's schema as the generator writes one (PLAIN_JSON: no additionalProperties anywhere),
+   * with an object inline, objects in an array, and a shared object under $defs.
+   */
+  private static final String GENERATED_ANSWER =
+      """
+      {"$schema":"https://json-schema.org/draft/2020-12/schema",\
+      "$defs":{"Offer":{"type":"object","properties":{"kind":{"type":"string"}}}},\
+      "type":"object",\
+      "properties":{"where":{"type":"object","properties":{"city":{"type":"string"}}},\
+      "offers":{"type":"array","items":{"$ref":"#/$defs/Offer"}},\
+      "lines":{"type":"array","items":{"type":"object","properties":{"n":{"type":"integer"}}}},\
+      "tags":{"type":"array","items":{"type":"string"}}}}""";
+
+  private static JsonNode answerFor(String schema) {
+    return MAPPER.valueToTree(AnthropicSchemas.forAnswer(new JsonSchema(schema), MAPPER));
+  }
+
+  @Test
+  void every_object_in_an_answer_schema_closes_its_properties() {
+    JsonNode answer = answerFor(GENERATED_ANSWER);
+
+    assertThat(answer.at("/additionalProperties").isBoolean()).isTrue();
+    assertThat(answer.at("/additionalProperties").asBoolean()).isFalse();
+    assertThat(answer.at("/properties/where/additionalProperties").isBoolean()).isTrue();
+    assertThat(answer.at("/properties/lines/items/additionalProperties").isBoolean()).isTrue();
+    assertThat(answer.at("/$defs/Offer/additionalProperties").isBoolean()).isTrue();
+  }
+
+  @Test
+  void a_schema_that_is_not_an_object_is_left_alone() {
+    JsonNode answer = answerFor(GENERATED_ANSWER);
+
+    assertThat(answer.at("/properties/tags").has("additionalProperties")).isFalse();
+    assertThat(answer.at("/properties/tags/items").has("additionalProperties")).isFalse();
+    assertThat(answer.at("/properties/offers/items").has("additionalProperties")).isFalse();
+  }
+
+  @Test
+  void an_object_that_already_says_what_it_allows_is_left_as_written() {
+    JsonNode answer =
+        answerFor(
+            """
+            {"type":"object","properties":{"a":{"type":"string"}},\
+            "additionalProperties":{"type":"string"}}""");
+
+    assertThat(answer.at("/additionalProperties/type").asString()).isEqualTo("string");
   }
 }
