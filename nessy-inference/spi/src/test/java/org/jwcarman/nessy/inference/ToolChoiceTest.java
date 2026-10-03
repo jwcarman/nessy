@@ -46,11 +46,7 @@ class ToolChoiceTest {
 
   private static final Turn OPEN_TURN =
       new Turn(
-          new TurnId(1),
-          new Input(new Seq(1), List.of(new Block.Text("hello"))),
-          List.of(),
-          null,
-          0);
+          new TurnId(1), new Input(new Seq(1), List.of(new Block.Text("hello"))), List.of(), null);
 
   private static Toolset with(ToolChoice choice) {
     return new Toolset(List.of(LOOKUP), choice);

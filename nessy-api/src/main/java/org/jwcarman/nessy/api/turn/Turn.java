@@ -41,8 +41,7 @@ import org.jwcarman.nessy.api.TurnId;
  * @param result how it ended, or null while it is still in flight -- and a turn in flight is the
  *     reason the model is being called at all
  */
-public record Turn(
-    TurnId id, Input input, List<Exchange> exchanges, TurnResult result, int tokens) {
+public record Turn(TurnId id, Input input, List<Exchange> exchanges, TurnResult result) {
 
   public Turn {
     Objects.requireNonNull(input, "input must not be null");

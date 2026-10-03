@@ -99,8 +99,7 @@ class OpenAiResponsesInferenceProviderTest {
                       new TurnId(1),
                       new Input(new Seq(1), List.of(new Block.Text("hello"))),
                       List.of(),
-                      null,
-                      0))),
+                      null))),
           Toolset.none(),
           InferenceOptions.of("gpt-4o"));
 
@@ -516,8 +515,7 @@ class OpenAiResponsesInferenceProviderTest {
               new TurnId(1),
               new Input(new Seq(1), List.of(new Block.Text("hello"))),
               List.of(exchange),
-              null,
-              0);
+              null);
       InferenceRequest next =
           new InferenceRequest(
               new SystemPrompt("you are a helpful assistant"),

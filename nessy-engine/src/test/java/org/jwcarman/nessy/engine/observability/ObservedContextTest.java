@@ -228,8 +228,7 @@ class ObservedContextTest {
             new org.jwcarman.nessy.api.turn.Input(
                 new Seq(1), List.<Block.InputContent>of(new Block.Text("hello"))),
             List.of(),
-            null,
-            0);
+            null);
 
     @Override
     public List<org.jwcarman.nessy.api.turn.Turn> lastTurns(int turns) {

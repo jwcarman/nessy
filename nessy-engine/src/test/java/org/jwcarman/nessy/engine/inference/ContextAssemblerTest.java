@@ -66,8 +66,7 @@ class ContextAssemblerTest {
         new TurnId(id),
         new Input(new Seq(id), List.of(new Block.Text("q" + id))),
         List.of(),
-        new TurnResult.Answered(List.of(new Block.Text("a" + id))),
-        10);
+        new TurnResult.Answered(List.of(new Block.Text("a" + id))));
   }
 
   private static List<Turn> turns(long from, long through) {

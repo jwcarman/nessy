@@ -96,8 +96,7 @@ class DeclaredChaptersTest {
         id(number),
         new Input(Seq.of(1), List.of(new Block.Text("turn " + number))),
         exchanges,
-        null,
-        0);
+        null);
   }
 
   private static List<TurnId> ids(List<Turn> turns) {

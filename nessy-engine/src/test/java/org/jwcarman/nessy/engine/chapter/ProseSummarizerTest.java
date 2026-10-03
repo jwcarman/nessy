@@ -64,8 +64,7 @@ class ProseSummarizerTest {
         new TurnId(id),
         new Input(new Seq(id), List.of(new Block.Text("q" + id))),
         List.of(),
-        new TurnResult.Answered(List.of(new Block.Text("a" + id))),
-        10);
+        new TurnResult.Answered(List.of(new Block.Text("a" + id))));
   }
 
   /** A turn in which the model called a tool, was told "found it", and then answered. */
@@ -83,8 +82,7 @@ class ProseSummarizerTest {
         new TurnId(id),
         new Input(new Seq(id), List.of(new Block.Text("q" + id))),
         List.of(exchange),
-        new TurnResult.Answered(List.of(new Block.Text("a" + id))),
-        10);
+        new TurnResult.Answered(List.of(new Block.Text("a" + id))));
   }
 
   private static InferenceResult answer(String text) {
@@ -191,8 +189,7 @@ class ProseSummarizerTest {
               new TurnId(3),
               new Input(new Seq(3), List.of(new Block.Text("the-refused-input"))),
               List.of(),
-              new TurnResult.Refused(),
-              10);
+              new TurnResult.Refused());
       Story story = new Story(List.of(turn(1), refused, turn(5)));
       Scripted provider = new Scripted(_ -> answer("the record"));
 

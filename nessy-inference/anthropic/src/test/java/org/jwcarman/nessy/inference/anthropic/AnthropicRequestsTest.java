@@ -132,12 +132,11 @@ class AnthropicRequestsTest {
         new TurnId(id),
         asked(id, question),
         List.of(),
-        new TurnResult.Answered(List.of(new Block.Text(answer))),
-        0);
+        new TurnResult.Answered(List.of(new Block.Text(answer))));
   }
 
   private static Turn open(long id, String question) {
-    return new Turn(new TurnId(id), asked(id, question), List.of(), null, 0);
+    return new Turn(new TurnId(id), asked(id, question), List.of(), null);
   }
 
   /** Anthropic's own opaque payload, as its own reply would have carried it. */
@@ -274,7 +273,7 @@ class AnthropicRequestsTest {
               List.of(
                   new ToolOutcome.Succeeded(
                       new CallId("call_1"), List.of(new Block.Text("result 1")))));
-      return new Turn(new TurnId(id), asked(id, question), List.of(exchange), null, 0);
+      return new Turn(new TurnId(id), asked(id, question), List.of(exchange), null);
     }
 
     @Test
@@ -431,8 +430,7 @@ class AnthropicRequestsTest {
 
     @Test
     void a_refused_active_turn_sends_no_memory_or_state() {
-      Turn refused =
-          new Turn(new TurnId(2), asked(2, "rude"), List.of(), new TurnResult.Refused(), 0);
+      Turn refused = new Turn(new TurnId(2), asked(2, "rude"), List.of(), new TurnResult.Refused());
       var built =
           built(
               context(
@@ -500,8 +498,7 @@ class AnthropicRequestsTest {
     @Test
     void that_failed_gets_an_assistant_message_because_there_is_no_role_that_could_narrate() {
       Turn failed =
-          new Turn(
-              new TurnId(1), asked(1, "what happened?"), List.of(), new TurnResult.Failed(), 0);
+          new Turn(new TurnId(1), asked(1, "what happened?"), List.of(), new TurnResult.Failed());
 
       var messages = params(List.of(failed, open(3, "again?"))).messages();
 
@@ -522,11 +519,7 @@ class AnthropicRequestsTest {
     void that_was_refused_is_omitted_entirely_rather_than_explained() {
       Turn refused =
           new Turn(
-              new TurnId(1),
-              asked(1, "something disallowed"),
-              List.of(),
-              new TurnResult.Refused(),
-              0);
+              new TurnId(1), asked(1, "something disallowed"), List.of(), new TurnResult.Refused());
 
       var messages = params(List.of(refused, open(3, "again?"))).messages();
 
@@ -545,8 +538,7 @@ class AnthropicRequestsTest {
           new TurnId(1),
           asked(1, "look it up"),
           List.of(exchangeOf(new Seq(2), request, outcomes)),
-          new TurnResult.Answered(List.of(new Block.Text("done"))),
-          0);
+          new TurnResult.Answered(List.of(new Block.Text("done"))));
     }
 
     private static Block.ToolCall call(String id) {
@@ -633,8 +625,7 @@ class AnthropicRequestsTest {
               asked(1, "how deep?"),
               List.of(),
               new TurnResult.Answered(
-                  List.of(thinking("let me recall", "sig-abc"), new Block.Text("1412 metres"))),
-              0);
+                  List.of(thinking("let me recall", "sig-abc"), new Block.Text("1412 metres"))));
 
       var blocks = thinkingParams(List.of(turn)).messages().get(1).content().asBlockParams();
 
@@ -652,8 +643,7 @@ class AnthropicRequestsTest {
               asked(1, "how deep?"),
               List.of(),
               new TurnResult.Answered(
-                  List.of(thinking("let me recall", ""), new Block.Text("1412 metres"))),
-              0);
+                  List.of(thinking("let me recall", ""), new Block.Text("1412 metres"))));
 
       var blocks = thinkingParams(List.of(turn)).messages().get(1).content().asBlockParams();
 
@@ -673,8 +663,7 @@ class AnthropicRequestsTest {
               new TurnId(1),
               asked(1, "how deep?"),
               List.of(),
-              new TurnResult.Answered(List.of(redacted, new Block.Text("1412 metres"))),
-              0);
+              new TurnResult.Answered(List.of(redacted, new Block.Text("1412 metres"))));
 
       var blocks = thinkingParams(List.of(turn)).messages().get(1).content().asBlockParams();
 
@@ -697,8 +686,7 @@ class AnthropicRequestsTest {
               new TurnId(1),
               asked(1, "how deep?"),
               List.of(),
-              new TurnResult.Answered(List.of(theirs, new Block.Text("1412 metres"))),
-              0);
+              new TurnResult.Answered(List.of(theirs, new Block.Text("1412 metres"))));
 
       var blocks = thinkingParams(List.of(turn)).messages().get(1).content().asBlockParams();
 
@@ -716,8 +704,7 @@ class AnthropicRequestsTest {
               new TurnId(1),
               asked(1, "how deep?"),
               List.of(),
-              new TurnResult.Answered(List.of(odd, new Block.Text("1412 metres"))),
-              0);
+              new TurnResult.Answered(List.of(odd, new Block.Text("1412 metres"))));
 
       assertThat(thinkingParams(List.of(turn)).messages().get(1).content().asBlockParams())
           .hasSize(1);
@@ -860,7 +847,7 @@ class AnthropicRequestsTest {
     }
 
     private static Turn looping(long id, int rounds, TurnResult result) {
-      return new Turn(new TurnId(id), asked(id, "question " + id), rounds(rounds), result, 0);
+      return new Turn(new TurnId(id), asked(id, "question " + id), rounds(rounds), result);
     }
 
     private static List<ContentBlockParam> cached(List<Turn> turns) {
@@ -1021,8 +1008,7 @@ class AnthropicRequestsTest {
                           new ToolOutcome.Succeeded(new CallId("a"), List.of(new Block.Text("1"))),
                           new ToolOutcome.Succeeded(
                               new CallId("b"), List.of(new Block.Text("2")))))),
-              null,
-              0);
+              null);
 
       // question, call a, call b, result a, result b
       var blocks = cached(List.of(turn));
@@ -1049,7 +1035,7 @@ class AnthropicRequestsTest {
           cached(
               List.of(
                   new Turn(
-                      new TurnId(1), asked(1, "question 1"), List.of(), new TurnResult.Failed(), 0),
+                      new TurnId(1), asked(1, "question 1"), List.of(), new TurnResult.Failed()),
                   open(2, "question 2")));
 
       assertThat(markedIn(blocks)).containsExactly(0, 2);
@@ -1083,11 +1069,7 @@ class AnthropicRequestsTest {
               List.of(
                   answered(1, "question 1", "answer 1"),
                   new Turn(
-                      new TurnId(2),
-                      asked(2, "question 2"),
-                      List.of(),
-                      new TurnResult.Refused(),
-                      0),
+                      new TurnId(2), asked(2, "question 2"), List.of(), new TurnResult.Refused()),
                   open(3, "question 3")));
 
       assertThat(blocks).hasSize(3);
@@ -1103,8 +1085,7 @@ class AnthropicRequestsTest {
               asked(1, "how deep?"),
               List.of(),
               new TurnResult.Answered(
-                  List.of(new Block.Text("1412 metres"), thinking("let me recall", "sig-abc"))),
-              0);
+                  List.of(new Block.Text("1412 metres"), thinking("let me recall", "sig-abc"))));
 
       var blocks =
           blocksOf(
@@ -1154,15 +1135,10 @@ class AnthropicRequestsTest {
 
     @Test
     void a_refused_turn_is_left_out_whole() {
-      Turn refused =
-          new Turn(new TurnId(1), asked(1, "rude"), List.of(), new TurnResult.Refused(), 0);
+      Turn refused = new Turn(new TurnId(1), asked(1, "rude"), List.of(), new TurnResult.Refused());
       Turn blank =
           new Turn(
-              new TurnId(3),
-              new Input(new Seq(3), List.of(new Block.Text("hi"))),
-              List.of(),
-              null,
-              0);
+              new TurnId(3), new Input(new Seq(3), List.of(new Block.Text("hi"))), List.of(), null);
 
       MessageCreateParams params = params(List.of(refused, blank));
 
@@ -1178,7 +1154,7 @@ class AnthropicRequestsTest {
               List.of(
                   new Block.Commentary("thinking aloud"), new Block.ToolCall("c1", "lookup", "{}")),
               List.of());
-      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(asking), null, 0);
+      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(asking), null);
 
       MessageCreateParams params = params(List.of(turn), AnthropicCacheTtl.FIVE_MINUTES);
 
@@ -1196,8 +1172,7 @@ class AnthropicRequestsTest {
               asked(1, "hi"),
               List.of(),
               new TurnResult.Answered(
-                  List.of(new Block.Provider("someone-else", "{\"type\":\"thinking\"}"))),
-              0);
+                  List.of(new Block.Provider("someone-else", "{\"type\":\"thinking\"}"))));
 
       MessageCreateParams params = params(List.of(turn), AnthropicCacheTtl.ONE_HOUR);
 
@@ -1546,8 +1521,7 @@ class AnthropicRequestsTest {
               List.of(
                   thinking("let me recall", "sig-abc"),
                   new Block.Text("1412 metres"),
-                  new Block.Text("at its deepest"))),
-          0);
+                  new Block.Text("at its deepest"))));
     }
 
     private static Block.Provider redacted() {
@@ -1573,8 +1547,7 @@ class AnthropicRequestsTest {
               new TurnId(1),
               asked(1, "how deep?"),
               List.of(),
-              new TurnResult.Answered(List.of(redacted(), new Block.Text("1412 metres"))),
-              0);
+              new TurnResult.Answered(List.of(redacted(), new Block.Text("1412 metres"))));
 
       var blocks = params(List.of(turn)).messages().get(1).content().asBlockParams();
 
@@ -1659,8 +1632,7 @@ class AnthropicRequestsTest {
               new TurnId(1),
               asked(1, "how deep?"),
               List.of(),
-              new TurnResult.Answered(List.of(thinking("let me recall", "sig-abc"))),
-              0);
+              new TurnResult.Answered(List.of(thinking("let me recall", "sig-abc"))));
 
       var messages = params(List.of(turn)).messages();
 
@@ -1681,8 +1653,7 @@ class AnthropicRequestsTest {
                       List.of(
                           new ToolOutcome.Succeeded(
                               new CallId("call_1"), List.of(new Block.Text("1412 metres")))))),
-              null,
-              0);
+              null);
 
       var messages = params(List.of(turn)).messages();
 
@@ -1793,7 +1764,7 @@ class AnthropicRequestsTest {
         new Block.ToolCall(new CallId("call_1"), new ToolName("lookup"), "{\"q\":\"loch ness\"}");
 
     private static Turn asking() {
-      return new Turn(new TurnId(1), asked(1, "how deep is it?"), List.of(), null, 0);
+      return new Turn(new TurnId(1), asked(1, "how deep is it?"), List.of(), null);
     }
 
     private static Turn afterOneLookup() {
@@ -1807,8 +1778,7 @@ class AnthropicRequestsTest {
                   List.of(
                       new ToolOutcome.Succeeded(
                           new CallId("call_1"), List.of(new Block.Text("1412 metres")))))),
-          null,
-          0);
+          null);
     }
 
     @Test
@@ -1835,7 +1805,7 @@ class AnthropicRequestsTest {
     @Test
     void a_finished_turn_before_it_is_rendered_the_same_on_both_calls() {
       Turn earlier = answered(1, "what is the loch called?", "Loch Ness");
-      Turn open = new Turn(new TurnId(2), asked(3, "how deep is it?"), List.of(), null, 0);
+      Turn open = new Turn(new TurnId(2), asked(3, "how deep is it?"), List.of(), null);
       Turn grown =
           new Turn(
               new TurnId(2),
@@ -1847,8 +1817,7 @@ class AnthropicRequestsTest {
                       List.of(
                           new ToolOutcome.Succeeded(
                               new CallId("call_1"), List.of(new Block.Text("1412 metres")))))),
-              null,
-              0);
+              null);
 
       List<MessageParam> before = params(List.of(earlier, open)).messages();
       List<MessageParam> after = params(List.of(earlier, grown)).messages();

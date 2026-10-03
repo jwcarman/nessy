@@ -110,12 +110,11 @@ class BedrockRequestsTest {
         new TurnId(id),
         asked(id, question),
         List.of(),
-        new TurnResult.Answered(List.of(new Block.Text(answer))),
-        0);
+        new TurnResult.Answered(List.of(new Block.Text(answer))));
   }
 
   private static Turn open(long id, String question) {
-    return new Turn(new TurnId(id), asked(id, question), List.of(), null, 0);
+    return new Turn(new TurnId(id), asked(id, question), List.of(), null);
   }
 
   private static String textOf(Message message) {
@@ -166,9 +165,8 @@ class BedrockRequestsTest {
 
     @Test
     void a_failed_turn_is_answered_for_and_a_refused_one_is_left_out() {
-      Turn failed = new Turn(new TurnId(1), asked(1, "one"), List.of(), new TurnResult.Failed(), 0);
-      Turn refused =
-          new Turn(new TurnId(3), asked(3, "two"), List.of(), new TurnResult.Refused(), 0);
+      Turn failed = new Turn(new TurnId(1), asked(1, "one"), List.of(), new TurnResult.Failed());
+      Turn refused = new Turn(new TurnId(3), asked(3, "two"), List.of(), new TurnResult.Refused());
 
       ConverseStreamRequest converse =
           BedrockRequests.toRequest(request(List.of(failed, refused, open(5, "three"))), MAPPER);
@@ -284,7 +282,7 @@ class BedrockRequestsTest {
               List.of(
                   new ToolOutcome.Succeeded(
                       new CallId("call_1"), List.of(new Block.Text("230m")))));
-      Turn active = new Turn(new TurnId(1), asked(1, "how deep?"), List.of(exchange), null, 0);
+      Turn active = new Turn(new TurnId(1), asked(1, "how deep?"), List.of(exchange), null);
 
       ConverseStreamRequest converse =
           render(
@@ -312,8 +310,7 @@ class BedrockRequestsTest {
               new TurnId(1),
               asked(1, "hi"),
               List.of(),
-              new TurnResult.Answered(List.of(new Block.Text("hello"))),
-              0);
+              new TurnResult.Answered(List.of(new Block.Text("hello"))));
 
       ConverseStreamRequest converse =
           render(
@@ -374,7 +371,7 @@ class BedrockRequestsTest {
       request.add(new Block.ToolCall("call_1", "depth", "{\"lake\":\"ness\",\"metres\":true}"));
       request.addAll(List.of(extra));
       Exchange exchange = exchangeOf(new Seq(2), request, outcomes);
-      return new Turn(new TurnId(1), asked(1, "how deep?"), List.of(exchange), null, 0);
+      return new Turn(new TurnId(1), asked(1, "how deep?"), List.of(exchange), null);
     }
 
     @Test
@@ -485,7 +482,7 @@ class BedrockRequestsTest {
               new Seq(2),
               List.of(new Block.Commentary("aloud"), new Block.ToolCall("c1", "lookup", "{}")),
               List.of());
-      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(asking), null, 0);
+      Turn turn = new Turn(new TurnId(1), asked(1, "go"), List.of(asking), null);
 
       ConverseStreamRequest converse = BedrockRequests.toRequest(request(List.of(turn)), MAPPER);
 
@@ -509,8 +506,7 @@ class BedrockRequestsTest {
                   List.of(
                       new Block.Provider(BedrockInferenceProvider.VENDOR, redacted),
                       new Block.Provider(BedrockInferenceProvider.VENDOR, "{\"type\":\"other\"}"),
-                      new Block.Text("done"))),
-              0);
+                      new Block.Text("done"))));
 
       ConverseStreamRequest converse = BedrockRequests.toRequest(request(List.of(turn)), MAPPER);
 

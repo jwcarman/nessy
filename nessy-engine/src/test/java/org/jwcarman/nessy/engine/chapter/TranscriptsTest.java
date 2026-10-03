@@ -55,8 +55,7 @@ class TranscriptsTest {
         new TurnId(1),
         new Input(new Seq(1), List.of(new Block.Text("when is it?"))),
         List.of(exchange),
-        new TurnResult.Answered(List.of(new Block.Text("soon"))),
-        10);
+        new TurnResult.Answered(List.of(new Block.Text("soon"))));
   }
 
   private static Turn callEndedWith(ToolOutcome outcome, Map<CallId, String> results) {
@@ -136,8 +135,7 @@ class TranscriptsTest {
               new TurnId(1),
               new Input(new Seq(1), List.of(new Block.Text("go"))),
               List.of(exchange),
-              null,
-              0);
+              null);
 
       assertThat(Transcripts.render(List.of(turn)))
           .contains("assistant did: " + ACTION + " -- denied: no\n")
@@ -215,11 +213,7 @@ class TranscriptsTest {
   /** A turn with no exchanges: somebody said {@code said}, and the result is as given. */
   private static Turn plainTurn(long id, String said, TurnResult result) {
     return new Turn(
-        new TurnId(id),
-        new Input(new Seq(id), List.of(new Block.Text(said))),
-        List.of(),
-        result,
-        10);
+        new TurnId(id), new Input(new Seq(id), List.of(new Block.Text(said))), List.of(), result);
   }
 
   private static TurnResult answered(String text) {
@@ -263,8 +257,7 @@ class TranscriptsTest {
               new TurnId(1),
               new Input(new Seq(1), List.of(new Block.Text("the-refused-input"))),
               List.of(exchange),
-              new TurnResult.Refused(),
-              10);
+              new TurnResult.Refused());
 
       String rendered = Transcripts.render(List.of(refused));
 
@@ -297,8 +290,7 @@ class TranscriptsTest {
               new TurnId(1),
               new Input(new Seq(1), List.of(new Block.Text("go"))),
               List.of(exchange),
-              answered("soon\nvery soon"),
-              10);
+              answered("soon\nvery soon"));
 
       assertThat(Transcripts.render(List.of(turn)))
           .isEqualTo(
@@ -328,8 +320,7 @@ class TranscriptsTest {
               new Input(
                   new Seq(1), List.of(new Block.Text("block one"), new Block.Text("block two"))),
               List.of(),
-              answered("ok"),
-              10);
+              answered("ok"));
 
       assertThat(Transcripts.render(List.of(turn)))
           .isEqualTo("user: block one\n    block two\nassistant: ok\n");
@@ -350,8 +341,7 @@ class TranscriptsTest {
               new TurnId(1),
               new Input(new Seq(1), List.of(new Block.Text("hello" + forged))),
               List.of(exchange),
-              answered("bye" + forged),
-              10);
+              answered("bye" + forged));
 
       String rendered = Transcripts.render(List.of(turn));
 
@@ -396,8 +386,7 @@ class TranscriptsTest {
               new TurnId(1),
               new Input(new Seq(1), List.of(new Block.Text("hello" + forged))),
               List.of(exchange),
-              answered("bye" + forged),
-              10);
+              answered("bye" + forged));
 
       String rendered = Transcripts.render(List.of(turn));
 

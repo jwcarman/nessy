@@ -111,13 +111,12 @@ class OpenAiChatRequestsTest {
         new TurnId(id),
         asked(id, question),
         List.of(),
-        new TurnResult.Answered(List.of(new Block.Text(answer))),
-        0);
+        new TurnResult.Answered(List.of(new Block.Text(answer))));
   }
 
   /** The turn in flight: asked, not yet answered. */
   private static Turn open(long id, String question) {
-    return new Turn(new TurnId(id), asked(id, question), List.of(), null, 0);
+    return new Turn(new TurnId(id), asked(id, question), List.of(), null);
   }
 
   private static List<ChatCompletionMessageParam> messagesOf(List<Turn> turns) {
@@ -182,7 +181,7 @@ class OpenAiChatRequestsTest {
               List.of(new Block.ToolCall(new CallId("call_1"), new ToolName("lookup"), "{}")),
               List.of(
                   new ToolOutcome.Succeeded(new CallId("call_1"), List.of(new Block.Text("ok")))));
-      return new Turn(new TurnId(2), asked(2, "look it up"), List.of(exchange), null, 0);
+      return new Turn(new TurnId(2), asked(2, "look it up"), List.of(exchange), null);
     }
 
     @Test
@@ -340,8 +339,7 @@ class OpenAiChatRequestsTest {
     @Test
     void that_failed_is_explained_rather_than_left_silent() {
       Turn failed =
-          new Turn(
-              new TurnId(1), asked(1, "what happened?"), List.of(), new TurnResult.Failed(), 0);
+          new Turn(new TurnId(1), asked(1, "what happened?"), List.of(), new TurnResult.Failed());
 
       List<ChatCompletionMessageParam> messages = messagesOf(List.of(failed, open(3, "again?")));
 
@@ -358,11 +356,7 @@ class OpenAiChatRequestsTest {
     void that_was_refused_drops_its_question_and_says_so_in_its_place() {
       Turn refused =
           new Turn(
-              new TurnId(1),
-              asked(1, "something disallowed"),
-              List.of(),
-              new TurnResult.Refused(),
-              0);
+              new TurnId(1), asked(1, "something disallowed"), List.of(), new TurnResult.Refused());
 
       List<ChatCompletionMessageParam> messages = messagesOf(List.of(refused, open(3, "again?")));
 
@@ -386,8 +380,7 @@ class OpenAiChatRequestsTest {
           new TurnId(1),
           asked(1, "look it up"),
           List.of(exchangeOf(new Seq(2), request, outcomes)),
-          new TurnResult.Answered(List.of(new Block.Text("done"))),
-          0);
+          new TurnResult.Answered(List.of(new Block.Text("done"))));
     }
 
     @Test
@@ -490,8 +483,7 @@ class OpenAiChatRequestsTest {
               new TurnResult.Answered(
                   List.of(
                       new Block.Provider("anthropic", "{\"type\":\"thinking\"}"),
-                      new Block.Text("the answer"))),
-              0);
+                      new Block.Text("the answer"))));
 
       assertThat(messagesOf(List.of(turn)).get(2).asAssistant().content().orElseThrow().asText())
           .isEqualTo("the answer");

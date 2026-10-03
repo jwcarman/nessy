@@ -68,8 +68,7 @@ class BedrockLiveTest {
                     new TurnId(1),
                     new Input(new Seq(1), List.of(new Block.Text(question))),
                     List.of(),
-                    null,
-                    0))),
+                    null))),
         Toolset.none(),
         new InferenceOptions(MODEL, 512));
   }
@@ -83,8 +82,7 @@ class BedrockLiveTest {
                     new TurnId(1),
                     new Input(new Seq(1), List.of(new Block.Text(question))),
                     List.of(),
-                    null,
-                    0))),
+                    null))),
         Toolset.none(),
         new InferenceOptions(MODEL, 512),
         Optional.of(shape));
@@ -221,8 +219,7 @@ class BedrockLiveTest {
                     new TurnId(1),
                     new Input(new Seq(1), List.of(new Block.Text(question))),
                     List.of(),
-                    null,
-                    0))),
+                    null))),
         toolset,
         new InferenceOptions(MODEL, 1500));
   }

@@ -261,8 +261,7 @@ class ChapterLabTest {
         turn(id),
         new Input(new Seq(id), List.of(new Block.Text("question " + id))),
         List.of(),
-        new TurnResult.Answered(List.of(new Block.Text("reply " + id))),
-        5);
+        new TurnResult.Answered(List.of(new Block.Text("reply " + id))));
   }
 
   @Nested
