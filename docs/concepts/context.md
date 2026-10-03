@@ -321,13 +321,14 @@ AmbientSource clock = AmbientSource.of(source -> source
 Anything in the request that changes makes the provider re-read the text
 after it. The order above keeps the early strata still.
 
-Anthropic caches only when asked. Set `anthropic.cache_control.ttl` to
-`FIVE_MINUTES` or `ONE_HOUR` on the provider:
+Anthropic caches with five-minute markers unless told otherwise. Set
+`anthropic.cache_control.ttl` to `ONE_HOUR` for the long lifetime, or to
+`OFF` for no markers, on the provider or on one agent type:
 
 ```java
 InferenceProvider provider = AnthropicInferenceProvider.of(c -> c
         .fromEnv()
-        .property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.FIVE_MINUTES));
+        .property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.ONE_HOUR));
 ```
 
 ```yaml
@@ -335,7 +336,7 @@ nessy:
   providers:
     anthropic:
       properties:
-        anthropic.cache_control.ttl: FIVE_MINUTES
+        anthropic.cache_control.ttl: OFF
 ```
 
 OpenAI and Gemini cache implicitly, with nothing to set. A one-off request,

@@ -330,7 +330,7 @@ keyword; the other tools stay strict.
 |---|---|---|---|
 | `anthropic.thinking.type` | `THINKING_TYPE` | `AnthropicThinkingType`: `ENABLED` `DISABLED` `ADAPTIVE` `BETWEEN_TOOLS` | `enabled` sends a budget of 1,024 unless one is set; `adaptive`; `disabled` sends no thinking field; `between_tools` is sent as named |
 | `anthropic.thinking.budget_tokens` | `THINKING_BUDGET` | an integer | the thinking budget; alone, it turns thinking on. Must be below the agent type's `maxTokens` |
-| `anthropic.cache_control.ttl` | `CACHE_TTL` | `AnthropicCacheTtl`: `FIVE_MINUTES` `ONE_HOUR` | the cache markers on the system prompt and the tools |
+| `anthropic.cache_control.ttl` | `CACHE_TTL` | `AnthropicCacheTtl`: `FIVE_MINUTES` `ONE_HOUR` `OFF` | the cache markers on the system prompt and the tools |
 | `anthropic.service_tier` | `SERVICE_TIER` | `AnthropicServiceTier`: `AUTO` `STANDARD_ONLY` | `service_tier` |
 
 `anthropic.thinking.type=enabled` without a budget sends a budget of 1,024.
@@ -409,7 +409,7 @@ InferenceProvider provider = AnthropicInferenceProvider.of(c -> c
         .fromEnv()
         .property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED)
         .property(AnthropicProperties.THINKING_BUDGET, 4096)
-        .property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.FIVE_MINUTES));
+        .property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.ONE_HOUR));
 ```
 
 ```yaml
@@ -419,7 +419,7 @@ nessy:
       properties:
         anthropic.thinking.type: enabled
         anthropic.thinking.budget_tokens: "4096"
-        anthropic.cache_control.ttl: FIVE_MINUTES
+        anthropic.cache_control.ttl: ONE_HOUR
 ```
 
 The defaults, when a property is absent:
@@ -447,10 +447,12 @@ The defaults, when a property is absent:
   [Where each stratum goes](#where-each-stratum-goes). A gateway or proxy
   reached through `baseUrl` receives both. A request that does not think
   replays no thinking.
-- Prompt caching is off unless `anthropic.cache_control.ttl` is set
-  (`FIVE_MINUTES` or `ONE_HOUR`); it marks the system prompt, the tool list
+- Prompt caching is on, with `FIVE_MINUTES` markers, unless
+  `anthropic.cache_control.ttl` says otherwise: `ONE_HOUR` for the long
+  lifetime, `OFF` for no markers. It marks the system prompt, the tool list
   and two messages of the conversation as cacheable, none of them the
-  ambient text.
+  ambient text. An agent type's value overrides the provider's, so one agent
+  type can turn caching off on a provider that caches.
 - A request that is a one-off (`InferenceRequest.asOneOff()`) is marked
   nowhere, whatever the property says. Nothing it sends is sent again, so a
   cache write would be paid for and never read. The engine's summariser sends

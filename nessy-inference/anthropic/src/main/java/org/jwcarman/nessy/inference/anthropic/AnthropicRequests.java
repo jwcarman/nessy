@@ -132,7 +132,7 @@ public final class AnthropicRequests {
 
     // A one-off is never sent again, so a marker on it would buy a cache write nobody reads back.
     Optional<CacheControlEphemeral> marker =
-        request.oneOff() ? Optional.empty() : read.cacheTtl().map(AnthropicRequests::cacheMarker);
+        request.oneOff() ? Optional.empty() : cacheMarker(read.cacheTtl());
     MessageCreateParams.Builder builder =
         MessageCreateParams.builder().model(options.modelName()).maxTokens(options.maxTokens());
 
@@ -181,12 +181,17 @@ public final class AnthropicRequests {
     };
   }
 
-  /** The cache marker for a ttl: {@code 5m} is today's default marker, {@code 1h} the long one. */
-  private static CacheControlEphemeral cacheMarker(AnthropicCacheTtl ttl) {
+  /**
+   * The cache marker for a ttl: {@code 5m} is today's default marker, {@code 1h} the long one, and
+   * {@code OFF} none.
+   */
+  private static Optional<CacheControlEphemeral> cacheMarker(AnthropicCacheTtl ttl) {
     return switch (ttl) {
-      case FIVE_MINUTES -> CacheControlEphemeral.builder().build();
+      case FIVE_MINUTES -> Optional.of(CacheControlEphemeral.builder().build());
       case ONE_HOUR ->
-          CacheControlEphemeral.builder().ttl(CacheControlEphemeral.Ttl.TTL_1H).build();
+          Optional.of(
+              CacheControlEphemeral.builder().ttl(CacheControlEphemeral.Ttl.TTL_1H).build());
+      case OFF -> Optional.empty();
     };
   }
 
