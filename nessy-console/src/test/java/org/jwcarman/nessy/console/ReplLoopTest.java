@@ -337,7 +337,10 @@ class ReplLoopTest {
     FakeHarness harness =
         new FakeHarness(
             List.of(
-                new Narration.ActionsRequested(List.of(new ToolName("days_until"))),
+                new Narration.ActionsRequested(
+                    List.of(
+                        new Narration.ActionsRequested.Call(
+                            new CallId("c1"), new ToolName("days_until"), "days_until"))),
                 new Narration.CallFinished(new CallId("c1")),
                 ended()));
     FakeConsole console = new FakeConsole("when is christmas", "quit");

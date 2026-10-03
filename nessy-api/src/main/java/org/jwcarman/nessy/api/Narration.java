@@ -143,11 +143,30 @@ public sealed interface Narration {
    */
   record Commentary(String text) implements Narration {}
 
-  /** The model asked for work before it would answer. */
-  record ActionsRequested(List<ToolName> toolNames) implements Narration {
+  /**
+   * The model asked for work before it would answer.
+   *
+   * <p>One entry per call, each carrying the call's id, because every later event about a call --
+   * {@link CallApproved}, {@link CallDenied}, {@link CallFinished}, {@link CallFailed} -- names
+   * only the id. This is where a watcher learns which tool that id is.
+   */
+  record ActionsRequested(List<Call> calls) implements Narration {
     public ActionsRequested {
-      toolNames = List.copyOf(toolNames);
+      calls = List.copyOf(calls);
     }
+
+    /**
+     * One call the model asked for.
+     *
+     * <p>Carries the action -- the sentence a person is shown, the same one {@link ApprovalSought}
+     * carries -- and not the arguments. Narration says what is happening; the arguments are
+     * content, and they are in the story.
+     *
+     * @param callId the id every later event about this call carries
+     * @param toolName the tool asked for
+     * @param action the sentence the binding's stringifier wrote for this call
+     */
+    public record Call(CallId callId, ToolName toolName, String action) {}
   }
 
   /**
@@ -155,8 +174,8 @@ public sealed interface Narration {
    *
    * <p>Names the call and not the tool, because the entry this is derived from does not carry the
    * tool's name and inventing a lookup to fill the field would make the announcement claim
-   * something the story does not. A watcher that wants the name heard it a moment ago in {@link
-   * ActionsRequested}.
+   * something the story does not. A watcher that wants the name joins by id to the {@link
+   * ActionsRequested.Call} it heard a moment ago.
    */
   record CallApproved(CallId callId) implements Narration {}
 

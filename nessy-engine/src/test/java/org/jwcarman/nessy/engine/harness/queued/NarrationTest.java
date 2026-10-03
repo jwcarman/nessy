@@ -170,6 +170,31 @@ class NarrationTest {
   }
 
   /**
+   * A finished call names only its id, so the request has to say which tool that id is -- or a
+   * watcher with two calls in flight cannot tell which one finished.
+   */
+  @Test
+  void aFinishedCallJoinsToItsToolByTheIdTheRequestAnnounced() {
+    AgentType type = new AgentType("narrated-join");
+    AgentId agentId = new AgentId(UUID.randomUUID());
+
+    harness(type).tell(agentId, "how deep is Loch Ness?");
+    await()
+        .atMost(Duration.ofSeconds(20))
+        .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
+
+    List<Narration.ActionsRequested.Call> asked =
+        of(Narration.ActionsRequested.class).getFirst().calls();
+    assertThat(asked).isNotEmpty();
+    CallId finished = of(Narration.CallFinished.class).getFirst().callId();
+
+    assertThat(asked)
+        .filteredOn(call -> call.callId().equals(finished))
+        .singleElement()
+        .satisfies(call -> assertThat(call.toolName()).isEqualTo(new ToolName("lookup")));
+  }
+
+  /**
    * The sentence the model wrote while working, told apart from the answer by the block it arrived
    * as rather than by whether the message happened to carry calls.
    */

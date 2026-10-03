@@ -83,7 +83,8 @@ handler)` for any of them:
 NarrationListener console = NarrationListener.of(on -> on
         .onContentDelta((type, id, delta) -> out.print(delta.text()))
         .onThinkingDelta((type, id, delta) -> dim(delta.text()))
-        .onActionsRequested((type, id, asked) -> note("calling " + asked.toolNames()))
+        .onActionsRequested((type, id, asked) -> asked.calls()
+                .forEach(call -> note("calling " + call.toolName() + ": " + call.action())))
         .onApprovalDeferred((type, id, waiting) -> note("asked, until " + waiting.until()))
         .onTurnEnded((type, id, ended) -> out.println()));
 ```
@@ -96,7 +97,7 @@ NarrationListener console = NarrationListener.of(on -> on
 | `Thinking` | the model is being asked |
 | `ThinkingDelta(text)`, `ContentDelta(text)` | reasoning and prose, as they stream |
 | `Commentary(text)` | prose the model said beside a request for actions |
-| `ActionsRequested(toolNames)` | the model asked for tools |
+| `ActionsRequested(calls)` | the model asked for tools; each `Call(callId, toolName, action)` is what later call events join to by `callId` |
 | `ApprovalSought(callId, action)` | somebody is being asked whether a call may run |
 | `ApprovalDeferred(callId, action, until)` | nobody answered yet; the question stands until `until` |
 | `CallApproved(callId)`, `CallDenied(callId, reason)` | the decision |

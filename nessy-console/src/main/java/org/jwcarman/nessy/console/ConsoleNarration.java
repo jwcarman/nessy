@@ -64,13 +64,13 @@ final class ConsoleNarration implements NarrationListener {
       case Narration.Answered _ -> {
         /* the answer itself is the caller's, not the watcher's */
       }
-      case Narration.ActionsRequested(var toolNames) ->
-          toolNames.forEach(
-              name ->
+      case Narration.ActionsRequested(var calls) ->
+          calls.forEach(
+              call ->
                   io.write(
                       System.lineSeparator()
                           + "  [calling "
-                          + name.value()
+                          + call.toolName().value()
                           + "]"
                           + System.lineSeparator()));
       case Narration.CallFinished(var callId) ->

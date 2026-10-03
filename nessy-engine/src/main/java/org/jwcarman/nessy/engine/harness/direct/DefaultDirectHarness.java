@@ -839,7 +839,10 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
                   asked.actions().stream()
                       .filter(ActionRequest.ToolCall.class::isInstance)
                       .map(ActionRequest.ToolCall.class::cast)
-                      .map(ActionRequest.ToolCall::name)
+                      .map(
+                          call ->
+                              new Narration.ActionsRequested.Call(
+                                  call.id(), call.name(), call.action()))
                       .toList()));
       case AgentEvent.ToolApproved approved ->
           step.narrate(new Narration.CallApproved(approved.callId()));
