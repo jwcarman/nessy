@@ -119,21 +119,27 @@ function listen() {
   events.addEventListener("commentary", (e) => {
     if (!streamed) said(JSON.parse(e.data).text);
   });
-  // A request names the tools; what happens to each call is told later, by call id. Each is a
-  // line of its own rather than an edit to the request's line, which is what the story shows too.
+  // A request names each call and its tool; what happens to a call is told later, by its id
+  // alone, so the page remembers which tool each id is. Each is a line of its own rather than an
+  // edit to the request's line, which is what the story shows too.
+  const toolOf = new Map();
+  const named = (e) => toolOf.get(JSON.parse(e.data).callId) ?? "call";
   events.addEventListener("actions-requested", (e) => {
     openThinking = null;
     openBubble = null;
     streamed = false;
-    for (const name of JSON.parse(e.data).toolNames) appendLine("tool", "🔧 " + name);
+    for (const call of JSON.parse(e.data).calls) {
+      toolOf.set(call.callId, call.toolName);
+      appendLine("tool", "🔧 " + call.toolName + ": " + call.action);
+    }
   });
-  events.addEventListener("call-approved", () => appendLine("tool", "approved"));
+  events.addEventListener("call-approved", (e) => appendLine("tool", named(e) + " approved"));
   events.addEventListener("call-denied", (e) =>
-    appendLine("tool", "denied: " + JSON.parse(e.data).reason),
+    appendLine("tool", named(e) + " denied: " + JSON.parse(e.data).reason),
   );
-  events.addEventListener("call-finished", () => appendLine("tool", "done"));
+  events.addEventListener("call-finished", (e) => appendLine("tool", named(e) + " done"));
   events.addEventListener("call-failed", (e) =>
-    appendLine("tool", "failed: " + JSON.parse(e.data).message),
+    appendLine("tool", named(e) + " failed: " + JSON.parse(e.data).message),
   );
   // Says only that an answer happened. The words arrive as the reply to the POST that asked,
   // which this page already renders; a streaming provider has shown them as deltas besides.

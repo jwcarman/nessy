@@ -42,7 +42,8 @@ class NarrationListenerConfigTest {
           new Narration.TurnFailed("the provider gave up"),
           new Narration.TurnRefused("safety"),
           new Narration.Commentary("hmm"),
-          new Narration.ActionsRequested(List.of(new ToolName("t"))),
+          new Narration.ActionsRequested(
+              List.of(new Narration.ActionsRequested.Call(CALL, new ToolName("t"), "do t"))),
           new Narration.CallApproved(CALL),
           new Narration.CallDenied(CALL, "no"),
           new Narration.CallFinished(CALL),
@@ -67,7 +68,8 @@ class NarrationListenerConfigTest {
                     .onTurnFailed((t, id, e) -> heard.add("failed"))
                     .onTurnRefused((t, id, e) -> heard.add("refused"))
                     .onCommentary((t, id, e) -> heard.add("commentary " + e.text()))
-                    .onActionsRequested((t, id, e) -> heard.add("actions " + e.toolNames()))
+                    .onActionsRequested(
+                        (t, id, e) -> heard.add("actions " + e.calls().getFirst().toolName()))
                     .onCallApproved((t, id, e) -> heard.add("approved " + e.callId()))
                     .onCallDenied((t, id, e) -> heard.add("denied " + e.reason()))
                     .onCallFinished((t, id, e) -> heard.add("finished " + e.callId()))
@@ -90,7 +92,7 @@ class NarrationListenerConfigTest {
             "failed",
             "refused",
             "commentary hmm",
-            "actions [t]",
+            "actions t",
             "approved c1",
             "denied no",
             "finished c1",

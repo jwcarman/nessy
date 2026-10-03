@@ -44,7 +44,10 @@ class ConsoleNarrationTest {
         List.of(
             new Narration.TurnStarted(new TurnId(1)),
             new Narration.Thinking(),
-            new Narration.ActionsRequested(List.of(new ToolName("depth"))),
+            new Narration.ActionsRequested(
+                List.of(
+                    new Narration.ActionsRequested.Call(
+                        new CallId("c1"), new ToolName("depth"), "depth"))),
             new Narration.CallDenied(CALL, "not today"),
             new Narration.CallFailed(CALL, "boom"),
             new Narration.CallFinished(CALL),

@@ -50,7 +50,9 @@ class OdysseyNarratorTest {
           new Narration.TurnFailed("the provider gave up"),
           new Narration.TurnRefused("safety"),
           new Narration.Commentary("x"),
-          new Narration.ActionsRequested(List.of(new ToolName("t"))),
+          new Narration.ActionsRequested(
+              List.of(
+                  new Narration.ActionsRequested.Call(new CallId("c"), new ToolName("t"), "do t"))),
           new Narration.CallApproved(new CallId("c")),
           new Narration.CallDenied(new CallId("c"), "r"),
           new Narration.CallFinished(new CallId("c")),
