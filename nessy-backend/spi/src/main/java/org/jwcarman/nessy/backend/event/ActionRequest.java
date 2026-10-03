@@ -19,6 +19,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.Objects;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
 
 /**
@@ -50,9 +51,12 @@ public sealed interface ActionRequest {
    * @param name which tool to run; the arguments are in the request's payload, under {@link #id()}
    * @param action what this call would do, in words, written when the model asked and never worked
    *     out again; never null and never blank
+   * @param idempotencyKey made once, here, and the same every time this call is asked about or run
    */
-  record ToolCall(CallId id, ToolName name, String action) implements ActionRequest {
+  record ToolCall(CallId id, ToolName name, String action, IdempotencyKey idempotencyKey)
+      implements ActionRequest {
     public ToolCall {
+      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
       Objects.requireNonNull(action, "action must not be null");
       if (action.isBlank()) {
         throw new IllegalArgumentException("action must not be blank");

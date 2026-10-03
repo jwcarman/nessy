@@ -29,6 +29,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.approval.policy.PolicyEngine;
@@ -54,6 +55,10 @@ import tools.jackson.databind.json.JsonMapper;
 @Tag("container")
 @DisplayName("A policy engine backed by OPA")
 class OpaPolicyEngineTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
   private static final AgentId HOUSE_12 = new AgentId(UUID.randomUUID());
@@ -86,6 +91,7 @@ class OpaPolicyEngineTest {
         HOUSE_12,
         new TurnId(1),
         new CallId("call-1"),
+        KEY,
         new ToolName(tool),
         "{\"target\":\"" + target + "\"}",
         tool + " on " + target,

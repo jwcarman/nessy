@@ -55,10 +55,11 @@ import tools.jackson.databind.node.ObjectNode;
  * @param agentType what kind of agent is asking -- a shared approvals page shows calls from several
  *     kinds side by side, and an id alone does not say which is which
  * @param agentId which agent is asking
- * @param turn the turn this call belongs to, which is the seq of the input that opened it -- with
- *     {@code callId} it identifies the call across a restart, since a model's call ids are unique
- *     within one response and two turns can each produce a {@code "call_1"}
+ * @param turn the turn this call belongs to, which is the seq of the input that opened it; to tell
+ *     one call from another, use {@code idempotencyKey}, not this with {@code callId}
  * @param callId which call within that turn, by the id the model gave it
+ * @param idempotencyKey the call's own key, the same here as on the {@link ToolCallRequest} that
+ *     runs it, and on every ask of it -- see {@link IdempotencyKey}
  * @param toolName what the model asked for
  * @param arguments what it asked for, as the model wrote it -- unparsed, and shown rather than
  *     trusted
@@ -74,6 +75,7 @@ public record ApprovalRequest(
     AgentId agentId,
     TurnId turn,
     CallId callId,
+    IdempotencyKey idempotencyKey,
     ToolName toolName,
     String arguments,
     String action,
@@ -88,6 +90,7 @@ public record ApprovalRequest(
       AgentId agentId,
       TurnId turn,
       CallId callId,
+      IdempotencyKey idempotencyKey,
       ToolName toolName,
       String arguments,
       String action,
@@ -99,6 +102,7 @@ public record ApprovalRequest(
         agentId,
         turn,
         callId,
+        idempotencyKey,
         toolName,
         arguments,
         action,
@@ -112,6 +116,7 @@ public record ApprovalRequest(
     Objects.requireNonNull(agentType, "agentType must not be null");
     Objects.requireNonNull(agentId, "agentId must not be null");
     Objects.requireNonNull(callId, "callId must not be null");
+    Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
     Objects.requireNonNull(toolName, "toolName must not be null");
     Objects.requireNonNull(arguments, "arguments must not be null");
     Objects.requireNonNull(action, "action must not be null");
@@ -167,21 +172,21 @@ public record ApprovalRequest(
     return replyToken;
   }
 
-  /**
-   * The key this call is known by across a restart.
-   *
-   * <p>The turn and the call together, because a model's call id is unique within one response only
-   * -- two turns can each produce a {@code "call_1"}.
-   */
-  public String callKey() {
-    return turn.value() + "/" + callId.value();
-  }
-
   /** The reply address is absent: it is a credential, and this may reach a log. */
   @Override
   public String toString() {
-    return ("ApprovalRequest[agentType=%s, agentId=%s, turn=%s, callId=%s, toolName=%s,"
-            + " action=%s, askedAt=%s, deadline=%s, facts=%s]")
-        .formatted(agentType, agentId, turn, callId, toolName, action, askedAt, deadline, facts);
+    return ("ApprovalRequest[agentType=%s, agentId=%s, turn=%s, callId=%s, idempotencyKey=%s,"
+            + " toolName=%s, action=%s, askedAt=%s, deadline=%s, facts=%s]")
+        .formatted(
+            agentType,
+            agentId,
+            turn,
+            callId,
+            idempotencyKey,
+            toolName,
+            action,
+            askedAt,
+            deadline,
+            facts);
   }
 }

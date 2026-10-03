@@ -140,9 +140,9 @@ issue. An HTTP handler can report each one honestly.
 
 Tool execution is at-least-once. A tool that was running when its process
 died may have finished its work, and nothing recorded that it had; a
-"started" marker would only move the ambiguity. The turn id and the call id
-together are stable across a re-drive, so a tool that cares can deduplicate
-on them. A re-driven turn may call the model again. Both are stated rather
+"started" marker would only move the ambiguity. A call's `idempotencyKey()`
+is the same on every run of it, so a tool that cares can deduplicate on it.
+A re-driven turn may call the model again. Both are stated rather
 than hidden, because a framework that pretended otherwise would be lying
 about a distributed system.
 

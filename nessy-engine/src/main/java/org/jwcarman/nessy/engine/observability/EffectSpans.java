@@ -48,9 +48,9 @@ public final class EffectSpans {
   public static String nameOf(AgentEffect effect) {
     return switch (effect) {
       case AgentEffect.Infer _ -> EFFECT + " infer";
-      case AgentEffect.Approve(_, _, _, ToolName toolName) ->
+      case AgentEffect.Approve(_, _, _, ToolName toolName, _) ->
           EFFECT + " approve " + toolName.value();
-      case AgentEffect.CallTool(_, _, _, ToolName toolName) ->
+      case AgentEffect.CallTool(_, _, _, ToolName toolName, _) ->
           EFFECT + " call_tool " + toolName.value();
     };
   }

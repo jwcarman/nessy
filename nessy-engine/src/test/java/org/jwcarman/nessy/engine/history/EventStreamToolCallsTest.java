@@ -34,6 +34,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
@@ -44,6 +45,10 @@ import tools.jackson.databind.json.JsonMapper;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class EventStreamToolCallsTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private static final AgentType TYPE = new AgentType("chat");
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
@@ -65,7 +70,7 @@ class EventStreamToolCallsTest {
   }
 
   private static ActionRequest.ToolCall stored(String id, String action) {
-    return new ActionRequest.ToolCall(new CallId(id), LOOKUP, action);
+    return new ActionRequest.ToolCall(new CallId(id), LOOKUP, action, KEY);
   }
 
   /** A turn that opens at {@code id}, and the request the model made in it at the next seq. */

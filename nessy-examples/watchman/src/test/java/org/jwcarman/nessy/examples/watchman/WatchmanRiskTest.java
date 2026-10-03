@@ -18,6 +18,7 @@ package org.jwcarman.nessy.examples.watchman;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.approval.risk.Impact;
@@ -38,6 +40,10 @@ import tools.jackson.databind.JsonNode;
 @DisplayName("The watchman's risk appetite")
 class WatchmanRiskTest {
 
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
+
   private static final ToolName PRUNE = new ToolName("prune_images");
 
   private static ApprovalRequest pruning() {
@@ -46,6 +52,7 @@ class WatchmanRiskTest {
         Watchman.AGENT,
         new TurnId(1),
         new CallId("c1"),
+        KEY,
         PRUNE,
         "{}",
         "docker image prune -af",

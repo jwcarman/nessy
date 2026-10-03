@@ -217,7 +217,7 @@ public sealed interface AgentState {
     private static AgentEffect approving(TurnId turn, Seq at, ActionRequest action) {
       return switch (action) {
         case ActionRequest.ToolCall call ->
-            new AgentEffect.Approve(turn, at, call.id(), call.name());
+            new AgentEffect.Approve(turn, at, call.id(), call.name(), call.idempotencyKey());
       };
     }
 
@@ -304,7 +304,8 @@ public sealed interface AgentState {
           case ActionRequest.ToolCall call ->
               calls.put(
                   call.id(),
-                  OutstandingAction.awaitingApproval(call.id(), call.name(), requested.seq()));
+                  OutstandingAction.awaitingApproval(
+                      call.id(), call.name(), call.idempotencyKey(), requested.seq()));
         }
       }
       return new AwaitingActions(requested.seq(), requested.turn(), requested.seq(), calls, stats);
@@ -412,7 +413,8 @@ public sealed interface AgentState {
 
     /** The work that performs an outstanding call. */
     private static AgentEffect performing(TurnId turn, Seq requestSeq, OutstandingAction call) {
-      return new AgentEffect.CallTool(turn, requestSeq, call.callId(), call.toolName());
+      return new AgentEffect.CallTool(
+          turn, requestSeq, call.callId(), call.toolName(), call.idempotencyKey());
     }
 
     /**

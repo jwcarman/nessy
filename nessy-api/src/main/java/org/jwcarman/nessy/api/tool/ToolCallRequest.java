@@ -67,10 +67,17 @@ public interface ToolCallRequest<I> {
   /**
    * Which call this is.
    *
-   * <p>Unique within one model reply and no further, so it is an identity only alongside the agent
-   * and the turn -- which is exactly how the engine keys it, and why all four travel together.
+   * <p>What the model called it, unique within one of its replies and no further: a model can
+   * repeat a call id within a turn. To tell one call from another, use {@link #idempotencyKey()}.
    */
   CallId callId();
+
+  /**
+   * The key that makes running this call again safe: the same on every attempt, after a restart,
+   * and on the {@link ApprovalRequest} that let it run. Hand it to anything that takes an
+   * idempotency key -- see {@link IdempotencyKey}.
+   */
+  IdempotencyKey idempotencyKey();
 
   /**
    * The name this tool was called by.

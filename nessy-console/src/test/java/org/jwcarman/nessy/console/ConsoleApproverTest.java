@@ -28,11 +28,16 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolName;
 
 @DisplayName("Asking the person at the terminal")
 class ConsoleApproverTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private static final Instant ASKED = Instant.parse("2026-08-31T12:00:00Z");
   private static final ApprovalRequest SENDING_MAIL =
@@ -41,6 +46,7 @@ class ConsoleApproverTest {
           new AgentId(UUID.randomUUID()),
           new TurnId(1),
           new CallId("c1"),
+          KEY,
           new ToolName("send_email"),
           "{}",
           "Send an email to jim@example.com",

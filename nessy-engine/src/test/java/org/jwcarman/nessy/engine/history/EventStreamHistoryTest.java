@@ -35,6 +35,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.Turn;
@@ -46,6 +47,10 @@ import tools.jackson.databind.json.JsonMapper;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class EventStreamHistoryTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private static final AgentType TYPE = new AgentType("chat");
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
@@ -204,8 +209,8 @@ class EventStreamHistoryTest {
               new TurnId(1),
               request,
               List.of(
-                  new ActionRequest.ToolCall(refund, refundTool, "refund forty dollars"),
-                  new ActionRequest.ToolCall(audit, auditTool, "audit the buyer")),
+                  new ActionRequest.ToolCall(refund, refundTool, "refund forty dollars", KEY),
+                  new ActionRequest.ToolCall(audit, auditTool, "audit the buyer", KEY)),
               Usage.unreported()),
           new AgentEvent.ToolSucceeded(new Seq(3), new TurnId(1), refund, result, "refunded"),
           new AgentEvent.ToolFailed(new Seq(4), new TurnId(1), audit, "no such buyer"));
@@ -234,14 +239,14 @@ class EventStreamHistoryTest {
               new Seq(2),
               new TurnId(1),
               request,
-              List.of(new ActionRequest.ToolCall(id, tool, "refund the first")),
+              List.of(new ActionRequest.ToolCall(id, tool, "refund the first", KEY)),
               Usage.unreported()),
           new AgentEvent.ToolSucceeded(new Seq(3), new TurnId(1), id, result, "first"),
           new AgentEvent.ActionsRequested(
               new Seq(4),
               new TurnId(1),
               request,
-              List.of(new ActionRequest.ToolCall(id, tool, "refund the second")),
+              List.of(new ActionRequest.ToolCall(id, tool, "refund the second", KEY)),
               Usage.unreported()),
           new AgentEvent.ToolFailed(new Seq(5), new TurnId(1), id, "no such buyer"),
           new AgentEvent.InferenceAnswered(new Seq(6), new TurnId(1), answer, Usage.unreported()),
@@ -250,7 +255,7 @@ class EventStreamHistoryTest {
               new Seq(8),
               new TurnId(7),
               request,
-              List.of(new ActionRequest.ToolCall(id, tool, "refund the third")),
+              List.of(new ActionRequest.ToolCall(id, tool, "refund the third", KEY)),
               Usage.unreported()),
           new AgentEvent.InferenceAnswered(new Seq(9), new TurnId(7), answer, Usage.unreported()));
 

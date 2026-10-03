@@ -21,6 +21,7 @@ import java.util.Objects;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
 
 /**
@@ -114,11 +115,14 @@ public sealed interface AgentEffect {
    * @param requestSeq the seq of the {@code InferenceRequestedActions} entry holding the call
    * @param callId which call within it, by the id the model gave it
    * @param toolName what the model asked for, which may no longer be bound to anything
+   * @param idempotencyKey the call's own key, the same on every attempt
    */
-  record CallTool(TurnId turn, Seq requestSeq, CallId callId, ToolName toolName)
+  record CallTool(
+      TurnId turn, Seq requestSeq, CallId callId, ToolName toolName, IdempotencyKey idempotencyKey)
       implements AgentEffect {
     public CallTool {
       requireTurn(turn);
+      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
     }
   }
 
@@ -141,10 +145,12 @@ public sealed interface AgentEffect {
    * the conversation, and the model has no use for it; permission refused is, and that is what
    * {@code ToolDenied} is for.
    */
-  record Approve(TurnId turn, Seq requestSeq, CallId callId, ToolName toolName)
+  record Approve(
+      TurnId turn, Seq requestSeq, CallId callId, ToolName toolName, IdempotencyKey idempotencyKey)
       implements AgentEffect {
     public Approve {
       requireTurn(turn);
+      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
     }
   }
 }

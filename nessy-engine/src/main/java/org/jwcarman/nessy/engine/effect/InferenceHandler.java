@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.engine.effect;
 
+import com.fasterxml.uuid.Generators;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
@@ -23,6 +24,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.event.ActionRequest;
@@ -159,6 +161,9 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
    * it would do.
    *
    * <p>A tool the model named that is not bound is still a call, and says so.
+   *
+   * <p>Each call's idempotency key is made here, once: what is returned is recorded, and every
+   * later approval and run of the call reads the key back from the record.
    */
   private List<ActionRequest> requested(List<Block.ActionRequestContent> blocks) {
     return blocks.stream()
@@ -166,7 +171,12 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
         .map(Block.ToolCall.class::cast)
         .map(
             call ->
-                (ActionRequest) new ActionRequest.ToolCall(call.id(), call.name(), action(call)))
+                (ActionRequest)
+                    new ActionRequest.ToolCall(
+                        call.id(),
+                        call.name(),
+                        action(call),
+                        IdempotencyKey.of(Generators.timeBasedEpochGenerator().generate())))
         .toList();
   }
 

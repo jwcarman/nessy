@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
@@ -43,6 +44,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
@@ -226,6 +228,11 @@ class DeclaredChaptersTest {
         @Override
         public CallId callId() {
           return new CallId("c1");
+        }
+
+        @Override
+        public IdempotencyKey idempotencyKey() {
+          return IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
         }
 
         @Override

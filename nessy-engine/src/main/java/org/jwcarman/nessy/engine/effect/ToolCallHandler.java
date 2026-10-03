@@ -136,6 +136,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
             agentId,
             resolved.turn(),
             callId,
+            effect.idempotencyKey(),
             call.name(),
             call.arguments(),
             until,

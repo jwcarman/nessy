@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.Codec;
@@ -30,6 +31,7 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
@@ -54,6 +56,10 @@ import tools.jackson.databind.json.JsonMapper;
  * text survives the trip.
  */
 class ValueTypeCodecTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private final JsonMapper mapper = JsonMapper.builder().build();
   private final Codec<AgentEvent> entries =
@@ -103,7 +109,8 @@ class ValueTypeCodecTest {
                 {"type":"actions-requested","seq":2,"turn":1,\
                 "request":"c7f1e2a9","actions":[\
                 {"type":"tool-call","id":"729606640","name":"lake_depth",\
-                "action":"how deep is Lake Tahoe"}]}""";
+                "action":"how deep is Lake Tahoe",\
+                "idempotencyKey":"01999999-0000-7000-8000-000000000001"}]}""";
 
     AgentEvent.ActionsRequested entry =
         (AgentEvent.ActionsRequested) entries.decode(stored.getBytes(StandardCharsets.UTF_8));
@@ -119,6 +126,7 @@ class ValueTypeCodecTest {
               assertThat(call.id()).isEqualTo(new CallId("729606640"));
               assertThat(call.name()).isEqualTo(new ToolName("lake_depth"));
               assertThat(call.action()).isEqualTo("how deep is Lake Tahoe");
+              assertThat(call.idempotencyKey()).isEqualTo(KEY);
             });
   }
 
@@ -136,7 +144,8 @@ class ValueTypeCodecTest {
                         new ActionRequest.ToolCall(
                             new CallId("729606640"),
                             new ToolName("lake_depth"),
-                            "how deep is Lake Tahoe")),
+                            "how deep is Lake Tahoe",
+                            KEY)),
                     Usage.unreported())),
             StandardCharsets.UTF_8);
 
@@ -146,6 +155,7 @@ class ValueTypeCodecTest {
         .contains("\"name\":\"lake_depth\"")
         .contains("\"type\":\"tool-call\"")
         .contains("\"action\":\"how deep is Lake Tahoe\"")
+        .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"")
         .as("no value type may nest an object where a bare string belongs")
         .doesNotContain("\"value\"");
   }
@@ -159,9 +169,9 @@ class ValueTypeCodecTest {
             PayloadRef.of("c7f1e2a9"),
             List.of(
                 new ActionRequest.ToolCall(
-                    new CallId("a"), new ToolName("lake_depth"), "how deep is Lake Tahoe"),
+                    new CallId("a"), new ToolName("lake_depth"), "how deep is Lake Tahoe", KEY),
                 new ActionRequest.ToolCall(
-                    new CallId("b"), new ToolName("lake_area"), "lake_area (no such tool)")),
+                    new CallId("b"), new ToolName("lake_area"), "lake_area (no such tool)", KEY)),
             Usage.unreported());
 
     byte[] bytes = entries.encode(written);
@@ -251,7 +261,7 @@ class ValueTypeCodecTest {
         new String(
             effects.encode(
                 new AgentEffect.CallTool(
-                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"))),
+                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY)),
             StandardCharsets.UTF_8);
 
     assertThat(written)
@@ -261,7 +271,7 @@ class ValueTypeCodecTest {
     assertThat(effects.decode(written.getBytes(StandardCharsets.UTF_8)))
         .isEqualTo(
             new AgentEffect.CallTool(
-                new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
+                new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));
   }
 
   // ---- positions -------------------------------------------------------------------------
@@ -322,7 +332,7 @@ class ValueTypeCodecTest {
         new String(
             effects.encode(
                 new AgentEffect.Approve(
-                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"))),
+                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY)),
             StandardCharsets.UTF_8);
 
     assertThat(written).contains("\"requestSeq\":2").doesNotContain("\"value\"");

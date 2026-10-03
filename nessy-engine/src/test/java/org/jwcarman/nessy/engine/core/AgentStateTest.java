@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -35,6 +36,7 @@ import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
@@ -51,6 +53,10 @@ import org.jwcarman.nessy.inference.Failure;
  * rather than with the test.
  */
 class AgentStateTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private static final PayloadRef MAIL = PayloadRef.of("payload-1");
   private static final PayloadRef ANSWER = PayloadRef.of("payload-2");
@@ -85,7 +91,7 @@ class AgentStateTest {
                         TURN,
                         new AgentCommand.InferenceOutcome.RequestedActions(
                             MAIL,
-                            List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool")),
+                            List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool", KEY)),
                             Usage.unreported())))
                 .events());
     return state.applyAll(
@@ -173,7 +179,7 @@ class AgentStateTest {
                           TURN,
                           new AgentCommand.InferenceOutcome.RequestedActions(
                               MAIL,
-                              List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool")),
+                              List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool", KEY)),
                               Usage.unreported())))
                   .events());
       return awaiting.applyAll(
@@ -279,7 +285,7 @@ class AgentStateTest {
                       inferring.seq().next().next(),
                       TURN,
                       MAIL,
-                      List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool")),
+                      List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool", KEY)),
                       Usage.of("a-model", 100, 20)));
 
       assertThat(after)
@@ -449,7 +455,7 @@ class AgentStateTest {
                   TURN,
                   new AgentCommand.InferenceOutcome.RequestedActions(
                       MAIL,
-                      List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool")),
+                      List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool", KEY)),
                       Usage.unreported())));
 
       assertThat(decision.effects()).singleElement().isInstanceOf(AgentEffect.Approve.class);
@@ -468,7 +474,7 @@ class AgentStateTest {
                           TURN,
                           new AgentCommand.InferenceOutcome.RequestedActions(
                               MAIL,
-                              List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool")),
+                              List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool", KEY)),
                               Usage.unreported())))
                   .events());
 
@@ -527,7 +533,7 @@ class AgentStateTest {
                   TURN,
                   new AgentCommand.InferenceOutcome.RequestedActions(
                       MAIL,
-                      List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool")),
+                      List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool", KEY)),
                       Usage.unreported())));
       AgentState awaiting = inferring.applyAll(requested.events());
 
@@ -562,9 +568,10 @@ class AgentStateTest {
                   new AgentCommand.InferenceOutcome.RequestedActions(
                       MAIL,
                       List.of(
-                          new ActionRequest.ToolCall(CALL, TOOL, "refund 40 dollars to the buyer"),
                           new ActionRequest.ToolCall(
-                              other, otherTool, "audit the buyer's history")),
+                              CALL, TOOL, "refund 40 dollars to the buyer", KEY),
+                          new ActionRequest.ToolCall(
+                              other, otherTool, "audit the buyer's history", KEY)),
                       Usage.unreported())));
       AgentState awaiting = inferring.applyAll(requested.events());
 
@@ -576,9 +583,10 @@ class AgentStateTest {
           .isEqualTo(
               Map.of(
                   CALL,
-                  OutstandingAction.awaitingApproval(CALL, TOOL, actionsRequested.seq()),
+                  OutstandingAction.awaitingApproval(CALL, TOOL, KEY, actionsRequested.seq()),
                   other,
-                  OutstandingAction.awaitingApproval(other, otherTool, actionsRequested.seq())));
+                  OutstandingAction.awaitingApproval(
+                      other, otherTool, KEY, actionsRequested.seq())));
       assertThat(state.toString())
           .doesNotContain("refund 40 dollars to the buyer")
           .doesNotContain("audit the buyer's history");
@@ -754,7 +762,7 @@ class AgentStateTest {
                           TURN,
                           new AgentCommand.InferenceOutcome.RequestedActions(
                               MAIL,
-                              List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool")),
+                              List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool", KEY)),
                               Usage.unreported())))
                   .events());
 
@@ -806,7 +814,7 @@ class AgentStateTest {
                       TURN,
                       new AgentCommand.InferenceOutcome.RequestedActions(
                           MAIL,
-                          List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool")),
+                          List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool", KEY)),
                           Usage.unreported())))
               .events());
     }
@@ -971,9 +979,9 @@ class AgentStateTest {
                           new AgentCommand.InferenceOutcome.RequestedActions(
                               MAIL,
                               List.of(
-                                  new ActionRequest.ToolCall(A, TOOL, "tool"),
-                                  new ActionRequest.ToolCall(B, TOOL, "tool"),
-                                  new ActionRequest.ToolCall(C, TOOL, "tool")),
+                                  new ActionRequest.ToolCall(A, TOOL, "tool", KEY),
+                                  new ActionRequest.ToolCall(B, TOOL, "tool", KEY),
+                                  new ActionRequest.ToolCall(C, TOOL, "tool", KEY)),
                               Usage.unreported())))
                   .events());
       for (CallId call : List.of(A, B, C)) {
@@ -1004,8 +1012,8 @@ class AgentStateTest {
                   new AgentCommand.InferenceOutcome.RequestedActions(
                       MAIL,
                       List.of(
-                          new ActionRequest.ToolCall(A, TOOL, "tool"),
-                          new ActionRequest.ToolCall(B, TOOL, "tool")),
+                          new ActionRequest.ToolCall(A, TOOL, "tool", KEY),
+                          new ActionRequest.ToolCall(B, TOOL, "tool", KEY)),
                       Usage.unreported())));
 
       assertThat(decision.effects()).hasSize(2).allMatch(AgentEffect.Approve.class::isInstance);
@@ -1078,7 +1086,7 @@ class AgentStateTest {
                           TURN,
                           new AgentCommand.InferenceOutcome.RequestedActions(
                               MAIL,
-                              List.of(new ActionRequest.ToolCall(A, TOOL, "tool")),
+                              List.of(new ActionRequest.ToolCall(A, TOOL, "tool", KEY)),
                               Usage.unreported())))
                   .events());
 
@@ -1123,7 +1131,7 @@ class AgentStateTest {
                           TURN,
                           new AgentCommand.InferenceOutcome.RequestedActions(
                               MAIL,
-                              List.of(new ActionRequest.ToolCall(A, TOOL, "tool")),
+                              List.of(new ActionRequest.ToolCall(A, TOOL, "tool", KEY)),
                               Usage.unreported())))
                   .events());
 

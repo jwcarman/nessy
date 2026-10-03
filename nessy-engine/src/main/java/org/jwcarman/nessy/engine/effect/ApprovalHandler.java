@@ -144,6 +144,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
               agentId,
               resolved.turn(),
               callId,
+              effect.idempotencyKey(),
               resolved.call().arguments(),
               resolved.action(),
               clock.instant(),

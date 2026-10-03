@@ -40,6 +40,7 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -62,6 +63,10 @@ import tools.jackson.databind.json.JsonMapper;
  * wanted. Only the question failing to arrive is worth another attempt.
  */
 class ApprovalHandlerTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private static final AgentType TYPE = new AgentType("gated");
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
@@ -168,7 +173,7 @@ class ApprovalHandlerTest {
         .handle(
             AGENT,
             new AgentEffect.Approve(
-                new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
+                new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));
   }
 
   /** The answer, for the tests that expect one now. */
@@ -462,9 +467,12 @@ class ApprovalHandlerTest {
     assertThat(seen[0].toString()).doesNotContain(seen[0].replyToken().value()).contains("lookup");
   }
 
-  /** Two turns can each produce a "call_1", so the turn is part of what names a call. */
+  /**
+   * The key was made when the call was recorded, and the question carries it unchanged, so the tool
+   * that later runs the call can be matched to what was decided about it.
+   */
   @Test
-  void theCallKeyNamesTheTurnAsWellAsTheCall() {
+  void theQuestionCarriesTheCallsIdempotencyKey() {
     ApprovalRequest[] seen = new ApprovalRequest[1];
     ask(
         bound(
@@ -473,7 +481,7 @@ class ApprovalHandlerTest {
               return Awaited.ready(ApprovalResult.approved());
             }));
 
-    assertThat(seen[0].callKey()).isEqualTo("1/c1");
+    assertThat(seen[0].idempotencyKey()).isEqualTo(KEY);
   }
 
   // ---- terms ---------------------------------------------------------------------------
@@ -493,7 +501,7 @@ class ApprovalHandlerTest {
                     new RetryPolicy.FixedDelay(3, Duration.ofSeconds(1), Duration.ZERO)))
             .termsFor(
                 new AgentEffect.Approve(
-                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
+                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));
 
     assertThat(terms.timeout())
         .as("an hour to answer, though the tool itself gets thirty seconds to run")
@@ -514,7 +522,7 @@ class ApprovalHandlerTest {
         handler(bound(Approver.allow()))
             .termsFor(
                 new AgentEffect.Approve(
-                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
+                    new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));
 
     assertThat(terms.undispatchable())
         .asInstanceOf(type(EffectOutcome.ToolFailed.class))

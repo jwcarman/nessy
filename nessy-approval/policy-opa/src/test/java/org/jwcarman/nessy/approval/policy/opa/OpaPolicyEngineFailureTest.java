@@ -35,6 +35,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.approval.policy.PolicyEngine;
@@ -51,6 +52,10 @@ import org.jwcarman.nessy.approval.policy.Verdict;
  */
 @DisplayName("An OPA engine meeting a server that misbehaves")
 class OpaPolicyEngineFailureTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private HttpServer server;
   private final AtomicReference<int[]> status = new AtomicReference<>(new int[] {200});
@@ -91,6 +96,7 @@ class OpaPolicyEngineFailureTest {
         new AgentId(UUID.randomUUID()),
         new TurnId(1),
         new CallId("call-1"),
+        KEY,
         new ToolName("prune_images"),
         "{}",
         "docker image prune -af",

@@ -19,11 +19,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
@@ -36,6 +38,10 @@ import org.jwcarman.nessy.backend.event.AgentEvent;
  * runs inside a {@code while} loop with a {@link java.util.HashMap} for storage.
  */
 class InlineRunnerTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private static final ToolName LOOKUP = new ToolName("lookup");
   private static final CallId CALL = new CallId("call-1");
@@ -74,7 +80,7 @@ class InlineRunnerTest {
                   holder[0].claimCheck("refunded 42.00"), Usage.unreported())
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("please look it up"),
-                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup")),
+                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup", KEY)),
                   Usage.unreported());
         };
     holder[0] = new InlineRunner(model, tools, _ -> true);
@@ -114,7 +120,7 @@ class InlineRunnerTest {
                   holder[0].claimCheck("cannot help"), Usage.unreported())
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("please look it up"),
-                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup")),
+                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup", KEY)),
                   Usage.unreported());
         };
     holder[0] = new InlineRunner(model, tools, _ -> false);
@@ -181,7 +187,7 @@ class InlineRunnerTest {
                   holder[0].claimCheck("sorry"), Usage.unreported())
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("look it up"),
-                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup")),
+                  List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup", KEY)),
                   Usage.unreported());
         };
     holder[0] = new InlineRunner(model, tools, _ -> true);

@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -73,6 +74,7 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolConfig;
@@ -114,6 +116,10 @@ import tools.jackson.databind.json.JsonMapper;
  * is rebuilt from that stream rather than remembered.
  */
 class DefaultDirectHarnessTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   /** Stands in for a tally nobody is asserting on, and is never compared. */
   private static final TurnStats ANY_STATS = TurnStats.opened(Instant.EPOCH);
@@ -499,7 +505,8 @@ class DefaultDirectHarnessTest {
             .orElseThrow();
     assertThat(requested.request().toString()).doesNotContain(argumentText);
     assertThat(requested.actions())
-        .containsExactly(new ActionRequest.ToolCall(CALL, LOOKUP, expectedAction));
+        .usingRecursiveFieldByFieldElementComparatorIgnoringFields("idempotencyKey")
+        .containsExactly(new ActionRequest.ToolCall(CALL, LOOKUP, expectedAction, KEY));
 
     // The result appears nowhere but the line on the event that records it.
     List<AgentEvent> beyondTheResultLine =
@@ -1231,7 +1238,7 @@ class DefaultDirectHarnessTest {
                 new Seq(2),
                 new TurnId(1),
                 abandonedRequest,
-                List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup")),
+                List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup", KEY)),
                 Usage.unreported())),
         Seq.NONE);
 
@@ -1307,7 +1314,7 @@ class DefaultDirectHarnessTest {
                 new Seq(2),
                 new TurnId(1),
                 abandonedRequest,
-                List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup")),
+                List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup", KEY)),
                 Usage.unreported())),
         Seq.NONE);
 
@@ -2228,6 +2235,50 @@ class DefaultDirectHarnessTest {
       assertThat(DefaultDirectHarnessFactory.propertyNames(InferenceOptions.of("a-model")))
           .isEmpty();
     }
+  }
+
+  /**
+   * One call, asked about and then run: both see the same key, the one recorded with the call, so
+   * the tool can find what was decided about it and hand the key on to anything that dedupes.
+   */
+  @Test
+  void a_calls_approval_and_its_run_carry_the_same_idempotency_key() {
+    AtomicReference<IdempotencyKey> asked = new AtomicReference<>();
+    AtomicReference<IdempotencyKey> ran = new AtomicReference<>();
+    Approver approver =
+        request -> {
+          asked.set(request.idempotencyKey());
+          return Awaited.ready(ApprovalResult.approved());
+        };
+    Tool<Lookup> tool =
+        new Tool<>() {
+          @Override
+          public Class<Lookup> inputType() {
+            return Lookup.class;
+          }
+
+          @Override
+          public ToolName name() {
+            return LOOKUP;
+          }
+
+          @Override
+          public String description() {
+            return "looks something up";
+          }
+
+          @Override
+          public Awaited<ToolResult> call(ToolCallRequest<Lookup> request) {
+            ran.set(request.idempotencyKey());
+            return Awaited.ready(ToolResult.ok(new Block.Text("found")));
+          }
+        };
+
+    harness(new Scripted().then(asking("lookup")).then(answering("done")), tool, approver)
+        .ask(AgentId.random(), "look it up");
+
+    assertThat(asked.get()).as("the approver was asked").isNotNull();
+    assertThat(ran.get()).as("the run carries the approval's key").isEqualTo(asked.get());
   }
 
   /**

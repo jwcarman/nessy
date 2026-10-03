@@ -32,6 +32,7 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolName;
 import tools.jackson.databind.JsonNode;
@@ -45,12 +46,17 @@ import tools.jackson.databind.JsonNode;
 @DisplayName("Gating a call on its risk")
 class RiskTest {
 
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
+
   private static ApprovalRequest asking() {
     return new ApprovalRequest(
         new AgentType("ops"),
         new AgentId(UUID.randomUUID()),
         new TurnId(1),
         new CallId("c1"),
+        KEY,
         new ToolName("prune_images"),
         "{}",
         "docker image prune -af",

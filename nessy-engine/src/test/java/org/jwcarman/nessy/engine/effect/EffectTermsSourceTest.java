@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
@@ -30,6 +31,7 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -49,6 +51,10 @@ import tools.jackson.databind.json.JsonMapper;
  * harness-wide defaults, and uniform for an inference.
  */
 class EffectTermsSourceTest {
+
+  /** Any key: the tests here are not about which one a call gets. */
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private static final Duration TOOL_TIMEOUT = Duration.ofSeconds(30);
   private static final RetryPolicy TOOL_RETRY = new RetryPolicy.Never();
@@ -131,7 +137,7 @@ class EffectTermsSourceTest {
           source(tools)
               .termsFor(
                   new AgentEffect.CallTool(
-                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
+                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));
 
       assertThat(terms.timeout()).isEqualTo(Duration.ofSeconds(90));
       assertThat(terms.retryPolicy()).isInstanceOf(RetryPolicy.FixedDelay.class);
@@ -143,7 +149,7 @@ class EffectTermsSourceTest {
           source(Tools.none())
               .termsFor(
                   new AgentEffect.CallTool(
-                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone")));
+                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone"), KEY));
 
       assertThat(terms.timeout()).isEqualTo(TOOL_TIMEOUT);
       assertThat(terms.retryPolicy()).isEqualTo(TOOL_RETRY);
@@ -168,7 +174,7 @@ class EffectTermsSourceTest {
           source(tools)
               .termsFor(
                   new AgentEffect.Approve(
-                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup")));
+                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));
 
       assertThat(terms.timeout()).isEqualTo(Duration.ofHours(2));
       assertThat(terms.retryPolicy()).isInstanceOf(RetryPolicy.FixedDelay.class);
@@ -180,7 +186,7 @@ class EffectTermsSourceTest {
           source(Tools.none())
               .termsFor(
                   new AgentEffect.Approve(
-                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone")));
+                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone"), KEY));
 
       assertThat(terms.timeout()).isEqualTo(APPROVAL_TIMEOUT);
       assertThat(terms.retryPolicy()).isEqualTo(APPROVAL_RETRY);
