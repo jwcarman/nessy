@@ -14,11 +14,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cache markers; before, it carried none. A one-off request still carries
   none, and neither does a request that asks for an answer
   (`ToolChoice.Answer`), which is sent without its tools.
+- **`Narration.ActionsRequested` carries one `Call` per requested call**
+  (`callId`, `toolName`, `action`) in place of tool names alone, so a watcher
+  can join each later call event, which names only the id, to its tool.
+- **`Turn` has no `tokens` field.** It was always 0 and nothing read it.
+  Usage is reported as a whole, through `UsageReports`.
 
 ### Added
 
 - **`AnthropicCacheTtl.DISABLED`** turns Anthropic prompt caching off. Set it on
   the provider, or on one agent type to override a provider that caches.
+- **`UsageReports`** reads an agent's usage over its whole history, by model:
+  `of(type, id)` returns one `ModelUsage` per model, never added across
+  models. It is projected from the agent's stored events, so it counts every
+  inference, retries and failures included, and is fit for cost accounting,
+  which narration is not. The starter offers a `UsageReports` bean.
+
+### Changed
+
+- The OPA adapter and the policy example are tested against OPA 1.21.1. Every
+  response shape the adapter relies on is the same as on 0.68.0.
 
 ### Fixed
 
@@ -27,6 +42,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AutoCloseable`, so the container never closed the adapter inside it and
   the adapter's HTTP client leaked. The wrapper now closes what it wraps, as
   `ObservedEmbedder` already did.
+- **A generated answer type works on Anthropic.** Anthropic refuses an answer
+  schema with an object that does not say `"additionalProperties": false`,
+  and the schema generator writes none, so every generated answer type failed
+  with a 400. The adapter now closes every object in the answer schema, and
+  leaves one that already says what it allows as written.
+- **The queued dispatcher can no longer stop for good.** A claim that returned
+  more rows than its batch made the dispatcher release a negative count of
+  permits; the semaphore threw and the agent type never dispatched again. The
+  dispatcher now runs at most its batch and puts any surplus straight back on
+  the queue, and the JDBC claim picks and locks its rows in a `MATERIALIZED`
+  CTE, evaluated exactly once.
 
 ## [0.3.0] - 2026-10-02
 
