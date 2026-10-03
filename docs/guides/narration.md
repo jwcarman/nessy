@@ -42,9 +42,10 @@ are transactions, and what a step narrates is held until the step returns.
 So a listener is never told about something a rollback then undid, a step
 that fails is never heard at all, and a listener that reads the history finds
 what it was just told about: the turn whose end it hears is already stored.
-The one exception is a harness called from inside an application's own
-transaction: a step then joins that transaction, and is heard when it
-returns, before the application commits or rolls back.
+The one exception is a queued harness's `tell` called from inside an
+application's own transaction: the step joins that transaction, and is heard
+when it returns, before the application commits or rolls back. The direct
+door refuses to run inside one.
 
 Order holds per agent: events are heard in the order their steps committed,
 and what one agent has not yet released never holds up another agent. What an

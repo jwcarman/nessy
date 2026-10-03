@@ -118,10 +118,6 @@ class DeferredToolTest {
     };
   }
 
-  private QueuedHarness<String> harness(AgentType type, Duration toolBudget) {
-    return harness(type, toolBudget, Customizer.withDefaults());
-  }
-
   private QueuedHarness<String> harness(
       AgentType type, Duration toolBudget, Customizer<ToolConfig<Job>> more) {
     return engine
