@@ -260,6 +260,7 @@ public final class EngineFixture implements AutoCloseable {
         new Seq(seq),
         new TurnId(turn),
         ref(agent, List.of(new Block.Text(said))),
+        false,
         Usage.unreported());
   }
 

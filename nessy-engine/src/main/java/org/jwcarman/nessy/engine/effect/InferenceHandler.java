@@ -111,17 +111,17 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
             // Put away here, where the content exists and there is somewhere to put it. What
             // reaches the fold is where it went.
             yield new EffectOutcome.InferenceAnswered(
-                payloads.forAgent(agentId).put(blocks), usage);
+                payloads.forAgent(agentId).put(blocks), false, usage);
           }
           case InferenceResult.Truncated(var blocks, var usage) -> {
             log.warn(
                 "model's answer to agent {} was cut off at the output limit after {} block(s)",
                 agentId.value(),
                 blocks.size());
-            // Delivered as the answer it is: the fold has no notion of a partial one, and the
-            // WARN above and the finish reason on the span are where it is told apart.
+            // Delivered as the answer it is, marked truncated: the fold copies the mark onto the
+            // stored event and decides nothing by it.
             yield new EffectOutcome.InferenceAnswered(
-                payloads.forAgent(agentId).put(blocks), usage);
+                payloads.forAgent(agentId).put(blocks), true, usage);
           }
           case InferenceResult.Refusal(var category, var usage) -> {
             log.info("model declined for agent {} ({})", agentId.value(), category);

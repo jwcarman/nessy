@@ -65,8 +65,9 @@ class StoryEventsTest {
     Usage usage = Usage.of("a-model", 100, 20);
 
     assertThat(
-            StoryEvents.of(new AgentEvent.InferenceAnswered(SEQ, TURN, PayloadRef.of("p"), usage)))
-        .isEqualTo(new Narration.Answered(TURN, usage));
+            StoryEvents.of(
+                new AgentEvent.InferenceAnswered(SEQ, TURN, PayloadRef.of("p"), true, usage)))
+        .isEqualTo(new Narration.Answered(TURN, true, usage));
   }
 
   @Test
@@ -155,7 +156,7 @@ class StoryEventsTest {
     Usage usage = Usage.unreported();
     return Stream.of(
         new AgentEvent.TurnStarted(SEQ, TURN, PayloadRef.of("p"), Instant.EPOCH),
-        new AgentEvent.InferenceAnswered(SEQ, TURN, PayloadRef.of("p"), usage),
+        new AgentEvent.InferenceAnswered(SEQ, TURN, PayloadRef.of("p"), false, usage),
         new AgentEvent.InferenceRefused(SEQ, TURN, "policy", usage),
         new AgentEvent.InferenceFailed(SEQ, TURN, new Failure.Permanent("x"), usage),
         new AgentEvent.InferenceAttempted(SEQ, TURN, new Failure.Transient("x"), usage),

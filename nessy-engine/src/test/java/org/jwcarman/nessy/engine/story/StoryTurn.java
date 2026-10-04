@@ -66,6 +66,21 @@ final class StoryTurn {
         config -> {});
   }
 
+  /** A model whose one reply is cut off at the output limit. */
+  static InferenceProvider cutOffAtTheOutputLimit() {
+    return (request, narrator) ->
+        new InferenceResult.Truncated(List.of(new Block.Text("the lake is deep and")));
+  }
+
+  /**
+   * Runs one turn whose reply the model cut off at the output limit, and returns the story events
+   * the listener heard, oldest first.
+   */
+  static List<Narrated> heardWithATruncatedReply(
+      AgentType type, AgentId agent, DirectBackend backend, Clock clock) {
+    return heard(type, agent, backend, clock, cutOffAtTheOutputLimit(), config -> {});
+  }
+
   /**
    * Runs one turn in which the model asks for a {@code lookup} call and then answers, and returns
    * the story events the listener heard, oldest first. Every model call reports its {@link Usage}.

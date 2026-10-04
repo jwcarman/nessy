@@ -83,8 +83,9 @@ class EventUsageReportsTest {
         new AgentEvent.InferenceRefused(new Seq(4), turn, "policy", usage("big", 100, 5, null)),
         new AgentEvent.InferenceFailed(
             new Seq(5), turn, new Failure.Permanent("bad"), usage("small", 30, 2, null)),
-        new AgentEvent.InferenceAnswered(new Seq(6), turn, said("a"), usage("small", 70, 8, null)),
-        new AgentEvent.InferenceAnswered(new Seq(7), turn, said("b"), Usage.unreported()));
+        new AgentEvent.InferenceAnswered(
+            new Seq(6), turn, said("a"), false, usage("small", 70, 8, null)),
+        new AgentEvent.InferenceAnswered(new Seq(7), turn, said("b"), false, Usage.unreported()));
   }
 
   @Test

@@ -107,7 +107,7 @@ class StoryContentTest {
 
   private static AgentEvent.InferenceAnswered answered(long seq, long turn, PayloadRef answer) {
     return new AgentEvent.InferenceAnswered(
-        new Seq(seq), new TurnId(turn), answer, Usage.unreported());
+        new Seq(seq), new TurnId(turn), answer, false, Usage.unreported());
   }
 
   private static Block.ToolCall toolCall(String id) {

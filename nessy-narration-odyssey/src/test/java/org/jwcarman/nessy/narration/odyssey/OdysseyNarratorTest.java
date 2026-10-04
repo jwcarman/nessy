@@ -53,7 +53,7 @@ class OdysseyNarratorTest {
       List.of(
           new Narration.TurnStarted(new TurnId(1)),
           new Narration.Thinking(),
-          new Narration.Answered(new TurnId(1), Usage.unreported()),
+          new Narration.Answered(new TurnId(1), false, Usage.unreported()),
           new Narration.TurnStopped(new TurnId(1), "too many calls"),
           new Narration.TurnFailed(
               new TurnId(1), FailureKind.PERMANENT, "the provider gave up", Usage.unreported()),

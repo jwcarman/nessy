@@ -142,7 +142,7 @@ public sealed interface AgentCommand {
     /** What this inference cost, as the vendor counted it. */
     Usage usage();
 
-    record Answered(PayloadRef answer, Usage usage) implements InferenceOutcome {
+    record Answered(PayloadRef answer, boolean truncated, Usage usage) implements InferenceOutcome {
       public Answered {
         Objects.requireNonNull(usage, USAGE_MUST_NOT_BE_NULL);
       }

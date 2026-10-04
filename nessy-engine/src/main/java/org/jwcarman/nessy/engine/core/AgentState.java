@@ -248,7 +248,7 @@ public sealed interface AgentState {
             Decision.of(
                 List.of(
                     new AgentEvent.InferenceAnswered(
-                        at, turn, answered.answer(), answered.usage())),
+                        at, turn, answered.answer(), answered.truncated(), answered.usage())),
                 List.of());
         case AgentCommand.InferenceOutcome.Refused refused ->
             Decision.of(

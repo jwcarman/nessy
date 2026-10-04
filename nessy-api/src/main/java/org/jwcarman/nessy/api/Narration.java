@@ -116,9 +116,10 @@ public sealed interface Narration {
    * watching a queued agent reads it from the story; a provider that streams has already said it
    * delta by delta. Carrying it here would be a third copy of the same words.
    *
+   * @param truncated whether the model was cut off at its output limit, so the answer stops short
    * @param usage what the model call cost, as the vendor counted it
    */
-  record Answered(TurnId turn, Usage usage) implements TurnEnding {}
+  record Answered(TurnId turn, boolean truncated, Usage usage) implements TurnEnding {}
 
   /**
    * The turn was stopped on purpose, and this is why.

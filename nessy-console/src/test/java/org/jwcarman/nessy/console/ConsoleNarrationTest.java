@@ -82,7 +82,7 @@ class ConsoleNarrationTest {
         Envelopes.of(
             CHAT,
             new AgentId(UUID.randomUUID()),
-            new Narration.Answered(new TurnId(1), Usage.unreported())));
+            new Narration.Answered(new TurnId(1), false, Usage.unreported())));
 
     assertThat(console.written()).isEmpty();
   }
@@ -93,7 +93,8 @@ class ConsoleNarrationTest {
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
     narration.on(
-        Envelopes.of(CHAT, AGENT, new Narration.Answered(new TurnId(1), Usage.unreported())));
+        Envelopes.of(
+            CHAT, AGENT, new Narration.Answered(new TurnId(1), false, Usage.unreported())));
 
     assertThat(console.written()).isEmpty();
     assertThat(narration.spoke()).isFalse();

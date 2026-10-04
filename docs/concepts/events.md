@@ -18,7 +18,7 @@ public sealed interface AgentEvent {
   Seq seq();
 
   record TurnStarted(Seq seq, TurnId turn, PayloadRef input, Instant startedAt) implements AgentEvent {}
-  record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer, Usage usage) implements AgentEvent {}
+  record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer, boolean truncated, Usage usage) implements AgentEvent {}
   record InferenceRefused(Seq seq, TurnId turn, String category, Usage usage) implements AgentEvent {}
   record InferenceFailed(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {}
   record InferenceAttempted(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {}

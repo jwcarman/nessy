@@ -77,7 +77,7 @@ class EventAgentStoriesTest {
 
   private static AgentEvent answered(long seq, long turn) {
     return new AgentEvent.InferenceAnswered(
-        new Seq(seq), new TurnId(turn), new PayloadRef("a"), Usage.unreported());
+        new Seq(seq), new TurnId(turn), new PayloadRef("a"), false, Usage.unreported());
   }
 
   private void threeEvents() {
@@ -209,6 +209,27 @@ class EventAgentStoriesTest {
       List<Narrated> heard = StoryTurn.heard(TYPE, agent, backend, Clock.fixed(AT, ZoneOffset.UTC));
 
       assertThat(heard).isNotEmpty();
+      assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
+    }
+  }
+
+  @Nested
+  class A_turn_whose_reply_was_cut_off {
+
+    @Test
+    void reads_truncated_live_and_replayed() {
+      DirectBackend backend =
+          new Backend(events, new InMemoryPayloads(codecs), new InMemoryLocks(), codecs);
+
+      List<Narrated> heard =
+          StoryTurn.heardWithATruncatedReply(TYPE, agent, backend, Clock.fixed(AT, ZoneOffset.UTC));
+
+      assertThat(heard)
+          .map(Narrated::event)
+          .filteredOn(Narration.Answered.class::isInstance)
+          .singleElement()
+          .extracting(event -> ((Narration.Answered) event).truncated())
+          .isEqualTo(true);
       assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
     }
   }

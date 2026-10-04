@@ -56,7 +56,7 @@ class ReplLoopTest {
 
   /** A streaming provider has already said everything; the answer just closes the turn. */
   private static Narration ended() {
-    return new Narration.Answered(new TurnId(1), Usage.unreported());
+    return new Narration.Answered(new TurnId(1), false, Usage.unreported());
   }
 
   private static void run(FakeHarness harness, FakeConsole console, ReplConfig config) {
@@ -106,7 +106,7 @@ class ReplLoopTest {
   @Test
   void an_answer_that_was_not_streamed_is_printed_whole() {
     FakeHarness harness =
-        new FakeHarness(List.of(new Narration.Answered(new TurnId(1), Usage.unreported())))
+        new FakeHarness(List.of(new Narration.Answered(new TurnId(1), false, Usage.unreported())))
             .answering(new Outcome.Answered<>("all at once", ANY_STATS));
     FakeConsole console = new FakeConsole("hi", "quit");
     run(harness, console, config());
@@ -363,7 +363,7 @@ class ReplLoopTest {
     @Test
     void a_silent_completion_says_so_rather_than_printing_nothing() {
       FakeHarness harness =
-          new FakeHarness(List.of(new Narration.Answered(new TurnId(1), Usage.unreported())))
+          new FakeHarness(List.of(new Narration.Answered(new TurnId(1), false, Usage.unreported())))
               .answering(new Outcome.Answered<>("", ANY_STATS));
       FakeConsole console = new FakeConsole("hello", "/exit");
       run(harness, console, config());

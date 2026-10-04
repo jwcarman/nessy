@@ -73,8 +73,11 @@ public sealed interface EffectOutcome {
    * <p>Carries the blocks the model produced, not text and not a positioned message. Text would
    * discard whatever an answer holds that a string cannot; a message would mean a dispatcher
    * choosing where in the story the answer belongs, which only the fold can know.
+   *
+   * @param truncated whether the model was cut off at its output limit, so the answer stops short
    */
-  record InferenceAnswered(PayloadRef answer, Usage usage) implements EffectOutcome {
+  record InferenceAnswered(PayloadRef answer, boolean truncated, Usage usage)
+      implements EffectOutcome {
     public InferenceAnswered {
       usage = usage == null ? Usage.unreported() : usage;
     }

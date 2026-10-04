@@ -319,7 +319,11 @@ class ValueTypeCodecTest {
         new String(
             entries.encode(
                 new AgentEvent.InferenceAnswered(
-                    new Seq(5), new TurnId(1), PayloadRef.of("a3d9f0b1"), Usage.unreported())),
+                    new Seq(5),
+                    new TurnId(1),
+                    PayloadRef.of("a3d9f0b1"),
+                    false,
+                    Usage.unreported())),
             StandardCharsets.UTF_8);
 
     assertThat(written).contains("\"seq\":5").contains("\"turn\":1").doesNotContain("\"value\"");
@@ -364,6 +368,23 @@ class ValueTypeCodecTest {
 
   private AgentEvent readStored(String json) {
     return entries.decode(json.getBytes(StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void aTruncatedAnswerIsStoredAsTruncated() {
+    String stored =
+        """
+        {"type":"inference-answered","seq":2,"turn":1,"answer":"a3d9f0b1","truncated":true}""";
+    AgentEvent.InferenceAnswered written =
+        new AgentEvent.InferenceAnswered(
+            new Seq(2), new TurnId(1), PayloadRef.of("a3d9f0b1"), true, Usage.unreported());
+
+    AgentEvent.InferenceAnswered read = (AgentEvent.InferenceAnswered) readStored(stored);
+
+    assertThat(read.truncated()).isTrue();
+    assertThat(read).isEqualTo(written);
+    assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
+        .contains("\"truncated\":true");
   }
 
   @Test

@@ -123,6 +123,43 @@ class EventAgentStoriesQueuedTest {
   }
 
   @Test
+  void a_reply_cut_off_at_the_output_limit_reads_truncated_live_and_replayed() {
+    AgentType type = new AgentType("queued-truncated");
+    AgentId agent = AgentId.random();
+    NarrationListener recording = heard::add;
+
+    try (EngineFixture engine = new EngineFixture(StoryTurn.cutOffAtTheOutputLimit(), recording)) {
+      engine
+          .harnesses()
+          .<String>create(
+              type,
+              String.class,
+              config ->
+                  config
+                      .systemPrompt("You are a test assistant.")
+                      .inference(in -> in.model("a-model"))
+                      .effects(e -> e.pollInterval(Duration.ofMillis(50))))
+          .tell(agent, "how deep is Loch Ness?");
+      await()
+          .atMost(Duration.ofSeconds(30))
+          .until(
+              () ->
+                  heard.stream()
+                      .anyMatch(narrated -> narrated.event() instanceof Narration.Answered));
+
+      List<Narrated> story =
+          heard.stream().filter(narrated -> narrated.event() instanceof Narration.Story).toList();
+      assertThat(story)
+          .map(Narrated::event)
+          .filteredOn(Narration.Answered.class::isInstance)
+          .singleElement()
+          .extracting(event -> ((Narration.Answered) event).truncated())
+          .isEqualTo(true);
+      assertThat(replayed(engine, type, agent)).isEqualTo(story);
+    }
+  }
+
+  @Test
   void a_retried_model_call_heard_live_is_what_the_replay_returns() {
     AgentType type = new AgentType("queued-retry");
     AgentId agent = AgentId.random();

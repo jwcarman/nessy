@@ -68,7 +68,7 @@ public final class StoryEvents {
       // ARRIVING; this is what was said, and a watcher that saw neither -- a page opened
       // mid-turn -- would otherwise never learn the answer.
       case AgentEvent.InferenceAnswered answered ->
-          new Narration.Answered(answered.turn(), answered.usage());
+          new Narration.Answered(answered.turn(), answered.truncated(), answered.usage());
       case AgentEvent.InferenceRefused refused ->
           new Narration.TurnRefused(refused.turn(), refused.category(), refused.usage());
       case AgentEvent.InferenceFailed failed ->

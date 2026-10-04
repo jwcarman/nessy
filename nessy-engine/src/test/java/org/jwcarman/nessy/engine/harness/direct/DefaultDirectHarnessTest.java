@@ -1282,6 +1282,7 @@ class DefaultDirectHarnessTest {
                 new TurnId(1),
                 new AgentCommand.InferenceOutcome.Answered(
                     payloads.forAgent(agent).put(List.of(new Block.Text("too late"))),
+                    false,
                     Usage.unreported())));
 
     assertThat(belated.events())
@@ -1607,6 +1608,7 @@ class DefaultDirectHarnessTest {
                   opening.next(),
                   opening.opensTurn(),
                   payloads.forAgent(agent).put(List.of(new Block.Text("somebody else's answer"))),
+                  false,
                   Usage.unreported())),
           last,
           Instant.EPOCH);
@@ -2018,6 +2020,25 @@ class DefaultDirectHarnessTest {
           .usingRecursiveComparison()
           .ignoringFields("stats")
           .isEqualTo(new Outcome.Answered<>("the lake is deep and", ANY_STATS));
+    }
+
+    @Test
+    void the_story_records_the_answer_as_truncated() {
+      DirectHarness<String, String> harness =
+          harness((request, narrator) -> cutOffSaying("the lake is deep and"));
+      AgentId agent = AgentId.random();
+
+      Outcome<String> outcome = harness.ask(agent, "how deep?");
+
+      assertThat(outcome)
+          .usingRecursiveComparison()
+          .ignoringFields("stats")
+          .isEqualTo(new Outcome.Answered<>("the lake is deep and", ANY_STATS));
+      assertThat(events.readAll(TYPE, agent))
+          .filteredOn(AgentEvent.InferenceAnswered.class::isInstance)
+          .singleElement()
+          .extracting(event -> ((AgentEvent.InferenceAnswered) event).truncated())
+          .isEqualTo(true);
     }
 
     @Test

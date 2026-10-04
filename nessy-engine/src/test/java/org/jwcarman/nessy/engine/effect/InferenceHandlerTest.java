@@ -172,7 +172,22 @@ class InferenceHandlerTest {
 
       assertThat(outcome)
           .isEqualTo(
-              Awaited.ready(new EffectOutcome.InferenceAnswered(PayloadRef.of("p"), reading(0))));
+              Awaited.ready(
+                  new EffectOutcome.InferenceAnswered(PayloadRef.of("p"), true, reading(0))));
+      assertThat(stored).containsExactly(written);
+    }
+
+    @Test
+    void a_whole_reply_is_delivered_as_not_truncated() {
+      List<Block.AnswerContent> written = List.of(new Block.Text("The answer"));
+      script.add(new InferenceResult.Answer(written, reading(0)));
+
+      Awaited<EffectOutcome> outcome = handler.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)));
+
+      assertThat(outcome)
+          .isEqualTo(
+              Awaited.ready(
+                  new EffectOutcome.InferenceAnswered(PayloadRef.of("p"), false, reading(0))));
       assertThat(stored).containsExactly(written);
     }
   }

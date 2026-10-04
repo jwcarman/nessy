@@ -96,9 +96,11 @@ public final class EffectOutcomes {
           "%s answers a request and none was named".formatted(outcome.getClass().getSimpleName()));
     }
     return switch (outcome) {
-      case EffectOutcome.InferenceAnswered(var answer, var usage) ->
+      case EffectOutcome.InferenceAnswered(var answer, var truncated, var usage) ->
           new AgentCommand.CompleteInference(
-              turn, new AgentCommand.InferenceOutcome.Answered(answer, usage), priorAttempts);
+              turn,
+              new AgentCommand.InferenceOutcome.Answered(answer, truncated, usage),
+              priorAttempts);
       case EffectOutcome.InferenceRefused(String category, var usage) ->
           new AgentCommand.CompleteInference(
               turn, new AgentCommand.InferenceOutcome.Refused(category, usage), priorAttempts);

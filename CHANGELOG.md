@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `message`: `FAILED`, `PAST_DEADLINE` or `NOT_AUTHORISED`. The stored `tool-failed` event has a
   `kind` field; recreate the database. `PAST_DEADLINE` is what a tool call that does not finish in time reads on both
   doors: the queued door's expiry, and the direct door cutting a running call off.
+- **An answer says when it was cut off.** `AgentEvent.InferenceAnswered`,
+  `EffectOutcome.InferenceAnswered`, `AgentCommand.InferenceOutcome.Answered` and
+  `Narration.Answered` gain a `boolean truncated`, true when the model was cut off at its output
+  limit. The stored `inference-answered` event has a `truncated` field; recreate the database. The
+  caller of `ask` receives a cut-off reply exactly as before.
 - **An approval records who decided, not a reference.** `ApprovalResult.reference()` is
   `decidedBy()`, and `approvedBy` and `deniedBy` take a `decidedBy`: who or what decided, as the
   application says it. Nessy never interprets it. The same rename runs through `EffectOutcome.ToolApproved`

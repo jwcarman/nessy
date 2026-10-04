@@ -98,8 +98,10 @@ public sealed interface AgentEvent {
    * <p>Carries what the call cost, as the vendor counted it. {@link Usage#unreported()} stands for
    * an entry written before this event recorded one, and for a vendor that did not say -- the same
    * reading, because neither counted.
+   *
+   * @param truncated whether the model was cut off at its output limit, so the answer stops short
    */
-  record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer, Usage usage)
+  record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer, boolean truncated, Usage usage)
       implements AgentEvent {
     public InferenceAnswered {
       usage = usage == null ? Usage.unreported() : usage;

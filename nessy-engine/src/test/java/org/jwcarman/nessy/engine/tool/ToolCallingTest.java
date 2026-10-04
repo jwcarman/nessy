@@ -239,6 +239,7 @@ class ToolCallingTest {
                 new Seq(5),
                 new TurnId(1),
                 engine.ref(agentId, List.of(new Block.Text("It is Loch Ness."))),
+                false,
                 Usage.unreported()));
   }
 
@@ -357,6 +358,7 @@ class ToolCallingTest {
                 new Seq(4),
                 new TurnId(1),
                 engine.ref(agentId, List.of(new Block.Text("I was not allowed to look."))),
+                false,
                 Usage.unreported()));
   }
 

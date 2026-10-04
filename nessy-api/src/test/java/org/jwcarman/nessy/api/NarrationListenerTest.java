@@ -96,7 +96,7 @@ class NarrationListenerTest {
     return Narrated.story(
         type,
         ONE,
-        new Narration.Answered(new TurnId(turn), Usage.unreported()),
+        new Narration.Answered(new TurnId(turn), false, Usage.unreported()),
         new Seq(3),
         Instant.EPOCH);
   }

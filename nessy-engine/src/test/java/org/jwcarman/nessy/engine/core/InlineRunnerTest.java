@@ -49,7 +49,8 @@ class InlineRunnerTest {
   /** Answers straight away. */
   private static InlineRunner.Model answering(InlineRunner runner, String answer) {
     return _ ->
-        new AgentCommand.InferenceOutcome.Answered(runner.claimCheck(answer), Usage.unreported());
+        new AgentCommand.InferenceOutcome.Answered(
+            runner.claimCheck(answer), false, Usage.unreported());
   }
 
   @Test
@@ -77,7 +78,7 @@ class InlineRunnerTest {
           boolean toolHasRun = events.stream().anyMatch(AgentEvent.ToolSucceeded.class::isInstance);
           return toolHasRun
               ? new AgentCommand.InferenceOutcome.Answered(
-                  holder[0].claimCheck("refunded 42.00"), Usage.unreported())
+                  holder[0].claimCheck("refunded 42.00"), false, Usage.unreported())
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("please look it up"),
                   List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup", KEY)),
@@ -117,7 +118,7 @@ class InlineRunnerTest {
           boolean asked = events.stream().anyMatch(AgentEvent.ActionsRequested.class::isInstance);
           return asked
               ? new AgentCommand.InferenceOutcome.Answered(
-                  holder[0].claimCheck("cannot help"), Usage.unreported())
+                  holder[0].claimCheck("cannot help"), false, Usage.unreported())
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("please look it up"),
                   List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup", KEY)),
@@ -140,7 +141,7 @@ class InlineRunnerTest {
     InlineRunner.Model model =
         events ->
             new AgentCommand.InferenceOutcome.Answered(
-                holder[0].claimCheck("the answer itself"), Usage.unreported());
+                holder[0].claimCheck("the answer itself"), false, Usage.unreported());
     holder[0] = new InlineRunner(model, Map.of(), _ -> true);
 
     InlineRunner.Ran ran = holder[0].run("a question with content in it");
@@ -158,7 +159,7 @@ class InlineRunnerTest {
     InlineRunner.Model model =
         events ->
             new AgentCommand.InferenceOutcome.Answered(
-                holder[0].claimCheck("done"), Usage.unreported());
+                holder[0].claimCheck("done"), false, Usage.unreported());
     holder[0] = new InlineRunner(model, Map.of(), _ -> true);
 
     InlineRunner.Ran ran = holder[0].run("anything");
@@ -184,7 +185,7 @@ class InlineRunnerTest {
           boolean failed = events.stream().anyMatch(AgentEvent.ToolFailed.class::isInstance);
           return failed
               ? new AgentCommand.InferenceOutcome.Answered(
-                  holder[0].claimCheck("sorry"), Usage.unreported())
+                  holder[0].claimCheck("sorry"), false, Usage.unreported())
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("look it up"),
                   List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup", KEY)),

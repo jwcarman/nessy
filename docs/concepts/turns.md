@@ -80,8 +80,9 @@ happened or is about to. A turn's arms, in the order a watcher sees them:
 - `Narration.Thinking()` — the model is about to be asked, narrated before
   the call so a watcher can show waiting.
 - One of four ways the turn ends, each a `Narration.TurnEnding`:
-  - `Narration.Answered(TurnId turn, Usage usage)` — the turn produced an
-    answer. Not the answer itself; the direct door already returned it, and
+  - `Narration.Answered(TurnId turn, boolean truncated, Usage usage)` — the
+    turn produced an answer. `truncated` is true when the model was cut off
+    at its output limit and the answer stops short. Not the answer itself; the direct door already returned it, and
     a queued watcher reads it from the story or has already seen it delta
     by delta.
   - `Narration.TurnFailed(TurnId turn, FailureKind kind, String reason,
