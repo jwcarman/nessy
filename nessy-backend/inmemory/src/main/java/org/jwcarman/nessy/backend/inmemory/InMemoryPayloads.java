@@ -15,8 +15,6 @@
  */
 package org.jwcarman.nessy.backend.inmemory;
 
-import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -91,15 +89,6 @@ public final class InMemoryPayloads implements Payloads {
       throw new IllegalStateException("payload " + ref + " holds a document, not blocks");
     }
     return new Resolved.Found(blocksCodec.decode(found.encoded()).blocks());
-  }
-
-  @Override
-  public Map<PayloadRef, Resolved> get(Collection<PayloadRef> refs) {
-    Map<PayloadRef, Resolved> found = new LinkedHashMap<>();
-    for (PayloadRef ref : refs) {
-      found.computeIfAbsent(ref, this::get);
-    }
-    return found;
   }
 
   @Override

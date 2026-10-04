@@ -150,6 +150,9 @@ class StorageCodecTest {
             .query(byte[].class)
             .list();
     assertThat(stored).hasSize(1).allSatisfy(row -> assertThat(row[0]).isNotEqualTo((byte) '{'));
+    assertThat(new String(reverse(stored.getFirst()), java.nio.charset.StandardCharsets.UTF_8))
+        .as("and it is the encoded document once the codec is undone")
+        .startsWith("{\"document\":");
     assertThat(payloads.getDocument(ref)).isEqualTo(document);
   }
 }

@@ -36,10 +36,10 @@ import tools.jackson.databind.JsonNode;
 /**
  * Content in {@code nessy_payload}, addressed by its own hash and scoped to one agent.
  *
- * <p>Inputs, answers and tool results are written here, and what goes beside the record of an
- * agent's life is a reference. The exception is two lines of text per tool call, what the call
- * would do and what it returned, each at most 1,000 characters, which stay in the events. The
- * summaries of an agent's chapters are in {@code nessy_chapter}. So this table is where most of
+ * <p>Inputs, answers, tool results and JSON documents are written here, and what goes beside the
+ * record of an agent's life is a reference. The exception is two lines of text per tool call, what
+ * the call would do and what it returned, each at most 1,000 characters, which stay in the events.
+ * The summaries of an agent's chapters are in {@code nessy_chapter}. So this table is where most of
  * what an agent said lives and not all of it.
  *
  * <p><b>Addressed, not minted.</b> The reference is the SHA-256 of the encoded content, so putting
@@ -98,7 +98,7 @@ public final class JdbcPayloads implements Payloads {
   @Override
   public Payloads forAgent(AgentId agent) {
     return new JdbcPayloads(
-        jdbc, blocksCodec, documentCodec, Objects.requireNonNull(agent, "agent must not null"));
+        jdbc, blocksCodec, documentCodec, Objects.requireNonNull(agent, "agent must not be null"));
   }
 
   @Override

@@ -99,7 +99,7 @@ CREATE INDEX IF NOT EXISTS ix_nessy_agent_effect_actionable
     ON nessy_agent_effect (agent_type, status, actionable_at);
 -- Content, kept away from the record of what happened to it.
 --
--- Everything a model was shown or said -- inputs, answers, tool results -- lives here, and the
+-- Everything a model was shown or said -- inputs, answers, tool results, JSON documents -- lives here, and the
 -- tables that describe an agent's life hold references to it. Two bounded lines of text per tool
 -- call are the exception: what a call would do and what it returned, each at most 1,000
 -- characters, kept in nessy_agent_event. The summaries of an agent's chapters are in nessy_chapter.

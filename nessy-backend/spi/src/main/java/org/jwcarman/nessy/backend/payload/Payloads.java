@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.backend.payload;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
@@ -121,19 +122,29 @@ public interface Payloads {
    * the encoded bytes, so a record declared twice -- once per backend -- would give the same
    * content two different references the day somebody renamed a component in one of them, and
    * nothing would fail until a reader compared the two.
+   *
+   * <p>The component is written whatever the application's mapper does with empty values, or an
+   * empty list would encode as {@code {}} and not read back.
    */
-  record Content(List<Block> blocks) {}
+  record Content(@JsonInclude(JsonInclude.Include.ALWAYS) List<Block> blocks) {}
 
   /**
    * The shape a document takes once written down: encoded on its own, apart from {@link Content},
    * and kept with a kind that says it is a document, so neither is ever decoded as the other.
    *
-   * @param document the JSON document, never null
+   * <p>The component is written whatever the application's mapper does with empty values, or an
+   * empty object would encode as {@code {}} and not read back.
+   *
+   * @param document the JSON document; never null, JSON null or a missing node (a null nested
+   *     inside it is fine)
    */
-  record Document(JsonNode document) {
+  record Document(@JsonInclude(JsonInclude.Include.ALWAYS) JsonNode document) {
 
     public Document {
       Objects.requireNonNull(document, "document must not be null");
+      if (document.isNull() || document.isMissingNode()) {
+        throw new IllegalArgumentException("a document must not be JSON null or missing");
+      }
     }
   }
 

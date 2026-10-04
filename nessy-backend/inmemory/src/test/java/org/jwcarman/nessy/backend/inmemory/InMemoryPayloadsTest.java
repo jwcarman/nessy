@@ -18,6 +18,8 @@ package org.jwcarman.nessy.backend.inmemory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DisplayNameGeneration;
@@ -29,6 +31,9 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.MissingNode;
+import tools.jackson.databind.node.NullNode;
+import tools.jackson.databind.node.ObjectNode;
 
 @DisplayName("Payloads held in this process")
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
@@ -99,5 +104,52 @@ class InMemoryPayloadsTest {
     assertThatThrownBy(() -> payloads.get(both))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage("payload " + document + " holds a document, not blocks");
+  }
+
+  @Test
+  void the_same_fields_in_another_order_are_another_reference() {
+    ObjectNode ab = MAPPER.createObjectNode();
+    ab.put("a", 1);
+    ab.put("b", 2);
+    ObjectNode ba = MAPPER.createObjectNode();
+    ba.put("b", 2);
+    ba.put("a", 1);
+
+    assertThat(payloads.putDocument(ab)).isNotEqualTo(payloads.putDocument(ba));
+  }
+
+  @Test
+  void a_document_that_is_json_null_is_refused() {
+    JsonNode nothing = NullNode.getInstance();
+
+    assertThatThrownBy(() -> payloads.putDocument(nothing))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("a document must not be JSON null or missing");
+  }
+
+  @Test
+  void a_missing_node_is_refused() {
+    JsonNode missing = MissingNode.getInstance();
+
+    assertThatThrownBy(() -> payloads.putDocument(missing))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("a document must not be JSON null or missing");
+  }
+
+  @Test
+  void an_empty_document_and_empty_blocks_survive_a_mapper_that_leaves_out_empty_values() {
+    JsonMapper sparse =
+        JsonMapper.builder()
+            .changeDefaultPropertyInclusion(
+                value -> JsonInclude.Value.construct(Include.NON_EMPTY, Include.NON_EMPTY))
+            .build();
+    Payloads sparsePayloads = new InMemoryPayloads(new JacksonCodecFactory(sparse));
+    JsonNode empty = sparse.createObjectNode();
+
+    PayloadRef document = sparsePayloads.putDocument(empty);
+    PayloadRef blocks = sparsePayloads.put(List.of());
+
+    assertThat(sparsePayloads.getDocument(document)).isEqualTo(empty);
+    assertThat(sparsePayloads.get(blocks)).isEqualTo(new Payloads.Resolved.Found(List.of()));
   }
 }

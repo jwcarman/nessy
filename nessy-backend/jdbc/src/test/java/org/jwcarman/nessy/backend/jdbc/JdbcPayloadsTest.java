@@ -280,4 +280,19 @@ class JdbcPayloadsTest {
         .isInstanceOf(IllegalStateException.class)
         .hasMessage("payload " + ref + " has an unknown kind: MYSTERY");
   }
+
+  @Test
+  @DisplayName("a row with a kind it does not know is a fault when read as a document too")
+  void an_unknown_kind_is_a_fault_when_read_as_a_document() {
+    AgentId agent = AgentId.random();
+    Payloads payloads = unscoped.forAgent(agent);
+    PayloadRef ref = payloads.putDocument(document());
+    jdbc.sql("UPDATE nessy_payload SET kind = 'MYSTERY' WHERE agent_id = ?")
+        .params(agent.value())
+        .update();
+
+    assertThatThrownBy(() -> payloads.getDocument(ref))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("payload " + ref + " has an unknown kind: MYSTERY");
+  }
 }
