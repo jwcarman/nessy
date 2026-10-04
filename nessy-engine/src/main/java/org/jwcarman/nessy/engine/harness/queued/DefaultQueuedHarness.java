@@ -37,7 +37,6 @@ import org.jwcarman.nessy.backend.backlog.Pull;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
-import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.engine.core.AgentCommand;
@@ -48,6 +47,7 @@ import org.jwcarman.nessy.engine.effect.EffectDispatcher;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
 import org.jwcarman.nessy.engine.narration.AfterCommit;
 import org.jwcarman.nessy.engine.narration.AfterCommit.Step;
+import org.jwcarman.nessy.engine.narration.StoryEvents;
 import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
@@ -397,55 +397,6 @@ final class DefaultQueuedHarness<I>
     if (!narrator.listening()) {
       return;
     }
-    switch (event) {
-      // Not narrated. A watcher is told what is happening to a turn, and a call being tried
-      // again is the engine keeping its own promise rather than anything the turn did. It is in
-      // the story for whoever is counting what the turn spent.
-      case AgentEvent.InferenceAttempted _ -> {}
-      case AgentEvent.ActionsRequested asked ->
-          step.narrate(
-              new Narration.ActionsRequested(
-                  asked.actions().stream()
-                      .filter(ActionRequest.ToolCall.class::isInstance)
-                      .map(ActionRequest.ToolCall.class::cast)
-                      .map(
-                          call ->
-                              new Narration.ActionsRequested.Call(
-                                  call.id(), call.name(), call.action()))
-                      .toList()));
-      case AgentEvent.ToolApproved approved ->
-          step.narrate(new Narration.CallApproved(approved.callId()));
-      case AgentEvent.ToolDenied denied ->
-          step.narrate(new Narration.CallDenied(denied.callId(), denied.reason()));
-      case AgentEvent.ToolSucceeded done -> step.narrate(new Narration.CallFinished(done.callId()));
-      case AgentEvent.ToolFailed failed ->
-          step.narrate(new Narration.CallFailed(failed.callId(), failed.message()));
-      // However it ended, it ended: the one event to hear when the story grew by a turn. An
-      // answer, a refusal and a fault all close one; asking for actions does not.
-      case AgentEvent.InferenceRefused refused -> {
-        step.narrate(new Narration.TurnRefused(refused.category()));
-        step.narrate(new Narration.TurnEnded(refused.turn()));
-      }
-      case AgentEvent.InferenceFailed failed -> {
-        step.narrate(new Narration.TurnFailed(failed.failure().reason()));
-        step.narrate(new Narration.TurnEnded(failed.turn()));
-      }
-      // Heard exactly as any other failed turn is. A watcher does not care whether the model
-      // could not answer or a policy decided it had answered enough; either way the turn is over.
-      case AgentEvent.TurnFailed ended -> {
-        step.narrate(new Narration.TurnFailed(ended.reason()));
-        step.narrate(new Narration.TurnEnded(ended.turn()));
-      }
-      case AgentEvent.Terminated _ -> step.narrate(new Narration.Terminated());
-      case AgentEvent.TurnStarted started ->
-          step.narrate(new Narration.TurnStarted(started.turn()));
-      // Said as a fact once the fold has committed, exactly as the direct door says it. The
-      // deltas a provider streamed are what is ARRIVING; this is what was said, and a watcher
-      // that saw neither -- a page opened mid-turn -- would otherwise never learn the answer.
-      case AgentEvent.InferenceAnswered answered -> {
-        step.narrate(new Narration.Answered());
-        step.narrate(new Narration.TurnEnded(answered.turn()));
-      }
-    }
+    StoryEvents.of(event).forEach(step::narrate);
   }
 }
