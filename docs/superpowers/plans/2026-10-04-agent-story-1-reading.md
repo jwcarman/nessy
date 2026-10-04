@@ -421,7 +421,7 @@ public interface AgentStory {
 }
 ```
 
-  `AgentEvents` gains `Stream<Written> streamWrittenFrom(AgentType type, AgentId agent, Seq after)` with `record Written(AgentEvent event, Instant at)`, so a replay reads each event with its time in one query. `EventAgentStories(AgentEvents events)` is the engine's implementation. Tasks 5 and 6 add methods to `AgentStory` and constructor arguments to `EventAgentStories`.
+  `AgentEvents` gains `List<Written> readWrittenFrom(AgentType type, AgentId agent, Seq after, int limit)` with `record Written(AgentEvent event, Instant at)`: up to `limit` events after `after`, oldest first, each with its time, bounded in the query and never in memory. `EventAgentStories(AgentEvents events)` is the engine's implementation. Tasks 5 and 6 add methods to `AgentStory` and constructor arguments to `EventAgentStories`.
 
 - [ ] **Step 1: Write the failing tests** in `EventAgentStoriesTest` (in-memory backend, events appended by hand with a fixed instant):
   - `an_agent_nobody_told_anything_has_an_empty_story`
@@ -432,7 +432,7 @@ public interface AgentStory {
   - `what_a_listener_heard_live_is_what_the_replay_returns`: run one scripted direct-door turn with a recording listener, keep the `Narrated` whose event is a `Narration.Story`, and assert the list equals `stories.of(TYPE, agent).replay(Seq.NONE, 100)`
 
 - [ ] **Step 2: Run and see them fail to compile.**
-- [ ] **Step 3: Implement** `streamWrittenFrom` in both backends (JDBC selects `payload, written_at` ordered by `seq`), then `EventAgentStories.replay`: validate and cap the limit, stream, `limit`, and map each `Written` to `Narrated.story(type, id, StoryEvents.of(w.event()), w.event().seq(), w.at())`. Close the stream.
+- [ ] **Step 3: Implement** `readWrittenFrom` in both backends (JDBC selects `payload, written_at` ordered by `seq` with `LIMIT ?`), then `EventAgentStories.replay`: validate and cap the limit, pass it to the store, and map each `Written` to `Narrated.story(type, id, StoryEvents.of(w.event()), w.event().seq(), w.at())`.
 - [ ] **Step 4: Run the tests, then add the starter's bean** over the context's `AgentEvents`, `@ConditionalOnMissingBean`, with a test that the bean is present with a backend and absent without one.
 - [ ] **Step 5: Docs.** A new section in `docs/guides/narration.md`, "Reading the story afterwards", with a `replay` example; CHANGELOG `### Added`: "`AgentStories` replays an agent's story: the stored events, as the `Narrated` a live listener hears, with each event's position."
 - [ ] **Step 6: Gate and commit.** Message `feat: an agent's story can be replayed`.
@@ -459,7 +459,7 @@ public interface StoryProjection<T> {
 ```
 
 - [ ] **Step 1: Write the failing tests:** a projection counting `TurnStarted` over a three-turn story returns 3; a projection over an empty story returns `initial()`; `a_projection_that_throws_surfaces_its_own_exception` (Review Focus 3: the thrown `IllegalStateException("boom")` reaches the caller, and a second `project` on the same story still works).
-- [ ] **Step 2: Implement `project`** as a fold over `streamWrittenFrom(type, id, Seq.NONE)`, closing the stream in `finally`.
+- [ ] **Step 2: Implement `project`** as a fold over the whole story, read a page at a time: `readWrittenFrom(type, id, after, 1_000)` starting from `Seq.NONE`, with `after` moved to the last event's `seq` after each page, until a page comes back shorter than 1,000. Nothing reads an unbounded result.
 - [ ] **Step 3: Reimplement `EventUsageReports` over the story.** It sums the `Usage` of `ActionsRequested`, `Answered`, `TurnRefused`, `TurnFailed` and `InferenceRetried`, by model, and counts each as one inference. **`EventUsageReportsTest` must pass with no edit**: that is the proof the totals are unchanged.
 - [ ] **Step 4: Run** `./mvnw -B -q -pl :nessy-engine -am test -Dtest='EventAgentStoriesTest,EventUsageReportsTest' -Dsurefire.failIfNoSpecifiedTests=false` (exit 0; `git diff --stat` shows no change to `EventUsageReportsTest.java`).
 - [ ] **Step 5: Docs** (a "Projections" paragraph with the turn-counting example) **, gate and commit.** Message `feat: a story can be projected, and usage reports are a projection`.
