@@ -138,14 +138,24 @@ class ApprovalResultTest {
 
     @Test
     void a_reason_longer_than_the_cap_is_truncated_to_it() {
-      String longReason = "r".repeat(5000);
+      String longReason = "S".repeat(600) + "E".repeat(600);
+      String expected = "S".repeat(499) + "..." + "E".repeat(498);
 
       ApprovalResult.Denied bare = (ApprovalResult.Denied) ApprovalResult.denied(longReason);
       ApprovalResult.Denied named =
           (ApprovalResult.Denied) ApprovalResult.deniedBy(longReason, "u_dave");
 
-      assertThat(bare.reason()).hasSizeLessThanOrEqualTo(CAP).startsWith("r").contains("...");
-      assertThat(named.reason()).hasSizeLessThanOrEqualTo(CAP).startsWith("r").contains("...");
+      assertThat(bare.reason()).isEqualTo(expected);
+      assertThat(named.reason()).isEqualTo(expected);
+    }
+
+    @Test
+    void a_reason_at_the_cap_is_kept_as_given() {
+      String atCap = "c".repeat(CAP);
+
+      ApprovalResult.Denied denied = (ApprovalResult.Denied) ApprovalResult.denied(atCap);
+
+      assertThat(denied.reason()).isEqualTo(atCap);
     }
 
     @Test
