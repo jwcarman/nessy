@@ -49,15 +49,18 @@ class StoryContentRecordsTest {
     @Test
     void without_a_key_is_refused() {
       List<Block.ToolResultContent> blocks = List.of();
+      Seq seq = new Seq(1);
 
-      assertThatThrownBy(() -> new CallResult(new Seq(1), null, blocks))
+      assertThatThrownBy(() -> new CallResult(seq, null, blocks))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("idempotencyKey must not be null");
     }
 
     @Test
     void without_blocks_is_refused() {
-      assertThatThrownBy(() -> new CallResult(new Seq(1), KEY, null))
+      Seq seq = new Seq(1);
+
+      assertThatThrownBy(() -> new CallResult(seq, KEY, null))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("blocks must not be null");
     }
@@ -87,7 +90,9 @@ class StoryContentRecordsTest {
 
     @Test
     void without_blocks_is_refused() {
-      assertThatThrownBy(() -> new RequestContent(new Seq(1), null))
+      Seq seq = new Seq(1);
+
+      assertThatThrownBy(() -> new RequestContent(seq, null))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("blocks must not be null");
     }
