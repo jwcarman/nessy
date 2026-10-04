@@ -70,7 +70,7 @@ public final class StoryEvents {
           new Narration.TurnFailed(
               failed.turn(), kindOf(failed.failure()), failed.failure().reason(), failed.usage());
       // Not a failed model call: a policy ended the turn, and no call was made.
-      case AgentEvent.TurnFailed stopped ->
+      case AgentEvent.TurnStopped stopped ->
           new Narration.TurnStopped(stopped.turn(), stopped.reason());
       case AgentEvent.Terminated _ -> new Narration.Terminated();
       // Said even though the caller knows: the caller is not the only watcher. A page on the

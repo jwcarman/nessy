@@ -210,10 +210,10 @@ class AgentStateTest {
       assertThat(decision.events())
           .extracting(event -> event.getClass().getSimpleName())
           .as("what happened, then the decision about it")
-          .containsExactly("ToolSucceeded", "TurnFailed");
+          .containsExactly("ToolSucceeded", "TurnStopped");
       assertThat(decision.events().getLast())
-          .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.TurnFailed.class))
-          .extracting(AgentEvent.TurnFailed::reason)
+          .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.TurnStopped.class))
+          .extracting(AgentEvent.TurnStopped::reason)
           .isEqualTo("that is enough");
       assertThat(awaiting.applyAll(decision.events()))
           .as("and what it decided can be replayed, which is how every later read gets there")

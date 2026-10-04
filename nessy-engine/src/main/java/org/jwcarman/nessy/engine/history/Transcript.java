@@ -114,7 +114,7 @@ public final class Transcript {
         // nothing came back, so there is no message in it to carry forward.
         case AgentEvent.ToolApproved _,
             AgentEvent.InferenceAttempted _,
-            AgentEvent.TurnFailed _,
+            AgentEvent.TurnStopped _,
             AgentEvent.Terminated _ -> {}
       }
     }
@@ -139,7 +139,7 @@ public final class Transcript {
             AgentEvent.InferenceRefused _,
             AgentEvent.InferenceFailed _,
             AgentEvent.InferenceAttempted _,
-            AgentEvent.TurnFailed _,
+            AgentEvent.TurnStopped _,
             AgentEvent.Terminated _ -> {
           // Nothing behind these but the words already in them.
         }

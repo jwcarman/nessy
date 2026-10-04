@@ -261,7 +261,7 @@ final class StoredContent implements StoryContent {
           case AgentEvent.InferenceRefused e -> before(e.turn());
           case AgentEvent.InferenceFailed e -> before(e.turn());
           case AgentEvent.InferenceAttempted e -> before(e.turn());
-          case AgentEvent.TurnFailed e -> before(e.turn());
+          case AgentEvent.TurnStopped e -> before(e.turn());
           case AgentEvent.ActionsRequested e -> before(e.turn());
           case AgentEvent.ToolApproved e -> before(e.turn());
           case AgentEvent.ToolDenied e -> before(e.turn());

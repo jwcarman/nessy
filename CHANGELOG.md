@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The JSON and SSE names of the turn endings changed.** `turn-ended` is gone; `turn-stopped` and
   `inference-retried` are new. A browser client that listened for `turn-ended` must listen for the
   four endings: `answered`, `turn-refused`, `turn-failed` and `turn-stopped`.
+- **The stored event for a turn a policy stopped is `turn-stopped`;** it was `turn-failed`. It is
+  `AgentEvent.TurnStopped`, no longer `AgentEvent.TurnFailed`. Recreate the database.
 - **`NarrationListenerConfig.on(Class, handler)` hears every member of a group.** Given a group
   type (`Narration.TurnEnding`, `Narration.Story`, `Narration.Live` or `Narration`), it now hears
   each event of that group, not only an event of exactly that class.

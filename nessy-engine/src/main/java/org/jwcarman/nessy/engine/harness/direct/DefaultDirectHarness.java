@@ -892,7 +892,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
           new Outcome.Refused<>(refused.category(), stats);
       case AgentEvent.InferenceFailed failed when failed.turn().equals(turn) ->
           new Outcome.Failed<>(failed.failure().reason(), stats);
-      case AgentEvent.TurnFailed ended when ended.turn().equals(turn) ->
+      case AgentEvent.TurnStopped ended when ended.turn().equals(turn) ->
           new Outcome.Failed<>(ended.reason(), stats);
       default -> null;
     };

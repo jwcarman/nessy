@@ -22,7 +22,7 @@ public sealed interface AgentEvent {
   record InferenceRefused(Seq seq, TurnId turn, String category, Usage usage) implements AgentEvent {}
   record InferenceFailed(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {}
   record InferenceAttempted(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {}
-  record TurnFailed(Seq seq, TurnId turn, String reason) implements AgentEvent {}
+  record TurnStopped(Seq seq, TurnId turn, String reason) implements AgentEvent {}
   record ActionsRequested(Seq seq, TurnId turn, PayloadRef request, List<ActionRequest> actions, Usage usage) implements AgentEvent {}
   record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> reference) implements AgentEvent {}
   record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> reference) implements AgentEvent {}
@@ -87,13 +87,13 @@ call nobody heard back from. A provider returns `Unknown` for a dropped
 connection, with whatever usage it reported; an attempt that threw is
 recorded as `Unknown` too, with its usage unreported.
 
-**`TurnFailed` is a turn ended by a policy** — see
+**`TurnStopped` is a turn ended by a policy** — see
 [Turn Policy](turn-policy.md) — rather than an inference that failed:
 `InferenceFailed` is for a call that was made and produced nothing,
-`TurnFailed` is for a turn a policy stopped without making a call at all.
+`TurnStopped` is for a turn a policy stopped without making a call at all.
 It carries **no `Usage`**, because deciding not to ask costs nothing — what
 the turn actually spent is already recorded on the events that spent it,
-and a `TurnFailed` with a field for a count would invite claiming a call
+and a `TurnStopped` with a field for a count would invite claiming a call
 happened that nothing measured.
 
 **This grammar is public backend SPI.** `AgentEvents` is typed on it, and a

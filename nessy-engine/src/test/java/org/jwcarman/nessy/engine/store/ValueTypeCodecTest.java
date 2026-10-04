@@ -199,6 +199,25 @@ class ValueTypeCodecTest {
   }
 
   @Test
+  void a_stored_policy_stop_is_written_as_turn_stopped() {
+    byte[] literal =
+        "{\"type\":\"turn-stopped\",\"seq\":3,\"turn\":1,\"reason\":\"too many calls\"}"
+            .getBytes(StandardCharsets.UTF_8);
+    AgentEvent.TurnStopped expected =
+        new AgentEvent.TurnStopped(new Seq(3), new TurnId(1), "too many calls");
+
+    AgentEvent read = entries.decode(literal);
+    String written = new String(entries.encode(expected), StandardCharsets.UTF_8);
+
+    assertThat(read).isEqualTo(expected);
+    assertThat(written)
+        .contains("\"type\":\"turn-stopped\"")
+        .contains("\"seq\":3")
+        .contains("\"turn\":1")
+        .contains("\"reason\":\"too many calls\"");
+  }
+
+  @Test
   void a_tool_succeeded_event_reads_back_with_its_rendered_line() {
     AgentEvent.ToolSucceeded written =
         new AgentEvent.ToolSucceeded(

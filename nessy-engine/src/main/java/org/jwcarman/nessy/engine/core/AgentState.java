@@ -182,7 +182,7 @@ public sealed interface AgentState {
         // that freed the last call is applied first, and it leaves this state behind. Without
         // this arm the decision and the replay disagree -- the live turn ends correctly and every
         // later read of the agent throws, which makes an ended turn an unusable agent.
-        case AgentEvent.TurnFailed ended -> new Idle(ended.seq());
+        case AgentEvent.TurnStopped ended -> new Idle(ended.seq());
         // Still asking. An attempt that failed and was tried again moves the story forward
         // without moving the turn: the call it belongs to has not settled, and the state this
         // rebuilds to must be the one the next event expects to find.
@@ -443,7 +443,7 @@ public sealed interface AgentState {
         // count. The discharge is written down first: it happened, whatever is decided after it.
         case TurnDecision.FailTurn(String reason) ->
             Decision.of(
-                List.of(event, new AgentEvent.TurnFailed(at.next(), turn, reason)), List.of());
+                List.of(event, new AgentEvent.TurnStopped(at.next(), turn, reason)), List.of());
       };
     }
   }

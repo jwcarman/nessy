@@ -130,7 +130,7 @@ class StoryEventsTest {
 
   @Test
   void a_turn_a_policy_stopped_is_not_a_failed_model_call() {
-    assertThat(StoryEvents.of(new AgentEvent.TurnFailed(SEQ, TURN, "too many calls")))
+    assertThat(StoryEvents.of(new AgentEvent.TurnStopped(SEQ, TURN, "too many calls")))
         .isEqualTo(new Narration.TurnStopped(TURN, "too many calls"));
   }
 
@@ -158,7 +158,7 @@ class StoryEventsTest {
         new AgentEvent.InferenceRefused(SEQ, TURN, "policy", usage),
         new AgentEvent.InferenceFailed(SEQ, TURN, new Failure.Permanent("x"), usage),
         new AgentEvent.InferenceAttempted(SEQ, TURN, new Failure.Transient("x"), usage),
-        new AgentEvent.TurnFailed(SEQ, TURN, "x"),
+        new AgentEvent.TurnStopped(SEQ, TURN, "x"),
         new AgentEvent.ActionsRequested(SEQ, TURN, PayloadRef.of("p"), List.of(), usage),
         new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty()),
         new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty()),
