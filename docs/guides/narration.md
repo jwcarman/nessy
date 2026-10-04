@@ -190,6 +190,31 @@ written at the same instant. Only story events are replayed; a live signal
 was never stored. In a Boot application an `AgentStories` bean is configured
 over the stored events of both doors.
 
+## Projections
+
+To fold the whole story into one value, give `AgentStory.project` a
+`StoryProjection`. It starts from `initial()` and calls `apply` once for each
+event, oldest first:
+
+```java
+StoryProjection<Integer> turns = new StoryProjection<>() {
+    public Integer initial() {
+        return 0;
+    }
+
+    public Integer apply(Integer soFar, Narrated story) {
+        return story.event() instanceof Narration.TurnStarted ? soFar + 1 : soFar;
+    }
+};
+
+int started = stories.of(new AgentType("reporter"), agentId).project(turns);
+```
+
+The story is read a page at a time, so a long story is never held whole. An
+exception the projection throws reaches the caller unchanged. A projection is
+given the story, not the content of what was said. `UsageReports` is a
+projection: it adds the `Usage` of every event that records a model call.
+
 ## Streams for a browser
 
 `nessy-narration-odyssey` is a listener that publishes every event to an

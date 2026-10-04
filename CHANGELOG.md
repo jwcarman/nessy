@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`AgentStory.project` folds an agent's story with a `StoryProjection`; `UsageReports` is one.**
 - **`AgentStories` replays an agent's story:** the stored events, as the `Narrated` a live
   listener hears, with each event's position. `AgentStories.of(type, id).replay(after, limit)`
   reads up to `limit` story events after a `Seq`, oldest first. A story store implements the new

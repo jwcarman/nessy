@@ -16,12 +16,15 @@
 package org.jwcarman.nessy.spring.boot;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentStories;
 import org.jwcarman.nessy.api.AgentStory;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.StoryProjection;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.engine.story.EventAgentStories;
 
@@ -42,13 +45,29 @@ final class FirstStoreHoldingStories implements AgentStories {
 
   @Override
   public AgentStory of(AgentType type, AgentId id) {
-    return (after, limit) -> {
-      for (AgentEvents store : stores) {
-        if (!store.readWrittenFrom(type, id, Seq.NONE, 1).isEmpty()) {
-          return new EventAgentStories(store).of(type, id).replay(after, limit);
-        }
+    return new AgentStory() {
+      @Override
+      public List<Narrated> replay(Seq after, int limit) {
+        return holding(type, id)
+            .map(store -> new EventAgentStories(store).of(type, id).replay(after, limit))
+            .orElseGet(List::of);
       }
-      return List.<Narrated>of();
+
+      @Override
+      public <T> T project(StoryProjection<T> projection) {
+        Objects.requireNonNull(projection, "projection must not be null");
+        Optional<AgentEvents> store = holding(type, id);
+        if (store.isEmpty()) {
+          return projection.initial();
+        }
+        return new EventAgentStories(store.get()).of(type, id).project(projection);
+      }
     };
+  }
+
+  private Optional<AgentEvents> holding(AgentType type, AgentId id) {
+    return stores.stream()
+        .filter(store -> !store.readWrittenFrom(type, id, Seq.NONE, 1).isEmpty())
+        .findFirst();
   }
 }

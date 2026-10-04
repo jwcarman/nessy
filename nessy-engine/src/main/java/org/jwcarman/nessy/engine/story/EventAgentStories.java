@@ -23,6 +23,7 @@ import org.jwcarman.nessy.api.AgentStory;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.StoryProjection;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.engine.narration.StoryEvents;
 
@@ -47,7 +48,41 @@ public final class EventAgentStories implements AgentStories {
   public AgentStory of(AgentType type, AgentId id) {
     Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(id, "id must not be null");
-    return (after, limit) -> replay(type, id, after, limit);
+    return new StoredStory(type, id);
+  }
+
+  private final class StoredStory implements AgentStory {
+
+    private final AgentType type;
+    private final AgentId id;
+
+    private StoredStory(AgentType type, AgentId id) {
+      this.type = type;
+      this.id = id;
+    }
+
+    @Override
+    public List<Narrated> replay(Seq after, int limit) {
+      return EventAgentStories.this.replay(type, id, after, limit);
+    }
+
+    @Override
+    public <T> T project(StoryProjection<T> projection) {
+      Objects.requireNonNull(projection, "projection must not be null");
+      T value = projection.initial();
+      Seq after = Seq.NONE;
+      List<Narrated> page;
+      do {
+        page = replay(after, MAXIMUM_LIMIT);
+        for (Narrated story : page) {
+          value = projection.apply(value, story);
+        }
+        if (!page.isEmpty()) {
+          after = page.getLast().position().orElseThrow().seq();
+        }
+      } while (page.size() == MAXIMUM_LIMIT);
+      return value;
+    }
   }
 
   private List<Narrated> replay(AgentType type, AgentId id, Seq after, int limit) {

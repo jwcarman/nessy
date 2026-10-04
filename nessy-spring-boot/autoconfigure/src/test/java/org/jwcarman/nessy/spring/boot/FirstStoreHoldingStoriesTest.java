@@ -26,8 +26,10 @@ import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Narrated;
+import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.StoryProjection;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
@@ -74,5 +76,35 @@ class FirstStoreHoldingStoriesTest {
     FirstStoreHoldingStories stories = new FirstStoreHoldingStories(List.of(first, second));
 
     assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 10)).isEmpty();
+  }
+
+  private static final StoryProjection<Integer> TURNS_STARTED =
+      new StoryProjection<>() {
+        @Override
+        public Integer initial() {
+          return -1;
+        }
+
+        @Override
+        public Integer apply(Integer soFar, Narrated story) {
+          int base = soFar < 0 ? 0 : soFar;
+          return story.event() instanceof Narration.TurnStarted ? base + 1 : base;
+        }
+      };
+
+  @Test
+  void a_projection_folds_the_story_of_the_store_that_holds_it() {
+    first.append(TYPE, agent, List.of(started(1), started(2)), Seq.NONE, AT);
+    second.append(TYPE, agent, List.of(started(1), started(2), started(3)), Seq.NONE, AT);
+    FirstStoreHoldingStories stories = new FirstStoreHoldingStories(List.of(first, second));
+
+    assertThat(stories.of(TYPE, agent).project(TURNS_STARTED)).isEqualTo(2);
+  }
+
+  @Test
+  void a_projection_over_an_agent_no_store_holds_is_its_initial_value() {
+    FirstStoreHoldingStories stories = new FirstStoreHoldingStories(List.of(first, second));
+
+    assertThat(stories.of(TYPE, agent).project(TURNS_STARTED)).isEqualTo(-1);
   }
 }

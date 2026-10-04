@@ -32,4 +32,16 @@ public interface AgentStory {
    * @throws IllegalArgumentException if {@code limit} is not positive
    */
   List<Narrated> replay(Seq after, int limit);
+
+  /**
+   * Folds the whole story, oldest first, into one value.
+   *
+   * <p>The story is read a page at a time, so nothing holds all of it at once. An exception the
+   * projection throws reaches the caller unchanged.
+   *
+   * @param projection how to fold the story
+   * @return the projection's {@link StoryProjection#initial()} when the story is empty
+   * @throws NullPointerException if {@code projection} is null
+   */
+  <T> T project(StoryProjection<T> projection);
 }

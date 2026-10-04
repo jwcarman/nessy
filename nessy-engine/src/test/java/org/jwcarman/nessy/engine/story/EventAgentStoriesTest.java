@@ -32,8 +32,10 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentStory;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Narrated;
+import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.StoryProjection;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.backend.DirectBackend;
@@ -171,6 +173,111 @@ class EventAgentStoriesTest {
 
       assertThat(heard).isNotEmpty();
       assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
+    }
+  }
+
+  /** Counts the turns a story starts. */
+  private static final StoryProjection<Integer> TURNS_STARTED =
+      new StoryProjection<>() {
+        @Override
+        public Integer initial() {
+          return 0;
+        }
+
+        @Override
+        public Integer apply(Integer soFar, Narrated story) {
+          return story.event() instanceof Narration.TurnStarted ? soFar + 1 : soFar;
+        }
+      };
+
+  /** Collects the position of every event it is given, in the order it is given them. */
+  private static final StoryProjection<List<Seq>> POSITIONS =
+      new StoryProjection<>() {
+        @Override
+        public List<Seq> initial() {
+          return new ArrayList<>();
+        }
+
+        @Override
+        public List<Seq> apply(List<Seq> soFar, Narrated story) {
+          soFar.add(story.position().orElseThrow().seq());
+          return soFar;
+        }
+      };
+
+  @Nested
+  class A_projection {
+
+    @Test
+    void counts_the_turns_of_a_three_turn_story() {
+      events.append(TYPE, agent, List.of(started(1), answered(2, 1)), Seq.NONE, AT);
+      events.append(TYPE, agent, List.of(started(3), answered(4, 3)), new Seq(2), AT);
+      events.append(TYPE, agent, List.of(started(5)), new Seq(4), AT);
+
+      assertThat(stories.of(TYPE, agent).project(TURNS_STARTED)).isEqualTo(3);
+    }
+
+    @Test
+    void over_an_empty_story_is_its_initial_value() {
+      assertThat(stories.of(TYPE, agent).project(TURNS_STARTED)).isZero();
+    }
+
+    @Test
+    void folds_every_event_of_a_story_longer_than_a_page_once_and_in_order() {
+      List<AgentEvent> many = new ArrayList<>();
+      for (long seq = 1; seq <= 2_500; seq++) {
+        many.add(started(seq));
+      }
+      events.append(TYPE, agent, many, Seq.NONE, AT);
+
+      List<Seq> folded = stories.of(TYPE, agent).project(POSITIONS);
+
+      assertThat(folded).hasSize(2_500);
+      for (int i = 0; i < folded.size(); i++) {
+        assertThat(folded.get(i)).isEqualTo(new Seq(i + 1L));
+      }
+    }
+
+    @Test
+    void folds_a_story_of_exactly_a_page_without_missing_or_repeating_an_event() {
+      List<AgentEvent> many = new ArrayList<>();
+      for (long seq = 1; seq <= 1_000; seq++) {
+        many.add(started(seq));
+      }
+      events.append(TYPE, agent, many, Seq.NONE, AT);
+
+      assertThat(stories.of(TYPE, agent).project(TURNS_STARTED)).isEqualTo(1_000);
+    }
+
+    @Test
+    void a_projection_that_throws_surfaces_its_own_exception() {
+      threeEvents();
+      IllegalStateException boom = new IllegalStateException("boom");
+      StoryProjection<Integer> throwing =
+          new StoryProjection<>() {
+            @Override
+            public Integer initial() {
+              return 0;
+            }
+
+            @Override
+            public Integer apply(Integer soFar, Narrated story) {
+              throw boom;
+            }
+          };
+      AgentStory story = stories.of(TYPE, agent);
+
+      assertThatThrownBy(() -> story.project(throwing)).isSameAs(boom);
+      assertThat(story.project(TURNS_STARTED)).isEqualTo(2);
+    }
+
+    @Test
+    void a_missing_projection_is_refused() {
+      AgentStory story = stories.of(TYPE, agent);
+
+      assertThatThrownBy(() -> story.project(null))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessage("projection must not be null");
     }
   }
 
