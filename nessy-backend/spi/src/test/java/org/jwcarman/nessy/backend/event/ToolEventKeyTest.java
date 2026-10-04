@@ -18,6 +18,7 @@ package org.jwcarman.nessy.backend.event;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class ToolEventKeyTest {
@@ -64,5 +66,14 @@ class ToolEventKeyTest {
             () -> new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", null))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("idempotencyKey must not be null");
+  }
+
+  @Test
+  void a_failure_refuses_a_null_kind() {
+    IdempotencyKey key = IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
+
+    assertThatThrownBy(() -> new AgentEvent.ToolFailed(SEQ, TURN, CALL, null, "boom", key))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("kind must not be null");
   }
 }

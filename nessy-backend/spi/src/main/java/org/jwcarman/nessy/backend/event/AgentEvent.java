@@ -248,7 +248,10 @@ public sealed interface AgentEvent {
   }
 
   /**
-   * A call ran and did not produce content.
+   * A call did not produce content, and {@code kind} says why: the tool ran and failed or could not
+   * be run ({@code FAILED}), the call did not finish before its deadline and whether it ran is not
+   * known ({@code PAST_DEADLINE}), or permission was never given ({@code NOT_AUTHORISED}, in which
+   * case the call never ran). Nobody refused it; a refusal is {@link ToolDenied}.
    *
    * <p>Carries a sentence rather than a {@link Failure}, which is the opposite of {@link
    * InferenceFailed} and deliberately so: a failed tool call is the <em>model's</em> problem, it is

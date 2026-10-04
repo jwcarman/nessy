@@ -86,6 +86,13 @@ class ToolFailedOutcomeTest {
     }
 
     @Test
+    void refuses_a_null_kind() {
+      assertThatThrownBy(() -> new EffectOutcome.ToolFailed(CALL, null, "gone"))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessage("kind must not be null");
+    }
+
+    @Test
     void refuses_a_null_call_id() {
       assertThatThrownBy(() -> new EffectOutcome.ToolFailed(null, CallFailure.FAILED, "gone"))
           .isInstanceOf(NullPointerException.class)
