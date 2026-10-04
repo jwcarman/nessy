@@ -221,6 +221,62 @@ class ValueTypeCodecTest {
   }
 
   @Test
+  void anApprovalDeferralIsStoredWithItsDeadlineItsQuestionAndItsKey() {
+    byte[] literal =
+        ("{\"type\":\"approval-deferred\",\"seq\":4,\"turn\":1,\"callId\":\"c1\","
+                + "\"until\":\"2026-10-05T09:30:00Z\",\"question\":\"b81e0c47\","
+                + "\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"}")
+            .getBytes(StandardCharsets.UTF_8);
+    AgentEvent.ApprovalDeferred expected =
+        new AgentEvent.ApprovalDeferred(
+            new Seq(4),
+            new TurnId(1),
+            new CallId("c1"),
+            Instant.parse("2026-10-05T09:30:00Z"),
+            PayloadRef.of("b81e0c47"),
+            KEY);
+
+    AgentEvent read = entries.decode(literal);
+    String written = new String(entries.encode(expected), StandardCharsets.UTF_8);
+
+    assertThat(read).isEqualTo(expected);
+    assertThat(written)
+        .contains("\"type\":\"approval-deferred\"")
+        .contains("\"callId\":\"c1\"")
+        .contains("\"until\":\"2026-10-05T09:30:00Z\"")
+        .contains("\"question\":\"b81e0c47\"")
+        .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"")
+        .doesNotContain("\"value\"");
+  }
+
+  @Test
+  void aToolDeferralIsStoredWithItsDeadlineAndItsKey() {
+    byte[] literal =
+        ("{\"type\":\"tool-deferred\",\"seq\":4,\"turn\":1,\"callId\":\"c1\","
+                + "\"until\":\"2026-10-05T09:30:00Z\","
+                + "\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"}")
+            .getBytes(StandardCharsets.UTF_8);
+    AgentEvent.ToolDeferred expected =
+        new AgentEvent.ToolDeferred(
+            new Seq(4),
+            new TurnId(1),
+            new CallId("c1"),
+            Instant.parse("2026-10-05T09:30:00Z"),
+            KEY);
+
+    AgentEvent read = entries.decode(literal);
+    String written = new String(entries.encode(expected), StandardCharsets.UTF_8);
+
+    assertThat(read).isEqualTo(expected);
+    assertThat(written)
+        .contains("\"type\":\"tool-deferred\"")
+        .contains("\"callId\":\"c1\"")
+        .contains("\"until\":\"2026-10-05T09:30:00Z\"")
+        .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"")
+        .doesNotContain("\"value\"");
+  }
+
+  @Test
   void a_tool_succeeded_event_reads_back_with_its_rendered_line() {
     AgentEvent.ToolSucceeded written =
         new AgentEvent.ToolSucceeded(

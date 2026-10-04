@@ -217,58 +217,6 @@ class NarrationTest {
   }
 
   /**
-   * The arm that pays for the whole channel.
-   *
-   * <p>"Awaiting a human" is the state an operator most wants to see, and the fold deliberately
-   * never learns it -- a tool that takes three days and one that takes 200ms are the same thing to
-   * the state machine. So this is the only place it exists, and if it is not announced here it is
-   * not anywhere.
-   */
-  @Test
-  void aQuestionWaitingOnAPersonIsTheOneThingOnlyNarrationCanSay() {
-    AgentType type = new AgentType("narrated-deferred");
-    AgentId agentId = new AgentId(UUID.randomUUID());
-
-    QueuedHarness<String> harness =
-        engine
-            .harnesses()
-            .create(
-                type,
-                String.class,
-                config ->
-                    config
-                        .systemPrompt("You are a test assistant.")
-                        .tool(
-                            lookup(),
-                            t ->
-                                t.action(query -> "look up " + query.q())
-                                    .approver(
-                                        _ -> Awaited.deferred(),
-                                        a -> a.timeout(Duration.ofMinutes(30))))
-                        .inference(in -> in.model("a-model"))
-                        .effects(e -> e.pollInterval(Duration.ofMillis(50))));
-
-    harness.tell(agentId, "how deep is Loch Ness?");
-    await()
-        .atMost(Duration.ofSeconds(20))
-        .untilAsserted(() -> assertThat(of(Narration.ApprovalDeferred.class)).isNotEmpty());
-
-    assertThat(of(Narration.ApprovalDeferred.class))
-        .singleElement()
-        .satisfies(
-            waiting -> {
-              assertThat(waiting.callId()).isEqualTo(new CallId("call_1"));
-              assertThat(waiting.action())
-                  .as("what a person is being asked, not which call id is outstanding")
-                  .isEqualTo("look up loch ness");
-              assertThat(waiting.until()).isNotNull();
-            });
-    assertThat(agentStateOf(type, agentId))
-        .as("and the state says only that a call is outstanding, as designed")
-        .isEqualTo("AwaitingActions");
-  }
-
-  /**
    * A watcher must never be able to fail a turn.
    *
    * <p>Narration is best-effort by contract, and this is what that contract is worth: a sink that

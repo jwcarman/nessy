@@ -22,8 +22,6 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CallFailure;
-import org.jwcarman.nessy.api.Narrated;
-import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -174,11 +172,6 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
                         Objects.requireNonNullElse(message, "the tool failed and gave no message"));
               });
       case Awaited.Deferred<ToolResult> _ -> {
-        // Same reason as a deferred approval: the fold does not learn that anything is
-        // waiting, so this is the only place a watcher can.
-        narrator.narrate(
-            Narrated.live(
-                agentType, agentId, new Narration.CallDeferred(callId, binding.name(), until)));
         yield new Awaited.Deferred<>();
       }
     };

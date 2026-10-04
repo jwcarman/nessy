@@ -119,9 +119,10 @@ has parked the call. The row stays running, its `actionable_at` set to the bindi
 timeout, and the agent moves on to whatever else its turn is waiting for.
 Nothing holds a thread. The fold deliberately cannot tell a tool that takes
 three days from one that takes 200 milliseconds and should not learn; the
-one place "awaiting a person" appears is narration, as `ApprovalDeferred`
-or `CallDeferred` with the moment the question expires. See
-[Narration](../guides/narration.md).
+one place "awaiting a person" can appear is the story, as the events
+`ApprovalDeferred` and `ToolDeferred` with the moment the question expires,
+told as the narrations `ApprovalDeferred` and `CallDeferred`. See
+[Events](events.md) and [Narration](../guides/narration.md).
 
 If the term passes with no answer, the stored failure reaches the agent and
 the turn carries on with a failed call. Whether a timeout should be a

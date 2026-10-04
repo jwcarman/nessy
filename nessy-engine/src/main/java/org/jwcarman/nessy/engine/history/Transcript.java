@@ -112,7 +112,11 @@ public final class Transcript {
         // is the first one. Showing it would invite it to apologise for the engine's weather.
         // A turn ended by a policy likewise shows the model nothing: no call was made and
         // nothing came back, so there is no message in it to carry forward.
+        // A deferral is a call put aside: the model is shown nothing of it, and the call's
+        // outcome, when it comes, is what the model reads.
         case AgentEvent.ToolApproved _,
+            AgentEvent.ApprovalDeferred _,
+            AgentEvent.ToolDeferred _,
             AgentEvent.InferenceAttempted _,
             AgentEvent.TurnStopped _,
             AgentEvent.Terminated _ -> {}
@@ -136,12 +140,15 @@ public final class Transcript {
         case AgentEvent.ToolFailed _,
             AgentEvent.ToolDenied _,
             AgentEvent.ToolApproved _,
+            AgentEvent.ApprovalDeferred _,
+            AgentEvent.ToolDeferred _,
             AgentEvent.InferenceRefused _,
             AgentEvent.InferenceFailed _,
             AgentEvent.InferenceAttempted _,
             AgentEvent.TurnStopped _,
             AgentEvent.Terminated _ -> {
-          // Nothing behind these but the words already in them.
+          // Nothing behind these but the words already in them. An approval deferral's question
+          // is a JSON document, not message content, so a batch read of blocks must not fetch it.
         }
       }
     }

@@ -73,8 +73,8 @@ class OdysseyNarratorTest {
           new Narration.CallFailed(new CallId("c"), KEY, CallFailure.FAILED, "m"),
           new Narration.Terminated(),
           new Narration.ApprovalSought(new CallId("c"), "a"),
-          new Narration.ApprovalDeferred(new CallId("c"), "a", Instant.EPOCH),
-          new Narration.CallDeferred(new CallId("c"), new ToolName("t"), Instant.EPOCH),
+          new Narration.ApprovalDeferred(new CallId("c"), KEY, Instant.EPOCH),
+          new Narration.CallDeferred(new CallId("c"), KEY, Instant.EPOCH),
           new Narration.ThinkingDelta("x"),
           new Narration.ContentDelta("x"));
 

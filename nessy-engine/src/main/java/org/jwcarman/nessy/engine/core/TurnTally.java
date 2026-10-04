@@ -60,6 +60,8 @@ public final class TurnTally {
           AgentEvent.ToolDenied _,
           AgentEvent.ToolSucceeded _,
           AgentEvent.ToolFailed _,
+          AgentEvent.ApprovalDeferred _,
+          AgentEvent.ToolDeferred _,
           AgentEvent.Terminated _ ->
           stats;
     };
@@ -107,6 +109,8 @@ public final class TurnTally {
       case AgentEvent.ToolSucceeded succeeded -> succeeded.turn().equals(turn);
       case AgentEvent.ToolFailed failed -> failed.turn().equals(turn);
       case AgentEvent.TurnStopped ended -> ended.turn().equals(turn);
+      case AgentEvent.ApprovalDeferred deferred -> deferred.turn().equals(turn);
+      case AgentEvent.ToolDeferred deferred -> deferred.turn().equals(turn);
       // Between turns, belonging to the agent's life rather than to any one of them.
       case AgentEvent.Terminated _ -> false;
     };

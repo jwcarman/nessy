@@ -422,6 +422,43 @@ class StoryContentTest {
     }
 
     @Test
+    void after_a_position_inside_a_turn_that_holds_a_deferral_start_at_that_turn() {
+      scriptedTurn();
+      IdempotencyKey later = IdempotencyKey.of(UUID.randomUUID());
+      write(
+          started(keep(new Block.Text("again"))),
+          requested(7, 6, keep(toolCall("a")), call("a", later)),
+          new AgentEvent.ToolDeferred(new Seq(8), new TurnId(6), CallId.of("a"), AT, later),
+          succeeded(9, 6, "a", later, keep(new Block.Text("43"))));
+
+      List<CallResult> results = content.results(new Seq(8), 10);
+
+      assertThat(results).extracting(CallResult::seq).containsExactly(new Seq(9));
+      assertThat(results).extracting(CallResult::idempotencyKey).containsExactly(later);
+    }
+
+    @Test
+    void after_a_position_at_an_approval_deferral_start_at_that_turn() {
+      IdempotencyKey key = IdempotencyKey.of(UUID.randomUUID());
+      write(
+          started(keep(new Block.Text("go"))),
+          requested(2, 1, keep(toolCall("a")), call("a", key)),
+          new AgentEvent.ApprovalDeferred(
+              new Seq(3),
+              new TurnId(1),
+              CallId.of("a"),
+              AT,
+              payloads.forAgent(agent).putDocument(JsonMapper.builder().build().createObjectNode()),
+              key),
+          succeeded(4, 1, "a", key, keep(new Block.Text("42"))));
+
+      List<CallResult> results = content.results(new Seq(3), 10);
+
+      assertThat(results)
+          .containsExactly(new CallResult(new Seq(4), key, List.of(new Block.Text("42"))));
+    }
+
+    @Test
     void after_a_position_that_is_past_the_end_are_empty() {
       scriptedTurn();
 

@@ -81,7 +81,7 @@ being serialised back.
 
 **`deadline` is the instant the question is held to.** It is the deadline the effect was written
 with, not a time worked out when the approver is asked: a question that waited in the queue shows
-the same instant the call is given up on, and so does the live `ApprovalDeferred` event.
+the same instant the call is given up on.
 
 **`arguments` is for deciding. `action` is for showing.** A policy reads
 the arguments to decide. A page shows `action()`, the sentence the binding's

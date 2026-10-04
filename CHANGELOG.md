@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no longer `TurnFailed`. `Answered`, `TurnRefused`, `TurnFailed` and `ActionsRequested` carry
   their turn and the model call's `Usage`; `TurnFailed` carries a `FailureKind`; each requested
   call carries its `IdempotencyKey`. A retried model call is told as `InferenceRetried`.
+- **A deferral is a stored event and a story event.** `AgentEvent` gains `ApprovalDeferred(seq,
+  turn, callId, until, question, idempotencyKey)` and `ToolDeferred(seq, turn, callId, until,
+  idempotencyKey)`, stored as `approval-deferred` and `tool-deferred`; recreate the database. The
+  narrations `ApprovalDeferred` and `CallDeferred` are now `Story` events, not `Live`, and change
+  shape to `(callId, idempotencyKey, until)`: `action` and `toolName` are gone, and a watcher joins
+  by key to the `ActionsRequested.Call` that has them. The engine no longer narrates a deferral
+  live.
 - **Every call event carries the call's `IdempotencyKey`.** `ToolApproved`, `ToolDenied`,
   `ToolSucceeded` and `ToolFailed` gain a trailing `idempotencyKey`, the key the call was
   requested with; the stored shape changes, so recreate the database. The four narration records
@@ -98,10 +105,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **The deadline an approver and a tool are shown is the deadline the call is held to.** The
-  `deadline` on an `ApprovalRequest`, the `deadline` on a `ToolCallRequest`, and the `until` of the
-  live `ApprovalDeferred` and `CallDeferred` were worked out again when the call was handled, so a
-  call that waited in the queue showed a later instant than the one it was given up on. They are now
-  the effect's own deadline.
+  `deadline` on an `ApprovalRequest` and the `deadline` on a `ToolCallRequest` were worked out
+  again when the call was handled, so a call that waited in the queue showed a later instant than
+  the one it was given up on. They are now the effect's own deadline.
 - **On the direct door, an inference that times out gives `ask`'s caller a plainer reason.** The
   reason is now "the inference did not complete before its deadline; whether it ran is not known",
   in place of "no answer within PT...". The duration is in the WARN log.

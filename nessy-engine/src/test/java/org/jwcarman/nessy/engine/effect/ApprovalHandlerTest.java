@@ -22,7 +22,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -32,8 +31,6 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.JsonSchema;
-import org.jwcarman.nessy.api.Narrated;
-import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
@@ -259,20 +256,12 @@ class ApprovalHandlerTest {
   }
 
   @Test
-  void a_deferred_approval_is_narrated_as_standing_until_the_deadline_it_was_written_with() {
-    List<Narrated> heard = new ArrayList<>();
-    ApprovalHandler handler = handler(bound(_ -> new Awaited.Deferred<>()), story(), heard::add);
+  void an_approver_that_defers_leaves_the_call_deferred() {
+    ApprovalHandler handler = handler(bound(_ -> new Awaited.Deferred<>()), story());
 
-    asked(handler, WRITTEN_DEADLINE);
+    Awaited<EffectOutcome> awaited = asked(handler, WRITTEN_DEADLINE);
 
-    List<Narration.ApprovalDeferred> deferrals =
-        heard.stream()
-            .map(Narrated::event)
-            .filter(Narration.ApprovalDeferred.class::isInstance)
-            .map(Narration.ApprovalDeferred.class::cast)
-            .toList();
-    assertThat(deferrals).hasSize(1);
-    assertThat(deferrals.getFirst().until()).isEqualTo(WRITTEN_DEADLINE);
+    assertThat(awaited).isInstanceOf(Awaited.Deferred.class);
   }
 
   // ---- the question ----------------------------------------------------------------------

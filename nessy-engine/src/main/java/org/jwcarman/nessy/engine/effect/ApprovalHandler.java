@@ -210,12 +210,6 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
             agentId.value(),
             question.action(),
             question.deadline());
-        // The one thing the fold deliberately never learns, said to whoever is watching.
-        narrator.narrate(
-            Narrated.live(
-                agentType,
-                agentId,
-                new Narration.ApprovalDeferred(callId, question.action(), question.deadline())));
         yield new Awaited.Deferred<>();
       }
     };

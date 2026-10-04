@@ -44,9 +44,9 @@ class NarrationCoverageTest {
   /**
    * Said by the engine, after a fold has committed, and therefore true when it is said.
    *
-   * <p>Each one is asserted somewhere: a turn end to end in {@code NarrationTest}, the denials and
-   * deferrals in {@code ToolCallingTest} and {@code DeferredApprovalTest}, ending in {@code
-   * TerminationAndConfigurationTest}.
+   * <p>Each one is asserted somewhere: a turn end to end in {@code NarrationTest}, the denials in
+   * {@code ToolCallingTest}, ending in {@code TerminationAndConfigurationTest}. The two deferrals
+   * are told from the stored events that record them, as {@code StoryEventsTest} pins.
    */
   private static final Set<String> SAID_BY_THE_ENGINE =
       Set.of(

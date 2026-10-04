@@ -61,6 +61,12 @@ public final class StoryEvents {
               denied.callId(), denied.idempotencyKey(), denied.reason(), denied.decidedBy());
       case AgentEvent.ToolSucceeded done ->
           new Narration.CallFinished(done.callId(), done.idempotencyKey());
+      case AgentEvent.ApprovalDeferred deferred ->
+          new Narration.ApprovalDeferred(
+              deferred.callId(), deferred.idempotencyKey(), deferred.until());
+      case AgentEvent.ToolDeferred deferred ->
+          new Narration.CallDeferred(
+              deferred.callId(), deferred.idempotencyKey(), deferred.until());
       case AgentEvent.ToolFailed failed ->
           new Narration.CallFailed(
               failed.callId(), failed.idempotencyKey(), failed.kind(), failed.message());
