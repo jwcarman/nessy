@@ -18,6 +18,7 @@ package org.jwcarman.nessy.spring.boot;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentStories;
 import org.jwcarman.nessy.api.AgentStory;
@@ -123,6 +124,12 @@ final class FirstStoreHoldingStories implements AgentStories {
     public List<CallResult> results(Seq after, int limit) {
       requireReadable(after, limit);
       return List.of();
+    }
+
+    @Override
+    public Stream<CallResult> allResults(Seq after) {
+      Objects.requireNonNull(after, "after must not be null");
+      return Stream.empty();
     }
   }
 }

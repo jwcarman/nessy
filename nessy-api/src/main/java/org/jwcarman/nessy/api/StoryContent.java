@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 
@@ -68,4 +69,16 @@ public interface StoryContent {
    * @throws IllegalStateException if content a result refers to is no longer stored
    */
   List<CallResult> results(Seq after, int limit);
+
+  /**
+   * Every successful call's result after {@code after}, oldest first, read a page at a time as the
+   * stream is consumed. It holds nothing open, so it need not be closed; a short-circuiting
+   * operation such as {@code anyMatch} stops the reading.
+   *
+   * @param after the position to read after; {@link Seq#NONE} reads from the start
+   * @throws NullPointerException if {@code after} is null
+   * @throws IllegalStateException if content a result refers to is no longer stored, found when the
+   *     page holding it is read
+   */
+  Stream<CallResult> allResults(Seq after);
 }
