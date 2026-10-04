@@ -277,14 +277,16 @@ That is the behaviour today, and this record makes it a stated guarantee with a 
 makes no model call, so the direct door's rule against running inside a transaction does not
 apply. The dispatcher is nudged after the commit, as it is after `tell`.
 
-### 6e. A tool can see who let it run
+### 6e. A tool and its approval share the key
 
-`ToolCallRequest` gains `Optional<String> decidedBy()`: what the approval of this call recorded.
-`ToolCallHandler` already reads the call out of the story to run it; it reads the call's
-`ToolApproved` event as well. The fold is not involved. The question the approval was decided on is
-read through the content read, by `request.idempotencyKey()`.
+nessy-ap's F1 is "a tool cannot see its own approval". What its tool reads is the application's
+own record of the decision, and what it lacked was a sure way to find that record. The
+`IdempotencyKey` is that way: the `ApprovalRequest` and the `ToolCallRequest` of one call carry
+the same key, so a record the approver keyed by it is one the tool can read by it.
 
-This is nessy-ap's F1.
+Nothing is added to `ToolCallRequest`. Who approved a call is in the story, on `CallApproved`. A
+tool that must act as the approver is a different question, with a typed principal behind it,
+and is not answered here.
 
 ## 7. What the applications lose
 
@@ -332,8 +334,6 @@ Both get the high-risk review on Opus.
 - **The transaction.** An answer inside a caller's transaction that rolls back leaves the call
   waiting and the story unchanged; one that commits settles it with the caller's own writes.
 - **The call index** holds one row for each requested call and agrees with its event.
-- **`decidedBy()`** reaches the tool for an approval made at once and for one made after a
-  deferral.
 - **The examples** run with no approvals table of their own.
 
 ## 10. New public concepts
@@ -353,7 +353,6 @@ Proposed by this record, awaiting sign-off:
 - `InFlight`, `InFlight.Kind`, `InFlightQuery`
 - `Replies.approve(IdempotencyKey, ...)` and `complete(IdempotencyKey, ...)`
 - `ReplyOutcome.AlreadySettled`, `Expired`, `Unknown`, replacing `NotAwaiting`
-- `ToolCallRequest.decidedBy()`
 - the `nessy_agent_call` table; `kind` and `idempotency_key` on `nessy_agent_effect`
 
 ## 11. Resolutions this record made
@@ -375,9 +374,7 @@ Each is a decision the conversation did not reach. Each is asked, not assumed.
    an answer was late, and nothing anywhere else.
 6. **The listing carries no content.** The action line and the question may hold business data
    and stay behind the storage codec; an application reads them by key.
-7. **`decidedBy()` on `ToolCallRequest`** is read by the handler from the story, so the fold
-   does not have to carry it to the tool.
-8. **The effect table's own rule against a type column is amended** (§3b).
+7. **The effect table's own rule against a type column is amended** (§3b).
 
 ## 12. What this record leaves
 
