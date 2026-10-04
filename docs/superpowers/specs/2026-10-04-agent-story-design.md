@@ -1,9 +1,9 @@
 # The agent's story: narration that can be replayed
 
-**Status: DESIGN, NOTHING BUILT. The shape was settled in conversation with James on 2026-10-04
-and this record writes it down. Names James approved in that conversation are marked "approved"
-in §12; every other new public name is a proposal and awaits sign-off on this record. The
-resolutions this record had to make on its own are in §13, asked rather than assumed.**
+**Status: APPROVED by James on 2026-10-04, NOTHING BUILT. The shape was settled in conversation
+with him that day and this record writes it down. He approved it as a whole, the names in §12 and
+the resolutions in §13 included, with two changes that are folded in: the request manifest is
+stored but is not public (§8b), and `TurnStarted` carries when its input arrived (§6e).**
 
 Date: 2026-10-04. First of three records:
 
@@ -81,7 +81,7 @@ public sealed interface Narration {
   }
 
   // ---- Story: the turn ------------------------------------------------------------------
-  record TurnStarted(TurnId turn, String label) implements Story {}
+  record TurnStarted(TurnId turn, String label, Instant arrivedAt) implements Story {}
   record TurnStopped(TurnId turn, String reason) implements TurnEnding {}   // a policy ended it
   record Terminated() implements Story {}
 
@@ -138,6 +138,7 @@ What changes from today, and why:
 | `CallFailure` on `CallFailed` | "timed out waiting for a person" becomes a count, not a text match |
 | `ApprovalDeferred`, `CallDeferred` move from live to story | the record says a call was handed off when it was handed off, not only once it ends (§7) |
 | `TurnStarted.label` | says what started the turn without its content (§6e) |
+| `TurnStarted.arrivedAt` | when the input arrived; with the event's own time it gives how long the input waited (§6e) |
 
 `CallFailure` says which of three things happened: `FAILED`, the tool ran and failed, or could
 not be run at all; `PAST_DEADLINE`, the call did not finish before its deadline, and whether it
@@ -205,7 +206,7 @@ All of this changes stored shapes. Existing databases are recreated; there is no
 
 | Stored event | Change |
 |---|---|
-| `TurnStarted` | gains `String label` |
+| `TurnStarted` | gains `String label` and `Instant arrivedAt` |
 | `InferenceAnswered` | gains `boolean truncated` and `RequestManifest request` |
 | `InferenceRefused`, `InferenceFailed`, `InferenceAttempted`, `ActionsRequested` | gain `RequestManifest request` |
 | `ToolApproved` | `reference` is replaced by `Optional<String> decidedBy`; gains `Optional<PayloadRef> question` |
@@ -267,6 +268,10 @@ agent whose input type is `String` reads `"String"` until it configures somethin
 A turn takes exactly one input: the queued door's `backlog.take()` returns one item, and
 coalescing happens earlier, between backlog items. So there is one label per turn, and it is
 computed when the turn starts, from the item actually taken.
+
+`TurnStarted.arrivedAt` is that item's `BacklogItem.arrivedAt`, which the backlog already keeps.
+The time between it and the event's own `at` is how long the input waited for its turn. On the
+direct door, which has no backlog, it is the instant `ask` was called.
 
 ### 6f. Deadlines that are shown are the deadlines that are kept
 
@@ -354,6 +359,12 @@ changes is that what was sent is now **recorded**, by section.
 
 Every stored model-call event carries a `RequestManifest`: what the request was made of, each
 part named by reference and none copied.
+
+**The manifest is stored, and it is not public.** It sits beside `AgentEvent` in the backend SPI,
+and nothing in `nessy-api` reads it. It shows how context is assembled (strata, chapters, content
+hashes), and making it public would make that structure a contract while the context design is
+still moving. Recording it from the start means that a later record can open it, and every call
+made since will have one.
 
 ```java
 public record RequestManifest(
@@ -474,11 +485,6 @@ public interface StoryContent {
   /** The question the call's approval was decided on, or is waiting on. */
   Optional<JsonNode> question(IdempotencyKey key);
 
-  /** What the model call recorded at {@code seq} was made of. */
-  Optional<RequestManifest> request(Seq seq);
-
-  List<Block> blocks(PayloadRef ref);
-  JsonNode document(PayloadRef ref);
 }
 
 public record TurnContent(
@@ -490,8 +496,8 @@ public record CallResult(Seq seq, IdempotencyKey idempotencyKey, List<Block.Tool
 ```
 
 `results` is the bulk read grounding needs: "did any successful tool result of this agent hold
-this id?" is one paginated read, not one read per call. `blocks` and `document` resolve the
-references a `RequestManifest` holds.
+this id?" is one paginated read, not one read per call. Nothing here hands out a storage
+reference: every read is addressed by a turn, a key or a position.
 
 Everything read here went through the storage codec and comes back decoded. Nessy does not
 decide who may read it: this is an in-process API, and the application's own code is the caller.
@@ -538,7 +544,7 @@ it writes, and decides nothing on any of them:
 
 | Event | Fields | From |
 |---|---|---|
-| `TurnStarted` | `label` | `StartTurn` |
+| `TurnStarted` | `label`, `arrivedAt` | `StartTurn` |
 | every model-call event | `request` | `CompleteInference`; for `InferenceAttempted`, the failed attempt |
 | `InferenceAnswered` | `truncated` | `CompleteInference` |
 | `ToolApproved`, `ToolDenied` | `decidedBy`, `question` | `CompleteApproval` |
@@ -594,7 +600,8 @@ Beyond §10c:
 - **The question.** Stored for a decision made at once, for a deferral, and for an approver that
   threw; facts the approver added are in it; the reply token is not.
 - **The manifest.** Two calls with unchanged sections store no new payloads; a changed ambient
-  section stores one. The manifest's references resolve to exactly what the request held.
+  section stores one. The manifest's references resolve to exactly what the request held. No
+  type in `nessy-api` names it.
 - **`follow`.** No story event is missed or heard twice when events are committed during the
   replay.
 - **Content.** `results` pages in order and holds only successful calls. A document asked for as
@@ -616,22 +623,21 @@ Approved by James in conversation on 2026-10-04:
 - the `parked_at` column, and no new status
 - the approval question stored for every decision; `Payloads.putDocument` / `getDocument`
 - the input label, configured with a `Stringifier`, defaulting to the simple class name
-- the request recorded by section, amending "no framework snapshot"
+- the request recorded by section, amending "no framework snapshot"; stored, not public
 
-Proposed by this record, awaiting sign-off:
+Proposed by this record, and approved with it:
 
 - `Narration.TurnEnding`
 - `Narrated` and `Narrated.Position`; `NarrationListener.on(Narrated)`
 - `AgentStories`, `AgentStory`, `Following`
 - `StoryProjection`
 - `StoryContent`, `TurnContent`, `RequestContent`, `CallResult`
-- `RequestManifest`, `Section`, `SummarySection`, `TurnRange`, as public types
 - `inputLabel` on `DirectHarnessConfig` and `QueuedHarnessConfig`
-- `Answered.truncated`
+- `Answered.truncated`, `TurnStarted.arrivedAt`
 
 ## 13. Resolutions this record made
 
-Each is a decision the conversation did not reach. Each is asked, not assumed.
+Each is a decision the conversation did not reach. James approved them with the record.
 
 1. **The stored policy event `TurnFailed` is renamed `TurnStopped`.** Otherwise the stored
    `TurnFailed` means "a policy stopped the turn" while the story's `TurnFailed` means "the model
