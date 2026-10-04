@@ -15,6 +15,9 @@
  */
 package org.jwcarman.nessy.api;
 
+import java.util.Objects;
+import java.util.function.BiFunction;
+
 /**
  * A way to fold an agent's story into one value.
  *
@@ -39,4 +42,20 @@ public interface StoryProjection<T> {
    * @param story the next event, with its position
    */
   T apply(T soFar, Narrated story);
+
+  /** A projection from its starting value and the step that folds one story event into it. */
+  static <T> StoryProjection<T> of(T initial, BiFunction<T, Narrated, T> step) {
+    Objects.requireNonNull(step, "step must not be null");
+    return new StoryProjection<>() {
+      @Override
+      public T initial() {
+        return initial;
+      }
+
+      @Override
+      public T apply(T soFar, Narrated story) {
+        return step.apply(soFar, story);
+      }
+    };
+  }
 }

@@ -225,6 +225,15 @@ List<CallResult> results = content.results(Seq.NONE, 100);
   position, oldest first. Each `CallResult` has the position of the event that
   recorded the success and the call's key. The limit rule is the one `replay`
   uses.
+- `allResults(after)` streams every successful result after a position, oldest
+  first. It reads a page at a time as the stream is consumed, holds nothing
+  open, and need not be closed. An operation that stops early stops the
+  reading:
+
+```java
+boolean grounded =
+    content.allResults(Seq.NONE).anyMatch(result -> result.idempotencyKey().equals(key));
+```
 
 Content can be removed on a different schedule from the story. A reference
 with nothing behind it is a fault, and is thrown as an `IllegalStateException`
@@ -249,6 +258,21 @@ StoryProjection<Integer> turns = new StoryProjection<>() {
 
 int started = stories.of(new AgentType("reporter"), agentId).project(turns);
 ```
+
+For a projection that fits in a lambda, `StoryProjection.of` is the short form:
+
+```java
+int started =
+    stories
+        .of(new AgentType("reporter"), agentId)
+        .project(
+            StoryProjection.of(
+                0, (n, story) -> story.event() instanceof Narration.TurnStarted ? n + 1 : n));
+```
+
+`project` reads the agent's whole story each time it is called, so its cost
+grows with the story. Do not call it on a hot path, such as a poll or every
+request.
 
 The story is read a page at a time, so a long story is never held whole. An
 exception the projection throws reaches the caller unchanged. A projection is

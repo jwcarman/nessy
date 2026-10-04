@@ -39,6 +39,9 @@ public interface AgentStory {
    * <p>The story is read a page at a time, so nothing holds all of it at once. An exception the
    * projection throws reaches the caller unchanged.
    *
+   * <p>Reads the agent's whole story each time it is called, so its cost grows with the story; do
+   * not call it on a hot path, such as a poll or every request.
+   *
    * @param <T> what the projection folds the story into
    * @param projection how to fold the story
    * @return the projection's {@link StoryProjection#initial()} when the story is empty

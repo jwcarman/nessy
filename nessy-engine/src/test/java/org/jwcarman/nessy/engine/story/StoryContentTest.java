@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Nested;
@@ -437,6 +438,131 @@ class StoryContentTest {
     @Test
     void refuse_a_missing_position() {
       assertThatThrownBy(() -> content.results(null, 10))
+          .isInstanceOf(NullPointerException.class)
+          .hasMessage("after must not be null");
+    }
+  }
+
+  /** Counts the pages read from the story it wraps. */
+  private static final class CountingEvents implements AgentEvents {
+    private final AgentEvents delegate;
+    private final List<Seq> pagesAfter = new ArrayList<>();
+
+    CountingEvents(AgentEvents delegate) {
+      this.delegate = delegate;
+    }
+
+    @Override
+    public void append(
+        AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast, Instant at) {
+      delegate.append(type, agent, events, expectedLast, at);
+    }
+
+    @Override
+    public Stream<AgentEvent> streamFrom(AgentType type, AgentId agent, Seq after) {
+      return delegate.streamFrom(type, agent, after);
+    }
+
+    @Override
+    public List<Written> readWrittenFrom(AgentType type, AgentId agent, Seq after, int limit) {
+      pagesAfter.add(after);
+      return delegate.readWrittenFrom(type, agent, after, limit);
+    }
+
+    @Override
+    public List<AgentEvent> sinceLastTurnStarted(AgentType type, AgentId agent) {
+      return delegate.sinceLastTurnStarted(type, agent);
+    }
+
+    @Override
+    public Instant writtenAt(AgentType type, AgentId agent, Seq seq) {
+      return delegate.writtenAt(type, agent, seq);
+    }
+  }
+
+  @Nested
+  class Every_successful_result {
+
+    private final CountingEvents counting = new CountingEvents(events);
+    private final StoryContent counted =
+        new EventAgentStories(counting, payloads).of(TYPE, agent).content();
+
+    /** Stores {@code calls} successful calls in one turn: result n is at seq 2n + 2. */
+    private void storeResults(int calls) {
+      write(started(keep(new Block.Text("go"))));
+      PayloadRef request = keep(toolCall("c1"));
+      PayloadRef result = keep(new Block.Text("r"));
+      for (int i = 0; i < calls; i++) {
+        write(
+            requested(last + 1, 1, request, call("c1", IdempotencyKey.of(UUID.randomUUID()))),
+            succeeded(last + 2, 1, "c1", result));
+      }
+    }
+
+    @Test
+    void is_every_result_once_and_in_order_across_pages() {
+      storeResults(2_500);
+
+      List<CallResult> all = counted.allResults(Seq.NONE).toList();
+
+      assertThat(all).hasSize(2_500);
+      assertThat(all).extracting(CallResult::seq).isSorted().doesNotHaveDuplicates();
+      assertThat(all.getFirst().seq()).isEqualTo(new Seq(3));
+      assertThat(all.getLast().seq()).isEqualTo(new Seq(5_001));
+    }
+
+    @Test
+    void ends_after_exactly_one_full_page_of_results() {
+      storeResults(1_000);
+
+      List<CallResult> all = counted.allResults(Seq.NONE).toList();
+
+      assertThat(all).hasSize(1_000);
+      assertThat(all).extracting(CallResult::seq).isSorted().doesNotHaveDuplicates();
+      assertThat(all.getLast().seq()).isEqualTo(new Seq(2_001));
+    }
+
+    @Test
+    void after_a_position_skips_what_came_before() {
+      storeResults(2_500);
+
+      List<CallResult> all = counted.allResults(new Seq(2_001)).toList();
+
+      assertThat(all).hasSize(1_500);
+      assertThat(all.getFirst().seq()).isEqualTo(new Seq(2_003));
+    }
+
+    @Test
+    void reads_only_the_first_page_of_results_when_the_first_result_is_enough() {
+      storeResults(2_500);
+
+      boolean found = counted.allResults(Seq.NONE).anyMatch(result -> result.seq().value() == 3);
+
+      assertThat(found).isTrue();
+      // One page of results is 1,000 results, which ends at seq 2,001 and takes three event reads.
+      // A second page would rescan from the start of its turn, so its reads would go on past seq
+      // 3,000; none did.
+      assertThat(counting.pagesAfter).isNotEmpty();
+      assertThat(counting.pagesAfter).allMatch(read -> read.value() <= 2_000);
+    }
+
+    @Test
+    void reads_nothing_until_the_stream_is_consumed() {
+      storeResults(2_500);
+
+      counted.allResults(Seq.NONE);
+
+      assertThat(counting.pagesAfter).isEmpty();
+    }
+
+    @Test
+    void of_an_agent_with_no_story_is_empty() {
+      assertThat(counted.allResults(Seq.NONE).toList()).isEmpty();
+    }
+
+    @Test
+    void refuses_a_missing_position() {
+      assertThatThrownBy(() -> counted.allResults(null))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("after must not be null");
     }

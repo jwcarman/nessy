@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `StoryProjection.of(initial, step)` makes a projection from a lambda; `StoryContent.allResults(after)`
+  streams every successful result, reading a page at a time.
 - **`AgentStory.content()` reads what a story refers to:** a turn's input, what the model wrote and its answer; a call's result by its `IdempotencyKey`; and an agent's successful results, paged.
 - **`AgentStory.project` folds an agent's story with a `StoryProjection`; `UsageReports` is one.**
 - **`AgentStories` replays an agent's story:** the stored events, as the `Narrated` a live

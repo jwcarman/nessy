@@ -28,6 +28,7 @@ import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentStory;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallResult;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.PayloadRef;
@@ -35,8 +36,12 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.StoryContent;
 import org.jwcarman.nessy.api.StoryProjection;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
+import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.inmemory.InMemoryAgentEvents;
@@ -134,6 +139,48 @@ class FirstStoreHoldingStoriesTest {
 
     assertThat(content.results(Seq.NONE, 10)).isEmpty();
     assertThat(content.result(IdempotencyKey.of(UUID.randomUUID()))).isEmpty();
+  }
+
+  @Test
+  void every_result_is_streamed_from_the_store_that_holds_the_agent() {
+    PayloadRef request = firstPayloads.forAgent(agent).put(List.of(new Block.Text("ask")));
+    PayloadRef result = firstPayloads.forAgent(agent).put(List.of(new Block.Text("42")));
+    IdempotencyKey key = IdempotencyKey.of(UUID.randomUUID());
+    first.append(
+        TYPE,
+        agent,
+        List.of(
+            new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), request, Instant.EPOCH),
+            new AgentEvent.ActionsRequested(
+                new Seq(2),
+                new TurnId(1),
+                request,
+                List.of(
+                    new ActionRequest.ToolCall(CallId.of("a"), new ToolName("lookup"), "x", key)),
+                Usage.unreported()),
+            new AgentEvent.ToolSucceeded(
+                new Seq(3), new TurnId(1), CallId.of("a"), result, "done")),
+        Seq.NONE,
+        AT);
+    second.append(TYPE, agent, List.of(started(1)), Seq.NONE, AT);
+
+    List<CallResult> all = stories.of(TYPE, agent).content().allResults(Seq.NONE).toList();
+
+    assertThat(all).containsExactly(new CallResult(new Seq(3), key, List.of(new Block.Text("42"))));
+  }
+
+  @Test
+  void every_result_of_an_agent_no_store_holds_is_an_empty_stream() {
+    assertThat(stories.of(TYPE, agent).content().allResults(Seq.NONE).toList()).isEmpty();
+  }
+
+  @Test
+  void every_result_of_an_agent_no_store_holds_is_refused_a_missing_position() {
+    StoryContent content = stories.of(TYPE, agent).content();
+
+    assertThatThrownBy(() -> content.allResults(null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("after must not be null");
   }
 
   @Test

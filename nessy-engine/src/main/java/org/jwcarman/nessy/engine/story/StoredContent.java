@@ -16,12 +16,19 @@
 package org.jwcarman.nessy.engine.story;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Spliterator;
+import java.util.Spliterators;
 import java.util.function.Predicate;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.CallResult;
@@ -186,6 +193,50 @@ final class StoredContent implements StoryContent {
                   found(one.result(), resolved.get(one.result())), Block.ToolResultContent.class)));
     }
     return List.copyOf(results);
+  }
+
+  @Override
+  public Stream<CallResult> allResults(Seq after) {
+    Objects.requireNonNull(after, "after must not be null");
+    return StreamSupport.stream(
+        Spliterators.spliteratorUnknownSize(new Paging(after), Spliterator.ORDERED), false);
+  }
+
+  /**
+   * Walks the results a page at a time. A page is fetched when the one before it is used up and was
+   * full, never earlier, so a consumer that stops early stops the reading; nothing is held open
+   * between pages.
+   */
+  private final class Paging implements Iterator<CallResult> {
+
+    private Seq after;
+    private Iterator<CallResult> page = Collections.emptyIterator();
+    private boolean more = true;
+
+    Paging(Seq after) {
+      this.after = after;
+    }
+
+    @Override
+    public boolean hasNext() {
+      if (!page.hasNext() && more) {
+        List<CallResult> next = results(after, PAGE);
+        more = next.size() == PAGE;
+        if (!next.isEmpty()) {
+          after = next.getLast().seq();
+        }
+        page = next.iterator();
+      }
+      return page.hasNext();
+    }
+
+    @Override
+    public CallResult next() {
+      if (!hasNext()) {
+        throw new NoSuchElementException();
+      }
+      return page.next();
+    }
   }
 
   /**

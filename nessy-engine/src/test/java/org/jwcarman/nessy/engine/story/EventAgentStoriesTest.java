@@ -245,6 +245,24 @@ class EventAgentStoriesTest {
     }
 
     @Test
+    void made_from_a_lambda_counts_the_turns_of_a_three_turn_story() {
+      events.append(TYPE, agent, List.of(started(1), answered(2, 1)), Seq.NONE, AT);
+      events.append(TYPE, agent, List.of(started(3), answered(4, 3)), new Seq(2), AT);
+      events.append(TYPE, agent, List.of(started(5)), new Seq(4), AT);
+
+      int turns =
+          stories
+              .of(TYPE, agent)
+              .project(
+                  StoryProjection.of(
+                      0,
+                      (n, narrated) ->
+                          narrated.event() instanceof Narration.TurnStarted ? n + 1 : n));
+
+      assertThat(turns).isEqualTo(3);
+    }
+
+    @Test
     void over_an_empty_story_is_its_initial_value() {
       assertThat(stories.of(TYPE, agent).project(TURNS_STARTED)).isZero();
     }
