@@ -17,6 +17,7 @@
 package org.jwcarman.nessy.engine.harness.queued;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -340,6 +341,7 @@ final class DefaultQueuedHarness<I>
 
   /** Folds one command and writes what it decided. */
   private boolean apply(Step step, AgentId agentId, AgentCommand command, String trace) {
+    Instant at = clock.instant();
     AgentState state = reconstitute(agentId);
     if (!(state.execute(command, turnPolicy, clock.instant())
         instanceof Decision.Advance advance)) {
@@ -352,11 +354,11 @@ final class DefaultQueuedHarness<I>
           command.getClass().getSimpleName());
       return false;
     }
-    backend.events().append(agentType, agentId, advance.events(), state.seq());
+    backend.events().append(agentType, agentId, advance.events(), state.seq(), at);
     for (AgentEffect effect : advance.effects()) {
       effects.insert(agentId, effect, clock.instant(), trace);
     }
-    advance.events().forEach(event -> narrate(step, event));
+    advance.events().forEach(event -> narrate(step, event, at));
     // Read off the effect rather than the state. Inferring is where an agent sits for the whole
     // of a call, so a fold that stays there without emitting anything -- an input queued
     // mid-turn -- would announce a second "thinking" for a call already in flight. The effect is
@@ -391,12 +393,12 @@ final class DefaultQueuedHarness<I>
    * be told something untrue, and one told before the commit could not read what it was told about;
    * one told a moment late has only been told late.
    */
-  private void narrate(Step step, AgentEvent event) {
+  private void narrate(Step step, AgentEvent event, Instant at) {
     // Some of these mean resolving what a reference stands for, which is real work: skipped
     // entirely when nobody is there to be told. Narrating anyway would still be correct.
     if (!narrator.listening()) {
       return;
     }
-    step.narrate(StoryEvents.of(event));
+    step.narrate(StoryEvents.of(event), event.seq(), at);
   }
 }

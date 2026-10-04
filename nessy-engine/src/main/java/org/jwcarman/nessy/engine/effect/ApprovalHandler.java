@@ -20,6 +20,7 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
@@ -170,7 +171,8 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
     // Said before the approver is asked, because a question that never comes back must still
     // have been seen going out. A watcher told only about verdicts would see nothing at all
     // for the calls that matter most.
-    narrator.narrate(agentType, agentId, new Narration.ApprovalSought(callId, question.action()));
+    narrator.narrate(
+        Narrated.live(agentType, agentId, new Narration.ApprovalSought(callId, question.action())));
 
     return switch (binding.approve(question)) {
       case Awaited.Ready<ApprovalResult>(ApprovalResult result) ->
@@ -202,9 +204,10 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
             question.deadline());
         // The one thing the fold deliberately never learns, said to whoever is watching.
         narrator.narrate(
-            agentType,
-            agentId,
-            new Narration.ApprovalDeferred(callId, question.action(), question.deadline()));
+            Narrated.live(
+                agentType,
+                agentId,
+                new Narration.ApprovalDeferred(callId, question.action(), question.deadline())));
         yield new Awaited.Deferred<>();
       }
     };

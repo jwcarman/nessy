@@ -60,7 +60,7 @@ class ConsoleNarrationTest {
             new Narration.CallFinished(CALL),
             new Narration.ContentDelta("230"),
             new Narration.Terminated())) {
-      narration.on(CHAT, AGENT, event);
+      narration.on(Envelopes.of(CHAT, AGENT, event));
     }
 
     assertThat(console.written())
@@ -77,9 +77,10 @@ class ConsoleNarrationTest {
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
     narration.on(
-        CHAT,
-        new AgentId(UUID.randomUUID()),
-        new Narration.Answered(new TurnId(1), Usage.unreported()));
+        Envelopes.of(
+            CHAT,
+            new AgentId(UUID.randomUUID()),
+            new Narration.Answered(new TurnId(1), Usage.unreported())));
 
     assertThat(console.written()).isEmpty();
   }
@@ -89,7 +90,8 @@ class ConsoleNarrationTest {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
-    narration.on(CHAT, AGENT, new Narration.Answered(new TurnId(1), Usage.unreported()));
+    narration.on(
+        Envelopes.of(CHAT, AGENT, new Narration.Answered(new TurnId(1), Usage.unreported())));
 
     assertThat(console.written()).isEmpty();
     assertThat(narration.spoke()).isFalse();
@@ -101,13 +103,16 @@ class ConsoleNarrationTest {
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
     narration.on(
-        CHAT,
-        AGENT,
-        new Narration.TurnFailed(
-            new TurnId(1), FailureKind.PERMANENT, "the provider gave up", Usage.unreported()));
+        Envelopes.of(
+            CHAT,
+            AGENT,
+            new Narration.TurnFailed(
+                new TurnId(1), FailureKind.PERMANENT, "the provider gave up", Usage.unreported())));
     narration.on(
-        CHAT, AGENT, new Narration.TurnRefused(new TurnId(1), "safety", Usage.unreported()));
-    narration.on(CHAT, AGENT, new Narration.TurnStopped(new TurnId(1), "too many calls"));
+        Envelopes.of(
+            CHAT, AGENT, new Narration.TurnRefused(new TurnId(1), "safety", Usage.unreported())));
+    narration.on(
+        Envelopes.of(CHAT, AGENT, new Narration.TurnStopped(new TurnId(1), "too many calls")));
 
     for (Narration quiet :
         List.of(
@@ -119,7 +124,7 @@ class ConsoleNarrationTest {
             new Narration.ApprovalDeferred(CALL, "restart", java.time.Instant.EPOCH),
             new Narration.CallDeferred(CALL, new ToolName("t"), java.time.Instant.EPOCH),
             new Narration.ThinkingDelta("h"))) {
-      narration.on(CHAT, AGENT, quiet);
+      narration.on(Envelopes.of(CHAT, AGENT, quiet));
     }
     assertThat(console.written()).isEmpty();
   }

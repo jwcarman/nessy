@@ -335,6 +335,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         agentType,
         agent,
         step -> {
+          Instant at = clock.instant();
           AgentState state = reconstitute(agent);
           if (state instanceof AgentState.Terminal) {
             return new TerminationOutcome.AlreadyEnded();
@@ -345,8 +346,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
             LOG.debug("[{}] agent {} is mid-turn; ending it was refused", agentType.value(), agent);
             return new TerminationOutcome.Busy();
           }
-          backend.events().append(agentType, agent, decision.events(), state.seq());
-          decision.events().forEach(event -> narrate(step, event));
+          backend.events().append(agentType, agent, decision.events(), state.seq(), at);
+          decision.events().forEach(event -> narrate(step, event, at));
           return new TerminationOutcome.Ended();
         });
   }
@@ -362,6 +363,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * is genuinely busy.
    */
   private StepResult<O> beginTurn(Step step, AgentId agent, List<Block.InputContent> rendered) {
+    Instant at = clock.instant();
     AgentState state = reconstitute(agent);
     if (state instanceof AgentState.Terminal) {
       LOG.debug("[{}] agent {} has ended; the question is refused", agentType.value(), agent);
@@ -370,14 +372,14 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       return StepResult.declined(
           new Outcome.Refused<>("terminated", TurnStats.opened(clock.instant())));
     }
-    return switch (recoverToIdle(step, agent, state)) {
+    return switch (recoverToIdle(step, agent, state, at)) {
       case RecoveryOutcome.Busy() -> StepResult.declined(new Outcome.Busy<>());
       case RecoveryOutcome.Recovered(AgentState.Idle idle) -> {
         Payloads content = backend.payloads().forAgent(agent);
         Decision decision =
             idle.execute(new AgentCommand.StartTurn(content.put(rendered), clock.instant()));
-        backend.events().append(agentType, agent, decision.events(), idle.seq());
-        decision.events().forEach(event -> narrate(step, event));
+        backend.events().append(agentType, agent, decision.events(), idle.seq(), at);
+        decision.events().forEach(event -> narrate(step, event, at));
         TurnId turn = ((AgentEvent.TurnStarted) decision.events().getFirst()).turn();
         yield StepResult.advanced(turn, timedEffectsOf(decision));
       }
@@ -394,13 +396,14 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * rather than the loud refusal {@link AgentState.Terminal#execute} would otherwise throw.
    */
   private Decision executeStep(Step step, AgentId agent, AgentCommand command) {
+    Instant at = clock.instant();
     AgentState state = reconstitute(agent);
     if (state instanceof AgentState.Terminal) {
       return Decision.ignore();
     }
     Decision decision = state.execute(command, turnPolicy, clock.instant());
-    backend.events().append(agentType, agent, decision.events(), state.seq());
-    decision.events().forEach(event -> narrate(step, event));
+    backend.events().append(agentType, agent, decision.events(), state.seq(), at);
+    decision.events().forEach(event -> narrate(step, event, at));
     return decision;
   }
 
@@ -557,7 +560,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * whole inference timeout had run, and the turn without the terminal event its original caller is
    * waiting to read.
    */
-  private RecoveryOutcome recoverToIdle(Step step, AgentId agent, AgentState state) {
+  private RecoveryOutcome recoverToIdle(Step step, AgentId agent, AgentState state, Instant at) {
     AgentState current = state;
     boolean dischargedSomething = false;
     while (!(current instanceof AgentState.Idle)) {
@@ -567,8 +570,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       }
       dischargedSomething = true;
       Decision decision = current.execute(discharge.get(), turnPolicy, clock.instant());
-      backend.events().append(agentType, agent, decision.events(), current.seq());
-      decision.events().forEach(event -> narrate(step, event));
+      backend.events().append(agentType, agent, decision.events(), current.seq(), at);
+      decision.events().forEach(event -> narrate(step, event, at));
       current = current.applyAll(decision.events());
     }
     return new RecoveryOutcome.Recovered((AgentState.Idle) current);
@@ -843,14 +846,17 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * arrive ahead of everything, because a fragment of an answer is worth seeing before the answer
    * exists; they are not written by a step and are not held for a commit, though they still wait
    * behind a step that took the agent's lock before them.
+   *
+   * <p>{@code at} is the instant the step appended the event with, so what is heard here and what
+   * is read back later carry the same time.
    */
-  private void narrate(Step step, AgentEvent event) {
+  private void narrate(Step step, AgentEvent event, Instant at) {
     // Some of these mean resolving what a reference stands for, which is real work: skipped
     // entirely when nobody is there to be told. Narrating anyway would still be correct.
     if (!narrator.listening()) {
       return;
     }
-    step.narrate(StoryEvents.of(event));
+    step.narrate(StoryEvents.of(event), event.seq(), at);
   }
 
   /**

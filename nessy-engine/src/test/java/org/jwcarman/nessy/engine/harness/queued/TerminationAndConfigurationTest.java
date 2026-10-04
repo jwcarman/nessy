@@ -69,7 +69,7 @@ class TerminationAndConfigurationTest {
                 request.systemPrompt().value().contains("fail")
                     ? new InferenceResult.Fault(new Failure.Permanent("no"))
                     : new InferenceResult.Answer(List.of(new Block.Text("a lake monster"))),
-            (type, id, event) -> events.add(event));
+            narrated -> events.add(narrated.event()));
   }
 
   @AfterEach
@@ -242,7 +242,7 @@ class TerminationAndConfigurationTest {
   void a_queued_agent_type_s_properties_reach_the_provider_and_a_clash_fails_the_build() {
     Judging provider = new Judging();
     try (EngineFixture judged =
-        new EngineFixture(provider, (type, id, event) -> events.add(event))) {
+        new EngineFixture(provider, narrated -> events.add(narrated.event()))) {
       QueuedHarness<String> harness =
           judged
               .harnesses()

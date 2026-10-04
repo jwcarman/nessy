@@ -31,7 +31,7 @@ package org.jwcarman.nessy.api;
 @FunctionalInterface
 public interface AgentNarrator {
 
-  void narrate(Narration event);
+  void narrate(Narration.Live event);
 
   /** Nobody is listening. */
   static AgentNarrator silent() {

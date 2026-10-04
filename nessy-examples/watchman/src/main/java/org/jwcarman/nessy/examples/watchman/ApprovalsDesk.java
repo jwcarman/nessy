@@ -21,6 +21,7 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
@@ -66,8 +67,10 @@ public class ApprovalsDesk implements Approver, NarrationListener {
   }
 
   @Override
-  public void on(AgentType agentType, AgentId agentId, Narration event) {
-    switch (event) {
+  public void on(Narrated narrated) {
+    AgentType agentType = narrated.agentType();
+    AgentId agentId = narrated.agentId();
+    switch (narrated.event()) {
       case Narration.CallApproved(var callId) ->
           repository.answered(agentType, agentId, callId, "approved", null, clock.instant());
       case Narration.CallDenied(var callId, String reason) ->

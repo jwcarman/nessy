@@ -7,12 +7,19 @@ knows a turn has ended.
 
 ```java
 public interface NarrationListener {
-  void on(AgentType agentType, AgentId agentId, Narration event);
+  void on(Narrated narrated);
 }
 ```
 
-Every event arrives with the agent type and id it belongs to, so one
-listener can serve every agent.
+Every event arrives in a `Narrated` envelope: the agent type and id it
+belongs to, so one listener can serve every agent, and the event itself.
+
+A story event also carries its position: the `seq` it was stored at and the
+time it was written, `narrated.position()`. The time is the engine's clock,
+read once for the step that wrote the event, so an event heard as it commits
+and the same event read back from the store later carry the same `seq` and
+the same instant. A live signal was never stored and has no position, so
+`narrated.position()` is empty for it.
 
 ## Where a listener attaches
 
@@ -63,7 +70,7 @@ A listener that does real work — a model call, a slow write — wraps itself:
 ```java
 NarrationListener listener = NarrationListener.of(on -> on
         .agentType(TYPE)
-        .onTurnEnding((type, id, ended) -> reporter.reportIfDue(id)))
+        .onTurnEnding((narrated, ended) -> reporter.reportIfDue(narrated.agentId())))
     .async();
 ```
 
@@ -78,16 +85,17 @@ carries with it.
 
 `NarrationListener.of(...)` builds a listener from handlers, filtered by
 agent type if you like, with one method per event kind or `on(Class,
-handler)` for any of them:
+handler)` for any of them. A handler is given the envelope and the event
+already cast to its kind:
 
 ```java
 NarrationListener console = NarrationListener.of(on -> on
-        .onContentDelta((type, id, delta) -> out.print(delta.text()))
-        .onThinkingDelta((type, id, delta) -> dim(delta.text()))
-        .onActionsRequested((type, id, asked) -> asked.calls()
+        .onContentDelta((narrated, delta) -> out.print(delta.text()))
+        .onThinkingDelta((narrated, delta) -> dim(delta.text()))
+        .onActionsRequested((narrated, asked) -> asked.calls()
                 .forEach(call -> note("calling " + call.toolName() + ": " + call.action())))
-        .onApprovalDeferred((type, id, waiting) -> note("asked, until " + waiting.until()))
-        .onTurnEnding((type, id, ended) -> out.println()));
+        .onApprovalDeferred((narrated, waiting) -> note("asked, until " + waiting.until()))
+        .onTurnEnding((narrated, ended) -> out.println()));
 ```
 
 ## The kinds

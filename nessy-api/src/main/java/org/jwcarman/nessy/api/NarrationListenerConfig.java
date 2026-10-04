@@ -29,16 +29,16 @@ import java.util.Objects;
  */
 public final class NarrationListenerConfig {
 
-  /** What a handler is told: whose event it is, and the event. */
+  /** What a handler is told: the envelope -- whose event it is and where -- and the event. */
   @FunctionalInterface
   public interface Handler<E extends Narration> {
-    void on(AgentType agentType, AgentId agentId, E event);
+    void on(Narrated narrated, E event);
   }
 
   /** A handler filed with the class of the events it takes, so it can be handed one safely. */
   private record Filed<E extends Narration>(Class<E> kind, Handler<E> handler) {
-    void on(AgentType agentType, AgentId agentId, Narration event) {
-      handler.on(agentType, agentId, kind.cast(event));
+    void on(Narrated narrated) {
+      handler.on(narrated, kind.cast(narrated.event()));
     }
   }
 
@@ -144,13 +144,13 @@ public final class NarrationListenerConfig {
   NarrationListener build() {
     List<Filed<?>> filed = List.copyOf(handlers);
     AgentType filter = only;
-    return (agentType, agentId, event) -> {
-      if (filter != null && !filter.equals(agentType)) {
+    return narrated -> {
+      if (filter != null && !filter.equals(narrated.agentType())) {
         return;
       }
       for (Filed<?> each : filed) {
-        if (each.kind().isInstance(event)) {
-          each.on(agentType, agentId, event);
+        if (each.kind().isInstance(narrated.event())) {
+          each.on(narrated);
         }
       }
     };

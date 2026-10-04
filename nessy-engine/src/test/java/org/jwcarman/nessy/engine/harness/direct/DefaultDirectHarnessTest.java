@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine.harness.direct;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.awaitility.Awaitility.await;
 
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
@@ -58,6 +59,7 @@ import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.InferenceConfig;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.OutputReader;
 import org.jwcarman.nessy.api.PayloadRef;
@@ -94,6 +96,7 @@ import org.jwcarman.nessy.engine.chapter.Transcripts;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
+import org.jwcarman.nessy.engine.narration.Heard;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -144,7 +147,7 @@ class DefaultDirectHarnessTest {
   private final AdvanceableClock clock = new AdvanceableClock(Instant.now());
 
   private final InMemoryAgentEvents events =
-      new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()), clock);
+      new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
   private final InMemoryPayloads payloads =
       new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
 
@@ -432,6 +435,39 @@ class DefaultDirectHarnessTest {
               assertThat(stats.wasted()).as("nothing failed").isEqualTo(Tokens.none());
               assertThat(stats.productiveTokens()).isEqualTo(Tokens.of(120));
             });
+  }
+
+  @Test
+  @DisplayName(
+      "a story event is heard with the seq it was stored at and the time its step was written at")
+  void a_story_event_is_heard_with_its_stored_position() {
+    Heard heard = new Heard();
+    AgentId agent = AgentId.random();
+    DirectHarness<String, String> harness =
+        factoryFor(new Scripted().then(answering("forty two")), new InMemoryLocks())
+            .<String>create(
+                TYPE,
+                c ->
+                    c.systemPrompt("You are terse.")
+                        .inputRenderer(said -> List.of(new Block.Text(said)))
+                        .inference(in -> in.provider("test").model("a-model"))
+                        .listener(heard));
+
+    harness.ask(agent, "what is the answer?");
+
+    await().atMost(Duration.ofSeconds(10)).until(() -> heard.kindsFor(agent).contains("Answered"));
+    List<Heard.Line> lines = heard.forAgent(agent).toList();
+    assertThat(lines).extracting(Heard.Line::kind).containsExactly("TurnStarted", "Answered");
+    List<AgentEvent> stored = events.readAll(TYPE, agent);
+    assertThat(lines).allSatisfy(line -> assertThat(line.position()).isPresent());
+    assertThat(lines.getFirst().position().orElseThrow().seq()).isEqualTo(stored.getFirst().seq());
+    assertThat(lines.getLast().position().orElseThrow().seq()).isEqualTo(stored.getLast().seq());
+    for (Heard.Line line : lines) {
+      Narrated.Position position = line.position().orElseThrow();
+      assertThat(position.at())
+          .isEqualTo(clock.instant())
+          .isEqualTo(events.writtenAt(TYPE, agent, position.seq()));
+    }
   }
 
   @Test
@@ -1156,7 +1192,8 @@ class DefaultDirectHarnessTest {
         agent,
         List.of(
             new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput, Instant.EPOCH)),
-        Seq.NONE);
+        Seq.NONE,
+        clock.instant());
 
     Scripted model = new Scripted().then(answering("second turn's answer"));
     DirectHarness<String, String> harness =
@@ -1240,7 +1277,8 @@ class DefaultDirectHarnessTest {
                 abandonedRequest,
                 List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup", KEY)),
                 Usage.unreported())),
-        Seq.NONE);
+        Seq.NONE,
+        clock.instant());
 
     Scripted model = new Scripted().then(answering("second turn's answer"));
     DirectHarness<String, String> harness =
@@ -1316,7 +1354,8 @@ class DefaultDirectHarnessTest {
                 abandonedRequest,
                 List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup", KEY)),
                 Usage.unreported())),
-        Seq.NONE);
+        Seq.NONE,
+        clock.instant());
 
     DirectHarness<String, String> harness =
         DefaultDirectHarnessFactory.of(
@@ -1396,7 +1435,8 @@ class DefaultDirectHarnessTest {
                 secondTurnSeq.opensTurn(),
                 payloads.forAgent(agent).put(List.of(new Block.Text("second"))),
                 Instant.EPOCH)),
-        lastSeq);
+        lastSeq,
+        clock.instant());
 
     Outcome<String> midTurn = harness.ask(agent, "are you still there?");
 
@@ -1475,8 +1515,9 @@ class DefaultDirectHarnessTest {
     }
 
     @Override
-    public void append(AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast) {
-      delegate.append(type, agent, events, expectedLast);
+    public void append(
+        AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast, Instant at) {
+      delegate.append(type, agent, events, expectedLast, at);
     }
 
     @Override
@@ -1527,7 +1568,8 @@ class DefaultDirectHarnessTest {
                   opening.opensTurn(),
                   payloads.forAgent(agent).put(List.of(new Block.Text("somebody else's answer"))),
                   Usage.unreported())),
-          last);
+          last,
+          Instant.EPOCH);
     }
   }
 

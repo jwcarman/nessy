@@ -57,9 +57,12 @@ public interface AgentEvents {
    *     fail rather than write: the caller decided against a state that no longer holds, and its
    *     recourse is to reconstitute and decide again. Vacuous for a direct harness, load-bearing
    *     for a queued one, and the same seam serves both.
+   * @param at the instant every event of this batch is written at, by the caller's clock. A store
+   *     records it as given rather than reading a clock of its own, so a story event told as it
+   *     commits and the same event read back later carry the same time.
    * @throws AgentEventConflict if {@code expectedLast} is not the agent's last seq
    */
-  void append(AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast);
+  void append(AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast, Instant at);
 
   /**
    * Everything after {@code after}, in order, without holding it all at once.
@@ -115,7 +118,8 @@ public interface AgentEvents {
   List<AgentEvent> sinceLastTurnStarted(AgentType type, AgentId agent);
 
   /**
-   * When the event at {@code seq} was written -- the database's clock, not the event's.
+   * When the event at {@code seq} was written -- the {@code at} its batch was appended with, not
+   * the event's.
    *
    * <p>This is the one thing an {@link AgentEvent} does not carry: putting a timestamp on the
    * record itself would make replay depend on wall-clock time and would change the stored payload,

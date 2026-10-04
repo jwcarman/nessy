@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
 @FunctionalInterface
 public interface NarrationListener {
 
-  void on(AgentType agentType, AgentId agentId, Narration event);
+  void on(Narrated narrated);
 
   /**
    * This listener, told on a virtual thread of its own for every event, so however long it takes --
@@ -60,23 +60,23 @@ public interface NarrationListener {
     }
 
     @Override
-    public void on(AgentType agentType, AgentId agentId, Narration event) {
-      Thread.ofVirtual().name("nessy-listener").start(() -> tell(agentType, agentId, event));
+    public void on(Narrated narrated) {
+      Thread.ofVirtual().name("nessy-listener").start(() -> tell(narrated));
     }
 
     /**
      * The delegate, told, with a throw logged rather than lost: on its own thread nobody else can.
      */
-    public void tell(AgentType agentType, AgentId agentId, Narration event) {
+    public void tell(Narrated narrated) {
       try {
-        delegate.on(agentType, agentId, event);
+        delegate.on(narrated);
       } catch (RuntimeException e) {
         LoggerFactory.getLogger(NarrationListener.class)
             .warn(
                 "[{}] agent {}: a listener threw on {}; carrying on",
-                agentType.value(),
-                agentId.value(),
-                event.getClass().getSimpleName(),
+                narrated.agentType().value(),
+                narrated.agentId().value(),
+                narrated.event().getClass().getSimpleName(),
                 e);
       }
     }
@@ -84,7 +84,7 @@ public interface NarrationListener {
 
   /** Hears nothing. */
   static NarrationListener none() {
-    return (_, _, _) -> {};
+    return _ -> {};
   }
 
   /**
@@ -92,7 +92,7 @@ public interface NarrationListener {
    *
    * <pre>{@code
    * NarrationListener.of(
-   *     c -> c.agentType(CHAT).onTurnEnding((type, id, ended) -> summarize(id)));
+   *     c -> c.agentType(CHAT).onTurnEnding((narrated, ended) -> summarize(narrated.agentId())));
    * }</pre>
    */
   static NarrationListener of(Customizer<NarrationListenerConfig> customizer) {

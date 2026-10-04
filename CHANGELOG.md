@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no longer `TurnFailed`. `Answered`, `TurnRefused`, `TurnFailed` and `ActionsRequested` carry
   their turn and the model call's `Usage`; `TurnFailed` carries a `FailureKind`; each requested
   call carries its `IdempotencyKey`. A retried model call is told as `InferenceRetried`.
+- **`NarrationListener.on` takes a `Narrated` envelope:** the agent, the event, and for a story
+  event its position (`seq` and time written). `NarrationListenerConfig.Handler` is
+  `on(Narrated narrated, E event)`, and `Narrator.narrate` takes a `Narrated`. A story event's
+  time is the engine's clock, passed to the store: `AgentEvents.append` takes a trailing
+  `Instant at`, which a store writes as given rather than reading a clock of its own, so an event
+  heard live and read back later carry the same instant. `InMemoryAgentEvents` no longer takes a
+  `Clock`. `AgentNarrator.narrate` takes only a `Narration.Live` signal.
 
 ## [0.4.0] - 2026-10-03
 

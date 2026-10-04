@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.console;
 
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
 
@@ -45,11 +45,11 @@ final class ConsoleNarration implements NarrationListener {
   }
 
   @Override
-  public void on(AgentType agentType, AgentId who, Narration event) {
-    if (!agentId.equals(who)) {
+  public void on(Narrated narrated) {
+    if (!agentId.equals(narrated.agentId())) {
       return;
     }
-    switch (event) {
+    switch (narrated.event()) {
       // Flushed per delta, which is what makes this actually stream: print() only reaches the
       // terminal when what it wrote contains a newline, so without this a paragraph arrives in
       // one lump at the end -- finished rather than being written, the whole difference a person

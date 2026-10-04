@@ -21,6 +21,7 @@ import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.block.Block;
@@ -153,7 +154,9 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
         .filter(Block.Commentary.class::isInstance)
         .map(Block.Commentary.class::cast)
         .forEach(
-            said -> narrator.narrate(agentType, agentId, new Narration.Commentary(said.text())));
+            said ->
+                narrator.narrate(
+                    Narrated.live(agentType, agentId, new Narration.Commentary(said.text()))));
   }
 
   /**

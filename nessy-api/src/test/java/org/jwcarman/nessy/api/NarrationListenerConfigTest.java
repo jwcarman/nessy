@@ -71,28 +71,28 @@ class NarrationListenerConfigTest {
     NarrationListener listener =
         NarrationListener.of(
             on ->
-                on.onTurnStarted((t, id, e) -> heard.add("started " + e.turn()))
-                    .onThinking((t, id, e) -> heard.add("thinking"))
-                    .onAnswered((t, id, e) -> heard.add("answered"))
-                    .onTurnStopped((t, id, e) -> heard.add("stopped " + e.reason()))
-                    .onTurnFailed((t, id, e) -> heard.add("failed"))
-                    .onTurnRefused((t, id, e) -> heard.add("refused"))
-                    .onInferenceRetried((t, id, e) -> heard.add("retried " + e.reason()))
-                    .onCommentary((t, id, e) -> heard.add("commentary " + e.text()))
+                on.onTurnStarted((_, e) -> heard.add("started " + e.turn()))
+                    .onThinking((_, e) -> heard.add("thinking"))
+                    .onAnswered((_, e) -> heard.add("answered"))
+                    .onTurnStopped((_, e) -> heard.add("stopped " + e.reason()))
+                    .onTurnFailed((_, e) -> heard.add("failed"))
+                    .onTurnRefused((_, e) -> heard.add("refused"))
+                    .onInferenceRetried((_, e) -> heard.add("retried " + e.reason()))
+                    .onCommentary((_, e) -> heard.add("commentary " + e.text()))
                     .onActionsRequested(
-                        (t, id, e) -> heard.add("actions " + e.calls().getFirst().toolName()))
-                    .onCallApproved((t, id, e) -> heard.add("approved " + e.callId()))
-                    .onCallDenied((t, id, e) -> heard.add("denied " + e.reason()))
-                    .onCallFinished((t, id, e) -> heard.add("finished " + e.callId()))
-                    .onCallFailed((t, id, e) -> heard.add("call failed " + e.message()))
-                    .onTerminated((t, id, e) -> heard.add("terminated"))
-                    .onApprovalSought((t, id, e) -> heard.add("sought " + e.action()))
-                    .onApprovalDeferred((t, id, e) -> heard.add("deferred " + e.until()))
-                    .onCallDeferred((t, id, e) -> heard.add("call deferred " + e.toolName()))
-                    .onThinkingDelta((t, id, e) -> heard.add("thinking delta " + e.text()))
-                    .onContentDelta((t, id, e) -> heard.add("content delta " + e.text())));
+                        (_, e) -> heard.add("actions " + e.calls().getFirst().toolName()))
+                    .onCallApproved((_, e) -> heard.add("approved " + e.callId()))
+                    .onCallDenied((_, e) -> heard.add("denied " + e.reason()))
+                    .onCallFinished((_, e) -> heard.add("finished " + e.callId()))
+                    .onCallFailed((_, e) -> heard.add("call failed " + e.message()))
+                    .onTerminated((_, e) -> heard.add("terminated"))
+                    .onApprovalSought((_, e) -> heard.add("sought " + e.action()))
+                    .onApprovalDeferred((_, e) -> heard.add("deferred " + e.until()))
+                    .onCallDeferred((_, e) -> heard.add("call deferred " + e.toolName()))
+                    .onThinkingDelta((_, e) -> heard.add("thinking delta " + e.text()))
+                    .onContentDelta((_, e) -> heard.add("content delta " + e.text())));
 
-    EVERY_KIND.forEach(event -> listener.on(CHAT, AGENT, event));
+    EVERY_KIND.forEach(event -> listener.on(heard(CHAT, event)));
 
     assertThat(heard)
         .containsExactly(
@@ -121,12 +121,11 @@ class NarrationListenerConfigTest {
   void a_type_filter_keeps_other_agents_out_and_a_kind_nobody_asked_about_is_ignored() {
     List<String> heard = new ArrayList<>();
     NarrationListener listener =
-        NarrationListener.of(
-            on -> on.agentType(CHAT).onAnswered((t, id, _) -> heard.add("answered")));
+        NarrationListener.of(on -> on.agentType(CHAT).onAnswered((_, _) -> heard.add("answered")));
 
-    listener.on(new AgentType("other"), AGENT, new Narration.Answered(TURN, Usage.unreported()));
-    listener.on(CHAT, AGENT, new Narration.Thinking());
-    listener.on(CHAT, AGENT, new Narration.Answered(TURN, Usage.unreported()));
+    listener.on(heard(new AgentType("other"), new Narration.Answered(TURN, Usage.unreported())));
+    listener.on(heard(CHAT, new Narration.Thinking()));
+    listener.on(heard(CHAT, new Narration.Answered(TURN, Usage.unreported())));
 
     assertThat(heard).containsExactly("answered");
   }
@@ -135,7 +134,7 @@ class NarrationListenerConfigTest {
   void a_handler_for_turn_endings_hears_each_way_a_turn_can_end() {
     List<Narration> heard = new ArrayList<>();
     NarrationListener listener =
-        NarrationListener.of(c -> c.onTurnEnding((_, _, event) -> heard.add(event)));
+        NarrationListener.of(c -> c.onTurnEnding((_, event) -> heard.add(event)));
     TurnId turn = new TurnId(1);
     List<Narration> endings =
         List.of(
@@ -144,9 +143,17 @@ class NarrationListenerConfigTest {
             new Narration.TurnFailed(turn, FailureKind.PERMANENT, "no", Usage.unreported()),
             new Narration.TurnStopped(turn, "limit"));
 
-    endings.forEach(event -> listener.on(CHAT, AGENT, event));
-    listener.on(CHAT, AGENT, new Narration.Thinking());
+    endings.forEach(event -> listener.on(heard(CHAT, event)));
+    listener.on(heard(CHAT, new Narration.Thinking()));
 
     assertThat(heard).containsExactlyElementsOf(endings);
+  }
+
+  /** An event as a listener is handed it: a story event at a place in the story, a signal alone. */
+  private static Narrated heard(AgentType type, Narration event) {
+    return switch (event) {
+      case Narration.Story story -> Narrated.story(type, AGENT, story, new Seq(1), Instant.EPOCH);
+      case Narration.Live live -> Narrated.live(type, AGENT, live);
+    };
   }
 }

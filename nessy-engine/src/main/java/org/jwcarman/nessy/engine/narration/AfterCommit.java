@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine.narration;
 import io.micrometer.context.ContextSnapshot;
 import io.micrometer.context.ContextSnapshotFactory;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,8 +31,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
+import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -134,9 +137,9 @@ public final class AfterCommit implements Narrator, AutoCloseable {
 
   /** Narration from outside a locked step: behind anything reserved before it, else at once. */
   @Override
-  public void narrate(AgentType agentType, AgentId agentId, Narration event) {
-    Step ready = new Step(new Key(agentType, agentId), State.RELEASED);
-    ready.narrate(event);
+  public void narrate(Narrated narrated) {
+    Step ready = new Step(new Key(narrated.agentType(), narrated.agentId()), State.RELEASED);
+    ready.hold(narrated);
     enqueue(ready);
     drain(ready.line);
   }
@@ -225,15 +228,13 @@ public final class AfterCommit implements Narrator, AutoCloseable {
     }
     for (Held held : step.held) {
       try {
-        held.snapshot()
-            .wrap(() -> delegate.narrate(step.key.type(), step.key.agent(), held.event()))
-            .run();
+        held.snapshot().wrap(() -> delegate.narrate(held.narrated())).run();
       } catch (RuntimeException e) {
         LOG.warn(
             "[{}] agent {}: a narration of {} could not be handed on; carrying on",
             step.key.type().value(),
             step.key.agent().value(),
-            held.event().getClass().getSimpleName(),
+            held.narrated().event().getClass().getSimpleName(),
             e);
       }
     }
@@ -247,7 +248,7 @@ public final class AfterCommit implements Narrator, AutoCloseable {
 
   private record Key(AgentType type, AgentId agent) {}
 
-  private record Held(Narration event, ContextSnapshot snapshot) {}
+  private record Held(Narrated narrated, ContextSnapshot snapshot) {}
 
   private static final class Line {
     /** The one lock of this line: guards the queue, draining, retired and its steps' states. */
@@ -282,9 +283,21 @@ public final class AfterCommit implements Narrator, AutoCloseable {
       this.state = state;
     }
 
-    /** Held until the step commits; never told if it does not. */
-    public void narrate(Narration event) {
-      held.add(new Held(event, SNAPSHOTS.captureAll()));
+    /** A live signal, held until the step commits; never told if it does not. */
+    public void narrate(Narration.Live event) {
+      hold(Narrated.live(key.type(), key.agent(), event));
+    }
+
+    /**
+     * A story event the step wrote, at the {@code seq} it was written and the {@code at} its batch
+     * was appended with; held until the step commits, never told if it does not.
+     */
+    public void narrate(Narration.Story event, Seq seq, Instant at) {
+      hold(Narrated.story(key.type(), key.agent(), event, seq, at));
+    }
+
+    private void hold(Narrated narrated) {
+      held.add(new Held(narrated, SNAPSHOTS.captureAll()));
     }
 
     void release() {

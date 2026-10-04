@@ -85,7 +85,8 @@ class EventUsageReportsJdbcTest {
                 new Seq(1), new TurnId(1), new PayloadRef("p"), Instant.EPOCH),
             new AgentEvent.InferenceAnswered(
                 new Seq(2), new TurnId(1), new PayloadRef("a"), spent)),
-        Seq.NONE);
+        Seq.NONE,
+        Instant.EPOCH);
 
     UsageReport report = new EventUsageReports(List.of(queued, direct)).of(TYPE, agent);
 

@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.backend.inmemory;
 
-import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -39,9 +38,8 @@ import org.jwcarman.nessy.backend.event.AgentEvents;
  * <p>Enough for a turn nobody will resume, and enough to prove the seam: the same harness runs
  * against this and against a durable one without knowing which it has.
  *
- * <p>There is no {@code written_at} column here, so each append stamps its own row with {@link
- * Clock#instant()} -- the JDBC store's database clock and this one's harness clock are the same
- * kind of thing, read at the same moment: when the fact was filed.
+ * <p>There is no {@code written_at} column here, so each append stamps its rows with the instant it
+ * is given -- the same value the JDBC store writes to its column.
  */
 public final class InMemoryAgentEvents implements AgentEvents {
 
@@ -87,21 +85,15 @@ public final class InMemoryAgentEvents implements AgentEvents {
 
   private final Map<Key, List<Stored>> streams = new ConcurrentHashMap<>();
   private final Map<Key, Map<Seq, Instant>> writtenAt = new ConcurrentHashMap<>();
-  private final Clock clock;
   private final Codec<AgentEvent> codec;
 
   public InMemoryAgentEvents(CodecFactory codecs) {
-    this(codecs, Clock.systemUTC());
-  }
-
-  public InMemoryAgentEvents(CodecFactory codecs, Clock clock) {
     this.codec = Objects.requireNonNull(codecs, "codecs must not be null").create(AgentEvent.class);
-    this.clock = Objects.requireNonNull(clock, "clock must not be null");
   }
 
   @Override
   public synchronized void append(
-      AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast) {
+      AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast, Instant at) {
     Key key = key(type, agent);
     List<Stored> stream = streams.computeIfAbsent(key, _ -> new ArrayList<>());
     Seq last = stream.isEmpty() ? Seq.NONE : stream.getLast().seq();
@@ -113,9 +105,8 @@ public final class InMemoryAgentEvents implements AgentEvents {
           new Stored(event.seq(), event instanceof AgentEvent.TurnStarted, codec.encode(event)));
     }
     Map<Seq, Instant> stamps = writtenAt.computeIfAbsent(key, _ -> new ConcurrentHashMap<>());
-    Instant now = clock.instant();
     for (AgentEvent event : events) {
-      stamps.put(event.seq(), now);
+      stamps.put(event.seq(), at);
     }
   }
 

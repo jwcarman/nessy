@@ -16,8 +16,7 @@
 package org.jwcarman.nessy.narration.odyssey;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
 
@@ -42,8 +41,9 @@ public class OdysseyNarrator implements NarrationListener {
   }
 
   @Override
-  public void on(AgentType agentType, AgentId agentId, Narration event) {
-    streams.stream(agentType, agentId).publish(nameOf(event), event);
+  public void on(Narrated narrated) {
+    Narration event = narrated.event();
+    streams.stream(narrated.agentType(), narrated.agentId()).publish(nameOf(event), event);
   }
 
   /**

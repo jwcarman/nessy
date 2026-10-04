@@ -137,10 +137,10 @@ class NarrationAfterCommitJdbcTest {
   private NarrationListener checkingTheHistory(List<Boolean> readableWhenHeard) {
     CountDownLatch read = new CountDownLatch(1);
     transactions.commitsWaitFor(read);
-    return (type, agent, event) -> {
-      if (event instanceof Narration.TurnEnding ended) {
+    return narrated -> {
+      if (narrated.event() instanceof Narration.TurnEnding ended) {
         readableWhenHeard.add(
-            events.readAll(type, agent).stream()
+            events.readAll(narrated.agentType(), narrated.agentId()).stream()
                 .anyMatch(
                     stored ->
                         stored instanceof AgentEvent.InferenceAnswered answered

@@ -26,6 +26,7 @@ import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.StorageCodecConfigurer;
@@ -103,7 +104,8 @@ class OdysseyNarrationAutoConfigurationTest {
           AgentId agentId = new AgentId(UUID.randomUUID());
           // No exception is the assertion: the in-memory journal accepted the entry. What it
           // holds is read back over SSE, which the web example exercises end to end.
-          narrator.on(new AgentType("chat"), agentId, new Narration.ContentDelta("hi"));
+          narrator.on(
+              Narrated.live(new AgentType("chat"), agentId, new Narration.ContentDelta("hi")));
           assertThat(
                   context.getBean(AgentStreams.class).stream(new AgentType("chat"), agentId)
                       .publish("terminated", new Narration.Terminated()))

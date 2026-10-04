@@ -19,7 +19,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.micrometer.observation.ObservationRegistry;
-import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -76,8 +75,7 @@ class DirectHarnessInstructionsTest {
       Customizer<HarnessConfig<?>> feature,
       Customizer<DirectHarnessConfig<?>> blanket) {
     InMemoryAgentEvents events =
-        new InMemoryAgentEvents(
-            new JacksonCodecFactory(JsonMapper.builder().build()), Clock.systemUTC());
+        new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
     InMemoryPayloads payloads =
         new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
     return DefaultDirectHarnessFactory.of(

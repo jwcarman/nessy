@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -40,13 +41,13 @@ class NarrationListenerTest {
     NarrationListener listener =
         NarrationListener.of(
             c ->
-                c.onTurnStopped((type, id, ended) -> heard.add("ended " + ended.turn().value()))
-                    .onTurnStopped((type, id, ended) -> heard.add("and again"))
-                    .onAnswered((type, id, _) -> heard.add("said")));
+                c.onTurnStopped((_, ended) -> heard.add("ended " + ended.turn().value()))
+                    .onTurnStopped((_, ended) -> heard.add("and again"))
+                    .onAnswered((_, _) -> heard.add("said")));
 
-    listener.on(CHAT, ONE, new Narration.TurnStopped(new TurnId(3), "limit"));
-    listener.on(CHAT, ONE, new Narration.Thinking());
-    listener.on(CHAT, ONE, new Narration.Answered(new TurnId(3), Usage.unreported()));
+    listener.on(stopped(CHAT, 3));
+    listener.on(Narrated.live(CHAT, ONE, new Narration.Thinking()));
+    listener.on(answered(CHAT, 3));
 
     assertThat(heard).containsExactly("ended 3", "and again", "said");
   }
@@ -57,10 +58,10 @@ class NarrationListenerTest {
     AtomicInteger heard = new AtomicInteger();
     NarrationListener listener =
         NarrationListener.of(
-            c -> c.agentType(CHAT).onTurnStopped((type, id, ended) -> heard.incrementAndGet()));
+            c -> c.agentType(CHAT).onTurnStopped((_, ended) -> heard.incrementAndGet()));
 
-    listener.on(WATCHMAN, ONE, new Narration.TurnStopped(new TurnId(1), "limit"));
-    listener.on(CHAT, ONE, new Narration.TurnStopped(new TurnId(1), "limit"));
+    listener.on(stopped(WATCHMAN, 1));
+    listener.on(stopped(CHAT, 1));
 
     assertThat(heard).hasValue(1);
   }
@@ -72,7 +73,7 @@ class NarrationListenerTest {
     List<String> threads = new CopyOnWriteArrayList<>();
     NarrationListener listener =
         ((NarrationListener)
-                (type, id, event) -> {
+                narrated -> {
                   threads.add(Thread.currentThread().getName());
                   ran.countDown();
                   throw new IllegalStateException("the listener failed");
@@ -80,9 +81,23 @@ class NarrationListenerTest {
             .async();
 
     // No exception reaches the caller, and the caller's thread is not the one that ran it.
-    listener.on(CHAT, ONE, new Narration.Thinking());
+    listener.on(Narrated.live(CHAT, ONE, new Narration.Thinking()));
 
     assertThat(ran.await(5, TimeUnit.SECONDS)).isTrue();
     assertThat(threads.getFirst()).isEqualTo("nessy-listener");
+  }
+
+  private static Narrated stopped(AgentType type, int turn) {
+    return Narrated.story(
+        type, ONE, new Narration.TurnStopped(new TurnId(turn), "limit"), new Seq(2), Instant.EPOCH);
+  }
+
+  private static Narrated answered(AgentType type, int turn) {
+    return Narrated.story(
+        type,
+        ONE,
+        new Narration.Answered(new TurnId(turn), Usage.unreported()),
+        new Seq(3),
+        Instant.EPOCH);
   }
 }

@@ -18,6 +18,7 @@ package org.jwcarman.nessy.backend.jdbc;
 
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -56,8 +57,8 @@ public final class JdbcAgentEvents implements AgentEvents {
   private static final String PAYLOAD = "payload";
 
   private static final String APPEND =
-      "INSERT INTO nessy_agent_event (agent_type, agent_id, seq, starts_turn, payload)"
-          + " VALUES (?, ?, ?, ?, ?)";
+      "INSERT INTO nessy_agent_event (agent_type, agent_id, seq, starts_turn, payload, written_at)"
+          + " VALUES (?, ?, ?, ?, ?, ?)";
 
   private static final String READ_FROM =
       "SELECT payload FROM nessy_agent_event"
@@ -96,10 +97,13 @@ public final class JdbcAgentEvents implements AgentEvents {
   }
 
   @Override
-  public void append(AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast) {
+  public void append(
+      AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast, Instant at) {
     Objects.requireNonNull(type, TYPE_REQUIRED);
     Objects.requireNonNull(agent, AGENT_REQUIRED);
     Objects.requireNonNull(events, "events must not be null");
+    Objects.requireNonNull(at, "at must not be null");
+    OffsetDateTime written = at.atOffset(ZoneOffset.UTC);
     for (AgentEvent event : events) {
       try {
         jdbc.sql(APPEND)
@@ -108,7 +112,8 @@ public final class JdbcAgentEvents implements AgentEvents {
                 agent.value(),
                 event.seq().value(),
                 event instanceof AgentEvent.TurnStarted,
-                codec.encode(event))
+                codec.encode(event),
+                written)
             .update();
       } catch (DuplicateKeyException _) {
         // Somebody else wrote this seq, which means they decided from the state this caller
