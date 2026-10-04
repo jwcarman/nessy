@@ -395,7 +395,7 @@ public interface Narrator { void narrate(Narrated narrated); /* listening(), sil
 
 - [ ] **Step 5: Implement.** `Narrated`; the listener and narrator signatures; `append` writes `written_at` from `at` in JDBC (the `INSERT` names the column) and stamps it in memory; each harness reads `Instant at = clock.instant()` once per step, passes it to `append`, and narrates each event with `step.narrate(StoryEvents.of(event), event.seq(), at)`. Live signals from the handlers go through `Narrated.live`. `Listeners` passes the envelope to each listener unchanged. `NarrationListenerConfig`'s `agentType` filter reads `narrated.agentType()`.
 
-- [ ] **Step 6: Update every listener.** Each `on(agentType, agentId, event)` becomes `on(Narrated narrated)` and reads the three from the envelope. `OdysseyNarrator` publishes `narrated.event()` under the same names as before. If the stream's `publish` has a form that takes an SSE event id, pass a story event's `seq` as the id; if it has none, leave the call as it is and say so in the task report.
+- [ ] **Step 6: Update every listener.** Each `on(agentType, agentId, event)` becomes `on(Narrated narrated)` and reads the three from the envelope. `OdysseyNarrator` publishes `narrated.event()` under the same names as before. Odyssey assigns and manages its own event ids, so nothing about ids changes here.
 
 - [ ] **Step 7: Run all modules' tests** (`./mvnw -B -q test`, exit 0), then docs: one paragraph in `docs/guides/narration.md` on the envelope and its position, and a CHANGELOG breaking-change entry: "`NarrationListener.on` takes a `Narrated` envelope: the agent, the event, and for a story event its position (`seq` and time written)."
 

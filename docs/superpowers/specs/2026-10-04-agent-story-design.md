@@ -166,7 +166,7 @@ public interface NarrationListener {
 `position` is present for every `Story` event and empty for every `Live` one. `seq` is the
 stored event's own sequence number, so it is unique within an agent and increases; `at` is when
 the event was written. Because each stored event is told as one story event, `(agent, seq)` names
-one story event everywhere: live, on replay, and as an SSE event id.
+one story event everywhere, live and on replay.
 
 The rules narration already keeps stand: a story event is heard only after the step that wrote
 it commits, never if it rolls back, in order per agent; a listener that throws loses nothing,
@@ -439,7 +439,8 @@ public interface Following extends AutoCloseable {
 `replay` returns story events only, each with its position. An agent with no story is an empty
 list. Both doors' agents are read the same way: they store the same events.
 
-`follow` is for a watcher that reconnects, such as an SSE stream resuming from `Last-Event-ID`.
+`follow` is for a watcher that reconnects and has nothing that resumes for it. (A stream published
+through Odyssey resumes itself: Odyssey assigns its own event ids and replays from them.)
 It registers the listener, held back; replays what is stored after `after`; then releases what
 was held, dropping any story event at or before the last one replayed. Live signals held during
 the replay are delivered after it. From then on the listener hears what any listener hears. Live
@@ -608,7 +609,7 @@ Beyond §10c:
   blocks fails by name.
 - **Stored shapes**, written out by hand, for each changed and new event.
 - **The examples and adapters** that consume narration: `OdysseyNarrator` (SSE names for the new
-  kinds, and the `seq` as the SSE event id), `ConsoleNarration`, chat-web's page, the watchman.
+  kinds; Odyssey assigns and manages its own event ids), `ConsoleNarration`, chat-web's page, the watchman.
 
 ## 12. New public concepts
 
