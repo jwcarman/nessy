@@ -21,6 +21,7 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -44,8 +45,10 @@ import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.ChapterPolicy;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
+import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.turn.Chapter;
@@ -767,7 +770,7 @@ class ChapterKeeperTest {
     void the_listener_keeps_the_agent_whose_turn_ended_on_this_type() {
       NarrationListener listener = keeper().listener();
 
-      listener.on(TYPE, AGENT, new Narration.TurnEnded(id(2)));
+      listener.on(stopped(TYPE, id(2)));
 
       await().atMost(Duration.ofSeconds(10)).until(() -> !asked.isEmpty());
       assertThat(asked).containsExactly(chapter(1, 2));
@@ -779,7 +782,7 @@ class ChapterKeeperTest {
       NarrationListener told = async.delegate();
       AgentType other = new AgentType("other");
 
-      told.on(other, AGENT, new Narration.TurnEnded(id(2)));
+      told.on(stopped(other, id(2)));
 
       assertThat(asked).isEmpty();
       assertThat(chapters.closedThrough(TYPE, AGENT)).isEmpty();
@@ -790,7 +793,8 @@ class ChapterKeeperTest {
       NarrationListener.Async async = (NarrationListener.Async) keeper().listener();
       NarrationListener told = async.delegate();
 
-      told.on(TYPE, AGENT, new Narration.TurnStarted(id(3)));
+      told.on(
+          Narrated.story(TYPE, AGENT, new Narration.TurnStarted(id(3)), new Seq(1), Instant.EPOCH));
 
       assertThat(asked).isEmpty();
       assertThat(chapters.closedThrough(TYPE, AGENT)).isEmpty();
@@ -801,7 +805,7 @@ class ChapterKeeperTest {
       NarrationListener.Async async = (NarrationListener.Async) keeper().listener();
       NarrationListener told = async.delegate();
 
-      told.on(TYPE, AGENT, new Narration.TurnEnded(id(2)));
+      told.on(stopped(TYPE, id(2)));
 
       assertThat(asked).containsExactly(chapter(1, 2));
     }
@@ -829,5 +833,10 @@ class ChapterKeeperTest {
                       TYPE, policy, SAYS_SOMETHING, chapters, leases, histories, 3, Duration.ZERO))
           .isInstanceOf(IllegalArgumentException.class);
     }
+  }
+
+  private static Narrated stopped(AgentType type, TurnId turn) {
+    return Narrated.story(
+        type, AGENT, new Narration.TurnStopped(turn, "limit"), new Seq(2), Instant.EPOCH);
   }
 }

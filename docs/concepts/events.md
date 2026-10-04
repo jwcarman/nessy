@@ -105,8 +105,11 @@ API change.
 
 ```java
 public interface AgentEvents {
-  void append(AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast);
+  void append(
+      AgentType type, AgentId agent, List<AgentEvent> events, Seq expectedLast, Instant at);
   Stream<AgentEvent> streamFrom(AgentType type, AgentId agent, Seq after);
+  List<Written> readWrittenFrom(AgentType type, AgentId agent, Seq after, int limit);
+  record Written(AgentEvent event, Instant at) {}
   default Stream<AgentEvent> streamAll(AgentType type, AgentId agent);
   default List<AgentEvent> readFrom(AgentType type, AgentId agent, Seq after);
   default List<AgentEvent> readAll(AgentType type, AgentId agent);
@@ -122,6 +125,13 @@ application keying agents off a business identifier can run two agent
 types, each its own harness, over the same id. Every method here takes
 both, for that reason: keyed by id alone, those two agent types would share
 a single story.
+
+**A store records `at` exactly as given.** `at` is the engine's clock reading
+for the step, to the microsecond. A store writes it as the time the events were
+written and must not stamp a clock of its own, so an event heard live and the
+same event read back carry the same instant. `readWrittenFrom` reads up to
+`limit` events after a `Seq`, oldest first, each with the instant it was
+written.
 
 **`streamFrom` is the primitive.** `streamAll`, `readFrom` and `readAll`
 are conveniences built over it, so a backend implements one method and gets

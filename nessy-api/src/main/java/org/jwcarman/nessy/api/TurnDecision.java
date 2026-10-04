@@ -44,8 +44,7 @@ public sealed interface TurnDecision {
    * End the turn, with this reason.
    *
    * <p>Named for what it produces: the fact is an {@code AgentEvent.TurnFailed}, a watcher hears
-   * {@link Narration.TurnFailed}, and a caller receives {@link Outcome.Failed}. One vocabulary from
-   * the decision to the answer.
+   * {@link Narration.TurnStopped}, and a caller receives {@link Outcome.Failed}.
    *
    * <p>Distinct from {@link RetryDecision.GiveUp}, which is about one call rather than a whole
    * turn, and carries no reason because a caller of that one never sees it.

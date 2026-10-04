@@ -122,7 +122,7 @@ class InferenceHandlerTest {
             Duration.ofSeconds(1),
             new RetryPolicy.Never()),
         payloads,
-        (type, id, event) -> {},
+        _ -> {},
         tools);
   }
 

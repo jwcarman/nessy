@@ -20,9 +20,7 @@ import io.micrometer.context.ContextSnapshotFactory;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Narration;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.Narrator;
 import org.slf4j.Logger;
@@ -99,35 +97,34 @@ public final class Listeners implements Narrator, AutoCloseable {
   }
 
   @Override
-  public void narrate(AgentType agentType, AgentId agentId, Narration event) {
-    teller.execute(() -> tell(agentType, agentId, event));
+  public void narrate(Narrated narrated) {
+    teller.execute(() -> tell(narrated));
   }
 
-  private void tell(AgentType agentType, AgentId agentId, Narration event) {
+  private void tell(Narrated narrated) {
     for (NarrationListener listener : engineWide) {
-      tell(listener, agentType, agentId, event);
+      tell(listener, narrated);
     }
     for (NarrationListener listener : own) {
-      tell(listener, agentType, agentId, event);
+      tell(listener, narrated);
     }
   }
 
-  private void tell(
-      NarrationListener listener, AgentType agentType, AgentId agentId, Narration event) {
+  private void tell(NarrationListener listener, Narrated narrated) {
     if (listener instanceof NarrationListener.Async async) {
       // Its own thread, as it asked, and one of ours so shutdown can wait for it -- but the trace
       // does NOT go with it. See asyncTeller.
-      asyncTeller.execute(() -> async.tell(agentType, agentId, event));
+      asyncTeller.execute(() -> async.tell(narrated));
       return;
     }
     try {
-      listener.on(agentType, agentId, event);
+      listener.on(narrated);
     } catch (RuntimeException e) {
       log.warn(
           "[{}] agent {}: a listener threw on {}; carrying on",
-          agentType.value(),
-          agentId.value(),
-          event.getClass().getSimpleName(),
+          narrated.agentType().value(),
+          narrated.agentId().value(),
+          narrated.event().getClass().getSimpleName(),
           e);
     }
   }

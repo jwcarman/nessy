@@ -135,7 +135,7 @@ public final class ChapterKeeper {
   /** The listener to attach to a harness: hears this type's turns end, on a thread of its own. */
   public NarrationListener listener() {
     return NarrationListener.of(
-            c -> c.agentType(agentType).onTurnEnded((_, agentId, _) -> keep(agentId)))
+            c -> c.agentType(agentType).onTurnEnding((narrated, _) -> keep(narrated.agentId())))
         .async();
   }
 

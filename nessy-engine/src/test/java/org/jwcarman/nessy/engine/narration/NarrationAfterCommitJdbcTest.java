@@ -137,10 +137,10 @@ class NarrationAfterCommitJdbcTest {
   private NarrationListener checkingTheHistory(List<Boolean> readableWhenHeard) {
     CountDownLatch read = new CountDownLatch(1);
     transactions.commitsWaitFor(read);
-    return (type, agent, event) -> {
-      if (event instanceof Narration.TurnEnded ended) {
+    return narrated -> {
+      if (narrated.event() instanceof Narration.TurnEnding ended) {
         readableWhenHeard.add(
-            events.readAll(type, agent).stream()
+            events.readAll(narrated.agentType(), narrated.agentId()).stream()
                 .anyMatch(
                     stored ->
                         stored instanceof AgentEvent.InferenceAnswered answered
@@ -170,10 +170,10 @@ class NarrationAfterCommitJdbcTest {
         assertThat(events.readAll(Doors.TYPE, agent)).as("rolled back").isEmpty();
         harness.ask(agent, "hello again");
 
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(agent).contains("TurnEnded"));
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(agent).contains("Answered"));
         assertThat(heard.kindsFor(agent))
             .as("the rolled-back turn was never told, so the story is one turn long")
-            .containsExactly("TurnStarted", "Answered", "TurnEnded");
+            .containsExactly("TurnStarted", "Answered");
       }
     }
 
@@ -211,10 +211,10 @@ class NarrationAfterCommitJdbcTest {
         assertThat(events.readAll(Doors.TYPE, agent)).as("rolled back").isEmpty();
         harness.tell(agent, "hello again");
 
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(agent).contains("TurnEnded"));
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(agent).contains("Answered"));
         assertThat(heard.kindsFor(agent))
             .as("the rolled-back turn was never told, so the story is one turn long")
-            .containsExactly("TurnStarted", "Thinking", "Answered", "TurnEnded");
+            .containsExactly("TurnStarted", "Thinking", "Answered");
       }
     }
 

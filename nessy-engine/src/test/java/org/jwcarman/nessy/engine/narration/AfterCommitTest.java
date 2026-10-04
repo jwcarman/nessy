@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -30,7 +31,9 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
+import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLocks;
 import org.jwcarman.nessy.engine.narration.AfterCommit.Step;
@@ -44,21 +47,25 @@ class AfterCommitTest {
 
   private static final AgentType TYPE = new AgentType("chat");
   private static final long PATIENCE_SECONDS = 20;
+  private static final Instant AT = Instant.parse("2026-01-01T00:00:00Z");
 
   private final AgentId agent = AgentId.random();
   private final AgentId other = AgentId.random();
   private final List<String> heard = new CopyOnWriteArrayList<>();
   private final AfterCommit narration =
       new AfterCommit(
-          (_, agentId, event) ->
-              heard.add(label(agentId) + ":" + ((Narration.TurnEnded) event).turn().value()));
+          narrated ->
+              heard.add(
+                  label(narrated.agentId())
+                      + ":"
+                      + ((Narration.TurnEnding) narrated.event()).turn().value()));
 
   private String label(AgentId who) {
     return who.equals(agent) ? "agent" : "other";
   }
 
-  private static Narration.TurnEnded ended(long turn) {
-    return new Narration.TurnEnded(new TurnId(turn));
+  private static Narration.TurnEnding ended(long turn) {
+    return new Narration.TurnStopped(new TurnId(turn), "limit");
   }
 
   private static String told(String who, long turn) {
@@ -78,8 +85,8 @@ class AfterCommitTest {
           TYPE,
           agent,
           step -> {
-            step.narrate(ended(1));
-            step.narrate(ended(2));
+            step.narrate(ended(1), new Seq(1), AT);
+            step.narrate(ended(2), new Seq(2), AT);
             heardInside.addAll(heard);
             return null;
           });
@@ -95,11 +102,11 @@ class AfterCommitTest {
           TYPE,
           agent,
           step -> {
-            step.narrate(ended(1));
+            step.narrate(ended(1), new Seq(1), AT);
             try {
               throw new IllegalStateException("handled inside the work");
             } catch (IllegalStateException _) {
-              step.narrate(ended(2));
+              step.narrate(ended(2), new Seq(2), AT);
             }
             return null;
           });
@@ -130,11 +137,11 @@ class AfterCommitTest {
                       TYPE,
                       agent,
                       step -> {
-                        step.narrate(ended(1));
+                        step.narrate(ended(1), new Seq(1), AT);
                         throw new IllegalStateException("the work failed");
                       }))
           .isInstanceOf(IllegalStateException.class);
-      narration.narrate(TYPE, agent, ended(2));
+      narration.narrate(Narrated.story(TYPE, agent, ended(2), new Seq(2), AT));
 
       assertThat(heard)
           .as("the later narration is told and the lost one never is")
@@ -152,12 +159,12 @@ class AfterCommitTest {
                       TYPE,
                       agent,
                       step -> {
-                        step.narrate(ended(1));
+                        step.narrate(ended(1), new Seq(1), AT);
                         return null;
                       }))
           .isInstanceOf(IllegalStateException.class)
           .hasMessage("the commit of call 1 failed");
-      narration.narrate(TYPE, agent, ended(2));
+      narration.narrate(Narrated.story(TYPE, agent, ended(2), new Seq(2), AT));
 
       assertThat(heard).containsExactly(told("agent", 2));
     }
@@ -173,7 +180,7 @@ class AfterCommitTest {
                       TYPE,
                       agent,
                       step -> {
-                        step.narrate(ended(1));
+                        step.narrate(ended(1), new Seq(1), AT);
                         try {
                           throw new IllegalArgumentException("handled inside the work");
                         } catch (IllegalArgumentException _) {
@@ -181,7 +188,7 @@ class AfterCommitTest {
                         }
                       }))
           .isInstanceOf(IllegalStateException.class);
-      narration.narrate(TYPE, agent, ended(2));
+      narration.narrate(Narrated.story(TYPE, agent, ended(2), new Seq(2), AT));
 
       assertThat(heard).containsExactly(told("agent", 2));
     }
@@ -189,8 +196,8 @@ class AfterCommitTest {
     @Test
     void does_not_hold_up_what_was_queued_behind_it() {
       Step failing = narration.reserve(TYPE, agent);
-      failing.narrate(ended(1));
-      narration.narrate(TYPE, agent, ended(2));
+      failing.narrate(ended(1), new Seq(1), AT);
+      narration.narrate(Narrated.story(TYPE, agent, ended(2), new Seq(2), AT));
       assertThat(heard).as("waiting behind the step").isEmpty();
 
       failing.cancel();
@@ -215,7 +222,7 @@ class AfterCommitTest {
                       TYPE,
                       agent,
                       step -> {
-                        step.narrate(ended(1));
+                        step.narrate(ended(1), new Seq(1), AT);
                         return null;
                       }));
       held.awaitReached();
@@ -225,7 +232,7 @@ class AfterCommitTest {
           TYPE,
           agent,
           step -> {
-            step.narrate(ended(2));
+            step.narrate(ended(2), new Seq(2), AT);
             return null;
           });
 
@@ -237,7 +244,7 @@ class AfterCommitTest {
 
     @Test
     void narration_from_outside_any_step_is_heard_at_once_when_nothing_is_ahead_of_it() {
-      narration.narrate(TYPE, agent, ended(1));
+      narration.narrate(Narrated.story(TYPE, agent, ended(1), new Seq(1), AT));
 
       assertThat(heard).containsExactly(told("agent", 1));
     }
@@ -245,9 +252,9 @@ class AfterCommitTest {
     @Test
     void narration_from_outside_a_step_does_not_overtake_a_step_reserved_before_it() {
       Step reserved = narration.reserve(TYPE, agent);
-      reserved.narrate(ended(1));
+      reserved.narrate(ended(1), new Seq(1), AT);
 
-      narration.narrate(TYPE, agent, ended(2));
+      narration.narrate(Narrated.story(TYPE, agent, ended(2), new Seq(2), AT));
       assertThat(heard).isEmpty();
       reserved.release();
 
@@ -258,8 +265,8 @@ class AfterCommitTest {
     void a_step_that_resolves_first_waits_for_the_one_reserved_ahead_of_it() {
       Step first = narration.reserve(TYPE, agent);
       Step second = narration.reserve(TYPE, agent);
-      first.narrate(ended(1));
-      second.narrate(ended(2));
+      first.narrate(ended(1), new Seq(1), AT);
+      second.narrate(ended(2), new Seq(2), AT);
 
       second.release();
       assertThat(heard).isEmpty();
@@ -276,15 +283,15 @@ class AfterCommitTest {
     @Test
     void is_not_held_up_by_a_step_that_has_not_resolved() {
       Step reserved = narration.reserve(TYPE, agent);
-      reserved.narrate(ended(1));
+      reserved.narrate(ended(1), new Seq(1), AT);
 
-      narration.narrate(TYPE, other, ended(7));
+      narration.narrate(Narrated.story(TYPE, other, ended(7), new Seq(7), AT));
       narration.locked(
           new InMemoryLocks(),
           TYPE,
           other,
           step -> {
-            step.narrate(ended(8));
+            step.narrate(ended(8), new Seq(8), AT);
             return null;
           });
 
@@ -305,14 +312,17 @@ class AfterCommitTest {
       CountDownLatch behind = new CountDownLatch(1);
       AfterCommit impatient =
           new AfterCommit(
-              (_, agentId, event) -> {
-                heard.add(label(agentId) + ":" + ((Narration.TurnEnded) event).turn().value());
+              narrated -> {
+                heard.add(
+                    label(narrated.agentId())
+                        + ":"
+                        + ((Narration.TurnEnding) narrated.event()).turn().value());
                 behind.countDown();
               },
               Duration.ofMillis(50));
       Step lost = impatient.reserve(TYPE, agent);
-      lost.narrate(ended(1));
-      impatient.narrate(TYPE, agent, ended(2));
+      lost.narrate(ended(1), new Seq(1), AT);
+      impatient.narrate(Narrated.story(TYPE, agent, ended(2), new Seq(2), AT));
 
       assertThat(behind.await(PATIENCE_SECONDS, TimeUnit.SECONDS)).isTrue();
 

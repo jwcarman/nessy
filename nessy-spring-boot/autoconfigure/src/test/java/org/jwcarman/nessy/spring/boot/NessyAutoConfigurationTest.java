@@ -25,6 +25,7 @@ import io.micrometer.observation.ObservationRegistry;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentStories;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.NarrationListener;
@@ -168,6 +169,32 @@ class NessyAutoConfigurationTest {
               assertThat(context).hasSingleBean(UsageReports.class);
               assertThat(context.getBean(UsageReports.class)).isInstanceOf(EventUsageReports.class);
             });
+  }
+
+  /** Agent stories are offered whenever there is a backend to read, and not otherwise. */
+  @Test
+  void agent_stories_are_offered_over_the_stored_events_when_there_is_a_backend() {
+    new ApplicationContextRunner()
+        .withConfiguration(
+            AutoConfigurations.of(
+                JacksonAutoConfiguration.class,
+                DataSourceTransactionManagerAutoConfiguration.class,
+                ObservationAutoConfiguration.class,
+                NessyAutoConfiguration.class,
+                JdbcBackendAutoConfiguration.class,
+                InMemoryBackendAutoConfiguration.class,
+                QueuedHarnessAutoConfiguration.class,
+                AgentStoriesAutoConfiguration.class))
+        .withUserConfiguration(AnInferenceProvider.class)
+        .withPropertyValues(MODEL, PROVIDER, PROMPT, NO_SCHEMA)
+        .run(context -> assertThat(context).hasSingleBean(AgentStories.class));
+  }
+
+  @Test
+  void agent_stories_are_not_offered_when_there_is_no_backend() {
+    new ApplicationContextRunner()
+        .withConfiguration(AutoConfigurations.of(AgentStoriesAutoConfiguration.class))
+        .run(context -> assertThat(context).doesNotHaveBean(AgentStories.class));
   }
 
   /**

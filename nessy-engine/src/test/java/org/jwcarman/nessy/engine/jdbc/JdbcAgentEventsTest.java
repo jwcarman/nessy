@@ -18,9 +18,7 @@ package org.jwcarman.nessy.engine.jdbc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.within;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import javax.sql.DataSource;
@@ -51,6 +49,7 @@ import tools.jackson.databind.json.JsonMapper;
 class JdbcAgentEventsTest {
 
   private static final AgentType TYPE = new AgentType("chat");
+  private static final Instant AT = Instant.parse("2026-01-01T00:00:00Z");
 
   private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
 
@@ -101,7 +100,7 @@ class JdbcAgentEventsTest {
   @Test
   @DisplayName("past a closed turn there is nothing to read, and the agent comes back idle")
   void a_closed_turn_leaves_nothing_to_replay() {
-    events.append(TYPE, agent, List.of(started(1, 1), answered(2, 1)), Seq.NONE);
+    events.append(TYPE, agent, List.of(started(1, 1), answered(2, 1)), Seq.NONE, AT);
 
     assertThat(events.sinceLastTurnStarted(TYPE, agent))
         .as("the last turn, and nothing before it")
@@ -114,8 +113,8 @@ class JdbcAgentEventsTest {
   @Test
   @DisplayName("in the middle of a turn, what comes back is that turn")
   void an_open_turn_is_replayed() {
-    events.append(TYPE, agent, List.of(started(1, 1), answered(2, 1)), Seq.NONE);
-    events.append(TYPE, agent, List.of(started(3, 3)), new Seq(2));
+    events.append(TYPE, agent, List.of(started(1, 1), answered(2, 1)), Seq.NONE, AT);
+    events.append(TYPE, agent, List.of(started(3, 3)), new Seq(2), AT);
 
     assertThat(events.sinceLastTurnStarted(TYPE, agent))
         .as("one turn's events, not a history")
@@ -126,10 +125,10 @@ class JdbcAgentEventsTest {
   @Test
   @DisplayName("a terminated agent stays terminated, however often it is read back")
   void termination_survives_replay() {
-    events.append(TYPE, agent, List.of(started(1, 1), answered(2, 1)), Seq.NONE);
+    events.append(TYPE, agent, List.of(started(1, 1), answered(2, 1)), Seq.NONE, AT);
     // Terminated starts no turn, so it falls inside the last one that did -- which is why it
     // needs no turn of its own, and why it is replayed every time the agent is read back.
-    events.append(TYPE, agent, List.of(new AgentEvent.Terminated(new Seq(3))), new Seq(2));
+    events.append(TYPE, agent, List.of(new AgentEvent.Terminated(new Seq(3))), new Seq(2), AT);
 
     assertThat(reconstituted()).isInstanceOf(AgentState.Terminal.class);
     assertThat(reconstituted()).isInstanceOf(AgentState.Terminal.class);
@@ -138,10 +137,10 @@ class JdbcAgentEventsTest {
   @Test
   @DisplayName("a writer that reached a seq first takes the second one down")
   void a_seq_already_taken_is_a_conflict() {
-    events.append(TYPE, agent, List.of(started(1, 1)), Seq.NONE);
+    events.append(TYPE, agent, List.of(started(1, 1)), Seq.NONE, AT);
     List<AgentEvent> sameSeq = List.of(answered(1, 1));
 
-    assertThatThrownBy(() -> events.append(TYPE, agent, sameSeq, Seq.NONE))
+    assertThatThrownBy(() -> events.append(TYPE, agent, sameSeq, Seq.NONE, AT))
         .isInstanceOf(AgentEventConflict.class)
         .hasMessageContaining("another writer reached");
   }
@@ -150,30 +149,70 @@ class JdbcAgentEventsTest {
   @DisplayName("agents do not read each other's events")
   void agents_are_separate() {
     AgentId other = AgentId.random();
-    events.append(TYPE, agent, List.of(started(1, 1)), Seq.NONE);
+    events.append(TYPE, agent, List.of(started(1, 1)), Seq.NONE, AT);
 
     assertThat(events.readAll(TYPE, other)).isEmpty();
     assertThat(events.readAll(TYPE, agent)).hasSize(1);
   }
 
   @Test
-  @DisplayName("an appended event's writtenAt is readable, and close to now")
-  void writtenAt_is_readable_and_close_to_now() {
-    events.append(TYPE, agent, List.of(started(1, 1)), Seq.NONE);
+  @DisplayName(
+      "an appended event's writtenAt is the instant it was appended with, not the database's")
+  void writtenAt_is_the_instant_given_at_append() {
+    Instant given = Instant.parse("2026-01-01T00:00:00Z");
+    events.append(TYPE, agent, List.of(started(1, 1)), Seq.NONE, given);
 
-    assertThat(events.writtenAt(TYPE, agent, new Seq(1)))
-        .isCloseTo(Instant.now(), within(Duration.ofMinutes(1)));
+    assertThat(events.writtenAt(TYPE, agent, new Seq(1))).isEqualTo(given);
   }
 
   @Test
   @DisplayName("an unknown seq names the agent and the seq rather than staying quiet about it")
   void writtenAt_of_an_unknown_seq_throws() {
-    events.append(TYPE, agent, List.of(started(1, 1)), Seq.NONE);
+    events.append(TYPE, agent, List.of(started(1, 1)), Seq.NONE, AT);
     Seq unknownSeq = new Seq(99);
 
     assertThatThrownBy(() -> events.writtenAt(TYPE, agent, unknownSeq))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("99")
         .hasMessageContaining(agent.value().toString());
+  }
+
+  @Test
+  @DisplayName("each event after the watermark comes back with the instant its batch was written")
+  void readWrittenFrom_pairs_each_event_with_its_instant() {
+    Instant later = Instant.parse("2026-01-01T00:05:00Z");
+    events.append(TYPE, agent, List.of(started(1, 1), answered(2, 1)), Seq.NONE, AT);
+    events.append(TYPE, agent, List.of(started(3, 3)), new Seq(2), later);
+
+    assertThat(events.readWrittenFrom(TYPE, agent, new Seq(1), 10))
+        .containsExactly(
+            new AgentEvents.Written(answered(2, 1), AT),
+            new AgentEvents.Written(started(3, 3), later));
+  }
+
+  @Test
+  @DisplayName("a bounded read returns the first events after the watermark, and no more")
+  void readWrittenFrom_stops_at_its_limit() {
+    events.append(
+        TYPE,
+        agent,
+        List.of(started(1, 1), started(2, 2), started(3, 3), started(4, 4), started(5, 5)),
+        Seq.NONE,
+        AT);
+
+    assertThat(events.readWrittenFrom(TYPE, agent, Seq.NONE, 2))
+        .extracting(w -> w.event().seq())
+        .containsExactly(new Seq(1), new Seq(2));
+    assertThat(events.readWrittenFrom(TYPE, agent, new Seq(2), 10))
+        .extracting(w -> w.event().seq())
+        .containsExactly(new Seq(3), new Seq(4), new Seq(5));
+  }
+
+  @Test
+  @DisplayName("a bounded read with a limit of zero is refused")
+  void readWrittenFrom_refuses_a_limit_of_zero() {
+    assertThatThrownBy(() -> events.readWrittenFrom(TYPE, agent, Seq.NONE, 0))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("limit must be positive");
   }
 }

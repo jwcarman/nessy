@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.DirectHarness;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
@@ -62,10 +63,10 @@ class NarrationAfterCommitTest {
   /** Whether the history already held the turn's answer at the moment its end was heard. */
   private static NarrationListener checkingTheHistory(
       AgentEvents events, List<Boolean> readableWhenHeard) {
-    return (type, agent, event) -> {
-      if (event instanceof Narration.TurnEnded ended) {
+    return narrated -> {
+      if (narrated.event() instanceof Narration.TurnEnding ended) {
         readableWhenHeard.add(
-            events.readAll(type, agent).stream()
+            events.readAll(narrated.agentType(), narrated.agentId()).stream()
                 .anyMatch(
                     stored ->
                         stored instanceof AgentEvent.InferenceAnswered answered
@@ -95,7 +96,7 @@ class NarrationAfterCommitTest {
             .hasMessage("the commit of call 1 failed");
         harness.ask(kept, "hello");
 
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(kept).contains("TurnEnded"));
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(kept).contains("Answered"));
         assertThat(heard.kindsFor(lost)).isEmpty();
       }
     }
@@ -138,10 +139,9 @@ class NarrationAfterCommitTest {
             .containsExactly("TurnStarted");
         held.release();
         first.orTimeout(PATIENCE.toSeconds(), TimeUnit.SECONDS).join();
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(agent).size() == 6);
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(agent).size() == 4);
         assertThat(heard.kindsFor(agent))
-            .containsExactly(
-                "TurnStarted", "Answered", "TurnEnded", "TurnStarted", "Answered", "TurnEnded");
+            .containsExactly("TurnStarted", "Answered", "TurnStarted", "Answered");
       }
     }
 
@@ -160,11 +160,11 @@ class NarrationAfterCommitTest {
 
         harness.ask(quick, "hello");
 
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(quick).contains("TurnEnded"));
-        assertThat(heard.kindsFor(slow)).doesNotContain("TurnEnded");
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(quick).contains("Answered"));
+        assertThat(heard.kindsFor(slow)).doesNotContain("Answered");
         held.release();
         first.orTimeout(PATIENCE.toSeconds(), TimeUnit.SECONDS).join();
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(slow).contains("TurnEnded"));
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(slow).contains("Answered"));
       }
     }
   }
@@ -192,7 +192,7 @@ class NarrationAfterCommitTest {
             .hasMessage("the commit of call 1 failed");
         harness.tell(kept, "hello");
 
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(kept).contains("TurnEnded"));
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(kept).contains("Answered"));
         assertThat(heard.kindsFor(lost)).isEmpty();
       }
     }
@@ -240,9 +240,36 @@ class NarrationAfterCommitTest {
         held.release();
         first.orTimeout(PATIENCE.toSeconds(), TimeUnit.SECONDS).join();
 
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(agent).contains("TurnEnded"));
-        assertThat(heard.kindsFor(agent))
-            .containsExactly("TurnStarted", "Thinking", "Answered", "TurnEnded");
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(agent).contains("Answered"));
+        assertThat(heard.kindsFor(agent)).containsExactly("TurnStarted", "Thinking", "Answered");
+      }
+    }
+
+    @Test
+    void tells_a_story_event_with_its_stored_position_and_a_live_signal_with_none() {
+      try (DefaultQueuedHarnessFactory factory =
+          Doors.queuedFactory(new ProbedQueuedBackend(memory, memory.locks()), heard)) {
+        QueuedHarness<String> harness = Doors.queued(factory);
+        AgentId agent = AgentId.random();
+
+        harness.tell(agent, "hello");
+
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(agent).contains("Answered"));
+        List<Heard.Line> lines = heard.forAgent(agent).toList();
+        assertThat(lines)
+            .extracting(Heard.Line::kind)
+            .containsExactly("TurnStarted", "Thinking", "Answered");
+        assertThat(lines.get(1).position()).as("a live signal has no place in the story").isEmpty();
+        for (Heard.Line story : List.of(lines.get(0), lines.get(2))) {
+          Narrated.Position position = story.position().orElseThrow();
+          assertThat(memory.events().writtenAt(Doors.TYPE, agent, position.seq()))
+              .isEqualTo(position.at());
+        }
+        assertThat(
+                memory.events().readAll(Doors.TYPE, agent).stream().map(AgentEvent::seq).toList())
+            .contains(
+                lines.get(0).position().orElseThrow().seq(),
+                lines.get(2).position().orElseThrow().seq());
       }
     }
 
@@ -261,11 +288,11 @@ class NarrationAfterCommitTest {
 
         harness.tell(quick, "hello");
 
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(quick).contains("TurnEnded"));
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(quick).contains("Answered"));
         assertThat(heard.kindsFor(slow)).isEmpty();
         held.release();
         first.orTimeout(PATIENCE.toSeconds(), TimeUnit.SECONDS).join();
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(slow).contains("TurnEnded"));
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(slow).contains("Answered"));
       }
     }
   }

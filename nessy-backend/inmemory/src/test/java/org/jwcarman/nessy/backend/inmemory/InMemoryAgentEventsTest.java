@@ -18,13 +18,8 @@ package org.jwcarman.nessy.backend.inmemory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.within;
 
-import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
@@ -48,6 +43,8 @@ class InMemoryAgentEventsTest {
 
   private static final AgentType TYPE = new AgentType("chat");
 
+  private static final Instant AT = Instant.parse("2026-01-01T00:00:00Z");
+
   private final AgentId agent = AgentId.random();
 
   private static AgentEvent started(long seq, long turn) {
@@ -66,7 +63,7 @@ class InMemoryAgentEventsTest {
   void streaming_does_not_decode_what_nobody_read() {
     AtomicInteger decoded = new AtomicInteger();
     AgentEvents events = new InMemoryAgentEvents(counting(decoded));
-    events.append(TYPE, agent, List.of(started(1, 1), started(2, 2), started(3, 3)), Seq.NONE);
+    events.append(TYPE, agent, List.of(started(1, 1), started(2, 2), started(3, 3)), Seq.NONE, AT);
 
     decoded.set(0);
     try (Stream<AgentEvent> stream = events.streamAll(TYPE, agent)) {
@@ -118,10 +115,10 @@ class InMemoryAgentEventsTest {
     AgentType billing = new AgentType("billing");
     AgentId shared = AgentId.random();
 
-    events.append(support, shared, List.of(started(1, 1)), Seq.NONE);
+    events.append(support, shared, List.of(started(1, 1)), Seq.NONE, AT);
 
     // Seq.NONE, not Seq(1): billing's stream is its own and has nothing in it yet.
-    events.append(billing, shared, List.of(started(1, 1)), Seq.NONE);
+    events.append(billing, shared, List.of(started(1, 1)), Seq.NONE, AT);
 
     assertThat(events.readAll(support, shared)).hasSize(1);
     assertThat(events.readAll(billing, shared)).hasSize(1);
@@ -129,31 +126,18 @@ class InMemoryAgentEventsTest {
   }
 
   @Test
-  @DisplayName("an appended event's writtenAt is exactly what the clock said at append")
-  void writtenAt_is_the_clock_reading_at_append() {
+  @DisplayName("an appended event's writtenAt is exactly the instant it was appended with")
+  void writtenAt_is_the_instant_given_at_append() {
     Instant first = Instant.parse("2026-01-01T00:00:00Z");
     Instant second = Instant.parse("2026-01-01T00:05:00Z");
-    Clock clock = new SteppedClock(first, second);
-    AgentEvents events =
-        new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()), clock);
-
-    events.append(TYPE, agent, List.of(started(1, 1)), Seq.NONE);
-    events.append(TYPE, agent, List.of(started(2, 2)), new Seq(1));
-
-    assertThat(events.writtenAt(TYPE, agent, new Seq(1))).isEqualTo(first);
-    assertThat(events.writtenAt(TYPE, agent, new Seq(2))).isEqualTo(second);
-  }
-
-  @Test
-  @DisplayName("a default store stamps with the system clock, not with nothing")
-  void the_no_arg_constructor_defaults_to_the_system_clock() {
     AgentEvents events =
         new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
 
-    events.append(TYPE, agent, List.of(started(1, 1)), Seq.NONE);
+    events.append(TYPE, agent, List.of(started(1, 1)), Seq.NONE, first);
+    events.append(TYPE, agent, List.of(started(2, 2)), new Seq(1), second);
 
-    assertThat(events.writtenAt(TYPE, agent, new Seq(1)))
-        .isCloseTo(Instant.now(), within(Duration.ofMillis(500)));
+    assertThat(events.writtenAt(TYPE, agent, new Seq(1))).isEqualTo(first);
+    assertThat(events.writtenAt(TYPE, agent, new Seq(2))).isEqualTo(second);
   }
 
   @Test
@@ -161,7 +145,7 @@ class InMemoryAgentEventsTest {
   void an_unknown_seq_throws() {
     AgentEvents events =
         new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
-    events.append(TYPE, agent, List.of(started(1, 1)), Seq.NONE);
+    events.append(TYPE, agent, List.of(started(1, 1)), Seq.NONE, AT);
     Seq unknownSeq = new Seq(99);
 
     assertThatThrownBy(() -> events.writtenAt(TYPE, agent, unknownSeq))
@@ -170,28 +154,50 @@ class InMemoryAgentEventsTest {
         .hasMessageContaining(agent.value().toString());
   }
 
-  /** A clock that hands out a fixed sequence of instants, one per call to {@link #instant()}. */
-  private static final class SteppedClock extends Clock {
-    private final Instant[] instants;
-    private int next;
+  @Test
+  @DisplayName("each event after the watermark comes back with the instant its batch was written")
+  void readWrittenFrom_pairs_each_event_with_its_instant() {
+    Instant first = Instant.parse("2026-01-01T00:00:00Z");
+    Instant second = Instant.parse("2026-01-01T00:05:00Z");
+    AgentEvents events =
+        new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
+    events.append(TYPE, agent, List.of(started(1, 1), started(2, 2)), Seq.NONE, first);
+    events.append(TYPE, agent, List.of(started(3, 3)), new Seq(2), second);
 
-    SteppedClock(Instant... instants) {
-      this.instants = instants;
-    }
+    assertThat(events.readWrittenFrom(TYPE, agent, new Seq(1), 10))
+        .containsExactly(
+            new AgentEvents.Written(started(2, 2), first),
+            new AgentEvents.Written(started(3, 3), second));
+  }
 
-    @Override
-    public Instant instant() {
-      return instants[next++];
-    }
+  @Test
+  @DisplayName("a bounded read returns the first events after the watermark, and no more")
+  void readWrittenFrom_stops_at_its_limit() {
+    AgentEvents events =
+        new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
+    events.append(
+        TYPE,
+        agent,
+        List.of(started(1, 1), started(2, 2), started(3, 3), started(4, 4), started(5, 5)),
+        Seq.NONE,
+        AT);
 
-    @Override
-    public ZoneId getZone() {
-      return ZoneOffset.UTC;
-    }
+    assertThat(events.readWrittenFrom(TYPE, agent, Seq.NONE, 2))
+        .extracting(w -> w.event().seq())
+        .containsExactly(new Seq(1), new Seq(2));
+    assertThat(events.readWrittenFrom(TYPE, agent, new Seq(2), 10))
+        .extracting(w -> w.event().seq())
+        .containsExactly(new Seq(3), new Seq(4), new Seq(5));
+  }
 
-    @Override
-    public Clock withZone(ZoneId zone) {
-      throw new UnsupportedOperationException();
-    }
+  @Test
+  @DisplayName("a bounded read with a limit of zero is refused")
+  void readWrittenFrom_refuses_a_limit_of_zero() {
+    AgentEvents events =
+        new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
+
+    assertThatThrownBy(() -> events.readWrittenFrom(TYPE, agent, Seq.NONE, 0))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("limit must be positive");
   }
 }

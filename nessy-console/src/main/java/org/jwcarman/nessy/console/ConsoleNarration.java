@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.console;
 
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
 
@@ -45,11 +45,11 @@ final class ConsoleNarration implements NarrationListener {
   }
 
   @Override
-  public void on(AgentType agentType, AgentId who, Narration event) {
-    if (!agentId.equals(who)) {
+  public void on(Narrated narrated) {
+    if (!agentId.equals(narrated.agentId())) {
       return;
     }
-    switch (event) {
+    switch (narrated.event()) {
       // Flushed per delta, which is what makes this actually stream: print() only reaches the
       // terminal when what it wrote contains a newline, so without this a paragraph arrives in
       // one lump at the end -- finished rather than being written, the whole difference a person
@@ -64,7 +64,7 @@ final class ConsoleNarration implements NarrationListener {
       case Narration.Answered _ -> {
         /* the answer itself is the caller's, not the watcher's */
       }
-      case Narration.ActionsRequested(var calls) ->
+      case Narration.ActionsRequested(_, var calls, _) ->
           calls.forEach(
               call ->
                   io.write(
@@ -79,13 +79,16 @@ final class ConsoleNarration implements NarrationListener {
           io.write("  [" + callId.value() + " failed: " + message + "]" + System.lineSeparator());
       case Narration.CallDenied(var callId, String reason) ->
           io.write("  [" + callId.value() + " denied: " + reason + "]" + System.lineSeparator());
-      case Narration.TurnFailed _, Narration.TurnRefused _, Narration.Terminated _ -> {
+      case Narration.TurnFailed _,
+          Narration.TurnStopped _,
+          Narration.TurnRefused _,
+          Narration.Terminated _ -> {
         // How it ended is the outcome's to report, and the loop has it.
       }
       // Thinking is shown as a marker, not as content: a model's reasoning is not its answer.
       case Narration.Thinking() -> io.write("  [thinking]" + System.lineSeparator());
       case Narration.TurnStarted _,
-          Narration.TurnEnded _,
+          Narration.InferenceRetried _,
           Narration.Commentary _,
           Narration.CallApproved _,
           Narration.ApprovalSought _,

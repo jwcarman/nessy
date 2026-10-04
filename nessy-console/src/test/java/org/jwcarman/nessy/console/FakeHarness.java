@@ -70,7 +70,7 @@ final class FakeHarness implements DirectHarness<String, String> {
     asked.add(input);
     askedOf.add(agent);
     if (next < answers.size()) {
-      answers.get(next++).forEach(event -> narrator.on(TYPE, agent, event));
+      answers.get(next++).forEach(event -> narrator.on(Envelopes.of(TYPE, agent, event)));
     }
     return outcome;
   }
@@ -78,7 +78,7 @@ final class FakeHarness implements DirectHarness<String, String> {
   @Override
   public TerminationOutcome terminate(AgentId agent) {
     terminated.add(agent);
-    narrator.on(TYPE, agent, new Narration.Terminated());
+    narrator.on(Envelopes.of(TYPE, agent, new Narration.Terminated()));
     return new TerminationOutcome.Ended();
   }
 

@@ -16,18 +16,19 @@
 package org.jwcarman.nessy.engine.narration;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Stream;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
 
 /** Everything a listener was told, in the order it was told, with who it was about. */
 public final class Heard implements NarrationListener {
 
-  /** One thing heard. */
-  public record Line(AgentId agent, Narration event) {
+  /** One thing heard: the envelope's agent and event, and the position if the event had one. */
+  public record Line(AgentId agent, Narration event, Optional<Narrated.Position> position) {
 
     /** The narration's own name, which is what a test reads the story by. */
     public String kind() {
@@ -38,8 +39,8 @@ public final class Heard implements NarrationListener {
   private final List<Line> lines = new CopyOnWriteArrayList<>();
 
   @Override
-  public void on(AgentType agentType, AgentId agentId, Narration event) {
-    lines.add(new Line(agentId, event));
+  public void on(Narrated narrated) {
+    lines.add(new Line(narrated.agentId(), narrated.event(), narrated.position()));
   }
 
   /** What was heard about one agent, by name, oldest first. */

@@ -18,7 +18,6 @@ package org.jwcarman.nessy.engine.history;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -55,13 +54,13 @@ class EventStreamToolCallsTest {
   private static final ToolName LOOKUP = new ToolName("lookup");
 
   private final JacksonCodecFactory codecs = new JacksonCodecFactory(JsonMapper.builder().build());
-  private final InMemoryAgentEvents events = new InMemoryAgentEvents(codecs, Clock.systemUTC());
+  private final InMemoryAgentEvents events = new InMemoryAgentEvents(codecs);
   private final InMemoryPayloads payloads = new InMemoryPayloads(codecs);
   private final EventStreamToolCalls toolCalls = new EventStreamToolCalls(events, payloads, TYPE);
   private Seq last = Seq.NONE;
 
   private void append(AgentEvent... appended) {
-    events.append(TYPE, AGENT, List.of(appended), last);
+    events.append(TYPE, AGENT, List.of(appended), last, Instant.EPOCH);
     last = appended[appended.length - 1].seq();
   }
 

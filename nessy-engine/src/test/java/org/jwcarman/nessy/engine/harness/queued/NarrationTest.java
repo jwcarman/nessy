@@ -83,7 +83,7 @@ class NarrationTest {
    * agent each event belongs to, so one sink serves every agent type and routes on what it is
    * handed rather than being installed per harness.
    */
-  private static final NarrationListener RECORDING = (_, _, event) -> EVENTS.add(event);
+  private static final NarrationListener RECORDING = narrated -> EVENTS.add(narrated.event());
 
   @BeforeEach
   void forgetWhatWasSaid() {
@@ -278,7 +278,7 @@ class NarrationTest {
   @Test
   void aNarratorThatThrowsCannotBreakTheAgent() {
     narratedBy(
-        (_, _, _) -> {
+        _ -> {
           throw new IllegalStateException("this sink is broken");
         });
     AgentType type = new AgentType("narrated-broken");

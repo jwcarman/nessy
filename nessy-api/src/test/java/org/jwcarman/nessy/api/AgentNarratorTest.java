@@ -30,8 +30,9 @@ class AgentNarratorTest {
   void a_narrator_bound_to_an_agent_tells_the_full_narrator_who() {
     AtomicReference<String> heard = new AtomicReference<>();
     Narrator narrator =
-        (agentType, agentId, event) ->
-            heard.set(agentType.value() + "/" + event.getClass().getSimpleName());
+        narrated ->
+            heard.set(
+                narrated.agentType().value() + "/" + narrated.event().getClass().getSimpleName());
     AgentType chat = new AgentType("chat");
 
     narrator.forAgent(chat, new AgentId(UUID.randomUUID())).narrate(new Narration.Thinking());

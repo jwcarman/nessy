@@ -44,12 +44,9 @@ package org.jwcarman.nessy.api;
 public interface Narrator {
 
   /**
-   * @param agentType what kind of agent is speaking -- a shared console shows several side by side,
-   *     and an id alone does not say which is which
-   * @param agentId which agent
-   * @param event what happened
+   * @param narrated whose event it is, the event, and for a story event its position
    */
-  void narrate(AgentType agentType, AgentId agentId, Narration event);
+  void narrate(Narrated narrated);
 
   /**
    * Whether anybody is listening.
@@ -67,7 +64,7 @@ public interface Narrator {
 
   /** Nobody is listening, and nothing is lost by saying so. The default. */
   static Narrator silent() {
-    return (_, _, _) -> {};
+    return _ -> {};
   }
 
   /**
@@ -79,6 +76,6 @@ public interface Narrator {
    * it happened to.
    */
   default AgentNarrator forAgent(AgentType agentType, AgentId agentId) {
-    return event -> narrate(agentType, agentId, event);
+    return event -> narrate(Narrated.live(agentType, agentId, event));
   }
 }

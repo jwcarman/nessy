@@ -20,6 +20,7 @@ import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -38,7 +39,6 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.InputRenderer;
-import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.OutputReader;
 import org.jwcarman.nessy.api.Seq;
@@ -51,7 +51,6 @@ import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
-import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lock.Locks;
@@ -66,6 +65,7 @@ import org.jwcarman.nessy.engine.effect.EffectOutcomes;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
 import org.jwcarman.nessy.engine.narration.AfterCommit;
 import org.jwcarman.nessy.engine.narration.AfterCommit.Step;
+import org.jwcarman.nessy.engine.narration.StoryEvents;
 import org.jwcarman.nessy.engine.observability.EffectSpans;
 import org.jwcarman.nessy.engine.observability.Identity;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
@@ -336,6 +336,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         agentType,
         agent,
         step -> {
+          Instant at = clock.instant().truncatedTo(ChronoUnit.MICROS);
           AgentState state = reconstitute(agent);
           if (state instanceof AgentState.Terminal) {
             return new TerminationOutcome.AlreadyEnded();
@@ -346,8 +347,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
             LOG.debug("[{}] agent {} is mid-turn; ending it was refused", agentType.value(), agent);
             return new TerminationOutcome.Busy();
           }
-          backend.events().append(agentType, agent, decision.events(), state.seq());
-          decision.events().forEach(event -> narrate(step, event));
+          backend.events().append(agentType, agent, decision.events(), state.seq(), at);
+          decision.events().forEach(event -> narrate(step, event, at));
           return new TerminationOutcome.Ended();
         });
   }
@@ -363,6 +364,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * is genuinely busy.
    */
   private StepResult<O> beginTurn(Step step, AgentId agent, List<Block.InputContent> rendered) {
+    Instant at = clock.instant().truncatedTo(ChronoUnit.MICROS);
     AgentState state = reconstitute(agent);
     if (state instanceof AgentState.Terminal) {
       LOG.debug("[{}] agent {} has ended; the question is refused", agentType.value(), agent);
@@ -371,14 +373,14 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       return StepResult.declined(
           new Outcome.Refused<>("terminated", TurnStats.opened(clock.instant())));
     }
-    return switch (recoverToIdle(step, agent, state)) {
+    return switch (recoverToIdle(step, agent, state, at)) {
       case RecoveryOutcome.Busy() -> StepResult.declined(new Outcome.Busy<>());
       case RecoveryOutcome.Recovered(AgentState.Idle idle) -> {
         Payloads content = backend.payloads().forAgent(agent);
         Decision decision =
             idle.execute(new AgentCommand.StartTurn(content.put(rendered), clock.instant()));
-        backend.events().append(agentType, agent, decision.events(), idle.seq());
-        decision.events().forEach(event -> narrate(step, event));
+        backend.events().append(agentType, agent, decision.events(), idle.seq(), at);
+        decision.events().forEach(event -> narrate(step, event, at));
         TurnId turn = ((AgentEvent.TurnStarted) decision.events().getFirst()).turn();
         yield StepResult.advanced(turn, timedEffectsOf(decision));
       }
@@ -395,13 +397,14 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * rather than the loud refusal {@link AgentState.Terminal#execute} would otherwise throw.
    */
   private Decision executeStep(Step step, AgentId agent, AgentCommand command) {
+    Instant at = clock.instant().truncatedTo(ChronoUnit.MICROS);
     AgentState state = reconstitute(agent);
     if (state instanceof AgentState.Terminal) {
       return Decision.ignore();
     }
     Decision decision = state.execute(command, turnPolicy, clock.instant());
-    backend.events().append(agentType, agent, decision.events(), state.seq());
-    decision.events().forEach(event -> narrate(step, event));
+    backend.events().append(agentType, agent, decision.events(), state.seq(), at);
+    decision.events().forEach(event -> narrate(step, event, at));
     return decision;
   }
 
@@ -558,7 +561,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * whole inference timeout had run, and the turn without the terminal event its original caller is
    * waiting to read.
    */
-  private RecoveryOutcome recoverToIdle(Step step, AgentId agent, AgentState state) {
+  private RecoveryOutcome recoverToIdle(Step step, AgentId agent, AgentState state, Instant at) {
     AgentState current = state;
     boolean dischargedSomething = false;
     while (!(current instanceof AgentState.Idle)) {
@@ -568,8 +571,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       }
       dischargedSomething = true;
       Decision decision = current.execute(discharge.get(), turnPolicy, clock.instant());
-      backend.events().append(agentType, agent, decision.events(), current.seq());
-      decision.events().forEach(event -> narrate(step, event));
+      backend.events().append(agentType, agent, decision.events(), current.seq(), at);
+      decision.events().forEach(event -> narrate(step, event, at));
       current = current.applyAll(decision.events());
     }
     return new RecoveryOutcome.Recovered((AgentState.Idle) current);
@@ -844,62 +847,17 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * arrive ahead of everything, because a fragment of an answer is worth seeing before the answer
    * exists; they are not written by a step and are not held for a commit, though they still wait
    * behind a step that took the agent's lock before them.
+   *
+   * <p>{@code at} is the instant the step appended the event with, so what is heard here and what
+   * is read back later carry the same time.
    */
-  private void narrate(Step step, AgentEvent event) {
+  private void narrate(Step step, AgentEvent event, Instant at) {
     // Some of these mean resolving what a reference stands for, which is real work: skipped
     // entirely when nobody is there to be told. Narrating anyway would still be correct.
     if (!narrator.listening()) {
       return;
     }
-    switch (event) {
-      // Not narrated. A watcher is told what is happening to a turn, and a call being tried
-      // again is the engine keeping its own promise rather than anything the turn did. It is in
-      // the story for whoever is counting what the turn spent.
-      case AgentEvent.InferenceAttempted _ -> {}
-      case AgentEvent.ActionsRequested asked ->
-          step.narrate(
-              new Narration.ActionsRequested(
-                  asked.actions().stream()
-                      .filter(ActionRequest.ToolCall.class::isInstance)
-                      .map(ActionRequest.ToolCall.class::cast)
-                      .map(
-                          call ->
-                              new Narration.ActionsRequested.Call(
-                                  call.id(), call.name(), call.action()))
-                      .toList()));
-      case AgentEvent.ToolApproved approved ->
-          step.narrate(new Narration.CallApproved(approved.callId()));
-      case AgentEvent.ToolDenied denied ->
-          step.narrate(new Narration.CallDenied(denied.callId(), denied.reason()));
-      case AgentEvent.ToolSucceeded done -> step.narrate(new Narration.CallFinished(done.callId()));
-      case AgentEvent.ToolFailed failed ->
-          step.narrate(new Narration.CallFailed(failed.callId(), failed.message()));
-      case AgentEvent.InferenceAnswered answered -> {
-        step.narrate(new Narration.Answered());
-        step.narrate(new Narration.TurnEnded(answered.turn()));
-      }
-      case AgentEvent.InferenceRefused refused -> {
-        step.narrate(new Narration.TurnRefused(refused.category()));
-        step.narrate(new Narration.TurnEnded(refused.turn()));
-      }
-      case AgentEvent.InferenceFailed failed -> {
-        step.narrate(new Narration.TurnFailed(failed.failure().reason()));
-        step.narrate(new Narration.TurnEnded(failed.turn()));
-      }
-      // Heard exactly as any other failed turn is. A watcher does not care whether the model
-      // could not answer or a policy decided it had answered enough; either way the turn is over
-      // and the reason is the whole of what is worth saying about it.
-      case AgentEvent.TurnFailed ended -> {
-        step.narrate(new Narration.TurnFailed(ended.reason()));
-        step.narrate(new Narration.TurnEnded(ended.turn()));
-      }
-      case AgentEvent.Terminated _ -> step.narrate(new Narration.Terminated());
-      // Said even though the caller knows: the caller is not the only watcher. A page on the
-      // narration stream while the request blocks, or a second one opened beside it, learns what
-      // is happening only from here.
-      case AgentEvent.TurnStarted started ->
-          step.narrate(new Narration.TurnStarted(started.turn()));
-    }
+    step.narrate(StoryEvents.of(event), event.seq(), at);
   }
 
   /**

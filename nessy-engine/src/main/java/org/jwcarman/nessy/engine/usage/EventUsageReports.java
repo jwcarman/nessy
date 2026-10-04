@@ -20,22 +20,24 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Stream;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.ModelUsage;
+import org.jwcarman.nessy.api.Narrated;
+import org.jwcarman.nessy.api.Narration;
+import org.jwcarman.nessy.api.StoryProjection;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.UsageReport;
 import org.jwcarman.nessy.api.UsageReports;
-import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
+import org.jwcarman.nessy.engine.story.EventAgentStories;
 
 /**
- * Usage as a projection over the agent's events.
+ * Usage as a projection over the agent's story.
  *
- * <p>Every event that records an inference carries the usage its provider reported: an answer, a
- * request for actions, a refusal, a failure, and an attempt that was retried. All five count; an
- * inference that cost tokens and then failed still cost them.
+ * <p>Every story event that records an inference carries the usage its provider reported: an
+ * answer, a request for actions, a refusal, a failure, and an attempt that was retried. All five
+ * count, each as one inference; an inference that cost tokens and then failed still cost them.
  *
  * <p><b>The story lives in one store.</b> An application may hold more than one event store -- the
  * direct and the queued doors each have one -- and on some backends they are two views of the same
@@ -56,47 +58,53 @@ public final class EventUsageReports implements UsageReports {
   @Override
   public UsageReport of(AgentType type, AgentId id) {
     for (AgentEvents store : stores) {
-      Optional<UsageReport> report = fold(store, type, id);
-      if (report.isPresent()) {
-        return report.get();
+      Tally tally = EventAgentStories.project(store, type, id, new Spent());
+      if (tally.any) {
+        return new UsageReport(type, id, new ArrayList<>(tally.byModel.values()), tally.unreported);
       }
     }
     return new UsageReport(type, id, List.of(), 0);
   }
 
-  /** The agent's usage in one store, or empty when that store holds none of its story. */
-  private static Optional<UsageReport> fold(AgentEvents store, AgentType type, AgentId id) {
-    Map<String, ModelUsage> byModel = new LinkedHashMap<>();
-    int unreported = 0;
-    boolean any = false;
-    try (Stream<AgentEvent> story = store.streamAll(type, id)) {
-      for (AgentEvent event : (Iterable<AgentEvent>) story::iterator) {
-        any = true;
-        Optional<Usage> spent = spent(event);
-        if (spent.isEmpty()) {
-          continue;
-        }
-        Usage usage = spent.get();
-        if (usage.model() == null) {
-          unreported++;
-        } else {
-          byModel.merge(usage.model(), first(usage), (sum, one) -> plus(sum, usage));
-        }
-      }
-    }
-    return any
-        ? Optional.of(new UsageReport(type, id, new ArrayList<>(byModel.values()), unreported))
-        : Optional.empty();
+  /** What a story has spent so far, and whether it has any events at all. */
+  private static final class Tally {
+    private final Map<String, ModelUsage> byModel = new LinkedHashMap<>();
+    private int unreported;
+    private boolean any;
   }
 
-  /** The usage an event records, when it records an inference. */
-  private static Optional<Usage> spent(AgentEvent event) {
+  /** The projection that sums usage, by model. */
+  private static final class Spent implements StoryProjection<Tally> {
+
+    @Override
+    public Tally initial() {
+      return new Tally();
+    }
+
+    @Override
+    public Tally apply(Tally soFar, Narrated story) {
+      soFar.any = true;
+      spent(story.event())
+          .ifPresent(
+              usage -> {
+                if (usage.model() == null) {
+                  soFar.unreported++;
+                } else {
+                  soFar.byModel.merge(usage.model(), first(usage), (sum, one) -> plus(sum, usage));
+                }
+              });
+      return soFar;
+    }
+  }
+
+  /** The usage a story event records, when it records an inference. */
+  private static Optional<Usage> spent(Narration event) {
     return switch (event) {
-      case AgentEvent.InferenceAnswered e -> Optional.of(e.usage());
-      case AgentEvent.ActionsRequested e -> Optional.of(e.usage());
-      case AgentEvent.InferenceRefused e -> Optional.of(e.usage());
-      case AgentEvent.InferenceFailed e -> Optional.of(e.usage());
-      case AgentEvent.InferenceAttempted e -> Optional.of(e.usage());
+      case Narration.Answered e -> Optional.of(e.usage());
+      case Narration.ActionsRequested e -> Optional.of(e.usage());
+      case Narration.TurnRefused e -> Optional.of(e.usage());
+      case Narration.TurnFailed e -> Optional.of(e.usage());
+      case Narration.InferenceRetried e -> Optional.of(e.usage());
       default -> Optional.empty();
     };
   }

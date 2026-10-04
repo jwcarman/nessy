@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking changes
+
+- **Narration is reshaped into the agent's story.** `Narration` has two groups, `Story` (stored
+  events) and `Live` (signals heard only as they happen). `TurnEnded` is removed: a turn ends in
+  exactly one `TurnEnding` event (`Answered`, `TurnRefused`, `TurnFailed` or `TurnStopped`), and
+  `NarrationListenerConfig.onTurnEnding` hears all four. A turn a policy stopped is `TurnStopped`,
+  no longer `TurnFailed`. `Answered`, `TurnRefused`, `TurnFailed` and `ActionsRequested` carry
+  their turn and the model call's `Usage`; `TurnFailed` carries a `FailureKind`; each requested
+  call carries its `IdempotencyKey`. A retried model call is told as `InferenceRetried`.
+- **`NarrationListener.on` takes a `Narrated` envelope:** the agent, the event, and for a story
+  event its position (`seq` and time written). `NarrationListenerConfig.Handler` is
+  `on(Narrated narrated, E event)`, and `Narrator.narrate` takes a `Narrated`. A story event's
+  time is the engine's clock, passed to the store: `AgentEvents.append` takes a trailing
+  `Instant at`, which a store writes as given rather than reading a clock of its own, so an event
+  heard live and read back later carry the same instant. `InMemoryAgentEvents` no longer takes a
+  `Clock`. `AgentNarrator.narrate` takes only a `Narration.Live` signal.
+- **The JSON and SSE names of the turn endings changed.** `turn-ended` is gone; `turn-stopped` and
+  `inference-retried` are new. A browser client that listened for `turn-ended` must listen for the
+  four endings: `answered`, `turn-refused`, `turn-failed` and `turn-stopped`.
+- **`NarrationListenerConfig.on(Class, handler)` hears every member of a group.** Given a group
+  type (`Narration.TurnEnding`, `Narration.Story`, `Narration.Live` or `Narration`), it now hears
+  each event of that group, not only an event of exactly that class.
+- **A stored event's `written_at` is the engine's clock reading for its step,** to the microsecond,
+  not the database's `now()`.
+
+### Added
+
+- **`AgentStory.content()` reads what a story refers to:** a turn's input, what the model wrote and its answer; a call's result by its `IdempotencyKey`; and an agent's successful results, paged.
+- **`AgentStory.project` folds an agent's story with a `StoryProjection`; `UsageReports` is one.**
+- **`AgentStories` replays an agent's story:** the stored events, as the `Narrated` a live
+  listener hears, with each event's position. `AgentStories.of(type, id).replay(after, limit)`
+  reads up to `limit` story events after a `Seq`, oldest first. A story store implements the new
+  `AgentEvents.readWrittenFrom`, which reads up to a limit of events with the time each was written. The
+  engine truncates the time it writes to microseconds, which is what PostgreSQL keeps, so an
+  event heard live equals the same event replayed.
+
 ## [0.4.0] - 2026-10-03
 
 ### Breaking changes

@@ -79,22 +79,29 @@ happened or is about to. A turn's arms, in the order a watcher sees them:
 - `Narration.TurnStarted(TurnId turn)` — a turn opened on an input.
 - `Narration.Thinking()` — the model is about to be asked, narrated before
   the call so a watcher can show waiting.
-- One of three ways the turn ends:
-  - `Narration.Answered()` — the turn produced an answer. Not the answer
-    itself; the direct door already returned it, and a queued watcher
-    reads it from the story or has already seen it delta by delta.
-  - `Narration.TurnFailed(String reason)` — the turn ended without an
-    answer. Carries the reason because, on the queued door, this is the
-    only place it is said at all.
-  - `Narration.TurnRefused(String category)` — the model declined, and
-    would decline again. Carries the provider's own word for why.
-- `Narration.TurnEnded(TurnId turn)` — the turn is over, whichever of the
-  three ways it ended. One event to listen for when what matters is that
-  the story grew by a turn, not how.
+- One of four ways the turn ends, each a `Narration.TurnEnding`:
+  - `Narration.Answered(TurnId turn, Usage usage)` — the turn produced an
+    answer. Not the answer itself; the direct door already returned it, and
+    a queued watcher reads it from the story or has already seen it delta
+    by delta.
+  - `Narration.TurnFailed(TurnId turn, FailureKind kind, String reason,
+    Usage usage)` — a model call failed and the turn ended without an
+    answer. Carries the reason because, on the queued door, `tell` returns
+    nothing: a watcher hears it live, and `AgentStories.replay` reads it
+    afterwards.
+  - `Narration.TurnRefused(TurnId turn, String category, Usage usage)` —
+    the model declined, and would decline again. Carries the provider's own
+    word for why.
+  - `Narration.TurnStopped(TurnId turn, String reason)` — a policy stopped
+    the turn. No model call failed, so it carries no usage.
+
+  A turn ends in exactly one of them. `onTurnEnding` hears all four, which
+  is the one handler to write when what matters is that the story grew by
+  a turn, not how.
 
 A turn that calls tools narrates more along the way — `ActionsRequested`,
 `CallApproved` or `CallDenied`, `CallFinished` or `CallFailed` — but
-`TurnStarted` and `TurnEnded` are the bracket every turn has.
+`TurnStarted` and one `TurnEnding` event are the bracket every turn has.
 
 ## What a turn leaves behind
 

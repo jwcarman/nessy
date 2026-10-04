@@ -204,7 +204,7 @@ returns.
 
 ```java
 .listener(NarrationListener.of(on -> on
-        .onContentDelta((type, id, delta) -> System.out.print(delta.text()))))
+        .onContentDelta((narrated, delta) -> System.out.print(delta.text()))))
 ```
 
 ## The console door

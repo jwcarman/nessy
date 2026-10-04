@@ -87,7 +87,7 @@ class DirectHarnessFanOutTest {
 
   private final Clock clock = Clock.systemUTC();
   private final InMemoryAgentEvents events =
-      new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()), clock);
+      new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
   private final InMemoryPayloads payloads =
       new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
 
@@ -468,7 +468,7 @@ class DirectHarnessFanOutTest {
       throws Exception {
     AdvanceableClock stepped = new AdvanceableClock(Instant.now());
     InMemoryAgentEvents steppedEvents =
-        new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()), stepped);
+        new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
     InMemoryPayloads steppedPayloads =
         new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
     AgentId agent = AgentId.random();

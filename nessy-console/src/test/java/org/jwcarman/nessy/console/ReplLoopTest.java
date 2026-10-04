@@ -29,9 +29,12 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.TurnStats;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -44,6 +47,8 @@ class ReplLoopTest {
   static final TurnStats ANY_STATS = TurnStats.opened(Instant.EPOCH);
 
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   private static Narration said(String text) {
     return new Narration.ContentDelta(text);
@@ -51,7 +56,7 @@ class ReplLoopTest {
 
   /** A streaming provider has already said everything; the answer just closes the turn. */
   private static Narration ended() {
-    return new Narration.Answered();
+    return new Narration.Answered(new TurnId(1), Usage.unreported());
   }
 
   private static void run(FakeHarness harness, FakeConsole console, ReplConfig config) {
@@ -101,7 +106,7 @@ class ReplLoopTest {
   @Test
   void an_answer_that_was_not_streamed_is_printed_whole() {
     FakeHarness harness =
-        new FakeHarness(List.of(new Narration.Answered()))
+        new FakeHarness(List.of(new Narration.Answered(new TurnId(1), Usage.unreported())))
             .answering(new Outcome.Answered<>("all at once", ANY_STATS));
     FakeConsole console = new FakeConsole("hi", "quit");
     run(harness, console, config());
@@ -125,7 +130,8 @@ class ReplLoopTest {
     ConsoleNarration narration = new ConsoleNarration(AGENT, new FakeConsole());
     FakeConsole console = new FakeConsole();
     ConsoleNarration mine = new ConsoleNarration(AGENT, console);
-    mine.on(new AgentType("chat"), new AgentId(UUID.randomUUID()), said("not for you"));
+    mine.on(
+        Envelopes.of(new AgentType("chat"), new AgentId(UUID.randomUUID()), said("not for you")));
     assertThat(console.written()).isEmpty();
     assertThat(narration.spoke()).isFalse();
   }
@@ -338,9 +344,11 @@ class ReplLoopTest {
         new FakeHarness(
             List.of(
                 new Narration.ActionsRequested(
+                    new TurnId(1),
                     List.of(
                         new Narration.ActionsRequested.Call(
-                            new CallId("c1"), new ToolName("days_until"), "days_until"))),
+                            new CallId("c1"), KEY, new ToolName("days_until"), "days_until")),
+                    Usage.unreported()),
                 new Narration.CallFinished(new CallId("c1")),
                 ended()));
     FakeConsole console = new FakeConsole("when is christmas", "quit");
@@ -355,7 +363,7 @@ class ReplLoopTest {
     @Test
     void a_silent_completion_says_so_rather_than_printing_nothing() {
       FakeHarness harness =
-          new FakeHarness(List.of(new Narration.Answered()))
+          new FakeHarness(List.of(new Narration.Answered(new TurnId(1), Usage.unreported())))
               .answering(new Outcome.Answered<>("", ANY_STATS));
       FakeConsole console = new FakeConsole("hello", "/exit");
       run(harness, console, config());

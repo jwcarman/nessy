@@ -16,8 +16,7 @@
 package org.jwcarman.nessy.narration.odyssey;
 
 import java.util.Objects;
-import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
 
@@ -42,8 +41,9 @@ public class OdysseyNarrator implements NarrationListener {
   }
 
   @Override
-  public void on(AgentType agentType, AgentId agentId, Narration event) {
-    streams.stream(agentType, agentId).publish(nameOf(event), event);
+  public void on(Narrated narrated) {
+    Narration event = narrated.event();
+    streams.stream(narrated.agentType(), narrated.agentId()).publish(nameOf(event), event);
   }
 
   /**
@@ -55,9 +55,10 @@ public class OdysseyNarrator implements NarrationListener {
       case Narration.TurnStarted _ -> "turn-started";
       case Narration.Thinking _ -> "thinking";
       case Narration.Answered _ -> "answered";
-      case Narration.TurnEnded _ -> "turn-ended";
+      case Narration.TurnStopped _ -> "turn-stopped";
       case Narration.TurnFailed _ -> "turn-failed";
       case Narration.TurnRefused _ -> "turn-refused";
+      case Narration.InferenceRetried _ -> "inference-retried";
       case Narration.Commentary _ -> "commentary";
       case Narration.ActionsRequested _ -> "actions-requested";
       case Narration.CallApproved _ -> "call-approved";
