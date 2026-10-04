@@ -86,8 +86,9 @@ happened or is about to. A turn's arms, in the order a watcher sees them:
     by delta.
   - `Narration.TurnFailed(TurnId turn, FailureKind kind, String reason,
     Usage usage)` — a model call failed and the turn ended without an
-    answer. Carries the reason because, on the queued door, this is the
-    only place it is said at all.
+    answer. Carries the reason because, on the queued door, `tell` returns
+    nothing: a watcher hears it live, and `AgentStories.replay` reads it
+    afterwards.
   - `Narration.TurnRefused(TurnId turn, String category, Usage usage)` —
     the model declined, and would decline again. Carries the provider's own
     word for why.

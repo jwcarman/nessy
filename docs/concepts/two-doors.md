@@ -105,13 +105,11 @@ carries the provider adapter's account of what went wrong, and
 caller has it before its next line of code runs.
 
 On the queued door, `tell` returns nothing, so there is no inline path at
-all. The only place the reason is said is narration: `Narration.TurnFailed`
-carries the same text the direct door would have returned, and
-`Narration.TurnRefused` carries the same category — but only to whoever
-is listening when it is announced. A queued agent that fails with nobody
-watching still recorded the failure in its event stream, as an
-`InferenceFailed` fact; the reason just was not narrated to anyone in
-particular. See
+all. A watcher hears the reason live: `Narration.TurnFailed` carries the same
+text the direct door would have returned, and `Narration.TurnRefused` carries
+the same category. A queued agent that fails with nobody watching still
+recorded the failure in its story, and `AgentStories.replay` reads it
+afterwards. See
 [Narration](../guides/narration.md) for the listener side of this.
 
 ## The backends mirror the split

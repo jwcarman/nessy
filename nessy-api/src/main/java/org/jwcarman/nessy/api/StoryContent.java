@@ -44,6 +44,9 @@ public interface StoryContent {
    * <p>Looked up inside this agent's story. A key that is not in it, or a call that did not
    * succeed, has no result.
    *
+   * <p>Reads the story from its start until it finds the call, a page at a time, so its cost grows
+   * with the story.
+   *
    * @throws NullPointerException if {@code key} is null
    * @throws IllegalStateException if the content of the result is no longer stored
    */
@@ -54,6 +57,9 @@ public interface StoryContent {
    *
    * <p>Each result is at the position of the event that recorded the success. Calls that failed or
    * were refused have none, and are skipped.
+   *
+   * <p>Reads forward from {@code after} until it has {@code limit} results, so a long story with
+   * few successful calls is read to its end.
    *
    * @param after the position to read after; {@link Seq#NONE} reads from the start
    * @param limit how many results at most; above 1,000 it is treated as 1,000

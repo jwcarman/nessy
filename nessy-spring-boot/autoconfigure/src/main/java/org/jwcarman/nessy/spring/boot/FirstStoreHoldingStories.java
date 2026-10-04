@@ -41,6 +41,9 @@ import org.jwcarman.nessy.engine.story.EventAgentStories;
  * <p>The store is the first that holds any event for the agent, as {@code EventUsageReports}
  * chooses, and it answers every replay for that agent, so an empty page past the end of a story
  * never falls through to another store. An agent no store holds has an empty story.
+ *
+ * <p>The store is looked up on each call, not chosen once: one small read per store, so an agent
+ * whose first event is written later is found by the next call.
  */
 final class FirstStoreHoldingStories implements AgentStories {
 
@@ -55,6 +58,8 @@ final class FirstStoreHoldingStories implements AgentStories {
 
   @Override
   public AgentStory of(AgentType type, AgentId id) {
+    Objects.requireNonNull(type, "type must not be null");
+    Objects.requireNonNull(id, "id must not be null");
     return new AgentStory() {
       @Override
       public List<Narrated> replay(Seq after, int limit) {
@@ -104,6 +109,7 @@ final class FirstStoreHoldingStories implements AgentStories {
 
     @Override
     public TurnContent turn(TurnId turn) {
+      Objects.requireNonNull(turn, "turn must not be null");
       throw new IllegalArgumentException("no turn " + turn.value() + " in this agent's story");
     }
 

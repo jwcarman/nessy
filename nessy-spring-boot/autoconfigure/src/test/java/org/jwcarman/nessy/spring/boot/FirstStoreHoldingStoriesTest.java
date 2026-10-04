@@ -26,6 +26,7 @@ import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentStory;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
@@ -139,7 +140,8 @@ class FirstStoreHoldingStoriesTest {
   void a_turn_of_an_agent_no_store_holds_is_refused() {
     StoryContent content = stories.of(TYPE, agent).content();
 
-    assertThatThrownBy(() -> content.turn(new TurnId(1)))
+    TurnId missing = new TurnId(1);
+    assertThatThrownBy(() -> content.turn(missing))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("no turn 1 in this agent's story");
   }
@@ -151,5 +153,37 @@ class FirstStoreHoldingStoriesTest {
     assertThatThrownBy(() -> content.results(Seq.NONE, 0))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("limit must be positive");
+  }
+
+  @Test
+  void replaying_with_a_limit_that_is_not_positive_is_refused_for_an_agent_no_store_holds() {
+    AgentStory story = stories.of(TYPE, agent);
+
+    assertThatThrownBy(() -> story.replay(Seq.NONE, 0))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("limit must be positive");
+  }
+
+  @Test
+  void a_story_without_a_type_is_refused() {
+    assertThatThrownBy(() -> stories.of(null, agent))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("type must not be null");
+  }
+
+  @Test
+  void a_story_without_an_id_is_refused() {
+    assertThatThrownBy(() -> stories.of(TYPE, null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("id must not be null");
+  }
+
+  @Test
+  void a_missing_turn_of_an_agent_no_store_holds_is_refused() {
+    StoryContent content = stories.of(TYPE, agent).content();
+
+    assertThatThrownBy(() -> content.turn(null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("turn must not be null");
   }
 }

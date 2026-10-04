@@ -20,7 +20,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
@@ -132,10 +134,20 @@ class StoryEventsTest {
         .isEqualTo(new Narration.TurnStopped(TURN, "too many calls"));
   }
 
+  @Test
+  void the_events_supplied_here_cover_every_kind_the_store_can_hold() {
+    Set<Class<?>> supplied =
+        everyKind().<Class<?>>map(AgentEvent::getClass).collect(Collectors.toSet());
+    Set<Class<?>> permitted = Set.of(AgentEvent.class.getPermittedSubclasses());
+
+    assertThat(permitted).isNotEmpty();
+    assertThat(supplied).isEqualTo(permitted);
+  }
+
   @ParameterizedTest
   @MethodSource("everyKind")
-  void every_stored_event_is_told_as_exactly_one_story_event(AgentEvent event) {
-    assertThat(StoryEvents.of(event)).isInstanceOf(Narration.Story.class);
+  void every_supplied_kind_can_be_told(AgentEvent event) {
+    assertThat(StoryEvents.of(event)).isNotNull();
   }
 
   static Stream<AgentEvent> everyKind() {

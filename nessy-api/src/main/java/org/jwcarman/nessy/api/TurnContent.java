@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.api;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.block.Block;
 
@@ -32,6 +33,9 @@ public record TurnContent(
     Optional<List<Block.AnswerContent>> answer) {
 
   public TurnContent {
+    Objects.requireNonNull(input, "input must not be null");
+    Objects.requireNonNull(requests, "requests must not be null");
+    Objects.requireNonNull(answer, "answer must not be null");
     input = List.copyOf(input);
     requests = List.copyOf(requests);
     answer = answer.map(List::copyOf);

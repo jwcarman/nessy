@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.api;
 
 import java.util.List;
+import java.util.Objects;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 
@@ -30,6 +31,9 @@ public record CallResult(
     Seq seq, IdempotencyKey idempotencyKey, List<Block.ToolResultContent> blocks) {
 
   public CallResult {
+    Objects.requireNonNull(seq, "seq must not be null");
+    Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+    Objects.requireNonNull(blocks, "blocks must not be null");
     blocks = List.copyOf(blocks);
   }
 }

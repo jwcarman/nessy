@@ -177,6 +177,32 @@ class EventAgentStoriesTest {
     }
   }
 
+  @Nested
+  class A_turn_with_a_tool_call {
+
+    @Test
+    void heard_live_on_the_direct_door_is_what_the_replay_returns() {
+      DirectBackend backend =
+          new Backend(events, new InMemoryPayloads(codecs), new InMemoryLocks(), codecs);
+
+      List<Narrated> heard =
+          StoryTurn.heardWithAToolCall(TYPE, agent, backend, Clock.fixed(AT, ZoneOffset.UTC));
+
+      assertThat(heard)
+          .extracting(narrated -> narrated.event().getClass().getSimpleName())
+          .containsSubsequence(
+              "TurnStarted", "ActionsRequested", "CallApproved", "CallFinished", "Answered");
+      assertThat(heard)
+          .filteredOn(narrated -> narrated.event() instanceof Narration.ActionsRequested)
+          .singleElement()
+          .satisfies(
+              narrated ->
+                  assertThat(((Narration.ActionsRequested) narrated.event()).usage())
+                      .isEqualTo(Usage.of("a-model", 25, 6)));
+      assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
+    }
+  }
+
   /** Counts the turns a story starts. */
   private static final StoryProjection<Integer> TURNS_STARTED =
       new StoryProjection<>() {

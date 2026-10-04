@@ -39,6 +39,7 @@ public interface AgentStory {
    * <p>The story is read a page at a time, so nothing holds all of it at once. An exception the
    * projection throws reaches the caller unchanged.
    *
+   * @param <T> what the projection folds the story into
    * @param projection how to fold the story
    * @return the projection's {@link StoryProjection#initial()} when the story is empty
    * @throws NullPointerException if {@code projection} is null

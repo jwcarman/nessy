@@ -52,7 +52,11 @@ what it was just told about: the turn whose end it hears is already stored.
 The one exception is a queued harness's `tell` called from inside an
 application's own transaction: the step joins that transaction, and is heard
 when it returns, before the application commits or rolls back. The direct
-door refuses to run inside one.
+door refuses to run inside one. The event heard then carries a position. If the
+application rolls back, that position is not in the story, and its `seq` is used
+again by the next event that is stored. A listener that keeps positions should
+not treat one heard inside an application's transaction as stored until that
+transaction commits.
 
 Order holds per agent: events are heard in the order their steps committed,
 and what one agent has not yet released never holds up another agent. What an
@@ -145,7 +149,8 @@ went wrong, and `kind`, a `FailureKind`: `TRANSIENT` (it might work next
 time), `UNKNOWN` (nobody heard back), `PERMANENT` (the same request fails
 the same way) or `REJECTED` (the provider named the input it refused). It
 matters most on the queued door: `QueuedHarness.tell` returns nothing, so
-this is the only place a watcher learns why a turn failed. The direct door
+a watcher learns why a turn failed here as it happens, and
+`AgentStories.replay` reads it afterwards. The direct door
 hands the same text back from `ask` as `Outcome.Failed`.
 
 `TurnRefused` carries `category`, the provider's own word for why —

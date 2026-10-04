@@ -262,7 +262,8 @@ final class StoredContent implements StoryContent {
     return switch (resolved) {
       case Payloads.Resolved.Found(List<Block> content) -> content;
       // A reference with nothing behind it is a fault of the store, never a missing answer.
-      case null, default -> throw new IllegalStateException("no payload behind " + ref);
+      case Payloads.Resolved.Missing _ ->
+          throw new IllegalStateException("no payload behind " + ref);
     };
   }
 

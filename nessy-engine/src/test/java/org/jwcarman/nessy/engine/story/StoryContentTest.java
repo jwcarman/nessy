@@ -179,7 +179,8 @@ class StoryContentTest {
     void that_does_not_exist_is_refused() {
       scriptedTurn();
 
-      assertThatThrownBy(() -> content.turn(new TurnId(99)))
+      TurnId missing = new TurnId(99);
+      assertThatThrownBy(() -> content.turn(missing))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("no turn 99 in this agent's story");
     }
@@ -188,14 +189,16 @@ class StoryContentTest {
     void at_a_position_that_is_not_the_start_of_a_turn_is_refused() {
       scriptedTurn();
 
-      assertThatThrownBy(() -> content.turn(new TurnId(3)))
+      TurnId missing = new TurnId(3);
+      assertThatThrownBy(() -> content.turn(missing))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("no turn 3 in this agent's story");
     }
 
     @Test
     void of_an_agent_with_no_story_is_refused() {
-      assertThatThrownBy(() -> content.turn(new TurnId(1)))
+      TurnId missing = new TurnId(1);
+      assertThatThrownBy(() -> content.turn(missing))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("no turn 1 in this agent's story");
     }
@@ -205,7 +208,8 @@ class StoryContentTest {
       PayloadRef gone = new PayloadRef("gone");
       write(started(gone));
 
-      assertThatThrownBy(() -> content.turn(new TurnId(1)))
+      TurnId missing = new TurnId(1);
+      assertThatThrownBy(() -> content.turn(missing))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("gone");
     }
@@ -396,6 +400,14 @@ class StoryContentTest {
 
       assertThat(results).hasSize(201);
       assertThat(results.getLast().seq()).isEqualTo(new Seq(2 * calls + 1));
+    }
+
+    @Test
+    void after_the_position_that_terminated_the_agent_are_empty() {
+      scriptedTurn();
+      write(new AgentEvent.Terminated(new Seq(6)));
+
+      assertThat(content.results(new Seq(6), 10)).isEmpty();
     }
 
     @Test

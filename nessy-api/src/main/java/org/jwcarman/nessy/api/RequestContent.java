@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.api;
 
 import java.util.List;
+import java.util.Objects;
 import org.jwcarman.nessy.api.block.Block;
 
 /**
@@ -27,6 +28,8 @@ import org.jwcarman.nessy.api.block.Block;
 public record RequestContent(Seq seq, List<Block.ActionRequestContent> blocks) {
 
   public RequestContent {
+    Objects.requireNonNull(seq, "seq must not be null");
+    Objects.requireNonNull(blocks, "blocks must not be null");
     blocks = List.copyOf(blocks);
   }
 }
