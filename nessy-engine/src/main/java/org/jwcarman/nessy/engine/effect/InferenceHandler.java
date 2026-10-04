@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.effect;
 
 import com.fasterxml.uuid.Generators;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
@@ -98,7 +99,8 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
   }
 
   @Override
-  public Awaited<EffectOutcome> handle(AgentId agentId, AgentEffect.Infer effect) {
+  public Awaited<EffectOutcome> handle(
+      AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
     InferenceResult result =
         inference.infer(new InferenceInvocation(agentType, agentId, options, effect.answerOnly()));
     // Always ready. A provider call blocks until it answers or fails, and there is nobody who

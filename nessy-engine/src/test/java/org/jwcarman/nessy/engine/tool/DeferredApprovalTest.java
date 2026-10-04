@@ -19,6 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -84,6 +86,7 @@ class DeferredApprovalTest {
 
   record Query(String q) {}
 
+  private final ConcurrentLinkedQueue<Instant> shownDeadlines = new ConcurrentLinkedQueue<>();
   private final ConcurrentLinkedQueue<ReplyToken> handed = new ConcurrentLinkedQueue<>();
   private final ConcurrentLinkedQueue<String> ran = new ConcurrentLinkedQueue<>();
 
@@ -129,6 +132,7 @@ class DeferredApprovalTest {
                                 .approver(
                                     request -> {
                                       handed.add(request.replyToken());
+                                      shownDeadlines.add(request.deadline());
                                       return Awaited.deferred();
                                     },
                                     a -> a.timeout(questionStands)))
@@ -196,6 +200,29 @@ class DeferredApprovalTest {
                 requestedKey(story)));
     assertThat(story.get(3)).isInstanceOf(AgentEvent.ToolSucceeded.class);
     assertThat(story.get(4)).isInstanceOf(AgentEvent.InferenceAnswered.class);
+  }
+
+  /**
+   * The row was written when the effect was emitted and waited in the queue before anyone asked.
+   * What the approver was shown is the instant the row holds the question to, not a later clock
+   * reading plus the timeout.
+   */
+  @Test
+  void an_approval_asked_after_its_row_waited_shows_the_rows_deadline() {
+    AgentType type = new AgentType("deferred-shown-deadline");
+    parkOne(type, Duration.ofMinutes(30));
+
+    Instant stored =
+        engine
+            .jdbc()
+            .sql("SELECT deadline FROM nessy_agent_effect WHERE agent_type = ?")
+            .params(type.value())
+            .query(OffsetDateTime.class)
+            .single()
+            .toInstant();
+
+    assertThat(shownDeadlines).hasSize(1);
+    assertThat(shownDeadlines.peek()).isEqualTo(stored);
   }
 
   /** A late denial discharges the call and never reaches the tool. */

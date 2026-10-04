@@ -204,6 +204,7 @@ public final class ToolBinding<I> {
       String arguments,
       String action,
       Instant askedAt,
+      Instant deadline,
       ReplyToken replyToken) {
     mapper.readValue(arguments, tool.inputType());
     ApprovalRequest question =
@@ -217,7 +218,7 @@ public final class ToolBinding<I> {
             arguments,
             action,
             askedAt,
-            askedAt.plus(approvalTimeout),
+            deadline,
             replyToken);
     // After the question is built, so an enricher can read the sentence a person will be
     // shown; before the approver, which is the whole ordering there is. Anything thrown here

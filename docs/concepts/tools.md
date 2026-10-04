@@ -79,7 +79,8 @@ Awaited.deferred();                                      // somebody else will a
 this call is waiting on the world and moves on. It does not hold a thread
 or a process. How long it may wait is the binding's `timeout`, decided when
 the call was asked, so a deferral cannot extend it and there is nothing to
-negotiate.
+negotiate. The `deadline` on the `ToolCallRequest` is that instant, the one the
+call is held to, and the live `CallDeferred` event reports the same one.
 
 Deferral works only on the queued door. On a `DirectHarness` a deferred call
 becomes a failed call, because a caller already waiting has nowhere for a

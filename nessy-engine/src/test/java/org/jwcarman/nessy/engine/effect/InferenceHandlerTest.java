@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine.effect;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -59,6 +60,9 @@ class InferenceHandlerTest {
 
   private static final AgentType TYPE = new AgentType("support");
   private static final AgentId AGENT = AgentId.random();
+
+  /** An inference does not show its deadline to anyone; any instant will do. */
+  private static final Instant DEADLINE = Instant.parse("2026-09-08T12:00:30Z");
 
   private final Deque<InferenceResult> script = new ArrayDeque<>();
 
@@ -168,7 +172,8 @@ class InferenceHandlerTest {
       List<Block.AnswerContent> written = List.of(new Block.Text("The answer begins"));
       script.add(new InferenceResult.Truncated(written, reading(0)));
 
-      Awaited<EffectOutcome> outcome = handler.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)));
+      Awaited<EffectOutcome> outcome =
+          handler.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)), DEADLINE);
 
       assertThat(outcome)
           .isEqualTo(
@@ -182,7 +187,8 @@ class InferenceHandlerTest {
       List<Block.AnswerContent> written = List.of(new Block.Text("The answer"));
       script.add(new InferenceResult.Answer(written, reading(0)));
 
-      Awaited<EffectOutcome> outcome = handler.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)));
+      Awaited<EffectOutcome> outcome =
+          handler.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)), DEADLINE);
 
       assertThat(outcome)
           .isEqualTo(
@@ -199,7 +205,7 @@ class InferenceHandlerTest {
       script.add(new InferenceResult.Actions(List.of(calls), reading(0)));
 
       Awaited<EffectOutcome> outcome =
-          handlerWithTools.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)));
+          handlerWithTools.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)), DEADLINE);
 
       assertThat(outcome).isInstanceOf(Awaited.Ready.class);
       EffectOutcome value = ((Awaited.Ready<EffectOutcome>) outcome).value();

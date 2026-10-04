@@ -483,7 +483,8 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(AgentId agentId, AgentEffect.Infer effect) {
+    public Awaited<EffectOutcome> handle(
+        AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
       return new Awaited.Ready<>(new EffectOutcome.InferenceRefused("stop", Usage.unreported()));
     }
   }
@@ -501,7 +502,8 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(AgentId agentId, AgentEffect.Infer effect) {
+    public Awaited<EffectOutcome> handle(
+        AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
       throw new IllegalStateException("the model call failed");
     }
   }
@@ -525,7 +527,8 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(AgentId agentId, AgentEffect.Infer effect) {
+    public Awaited<EffectOutcome> handle(
+        AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
       return new Awaited.Ready<>(outcome);
     }
   }
@@ -543,7 +546,8 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(AgentId agentId, AgentEffect.Infer effect) {
+    public Awaited<EffectOutcome> handle(
+        AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
       throw new IllegalStateException("the model call failed");
     }
   }
@@ -561,7 +565,7 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(AgentId agentId, E effect) {
+    public Awaited<EffectOutcome> handle(AgentId agentId, E effect, Instant deadline) {
       throw new UnsupportedOperationException("no test here writes this kind of effect");
     }
   }

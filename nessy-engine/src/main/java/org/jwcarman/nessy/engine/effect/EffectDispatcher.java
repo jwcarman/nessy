@@ -349,7 +349,7 @@ public class EffectDispatcher {
           effect.getClass().getSimpleName(),
           attempt.agentId().value(),
           attempt.attemptsMade());
-      switch (handlers.perform(attempt.agentId(), effect)) {
+      switch (handlers.perform(attempt.agentId(), effect, attempt.deadline())) {
         case Awaited.Ready<EffectOutcome>(EffectOutcome.InferenceFailed failed)
             when worthAnotherGo(failed) -> {
           // True whatever the policy then decides. Saying "it will be tried again" here would

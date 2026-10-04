@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.engine.effect;
 
-import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
@@ -65,7 +64,6 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
   private final Narrator narrator;
   private final ReplyTokens replyTokens;
   private final EffectTermsSource terms;
-  private final Clock clock;
 
   public ToolCallHandler(
       AgentType agentType,
@@ -74,7 +72,6 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
       ReplyTokens replyTokens,
       Narrator narrator,
       EffectTermsSource terms,
-      Clock clock,
       Payloads payloads) {
     this.agentType = agentType;
     this.payloads = payloads;
@@ -83,7 +80,6 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
     this.replyTokens = replyTokens;
     this.narrator = narrator;
     this.terms = terms;
-    this.clock = clock;
   }
 
   /**
@@ -99,7 +95,8 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
   }
 
   @Override
-  public Awaited<EffectOutcome> handle(AgentId agentId, AgentEffect.CallTool effect) {
+  public Awaited<EffectOutcome> handle(
+      AgentId agentId, AgentEffect.CallTool effect, Instant deadline) {
     CallId callId = effect.callId();
     Optional<ToolCalls.ResolvedCall> found = calls.find(agentId, effect.requestSeq(), callId);
     if (found.isEmpty()) {
@@ -128,12 +125,11 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
     }
 
     ToolBinding<?> binding = bound.get();
-    Instant until = clock.instant().plus(binding.timeout());
     return outcomeOf(
         agentId,
         callId,
         binding,
-        until,
+        deadline,
         binding.call(
             agentType,
             agentId,
@@ -142,7 +138,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
             effect.idempotencyKey(),
             call.name(),
             call.arguments(),
-            until,
+            deadline,
             replyTokens.mint(agentType, agentId, effect.requestSeq(), callId)));
   }
 

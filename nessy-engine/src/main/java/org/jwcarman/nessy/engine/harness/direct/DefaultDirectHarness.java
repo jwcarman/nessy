@@ -764,7 +764,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     if (isOverdue(started, terms)) {
       return undispatchable(effect, terms);
     }
-    Duration remaining = Duration.between(clock.instant(), started.plus(terms.timeout()));
+    Instant deadline = started.plus(terms.timeout());
+    Duration remaining = Duration.between(clock.instant(), deadline);
     return within(
         agent,
         effect,
@@ -772,7 +773,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         remaining,
         terms,
         () ->
-            switch (handlers.perform(agent, effect)) {
+            switch (handlers.perform(agent, effect, deadline)) {
               case Awaited.Ready<EffectOutcome>(EffectOutcome outcome) ->
                   EffectOutcomes.command(turn, request, outcome, NO_ATTEMPTS);
               case Awaited.Deferred<EffectOutcome> _ ->

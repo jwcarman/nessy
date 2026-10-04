@@ -79,6 +79,10 @@ those tools have different inputs, so a typed request would force a generic
 Cedar, take a JSON document. A typed request would be typed on its way to
 being serialised back.
 
+**`deadline` is the instant the question is held to.** It is the deadline the effect was written
+with, not a time worked out when the approver is asked: a question that waited in the queue shows
+the same instant the call is given up on, and so does the live `ApprovalDeferred` event.
+
 **`arguments` is for deciding. `action` is for showing.** A policy reads
 the arguments to decide. A page shows `action()`, the sentence the binding's
 action `Stringifier` wrote. Rendering raw arguments at a person is the failure

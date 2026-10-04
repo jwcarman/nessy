@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.effect;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
@@ -95,7 +96,8 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
   }
 
   @Override
-  public Awaited<EffectOutcome> handle(AgentId agentId, AgentEffect.Approve effect) {
+  public Awaited<EffectOutcome> handle(
+      AgentId agentId, AgentEffect.Approve effect, Instant deadline) {
     CallId callId = effect.callId();
     Optional<ToolBinding<?>> bound = tools.find(effect.toolName());
     if (bound.isEmpty()) {
@@ -154,6 +156,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
               resolved.call().arguments(),
               resolved.action(),
               clock.instant(),
+              deadline,
               replyTokens.mint(agentType, agentId, effect.requestSeq(), callId));
     } catch (RuntimeException e) {
       // A call whose arguments will not read into the tool's input type has no question to

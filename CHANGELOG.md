@@ -76,6 +76,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   engine truncates the time it writes to microseconds, which is what PostgreSQL keeps, so an
   event heard live equals the same event replayed.
 
+### Fixed
+
+- **The deadline an approver and a tool are shown is the deadline the call is held to.** The
+  `deadline` on an `ApprovalRequest`, the `deadline` on a `ToolCallRequest`, and the `until` of the
+  live `ApprovalDeferred` and `CallDeferred` were worked out again when the call was handled, so a
+  call that waited in the queue showed a later instant than the one it was given up on. They are now
+  the effect's own deadline.
+
 ## [0.4.0] - 2026-10-03
 
 ### Breaking changes

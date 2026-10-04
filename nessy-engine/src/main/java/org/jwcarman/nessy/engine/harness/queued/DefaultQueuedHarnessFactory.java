@@ -330,7 +330,6 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
         replyTokens,
         narrator,
         terms,
-        clock,
         payloads);
   }
 
