@@ -512,6 +512,17 @@ class StoryContentTest {
     }
 
     @Test
+    void ends_after_exactly_one_full_page_of_results() {
+      storeResults(1_000);
+
+      List<CallResult> all = counted.allResults(Seq.NONE).toList();
+
+      assertThat(all).hasSize(1_000);
+      assertThat(all).extracting(CallResult::seq).isSorted().doesNotHaveDuplicates();
+      assertThat(all.getLast().seq()).isEqualTo(new Seq(2_001));
+    }
+
+    @Test
     void after_a_position_skips_what_came_before() {
       storeResults(2_500);
 
@@ -529,7 +540,8 @@ class StoryContentTest {
 
       assertThat(found).isTrue();
       // One page of results is 1,000 results, which ends at seq 2,001 and takes three event reads.
-      // The next page would start its reads after seq 2,001, and none did.
+      // A second page would rescan from the start of its turn, so its reads would go on past seq
+      // 3,000; none did.
       assertThat(counting.pagesAfter).isNotEmpty();
       assertThat(counting.pagesAfter).allMatch(read -> read.value() <= 2_000);
     }
