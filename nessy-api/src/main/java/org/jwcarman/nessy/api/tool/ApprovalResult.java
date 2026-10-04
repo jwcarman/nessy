@@ -17,6 +17,7 @@ package org.jwcarman.nessy.api.tool;
 
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.Truncator;
 
 public sealed interface ApprovalResult {
 
@@ -27,6 +28,10 @@ public sealed interface ApprovalResult {
    * <p><b>Nessy never interprets it.</b> It is written into the story as given. The record of the
    * decision itself stays with the application, and the call's {@code IdempotencyKey}, which is on
    * every event about the call, is the join to it.
+   *
+   * <p>The value is the application's own and is kept as given, with one limit: one longer than
+   * {@value ToolConfig#LINE_CAP} characters is cut to that length, keeping its start and ending in
+   * {@code ...}. Nothing else is changed; a blank value, or one with newlines, stays as it is.
    */
   Optional<String> decidedBy();
 
@@ -34,7 +39,7 @@ public sealed interface ApprovalResult {
   record Approved(Optional<String> decidedBy) implements ApprovalResult {
 
     public Approved {
-      requireDecidedBy(decidedBy);
+      decidedBy = capped(decidedBy);
     }
   }
 
@@ -48,12 +53,16 @@ public sealed interface ApprovalResult {
    * <p>Both name who decided, though. "Who allowed this" and "who refused this" are the same
    * question asked of the same subsystem, and an audit trail that could answer only one of them
    * would be answering the less interesting one.
+   *
+   * <p>The reason is the application's own and is kept as given, cut to {@value
+   * ToolConfig#LINE_CAP} characters if it is longer, the same way a tool's failure message is.
    */
   record Denied(String reason, Optional<String> decidedBy) implements ApprovalResult {
 
     public Denied {
       Objects.requireNonNull(reason, "reason must not be null");
-      requireDecidedBy(decidedBy);
+      reason = Truncator.dropMiddle().truncate(reason, ToolConfig.LINE_CAP);
+      decidedBy = capped(decidedBy);
     }
   }
 
@@ -69,7 +78,8 @@ public sealed interface ApprovalResult {
    * is written into the story, and an overload would let it be passed by accident.
    *
    * @param decidedBy who or what decided, as the application says it -- a user id, a ticket, a
-   *     policy's name. Never interpreted here.
+   *     policy's name. Never interpreted here; kept as given, cut to {@value ToolConfig#LINE_CAP}
+   *     characters if longer.
    */
   static ApprovalResult approvedBy(String decidedBy) {
     requireDecidedBy(decidedBy);
@@ -80,10 +90,19 @@ public sealed interface ApprovalResult {
     return new Denied(reason, Optional.empty());
   }
 
-  /** Refused, and here is who or what refused it. */
+  /**
+   * Refused, and here is who or what refused it. The reason and the decider are the application's
+   * own, kept as given and cut to {@value ToolConfig#LINE_CAP} characters if longer.
+   */
   static ApprovalResult deniedBy(String reason, String decidedBy) {
     requireDecidedBy(decidedBy);
     return new Denied(reason, Optional.of(decidedBy));
+  }
+
+  /** The decider, refused if null, and cut to the line cap, keeping its start, if longer. */
+  private static Optional<String> capped(Optional<String> decidedBy) {
+    requireDecidedBy(decidedBy);
+    return decidedBy.map(value -> Truncator.dropTail().truncate(value, ToolConfig.LINE_CAP));
   }
 
   /** Either form of decidedBy -- the value, or an {@code Optional} of it -- must not be null. */

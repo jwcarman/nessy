@@ -83,4 +83,95 @@ class ApprovalResultTest {
           .hasMessage("decidedBy must not be null");
     }
   }
+
+  @Nested
+  @DisplayName("Keeping the application's own words, cut only to a safe length")
+  class KeepingTheApplicationsOwnWords {
+
+    private static final int CAP = ToolConfig.LINE_CAP;
+
+    @Test
+    void a_decider_longer_than_the_cap_is_cut_to_it_and_keeps_its_start() {
+      String long1500 = "d".repeat(10) + "x".repeat(1490);
+      String expected = long1500.substring(0, CAP - 3) + "...";
+
+      ApprovalResult approved = ApprovalResult.approvedBy(long1500);
+      ApprovalResult denied = ApprovalResult.deniedBy("no", long1500);
+
+      assertThat(approved.decidedBy()).contains(expected);
+      assertThat(denied.decidedBy()).contains(expected);
+      assertThat(expected).hasSize(CAP).startsWith("d".repeat(10));
+    }
+
+    @Test
+    void the_constructors_cut_a_long_decider_too() {
+      String long1500 = "y".repeat(1500);
+      String expected = "y".repeat(CAP - 3) + "...";
+
+      assertThat(new ApprovalResult.Approved(Optional.of(long1500)).decidedBy()).contains(expected);
+      assertThat(new ApprovalResult.Denied("no", Optional.of(long1500)).decidedBy())
+          .contains(expected);
+    }
+
+    @Test
+    void a_decider_at_the_cap_is_kept_as_given() {
+      String atCap = "a".repeat(CAP);
+
+      assertThat(ApprovalResult.approvedBy(atCap).decidedBy()).contains(atCap);
+      assertThat(ApprovalResult.deniedBy("no", atCap).decidedBy()).contains(atCap);
+    }
+
+    @Test
+    void a_blank_decider_is_kept_as_given() {
+      assertThat(ApprovalResult.approvedBy("").decidedBy()).contains("");
+      assertThat(ApprovalResult.approvedBy("   ").decidedBy()).contains("   ");
+      assertThat(ApprovalResult.deniedBy("no", " ").decidedBy()).contains(" ");
+    }
+
+    @Test
+    void a_decider_with_newlines_is_kept_as_given() {
+      String withNewlines = "line one\n\n  line two\r\n\tline three";
+
+      assertThat(ApprovalResult.approvedBy(withNewlines).decidedBy()).contains(withNewlines);
+      assertThat(ApprovalResult.deniedBy("no", withNewlines).decidedBy()).contains(withNewlines);
+    }
+
+    @Test
+    void a_reason_longer_than_the_cap_is_truncated_to_it() {
+      String longReason = "S".repeat(600) + "E".repeat(600);
+      String expected = "S".repeat(499) + "..." + "E".repeat(498);
+
+      ApprovalResult.Denied bare = (ApprovalResult.Denied) ApprovalResult.denied(longReason);
+      ApprovalResult.Denied named =
+          (ApprovalResult.Denied) ApprovalResult.deniedBy(longReason, "u_dave");
+
+      assertThat(bare.reason()).isEqualTo(expected);
+      assertThat(named.reason()).isEqualTo(expected);
+    }
+
+    @Test
+    void a_reason_at_the_cap_is_kept_as_given() {
+      String atCap = "c".repeat(CAP);
+
+      ApprovalResult.Denied denied = (ApprovalResult.Denied) ApprovalResult.denied(atCap);
+
+      assertThat(denied.reason()).isEqualTo(atCap);
+    }
+
+    @Test
+    void a_short_reason_is_kept_as_given() {
+      String reason = "out of hours\nsee the ticket  ";
+
+      ApprovalResult.Denied denied = (ApprovalResult.Denied) ApprovalResult.denied(reason);
+
+      assertThat(denied.reason()).isEqualTo(reason);
+    }
+
+    @Test
+    void an_empty_reason_is_kept_as_given() {
+      ApprovalResult.Denied denied = (ApprovalResult.Denied) ApprovalResult.denied("");
+
+      assertThat(denied.reason()).isEmpty();
+    }
+  }
 }

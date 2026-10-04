@@ -87,6 +87,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   engine truncates the time it writes to microseconds, which is what PostgreSQL keeps, so an
   event heard live equals the same event replayed.
 
+### Changed
+
+- **An approval's `decidedBy` and a denial's `reason` are cut, never refused.** Nessy keeps what
+  the application gives and cuts one longer than 1,000 characters to that length.
+
 ### Fixed
 
 - **The deadline an approver and a tool are shown is the deadline the call is held to.** The

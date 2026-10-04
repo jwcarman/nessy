@@ -149,7 +149,8 @@ application chooses to say it. `approved()` and `denied(reason)` name no one.
 
 `decidedBy` is an opaque string. Nessy never interprets it. It is stored on
 `ToolApproved` and `ToolDenied` and told on `CallApproved` and `CallDenied`, as
-given. The record of the decision itself, the evidence and the reasons, stays
+given, except that Nessy cuts one longer than 1,000 characters to that length
+and never refuses it. The record of the decision itself, the evidence and the reasons, stays
 with the application. Every event about a call carries the call's
 `IdempotencyKey`, and that key is the join from the story to the
 application's own record.
