@@ -156,7 +156,7 @@ class InMemoryAgentEventsTest {
 
   @Test
   @DisplayName("each event after the watermark comes back with the instant its batch was written")
-  void streamWrittenFrom_pairs_each_event_with_its_instant() {
+  void readWrittenFrom_pairs_each_event_with_its_instant() {
     Instant first = Instant.parse("2026-01-01T00:00:00Z");
     Instant second = Instant.parse("2026-01-01T00:05:00Z");
     AgentEvents events =
@@ -164,14 +164,40 @@ class InMemoryAgentEventsTest {
     events.append(TYPE, agent, List.of(started(1, 1), started(2, 2)), Seq.NONE, first);
     events.append(TYPE, agent, List.of(started(3, 3)), new Seq(2), second);
 
-    List<AgentEvents.Written> written;
-    try (Stream<AgentEvents.Written> stream = events.streamWrittenFrom(TYPE, agent, new Seq(1))) {
-      written = stream.toList();
-    }
-
-    assertThat(written)
+    assertThat(events.readWrittenFrom(TYPE, agent, new Seq(1), 10))
         .containsExactly(
             new AgentEvents.Written(started(2, 2), first),
             new AgentEvents.Written(started(3, 3), second));
+  }
+
+  @Test
+  @DisplayName("a bounded read returns the first events after the watermark, and no more")
+  void readWrittenFrom_stops_at_its_limit() {
+    AgentEvents events =
+        new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
+    events.append(
+        TYPE,
+        agent,
+        List.of(started(1, 1), started(2, 2), started(3, 3), started(4, 4), started(5, 5)),
+        Seq.NONE,
+        AT);
+
+    assertThat(events.readWrittenFrom(TYPE, agent, Seq.NONE, 2))
+        .extracting(w -> w.event().seq())
+        .containsExactly(new Seq(1), new Seq(2));
+    assertThat(events.readWrittenFrom(TYPE, agent, new Seq(2), 10))
+        .extracting(w -> w.event().seq())
+        .containsExactly(new Seq(3), new Seq(4), new Seq(5));
+  }
+
+  @Test
+  @DisplayName("a bounded read with a limit of zero is refused")
+  void readWrittenFrom_refuses_a_limit_of_zero() {
+    AgentEvents events =
+        new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
+
+    assertThatThrownBy(() -> events.readWrittenFrom(TYPE, agent, Seq.NONE, 0))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("limit must be positive");
   }
 }

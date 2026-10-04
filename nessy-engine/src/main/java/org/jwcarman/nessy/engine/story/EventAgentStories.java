@@ -15,10 +15,8 @@
  */
 package org.jwcarman.nessy.engine.story;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Stream;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentStories;
 import org.jwcarman.nessy.api.AgentStory;
@@ -58,13 +56,8 @@ public final class EventAgentStories implements AgentStories {
       throw new IllegalArgumentException("limit must be positive");
     }
     int capped = Math.min(limit, MAXIMUM_LIMIT);
-    List<Narrated> story = new ArrayList<>();
-    try (Stream<AgentEvents.Written> written = events.streamWrittenFrom(type, id, after)) {
-      written
-          .limit(capped)
-          .map(w -> Narrated.story(type, id, StoryEvents.of(w.event()), w.event().seq(), w.at()))
-          .forEach(story::add);
-    }
-    return List.copyOf(story);
+    return events.readWrittenFrom(type, id, after, capped).stream()
+        .map(w -> Narrated.story(type, id, StoryEvents.of(w.event()), w.event().seq(), w.at()))
+        .toList();
   }
 }

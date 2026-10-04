@@ -18,10 +18,9 @@ package org.jwcarman.nessy.spring.boot;
 import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.api.AgentStories;
-import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.QueuedBackend;
-import org.jwcarman.nessy.engine.story.EventAgentStories;
+import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.AnyNestedCondition;
@@ -33,9 +32,9 @@ import org.springframework.context.annotation.Conditional;
 /**
  * Agent stories over the stored events of whichever doors the application has.
  *
- * <p>Both doors' stores are asked, queued first: an agent's story is in one of them, and the first
- * that holds any of what was asked for answers, so a backend whose two doors share tables gives the
- * same answer either way. With no backend there is nothing to read, and no bean.
+ * <p>Both doors' stores are given, queued first: an agent's story is in one of them, and it is read
+ * from the first store that holds any event for that agent, as usage reports choose. With no
+ * backend there is nothing to read, and no bean.
  */
 @AutoConfiguration(
     after = {JdbcBackendAutoConfiguration.class, InMemoryBackendAutoConfiguration.class})
@@ -60,19 +59,9 @@ public class AgentStoriesAutoConfiguration {
   @ConditionalOnMissingBean
   public AgentStories nessyAgentStories(
       ObjectProvider<QueuedBackend> queued, ObjectProvider<DirectBackend> direct) {
-    List<AgentStories> stores = new ArrayList<>();
-    queued.ifAvailable(backend -> stores.add(new EventAgentStories(backend.events())));
-    direct.ifAvailable(backend -> stores.add(new EventAgentStories(backend.events())));
-    return (type, id) ->
-        (after, limit) -> {
-          List<Narrated> story = List.of();
-          for (AgentStories store : stores) {
-            story = store.of(type, id).replay(after, limit);
-            if (!story.isEmpty()) {
-              return story;
-            }
-          }
-          return story;
-        };
+    List<AgentEvents> stores = new ArrayList<>();
+    queued.ifAvailable(backend -> stores.add(backend.events()));
+    direct.ifAvailable(backend -> stores.add(backend.events()));
+    return new FirstStoreHoldingStories(stores);
   }
 }

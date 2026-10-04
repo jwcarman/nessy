@@ -82,13 +82,16 @@ public interface AgentEvents {
   Stream<AgentEvent> streamFrom(AgentType type, AgentId agent, Seq after);
 
   /**
-   * Everything after {@code after}, in order, each event with the instant its batch was written, so
-   * a reader gets an event and its time in one read rather than one read per event.
+   * Up to {@code limit} events strictly after {@code after}, oldest first, each with the instant
+   * its batch was written, so a reader gets an event and its time in one read.
    *
-   * <p><b>Close it,</b> exactly as {@link #streamFrom}, and keep the work per element small for the
-   * same reason.
+   * <p><b>The limit is applied by the store, in its query,</b> never by the caller after the fact:
+   * a driver may materialise a whole result before returning the first row, so a limit applied
+   * later would still read the whole story.
+   *
+   * @throws IllegalArgumentException if {@code limit} is not positive
    */
-  Stream<Written> streamWrittenFrom(AgentType type, AgentId agent, Seq after);
+  List<Written> readWrittenFrom(AgentType type, AgentId agent, Seq after, int limit);
 
   /**
    * An event with the {@code at} its batch was appended with.

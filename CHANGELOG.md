@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`AgentStories` replays an agent's story:** the stored events, as the `Narrated` a live
   listener hears, with each event's position. `AgentStories.of(type, id).replay(after, limit)`
   reads up to `limit` story events after a `Seq`, oldest first. A story store implements the new
-  `AgentEvents.streamWrittenFrom`, which reads each event with the time it was written. The
+  `AgentEvents.readWrittenFrom`, which reads up to a limit of events with the time each was written. The
   engine truncates the time it writes to microseconds, which is what PostgreSQL keeps, so an
   event heard live equals the same event replayed.
 

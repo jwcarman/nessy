@@ -133,8 +133,11 @@ public final class InMemoryAgentEvents implements AgentEvents {
 
   /** The same snapshot as {@link #streamFrom}, with the stamps read under the same lock. */
   @Override
-  public Stream<Written> streamWrittenFrom(AgentType type, AgentId agent, Seq after) {
+  public List<Written> readWrittenFrom(AgentType type, AgentId agent, Seq after, int limit) {
     Objects.requireNonNull(after, "after must not be null");
+    if (limit <= 0) {
+      throw new IllegalArgumentException("limit must be positive");
+    }
     Key key = key(type, agent);
     List<Stored> snapshot;
     Map<Seq, Instant> stamps;
@@ -144,7 +147,9 @@ public final class InMemoryAgentEvents implements AgentEvents {
     }
     return snapshot.stream()
         .filter(stored -> stored.seq().compareTo(after) > 0)
-        .map(stored -> new Written(codec.decode(stored.bytes()), stamps.get(stored.seq())));
+        .limit(limit)
+        .map(stored -> new Written(codec.decode(stored.bytes()), stamps.get(stored.seq())))
+        .toList();
   }
 
   @Override
