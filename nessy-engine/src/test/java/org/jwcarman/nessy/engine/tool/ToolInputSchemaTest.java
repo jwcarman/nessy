@@ -15,30 +15,42 @@
  */
 package org.jwcarman.nessy.engine.tool;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.EmptyInput;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Approver;
+import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
+import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @DisplayName("A tool's input schema, checked when it is bound")
@@ -132,6 +144,74 @@ class ToolInputSchemaTest {
       JsonSchema schema = tool.inputSchema(GENERATOR);
 
       assertThatCode(() -> bind(tool, schema)).doesNotThrowAnyException();
+    }
+  }
+
+  @Nested
+  class AToolWithNoArguments {
+
+    @Test
+    void an_empty_input_is_offered_as_an_object_with_explicitly_empty_properties() {
+      Tool<EmptyInput> tool = tool("rounds", EmptyInput.class, null);
+
+      JsonNode schema = JsonMapper.builder().build().readTree(tool.inputSchema(GENERATOR).json());
+
+      assertThat(schema.path("type").asString()).isEqualTo("object");
+      assertThat(schema.has("properties")).isTrue();
+      assertThat(schema.get("properties").isObject()).isTrue();
+      assertThat(schema.get("properties").size()).isZero();
+    }
+
+    @Test
+    void an_empty_input_is_accepted_when_the_tool_is_bound() {
+      Tool<EmptyInput> tool = tool("rounds", EmptyInput.class, null);
+      JsonSchema schema = tool.inputSchema(GENERATOR);
+
+      assertThatCode(() -> bind(tool, schema)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void a_call_with_an_empty_object_reaches_the_tool_as_an_empty_input() {
+      AtomicReference<EmptyInput> received = new AtomicReference<>();
+      Tool<EmptyInput> recording =
+          new Tool<>() {
+            @Override
+            public ToolName name() {
+              return new ToolName("rounds");
+            }
+
+            @Override
+            public String description() {
+              return "a tool";
+            }
+
+            @Override
+            public Class<EmptyInput> inputType() {
+              return EmptyInput.class;
+            }
+
+            @Override
+            public Awaited<ToolResult> call(ToolCallRequest<EmptyInput> request) {
+              received.set(request.input());
+              return Awaited.ready(ToolResult.ok(new Block.Text("ok")));
+            }
+          };
+      ToolBinding<EmptyInput> binding = bind(recording, recording.inputSchema(GENERATOR));
+
+      Awaited<ToolResult> answer =
+          binding.call(
+              new AgentType("watch"),
+              new AgentId(UUID.randomUUID()),
+              new TurnId(1),
+              new CallId("c1"),
+              IdempotencyKey.of(UUID.randomUUID()),
+              new ToolName("rounds"),
+              "{}",
+              Instant.now().plusSeconds(30),
+              new ReplyToken("unused"));
+
+      assertThat(answer).isInstanceOf(Awaited.Ready.class);
+      assertThat(received.get()).isEqualTo(new EmptyInput());
     }
   }
 

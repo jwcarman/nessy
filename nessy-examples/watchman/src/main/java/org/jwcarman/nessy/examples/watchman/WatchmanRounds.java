@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.examples.watchman;
 
+import org.jwcarman.nessy.api.EmptyInput;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,11 +26,10 @@ import org.springframework.stereotype.Component;
 public class WatchmanRounds {
 
   private static final Logger LOG = LoggerFactory.getLogger(WatchmanRounds.class);
-  private static final String TICK = "Do your rounds.";
 
-  private final QueuedHarness<String> harness;
+  private final QueuedHarness<EmptyInput> harness;
 
-  WatchmanRounds(QueuedHarness<String> harness) {
+  WatchmanRounds(QueuedHarness<EmptyInput> harness) {
     this.harness = harness;
   }
 
@@ -38,6 +38,6 @@ public class WatchmanRounds {
   @Scheduled(fixedRateString = "${watchman.round-interval:PT30M}")
   public void round() {
     LOG.info("[watchman] telling the watchman to do its rounds");
-    harness.tell(Watchman.AGENT, TICK);
+    harness.tell(Watchman.AGENT, new EmptyInput());
   }
 }

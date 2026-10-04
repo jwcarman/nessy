@@ -41,7 +41,8 @@ record ServerRequest(Command command) {}   // the tool's input type
 A sealed type as a field of that record is fine; the discriminator travels
 inside the object.
 
-A tool with no input still needs a type; an empty record works. A tool that
+A tool with no input still needs a type: use `EmptyInput`. The model sends an
+empty object, and the tool offers a schema with no properties. A tool that
 wants to shape its own schema overrides `inputSchema(generator)`.
 
 ## Granting a tool

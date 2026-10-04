@@ -301,6 +301,27 @@ that names the agent type. The turn's start also records
 when its input arrived. On the queued door that is when `tell` was called, which
 can be well before the turn opened.
 
+### A harness that is only nudged
+
+Some agents take no message. A clock starts their turns, and the nudge says
+nothing more than "go". Use `EmptyInput` as the input type. The model still has
+to be told something, and the default input renderer would send the record's
+`toString`, so set `inputRenderer` to say what the nudge means. Set `inputLabel`
+too, so the story says what started each turn:
+
+```java
+factory.create(
+    WATCHMAN,
+    EmptyInput.class,
+    config ->
+        config
+            .systemPrompt("You are the watchman.")
+            .inputRenderer(_ -> List.of(new Block.Text("Do your rounds.")))
+            .inputLabel(_ -> "rounds"));
+```
+
+Without `inputLabel`, the label is `EmptyInput`.
+
 ## Writing an approver
 
 An approver answers a question about one call. It can answer now:

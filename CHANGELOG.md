@@ -63,6 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `EmptyInput`, a public empty record for a tool that takes no arguments and for a harness
+  whose turns are started by a bare nudge; such a harness sets `inputRenderer` to say what the
+  nudge means.
 - `DirectHarnessConfig.inputLabel(Stringifier)` and `QueuedHarnessConfig.inputLabel(Stringifier)`
   set the label written on a turn's start. It defaults to the input's simple class name, which is
   also used when the label throws or returns null or a blank string.
