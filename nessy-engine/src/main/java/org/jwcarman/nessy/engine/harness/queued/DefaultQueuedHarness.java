@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine.harness.queued;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -341,7 +342,7 @@ final class DefaultQueuedHarness<I>
 
   /** Folds one command and writes what it decided. */
   private boolean apply(Step step, AgentId agentId, AgentCommand command, String trace) {
-    Instant at = clock.instant();
+    Instant at = clock.instant().truncatedTo(ChronoUnit.MICROS);
     AgentState state = reconstitute(agentId);
     if (!(state.execute(command, turnPolicy, clock.instant())
         instanceof Decision.Advance advance)) {

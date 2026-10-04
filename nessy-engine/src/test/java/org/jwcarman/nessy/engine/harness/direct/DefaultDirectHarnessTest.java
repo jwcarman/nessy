@@ -1533,6 +1533,11 @@ class DefaultDirectHarnessTest {
     }
 
     @Override
+    public Stream<Written> streamWrittenFrom(AgentType type, AgentId agent, Seq after) {
+      return delegate.streamWrittenFrom(type, agent, after);
+    }
+
+    @Override
     public List<AgentEvent> sinceLastTurnStarted(AgentType type, AgentId agent) {
       return delegate.sinceLastTurnStarted(type, agent);
     }

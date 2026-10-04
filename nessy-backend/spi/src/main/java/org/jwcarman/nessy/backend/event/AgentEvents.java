@@ -81,6 +81,23 @@ public interface AgentEvents {
    */
   Stream<AgentEvent> streamFrom(AgentType type, AgentId agent, Seq after);
 
+  /**
+   * Everything after {@code after}, in order, each event with the instant its batch was written, so
+   * a reader gets an event and its time in one read rather than one read per event.
+   *
+   * <p><b>Close it,</b> exactly as {@link #streamFrom}, and keep the work per element small for the
+   * same reason.
+   */
+  Stream<Written> streamWrittenFrom(AgentType type, AgentId agent, Seq after);
+
+  /**
+   * An event with the {@code at} its batch was appended with.
+   *
+   * @param event what was stored
+   * @param at when its batch was written, as {@link #writtenAt} would answer
+   */
+  record Written(AgentEvent event, Instant at) {}
+
   /** The whole story, streamed. Close it; see {@link #streamFrom}. */
   default Stream<AgentEvent> streamAll(AgentType type, AgentId agent) {
     return streamFrom(type, agent, Seq.NONE);

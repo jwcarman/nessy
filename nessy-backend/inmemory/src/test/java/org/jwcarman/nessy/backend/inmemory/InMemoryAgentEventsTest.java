@@ -153,4 +153,25 @@ class InMemoryAgentEventsTest {
         .hasMessageContaining("99")
         .hasMessageContaining(agent.value().toString());
   }
+
+  @Test
+  @DisplayName("each event after the watermark comes back with the instant its batch was written")
+  void streamWrittenFrom_pairs_each_event_with_its_instant() {
+    Instant first = Instant.parse("2026-01-01T00:00:00Z");
+    Instant second = Instant.parse("2026-01-01T00:05:00Z");
+    AgentEvents events =
+        new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
+    events.append(TYPE, agent, List.of(started(1, 1), started(2, 2)), Seq.NONE, first);
+    events.append(TYPE, agent, List.of(started(3, 3)), new Seq(2), second);
+
+    List<AgentEvents.Written> written;
+    try (Stream<AgentEvents.Written> stream = events.streamWrittenFrom(TYPE, agent, new Seq(1))) {
+      written = stream.toList();
+    }
+
+    assertThat(written)
+        .containsExactly(
+            new AgentEvents.Written(started(2, 2), first),
+            new AgentEvents.Written(started(3, 3), second));
+  }
 }

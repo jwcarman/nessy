@@ -166,6 +166,30 @@ it is announced rather than recorded, which is the one place it belongs.
 On the wire each kind has a kebab-case name, `turn-stopped`, `content-delta`,
 `approval-deferred`, carried as the JSON `type` field.
 
+## Reading the story afterwards
+
+A listener hears only what happens while it is attached. The story is also
+stored, and `AgentStories` reads it back:
+
+```java
+AgentStory story = stories.of(new AgentType("reporter"), agentId);
+
+List<Narrated> page = story.replay(Seq.NONE, 100);
+Seq last = page.getLast().position().orElseThrow().seq();
+List<Narrated> next = story.replay(last, 100);
+```
+
+`replay(after, limit)` returns up to `limit` story events after `after`,
+oldest first. `Seq.NONE` reads from the start. A limit above 1,000 is treated
+as 1,000, and a limit of zero or less is refused. An agent with no story has an
+empty one.
+
+Each element is a `Narrated` with its position, and it equals the one a
+listener heard as the event was stored: the same event, at the same `seq`,
+written at the same instant. Only story events are replayed; a live signal
+was never stored. In a Boot application an `AgentStories` bean is configured
+over the stored events of both doors.
+
 ## Streams for a browser
 
 `nessy-narration-odyssey` is a listener that publishes every event to an

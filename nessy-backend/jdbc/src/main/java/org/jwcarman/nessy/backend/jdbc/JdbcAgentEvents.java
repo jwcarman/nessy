@@ -64,6 +64,10 @@ public final class JdbcAgentEvents implements AgentEvents {
       "SELECT payload FROM nessy_agent_event"
           + " WHERE agent_type = ? AND agent_id = ? AND seq > ? ORDER BY seq";
 
+  private static final String READ_WRITTEN_FROM =
+      "SELECT payload, written_at FROM nessy_agent_event"
+          + " WHERE agent_type = ? AND agent_id = ? AND seq > ? ORDER BY seq";
+
   private static final String WRITTEN_AT =
       "SELECT written_at FROM nessy_agent_event"
           + " WHERE agent_type = ? AND agent_id = ? AND seq = ?";
@@ -174,6 +178,25 @@ public final class JdbcAgentEvents implements AgentEvents {
         .param(agent.value())
         .param(watermark.value())
         .query((rs, _) -> codec.decode(rs.getBytes(PAYLOAD)))
+        .stream();
+  }
+
+  /** One query for the payload and the time, streamed as {@link #streamFrom} is. */
+  @Override
+  public Stream<Written> streamWrittenFrom(AgentType type, AgentId agent, Seq after) {
+    Objects.requireNonNull(type, TYPE_REQUIRED);
+    Objects.requireNonNull(agent, AGENT_REQUIRED);
+    Objects.requireNonNull(after, "after must not be null");
+    return jdbc
+        .sql(READ_WRITTEN_FROM)
+        .param(type.value())
+        .param(agent.value())
+        .param(after.value())
+        .query(
+            (rs, _) ->
+                new Written(
+                    codec.decode(rs.getBytes(PAYLOAD)),
+                    rs.getObject("written_at", OffsetDateTime.class).toInstant()))
         .stream();
   }
 

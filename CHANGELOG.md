@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   heard live and read back later carry the same instant. `InMemoryAgentEvents` no longer takes a
   `Clock`. `AgentNarrator.narrate` takes only a `Narration.Live` signal.
 
+### Added
+
+- **`AgentStories` replays an agent's story:** the stored events, as the `Narrated` a live
+  listener hears, with each event's position. `AgentStories.of(type, id).replay(after, limit)`
+  reads up to `limit` story events after a `Seq`, oldest first. A story store implements the new
+  `AgentEvents.streamWrittenFrom`, which reads each event with the time it was written. The
+  engine truncates the time it writes to microseconds, which is what PostgreSQL keeps, so an
+  event heard live equals the same event replayed.
+
 ## [0.4.0] - 2026-10-03
 
 ### Breaking changes

@@ -131,6 +131,22 @@ public final class InMemoryAgentEvents implements AgentEvents {
         .map(stored -> codec.decode(stored.bytes()));
   }
 
+  /** The same snapshot as {@link #streamFrom}, with the stamps read under the same lock. */
+  @Override
+  public Stream<Written> streamWrittenFrom(AgentType type, AgentId agent, Seq after) {
+    Objects.requireNonNull(after, "after must not be null");
+    Key key = key(type, agent);
+    List<Stored> snapshot;
+    Map<Seq, Instant> stamps;
+    synchronized (this) {
+      snapshot = List.copyOf(streams.getOrDefault(key, List.of()));
+      stamps = Map.copyOf(writtenAt.getOrDefault(key, Map.of()));
+    }
+    return snapshot.stream()
+        .filter(stored -> stored.seq().compareTo(after) > 0)
+        .map(stored -> new Written(codec.decode(stored.bytes()), stamps.get(stored.seq())));
+  }
+
   @Override
   public List<AgentEvent> sinceLastTurnStarted(AgentType type, AgentId agent) {
     List<Stored> stream = streams.getOrDefault(key(type, agent), List.of());

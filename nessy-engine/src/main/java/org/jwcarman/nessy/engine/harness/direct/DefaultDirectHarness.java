@@ -20,6 +20,7 @@ import io.micrometer.observation.ObservationRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -335,7 +336,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         agentType,
         agent,
         step -> {
-          Instant at = clock.instant();
+          Instant at = clock.instant().truncatedTo(ChronoUnit.MICROS);
           AgentState state = reconstitute(agent);
           if (state instanceof AgentState.Terminal) {
             return new TerminationOutcome.AlreadyEnded();
@@ -363,7 +364,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * is genuinely busy.
    */
   private StepResult<O> beginTurn(Step step, AgentId agent, List<Block.InputContent> rendered) {
-    Instant at = clock.instant();
+    Instant at = clock.instant().truncatedTo(ChronoUnit.MICROS);
     AgentState state = reconstitute(agent);
     if (state instanceof AgentState.Terminal) {
       LOG.debug("[{}] agent {} has ended; the question is refused", agentType.value(), agent);
@@ -396,7 +397,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * rather than the loud refusal {@link AgentState.Terminal#execute} would otherwise throw.
    */
   private Decision executeStep(Step step, AgentId agent, AgentCommand command) {
-    Instant at = clock.instant();
+    Instant at = clock.instant().truncatedTo(ChronoUnit.MICROS);
     AgentState state = reconstitute(agent);
     if (state instanceof AgentState.Terminal) {
       return Decision.ignore();
