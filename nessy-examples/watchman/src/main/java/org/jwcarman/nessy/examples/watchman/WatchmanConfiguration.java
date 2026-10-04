@@ -20,9 +20,11 @@ import java.time.Duration;
 import java.util.List;
 import javax.sql.DataSource;
 import org.jwcarman.nessy.api.BacklogPolicy;
+import org.jwcarman.nessy.api.EmptyInput;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.QueuedHarnessFactory;
+import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -86,7 +88,7 @@ public class WatchmanConfiguration {
   }
 
   @Bean(name = "watchmanHarness")
-  public QueuedHarness<String> harness(
+  public QueuedHarness<EmptyInput> harness(
       QueuedHarnessFactory factory,
       WatchmanProperties properties,
       CommandRunner runner,
@@ -94,9 +96,14 @@ public class WatchmanConfiguration {
     List<Tool<JsonNode>> tools = WatchmanTools.boundTo(runner);
     return factory.create(
         Watchman.TYPE,
-        String.class,
+        EmptyInput.class,
         config -> {
-          config.systemPrompt(WatchmanPrompt.SYSTEM).backlogPolicy(BacklogPolicy.keepLatest());
+          config
+              .systemPrompt(WatchmanPrompt.SYSTEM)
+              .backlogPolicy(BacklogPolicy.keepLatest())
+              // The watchman is only nudged, so the renderer says what the nudge means.
+              .inputRenderer(_ -> List.of(new Block.Text("Do your rounds.")))
+              .inputLabel(_ -> "rounds");
           // A watchman does rounds forever, so its story grows forever. Nothing is set here for
           // that, so the defaults apply: every twenty turns the engine closes a chapter and has
           // the agent's own model write its summary, and the tail shown whole is capped at the
