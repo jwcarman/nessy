@@ -217,6 +217,24 @@ class EventAgentStoriesTest {
   class A_turn_with_a_tool_call {
 
     @Test
+    void a_call_cut_off_at_its_deadline_reads_past_its_deadline_live_and_replayed() {
+      DirectBackend backend =
+          new Backend(events, new InMemoryPayloads(codecs), new InMemoryLocks(), codecs);
+
+      List<Narrated> heard =
+          StoryTurn.heardWithAToolCallCutOffAtItsDeadline(
+              TYPE, agent, backend, Clock.fixed(AT, ZoneOffset.UTC));
+
+      assertThat(heard)
+          .map(Narrated::event)
+          .filteredOn(Narration.CallFailed.class::isInstance)
+          .singleElement()
+          .extracting(event -> ((Narration.CallFailed) event).kind())
+          .isEqualTo(CallFailure.PAST_DEADLINE);
+      assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
+    }
+
+    @Test
     void heard_live_on_the_direct_door_is_what_the_replay_returns() {
       DirectBackend backend =
           new Backend(events, new InMemoryPayloads(codecs), new InMemoryLocks(), codecs);

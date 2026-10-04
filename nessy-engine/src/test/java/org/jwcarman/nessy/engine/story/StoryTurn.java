@@ -21,6 +21,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
@@ -91,6 +92,65 @@ final class StoryTurn {
             config.tool(
                 lookup(),
                 t -> t.action(query -> "looked up " + query.q()).approver(decidesAsCarol())));
+  }
+
+  /**
+   * Runs one turn in which the model asks for a {@code lookup} that never returns, so the call is
+   * cut off at its deadline, and returns the story events the listener heard, oldest first.
+   */
+  static List<Narrated> heardWithAToolCallCutOffAtItsDeadline(
+      AgentType type, AgentId agent, DirectBackend backend, Clock clock) {
+    InferenceProvider provider =
+        (request, narrator) ->
+            request.context().turns().stream().anyMatch(turn -> !turn.exchanges().isEmpty())
+                ? new InferenceResult.Answer(
+                    List.of(new Block.Text("It did not answer.")), Usage.of("a-model", 40, 9))
+                : new InferenceResult.Actions(
+                    List.of(new Block.ToolCall("call_1", "lookup", "{\"q\":\"loch ness\"}")),
+                    Usage.of("a-model", 25, 6));
+    return heard(
+        type,
+        agent,
+        backend,
+        clock,
+        provider,
+        config ->
+            config.tool(
+                hanging(),
+                t ->
+                    t.timeout(Duration.ofMillis(50))
+                        .action(query -> "looked up " + query.q())
+                        .approver(decidesAsCarol())));
+  }
+
+  /** A lookup that blocks until it is interrupted. */
+  private static Tool<Query> hanging() {
+    return new Tool<>() {
+      @Override
+      public Class<Query> inputType() {
+        return Query.class;
+      }
+
+      @Override
+      public ToolName name() {
+        return new ToolName("lookup");
+      }
+
+      @Override
+      public String description() {
+        return "never returns";
+      }
+
+      @Override
+      public Awaited<ToolResult> call(ToolCallRequest<Query> request) {
+        try {
+          new CountDownLatch(1).await();
+        } catch (InterruptedException _) {
+          Thread.currentThread().interrupt();
+        }
+        throw new IllegalStateException("interrupted before returning");
+      }
+    };
   }
 
   /** The name every approval in these stories is decided under. */

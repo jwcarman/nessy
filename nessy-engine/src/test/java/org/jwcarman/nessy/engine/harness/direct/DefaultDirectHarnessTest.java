@@ -52,6 +52,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.ContextConfig;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
@@ -1045,7 +1046,7 @@ class DefaultDirectHarnessTest {
         .asInstanceOf(InstanceOfAssertFactories.type(Outcome.Failed.class))
         .extracting(Outcome.Failed::reason)
         .asString()
-        .contains("no answer within");
+        .contains("did not complete before its deadline");
     assertThat(model.calls).as("no retry was attempted").hasValue(1);
 
     // Idle, not stuck: a second turn on the same agent starts and finishes normally.
@@ -1119,6 +1120,40 @@ class DefaultDirectHarnessTest {
         .extracting(e -> e.getClass().getSimpleName())
         .as("the call was discharged as failed rather than left outstanding")
         .contains("ToolFailed");
+  }
+
+  @Test
+  @DisplayName("a tool call cut off at its deadline while running is recorded as past its deadline")
+  void a_tool_call_cut_off_at_its_deadline_is_recorded_as_past_its_deadline() {
+    AgentId agent = AgentId.random();
+    Scripted model = new Scripted().then(asking("lookup")).then(answering("noted, moving on"));
+    DirectHarness<String, String> harness =
+        DefaultDirectHarnessFactory.of(
+                f ->
+                    f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
+                        .provider(ProviderId.of("test"), model)
+                        .schemas(SCHEMAS)
+                        .mapper(MAPPER)
+                        .clock(clock))
+            .<String>create(
+                TYPE,
+                c -> {
+                  c.systemPrompt("You are terse.")
+                      .inputRenderer(said -> List.of(new Block.Text(said)))
+                      .inference(in -> in.provider("test").model("a-model"));
+                  c.tool(
+                      hangingTool(),
+                      t -> t.timeout(Duration.ofMillis(50)).approver(Approver.allow()));
+                });
+
+    harness.ask(agent, "look it up");
+
+    assertThat(events.readAll(TYPE, agent))
+        .filteredOn(AgentEvent.ToolFailed.class::isInstance)
+        .map(AgentEvent.ToolFailed.class::cast)
+        .singleElement()
+        .extracting(AgentEvent.ToolFailed::kind)
+        .isEqualTo(CallFailure.PAST_DEADLINE);
   }
 
   /** An approver that hangs until interrupted, the way a person who never answers does. */

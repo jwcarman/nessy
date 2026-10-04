@@ -794,11 +794,11 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * timeout is what actually releases the connection. So this method's deadline is what the caller
    * and the agent's phase can rely on; the transport's is what releases the resource.
    *
-   * <p>An expiry is delivered as {@link EffectTerms#failed}, never {@link
-   * EffectTerms#undispatchable()}: the work was attempted on this thread in this process, and
-   * nobody observed how it came out -- exactly what {@code failed} is documented for. {@code
-   * undispatchable()} is for work nobody performed at all, which is what {@link #perform} itself
-   * now decides before this method is ever called.
+   * <p>An expiry is delivered as {@link EffectTerms#undispatchable()}, the same outcome the queued
+   * door delivers when an effect's deadline passes: no answer arrived in time, and whether the work
+   * ran is not known. For a tool call that is {@code PAST_DEADLINE}, for an approval {@code
+   * NOT_AUTHORISED}, and for an inference an unknown failure. Work that <em>threw</em> is a
+   * different case, delivered as {@link EffectTerms#failed}.
    */
   private AgentCommand within(
       AgentId agent,
@@ -812,15 +812,18 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       return future.get(budget.toMillis(), TimeUnit.MILLISECONDS);
     } catch (TimeoutException expired) {
       future.cancel(true);
+      LOG.warn(
+          "[{}] agent {}: no answer within {}; the work was cancelled",
+          agentType.value(),
+          agent.value(),
+          terms.timeout());
       return EffectOutcomes.command(
-          turn,
-          EffectOutcomes.requestOf(effect),
-          terms.failed(new IllegalStateException("no answer within " + terms.timeout())),
-          NO_ATTEMPTS);
+          turn, EffectOutcomes.requestOf(effect), terms.undispatchable(), NO_ATTEMPTS);
     } catch (ExecutionException broken) {
       // A provider that throws rather than returning a Fault -- infer() hands provider.infer(...)
       // to a switch with no try around it -- surfaces here instead of escaping runTurn with the
-      // agent stuck Inferring. Delivered the same way an expiry is: attempted, and nobody found out
+      // agent stuck Inferring. Delivered as a failure of the attempt, not as an expiry: attempted,
+      // and nobody found out
       // how it went.
       return EffectOutcomes.command(
           turn,
