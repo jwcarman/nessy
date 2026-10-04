@@ -40,7 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   application says it. Nessy never interprets it. The same rename runs through `EffectOutcome.ToolApproved`
   and `ToolDenied`, `AgentCommand.ApprovalOutcome.Approved` and `Denied`, and the stored
   `ToolApproved` and `ToolDenied` events, whose JSON field is now `decidedBy`; recreate the
-  database. The narration records `CallApproved` and `CallDenied` gain a trailing `decidedBy`.
+  database. The narration records `CallApproved` and `CallDenied` gain a trailing `decidedBy`. The
+  argument to `approvedBy` and `deniedBy` used to be a reference and is now who decided: code that
+  passed a ticket or decision id still compiles, and now records that id as the decider.
 - **`NarrationListener.on` takes a `Narrated` envelope:** the agent, the event, and for a story
   event its position (`seq` and time written). `NarrationListenerConfig.Handler` is
   `on(Narrated narrated, E event)`, and `Narrator.narrate` takes a `Narrated`. A story event's
