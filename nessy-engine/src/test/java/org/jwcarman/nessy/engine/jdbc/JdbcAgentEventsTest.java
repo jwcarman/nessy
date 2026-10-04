@@ -74,12 +74,17 @@ class JdbcAgentEventsTest {
 
   private static AgentEvent started(long seq, long turn) {
     return new AgentEvent.TurnStarted(
-        new Seq(seq), new TurnId(turn), new PayloadRef("p1"), Instant.EPOCH);
+        new Seq(seq),
+        new TurnId(turn),
+        new PayloadRef("p1"),
+        "Question",
+        Instant.EPOCH,
+        Instant.EPOCH);
   }
 
   private AgentEvent answered(long seq, long turn) {
     return new AgentEvent.InferenceAnswered(
-        new Seq(seq), new TurnId(turn), somewhere, Usage.unreported());
+        new Seq(seq), new TurnId(turn), somewhere, false, Usage.unreported());
   }
 
   /** Rebuilt the way a harness rebuilds it: the last turn, replayed onto idle. */

@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.engine.effect;
 
+import java.time.Instant;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
@@ -67,6 +68,12 @@ public interface EffectHandler<E extends AgentEffect> {
    * there is nobody to come back afterwards -- so {@link InferenceHandler} wraps every return in
    * {@link Awaited#ready}. One handler shape is worth three wrappers: the alternative is two
    * interfaces and a dispatcher that has to know which kind it is holding.
+   *
+   * <p>The {@code deadline} is the instant this call is held to: the one on the effect's row, or
+   * the one the direct door enforces. A handler that shows a deadline to anyone -- an approver, a
+   * tool, a watcher -- shows this one, never one worked out afresh from the clock, which would
+   * differ from the one that decides when the call is given up on. A handler with nobody to show it
+   * to ignores it.
    */
-  Awaited<EffectOutcome> handle(AgentId agentId, E effect);
+  Awaited<EffectOutcome> handle(AgentId agentId, E effect, Instant deadline);
 }

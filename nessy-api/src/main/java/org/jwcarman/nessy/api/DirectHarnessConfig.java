@@ -50,6 +50,17 @@ public interface DirectHarnessConfig<I> extends HarnessConfig<DirectHarnessConfi
   /** How what a caller hands in becomes what the model reads. */
   DirectHarnessConfig<I> inputRenderer(InputRenderer<I> renderer);
 
+  /**
+   * A short label for each input, written on the start of the turn that takes it up and told in the
+   * story, so a reader of the story can see what started a turn without opening its input.
+   *
+   * <p>The label is made one line and cut to {@link ToolConfig#LINE_CAP} characters, as an action
+   * line is. Defaults to the input's simple class name, which is also what is written when this
+   * label throws, returns null or returns a blank string. A label that fails never fails the turn;
+   * a warning names the agent type.
+   */
+  DirectHarnessConfig<I> inputLabel(Stringifier<I> label);
+
   /** The model, the budget, and what it is shown. */
   DirectHarnessConfig<I> inference(Customizer<InferenceConfig> customizer);
 

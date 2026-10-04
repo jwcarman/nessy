@@ -48,6 +48,7 @@ import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectTermsSource;
 import org.jwcarman.nessy.engine.effect.InferenceHandler;
 import org.jwcarman.nessy.engine.effect.ToolCallHandler;
+import org.jwcarman.nessy.engine.harness.InputLabels;
 import org.jwcarman.nessy.engine.harness.ProviderRegistry;
 import org.jwcarman.nessy.engine.history.EventStreamHistory;
 import org.jwcarman.nessy.engine.history.EventStreamToolCalls;
@@ -331,12 +332,13 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
             new ApprovalHandler(
                 config.agentType(), tools, calls, replyTokens, narrator, terms, clock),
             new ToolCallHandler(
-                config.agentType(), tools, calls, replyTokens, narrator, terms, clock, payloads));
+                config.agentType(), tools, calls, replyTokens, narrator, terms, payloads));
     return new DefaultDirectHarness<>(
         backend,
         config.agentType(),
         clock,
         config.renderer(),
+        new InputLabels<>(config.agentType(), config.label()),
         reading,
         narrator,
         handlers,

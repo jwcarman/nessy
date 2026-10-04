@@ -96,9 +96,11 @@ public final class EffectOutcomes {
           "%s answers a request and none was named".formatted(outcome.getClass().getSimpleName()));
     }
     return switch (outcome) {
-      case EffectOutcome.InferenceAnswered(var answer, var usage) ->
+      case EffectOutcome.InferenceAnswered(var answer, var truncated, var usage) ->
           new AgentCommand.CompleteInference(
-              turn, new AgentCommand.InferenceOutcome.Answered(answer, usage), priorAttempts);
+              turn,
+              new AgentCommand.InferenceOutcome.Answered(answer, truncated, usage),
+              priorAttempts);
       case EffectOutcome.InferenceRefused(String category, var usage) ->
           new AgentCommand.CompleteInference(
               turn, new AgentCommand.InferenceOutcome.Refused(category, usage), priorAttempts);
@@ -116,18 +118,18 @@ public final class EffectOutcomes {
               request.get(),
               callId,
               new AgentCommand.ToolOutcome.Succeeded(result, rendered));
-      case EffectOutcome.ToolFailed(var callId, String message) ->
+      case EffectOutcome.ToolFailed(var callId, var kind, String message) ->
           new AgentCommand.CompleteToolCall(
-              turn, request.get(), callId, new AgentCommand.ToolOutcome.Failed(message));
-      case EffectOutcome.ToolApproved(var callId, var reference) ->
+              turn, request.get(), callId, new AgentCommand.ToolOutcome.Failed(kind, message));
+      case EffectOutcome.ToolApproved(var callId, var decidedBy) ->
           new AgentCommand.CompleteApproval(
-              turn, request.get(), callId, new AgentCommand.ApprovalOutcome.Approved(reference));
-      case EffectOutcome.ToolDenied(var callId, String reason, var reference) ->
+              turn, request.get(), callId, new AgentCommand.ApprovalOutcome.Approved(decidedBy));
+      case EffectOutcome.ToolDenied(var callId, String reason, var decidedBy) ->
           new AgentCommand.CompleteApproval(
               turn,
               request.get(),
               callId,
-              new AgentCommand.ApprovalOutcome.Denied(reason, reference));
+              new AgentCommand.ApprovalOutcome.Denied(reason, decidedBy));
     };
   }
 }

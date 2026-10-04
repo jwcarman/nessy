@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine.effect;
 
 import java.time.Duration;
 import java.util.Objects;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -143,12 +144,15 @@ public final class EffectTermsSource {
     @Override
     public EffectOutcome undispatchable() {
       return new EffectOutcome.ToolFailed(
-          callId, "the call did not complete before its deadline; whether it ran is not known");
+          callId,
+          CallFailure.PAST_DEADLINE,
+          "the call did not complete before its deadline; whether it ran is not known");
     }
 
     @Override
     public EffectOutcome failed(RuntimeException cause) {
-      return new EffectOutcome.ToolFailed(callId, "the call failed: " + cause.getMessage());
+      return new EffectOutcome.ToolFailed(
+          callId, CallFailure.FAILED, "the call failed: " + cause.getMessage());
     }
   }
 
@@ -165,13 +169,17 @@ public final class EffectTermsSource {
     @Override
     public EffectOutcome undispatchable() {
       return new EffectOutcome.ToolFailed(
-          callId, "the call could not be authorised, so it was not run");
+          callId,
+          CallFailure.NOT_AUTHORISED,
+          "the call could not be authorised, so it was not run");
     }
 
     @Override
     public EffectOutcome failed(RuntimeException cause) {
       return new EffectOutcome.ToolFailed(
-          callId, "the call could not be authorised: " + cause.getMessage());
+          callId,
+          CallFailure.NOT_AUTHORISED,
+          "the call could not be authorised: " + cause.getMessage());
     }
   }
 

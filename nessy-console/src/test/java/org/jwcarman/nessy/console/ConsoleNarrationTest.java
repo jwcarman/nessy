@@ -17,12 +17,15 @@ package org.jwcarman.nessy.console;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.FailureKind;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.TurnId;
@@ -47,7 +50,7 @@ class ConsoleNarrationTest {
 
     for (Narration event :
         List.of(
-            new Narration.TurnStarted(new TurnId(1)),
+            new Narration.TurnStarted(new TurnId(1), "Question", Instant.EPOCH),
             new Narration.Thinking(),
             new Narration.ActionsRequested(
                 new TurnId(1),
@@ -55,9 +58,9 @@ class ConsoleNarrationTest {
                     new Narration.ActionsRequested.Call(
                         new CallId("c1"), KEY, new ToolName("depth"), "depth")),
                 Usage.unreported()),
-            new Narration.CallDenied(CALL, "not today"),
-            new Narration.CallFailed(CALL, "boom"),
-            new Narration.CallFinished(CALL),
+            new Narration.CallDenied(CALL, KEY, "not today", Optional.empty()),
+            new Narration.CallFailed(CALL, KEY, CallFailure.FAILED, "boom"),
+            new Narration.CallFinished(CALL, KEY),
             new Narration.ContentDelta("230"),
             new Narration.Terminated())) {
       narration.on(Envelopes.of(CHAT, AGENT, event));
@@ -80,7 +83,7 @@ class ConsoleNarrationTest {
         Envelopes.of(
             CHAT,
             new AgentId(UUID.randomUUID()),
-            new Narration.Answered(new TurnId(1), Usage.unreported())));
+            new Narration.Answered(new TurnId(1), false, Usage.unreported())));
 
     assertThat(console.written()).isEmpty();
   }
@@ -91,7 +94,8 @@ class ConsoleNarrationTest {
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
     narration.on(
-        Envelopes.of(CHAT, AGENT, new Narration.Answered(new TurnId(1), Usage.unreported())));
+        Envelopes.of(
+            CHAT, AGENT, new Narration.Answered(new TurnId(1), false, Usage.unreported())));
 
     assertThat(console.written()).isEmpty();
     assertThat(narration.spoke()).isFalse();
@@ -119,7 +123,7 @@ class ConsoleNarrationTest {
             new Narration.InferenceRetried(
                 new TurnId(1), FailureKind.TRANSIENT, "busy", Usage.unreported()),
             new Narration.Commentary("hmm"),
-            new Narration.CallApproved(CALL),
+            new Narration.CallApproved(CALL, KEY, Optional.empty()),
             new Narration.ApprovalSought(CALL, "restart"),
             new Narration.ApprovalDeferred(CALL, "restart", java.time.Instant.EPOCH),
             new Narration.CallDeferred(CALL, new ToolName("t"), java.time.Instant.EPOCH),

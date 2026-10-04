@@ -119,8 +119,8 @@ function listen() {
   events.addEventListener("commentary", (e) => {
     if (!streamed) said(JSON.parse(e.data).text);
   });
-  // A request names each call and its tool; what happens to a call is told later, by its id
-  // alone, so the page remembers which tool each id is. Each is a line of its own rather than an
+  // A request names each call and its tool; what happens to a call is told later without
+  // its tool, so the page remembers which tool each id is. Each is a line of its own rather than an
   // edit to the request's line, which is what the story shows too.
   const toolOf = new Map();
   const named = (e) => toolOf.get(JSON.parse(e.data).callId) ?? "call";

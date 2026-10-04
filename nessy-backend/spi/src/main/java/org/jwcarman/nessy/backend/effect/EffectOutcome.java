@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Truncator;
 import org.jwcarman.nessy.api.Usage;
@@ -72,8 +73,11 @@ public sealed interface EffectOutcome {
    * <p>Carries the blocks the model produced, not text and not a positioned message. Text would
    * discard whatever an answer holds that a string cannot; a message would mean a dispatcher
    * choosing where in the story the answer belongs, which only the fold can know.
+   *
+   * @param truncated whether the model was cut off at its output limit, so the answer stops short
    */
-  record InferenceAnswered(PayloadRef answer, Usage usage) implements EffectOutcome {
+  record InferenceAnswered(PayloadRef answer, boolean truncated, Usage usage)
+      implements EffectOutcome {
     public InferenceAnswered {
       usage = usage == null ? Usage.unreported() : usage;
     }
@@ -142,7 +146,11 @@ public sealed interface EffectOutcome {
   }
 
   /**
-   * A tool was run and did not produce content.
+   * A tool call did not produce content, and {@code kind} says why: the tool ran and failed or
+   * could not be run ({@code FAILED}), the call did not finish before its deadline and whether it
+   * ran is not known ({@code PAST_DEADLINE}), or permission was never given ({@code
+   * NOT_AUTHORISED}, in which case the call never ran). Nobody refused it; a refusal is {@link
+   * ToolDenied}.
    *
    * <p>Carries a sentence rather than a {@link Failure}, which is the opposite of {@link
    * InferenceFailed} and deliberately so. A failed inference is the engine's problem and what
@@ -155,16 +163,17 @@ public sealed interface EffectOutcome {
    * is what is stored and what the model reads back for the call. Every failure is made here, so
    * every failure is bounded wherever it was built.
    */
-  record ToolFailed(CallId callId, String message) implements EffectOutcome {
+  record ToolFailed(CallId callId, CallFailure kind, String message) implements EffectOutcome {
     public ToolFailed {
       Objects.requireNonNull(callId, "callId must not be null");
+      Objects.requireNonNull(kind, "kind must not be null");
       Objects.requireNonNull(message, "message must not be null");
       message = Truncator.dropMiddle().truncate(message, ToolConfig.LINE_CAP);
     }
   }
 
   /** A call was never run, because an approver said no. */
-  record ToolDenied(CallId callId, String reason, Optional<String> reference)
+  record ToolDenied(CallId callId, String reason, Optional<String> decidedBy)
       implements EffectOutcome {
 
     public ToolDenied(CallId callId, String reason) {
@@ -180,7 +189,7 @@ public sealed interface EffectOutcome {
    * fold checks the call's phase rather than merely its presence -- a redelivered approval must not
    * dispatch a second attempt at a tool that is already running.
    */
-  record ToolApproved(CallId callId, Optional<String> reference) implements EffectOutcome {
+  record ToolApproved(CallId callId, Optional<String> decidedBy) implements EffectOutcome {
 
     /**
      * Allowed, with nothing standing behind it -- an ungated tool, or a rule that is its own

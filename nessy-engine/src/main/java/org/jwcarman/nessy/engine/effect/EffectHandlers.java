@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.engine.effect;
 
+import java.time.Instant;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.Awaited;
@@ -69,11 +70,11 @@ public final class EffectHandlers {
    * <p>The switch is what makes this type-safe: it narrows {@code effect} to the kind each handler
    * declares, so the call needs no cast and no wildcard.
    */
-  public Awaited<EffectOutcome> perform(AgentId agentId, AgentEffect effect) {
+  public Awaited<EffectOutcome> perform(AgentId agentId, AgentEffect effect, Instant deadline) {
     return switch (effect) {
-      case AgentEffect.Infer infer -> inference.handle(agentId, infer);
-      case AgentEffect.Approve approve -> approvals.handle(agentId, approve);
-      case AgentEffect.CallTool call -> toolCalls.handle(agentId, call);
+      case AgentEffect.Infer infer -> inference.handle(agentId, infer, deadline);
+      case AgentEffect.Approve approve -> approvals.handle(agentId, approve, deadline);
+      case AgentEffect.CallTool call -> toolCalls.handle(agentId, call, deadline);
     };
   }
 }

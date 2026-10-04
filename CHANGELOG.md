@@ -16,6 +16,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no longer `TurnFailed`. `Answered`, `TurnRefused`, `TurnFailed` and `ActionsRequested` carry
   their turn and the model call's `Usage`; `TurnFailed` carries a `FailureKind`; each requested
   call carries its `IdempotencyKey`. A retried model call is told as `InferenceRetried`.
+- **Every call event carries the call's `IdempotencyKey`.** `ToolApproved`, `ToolDenied`,
+  `ToolSucceeded` and `ToolFailed` gain a trailing `idempotencyKey`, the key the call was
+  requested with; the stored shape changes, so recreate the database. The four narration records
+  `CallApproved`, `CallDenied`, `CallFinished` and `CallFailed` gain `idempotencyKey` after
+  `callId`.
+- **A failed call says why it failed.** `AgentEvent.ToolFailed`, `EffectOutcome.ToolFailed`,
+  `AgentCommand.ToolOutcome.Failed` and `Narration.CallFailed` gain a `CallFailure kind` before
+  `message`: `FAILED`, `PAST_DEADLINE` or `NOT_AUTHORISED`. The stored `tool-failed` event has a
+  `kind` field; recreate the database. `PAST_DEADLINE` is what a tool call that does not finish in
+  time reads on both doors: the queued door's expiry, and the direct door cutting a running call
+  off.
+- **An answer says when it was cut off.** `AgentEvent.InferenceAnswered`,
+  `EffectOutcome.InferenceAnswered`, `AgentCommand.InferenceOutcome.Answered` and
+  `Narration.Answered` gain a `boolean truncated`, true when the model was cut off at its output
+  limit. The stored `inference-answered` event has a `truncated` field; recreate the database. The
+  caller of `ask` receives a cut-off reply exactly as before.
+- **An approval records who decided, not a reference.** `ApprovalResult.reference()` is
+  `decidedBy()`, and `approvedBy` and `deniedBy` take a `decidedBy`: who or what decided, as the
+  application says it. Nessy never interprets it. The same rename runs through `EffectOutcome.ToolApproved`
+  and `ToolDenied`, `AgentCommand.ApprovalOutcome.Approved` and `Denied`, and the stored
+  `ToolApproved` and `ToolDenied` events, whose JSON field is now `decidedBy`; recreate the
+  database. The narration records `CallApproved` and `CallDenied` gain a trailing `decidedBy`.
 - **`NarrationListener.on` takes a `Narrated` envelope:** the agent, the event, and for a story
   event its position (`seq` and time written). `NarrationListenerConfig.Handler` is
   `on(Narrated narrated, E event)`, and `Narrator.narrate` takes a `Narrated`. A story event's
@@ -26,14 +48,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The JSON and SSE names of the turn endings changed.** `turn-ended` is gone; `turn-stopped` and
   `inference-retried` are new. A browser client that listened for `turn-ended` must listen for the
   four endings: `answered`, `turn-refused`, `turn-failed` and `turn-stopped`.
+- **The stored event for a turn a policy stopped is `turn-stopped`;** it was `turn-failed`. It is
+  `AgentEvent.TurnStopped`, no longer `AgentEvent.TurnFailed`. Recreate the database.
 - **`NarrationListenerConfig.on(Class, handler)` hears every member of a group.** Given a group
   type (`Narration.TurnEnding`, `Narration.Story`, `Narration.Live` or `Narration`), it now hears
   each event of that group, not only an event of exactly that class.
 - **A stored event's `written_at` is the engine's clock reading for its step,** to the microsecond,
   not the database's `now()`.
+- **A turn's start says what started it and when its input arrived.** `AgentEvent.TurnStarted`
+  gains `label` and `arrivedAt` before `startedAt`; `AgentCommand.StartTurn` gains `label` and
+  `arrivedAt` before `at`; `Narration.TurnStarted` gains `label` and `arrivedAt`. The stored
+  `turn-started` event has `label` and `arrivedAt` fields; recreate the database. On the queued
+  door `arrivedAt` is when `tell` was called, and on the direct door when `ask` read its clock.
 
 ### Added
 
+- `DirectHarnessConfig.inputLabel(Stringifier)` and `QueuedHarnessConfig.inputLabel(Stringifier)`
+  set the label written on a turn's start. It defaults to the input's simple class name, which is
+  also used when the label throws or returns null or a blank string.
 - `StoryProjection.of(initial, step)` makes a projection from a lambda; `StoryContent.allResults(after)`
   streams every successful result, reading a page at a time.
 - **`AgentStory.content()` reads what a story refers to:** a turn's input, what the model wrote and its answer; a call's result by its `IdempotencyKey`; and an agent's successful results, paged.
@@ -44,6 +76,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AgentEvents.readWrittenFrom`, which reads up to a limit of events with the time each was written. The
   engine truncates the time it writes to microseconds, which is what PostgreSQL keeps, so an
   event heard live equals the same event replayed.
+
+### Fixed
+
+- **The deadline an approver and a tool are shown is the deadline the call is held to.** The
+  `deadline` on an `ApprovalRequest`, the `deadline` on a `ToolCallRequest`, and the `until` of the
+  live `ApprovalDeferred` and `CallDeferred` were worked out again when the call was handled, so a
+  call that waited in the queue showed a later instant than the one it was given up on. They are now
+  the effect's own deadline.
+- **On the direct door, an inference that times out gives `ask`'s caller a plainer reason.** The
+  reason is now "the inference did not complete before its deadline; whether it ran is not known",
+  in place of "no answer within PT...". The duration is in the WARN log.
 
 ## [0.4.0] - 2026-10-03
 

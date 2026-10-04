@@ -17,7 +17,6 @@ package org.jwcarman.nessy.engine.story;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -39,9 +38,7 @@ import org.jwcarman.nessy.api.StoryContent;
 import org.jwcarman.nessy.api.TurnContent;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.payload.Payloads;
@@ -50,9 +47,10 @@ import org.jwcarman.nessy.backend.payload.Payloads;
  * The content one agent's story refers to, read from its stored events and payloads.
  *
  * <p>Every read of events is made with a limit, a page at a time, and stops as soon as it has what
- * it was asked for. A call's key and id come from the request that made it, and its result from the
- * success with that id in the same request: a model may repeat a call id in a later request of one
- * turn, so an id is only meaningful inside the request that carries it.
+ * it was asked for. A call's key and id come from the request that made it, and its result is the
+ * success carrying that key: a model may repeat a call id in a later request of one turn, so only
+ * the key says which call is meant. A call that failed or was denied has no result, and the read
+ * for its key ends at that event.
  */
 final class StoredContent implements StoryContent {
 
@@ -115,27 +113,20 @@ final class StoredContent implements StoryContent {
   @Override
   public Optional<List<Block.ToolResultContent>> result(IdempotencyKey key) {
     Objects.requireNonNull(key, "key must not be null");
-    CallId[] wanted = new CallId[1];
     PayloadRef[] found = new PayloadRef[1];
     scan(
         Seq.NONE,
-        event ->
-            switch (event) {
-              case AgentEvent.ActionsRequested requested -> {
-                if (wanted[0] != null) {
-                  yield false;
-                }
-                wanted[0] = callOf(requested, key);
-                yield true;
-              }
-              case AgentEvent.ToolSucceeded done
-                  when wanted[0] != null && wanted[0].equals(done.callId()) -> {
-                found[0] = done.result();
-                yield false;
-              }
-              case AgentEvent.TurnStarted _, AgentEvent.Terminated _ -> wanted[0] == null;
-              default -> true;
-            });
+        event -> {
+          return switch (event) {
+            case AgentEvent.ToolSucceeded done when done.idempotencyKey().equals(key) -> {
+              found[0] = done.result();
+              yield false;
+            }
+            case AgentEvent.ToolFailed failed -> !failed.idempotencyKey().equals(key);
+            case AgentEvent.ToolDenied refused -> !refused.idempotencyKey().equals(key);
+            default -> true;
+          };
+        });
     if (found[0] == null) {
       return Optional.empty();
     }
@@ -154,28 +145,13 @@ final class StoredContent implements StoryContent {
       return List.of();
     }
     List<Pending> pending = new ArrayList<>();
-    Map<CallId, IdempotencyKey> keys = new HashMap<>();
     scan(
         start.get(),
         event ->
             switch (event) {
-              case AgentEvent.TurnStarted _ -> {
-                keys.clear();
-                yield true;
-              }
-              case AgentEvent.ActionsRequested requested -> {
-                keys.clear();
-                for (ActionRequest action : requested.actions()) {
-                  if (action instanceof ActionRequest.ToolCall call) {
-                    keys.put(call.id(), call.idempotencyKey());
-                  }
-                }
-                yield true;
-              }
               case AgentEvent.ToolSucceeded done -> {
-                IdempotencyKey key = keys.get(done.callId());
-                if (done.seq().compareTo(after) > 0 && key != null) {
-                  pending.add(new Pending(done.seq(), key, done.result()));
+                if (done.seq().compareTo(after) > 0) {
+                  pending.add(new Pending(done.seq(), done.idempotencyKey(), done.result()));
                 }
                 yield pending.size() < capped;
               }
@@ -261,7 +237,7 @@ final class StoredContent implements StoryContent {
           case AgentEvent.InferenceRefused e -> before(e.turn());
           case AgentEvent.InferenceFailed e -> before(e.turn());
           case AgentEvent.InferenceAttempted e -> before(e.turn());
-          case AgentEvent.TurnFailed e -> before(e.turn());
+          case AgentEvent.TurnStopped e -> before(e.turn());
           case AgentEvent.ActionsRequested e -> before(e.turn());
           case AgentEvent.ToolApproved e -> before(e.turn());
           case AgentEvent.ToolDenied e -> before(e.turn());
@@ -273,16 +249,6 @@ final class StoredContent implements StoryContent {
 
   private static Seq before(TurnId turn) {
     return new Seq(turn.value() - 1);
-  }
-
-  /** The id of the call in {@code requested} that has {@code key}, or null when none does. */
-  private static CallId callOf(AgentEvent.ActionsRequested requested, IdempotencyKey key) {
-    for (ActionRequest action : requested.actions()) {
-      if (action instanceof ActionRequest.ToolCall call && call.idempotencyKey().equals(key)) {
-        return call.id();
-      }
-    }
-    return null;
   }
 
   /**

@@ -20,11 +20,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.FailureKind;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
@@ -49,9 +51,9 @@ class OdysseyNarratorTest {
 
   private static final List<Narration> EVERY_KIND =
       List.of(
-          new Narration.TurnStarted(new TurnId(1)),
+          new Narration.TurnStarted(new TurnId(1), "Question", Instant.EPOCH),
           new Narration.Thinking(),
-          new Narration.Answered(new TurnId(1), Usage.unreported()),
+          new Narration.Answered(new TurnId(1), false, Usage.unreported()),
           new Narration.TurnStopped(new TurnId(1), "too many calls"),
           new Narration.TurnFailed(
               new TurnId(1), FailureKind.PERMANENT, "the provider gave up", Usage.unreported()),
@@ -65,10 +67,10 @@ class OdysseyNarratorTest {
                   new Narration.ActionsRequested.Call(
                       new CallId("c"), KEY, new ToolName("t"), "do t")),
               Usage.unreported()),
-          new Narration.CallApproved(new CallId("c")),
-          new Narration.CallDenied(new CallId("c"), "r"),
-          new Narration.CallFinished(new CallId("c")),
-          new Narration.CallFailed(new CallId("c"), "m"),
+          new Narration.CallApproved(new CallId("c"), KEY, Optional.empty()),
+          new Narration.CallDenied(new CallId("c"), KEY, "r", Optional.empty()),
+          new Narration.CallFinished(new CallId("c"), KEY),
+          new Narration.CallFailed(new CallId("c"), KEY, CallFailure.FAILED, "m"),
           new Narration.Terminated(),
           new Narration.ApprovalSought(new CallId("c"), "a"),
           new Narration.ApprovalDeferred(new CallId("c"), "a", Instant.EPOCH),
@@ -107,13 +109,17 @@ class OdysseyNarratorTest {
   @Test
   @DisplayName("on the wire an event names its kind, and its ids are bare values")
   void the_json_of_an_event_carries_its_kind() {
-    JsonNode json = mapper.valueToTree(new Narration.TurnStarted(new TurnId(7)));
+    JsonNode json =
+        mapper.valueToTree(new Narration.TurnStarted(new TurnId(7), "Question", Instant.EPOCH));
     assertThat(json.path("type").asString()).isEqualTo("turn-started");
     assertThat(json.path("turn").asLong()).isEqualTo(7);
+    assertThat(json.path("label").asString()).isEqualTo("Question");
+    assertThat(json.has("arrivedAt")).isTrue();
     assertThat(json.has("input"))
         .as("narration names what happened; it does not carry the words it happened to")
         .isFalse();
-    JsonNode denied = mapper.valueToTree(new Narration.CallDenied(new CallId("c1"), "no"));
+    JsonNode denied =
+        mapper.valueToTree(new Narration.CallDenied(new CallId("c1"), KEY, "no", Optional.empty()));
     assertThat(denied.path("callId").asString()).isEqualTo("c1");
   }
 

@@ -77,7 +77,8 @@ class EventStreamToolCallsTest {
     PayloadRef input = payloads.put(List.of(new Block.Text("q" + id)));
     PayloadRef request = payloads.put(asked);
     append(
-        new AgentEvent.TurnStarted(new Seq(id), new TurnId(id), input, Instant.now()),
+        new AgentEvent.TurnStarted(
+            new Seq(id), new TurnId(id), input, "Question", Instant.now(), Instant.now()),
         new AgentEvent.ActionsRequested(
             new Seq(id + 1), new TurnId(id), request, recorded, Usage.unreported()));
   }

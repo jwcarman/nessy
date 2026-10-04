@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -31,7 +32,10 @@ import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.Narrated;
+import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
@@ -75,6 +79,12 @@ class ToolCallHandlerTest {
   private static final Payloads PAYLOADS =
       new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
   private static final ReplyTokens TOKENS = ReplyTokens.ephemeral();
+
+  /**
+   * When the effect's row says the call stands until, whatever the clock reads when it is handled.
+   */
+  private static final Instant WRITTEN_DEADLINE = Instant.parse("2026-09-08T12:07:30Z");
+
   private static final Clock CLOCK =
       Clock.fixed(Instant.parse("2026-09-08T12:00:00Z"), ZoneOffset.UTC);
 
@@ -155,12 +165,17 @@ class ToolCallHandlerTest {
   }
 
   private Awaited<EffectOutcome> handled(Tools tools, ToolCalls calls) {
-    return new ToolCallHandler(
-            TYPE, tools, calls, TOKENS, Narrator.silent(), terms(tools), CLOCK, PAYLOADS)
+    return handled(tools, calls, Narrator.silent(), CLOCK.instant().plus(Duration.ofSeconds(30)));
+  }
+
+  private Awaited<EffectOutcome> handled(
+      Tools tools, ToolCalls calls, Narrator narrator, Instant deadline) {
+    return new ToolCallHandler(TYPE, tools, calls, TOKENS, narrator, terms(tools), PAYLOADS)
         .handle(
             AGENT,
             new AgentEffect.CallTool(
-                new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));
+                new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY),
+            deadline);
   }
 
   private EffectOutcome handle(Tools tools, ToolCalls calls) {
@@ -279,7 +294,8 @@ class ToolCallHandlerTest {
 
     assertThat(outcome)
         .isEqualTo(
-            new EffectOutcome.ToolFailed(new CallId("c1"), "the tool failed and gave no message"));
+            new EffectOutcome.ToolFailed(
+                new CallId("c1"), CallFailure.FAILED, "the tool failed and gave no message"));
   }
 
   /**
@@ -294,9 +310,12 @@ class ToolCallHandlerTest {
     assertThat(((EffectOutcome.ToolFailed) outcome).callId()).isEqualTo(new CallId("c1"));
   }
 
-  /** The deadline the tool is handed is the harness's budget, counted from now. */
+  /**
+   * The row was written before this clock reading and says when the call stands until. The tool is
+   * shown that instant, not the clock plus the binding's timeout.
+   */
   @Test
-  void theToolIsToldWhenItsAnswerStopsBeingWanted() {
+  void the_tool_is_shown_the_deadline_the_effect_was_written_with() {
     Instant[] seen = new Instant[1];
     Tool<Query> records =
         new Tool<>() {
@@ -322,9 +341,55 @@ class ToolCallHandlerTest {
           }
         };
 
-    handle(bound(records), story(new Block.ToolCall("c1", "lookup", "{\"q\":\"x\"}")));
+    handled(
+        bound(records),
+        story(new Block.ToolCall("c1", "lookup", "{\"q\":\"x\"}")),
+        Narrator.silent(),
+        WRITTEN_DEADLINE);
 
-    assertThat(seen[0]).isEqualTo(Instant.parse("2026-09-08T12:00:30Z"));
+    assertThat(seen[0]).isEqualTo(WRITTEN_DEADLINE);
+  }
+
+  @Test
+  void a_deferred_call_is_narrated_as_standing_until_the_deadline_it_was_written_with() {
+    Tool<Query> defers =
+        new Tool<>() {
+          @Override
+          public Class<Query> inputType() {
+            return Query.class;
+          }
+
+          @Override
+          public ToolName name() {
+            return new ToolName("lookup");
+          }
+
+          @Override
+          public String description() {
+            return "will answer later";
+          }
+
+          @Override
+          public Awaited<ToolResult> call(ToolCallRequest<Query> request) {
+            return new Awaited.Deferred<>();
+          }
+        };
+    List<Narrated> heard = new ArrayList<>();
+
+    handled(
+        bound(defers),
+        story(new Block.ToolCall("c1", "lookup", "{\"q\":\"x\"}")),
+        heard::add,
+        WRITTEN_DEADLINE);
+
+    List<Narration.CallDeferred> deferrals =
+        heard.stream()
+            .map(Narrated::event)
+            .filter(Narration.CallDeferred.class::isInstance)
+            .map(Narration.CallDeferred.class::cast)
+            .toList();
+    assertThat(deferrals).hasSize(1);
+    assertThat(deferrals.getFirst().until()).isEqualTo(WRITTEN_DEADLINE);
   }
 
   // ---- terms ---------------------------------------------------------------------------
@@ -354,7 +419,7 @@ class ToolCallHandlerTest {
 
     EffectTerms resolved =
         new ToolCallHandler(
-                TYPE, tools, nothing(), TOKENS, Narrator.silent(), terms(tools), CLOCK, PAYLOADS)
+                TYPE, tools, nothing(), TOKENS, Narrator.silent(), terms(tools), PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(
                     new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));
@@ -377,7 +442,6 @@ class ToolCallHandlerTest {
                 TOKENS,
                 Narrator.silent(),
                 terms(Tools.none()),
-                CLOCK,
                 PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(
@@ -401,7 +465,6 @@ class ToolCallHandlerTest {
                 TOKENS,
                 Narrator.silent(),
                 terms(Tools.none()),
-                CLOCK,
                 PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(
@@ -415,5 +478,59 @@ class ToolCallHandlerTest {
         .asInstanceOf(type(EffectOutcome.ToolFailed.class))
         .extracting(EffectOutcome.ToolFailed::callId)
         .isEqualTo(new CallId("c1"));
+  }
+
+  @Test
+  void an_unknown_tool_is_reported_as_failed() {
+    EffectOutcome outcome = handle(Tools.none(), story(new Block.ToolCall("c1", "lookup", "{}")));
+
+    assertThat(outcome)
+        .asInstanceOf(type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.FAILED);
+  }
+
+  @Test
+  void a_call_missing_from_the_story_is_reported_as_failed() {
+    EffectOutcome outcome = handle(bound(echo()), nothing());
+
+    assertThat(outcome)
+        .asInstanceOf(type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.FAILED);
+  }
+
+  @Test
+  void a_tool_that_returns_a_failure_is_reported_as_failed() {
+    Tool<Query> failing =
+        new Tool<>() {
+          @Override
+          public Class<Query> inputType() {
+            return Query.class;
+          }
+
+          @Override
+          public ToolName name() {
+            return new ToolName("lookup");
+          }
+
+          @Override
+          public String description() {
+            return "fails with a reason";
+          }
+
+          @Override
+          public Awaited<ToolResult> call(ToolCallRequest<Query> request) {
+            return Awaited.ready(new ToolResult.Failure("no such buyer"));
+          }
+        };
+
+    EffectOutcome outcome =
+        handle(bound(failing), story(new Block.ToolCall("c1", "lookup", "{\"q\":\"x\"}")));
+
+    assertThat(outcome)
+        .asInstanceOf(type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.FAILED);
   }
 }

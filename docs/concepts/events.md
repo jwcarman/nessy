@@ -17,17 +17,17 @@ waiting on a person, and plenty of events are not worth announcing.
 public sealed interface AgentEvent {
   Seq seq();
 
-  record TurnStarted(Seq seq, TurnId turn, PayloadRef input, Instant startedAt) implements AgentEvent {}
-  record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer, Usage usage) implements AgentEvent {}
+  record TurnStarted(Seq seq, TurnId turn, PayloadRef input, String label, Instant arrivedAt, Instant startedAt) implements AgentEvent {}
+  record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer, boolean truncated, Usage usage) implements AgentEvent {}
   record InferenceRefused(Seq seq, TurnId turn, String category, Usage usage) implements AgentEvent {}
   record InferenceFailed(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {}
   record InferenceAttempted(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {}
-  record TurnFailed(Seq seq, TurnId turn, String reason) implements AgentEvent {}
+  record TurnStopped(Seq seq, TurnId turn, String reason) implements AgentEvent {}
   record ActionsRequested(Seq seq, TurnId turn, PayloadRef request, List<ActionRequest> actions, Usage usage) implements AgentEvent {}
-  record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> reference) implements AgentEvent {}
-  record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> reference) implements AgentEvent {}
-  record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, String rendered) implements AgentEvent {}
-  record ToolFailed(Seq seq, TurnId turn, CallId callId, String message) implements AgentEvent {}
+  record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> decidedBy, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> decidedBy, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, String rendered, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolFailed(Seq seq, TurnId turn, CallId callId, CallFailure kind, String message, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record Terminated(Seq seq) implements AgentEvent {}
 }
 ```
@@ -52,10 +52,20 @@ the cap is applied when the binding is built, not by the records that carry the 
 fixed when it is written and never worked out again. See
 [Tools](tools.md#what-a-call-leaves-behind).
 
+Each of the four call events (`ToolApproved`, `ToolDenied`, `ToolSucceeded`, `ToolFailed`)
+carries the `IdempotencyKey` its call was requested with, copied from the call the agent is
+waiting for. A reader joins a call's events by that key.
+
+`ToolFailed.kind` is a `CallFailure` and says why the call did not produce a result when nobody
+refused it: `FAILED`, the tool ran and failed or could not be run; `PAST_DEADLINE`, the call did
+not finish before its deadline and whether it ran is not known; `NOT_AUTHORISED`, permission was
+never given because the approval's deadline passed or the approver itself failed. A refusal is
+`ToolDenied`, not a `ToolFailed`.
+
 Events hold other text too. A failed call's message is at most 1,000
 characters; a longer one has its middle dropped and `...` in the gap, and the
 shortened text is what the model reads back for the call. A denial's reason and
-its reference, why a turn failed, a refusal's category and a failure's reason
+its `decidedBy`, why a turn failed, a refusal's category and a failure's reason
 are not bounded.
 
 So an agent's content is in three places: its payload rows, the lines and
@@ -87,13 +97,13 @@ call nobody heard back from. A provider returns `Unknown` for a dropped
 connection, with whatever usage it reported; an attempt that threw is
 recorded as `Unknown` too, with its usage unreported.
 
-**`TurnFailed` is a turn ended by a policy** — see
+**`TurnStopped` is a turn ended by a policy** — see
 [Turn Policy](turn-policy.md) — rather than an inference that failed:
 `InferenceFailed` is for a call that was made and produced nothing,
-`TurnFailed` is for a turn a policy stopped without making a call at all.
+`TurnStopped` is for a turn a policy stopped without making a call at all.
 It carries **no `Usage`**, because deciding not to ask costs nothing — what
 the turn actually spent is already recorded on the events that spent it,
-and a `TurnFailed` with a field for a count would invite claiming a call
+and a `TurnStopped` with a field for a count would invite claiming a call
 happened that nothing measured.
 
 **This grammar is public backend SPI.** `AgentEvents` is typed on it, and a

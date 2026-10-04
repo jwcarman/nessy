@@ -69,7 +69,12 @@ class FirstStoreHoldingStoriesTest {
 
   private static AgentEvent started(long seq) {
     return new AgentEvent.TurnStarted(
-        new Seq(seq), new TurnId(seq), new PayloadRef("p"), Instant.EPOCH);
+        new Seq(seq),
+        new TurnId(seq),
+        new PayloadRef("p"),
+        "Question",
+        Instant.EPOCH,
+        Instant.EPOCH);
   }
 
   @Test
@@ -124,7 +129,9 @@ class FirstStoreHoldingStoriesTest {
     first.append(
         TYPE,
         agent,
-        List.of(new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), input, Instant.EPOCH)),
+        List.of(
+            new AgentEvent.TurnStarted(
+                new Seq(1), new TurnId(1), input, "Question", Instant.EPOCH, Instant.EPOCH)),
         Seq.NONE,
         AT);
     second.append(TYPE, agent, List.of(started(1)), Seq.NONE, AT);
@@ -150,7 +157,8 @@ class FirstStoreHoldingStoriesTest {
         TYPE,
         agent,
         List.of(
-            new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), request, Instant.EPOCH),
+            new AgentEvent.TurnStarted(
+                new Seq(1), new TurnId(1), request, "Question", Instant.EPOCH, Instant.EPOCH),
             new AgentEvent.ActionsRequested(
                 new Seq(2),
                 new TurnId(1),
@@ -159,7 +167,7 @@ class FirstStoreHoldingStoriesTest {
                     new ActionRequest.ToolCall(CallId.of("a"), new ToolName("lookup"), "x", key)),
                 Usage.unreported()),
             new AgentEvent.ToolSucceeded(
-                new Seq(3), new TurnId(1), CallId.of("a"), result, "done")),
+                new Seq(3), new TurnId(1), CallId.of("a"), result, "done", key)),
         Seq.NONE,
         AT);
     second.append(TYPE, agent, List.of(started(1)), Seq.NONE, AT);

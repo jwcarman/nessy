@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.CallResult;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RequestContent;
@@ -83,7 +84,8 @@ class StoryContentTest {
   }
 
   private AgentEvent.TurnStarted started(PayloadRef input) {
-    return new AgentEvent.TurnStarted(new Seq(last + 1), new TurnId(last + 1), input, AT);
+    return new AgentEvent.TurnStarted(
+        new Seq(last + 1), new TurnId(last + 1), input, "Question", AT, AT);
   }
 
   private AgentEvent.ActionsRequested requested(
@@ -93,18 +95,20 @@ class StoryContentTest {
   }
 
   private static AgentEvent.ToolSucceeded succeeded(
-      long seq, long turn, String callId, PayloadRef result) {
+      long seq, long turn, String callId, IdempotencyKey key, PayloadRef result) {
     return new AgentEvent.ToolSucceeded(
-        new Seq(seq), new TurnId(turn), CallId.of(callId), result, "done");
+        new Seq(seq), new TurnId(turn), CallId.of(callId), result, "done", key);
   }
 
-  private static AgentEvent.ToolFailed failed(long seq, long turn, String callId) {
-    return new AgentEvent.ToolFailed(new Seq(seq), new TurnId(turn), CallId.of(callId), "broke");
+  private static AgentEvent.ToolFailed failed(
+      long seq, long turn, String callId, IdempotencyKey key) {
+    return new AgentEvent.ToolFailed(
+        new Seq(seq), new TurnId(turn), CallId.of(callId), CallFailure.FAILED, "broke", key);
   }
 
   private static AgentEvent.InferenceAnswered answered(long seq, long turn, PayloadRef answer) {
     return new AgentEvent.InferenceAnswered(
-        new Seq(seq), new TurnId(turn), answer, Usage.unreported());
+        new Seq(seq), new TurnId(turn), answer, false, Usage.unreported());
   }
 
   private static Block.ToolCall toolCall(String id) {
@@ -120,8 +124,8 @@ class StoryContentTest {
     write(
         started(input),
         requested(2, 1, request, call("a", keyOfSucceeded), call("b", keyOfFailed)),
-        succeeded(3, 1, "a", result),
-        failed(4, 1, "b"),
+        succeeded(3, 1, "a", keyOfSucceeded, result),
+        failed(4, 1, "b", keyOfFailed),
         answered(5, 1, answer));
   }
 
@@ -263,7 +267,7 @@ class StoryContentTest {
       write(
           started(keep(new Block.Text("again"))),
           requested(7, 6, keep(toolCall("a")), call("a", later)),
-          succeeded(8, 6, "a", keep(new Block.Text("43"))));
+          succeeded(8, 6, "a", later, keep(new Block.Text("43"))));
 
       assertThat(content.result(later)).contains(List.of(new Block.Text("43")));
     }
@@ -273,7 +277,7 @@ class StoryContentTest {
       write(
           started(keep(new Block.Text("go"))),
           requested(2, 1, keep(toolCall("a")), call("a", keyOfSucceeded)),
-          succeeded(3, 1, "a", new PayloadRef("vanished")));
+          succeeded(3, 1, "a", keyOfSucceeded, new PayloadRef("vanished")));
 
       assertThatThrownBy(() -> content.result(keyOfSucceeded))
           .isInstanceOf(IllegalStateException.class)
@@ -287,12 +291,64 @@ class StoryContentTest {
       write(
           started(keep(new Block.Text("go"))),
           requested(2, 1, keep(toolCall("c1")), call("c1", first)),
-          succeeded(3, 1, "c1", keep(new Block.Text("one"))),
+          succeeded(3, 1, "c1", first, keep(new Block.Text("one"))),
           requested(4, 1, keep(toolCall("c1")), call("c1", second)),
-          succeeded(5, 1, "c1", keep(new Block.Text("two"))));
+          succeeded(5, 1, "c1", second, keep(new Block.Text("two"))));
 
       assertThat(content.result(first)).contains(List.of(new Block.Text("one")));
       assertThat(content.result(second)).contains(List.of(new Block.Text("two")));
+    }
+  }
+
+  @Nested
+  class A_call_that_failed_or_was_denied {
+
+    private final CountingEvents counting = new CountingEvents(events);
+    private final StoryContent counted =
+        new EventAgentStories(counting, payloads).of(TYPE, agent).content();
+
+    private static AgentEvent.ToolDenied denied(
+        long seq, long turn, String callId, IdempotencyKey key) {
+      return new AgentEvent.ToolDenied(
+          new Seq(seq), new TurnId(turn), CallId.of(callId), "no", Optional.empty(), key);
+    }
+
+    /** Fills the story after the call's own events with more than two pages of other calls. */
+    private void laterCalls(int calls) {
+      PayloadRef request = keep(toolCall("c1"));
+      PayloadRef result = keep(new Block.Text("r"));
+      for (int i = 0; i < calls; i++) {
+        IdempotencyKey key = IdempotencyKey.of(UUID.randomUUID());
+        write(
+            requested(last + 1, 1, request, call("c1", key)),
+            succeeded(last + 2, 1, "c1", key, result));
+      }
+    }
+
+    @Test
+    void has_no_result_and_the_read_stops_at_its_own_event() {
+      write(
+          started(keep(new Block.Text("go"))),
+          requested(2, 1, keep(toolCall("a")), call("a", keyOfFailed)),
+          failed(3, 1, "a", keyOfFailed));
+      laterCalls(1_200);
+
+      assertThat(counted.result(keyOfFailed)).isEmpty();
+      assertThat(counting.pagesAfter).isNotEmpty();
+      assertThat(counting.pagesAfter).allMatch(read -> read.value() == 0);
+    }
+
+    @Test
+    void that_was_denied_has_no_result_and_the_read_stops_at_its_own_event() {
+      write(
+          started(keep(new Block.Text("go"))),
+          requested(2, 1, keep(toolCall("a")), call("a", keyOfFailed)),
+          denied(3, 1, "a", keyOfFailed));
+      laterCalls(1_200);
+
+      assertThat(counted.result(keyOfFailed)).isEmpty();
+      assertThat(counting.pagesAfter).isNotEmpty();
+      assertThat(counting.pagesAfter).allMatch(read -> read.value() == 0);
     }
   }
 
@@ -306,7 +362,7 @@ class StoryContentTest {
       write(
           started(keep(new Block.Text("again"))),
           requested(7, 6, keep(toolCall("a")), call("a", later)),
-          succeeded(8, 6, "a", keep(new Block.Text("43"))));
+          succeeded(8, 6, "a", later, keep(new Block.Text("43"))));
 
       List<CallResult> results = content.results(Seq.NONE, 10);
 
@@ -323,7 +379,7 @@ class StoryContentTest {
       write(
           started(keep(new Block.Text("again"))),
           requested(7, 6, keep(toolCall("a")), call("a", later)),
-          succeeded(8, 6, "a", keep(new Block.Text("43"))));
+          succeeded(8, 6, "a", later, keep(new Block.Text("43"))));
 
       List<CallResult> results = content.results(new Seq(3), 10);
 
@@ -352,7 +408,7 @@ class StoryContentTest {
         keys.add(key);
         write(
             requested(last + 1, 1, request, call("c1", key)),
-            succeeded(last + 2, 1, "c1", keep(new Block.Text("r" + i))));
+            succeeded(last + 2, 1, "c1", key, keep(new Block.Text("r" + i))));
       }
 
       List<CallResult> results = content.results(new Seq(5), 10);
@@ -375,10 +431,11 @@ class StoryContentTest {
     @Test
     void return_no_more_than_their_limit() {
       scriptedTurn();
+      IdempotencyKey later = IdempotencyKey.of(UUID.randomUUID());
       write(
           started(keep(new Block.Text("again"))),
-          requested(7, 6, keep(toolCall("a")), call("a", IdempotencyKey.of(UUID.randomUUID()))),
-          succeeded(8, 6, "a", keep(new Block.Text("43"))));
+          requested(7, 6, keep(toolCall("a")), call("a", later)),
+          succeeded(8, 6, "a", later, keep(new Block.Text("43"))));
 
       List<CallResult> results = content.results(Seq.NONE, 1);
 
@@ -392,9 +449,10 @@ class StoryContentTest {
       PayloadRef result = keep(new Block.Text("r"));
       long calls = 1_200;
       for (int i = 0; i < calls; i++) {
+        IdempotencyKey key = IdempotencyKey.of(UUID.randomUUID());
         write(
-            requested(last + 1, 1, request, call("c1", IdempotencyKey.of(UUID.randomUUID()))),
-            succeeded(last + 2, 1, "c1", result));
+            requested(last + 1, 1, request, call("c1", key)),
+            succeeded(last + 2, 1, "c1", key, result));
       }
 
       List<CallResult> results = content.results(new Seq(2_000), Integer.MAX_VALUE);
@@ -421,7 +479,7 @@ class StoryContentTest {
       write(
           started(keep(new Block.Text("go"))),
           requested(2, 1, keep(toolCall("a")), call("a", keyOfSucceeded)),
-          succeeded(3, 1, "a", new PayloadRef("vanished")));
+          succeeded(3, 1, "a", keyOfSucceeded, new PayloadRef("vanished")));
 
       assertThatThrownBy(() -> content.results(Seq.NONE, 10))
           .isInstanceOf(IllegalStateException.class)
@@ -493,9 +551,10 @@ class StoryContentTest {
       PayloadRef request = keep(toolCall("c1"));
       PayloadRef result = keep(new Block.Text("r"));
       for (int i = 0; i < calls; i++) {
+        IdempotencyKey key = IdempotencyKey.of(UUID.randomUUID());
         write(
-            requested(last + 1, 1, request, call("c1", IdempotencyKey.of(UUID.randomUUID()))),
-            succeeded(last + 2, 1, "c1", result));
+            requested(last + 1, 1, request, call("c1", key)),
+            succeeded(last + 2, 1, "c1", key, result));
       }
     }
 

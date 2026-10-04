@@ -46,7 +46,7 @@ public interface Replies {
    * been told, not when the tool has finished, and a slow tool never holds a webhook open.
    *
    * @param token the address the approver was given
-   * @param result approved or denied, optionally carrying a reference to the record behind it
+   * @param result approved or denied, optionally naming who or what decided
    */
   ReplyOutcome approve(ReplyToken token, ApprovalResult result);
 

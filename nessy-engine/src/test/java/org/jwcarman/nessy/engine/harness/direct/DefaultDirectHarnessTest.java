@@ -52,6 +52,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.ContextConfig;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
@@ -1045,7 +1046,7 @@ class DefaultDirectHarnessTest {
         .asInstanceOf(InstanceOfAssertFactories.type(Outcome.Failed.class))
         .extracting(Outcome.Failed::reason)
         .asString()
-        .contains("no answer within");
+        .contains("did not complete before its deadline");
     assertThat(model.calls).as("no retry was attempted").hasValue(1);
 
     // Idle, not stuck: a second turn on the same agent starts and finishes normally.
@@ -1121,6 +1122,40 @@ class DefaultDirectHarnessTest {
         .contains("ToolFailed");
   }
 
+  @Test
+  @DisplayName("a tool call cut off at its deadline while running is recorded as past its deadline")
+  void a_tool_call_cut_off_at_its_deadline_is_recorded_as_past_its_deadline() {
+    AgentId agent = AgentId.random();
+    Scripted model = new Scripted().then(asking("lookup")).then(answering("noted, moving on"));
+    DirectHarness<String, String> harness =
+        DefaultDirectHarnessFactory.of(
+                f ->
+                    f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
+                        .provider(ProviderId.of("test"), model)
+                        .schemas(SCHEMAS)
+                        .mapper(MAPPER)
+                        .clock(clock))
+            .<String>create(
+                TYPE,
+                c -> {
+                  c.systemPrompt("You are terse.")
+                      .inputRenderer(said -> List.of(new Block.Text(said)))
+                      .inference(in -> in.provider("test").model("a-model"));
+                  c.tool(
+                      hangingTool(),
+                      t -> t.timeout(Duration.ofMillis(50)).approver(Approver.allow()));
+                });
+
+    harness.ask(agent, "look it up");
+
+    assertThat(events.readAll(TYPE, agent))
+        .filteredOn(AgentEvent.ToolFailed.class::isInstance)
+        .map(AgentEvent.ToolFailed.class::cast)
+        .singleElement()
+        .extracting(AgentEvent.ToolFailed::kind)
+        .isEqualTo(CallFailure.PAST_DEADLINE);
+  }
+
   /** An approver that hangs until interrupted, the way a person who never answers does. */
   private static Approver hangingApprover() {
     return request -> {
@@ -1166,6 +1201,65 @@ class DefaultDirectHarnessTest {
         .extracting(e -> e.getClass().getSimpleName())
         .as("nobody said no, but the call is still discharged as failed")
         .contains("ToolFailed");
+    assertThat(history)
+        .filteredOn(AgentEvent.ToolFailed.class::isInstance)
+        .map(AgentEvent.ToolFailed.class::cast)
+        .singleElement()
+        .extracting(AgentEvent.ToolFailed::kind)
+        .isEqualTo(CallFailure.NOT_AUTHORISED);
+  }
+
+  @Test
+  @DisplayName("a tool is shown the deadline the direct door holds its call to")
+  void a_tool_is_shown_the_deadline_the_direct_door_holds_its_call_to() {
+    AgentId agent = AgentId.random();
+    Scripted model = new Scripted().then(asking("lookup")).then(answering("done"));
+    Instant[] shown = new Instant[1];
+    Tool<Lookup> recording =
+        new Tool<Lookup>() {
+          @Override
+          public Class<Lookup> inputType() {
+            return Lookup.class;
+          }
+
+          @Override
+          public ToolName name() {
+            return LOOKUP;
+          }
+
+          @Override
+          public String description() {
+            return "records the deadline it is shown";
+          }
+
+          @Override
+          public Awaited<ToolResult> call(ToolCallRequest<Lookup> request) {
+            shown[0] = request.deadline();
+            return Awaited.ready(ToolResult.ok(new Block.Text("ok")));
+          }
+        };
+    Duration timeout = Duration.ofSeconds(30);
+    DirectHarness<String, String> harness =
+        DefaultDirectHarnessFactory.of(
+                f ->
+                    f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
+                        .provider(ProviderId.of("test"), model)
+                        .schemas(SCHEMAS)
+                        .mapper(MAPPER)
+                        .clock(clock))
+            .<String>create(
+                TYPE,
+                c -> {
+                  c.systemPrompt("You are terse.")
+                      .inputRenderer(said -> List.of(new Block.Text(said)))
+                      .inference(in -> in.provider("test").model("a-model"));
+                  c.tool(recording, t -> t.timeout(timeout).approver(Approver.allow()));
+                });
+    Instant started = clock.instant();
+
+    harness.ask(agent, "look it up");
+
+    assertThat(shown[0]).isEqualTo(started.plus(timeout));
   }
 
   // ---- lazy recovery, by deadline (design record 2026-09-25-locks-as-plumbing, §4d) -------------
@@ -1191,7 +1285,13 @@ class DefaultDirectHarnessTest {
         TYPE,
         agent,
         List.of(
-            new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput, Instant.EPOCH)),
+            new AgentEvent.TurnStarted(
+                new Seq(1),
+                new TurnId(1),
+                abandonedInput,
+                "Question",
+                Instant.EPOCH,
+                Instant.EPOCH)),
         Seq.NONE,
         clock.instant());
 
@@ -1247,6 +1347,7 @@ class DefaultDirectHarnessTest {
                 new TurnId(1),
                 new AgentCommand.InferenceOutcome.Answered(
                     payloads.forAgent(agent).put(List.of(new Block.Text("too late"))),
+                    false,
                     Usage.unreported())));
 
     assertThat(belated.events())
@@ -1270,7 +1371,13 @@ class DefaultDirectHarnessTest {
         TYPE,
         agent,
         List.of(
-            new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput, Instant.EPOCH),
+            new AgentEvent.TurnStarted(
+                new Seq(1),
+                new TurnId(1),
+                abandonedInput,
+                "Question",
+                Instant.EPOCH,
+                Instant.EPOCH),
             new AgentEvent.ActionsRequested(
                 new Seq(2),
                 new TurnId(1),
@@ -1347,7 +1454,13 @@ class DefaultDirectHarnessTest {
         TYPE,
         agent,
         List.of(
-            new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput, Instant.EPOCH),
+            new AgentEvent.TurnStarted(
+                new Seq(1),
+                new TurnId(1),
+                abandonedInput,
+                "Question",
+                Instant.EPOCH,
+                Instant.EPOCH),
             new AgentEvent.ActionsRequested(
                 new Seq(2),
                 new TurnId(1),
@@ -1434,6 +1547,8 @@ class DefaultDirectHarnessTest {
                 secondTurnSeq,
                 secondTurnSeq.opensTurn(),
                 payloads.forAgent(agent).put(List.of(new Block.Text("second"))),
+                "Question",
+                Instant.EPOCH,
                 Instant.EPOCH)),
         lastSeq,
         clock.instant());
@@ -1567,11 +1682,14 @@ class DefaultDirectHarnessTest {
                   opening,
                   opening.opensTurn(),
                   payloads.forAgent(agent).put(List.of(new Block.Text("somebody else's input"))),
+                  "Question",
+                  Instant.EPOCH,
                   Instant.EPOCH),
               new AgentEvent.InferenceAnswered(
                   opening.next(),
                   opening.opensTurn(),
                   payloads.forAgent(agent).put(List.of(new Block.Text("somebody else's answer"))),
+                  false,
                   Usage.unreported())),
           last,
           Instant.EPOCH);
@@ -1983,6 +2101,25 @@ class DefaultDirectHarnessTest {
           .usingRecursiveComparison()
           .ignoringFields("stats")
           .isEqualTo(new Outcome.Answered<>("the lake is deep and", ANY_STATS));
+    }
+
+    @Test
+    void the_story_records_the_answer_as_truncated() {
+      DirectHarness<String, String> harness =
+          harness((request, narrator) -> cutOffSaying("the lake is deep and"));
+      AgentId agent = AgentId.random();
+
+      Outcome<String> outcome = harness.ask(agent, "how deep?");
+
+      assertThat(outcome)
+          .usingRecursiveComparison()
+          .ignoringFields("stats")
+          .isEqualTo(new Outcome.Answered<>("the lake is deep and", ANY_STATS));
+      assertThat(events.readAll(TYPE, agent))
+          .filteredOn(AgentEvent.InferenceAnswered.class::isInstance)
+          .singleElement()
+          .extracting(event -> ((AgentEvent.InferenceAnswered) event).truncated())
+          .isEqualTo(true);
     }
 
     @Test

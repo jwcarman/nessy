@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -85,7 +86,11 @@ class AgentStateRepeatedCallIdTest {
 
   /** Request 1 asked for c, it was approved and succeeded; the model is inferring again. */
   private AgentState inferringAfterFirstRequest() {
-    AgentState state = after(idle, idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)));
+    AgentState state =
+        after(
+            idle,
+            idle.execute(
+                new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH)));
     state = approved(askingForC(state), FIRST_REQUEST);
     return after(
         state,
@@ -148,7 +153,7 @@ class AgentStateRepeatedCallIdTest {
             TURN,
             FIRST_REQUEST,
             C,
-            new AgentCommand.ToolOutcome.Failed("the first call's failure"));
+            new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "the first call's failure"));
 
     Decision decision = awaiting.execute(duplicate);
 

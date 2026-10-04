@@ -29,6 +29,7 @@ import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.FailureKind;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.PayloadRef;
@@ -53,10 +54,13 @@ class StoryEventsTest {
 
   @Test
   void a_turn_starting_is_told_as_turn_started() {
+    Instant arrived = Instant.parse("2026-03-04T05:06:07Z");
+
     assertThat(
             StoryEvents.of(
-                new AgentEvent.TurnStarted(SEQ, TURN, PayloadRef.of("p"), Instant.EPOCH)))
-        .isEqualTo(new Narration.TurnStarted(TURN));
+                new AgentEvent.TurnStarted(
+                    SEQ, TURN, PayloadRef.of("p"), "Invoice", arrived, Instant.EPOCH)))
+        .isEqualTo(new Narration.TurnStarted(TURN, "Invoice", arrived));
   }
 
   @Test
@@ -64,8 +68,9 @@ class StoryEventsTest {
     Usage usage = Usage.of("a-model", 100, 20);
 
     assertThat(
-            StoryEvents.of(new AgentEvent.InferenceAnswered(SEQ, TURN, PayloadRef.of("p"), usage)))
-        .isEqualTo(new Narration.Answered(TURN, usage));
+            StoryEvents.of(
+                new AgentEvent.InferenceAnswered(SEQ, TURN, PayloadRef.of("p"), true, usage)))
+        .isEqualTo(new Narration.Answered(TURN, true, usage));
   }
 
   @Test
@@ -130,7 +135,7 @@ class StoryEventsTest {
 
   @Test
   void a_turn_a_policy_stopped_is_not_a_failed_model_call() {
-    assertThat(StoryEvents.of(new AgentEvent.TurnFailed(SEQ, TURN, "too many calls")))
+    assertThat(StoryEvents.of(new AgentEvent.TurnStopped(SEQ, TURN, "too many calls")))
         .isEqualTo(new Narration.TurnStopped(TURN, "too many calls"));
   }
 
@@ -153,17 +158,18 @@ class StoryEventsTest {
   static Stream<AgentEvent> everyKind() {
     Usage usage = Usage.unreported();
     return Stream.of(
-        new AgentEvent.TurnStarted(SEQ, TURN, PayloadRef.of("p"), Instant.EPOCH),
-        new AgentEvent.InferenceAnswered(SEQ, TURN, PayloadRef.of("p"), usage),
+        new AgentEvent.TurnStarted(
+            SEQ, TURN, PayloadRef.of("p"), "Invoice", Instant.EPOCH, Instant.EPOCH),
+        new AgentEvent.InferenceAnswered(SEQ, TURN, PayloadRef.of("p"), false, usage),
         new AgentEvent.InferenceRefused(SEQ, TURN, "policy", usage),
         new AgentEvent.InferenceFailed(SEQ, TURN, new Failure.Permanent("x"), usage),
         new AgentEvent.InferenceAttempted(SEQ, TURN, new Failure.Transient("x"), usage),
-        new AgentEvent.TurnFailed(SEQ, TURN, "x"),
+        new AgentEvent.TurnStopped(SEQ, TURN, "x"),
         new AgentEvent.ActionsRequested(SEQ, TURN, PayloadRef.of("p"), List.of(), usage),
-        new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty()),
-        new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty()),
-        new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok"),
-        new AgentEvent.ToolFailed(SEQ, TURN, CALL, "boom"),
+        new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), KEY),
+        new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty(), KEY),
+        new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok", KEY),
+        new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", KEY),
         new AgentEvent.Terminated(SEQ));
   }
 
@@ -176,29 +182,46 @@ class StoryEventsTest {
 
   @Test
   void an_approved_call_is_told_as_approved() {
-    assertThat(StoryEvents.of(new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty())))
-        .isEqualTo(new Narration.CallApproved(CALL));
+    assertThat(
+            StoryEvents.of(
+                new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.of("u_carol"), KEY)))
+        .isEqualTo(new Narration.CallApproved(CALL, KEY, Optional.of("u_carol")));
   }
 
   @Test
   void a_denied_call_is_told_with_the_reason() {
     assertThat(
             StoryEvents.of(
-                new AgentEvent.ToolDenied(SEQ, TURN, CALL, "not allowed", Optional.empty())))
-        .isEqualTo(new Narration.CallDenied(CALL, "not allowed"));
+                new AgentEvent.ToolDenied(
+                    SEQ, TURN, CALL, "not allowed", Optional.of("u_dave"), KEY)))
+        .isEqualTo(new Narration.CallDenied(CALL, KEY, "not allowed", Optional.of("u_dave")));
   }
 
   @Test
   void a_call_that_succeeded_is_told_as_finished() {
     assertThat(
-            StoryEvents.of(new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok")))
-        .isEqualTo(new Narration.CallFinished(CALL));
+            StoryEvents.of(
+                new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok", KEY)))
+        .isEqualTo(new Narration.CallFinished(CALL, KEY));
   }
 
   @Test
   void a_call_that_failed_is_told_with_the_message() {
-    assertThat(StoryEvents.of(new AgentEvent.ToolFailed(SEQ, TURN, CALL, "boom")))
-        .isEqualTo(new Narration.CallFailed(CALL, "boom"));
+    assertThat(
+            StoryEvents.of(
+                new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", KEY)))
+        .isEqualTo(new Narration.CallFailed(CALL, KEY, CallFailure.FAILED, "boom"));
+  }
+
+  @Test
+  void a_call_that_failed_is_told_with_why_it_failed() {
+    assertThat(
+            StoryEvents.of(
+                new AgentEvent.ToolFailed(
+                    SEQ, TURN, CALL, CallFailure.NOT_AUTHORISED, "no approver answered", KEY)))
+        .isEqualTo(
+            new Narration.CallFailed(
+                CALL, KEY, CallFailure.NOT_AUTHORISED, "no approver answered"));
   }
 
   @Test

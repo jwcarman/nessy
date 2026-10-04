@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,9 +39,9 @@ class NarrationListenerConfigTest {
 
   private static final List<Narration> EVERY_KIND =
       List.of(
-          new Narration.TurnStarted(new TurnId(1)),
+          new Narration.TurnStarted(new TurnId(1), "Question", Instant.EPOCH),
           new Narration.Thinking(),
-          new Narration.Answered(new TurnId(1), Usage.unreported()),
+          new Narration.Answered(new TurnId(1), false, Usage.unreported()),
           new Narration.TurnStopped(new TurnId(1), "too many calls"),
           new Narration.TurnFailed(
               new TurnId(1), FailureKind.PERMANENT, "the provider gave up", Usage.unreported()),
@@ -54,10 +55,10 @@ class NarrationListenerConfigTest {
                   new Narration.ActionsRequested.Call(
                       CALL, IdempotencyKey.of(KEY_ID), new ToolName("t"), "do t")),
               Usage.unreported()),
-          new Narration.CallApproved(CALL),
-          new Narration.CallDenied(CALL, "no"),
-          new Narration.CallFinished(CALL),
-          new Narration.CallFailed(CALL, "boom"),
+          new Narration.CallApproved(CALL, IdempotencyKey.of(KEY_ID), Optional.empty()),
+          new Narration.CallDenied(CALL, IdempotencyKey.of(KEY_ID), "no", Optional.empty()),
+          new Narration.CallFinished(CALL, IdempotencyKey.of(KEY_ID)),
+          new Narration.CallFailed(CALL, IdempotencyKey.of(KEY_ID), CallFailure.FAILED, "boom"),
           new Narration.Terminated(),
           new Narration.ApprovalSought(CALL, "restart"),
           new Narration.ApprovalDeferred(CALL, "restart", Instant.EPOCH),
@@ -123,9 +124,10 @@ class NarrationListenerConfigTest {
     NarrationListener listener =
         NarrationListener.of(on -> on.agentType(CHAT).onAnswered((_, _) -> heard.add("answered")));
 
-    listener.on(heard(new AgentType("other"), new Narration.Answered(TURN, Usage.unreported())));
+    listener.on(
+        heard(new AgentType("other"), new Narration.Answered(TURN, false, Usage.unreported())));
     listener.on(heard(CHAT, new Narration.Thinking()));
-    listener.on(heard(CHAT, new Narration.Answered(TURN, Usage.unreported())));
+    listener.on(heard(CHAT, new Narration.Answered(TURN, false, Usage.unreported())));
 
     assertThat(heard).containsExactly("answered");
   }
@@ -138,7 +140,7 @@ class NarrationListenerConfigTest {
     TurnId turn = new TurnId(1);
     List<Narration> endings =
         List.of(
-            new Narration.Answered(turn, Usage.unreported()),
+            new Narration.Answered(turn, false, Usage.unreported()),
             new Narration.TurnRefused(turn, "safety", Usage.unreported()),
             new Narration.TurnFailed(turn, FailureKind.PERMANENT, "no", Usage.unreported()),
             new Narration.TurnStopped(turn, "limit"));

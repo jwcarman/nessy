@@ -18,6 +18,7 @@ package org.jwcarman.nessy.backend.event;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,7 @@ import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
@@ -32,20 +34,24 @@ class ToolSucceededTest {
 
   private static final CallId CALL = new CallId("c1");
   private static final PayloadRef RESULT = PayloadRef.of("a3d9f0b1");
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   @Test
   void an_event_refuses_a_null_rendered_line() {
     Seq seq = new Seq(4);
     TurnId turn = new TurnId(1);
 
-    assertThatThrownBy(() -> new AgentEvent.ToolSucceeded(seq, turn, CALL, RESULT, null))
+    assertThatThrownBy(() -> new AgentEvent.ToolSucceeded(seq, turn, CALL, RESULT, null, KEY))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("rendered must not be null");
   }
 
   @Test
   void an_event_accepts_an_empty_rendered_line() {
-    assertThat(new AgentEvent.ToolSucceeded(new Seq(4), new TurnId(1), CALL, RESULT, "").rendered())
+    assertThat(
+            new AgentEvent.ToolSucceeded(new Seq(4), new TurnId(1), CALL, RESULT, "", KEY)
+                .rendered())
         .isEmpty();
   }
 

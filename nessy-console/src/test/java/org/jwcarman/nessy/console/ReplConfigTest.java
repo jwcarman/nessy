@@ -253,6 +253,11 @@ class ReplConfigTest {
       }
 
       @Override
+      public DirectHarnessConfig<String> inputLabel(Stringifier<String> label) {
+        return this;
+      }
+
+      @Override
       public DirectHarnessConfig<String> inference(Customizer<InferenceConfig> customizer) {
         return this;
       }

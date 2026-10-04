@@ -21,11 +21,13 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.inference.Failure;
 
 /**
@@ -63,7 +65,7 @@ import org.jwcarman.nessy.inference.Failure;
   @JsonSubTypes.Type(value = AgentEvent.InferenceRefused.class, name = "inference-refused"),
   @JsonSubTypes.Type(value = AgentEvent.InferenceFailed.class, name = "inference-failed"),
   @JsonSubTypes.Type(value = AgentEvent.InferenceAttempted.class, name = "inference-attempted"),
-  @JsonSubTypes.Type(value = AgentEvent.TurnFailed.class, name = "turn-failed"),
+  @JsonSubTypes.Type(value = AgentEvent.TurnStopped.class, name = "turn-stopped"),
   @JsonSubTypes.Type(value = AgentEvent.ActionsRequested.class, name = "actions-requested"),
   @JsonSubTypes.Type(value = AgentEvent.ToolApproved.class, name = "tool-approved"),
   @JsonSubTypes.Type(value = AgentEvent.ToolDenied.class, name = "tool-denied"),
@@ -86,8 +88,13 @@ public sealed interface AgentEvent {
    * would depend on when the replay happened. {@code AgentEvents.writtenAt} is the store's own
    * clock and answers a different question, which is when the row was written rather than when the
    * turn began.
+   *
+   * <p>{@code label} says what started the turn, in a few words: the application's own label for
+   * the input, or the input's simple class name. {@code arrivedAt} is when the input reached the
+   * harness; {@code startedAt} minus {@code arrivedAt} is how long it waited.
    */
-  record TurnStarted(Seq seq, TurnId turn, PayloadRef input, Instant startedAt)
+  record TurnStarted(
+      Seq seq, TurnId turn, PayloadRef input, String label, Instant arrivedAt, Instant startedAt)
       implements AgentEvent {}
 
   /**
@@ -96,8 +103,10 @@ public sealed interface AgentEvent {
    * <p>Carries what the call cost, as the vendor counted it. {@link Usage#unreported()} stands for
    * an entry written before this event recorded one, and for a vendor that did not say -- the same
    * reading, because neither counted.
+   *
+   * @param truncated whether the model was cut off at its output limit, so the answer stops short
    */
-  record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer, Usage usage)
+  record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer, boolean truncated, Usage usage)
       implements AgentEvent {
     public InferenceAnswered {
       usage = usage == null ? Usage.unreported() : usage;
@@ -147,7 +156,7 @@ public sealed interface AgentEvent {
    * <p>A plain reason rather than a {@link Failure}: those arms are statements about whether a
    * request would fail again, and there was no request.
    */
-  record TurnFailed(Seq seq, TurnId turn, String reason) implements AgentEvent {}
+  record TurnStopped(Seq seq, TurnId turn, String reason) implements AgentEvent {}
 
   /**
    * A model call failed and was tried again.
@@ -197,13 +206,32 @@ public sealed interface AgentEvent {
     }
   }
 
-  /** A call was allowed to run. */
-  record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> reference)
-      implements AgentEvent {}
+  /** A call was allowed to run. {@code idempotencyKey} is the key the call was requested with. */
+  record ToolApproved(
+      Seq seq,
+      TurnId turn,
+      CallId callId,
+      Optional<String> decidedBy,
+      IdempotencyKey idempotencyKey)
+      implements AgentEvent {
+    public ToolApproved {
+      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+    }
+  }
 
   /** A call was refused and never ran. */
-  record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> reference)
-      implements AgentEvent {}
+  record ToolDenied(
+      Seq seq,
+      TurnId turn,
+      CallId callId,
+      String reason,
+      Optional<String> decidedBy,
+      IdempotencyKey idempotencyKey)
+      implements AgentEvent {
+    public ToolDenied {
+      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+    }
+  }
 
   /**
    * A call ran and produced something.
@@ -212,15 +240,25 @@ public sealed interface AgentEvent {
    * recorded: never null, empty when there was nothing to say, and at most 1,000 characters. It is
    * fixed when written and never worked out again.
    */
-  record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, String rendered)
+  record ToolSucceeded(
+      Seq seq,
+      TurnId turn,
+      CallId callId,
+      PayloadRef result,
+      String rendered,
+      IdempotencyKey idempotencyKey)
       implements AgentEvent {
     public ToolSucceeded {
       Objects.requireNonNull(rendered, "rendered must not be null");
+      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
     }
   }
 
   /**
-   * A call ran and did not produce content.
+   * A call did not produce content, and {@code kind} says why: the tool ran and failed or could not
+   * be run ({@code FAILED}), the call did not finish before its deadline and whether it ran is not
+   * known ({@code PAST_DEADLINE}), or permission was never given ({@code NOT_AUTHORISED}, in which
+   * case the call never ran). Nobody refused it; a refusal is {@link ToolDenied}.
    *
    * <p>Carries a sentence rather than a {@link Failure}, which is the opposite of {@link
    * InferenceFailed} and deliberately so: a failed tool call is the <em>model's</em> problem, it is
@@ -231,7 +269,19 @@ public sealed interface AgentEvent {
    * and {@code ...} in the gap before it is stored, and what is stored is the text the model reads
    * back for the call.
    */
-  record ToolFailed(Seq seq, TurnId turn, CallId callId, String message) implements AgentEvent {}
+  record ToolFailed(
+      Seq seq,
+      TurnId turn,
+      CallId callId,
+      CallFailure kind,
+      String message,
+      IdempotencyKey idempotencyKey)
+      implements AgentEvent {
+    public ToolFailed {
+      Objects.requireNonNull(kind, "kind must not be null");
+      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+    }
+  }
 
   /**
    * The agent will accept nothing further.

@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine.store;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,6 +27,7 @@ import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -192,17 +194,37 @@ class ValueTypeCodecTest {
                     new TurnId(1),
                     new CallId("729606640"),
                     PayloadRef.of("a3d9f0b1"),
-                    "reindexed 91")),
+                    "reindexed 91",
+                    KEY)),
             StandardCharsets.UTF_8);
 
     assertThat(written).contains("\"callId\":\"729606640\"").doesNotContain("\"value\"");
   }
 
   @Test
+  void a_stored_policy_stop_is_written_as_turn_stopped() {
+    byte[] literal =
+        "{\"type\":\"turn-stopped\",\"seq\":3,\"turn\":1,\"reason\":\"too many calls\"}"
+            .getBytes(StandardCharsets.UTF_8);
+    AgentEvent.TurnStopped expected =
+        new AgentEvent.TurnStopped(new Seq(3), new TurnId(1), "too many calls");
+
+    AgentEvent read = entries.decode(literal);
+    String written = new String(entries.encode(expected), StandardCharsets.UTF_8);
+
+    assertThat(read).isEqualTo(expected);
+    assertThat(written)
+        .contains("\"type\":\"turn-stopped\"")
+        .contains("\"seq\":3")
+        .contains("\"turn\":1")
+        .contains("\"reason\":\"too many calls\"");
+  }
+
+  @Test
   void a_tool_succeeded_event_reads_back_with_its_rendered_line() {
     AgentEvent.ToolSucceeded written =
         new AgentEvent.ToolSucceeded(
-            new Seq(4), new TurnId(1), new CallId("c1"), PayloadRef.of("a3d9f0b1"), "80 days");
+            new Seq(4), new TurnId(1), new CallId("c1"), PayloadRef.of("a3d9f0b1"), "80 days", KEY);
 
     byte[] bytes = entries.encode(written);
 
@@ -214,7 +236,7 @@ class ValueTypeCodecTest {
   void a_tool_succeeded_event_with_an_empty_rendered_line_reads_back_empty() {
     AgentEvent.ToolSucceeded written =
         new AgentEvent.ToolSucceeded(
-            new Seq(4), new TurnId(1), new CallId("c1"), PayloadRef.of("a3d9f0b1"), "");
+            new Seq(4), new TurnId(1), new CallId("c1"), PayloadRef.of("a3d9f0b1"), "", KEY);
 
     byte[] bytes = entries.encode(written);
 
@@ -238,15 +260,15 @@ class ValueTypeCodecTest {
   }
 
   @Test
-  void aGrantNamesItsCallAsAStringAndKeepsAnAbsentReferenceAbsent() {
+  void aGrantNamesItsCallAsAStringAndKeepsAnAbsentDecidedByAbsent() {
     String written =
         new String(
             entries.encode(
                 new AgentEvent.ToolApproved(
-                    new Seq(3), new TurnId(1), new CallId("c1"), Optional.of("jcarman"))),
+                    new Seq(3), new TurnId(1), new CallId("c1"), Optional.of("jcarman"), KEY)),
             StandardCharsets.UTF_8);
 
-    assertThat(written).contains("\"callId\":\"c1\"").contains("\"reference\":\"jcarman\"");
+    assertThat(written).contains("\"callId\":\"c1\"").contains("\"decidedBy\":\"jcarman\"");
   }
 
   /**
@@ -298,7 +320,11 @@ class ValueTypeCodecTest {
         new String(
             entries.encode(
                 new AgentEvent.InferenceAnswered(
-                    new Seq(5), new TurnId(1), PayloadRef.of("a3d9f0b1"), Usage.unreported())),
+                    new Seq(5),
+                    new TurnId(1),
+                    PayloadRef.of("a3d9f0b1"),
+                    false,
+                    Usage.unreported())),
             StandardCharsets.UTF_8);
 
     assertThat(written).contains("\"seq\":5").contains("\"turn\":1").doesNotContain("\"value\"");
@@ -314,7 +340,8 @@ class ValueTypeCodecTest {
     String stored =
         """
                 {"type":"tool-succeeded","seq":4,"turn":1,"callId":"call_1",\
-                "result":"a3d9f0b1","rendered":"reindexed 91"}""";
+                "result":"a3d9f0b1","rendered":"reindexed 91",\
+                "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
 
     AgentEvent.ToolSucceeded entry =
         (AgentEvent.ToolSucceeded) entries.decode(stored.getBytes(StandardCharsets.UTF_8));
@@ -336,5 +363,112 @@ class ValueTypeCodecTest {
             StandardCharsets.UTF_8);
 
     assertThat(written).contains("\"requestSeq\":2").doesNotContain("\"value\"");
+  }
+
+  // ---- the key every call event carries ---------------------------------------------------
+
+  private AgentEvent readStored(String json) {
+    return entries.decode(json.getBytes(StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void aTruncatedAnswerIsStoredAsTruncated() {
+    String stored =
+        """
+        {"type":"inference-answered","seq":2,"turn":1,"answer":"a3d9f0b1","truncated":true}""";
+    AgentEvent.InferenceAnswered written =
+        new AgentEvent.InferenceAnswered(
+            new Seq(2), new TurnId(1), PayloadRef.of("a3d9f0b1"), true, Usage.unreported());
+
+    AgentEvent.InferenceAnswered read = (AgentEvent.InferenceAnswered) readStored(stored);
+
+    assertThat(read.truncated()).isTrue();
+    assertThat(read).isEqualTo(written);
+    assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
+        .contains("\"truncated\":true");
+  }
+
+  @Test
+  void aGrantIsStoredWithTheKeyOfItsCall() {
+    String stored =
+        """
+        {"type":"tool-approved","seq":3,"turn":1,"callId":"c1","decidedBy":"jcarman",\
+        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+    AgentEvent.ToolApproved written =
+        new AgentEvent.ToolApproved(
+            new Seq(3), new TurnId(1), new CallId("c1"), Optional.of("jcarman"), KEY);
+
+    assertThat(readStored(stored)).isEqualTo(written);
+    assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
+        .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"");
+  }
+
+  @Test
+  void aDenialIsStoredWithTheKeyOfItsCall() {
+    String stored =
+        """
+        {"type":"tool-denied","seq":3,"turn":1,"callId":"c1","reason":"no","decidedBy":"u_dave",\
+        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+    AgentEvent.ToolDenied written =
+        new AgentEvent.ToolDenied(
+            new Seq(3), new TurnId(1), new CallId("c1"), "no", Optional.of("u_dave"), KEY);
+
+    assertThat(readStored(stored)).isEqualTo(written);
+    assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
+        .contains("\"decidedBy\":\"u_dave\"")
+        .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"");
+  }
+
+  @Test
+  void aResultIsStoredWithTheKeyOfItsCall() {
+    String stored =
+        """
+        {"type":"tool-succeeded","seq":4,"turn":1,"callId":"c1","result":"a3d9f0b1",\
+        "rendered":"ok","idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+    AgentEvent.ToolSucceeded written =
+        new AgentEvent.ToolSucceeded(
+            new Seq(4), new TurnId(1), new CallId("c1"), PayloadRef.of("a3d9f0b1"), "ok", KEY);
+
+    assertThat(readStored(stored)).isEqualTo(written);
+    assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
+        .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"");
+  }
+
+  @Test
+  void aFailureIsStoredWithTheKeyOfItsCall() {
+    String stored =
+        """
+        {"type":"tool-failed","seq":4,"turn":1,"callId":"c1","kind":"PAST_DEADLINE",\
+        "message":"boom","idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+    AgentEvent.ToolFailed written =
+        new AgentEvent.ToolFailed(
+            new Seq(4), new TurnId(1), new CallId("c1"), CallFailure.PAST_DEADLINE, "boom", KEY);
+
+    assertThat(readStored(stored)).isEqualTo(written);
+    assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
+        .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"")
+        .contains("\"kind\":\"PAST_DEADLINE\"");
+  }
+
+  @Test
+  void aTurnStartIsStoredWithWhatStartedItAndWhenItsInputArrived() {
+    String stored =
+        """
+        {"type":"turn-started","seq":1,"turn":1,"input":"a3d9f0b1","label":"Invoice",\
+        "arrivedAt":"2026-03-04T05:06:07Z","startedAt":"2026-03-04T05:06:09Z"}""";
+    AgentEvent.TurnStarted written =
+        new AgentEvent.TurnStarted(
+            new Seq(1),
+            new TurnId(1),
+            PayloadRef.of("a3d9f0b1"),
+            "Invoice",
+            Instant.parse("2026-03-04T05:06:07Z"),
+            Instant.parse("2026-03-04T05:06:09Z"));
+
+    assertThat(readStored(stored)).isEqualTo(written);
+    assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
+        .contains("\"label\":\"Invoice\"")
+        .contains("\"arrivedAt\":\"2026-03-04T05:06:07Z\"")
+        .contains("\"startedAt\":\"2026-03-04T05:06:09Z\"");
   }
 }

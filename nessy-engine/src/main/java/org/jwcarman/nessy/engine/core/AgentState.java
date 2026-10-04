@@ -154,7 +154,9 @@ public sealed interface AgentState {
           Seq at = seq.next();
           TurnId opened = at.opensTurn();
           yield Decision.of(
-              List.of(new AgentEvent.TurnStarted(at, opened, start.input(), start.at())),
+              List.of(
+                  new AgentEvent.TurnStarted(
+                      at, opened, start.input(), start.label(), start.arrivedAt(), start.at())),
               List.of(new AgentEffect.Infer(opened)));
         }
         case AgentCommand.Terminate _ ->
@@ -182,7 +184,7 @@ public sealed interface AgentState {
         // that freed the last call is applied first, and it leaves this state behind. Without
         // this arm the decision and the replay disagree -- the live turn ends correctly and every
         // later read of the agent throws, which makes an ended turn an unusable agent.
-        case AgentEvent.TurnFailed ended -> new Idle(ended.seq());
+        case AgentEvent.TurnStopped ended -> new Idle(ended.seq());
         // Still asking. An attempt that failed and was tried again moves the story forward
         // without moving the turn: the call it belongs to has not settled, and the state this
         // rebuilds to must be the one the next event expects to find.
@@ -248,7 +250,7 @@ public sealed interface AgentState {
             Decision.of(
                 List.of(
                     new AgentEvent.InferenceAnswered(
-                        at, turn, answered.answer(), answered.usage())),
+                        at, turn, answered.answer(), answered.truncated(), answered.usage())),
                 List.of());
         case AgentCommand.InferenceOutcome.Refused refused ->
             Decision.of(
@@ -375,12 +377,15 @@ public sealed interface AgentState {
       return switch (done.outcome()) {
         case AgentCommand.ApprovalOutcome.Approved ok ->
             Decision.of(
-                List.of(new AgentEvent.ToolApproved(at, turn, done.callId(), ok.reference())),
+                List.of(
+                    new AgentEvent.ToolApproved(
+                        at, turn, done.callId(), ok.decidedBy(), call.idempotencyKey())),
                 List.of(performing(turn, requestSeq, call)));
         case AgentCommand.ApprovalOutcome.Denied no ->
             continuing(
                 at,
-                new AgentEvent.ToolDenied(at, turn, done.callId(), no.reason(), no.reference()),
+                new AgentEvent.ToolDenied(
+                    at, turn, done.callId(), no.reason(), no.decidedBy(), call.idempotencyKey()),
                 policy,
                 now);
       };
@@ -404,9 +409,11 @@ public sealed interface AgentState {
       AgentEvent event =
           switch (done.outcome()) {
             case AgentCommand.ToolOutcome.Succeeded ok ->
-                new AgentEvent.ToolSucceeded(at, turn, done.callId(), ok.result(), ok.rendered());
+                new AgentEvent.ToolSucceeded(
+                    at, turn, done.callId(), ok.result(), ok.rendered(), call.idempotencyKey());
             case AgentCommand.ToolOutcome.Failed no ->
-                new AgentEvent.ToolFailed(at, turn, done.callId(), no.message());
+                new AgentEvent.ToolFailed(
+                    at, turn, done.callId(), no.kind(), no.message(), call.idempotencyKey());
           };
       return continuing(at, event, policy, now);
     }
@@ -443,7 +450,7 @@ public sealed interface AgentState {
         // count. The discharge is written down first: it happened, whatever is decided after it.
         case TurnDecision.FailTurn(String reason) ->
             Decision.of(
-                List.of(event, new AgentEvent.TurnFailed(at.next(), turn, reason)), List.of());
+                List.of(event, new AgentEvent.TurnStopped(at.next(), turn, reason)), List.of());
       };
     }
   }

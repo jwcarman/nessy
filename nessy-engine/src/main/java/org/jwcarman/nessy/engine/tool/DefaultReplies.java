@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -101,10 +102,10 @@ public final class DefaultReplies implements Replies {
         AgentEffect.Approve.class,
         (callId, _, _, _) ->
             switch (result) {
-              case ApprovalResult.Approved(var reference) ->
-                  new EffectOutcome.ToolApproved(callId, reference);
-              case ApprovalResult.Denied(String reason, var reference) ->
-                  new EffectOutcome.ToolDenied(callId, reason, reference);
+              case ApprovalResult.Approved(var decidedBy) ->
+                  new EffectOutcome.ToolApproved(callId, decidedBy);
+              case ApprovalResult.Denied(String reason, var decidedBy) ->
+                  new EffectOutcome.ToolDenied(callId, reason, decidedBy);
             });
   }
 
@@ -122,6 +123,7 @@ public final class DefaultReplies implements Replies {
               case ToolResult.Failure(String message) ->
                   new EffectOutcome.ToolFailed(
                       callId,
+                      CallFailure.FAILED,
                       Objects.requireNonNullElse(message, "the tool failed and gave no message"));
             });
   }

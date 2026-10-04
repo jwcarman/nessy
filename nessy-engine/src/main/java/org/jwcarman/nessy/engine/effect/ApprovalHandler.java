@@ -16,10 +16,12 @@
 package org.jwcarman.nessy.engine.effect;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
@@ -94,7 +96,8 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
   }
 
   @Override
-  public Awaited<EffectOutcome> handle(AgentId agentId, AgentEffect.Approve effect) {
+  public Awaited<EffectOutcome> handle(
+      AgentId agentId, AgentEffect.Approve effect, Instant deadline) {
     CallId callId = effect.callId();
     Optional<ToolBinding<?>> bound = tools.find(effect.toolName());
     if (bound.isEmpty()) {
@@ -108,7 +111,9 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
           effect.toolName());
       return Awaited.ready(
           new EffectOutcome.ToolFailed(
-              callId, "there is no tool named '" + effect.toolName().value() + "'"));
+              callId,
+              CallFailure.FAILED,
+              "there is no tool named '" + effect.toolName().value() + "'"));
     }
 
     Optional<ToolCalls.ResolvedCall> found = calls.find(agentId, effect.requestSeq(), callId);
@@ -119,7 +124,8 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
           agentId.value(),
           callId,
           effect.requestSeq());
-      return Awaited.ready(new EffectOutcome.ToolFailed(callId, "the call could not be found"));
+      return Awaited.ready(
+          new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, "the call could not be found"));
     }
     ToolCalls.ResolvedCall resolved = found.get();
 
@@ -135,7 +141,8 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
           agentId.value(),
           callId,
           effect.toolName());
-      return Awaited.ready(new EffectOutcome.ToolFailed(callId, COULD_NOT_BE_DESCRIBED));
+      return Awaited.ready(
+          new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, COULD_NOT_BE_DESCRIBED));
     }
     ApprovalRequest question;
     try {
@@ -149,6 +156,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
               resolved.call().arguments(),
               resolved.action(),
               clock.instant(),
+              deadline,
               replyTokens.mint(agentType, agentId, effect.requestSeq(), callId));
     } catch (RuntimeException e) {
       // A call whose arguments will not read into the tool's input type has no question to
@@ -165,7 +173,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
           effect.toolName());
       return Awaited.ready(
           new EffectOutcome.ToolFailed(
-              callId, "the arguments could not be read: " + e.getMessage()));
+              callId, CallFailure.FAILED, "the arguments could not be read: " + e.getMessage()));
     }
 
     // Said before the approver is asked, because a question that never comes back must still
@@ -178,16 +186,16 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
       case Awaited.Ready<ApprovalResult>(ApprovalResult result) ->
           Awaited.ready(
               switch (result) {
-                case ApprovalResult.Approved(var reference) ->
-                    new EffectOutcome.ToolApproved(callId, reference);
-                case ApprovalResult.Denied(String reason, var reference) -> {
+                case ApprovalResult.Approved(var decidedBy) ->
+                    new EffectOutcome.ToolApproved(callId, decidedBy);
+                case ApprovalResult.Denied(String reason, var decidedBy) -> {
                   log.info(
                       "[{}] agent {}: {} was denied ({})",
                       agentType.value(),
                       agentId.value(),
                       question.action(),
                       reason);
-                  yield new EffectOutcome.ToolDenied(callId, reason, reference);
+                  yield new EffectOutcome.ToolDenied(callId, reason, decidedBy);
                 }
               });
       // The ordinary case for a person, not an exotic one. The approver has the reply

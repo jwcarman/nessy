@@ -82,9 +82,14 @@ class EventUsageReportsJdbcTest {
         agent,
         List.of(
             new AgentEvent.TurnStarted(
-                new Seq(1), new TurnId(1), new PayloadRef("p"), Instant.EPOCH),
+                new Seq(1),
+                new TurnId(1),
+                new PayloadRef("p"),
+                "Question",
+                Instant.EPOCH,
+                Instant.EPOCH),
             new AgentEvent.InferenceAnswered(
-                new Seq(2), new TurnId(1), new PayloadRef("a"), spent)),
+                new Seq(2), new TurnId(1), new PayloadRef("a"), false, spent)),
         Seq.NONE,
         Instant.EPOCH);
 

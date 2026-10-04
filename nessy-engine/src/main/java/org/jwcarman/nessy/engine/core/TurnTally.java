@@ -54,7 +54,7 @@ public final class TurnTally {
           stats.requestedActions(requested.actions().size(), requested.usage());
       // A turn ended on purpose spent nothing on ending: the decision cost no call, and what the
       // turn did spend is already on the events that spent it.
-      case AgentEvent.TurnFailed _,
+      case AgentEvent.TurnStopped _,
           AgentEvent.TurnStarted _,
           AgentEvent.ToolApproved _,
           AgentEvent.ToolDenied _,
@@ -106,7 +106,7 @@ public final class TurnTally {
       case AgentEvent.ToolDenied denied -> denied.turn().equals(turn);
       case AgentEvent.ToolSucceeded succeeded -> succeeded.turn().equals(turn);
       case AgentEvent.ToolFailed failed -> failed.turn().equals(turn);
-      case AgentEvent.TurnFailed ended -> ended.turn().equals(turn);
+      case AgentEvent.TurnStopped ended -> ended.turn().equals(turn);
       // Between turns, belonging to the agent's life rather than to any one of them.
       case AgentEvent.Terminated _ -> false;
     };

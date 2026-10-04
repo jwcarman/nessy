@@ -15,13 +15,13 @@
  */
 package org.jwcarman.nessy.engine.effect;
 
-import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
@@ -64,7 +64,6 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
   private final Narrator narrator;
   private final ReplyTokens replyTokens;
   private final EffectTermsSource terms;
-  private final Clock clock;
 
   public ToolCallHandler(
       AgentType agentType,
@@ -73,7 +72,6 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
       ReplyTokens replyTokens,
       Narrator narrator,
       EffectTermsSource terms,
-      Clock clock,
       Payloads payloads) {
     this.agentType = agentType;
     this.payloads = payloads;
@@ -82,7 +80,6 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
     this.replyTokens = replyTokens;
     this.narrator = narrator;
     this.terms = terms;
-    this.clock = clock;
   }
 
   /**
@@ -98,7 +95,8 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
   }
 
   @Override
-  public Awaited<EffectOutcome> handle(AgentId agentId, AgentEffect.CallTool effect) {
+  public Awaited<EffectOutcome> handle(
+      AgentId agentId, AgentEffect.CallTool effect, Instant deadline) {
     CallId callId = effect.callId();
     Optional<ToolCalls.ResolvedCall> found = calls.find(agentId, effect.requestSeq(), callId);
     if (found.isEmpty()) {
@@ -110,7 +108,8 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
           agentId.value(),
           callId,
           effect.requestSeq());
-      return Awaited.ready(new EffectOutcome.ToolFailed(callId, "the call could not be found"));
+      return Awaited.ready(
+          new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, "the call could not be found"));
     }
     ToolCalls.ResolvedCall resolved = found.get();
     Block.ToolCall call = resolved.call();
@@ -122,16 +121,15 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
       log.warn("[{}] agent {}: no tool named {}", agentType.value(), agentId.value(), call.name());
       return Awaited.ready(
           new EffectOutcome.ToolFailed(
-              callId, "there is no tool named '" + call.name().value() + "'"));
+              callId, CallFailure.FAILED, "there is no tool named '" + call.name().value() + "'"));
     }
 
     ToolBinding<?> binding = bound.get();
-    Instant until = clock.instant().plus(binding.timeout());
     return outcomeOf(
         agentId,
         callId,
         binding,
-        until,
+        deadline,
         binding.call(
             agentType,
             agentId,
@@ -140,7 +138,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
             effect.idempotencyKey(),
             call.name(),
             call.arguments(),
-            until,
+            deadline,
             replyTokens.mint(agentType, agentId, effect.requestSeq(), callId)));
   }
 
@@ -172,6 +170,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
                 case ToolResult.Failure(String message) ->
                     new EffectOutcome.ToolFailed(
                         callId,
+                        CallFailure.FAILED,
                         Objects.requireNonNullElse(message, "the tool failed and gave no message"));
               });
       case Awaited.Deferred<ToolResult> _ -> {

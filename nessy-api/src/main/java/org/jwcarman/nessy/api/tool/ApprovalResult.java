@@ -21,21 +21,20 @@ import java.util.Optional;
 public sealed interface ApprovalResult {
 
   /**
-   * An opaque pointer at whatever actually decided: a decision id, a ticket number, a hash of an
-   * evidence bundle. Empty when nothing stands behind the answer.
+   * Who or what decided, as the application chooses to say it: a user id, a ticket number, a
+   * policy's name. Empty when nobody is named.
    *
-   * <p><b>The engine never interprets it.</b> It is a join, and only a join -- from the entry this
-   * engine writes down to the record held by the subsystem that saw the request, talked to the
-   * people and knows who and why. Pulling that evidence in here would make this a worse audit log
-   * than the thing that did the work; leaving the join out would make the two unconnectable.
+   * <p><b>Nessy never interprets it.</b> It is written into the story as given. The record of the
+   * decision itself stays with the application, and the call's {@code IdempotencyKey}, which is on
+   * every event about the call, is the join to it.
    */
-  Optional<String> reference();
+  Optional<String> decidedBy();
 
   /** Let it run. */
-  record Approved(Optional<String> reference) implements ApprovalResult {
+  record Approved(Optional<String> decidedBy) implements ApprovalResult {
 
     public Approved {
-      requireReference(reference);
+      requireDecidedBy(decidedBy);
     }
   }
 
@@ -46,15 +45,15 @@ public sealed interface ApprovalResult {
    * reason is load-bearing -- the call never runs, so the reason becomes the failure the model
    * reads and reacts to -- while an approval has nothing it must say.
    *
-   * <p>A reference on both, though. "Who allowed this" and "who refused this" are the same question
-   * asked of the same subsystem, and an audit trail that could answer only one of them would be
-   * answering the less interesting one.
+   * <p>Both name who decided, though. "Who allowed this" and "who refused this" are the same
+   * question asked of the same subsystem, and an audit trail that could answer only one of them
+   * would be answering the less interesting one.
    */
-  record Denied(String reason, Optional<String> reference) implements ApprovalResult {
+  record Denied(String reason, Optional<String> decidedBy) implements ApprovalResult {
 
     public Denied {
       Objects.requireNonNull(reason, "reason must not be null");
-      requireReference(reference);
+      requireDecidedBy(decidedBy);
     }
   }
 
@@ -64,33 +63,31 @@ public sealed interface ApprovalResult {
   }
 
   /**
-   * Allowed, and here is where to read who said so and why.
+   * Allowed, and here is who or what said so.
    *
    * <p>Named rather than overloaded, because the argument is not a variation on the same thing: it
-   * is written into the story as the only durable link from "this call ran" to the record of the
-   * decision behind it. An overload would let that be passed by accident; this cannot be called
-   * without meaning to.
+   * is written into the story, and an overload would let it be passed by accident.
    *
-   * @param reference the deciding system's own id for the decision -- a ticket, a user id, a hash
-   *     of an evidence bundle. Never interpreted here.
+   * @param decidedBy who or what decided, as the application says it -- a user id, a ticket, a
+   *     policy's name. Never interpreted here.
    */
-  static ApprovalResult approvedBy(String reference) {
-    requireReference(reference);
-    return new Approved(Optional.of(reference));
+  static ApprovalResult approvedBy(String decidedBy) {
+    requireDecidedBy(decidedBy);
+    return new Approved(Optional.of(decidedBy));
   }
 
   static ApprovalResult denied(String reason) {
     return new Denied(reason, Optional.empty());
   }
 
-  /** Refused, and here is where to read who refused it. */
-  static ApprovalResult deniedBy(String reason, String reference) {
-    requireReference(reference);
-    return new Denied(reason, Optional.of(reference));
+  /** Refused, and here is who or what refused it. */
+  static ApprovalResult deniedBy(String reason, String decidedBy) {
+    requireDecidedBy(decidedBy);
+    return new Denied(reason, Optional.of(decidedBy));
   }
 
-  /** Either form of reference -- the value, or an {@code Optional} of it -- must be present. */
-  private static void requireReference(Object reference) {
-    Objects.requireNonNull(reference, "reference must not be null");
+  /** Either form of decidedBy -- the value, or an {@code Optional} of it -- must not be null. */
+  private static void requireDecidedBy(Object decidedBy) {
+    Objects.requireNonNull(decidedBy, "decidedBy must not be null");
   }
 }

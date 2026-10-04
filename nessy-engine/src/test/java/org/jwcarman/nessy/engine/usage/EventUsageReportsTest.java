@@ -75,7 +75,8 @@ class EventUsageReportsTest {
     TurnId turn = new TurnId(1);
     append(
         store,
-        new AgentEvent.TurnStarted(new Seq(1), turn, said("q"), Instant.now()),
+        new AgentEvent.TurnStarted(
+            new Seq(1), turn, said("q"), "Question", Instant.now(), Instant.now()),
         new AgentEvent.ActionsRequested(
             new Seq(2), turn, said("calls"), List.of(), usage("big", 1000, 50, 800)),
         new AgentEvent.InferenceAttempted(
@@ -83,8 +84,9 @@ class EventUsageReportsTest {
         new AgentEvent.InferenceRefused(new Seq(4), turn, "policy", usage("big", 100, 5, null)),
         new AgentEvent.InferenceFailed(
             new Seq(5), turn, new Failure.Permanent("bad"), usage("small", 30, 2, null)),
-        new AgentEvent.InferenceAnswered(new Seq(6), turn, said("a"), usage("small", 70, 8, null)),
-        new AgentEvent.InferenceAnswered(new Seq(7), turn, said("b"), Usage.unreported()));
+        new AgentEvent.InferenceAnswered(
+            new Seq(6), turn, said("a"), false, usage("small", 70, 8, null)),
+        new AgentEvent.InferenceAnswered(new Seq(7), turn, said("b"), false, Usage.unreported()));
   }
 
   @Test

@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,7 +30,10 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.Narrated;
+import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
@@ -73,6 +77,11 @@ class ApprovalHandlerTest {
   private static final ReplyTokens TOKENS = ReplyTokens.ephemeral();
   private static final Clock CLOCK =
       Clock.fixed(Instant.parse("2026-09-08T12:00:00Z"), ZoneOffset.UTC);
+
+  /**
+   * When the effect's row says the call stands until, whatever the clock reads when it is handled.
+   */
+  private static final Instant WRITTEN_DEADLINE = Instant.parse("2026-09-08T12:07:30Z");
 
   record Query(String q) {}
 
@@ -152,6 +161,10 @@ class ApprovalHandlerTest {
   }
 
   private ApprovalHandler handler(Tools tools, ToolCalls calls) {
+    return handler(tools, calls, Narrator.silent());
+  }
+
+  private ApprovalHandler handler(Tools tools, ToolCalls calls, Narrator narrator) {
     EffectTermsSource terms =
         new EffectTermsSource(
             tools,
@@ -161,7 +174,7 @@ class ApprovalHandlerTest {
             new RetryPolicy.Never(),
             Duration.ofMinutes(5),
             new RetryPolicy.Never());
-    return new ApprovalHandler(TYPE, tools, calls, TOKENS, Narrator.silent(), terms, CLOCK);
+    return new ApprovalHandler(TYPE, tools, calls, TOKENS, narrator, terms, CLOCK);
   }
 
   private EffectOutcome ask(Tools tools) {
@@ -169,11 +182,15 @@ class ApprovalHandlerTest {
   }
 
   private Awaited<EffectOutcome> asked(Tools tools, ToolCalls calls) {
-    return handler(tools, calls)
-        .handle(
-            AGENT,
-            new AgentEffect.Approve(
-                new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));
+    return asked(handler(tools, calls), CLOCK.instant().plus(Duration.ofMinutes(10)));
+  }
+
+  private Awaited<EffectOutcome> asked(ApprovalHandler handler, Instant deadline) {
+    return handler.handle(
+        AGENT,
+        new AgentEffect.Approve(
+            new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY),
+        deadline);
   }
 
   /** The answer, for the tests that expect one now. */
@@ -217,20 +234,45 @@ class ApprovalHandlerTest {
             });
   }
 
-  /** Generous by nature, and unrelated to what the tool itself is worth waiting for. */
-  @Test
-  void theApproverIsToldWhenTheQuestionStopsStanding() {
-    Instant[] seen = new Instant[1];
-    ask(
-        bound(
-            request -> {
-              seen[0] = request.deadline();
-              return Awaited.ready(ApprovalResult.approved());
-            },
-            Duration.ofHours(2),
-            new RetryPolicy.Never()));
+  // ---- the deadline shown is the deadline kept ---------------------------------------------
 
-    assertThat(seen[0]).isEqualTo(Instant.parse("2026-09-08T14:00:00Z"));
+  /**
+   * The row was written before this clock reading and says when the call stands until. What the
+   * approver is shown is that instant, not the clock plus the configured timeout.
+   */
+  @Test
+  void the_approver_is_shown_the_deadline_the_effect_was_written_with() {
+    ApprovalRequest[] seen = new ApprovalRequest[1];
+    ApprovalHandler handler =
+        handler(
+            bound(
+                request -> {
+                  seen[0] = request;
+                  return Awaited.ready(ApprovalResult.approved());
+                }),
+            story());
+
+    asked(handler, WRITTEN_DEADLINE);
+
+    assertThat(seen[0].deadline()).isEqualTo(WRITTEN_DEADLINE);
+    assertThat(seen[0].askedAt()).isEqualTo(CLOCK.instant());
+  }
+
+  @Test
+  void a_deferred_approval_is_narrated_as_standing_until_the_deadline_it_was_written_with() {
+    List<Narrated> heard = new ArrayList<>();
+    ApprovalHandler handler = handler(bound(_ -> new Awaited.Deferred<>()), story(), heard::add);
+
+    asked(handler, WRITTEN_DEADLINE);
+
+    List<Narration.ApprovalDeferred> deferrals =
+        heard.stream()
+            .map(Narrated::event)
+            .filter(Narration.ApprovalDeferred.class::isInstance)
+            .map(Narration.ApprovalDeferred.class::cast)
+            .toList();
+    assertThat(deferrals).hasSize(1);
+    assertThat(deferrals.getFirst().until()).isEqualTo(WRITTEN_DEADLINE);
   }
 
   // ---- the question ----------------------------------------------------------------------
@@ -376,6 +418,7 @@ class ApprovalHandlerTest {
         .isEqualTo(
             new EffectOutcome.ToolFailed(
                 new CallId("c1"),
+                CallFailure.FAILED,
                 "what the call would do could not be described, so it was not put to an approver"));
   }
 
@@ -535,5 +578,52 @@ class ApprovalHandlerTest {
         .asInstanceOf(type(EffectOutcome.ToolFailed.class))
         .extracting(EffectOutcome.ToolFailed::callId)
         .isEqualTo(new CallId("c1"));
+  }
+
+  /** Every way the gate discharges a call without asking is a failure of the call itself. */
+  @Test
+  void a_call_for_a_tool_that_is_not_bound_is_discharged_as_failed() {
+    assertThat(ask(Tools.none()))
+        .asInstanceOf(type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.FAILED);
+  }
+
+  @Test
+  void a_call_missing_from_the_story_is_discharged_as_failed() {
+    assertThat(ask(bound(Approver.allow()), (agentId, requestSeq, callId) -> Optional.empty()))
+        .asInstanceOf(type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.FAILED);
+  }
+
+  @Test
+  void a_call_with_unreadable_arguments_is_discharged_as_failed() {
+    assertThat(ask(bound(Approver.allow()), story("{\"q\": ")))
+        .asInstanceOf(type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.FAILED);
+  }
+
+  @Test
+  void a_call_whose_action_could_not_be_said_is_discharged_as_failed() {
+    Stringifier<Query> throwing =
+        query -> {
+          throw new IllegalStateException("boom");
+        };
+
+    EffectOutcome outcome =
+        ask(
+            bound(
+                Approver.allow(),
+                Duration.ofMinutes(10),
+                new RetryPolicy.Never(),
+                Optional.of(throwing)),
+            story("{\"q\":\"loch ness\"}", "lookup (what it would do could not be said)"));
+
+    assertThat(outcome)
+        .asInstanceOf(type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.FAILED);
   }
 }

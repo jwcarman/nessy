@@ -51,8 +51,9 @@ public interface EffectTerms {
   RetryPolicy retryPolicy();
 
   /**
-   * What to tell the agent when the effect can never be performed at all -- a payload this build
-   * cannot read, or a deadline that passed before anyone picked the work up.
+   * What to tell the agent when the effect could not be performed and no answer came -- a payload
+   * this build cannot read, or a deadline that passed with no answer to show for it, whether or not
+   * anyone had picked the work up. Both doors deliver it.
    *
    * <p>Frozen beside the row in its own blob, so that a payload which will not decode does not take
    * the handling of that failure down with it.

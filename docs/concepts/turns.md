@@ -76,12 +76,13 @@ same way a duplicate at-least-once delivery of anything else is silent.
 not the durable events themselves, but an announcement of what just
 happened or is about to. A turn's arms, in the order a watcher sees them:
 
-- `Narration.TurnStarted(TurnId turn)` — a turn opened on an input.
+- `Narration.TurnStarted(TurnId turn, String label, Instant arrivedAt)` — a turn opened on an input; the label says what started it and `arrivedAt` is when the input reached the harness.
 - `Narration.Thinking()` — the model is about to be asked, narrated before
   the call so a watcher can show waiting.
 - One of four ways the turn ends, each a `Narration.TurnEnding`:
-  - `Narration.Answered(TurnId turn, Usage usage)` — the turn produced an
-    answer. Not the answer itself; the direct door already returned it, and
+  - `Narration.Answered(TurnId turn, boolean truncated, Usage usage)` — the
+    turn produced an answer. `truncated` is true when the model was cut off
+    at its output limit and the answer stops short. Not the answer itself; the direct door already returned it, and
     a queued watcher reads it from the story or has already seen it delta
     by delta.
   - `Narration.TurnFailed(TurnId turn, FailureKind kind, String reason,

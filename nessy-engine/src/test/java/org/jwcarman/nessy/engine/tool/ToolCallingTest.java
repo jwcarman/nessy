@@ -219,7 +219,11 @@ class ToolCallingTest {
         .as("the grant, written before the call was dispatched")
         .isEqualTo(
             new AgentEvent.ToolApproved(
-                new Seq(3), new TurnId(1), new CallId("call_1"), Optional.empty()));
+                new Seq(3),
+                new TurnId(1),
+                new CallId("call_1"),
+                Optional.empty(),
+                requestedKey(story)));
     assertThat(story.get(3))
         .isEqualTo(
             new AgentEvent.ToolSucceeded(
@@ -227,13 +231,15 @@ class ToolCallingTest {
                 new TurnId(1),
                 new CallId("call_1"),
                 engine.ref(agentId, List.of(new Block.Text("the answer to loch ness"))),
-                "the answer to loch ness"));
+                "the answer to loch ness",
+                requestedKey(story)));
     assertThat(story.get(4))
         .isEqualTo(
             new AgentEvent.InferenceAnswered(
                 new Seq(5),
                 new TurnId(1),
                 engine.ref(agentId, List.of(new Block.Text("It is Loch Ness."))),
+                false,
                 Usage.unreported()));
   }
 
@@ -339,7 +345,12 @@ class ToolCallingTest {
         .as("a denial is written and no grant ever was")
         .isEqualTo(
             new AgentEvent.ToolDenied(
-                new Seq(3), new TurnId(1), new CallId("call_1"), "out of hours", Optional.empty()));
+                new Seq(3),
+                new TurnId(1),
+                new CallId("call_1"),
+                "out of hours",
+                Optional.empty(),
+                requestedKey(story)));
     assertThat(story).noneMatch(AgentEvent.ToolApproved.class::isInstance);
     assertThat(story.get(3))
         .isEqualTo(
@@ -347,6 +358,7 @@ class ToolCallingTest {
                 new Seq(4),
                 new TurnId(1),
                 engine.ref(agentId, List.of(new Block.Text("I was not allowed to look."))),
+                false,
                 Usage.unreported()));
   }
 
@@ -644,5 +656,11 @@ class ToolCallingTest {
         .isEqualTo("AwaitingActions");
     assertThat(outstandingEffects(waiting)).isEqualTo(1);
     assertThat(handed).as("asked once; never re-claimed and never re-asked").hasSize(1);
+  }
+
+  /** The key the story's one request gave its first call. */
+  private static IdempotencyKey requestedKey(List<AgentEvent> story) {
+    AgentEvent.ActionsRequested requested = (AgentEvent.ActionsRequested) story.get(1);
+    return ((ActionRequest.ToolCall) requested.actions().getFirst()).idempotencyKey();
   }
 }

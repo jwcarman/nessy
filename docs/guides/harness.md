@@ -252,9 +252,9 @@ Both configs share `agentType()`, `tool(...)`, `instructions(...)`,
 `memory(...)`, `state(...)`, `ambient(...)`, `chapterPolicy(...)`,
 `summarizer(...)` and `turnPolicy(...)` (declared on the common
 `HarnessConfig<SELF>`; see [Turn Policy](../concepts/turn-policy.md)), plus a
-system prompt, an `inputRenderer`, an `inference(...)` customizer and a
-`listener(...)`. The system prompt is fixed when the harness is built; see
-[Prompts](prompts.md). The rest of the context settings (`maxTail`,
+system prompt, an `inputRenderer`, an `inputLabel`, an `inference(...)`
+customizer and a `listener(...)`. The system prompt is fixed when the harness
+is built; see [Prompts](prompts.md). The rest of the context settings (`maxTail`,
 `maxChapterLength`, `chapterLeaseTtl`, `withoutChapters`) are on
 `in.context(...)` inside the `inference(...)` customizer. What differs is what each door alone can produce:
 
@@ -280,6 +280,26 @@ otherwise (so a `ChapterPolicy.every(50)` is cut at 30), and the tail shown whol
 40 completed turns.
 Chapters are on unless `withoutChapters()` is set, so an agent spends tokens
 on summaries by default. See [Context](../concepts/context.md#chapters).
+
+### Labelling an input
+
+Each turn's start says what started it, in a few words, so a reader of the
+story can tell turns apart without opening their inputs. Give each input a
+label with `inputLabel`:
+
+```java
+harness
+    .systemPrompt("You settle invoices.")
+    .inputLabel(invoice -> "Invoice " + invoice.number());
+```
+
+A label is made one line and cut to 1000 characters, as an action line is. With
+no label configured, the label is the input's simple class name. It is the same
+when the label throws, returns null or returns a blank string. The turn runs as
+usual in each case, and only a label that throws is warned about, with a message
+that names the agent type. The turn's start also records
+when its input arrived. On the queued door that is when `tell` was called, which
+can be well before the turn opened.
 
 ## Writing an approver
 

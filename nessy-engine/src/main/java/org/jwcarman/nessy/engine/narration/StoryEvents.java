@@ -53,30 +53,36 @@ public final class StoryEvents {
                               call.id(), call.idempotencyKey(), call.name(), call.action()))
                   .toList(),
               asked.usage());
-      case AgentEvent.ToolApproved approved -> new Narration.CallApproved(approved.callId());
+      case AgentEvent.ToolApproved approved ->
+          new Narration.CallApproved(
+              approved.callId(), approved.idempotencyKey(), approved.decidedBy());
       case AgentEvent.ToolDenied denied ->
-          new Narration.CallDenied(denied.callId(), denied.reason());
-      case AgentEvent.ToolSucceeded done -> new Narration.CallFinished(done.callId());
+          new Narration.CallDenied(
+              denied.callId(), denied.idempotencyKey(), denied.reason(), denied.decidedBy());
+      case AgentEvent.ToolSucceeded done ->
+          new Narration.CallFinished(done.callId(), done.idempotencyKey());
       case AgentEvent.ToolFailed failed ->
-          new Narration.CallFailed(failed.callId(), failed.message());
+          new Narration.CallFailed(
+              failed.callId(), failed.idempotencyKey(), failed.kind(), failed.message());
       // Said as a fact once the fold has committed. The deltas a provider streamed are what is
       // ARRIVING; this is what was said, and a watcher that saw neither -- a page opened
       // mid-turn -- would otherwise never learn the answer.
       case AgentEvent.InferenceAnswered answered ->
-          new Narration.Answered(answered.turn(), answered.usage());
+          new Narration.Answered(answered.turn(), answered.truncated(), answered.usage());
       case AgentEvent.InferenceRefused refused ->
           new Narration.TurnRefused(refused.turn(), refused.category(), refused.usage());
       case AgentEvent.InferenceFailed failed ->
           new Narration.TurnFailed(
               failed.turn(), kindOf(failed.failure()), failed.failure().reason(), failed.usage());
       // Not a failed model call: a policy ended the turn, and no call was made.
-      case AgentEvent.TurnFailed stopped ->
+      case AgentEvent.TurnStopped stopped ->
           new Narration.TurnStopped(stopped.turn(), stopped.reason());
       case AgentEvent.Terminated _ -> new Narration.Terminated();
       // Said even though the caller knows: the caller is not the only watcher. A page on the
       // narration stream while the request blocks, or a second one opened beside it, learns what
       // is happening only from here.
-      case AgentEvent.TurnStarted started -> new Narration.TurnStarted(started.turn());
+      case AgentEvent.TurnStarted started ->
+          new Narration.TurnStarted(started.turn(), started.label(), started.arrivedAt());
     };
   }
 

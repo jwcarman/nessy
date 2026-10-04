@@ -47,6 +47,7 @@ import org.jwcarman.nessy.engine.core.Decision;
 import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
 import org.jwcarman.nessy.engine.effect.EffectDispatcher;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
+import org.jwcarman.nessy.engine.harness.InputLabels;
 import org.jwcarman.nessy.engine.narration.AfterCommit;
 import org.jwcarman.nessy.engine.narration.AfterCommit.Step;
 import org.jwcarman.nessy.engine.narration.StoryEvents;
@@ -79,6 +80,7 @@ final class DefaultQueuedHarness<I>
   private final AgentType agentType;
   private final BacklogPolicy<I> policy;
   private final InputRenderer<I> renderer;
+  private final InputLabels<I> labels;
 
   /**
    * Where agents, events, content and the lock all come from -- held whole rather than torn into
@@ -107,6 +109,7 @@ final class DefaultQueuedHarness<I>
       AgentType agentType,
       BacklogPolicy<I> policy,
       InputRenderer<I> renderer,
+      InputLabels<I> labels,
       QueuedBackend backend,
       Backlogs<I> backlogs,
       Outbox effects,
@@ -117,6 +120,7 @@ final class DefaultQueuedHarness<I>
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.policy = Objects.requireNonNull(policy, "policy must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
+    this.labels = Objects.requireNonNull(labels, "labels must not be null");
     this.backend = Objects.requireNonNull(backend, "backend must not be null");
     this.backlogs = Objects.requireNonNull(backlogs, "backlogs must not be null");
     this.effects = Objects.requireNonNull(effects, "effects must not be null");
@@ -333,6 +337,8 @@ final class DefaultQueuedHarness<I>
               agentId,
               new AgentCommand.StartTurn(
                   backend.payloads().forAgent(agentId).put(renderer.render(next.input())),
+                  labels.of(next.input()),
+                  next.arrivedAt().truncatedTo(ChronoUnit.MICROS),
                   clock.instant()),
               trace);
       case Pull.Pill<I> _ -> apply(step, agentId, new AgentCommand.Terminate(), trace);

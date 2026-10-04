@@ -19,6 +19,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -105,8 +106,11 @@ public sealed interface Narration {
    * <p>The input is not echoed here. Whoever sent it has it, and anybody else reads the story;
    * narration says what is happening, and repeating content into it makes every watcher pay to be
    * told what it already had.
+   *
+   * <p>{@code label} says what started the turn, and {@code arrivedAt} is when its input reached
+   * the harness. How long the input waited is this event's time minus {@code arrivedAt}.
    */
-  record TurnStarted(TurnId turn) implements Story {}
+  record TurnStarted(TurnId turn, String label, Instant arrivedAt) implements Story {}
 
   /**
    * The turn produced an answer, and ended on it.
@@ -115,9 +119,10 @@ public sealed interface Narration {
    * watching a queued agent reads it from the story; a provider that streams has already said it
    * delta by delta. Carrying it here would be a third copy of the same words.
    *
+   * @param truncated whether the model was cut off at its output limit, so the answer stops short
    * @param usage what the model call cost, as the vendor counted it
    */
-  record Answered(TurnId turn, Usage usage) implements TurnEnding {}
+  record Answered(TurnId turn, boolean truncated, Usage usage) implements TurnEnding {}
 
   /**
    * The turn was stopped on purpose, and this is why.
@@ -175,8 +180,8 @@ public sealed interface Narration {
    * The model asked for work before it would answer.
    *
    * <p>One entry per call, each carrying the call's id, because every later event about a call --
-   * {@link CallApproved}, {@link CallDenied}, {@link CallFinished}, {@link CallFailed} -- names
-   * only the id. This is where a watcher learns which tool that id is.
+   * {@link CallApproved}, {@link CallDenied}, {@link CallFinished}, {@link CallFailed} -- names the
+   * id and the call's key, never the tool. This is where a watcher learns which tool that id is.
    *
    * @param usage what the model call that asked for the work cost
    */
@@ -206,19 +211,49 @@ public sealed interface Narration {
    *
    * <p>Names the call and not the tool, because the entry this is derived from does not carry the
    * tool's name and inventing a lookup to fill the field would make the announcement claim
-   * something the story does not. A watcher that wants the name joins by id to the {@link
-   * ActionsRequested.Call} it heard a moment ago.
+   * something the story does not. A watcher that wants the name joins by key to the {@link
+   * ActionsRequested.Call} it heard a moment ago: the same {@code idempotencyKey} is on the
+   * request, the decision and the outcome.
+   *
+   * @param callId the id the call was requested with
+   * @param idempotencyKey the call's own key, the same on its request, its approval and its outcome
+   * @param decidedBy who or what decided, as the application said it; empty when nobody is named.
+   *     Nessy never interprets it.
    */
-  record CallApproved(CallId callId) implements Story {}
+  record CallApproved(CallId callId, IdempotencyKey idempotencyKey, Optional<String> decidedBy)
+      implements Story {}
 
-  /** A call was refused, and never ran. */
-  record CallDenied(CallId callId, String reason) implements Story {}
+  /**
+   * A call was refused, and never ran.
+   *
+   * @param callId the id the call was requested with
+   * @param idempotencyKey the call's own key, the same on its request, its approval and its outcome
+   * @param reason why the call was refused
+   * @param decidedBy who or what refused it, as the application said it; empty when nobody is
+   *     named. Nessy never interprets it.
+   */
+  record CallDenied(
+      CallId callId, IdempotencyKey idempotencyKey, String reason, Optional<String> decidedBy)
+      implements Story {}
 
-  /** A call ran and produced something. */
-  record CallFinished(CallId callId) implements Story {}
+  /**
+   * A call ran and produced something.
+   *
+   * @param callId the id the call was requested with
+   * @param idempotencyKey the call's own key, the same on its request, its approval and its outcome
+   */
+  record CallFinished(CallId callId, IdempotencyKey idempotencyKey) implements Story {}
 
-  /** A call did not produce something. The message is what the model will read. */
-  record CallFailed(CallId callId, String message) implements Story {}
+  /**
+   * A call did not produce something. The message is what the model will read.
+   *
+   * @param callId the id the call was requested with
+   * @param idempotencyKey the call's own key, the same on its request, its approval and its outcome
+   * @param kind why it did not: it failed, it ran past its deadline, or it was never authorised
+   * @param message what the model will read for the call
+   */
+  record CallFailed(CallId callId, IdempotencyKey idempotencyKey, CallFailure kind, String message)
+      implements Story {}
 
   /** The agent will accept nothing further. */
   record Terminated() implements Story {}

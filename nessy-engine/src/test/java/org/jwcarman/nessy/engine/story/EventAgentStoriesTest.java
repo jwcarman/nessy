@@ -23,6 +23,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Nested;
@@ -31,6 +33,7 @@ import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentStory;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.PayloadRef;
@@ -38,6 +41,8 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.StoryProjection;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.chapter.Chapters;
 import org.jwcarman.nessy.backend.event.AgentEvent;
@@ -67,12 +72,17 @@ class EventAgentStoriesTest {
 
   private static AgentEvent started(long seq) {
     return new AgentEvent.TurnStarted(
-        new Seq(seq), new TurnId(seq), new PayloadRef("p"), Instant.EPOCH);
+        new Seq(seq),
+        new TurnId(seq),
+        new PayloadRef("p"),
+        "Question",
+        Instant.EPOCH,
+        Instant.EPOCH);
   }
 
   private static AgentEvent answered(long seq, long turn) {
     return new AgentEvent.InferenceAnswered(
-        new Seq(seq), new TurnId(turn), new PayloadRef("a"), Usage.unreported());
+        new Seq(seq), new TurnId(turn), new PayloadRef("a"), false, Usage.unreported());
   }
 
   private void threeEvents() {
@@ -166,6 +176,37 @@ class EventAgentStoriesTest {
     }
 
     @Test
+    void a_stored_call_failure_is_replayed_with_why_it_failed() {
+      IdempotencyKey key =
+          IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
+      events.append(
+          TYPE,
+          agent,
+          List.of(
+              started(1),
+              new AgentEvent.ToolFailed(
+                  new Seq(2),
+                  new TurnId(1),
+                  new CallId("c1"),
+                  CallFailure.PAST_DEADLINE,
+                  "the call did not complete before its deadline",
+                  key)),
+          Seq.NONE,
+          AT);
+
+      assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 10))
+          .map(Narrated::event)
+          .filteredOn(Narration.CallFailed.class::isInstance)
+          .singleElement()
+          .isEqualTo(
+              new Narration.CallFailed(
+                  new CallId("c1"),
+                  key,
+                  CallFailure.PAST_DEADLINE,
+                  "the call did not complete before its deadline"));
+    }
+
+    @Test
     void what_a_listener_heard_live_is_what_the_replay_returns() {
       Payloads payloads = new InMemoryPayloads(codecs);
       DirectBackend backend = new Backend(events, payloads, new InMemoryLocks(), codecs);
@@ -178,7 +219,84 @@ class EventAgentStoriesTest {
   }
 
   @Nested
+  class A_turn_whose_input_was_labelled {
+
+    @Test
+    void reads_its_label_and_arrival_live_and_replayed() {
+      DirectBackend backend =
+          new Backend(events, new InMemoryPayloads(codecs), new InMemoryLocks(), codecs);
+
+      List<Narrated> heard =
+          StoryTurn.heardWithAnInputLabel(TYPE, agent, backend, Clock.fixed(AT, ZoneOffset.UTC));
+
+      assertThat(heard)
+          .map(Narrated::event)
+          .filteredOn(Narration.TurnStarted.class::isInstance)
+          .singleElement()
+          .extracting(
+              event -> ((Narration.TurnStarted) event).label(),
+              event -> ((Narration.TurnStarted) event).arrivedAt())
+          .containsExactly("Greeting", AT);
+      assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
+    }
+  }
+
+  @Nested
+  class A_turn_whose_reply_was_cut_off {
+
+    @Test
+    void reads_truncated_live_and_replayed() {
+      DirectBackend backend =
+          new Backend(events, new InMemoryPayloads(codecs), new InMemoryLocks(), codecs);
+
+      List<Narrated> heard =
+          StoryTurn.heardWithATruncatedReply(TYPE, agent, backend, Clock.fixed(AT, ZoneOffset.UTC));
+
+      assertThat(heard)
+          .map(Narrated::event)
+          .filteredOn(Narration.Answered.class::isInstance)
+          .singleElement()
+          .extracting(event -> ((Narration.Answered) event).truncated())
+          .isEqualTo(true);
+      assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
+    }
+  }
+
+  @Nested
   class A_turn_with_a_tool_call {
+
+    @Test
+    void a_call_cut_off_at_its_deadline_reads_past_its_deadline_live_and_replayed() {
+      DirectBackend backend =
+          new Backend(events, new InMemoryPayloads(codecs), new InMemoryLocks(), codecs);
+
+      List<Narrated> heard =
+          StoryTurn.heardWithAToolCallCutOffAtItsDeadline(
+              TYPE, agent, backend, Clock.fixed(AT, ZoneOffset.UTC));
+
+      assertThat(heard)
+          .map(Narrated::event)
+          .filteredOn(Narration.CallFailed.class::isInstance)
+          .singleElement()
+          .extracting(event -> ((Narration.CallFailed) event).kind())
+          .isEqualTo(CallFailure.PAST_DEADLINE);
+      assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
+      assertTheFailedCallCarriesTheRequestedKey(heard);
+      assertTheFailedCallCarriesTheRequestedKey(stories.of(TYPE, agent).replay(Seq.NONE, 100));
+    }
+
+    @Test
+    void a_denied_call_reads_the_same_live_and_replayed() {
+      DirectBackend backend =
+          new Backend(events, new InMemoryPayloads(codecs), new InMemoryLocks(), codecs);
+
+      List<Narrated> heard =
+          StoryTurn.heardWithADeniedToolCall(TYPE, agent, backend, Clock.fixed(AT, ZoneOffset.UTC));
+
+      assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
+      assertTheDenialCarriesTheRequestedKey(heard);
+      assertTheDenialCarriesTheRequestedKey(stories.of(TYPE, agent).replay(Seq.NONE, 100));
+    }
 
     @Test
     void heard_live_on_the_direct_door_is_what_the_replay_returns() {
@@ -200,6 +318,8 @@ class EventAgentStoriesTest {
                   assertThat(((Narration.ActionsRequested) narrated.event()).usage())
                       .isEqualTo(Usage.of("a-model", 25, 6)));
       assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
+      assertCallEventsCarryTheRequestedKey(heard);
+      assertCallEventsCarryTheRequestedKey(stories.of(TYPE, agent).replay(Seq.NONE, 100));
     }
   }
 
@@ -334,5 +454,53 @@ class EventAgentStoriesTest {
     Backend(AgentEvents events, Payloads payloads, Locks locks, JacksonCodecFactory codecs) {
       this(events, payloads, locks, new InMemoryChapters(codecs), new InMemoryLeases());
     }
+  }
+
+  /** Every call event told, live or replayed, carries the key its request gave the call. */
+  private static void assertCallEventsCarryTheRequestedKey(List<Narrated> story) {
+    IdempotencyKey requested = StoryTurn.requestedKey(story);
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallApproved.class::isInstance)
+        .singleElement()
+        .extracting(event -> ((Narration.CallApproved) event).idempotencyKey())
+        .isEqualTo(requested);
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallApproved.class::isInstance)
+        .singleElement()
+        .extracting(event -> ((Narration.CallApproved) event).decidedBy())
+        .isEqualTo(Optional.of(StoryTurn.DECIDER));
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallFinished.class::isInstance)
+        .singleElement()
+        .extracting(event -> ((Narration.CallFinished) event).idempotencyKey())
+        .isEqualTo(requested);
+  }
+
+  /** The one denial told, live or replayed, carries the request's key and the one who refused. */
+  private static void assertTheDenialCarriesTheRequestedKey(List<Narrated> story) {
+    IdempotencyKey requested = StoryTurn.requestedKey(story);
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallDenied.class::isInstance)
+        .singleElement()
+        .satisfies(
+            event -> {
+              Narration.CallDenied denied = (Narration.CallDenied) event;
+              assertThat(denied.idempotencyKey()).isEqualTo(requested);
+              assertThat(denied.decidedBy()).isEqualTo(Optional.of(StoryTurn.DENIER));
+            });
+  }
+
+  /** The one failed call told, live or replayed, carries the key its request gave it. */
+  private static void assertTheFailedCallCarriesTheRequestedKey(List<Narrated> story) {
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallFailed.class::isInstance)
+        .singleElement()
+        .extracting(event -> ((Narration.CallFailed) event).idempotencyKey())
+        .isEqualTo(StoryTurn.requestedKey(story));
   }
 }

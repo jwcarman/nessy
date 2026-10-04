@@ -63,6 +63,7 @@ import org.jwcarman.nessy.engine.core.TurnTally;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
+import org.jwcarman.nessy.engine.harness.InputLabels;
 import org.jwcarman.nessy.engine.narration.AfterCommit;
 import org.jwcarman.nessy.engine.narration.AfterCommit.Step;
 import org.jwcarman.nessy.engine.narration.StoryEvents;
@@ -165,6 +166,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   private final AgentType agentType;
   private final InputRenderer<I> renderer;
+  private final InputLabels<I> labels;
 
   /**
    * What a deadline recovery enforces is measured from -- the same clock {@link EffectHandlers}'
@@ -248,6 +250,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       AgentType agentType,
       Clock clock,
       InputRenderer<I> renderer,
+      InputLabels<I> labels,
       OutputReader<O> reading,
       AfterCommit narrator,
       EffectHandlers handlers,
@@ -259,6 +262,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     this.agentType = agentType;
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
+    this.labels = Objects.requireNonNull(labels, "labels must not be null");
     this.reading = Objects.requireNonNull(reading, "reading must not be null");
     this.narrator = Objects.requireNonNull(narrator, "narrator must not be null");
     this.handlers = Objects.requireNonNull(handlers, "handlers must not be null");
@@ -316,9 +320,10 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     // happen inside the first locked step, after the phase check, so a declined caller writes no
     // payload at all (§3, §4d).
     List<Block.InputContent> rendered = renderer.render(input);
+    String label = labels.of(input);
     StepResult<O> first =
         narrator.locked(
-            backend.locks(), agentType, agent, step -> beginTurn(step, agent, rendered));
+            backend.locks(), agentType, agent, step -> beginTurn(step, agent, rendered, label));
     return switch (first) {
       case StepResult.Declined<O> declined -> declined.outcome();
       case StepResult.Advanced<O> advanced -> drive(agent, advanced.turn(), advanced.effects());
@@ -363,7 +368,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * -- because whatever it was waiting on had already passed its own deadline -- or reports that it
    * is genuinely busy.
    */
-  private StepResult<O> beginTurn(Step step, AgentId agent, List<Block.InputContent> rendered) {
+  private StepResult<O> beginTurn(
+      Step step, AgentId agent, List<Block.InputContent> rendered, String label) {
     Instant at = clock.instant().truncatedTo(ChronoUnit.MICROS);
     AgentState state = reconstitute(agent);
     if (state instanceof AgentState.Terminal) {
@@ -378,7 +384,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       case RecoveryOutcome.Recovered(AgentState.Idle idle) -> {
         Payloads content = backend.payloads().forAgent(agent);
         Decision decision =
-            idle.execute(new AgentCommand.StartTurn(content.put(rendered), clock.instant()));
+            idle.execute(
+                new AgentCommand.StartTurn(content.put(rendered), label, at, clock.instant()));
         backend.events().append(agentType, agent, decision.events(), idle.seq(), at);
         decision.events().forEach(event -> narrate(step, event, at));
         TurnId turn = ((AgentEvent.TurnStarted) decision.events().getFirst()).turn();
@@ -757,7 +764,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     if (isOverdue(started, terms)) {
       return undispatchable(effect, terms);
     }
-    Duration remaining = Duration.between(clock.instant(), started.plus(terms.timeout()));
+    Instant deadline = started.plus(terms.timeout());
+    Duration remaining = Duration.between(clock.instant(), deadline);
     return within(
         agent,
         effect,
@@ -765,7 +773,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         remaining,
         terms,
         () ->
-            switch (handlers.perform(agent, effect)) {
+            switch (handlers.perform(agent, effect, deadline)) {
               case Awaited.Ready<EffectOutcome>(EffectOutcome outcome) ->
                   EffectOutcomes.command(turn, request, outcome, NO_ATTEMPTS);
               case Awaited.Deferred<EffectOutcome> _ ->
@@ -794,11 +802,11 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * timeout is what actually releases the connection. So this method's deadline is what the caller
    * and the agent's phase can rely on; the transport's is what releases the resource.
    *
-   * <p>An expiry is delivered as {@link EffectTerms#failed}, never {@link
-   * EffectTerms#undispatchable()}: the work was attempted on this thread in this process, and
-   * nobody observed how it came out -- exactly what {@code failed} is documented for. {@code
-   * undispatchable()} is for work nobody performed at all, which is what {@link #perform} itself
-   * now decides before this method is ever called.
+   * <p>An expiry is delivered as {@link EffectTerms#undispatchable()}, the same outcome the queued
+   * door delivers when an effect's deadline passes: no answer arrived in time, and whether the work
+   * ran is not known. For a tool call that is {@code PAST_DEADLINE}, for an approval {@code
+   * NOT_AUTHORISED}, and for an inference an unknown failure. Work that <em>threw</em> is a
+   * different case, delivered as {@link EffectTerms#failed}.
    */
   private AgentCommand within(
       AgentId agent,
@@ -812,16 +820,18 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       return future.get(budget.toMillis(), TimeUnit.MILLISECONDS);
     } catch (TimeoutException expired) {
       future.cancel(true);
+      LOG.warn(
+          "[{}] agent {}: no answer within {}; the work was cancelled",
+          agentType.value(),
+          agent.value(),
+          terms.timeout());
       return EffectOutcomes.command(
-          turn,
-          EffectOutcomes.requestOf(effect),
-          terms.failed(new IllegalStateException("no answer within " + terms.timeout())),
-          NO_ATTEMPTS);
+          turn, EffectOutcomes.requestOf(effect), terms.undispatchable(), NO_ATTEMPTS);
     } catch (ExecutionException broken) {
       // A provider that throws rather than returning a Fault -- infer() hands provider.infer(...)
       // to a switch with no try around it -- surfaces here instead of escaping runTurn with the
-      // agent stuck Inferring. Delivered the same way an expiry is: attempted, and nobody found out
-      // how it went.
+      // agent stuck Inferring. Delivered as a failure of the attempt, not as an expiry: attempted,
+      // and nobody found out how it went.
       return EffectOutcomes.command(
           turn,
           EffectOutcomes.requestOf(effect),
@@ -892,7 +902,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
           new Outcome.Refused<>(refused.category(), stats);
       case AgentEvent.InferenceFailed failed when failed.turn().equals(turn) ->
           new Outcome.Failed<>(failed.failure().reason(), stats);
-      case AgentEvent.TurnFailed ended when ended.turn().equals(turn) ->
+      case AgentEvent.TurnStopped ended when ended.turn().equals(turn) ->
           new Outcome.Failed<>(ended.reason(), stats);
       default -> null;
     };

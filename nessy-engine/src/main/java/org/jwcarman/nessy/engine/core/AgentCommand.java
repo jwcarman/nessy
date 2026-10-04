@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -70,11 +71,16 @@ public sealed interface AgentCommand {
    * redundant with the harness not asking -- two harnesses can both read an idle state and both
    * ask, and this is what makes the loser harmless.
    *
+   * @param label a short name for what started the turn, worked out by the harness before the
+   *     command is made and copied onto the event as it is
+   * @param arrivedAt when the input reached the harness, which on the queued door can be well
+   *     before the turn opens
    * @param at when the turn is opening, stamped by whoever is asking rather than read inside the
    *     fold. The fold reads no clock: the same command has to decide the same way whenever it is
    *     applied, and an instant that arrives with it does, where one it fetched would not.
    */
-  record StartTurn(PayloadRef input, Instant at) implements AgentCommand {}
+  record StartTurn(PayloadRef input, String label, Instant arrivedAt, Instant at)
+      implements AgentCommand {}
 
   /** Accept nothing further. Work already in flight is still owed its outcome. */
   record Terminate() implements AgentCommand {}
@@ -141,7 +147,7 @@ public sealed interface AgentCommand {
     /** What this inference cost, as the vendor counted it. */
     Usage usage();
 
-    record Answered(PayloadRef answer, Usage usage) implements InferenceOutcome {
+    record Answered(PayloadRef answer, boolean truncated, Usage usage) implements InferenceOutcome {
       public Answered {
         Objects.requireNonNull(usage, USAGE_MUST_NOT_BE_NULL);
       }
@@ -170,9 +176,9 @@ public sealed interface AgentCommand {
 
   /** What an approver decided. */
   sealed interface ApprovalOutcome {
-    record Approved(Optional<String> reference) implements ApprovalOutcome {}
+    record Approved(Optional<String> decidedBy) implements ApprovalOutcome {}
 
-    record Denied(String reason, Optional<String> reference) implements ApprovalOutcome {}
+    record Denied(String reason, Optional<String> decidedBy) implements ApprovalOutcome {}
   }
 
   /** What a tool produced. */
@@ -184,6 +190,6 @@ public sealed interface AgentCommand {
     }
 
     /** Names what went wrong, never the values involved. See {@link AgentEvent.ToolFailed}. */
-    record Failed(String message) implements ToolOutcome {}
+    record Failed(CallFailure kind, String message) implements ToolOutcome {}
   }
 }
