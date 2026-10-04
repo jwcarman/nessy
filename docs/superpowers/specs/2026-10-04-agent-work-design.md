@@ -125,13 +125,13 @@ public record AgentStatus(
 | Activity | Means |
 |---|---|
 | `IDLE` | no turn in progress and nothing queued. An agent nobody has told anything is idle |
-| `WORKING` | a turn is in progress and some of its work is not parked, or input is queued |
-| `WAITING` | a turn is in progress and all of its outstanding work is parked: it waits on someone outside. `waiting` says on what |
+| `WORKING` | something can make progress on its own: a turn is in progress and some of its work is not parked, or no turn is in progress and input is queued |
+| `WAITING` | a turn is in progress and all of its outstanding work is parked. It is not idle, and it cannot work: nothing moves until someone outside answers. `waiting` says on what. Input queued behind it does not change this, since it cannot start until the turn ends |
 | `ENDED` | the agent was terminated |
 
 "Is this case finished?" is `IDLE`. "Is it waiting on a person?" is `WAITING`, and the keys say
 for what. A call that is running while another is parked is `WORKING`: the agent is not held up
-yet.
+yet. `queued` is reported beside the activity in every case.
 
 **Read, not replayed.** Three bounded reads in one read-only transaction:
 
@@ -294,7 +294,7 @@ and is not answered here.
 |---|---|---|
 | watchman | `watchman_pending_approval`, a stored reply token, its own "is it still waiting" checks | lists `inFlight(...waitingOnly())`, reads each question by key, answers with `replies.approve(key, ...)`. The table goes |
 | chat-web | `ApprovalDesk` holding questions in memory | the same |
-| nessy-ap | `pending_decision` with a `reply_token` column, a branch for "applied after the approval had expired", `TurnHistories` to ask whether an agent is busy | keeps `pending_decision` for its own workflow (role, buyer, ERP result), keyed by `IdempotencyKey`; drops the token column and the late-answer branch, and reads `Expired` instead; asks `status` |
+| nessy-ap | `pending_decision` with a `reply_token` column, a branch for "applied after the approval had expired", `TurnHistories` to ask whether an agent is busy | keeps `pending_decision` for its own workflow (role, buyer, ERP result), keyed by `IdempotencyKey`; drops the token column; keeps its branch for an answer that arrives after expiry, now told `Expired` where it was told `NotAwaiting` (its desk carries out the ERP command before it answers, so the work may already be done); asks `status` |
 
 The examples are changed as part of this work. They are the proof that an application needs no
 desk of its own.
@@ -323,7 +323,8 @@ Both get the high-risk review on Opus.
 ## 9. Testing
 
 - **Status**, for each activity, on both doors: nothing told; told and queued; in a model call;
-  one call running and one parked; everything parked; answered; terminated. A direct-door agent
+  one call running and one parked; everything parked; everything parked with input queued behind it
+  (`WAITING`, with the count); answered; terminated. A direct-door agent
   mid-`ask` is `WORKING`.
 - **In flight.** Pages are stable while rows are added and removed; filters by type, agent, tool,
   kind and waiting; a settled call is gone from the next read; no content in any item.
@@ -365,9 +366,11 @@ Each is a decision the conversation did not reach. Each is asked, not assumed.
    answer name the agent as well as the key.
 2. **`Replies` grows; no new interface.** Settling by key is two more methods on `Replies`, and
    the token forms report the same reasons.
-3. **`WORKING` covers queued input.** An agent with input waiting and no turn yet is about to
-   work. A separate "queued" activity would be a state an application has to handle and almost
-   never sees; `queued` is a count beside the activity instead.
+3. **No "queued" activity.** An agent with input waiting and no turn yet is about to work, and is
+   `WORKING`. A separate activity for it would be a state an application has to handle and almost
+   never sees; `queued` is a count beside the activity instead. Input queued behind a turn whose
+   work is all parked does not make the agent `WORKING`: James ruled on 2026-10-04 that such an
+   agent is `WAITING`, because it is not able to work.
 4. **A wrong-stage answer:** `approve` for a running call is `AlreadySettled`; `complete` for an
    unapproved call is `Unknown`.
 5. **The reason is read from the story,** not kept on a row. It costs a read on the path where
