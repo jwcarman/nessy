@@ -133,6 +133,11 @@ public class JdbcEffects implements Effects {
           + " failed_attempts = ?"
           + " WHERE effect_id = ? AND status = ? AND attempts_made = ?";
 
+  private static final String PARK =
+      "UPDATE nessy_agent_effect"
+          + " SET parked_at = ?, actionable_at = deadline, updated_at = ?"
+          + " WHERE effect_id = ? AND status = ? AND attempts_made = ?";
+
   private final JdbcClient jdbc;
   private final Codec<AgentEffect> effectCodec;
   private final Codec<EffectOutcome> outcomeCodec;
@@ -255,9 +260,9 @@ public class JdbcEffects implements Effects {
    * than reaching into the payload from SQL, because what a late answer names is a call and only
    * the decoded effect can say which row holds it.
    *
-   * <p>A parked row looks exactly like an attempt in progress, which is the point: nothing here
-   * records that anything was deferred, so there is nothing to tell the two apart and nothing that
-   * needs to.
+   * <p>A parked row is still a running row, which is the point: a reply that arrives while it waits
+   * finds it here like any other attempt. That it was parked changes only when it is due again, not
+   * whether it is found.
    */
   @Override
   public List<Attempt> runningFor(AgentType agentType, AgentId agentId) {
@@ -301,6 +306,19 @@ public class JdbcEffects implements Effects {
             .params(PENDING, utc(at), utc(at), encoded, effectId, RUNNING, attemptsMade)
             .update()
         == 1;
+  }
+
+  /**
+   * Marks a running attempt as parked and makes its row due at its deadline.
+   *
+   * <p>The claim set {@code actionable_at} to when that attempt stops being believed, and a claimer
+   * whose clock runs behind the writer's can put that earlier than the deadline. A parked row is
+   * waiting for an answer, not working, so it is due at the deadline and not before. Fenced like
+   * {@link #complete} and {@link #reschedule}.
+   */
+  @Override
+  public boolean park(UUID effectId, int attemptsMade, Instant at) {
+    return jdbc.sql(PARK).params(utc(at), utc(at), effectId, RUNNING, attemptsMade).update() == 1;
   }
 
   /**

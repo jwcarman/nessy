@@ -74,6 +74,7 @@ public final class InMemoryEffects implements Effects {
     private Status status = Status.PENDING;
     private int attemptsMade;
     private Instant actionableAt;
+    private Instant parkedAt;
 
     private Row(
         UUID effectId,
@@ -208,6 +209,22 @@ public final class InMemoryEffects implements Effects {
     row.status = Status.PENDING;
     row.actionableAt = at.isAfter(row.deadline) ? row.deadline : at;
     row.failedAttempts = failedAttempts == null ? List.of() : List.copyOf(failedAttempts);
+    return true;
+  }
+
+  /**
+   * The same fence: only a running row of that attempt is parked, and it comes due at its deadline,
+   * whatever moment the claim that took it had put it at.
+   */
+  @Override
+  public synchronized boolean park(UUID effectId, int attemptsMade, Instant at) {
+    Objects.requireNonNull(at, "at must not be null");
+    Row row = rows.get(effectId);
+    if (row == null || row.status != Status.RUNNING || row.attemptsMade != attemptsMade) {
+      return false;
+    }
+    row.parkedAt = at;
+    row.actionableAt = row.deadline;
     return true;
   }
 

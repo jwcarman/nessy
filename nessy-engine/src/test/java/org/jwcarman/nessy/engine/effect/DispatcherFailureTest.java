@@ -634,6 +634,7 @@ class DispatcherFailureTest {
     private final List<Integer> batchSizes = new CopyOnWriteArrayList<>();
     private final List<UUID> retired = new CopyOnWriteArrayList<>();
     private final List<UUID> rescheduled = new CopyOnWriteArrayList<>();
+    private final List<UUID> parked = new CopyOnWriteArrayList<>();
     private final List<Instant> rescheduledAt = new CopyOnWriteArrayList<>();
 
     private Effects() {
@@ -671,6 +672,12 @@ class DispatcherFailureTest {
     @Override
     public boolean complete(UUID effectId, int attemptsMade) {
       retired.add(effectId);
+      return true;
+    }
+
+    @Override
+    public boolean park(UUID effectId, int attemptsMade, Instant at) {
+      parked.add(effectId);
       return true;
     }
 

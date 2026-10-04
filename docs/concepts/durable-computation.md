@@ -31,6 +31,16 @@ depends on its status:
 |---|---|
 | `PENDING` | when this may be attempted: now, or after a retry's backoff |
 | `RUNNING` | the attempt's watchdog: when a worker that never reported back is treated as dead, or when a deferred call's term is up |
+| `RUNNING`, with `parked_at` set | the row's deadline, and not before |
+
+A running row can be marked parked: `Effects.park` sets `parked_at` and moves
+`actionable_at` to the row's deadline. A parked row is waiting for an answer
+from outside, not working, so nothing takes it again before its deadline, even
+when the clock of the process that claimed it ran behind the one that wrote
+the row. It stays `RUNNING`: a reply that arrives while it waits still finds
+it, and completing it deletes it like any other. `park` is fenced on the
+attempt's status and count, like `complete` and `reschedule`, and returns
+false when the row was settled or another attempt holds it.
 
 There is no reaper. A row whose `actionable_at` has passed is simply
 eligible again, picked up by the same query that would attempt a fresh

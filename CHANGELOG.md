@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+- **`nessy_agent_effect` gained a nullable `parked_at` column,** and `Effects` gains
+  `park(effectId, attemptsMade, at)`, so a custom implementation must add it. Recreate the
+  database.
 - **`nessy_payload` gained a `kind` column.** A payload holds message blocks or a JSON document,
   and `kind` says which: `BLOCKS` or `DOCUMENT`. `Payloads` gains two abstract methods, so a
   custom implementation must add them. Recreate the database.
