@@ -176,16 +176,19 @@ class StoryEventsTest {
 
   @Test
   void an_approved_call_is_told_as_approved() {
-    assertThat(StoryEvents.of(new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), KEY)))
-        .isEqualTo(new Narration.CallApproved(CALL, KEY, Optional.empty()));
+    assertThat(
+            StoryEvents.of(
+                new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.of("u_carol"), KEY)))
+        .isEqualTo(new Narration.CallApproved(CALL, KEY, Optional.of("u_carol")));
   }
 
   @Test
   void a_denied_call_is_told_with_the_reason() {
     assertThat(
             StoryEvents.of(
-                new AgentEvent.ToolDenied(SEQ, TURN, CALL, "not allowed", Optional.empty(), KEY)))
-        .isEqualTo(new Narration.CallDenied(CALL, KEY, "not allowed", Optional.empty()));
+                new AgentEvent.ToolDenied(
+                    SEQ, TURN, CALL, "not allowed", Optional.of("u_dave"), KEY)))
+        .isEqualTo(new Narration.CallDenied(CALL, KEY, "not allowed", Optional.of("u_dave")));
   }
 
   @Test

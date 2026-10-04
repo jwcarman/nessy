@@ -384,14 +384,15 @@ class ValueTypeCodecTest {
   void aDenialIsStoredWithTheKeyOfItsCall() {
     String stored =
         """
-        {"type":"tool-denied","seq":3,"turn":1,"callId":"c1","reason":"no","decidedBy":null,\
+        {"type":"tool-denied","seq":3,"turn":1,"callId":"c1","reason":"no","decidedBy":"u_dave",\
         "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
     AgentEvent.ToolDenied written =
         new AgentEvent.ToolDenied(
-            new Seq(3), new TurnId(1), new CallId("c1"), "no", Optional.empty(), KEY);
+            new Seq(3), new TurnId(1), new CallId("c1"), "no", Optional.of("u_dave"), KEY);
 
     assertThat(readStored(stored)).isEqualTo(written);
     assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
+        .contains("\"decidedBy\":\"u_dave\"")
         .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"");
   }
 
