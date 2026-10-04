@@ -22,39 +22,41 @@ import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.IdentityCodec;
 
 /**
- * The two layers behind the context's {@link CodecFactory}: the value codec, and the storage
- * transform applied after it.
+ * The context's {@link CodecFactory}: the value codec with the storage transform appended to every
+ * codec it creates, and the two layers still reachable apart.
  *
- * <p>A backend gets them apart so a payload's reference can be a hash of its content before the
- * transform. The {@link #composed} factory is the very one the context hands every other store;
- * when the context's {@code CodecFactory} bean is that instance, the backend takes the two layers,
- * and when an application has declared a {@code CodecFactory} of its own, it is not, and the
- * backend uses that bean as it always has.
- *
- * @param values the value codec, with no transform applied
- * @param transform the storage transform, or {@link IdentityCodec#INSTANCE}
- * @param composed {@code values} with {@code transform} appended to every codec it creates
+ * <p>A backend that is handed this factory takes {@link #values} and {@link #transform} instead, so
+ * a payload's reference can be a hash of its content before the transform. When an application
+ * declares a {@code CodecFactory} of its own, that bean is not one of these, and the backend uses
+ * it as given.
  */
-record StorageLayers(CodecFactory values, Codec<byte[]> transform, CodecFactory composed) {
+final class StorageLayers implements CodecFactory {
 
-  static StorageLayers of(CodecFactory values, Codec<byte[]> transform) {
-    return new StorageLayers(values, transform, compose(values, transform));
+  private final CodecFactory values;
+  private final Codec<byte[]> transform;
+
+  /**
+   * @param values the value codec, with no transform applied
+   * @param transform the storage transform, or {@link IdentityCodec#INSTANCE} for none
+   */
+  StorageLayers(CodecFactory values, Codec<byte[]> transform) {
+    this.values = values;
+    this.transform = transform;
   }
 
-  private static CodecFactory compose(CodecFactory values, Codec<byte[]> transform) {
+  CodecFactory values() {
+    return values;
+  }
+
+  Codec<byte[]> transform() {
+    return transform;
+  }
+
+  @Override
+  public <T> Codec<T> create(TypeRef<T> type) {
     if (transform == IdentityCodec.INSTANCE) {
-      return values;
+      return values.create(type);
     }
-    return new CodecFactory() {
-      @Override
-      public <T> Codec<T> create(TypeRef<T> type) {
-        return values.create(type).andThen(transform);
-      }
-    };
-  }
-
-  /** Whether {@code codecs} is the factory these layers were composed into. */
-  boolean composedInto(CodecFactory codecs) {
-    return composed == codecs;
+    return values.create(type).andThen(transform);
   }
 }

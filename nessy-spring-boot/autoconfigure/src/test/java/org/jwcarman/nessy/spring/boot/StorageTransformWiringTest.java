@@ -163,4 +163,23 @@ class StorageTransformWiringTest {
               assertThat(direct.get(ref)).isEqualTo(new Payloads.Resolved.Found(BLOCKS));
             });
   }
+
+  @Configuration(proxyBeanMethods = false)
+  static class AConfigurerThatMustNotBeAsked {
+
+    @Bean
+    StorageCodecConfigurer storage() {
+      return original -> {
+        throw new IllegalStateException("the configurer was asked");
+      };
+    }
+  }
+
+  @Test
+  void a_user_supplied_codec_factory_does_not_ask_the_configurer() {
+    runner
+        .withUserConfiguration(
+            AnApplicationsOwnCodecFactory.class, AConfigurerThatMustNotBeAsked.class)
+        .run(context -> assertThat(context).hasNotFailed());
+  }
 }

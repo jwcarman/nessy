@@ -173,7 +173,9 @@ public final class Repl {
       config.dataSource().ifPresent(Schemas::initialize);
       // Both taken from the context rather than built here: Boot configures the mapper, the starter
       // configures the codec factory, and a terminal that made its own would write bytes by
-      // different rules than the rest of the process it is running in.
+      // different rules than the rest of the process it is running in. Reads are right; under a
+      // transform that never writes the same bytes twice, the same content is kept once per put
+      // for the life of the process.
       ObjectMapper mapper = context.getBean(ObjectMapper.class);
       CodecFactory codecs = context.getBean(CodecFactory.class);
       ProviderId providerId = ProviderId.of(chosen);

@@ -51,9 +51,11 @@ public final class JdbcDirectBackend implements DirectBackend {
   private final Leases leases;
 
   /**
-   * For a caller that already coordinates its own transactions and builds its own codecs -- a
-   * Spring application hands in the context's {@link CodecFactory} bean, which is Jackson with
-   * whatever storage transform the application declared already applied.
+   * For a caller that already coordinates its own transactions and builds its own codecs: the
+   * factory is used as given for every store, payloads included, so a factory that already has a
+   * storage transform is hashed after it: a payload's reference then depends on what the transform
+   * writes. Use the constructor that takes the value codec and the transform apart when there is a
+   * transform.
    */
   public JdbcDirectBackend(
       DataSource dataSource, PlatformTransactionManager transactions, CodecFactory codecs) {

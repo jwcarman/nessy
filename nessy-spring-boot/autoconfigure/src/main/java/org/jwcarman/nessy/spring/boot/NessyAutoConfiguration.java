@@ -18,6 +18,7 @@ package org.jwcarman.nessy.spring.boot;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Base64;
 import java.util.List;
+import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.IdentityCodec;
@@ -105,26 +106,16 @@ public class NessyAutoConfiguration {
    * store that turns a value into bytes reaches for this one factory, so an application that
    * configures a transform gets it everywhere rather than on whichever substrate happened to ask.
    *
-   * <p>Nothing appended means the plain Jackson factory is handed back directly -- the noop
-   * default, with no noop object wrapping it. Reference equality against {@link
-   * IdentityCodec#INSTANCE} is what tells the two cases apart: a configurer that composes nothing
-   * hands the same instance straight back.
+   * <p>The bean keeps the two layers apart ({@link StorageLayers}), which is how a backend can hash
+   * a payload's content before the transform. Nothing appended means each codec it creates is the
+   * plain Jackson codec itself, with no noop codec wrapped around it; reference equality against
+   * {@link IdentityCodec#INSTANCE} is what tells the two cases apart: a configurer that composes
+   * nothing hands the same instance straight back.
    */
   @Bean
   @ConditionalOnMissingBean
-  public CodecFactory codecFactory(StorageLayers layers) {
-    return layers.composed();
-  }
-
-  /**
-   * The two layers {@link #codecFactory} is made of, kept apart for the backends: they hand a
-   * payload store the value codec and the transform separately, so a payload's reference is a hash
-   * of its content before the transform.
-   */
-  @Bean
-  @ConditionalOnMissingBean
-  StorageLayers storageLayers(ObjectMapper mapper, StorageCodecConfigurer configurer) {
-    return StorageLayers.of(
+  public CodecFactory codecFactory(ObjectMapper mapper, StorageCodecConfigurer configurer) {
+    return new StorageLayers(
         new JacksonCodecFactory(mapper), configurer.configure(IdentityCodec.INSTANCE));
   }
 

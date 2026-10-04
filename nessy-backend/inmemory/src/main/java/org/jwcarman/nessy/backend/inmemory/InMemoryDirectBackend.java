@@ -44,9 +44,13 @@ public final class InMemoryDirectBackend implements DirectBackend {
   private final Chapters chapters;
 
   /**
-   * The same factory every other backend is handed, so a transform an application configures
-   * applies here too. Storing bytes rather than the caller's own objects is what lets this stand in
-   * for a durable backend in a test without standing in for a kinder one.
+   * For a caller that builds its own codecs: the factory is used as given for every store, payloads
+   * included, so a factory that already has a storage transform is hashed after it: a payload's
+   * reference then depends on what the transform writes. Use the constructor that takes the value
+   * codec and the transform apart when there is a transform.
+   *
+   * <p>Storing bytes rather than the caller's own objects is what lets this stand in for a durable
+   * backend in a test without standing in for a kinder one.
    */
   public InMemoryDirectBackend(CodecFactory codecs) {
     this(codecs, codecs, IdentityCodec.INSTANCE);

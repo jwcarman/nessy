@@ -22,7 +22,6 @@ import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLeases;
 import org.jwcarman.nessy.backend.inmemory.InMemoryQueuedBackend;
 import org.jwcarman.nessy.backend.lease.Leases;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -47,9 +46,8 @@ public class InMemoryBackendAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  public DirectBackend directBackend(CodecFactory codecs, ObjectProvider<StorageLayers> layers) {
-    StorageLayers ours = layers.getIfAvailable();
-    if (ours != null && ours.composedInto(codecs)) {
+  public DirectBackend directBackend(CodecFactory codecs) {
+    if (codecs instanceof StorageLayers ours) {
       return new InMemoryDirectBackend(ours.values(), ours.transform());
     }
     return new InMemoryDirectBackend(codecs);
@@ -63,9 +61,8 @@ public class InMemoryBackendAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
-  public QueuedBackend queuedBackend(CodecFactory codecs, ObjectProvider<StorageLayers> layers) {
-    StorageLayers ours = layers.getIfAvailable();
-    if (ours != null && ours.composedInto(codecs)) {
+  public QueuedBackend queuedBackend(CodecFactory codecs) {
+    if (codecs instanceof StorageLayers ours) {
       return new InMemoryQueuedBackend(ours.values(), ours.transform());
     }
     return new InMemoryQueuedBackend(codecs);

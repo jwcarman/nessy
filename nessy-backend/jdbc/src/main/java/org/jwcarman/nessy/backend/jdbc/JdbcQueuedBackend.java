@@ -59,11 +59,15 @@ public final class JdbcQueuedBackend implements QueuedBackend {
   private final Effects effects;
 
   /**
-   * For a caller that already coordinates its own transactions and builds its own codecs -- a
-   * Spring application hands in the context's {@link CodecFactory} bean, which is Jackson with
-   * whatever storage transform the application declared already applied to every store this backend
-   * builds, including a backlog's -- the one table the schema flags as holding raw user text, so it
-   * is the one table that must never be the exception.
+   * For a caller that already coordinates its own transactions and builds its own codecs: the
+   * factory is used as given for every store, payloads included, so a factory that already has a
+   * storage transform is hashed after it: a payload's reference then depends on what the transform
+   * writes. Use the constructor that takes the value codec and the transform apart when there is a
+   * transform.
+   *
+   * <p>Every store this backend builds, a backlog's included, is built over the codecs it is given.
+   * A backlog is the one table the schema flags as holding raw user text, so it is the one table
+   * that must never be the exception to a transform.
    */
   public JdbcQueuedBackend(
       DataSource dataSource, PlatformTransactionManager transactions, CodecFactory codecs) {
