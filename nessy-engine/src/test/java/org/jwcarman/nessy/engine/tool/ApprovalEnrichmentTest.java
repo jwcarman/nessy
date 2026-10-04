@@ -36,10 +36,12 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -198,14 +200,16 @@ class ApprovalEnrichmentTest {
                   .isEqualTo("delete everything under /prod/data");
             });
     assertThat(ran).as("denied on what the enrichers found").isEmpty();
-    assertThat(engine.story(type, agentId).get(2))
+    List<AgentEvent> story = engine.story(type, agentId);
+    assertThat(story.get(2))
         .isEqualTo(
             new AgentEvent.ToolDenied(
                 new Seq(3),
                 new TurnId(1),
                 new CallId("call_1"),
                 "risk 90 is too high",
-                java.util.Optional.empty()));
+                java.util.Optional.empty(),
+                requestedKey(story)));
   }
 
   /** The same approver, the same enrichers, a different call -- and the other answer. */
@@ -376,5 +380,11 @@ class ApprovalEnrichmentTest {
 
     assertThat(seen.peek().facts().isEmpty()).isTrue();
     assertThat(seen.peek().fact(RISK)).isEmpty();
+  }
+
+  /** The key the story's one request gave its first call. */
+  private static IdempotencyKey requestedKey(List<AgentEvent> story) {
+    AgentEvent.ActionsRequested requested = (AgentEvent.ActionsRequested) story.get(1);
+    return ((ActionRequest.ToolCall) requested.actions().getFirst()).idempotencyKey();
   }
 }

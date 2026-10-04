@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no longer `TurnFailed`. `Answered`, `TurnRefused`, `TurnFailed` and `ActionsRequested` carry
   their turn and the model call's `Usage`; `TurnFailed` carries a `FailureKind`; each requested
   call carries its `IdempotencyKey`. A retried model call is told as `InferenceRetried`.
+- **Every call event carries the call's `IdempotencyKey`.** `ToolApproved`, `ToolDenied`,
+  `ToolSucceeded` and `ToolFailed` gain a trailing `idempotencyKey`, the key the call was
+  requested with; the stored shape changes, so recreate the database. The four narration records
+  `CallApproved`, `CallDenied`, `CallFinished` and `CallFailed` gain `idempotencyKey` after
+  `callId`.
 - **`NarrationListener.on` takes a `Narrated` envelope:** the agent, the event, and for a story
   event its position (`seq` and time written). `NarrationListenerConfig.Handler` is
   `on(Narrated narrated, E event)`, and `Narrator.narrate` takes a `Narrated`. A story event's

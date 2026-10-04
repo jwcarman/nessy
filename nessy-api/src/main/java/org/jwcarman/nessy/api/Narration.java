@@ -175,8 +175,8 @@ public sealed interface Narration {
    * The model asked for work before it would answer.
    *
    * <p>One entry per call, each carrying the call's id, because every later event about a call --
-   * {@link CallApproved}, {@link CallDenied}, {@link CallFinished}, {@link CallFailed} -- names
-   * only the id. This is where a watcher learns which tool that id is.
+   * {@link CallApproved}, {@link CallDenied}, {@link CallFinished}, {@link CallFailed} -- names the
+   * id and the call's key, never the tool. This is where a watcher learns which tool that id is.
    *
    * @param usage what the model call that asked for the work cost
    */
@@ -209,16 +209,17 @@ public sealed interface Narration {
    * something the story does not. A watcher that wants the name joins by id to the {@link
    * ActionsRequested.Call} it heard a moment ago.
    */
-  record CallApproved(CallId callId) implements Story {}
+  record CallApproved(CallId callId, IdempotencyKey idempotencyKey) implements Story {}
 
   /** A call was refused, and never ran. */
-  record CallDenied(CallId callId, String reason) implements Story {}
+  record CallDenied(CallId callId, IdempotencyKey idempotencyKey, String reason) implements Story {}
 
   /** A call ran and produced something. */
-  record CallFinished(CallId callId) implements Story {}
+  record CallFinished(CallId callId, IdempotencyKey idempotencyKey) implements Story {}
 
   /** A call did not produce something. The message is what the model will read. */
-  record CallFailed(CallId callId, String message) implements Story {}
+  record CallFailed(CallId callId, IdempotencyKey idempotencyKey, String message)
+      implements Story {}
 
   /** The agent will accept nothing further. */
   record Terminated() implements Story {}

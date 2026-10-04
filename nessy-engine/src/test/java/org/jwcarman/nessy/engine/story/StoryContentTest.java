@@ -93,13 +93,15 @@ class StoryContentTest {
   }
 
   private static AgentEvent.ToolSucceeded succeeded(
-      long seq, long turn, String callId, PayloadRef result) {
+      long seq, long turn, String callId, IdempotencyKey key, PayloadRef result) {
     return new AgentEvent.ToolSucceeded(
-        new Seq(seq), new TurnId(turn), CallId.of(callId), result, "done");
+        new Seq(seq), new TurnId(turn), CallId.of(callId), result, "done", key);
   }
 
-  private static AgentEvent.ToolFailed failed(long seq, long turn, String callId) {
-    return new AgentEvent.ToolFailed(new Seq(seq), new TurnId(turn), CallId.of(callId), "broke");
+  private static AgentEvent.ToolFailed failed(
+      long seq, long turn, String callId, IdempotencyKey key) {
+    return new AgentEvent.ToolFailed(
+        new Seq(seq), new TurnId(turn), CallId.of(callId), "broke", key);
   }
 
   private static AgentEvent.InferenceAnswered answered(long seq, long turn, PayloadRef answer) {
@@ -120,8 +122,8 @@ class StoryContentTest {
     write(
         started(input),
         requested(2, 1, request, call("a", keyOfSucceeded), call("b", keyOfFailed)),
-        succeeded(3, 1, "a", result),
-        failed(4, 1, "b"),
+        succeeded(3, 1, "a", keyOfSucceeded, result),
+        failed(4, 1, "b", keyOfFailed),
         answered(5, 1, answer));
   }
 
@@ -263,7 +265,7 @@ class StoryContentTest {
       write(
           started(keep(new Block.Text("again"))),
           requested(7, 6, keep(toolCall("a")), call("a", later)),
-          succeeded(8, 6, "a", keep(new Block.Text("43"))));
+          succeeded(8, 6, "a", later, keep(new Block.Text("43"))));
 
       assertThat(content.result(later)).contains(List.of(new Block.Text("43")));
     }
@@ -273,7 +275,7 @@ class StoryContentTest {
       write(
           started(keep(new Block.Text("go"))),
           requested(2, 1, keep(toolCall("a")), call("a", keyOfSucceeded)),
-          succeeded(3, 1, "a", new PayloadRef("vanished")));
+          succeeded(3, 1, "a", keyOfSucceeded, new PayloadRef("vanished")));
 
       assertThatThrownBy(() -> content.result(keyOfSucceeded))
           .isInstanceOf(IllegalStateException.class)
@@ -287,9 +289,9 @@ class StoryContentTest {
       write(
           started(keep(new Block.Text("go"))),
           requested(2, 1, keep(toolCall("c1")), call("c1", first)),
-          succeeded(3, 1, "c1", keep(new Block.Text("one"))),
+          succeeded(3, 1, "c1", first, keep(new Block.Text("one"))),
           requested(4, 1, keep(toolCall("c1")), call("c1", second)),
-          succeeded(5, 1, "c1", keep(new Block.Text("two"))));
+          succeeded(5, 1, "c1", second, keep(new Block.Text("two"))));
 
       assertThat(content.result(first)).contains(List.of(new Block.Text("one")));
       assertThat(content.result(second)).contains(List.of(new Block.Text("two")));
@@ -306,7 +308,7 @@ class StoryContentTest {
       write(
           started(keep(new Block.Text("again"))),
           requested(7, 6, keep(toolCall("a")), call("a", later)),
-          succeeded(8, 6, "a", keep(new Block.Text("43"))));
+          succeeded(8, 6, "a", later, keep(new Block.Text("43"))));
 
       List<CallResult> results = content.results(Seq.NONE, 10);
 
@@ -323,7 +325,7 @@ class StoryContentTest {
       write(
           started(keep(new Block.Text("again"))),
           requested(7, 6, keep(toolCall("a")), call("a", later)),
-          succeeded(8, 6, "a", keep(new Block.Text("43"))));
+          succeeded(8, 6, "a", later, keep(new Block.Text("43"))));
 
       List<CallResult> results = content.results(new Seq(3), 10);
 
@@ -352,7 +354,7 @@ class StoryContentTest {
         keys.add(key);
         write(
             requested(last + 1, 1, request, call("c1", key)),
-            succeeded(last + 2, 1, "c1", keep(new Block.Text("r" + i))));
+            succeeded(last + 2, 1, "c1", key, keep(new Block.Text("r" + i))));
       }
 
       List<CallResult> results = content.results(new Seq(5), 10);
@@ -375,10 +377,11 @@ class StoryContentTest {
     @Test
     void return_no_more_than_their_limit() {
       scriptedTurn();
+      IdempotencyKey later = IdempotencyKey.of(UUID.randomUUID());
       write(
           started(keep(new Block.Text("again"))),
-          requested(7, 6, keep(toolCall("a")), call("a", IdempotencyKey.of(UUID.randomUUID()))),
-          succeeded(8, 6, "a", keep(new Block.Text("43"))));
+          requested(7, 6, keep(toolCall("a")), call("a", later)),
+          succeeded(8, 6, "a", later, keep(new Block.Text("43"))));
 
       List<CallResult> results = content.results(Seq.NONE, 1);
 
@@ -392,9 +395,10 @@ class StoryContentTest {
       PayloadRef result = keep(new Block.Text("r"));
       long calls = 1_200;
       for (int i = 0; i < calls; i++) {
+        IdempotencyKey key = IdempotencyKey.of(UUID.randomUUID());
         write(
-            requested(last + 1, 1, request, call("c1", IdempotencyKey.of(UUID.randomUUID()))),
-            succeeded(last + 2, 1, "c1", result));
+            requested(last + 1, 1, request, call("c1", key)),
+            succeeded(last + 2, 1, "c1", key, result));
       }
 
       List<CallResult> results = content.results(new Seq(2_000), Integer.MAX_VALUE);
@@ -421,7 +425,7 @@ class StoryContentTest {
       write(
           started(keep(new Block.Text("go"))),
           requested(2, 1, keep(toolCall("a")), call("a", keyOfSucceeded)),
-          succeeded(3, 1, "a", new PayloadRef("vanished")));
+          succeeded(3, 1, "a", keyOfSucceeded, new PayloadRef("vanished")));
 
       assertThatThrownBy(() -> content.results(Seq.NONE, 10))
           .isInstanceOf(IllegalStateException.class)
@@ -493,9 +497,10 @@ class StoryContentTest {
       PayloadRef request = keep(toolCall("c1"));
       PayloadRef result = keep(new Block.Text("r"));
       for (int i = 0; i < calls; i++) {
+        IdempotencyKey key = IdempotencyKey.of(UUID.randomUUID());
         write(
-            requested(last + 1, 1, request, call("c1", IdempotencyKey.of(UUID.randomUUID()))),
-            succeeded(last + 2, 1, "c1", result));
+            requested(last + 1, 1, request, call("c1", key)),
+            succeeded(last + 2, 1, "c1", key, result));
       }
     }
 

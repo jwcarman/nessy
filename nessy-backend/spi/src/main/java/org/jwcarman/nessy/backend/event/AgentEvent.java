@@ -26,6 +26,7 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.inference.Failure;
 
 /**
@@ -197,13 +198,32 @@ public sealed interface AgentEvent {
     }
   }
 
-  /** A call was allowed to run. */
-  record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> reference)
-      implements AgentEvent {}
+  /** A call was allowed to run. {@code idempotencyKey} is the key the call was requested with. */
+  record ToolApproved(
+      Seq seq,
+      TurnId turn,
+      CallId callId,
+      Optional<String> reference,
+      IdempotencyKey idempotencyKey)
+      implements AgentEvent {
+    public ToolApproved {
+      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+    }
+  }
 
   /** A call was refused and never ran. */
-  record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> reference)
-      implements AgentEvent {}
+  record ToolDenied(
+      Seq seq,
+      TurnId turn,
+      CallId callId,
+      String reason,
+      Optional<String> reference,
+      IdempotencyKey idempotencyKey)
+      implements AgentEvent {
+    public ToolDenied {
+      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+    }
+  }
 
   /**
    * A call ran and produced something.
@@ -212,10 +232,17 @@ public sealed interface AgentEvent {
    * recorded: never null, empty when there was nothing to say, and at most 1,000 characters. It is
    * fixed when written and never worked out again.
    */
-  record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, String rendered)
+  record ToolSucceeded(
+      Seq seq,
+      TurnId turn,
+      CallId callId,
+      PayloadRef result,
+      String rendered,
+      IdempotencyKey idempotencyKey)
       implements AgentEvent {
     public ToolSucceeded {
       Objects.requireNonNull(rendered, "rendered must not be null");
+      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
     }
   }
 
@@ -231,7 +258,13 @@ public sealed interface AgentEvent {
    * and {@code ...} in the gap before it is stored, and what is stored is the text the model reads
    * back for the call.
    */
-  record ToolFailed(Seq seq, TurnId turn, CallId callId, String message) implements AgentEvent {}
+  record ToolFailed(
+      Seq seq, TurnId turn, CallId callId, String message, IdempotencyKey idempotencyKey)
+      implements AgentEvent {
+    public ToolFailed {
+      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+    }
+  }
 
   /**
    * The agent will accept nothing further.

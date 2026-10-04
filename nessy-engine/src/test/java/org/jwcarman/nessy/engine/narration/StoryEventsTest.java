@@ -160,10 +160,10 @@ class StoryEventsTest {
         new AgentEvent.InferenceAttempted(SEQ, TURN, new Failure.Transient("x"), usage),
         new AgentEvent.TurnStopped(SEQ, TURN, "x"),
         new AgentEvent.ActionsRequested(SEQ, TURN, PayloadRef.of("p"), List.of(), usage),
-        new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty()),
-        new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty()),
-        new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok"),
-        new AgentEvent.ToolFailed(SEQ, TURN, CALL, "boom"),
+        new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), KEY),
+        new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty(), KEY),
+        new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok", KEY),
+        new AgentEvent.ToolFailed(SEQ, TURN, CALL, "boom", KEY),
         new AgentEvent.Terminated(SEQ));
   }
 
@@ -176,29 +176,30 @@ class StoryEventsTest {
 
   @Test
   void an_approved_call_is_told_as_approved() {
-    assertThat(StoryEvents.of(new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty())))
-        .isEqualTo(new Narration.CallApproved(CALL));
+    assertThat(StoryEvents.of(new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), KEY)))
+        .isEqualTo(new Narration.CallApproved(CALL, KEY));
   }
 
   @Test
   void a_denied_call_is_told_with_the_reason() {
     assertThat(
             StoryEvents.of(
-                new AgentEvent.ToolDenied(SEQ, TURN, CALL, "not allowed", Optional.empty())))
-        .isEqualTo(new Narration.CallDenied(CALL, "not allowed"));
+                new AgentEvent.ToolDenied(SEQ, TURN, CALL, "not allowed", Optional.empty(), KEY)))
+        .isEqualTo(new Narration.CallDenied(CALL, KEY, "not allowed"));
   }
 
   @Test
   void a_call_that_succeeded_is_told_as_finished() {
     assertThat(
-            StoryEvents.of(new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok")))
-        .isEqualTo(new Narration.CallFinished(CALL));
+            StoryEvents.of(
+                new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok", KEY)))
+        .isEqualTo(new Narration.CallFinished(CALL, KEY));
   }
 
   @Test
   void a_call_that_failed_is_told_with_the_message() {
-    assertThat(StoryEvents.of(new AgentEvent.ToolFailed(SEQ, TURN, CALL, "boom")))
-        .isEqualTo(new Narration.CallFailed(CALL, "boom"));
+    assertThat(StoryEvents.of(new AgentEvent.ToolFailed(SEQ, TURN, CALL, "boom", KEY)))
+        .isEqualTo(new Narration.CallFailed(CALL, KEY, "boom"));
   }
 
   @Test

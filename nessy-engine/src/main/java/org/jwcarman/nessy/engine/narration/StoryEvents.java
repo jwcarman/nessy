@@ -53,12 +53,14 @@ public final class StoryEvents {
                               call.id(), call.idempotencyKey(), call.name(), call.action()))
                   .toList(),
               asked.usage());
-      case AgentEvent.ToolApproved approved -> new Narration.CallApproved(approved.callId());
+      case AgentEvent.ToolApproved approved ->
+          new Narration.CallApproved(approved.callId(), approved.idempotencyKey());
       case AgentEvent.ToolDenied denied ->
-          new Narration.CallDenied(denied.callId(), denied.reason());
-      case AgentEvent.ToolSucceeded done -> new Narration.CallFinished(done.callId());
+          new Narration.CallDenied(denied.callId(), denied.idempotencyKey(), denied.reason());
+      case AgentEvent.ToolSucceeded done ->
+          new Narration.CallFinished(done.callId(), done.idempotencyKey());
       case AgentEvent.ToolFailed failed ->
-          new Narration.CallFailed(failed.callId(), failed.message());
+          new Narration.CallFailed(failed.callId(), failed.idempotencyKey(), failed.message());
       // Said as a fact once the fold has committed. The deltas a provider streamed are what is
       // ARRIVING; this is what was said, and a watcher that saw neither -- a page opened
       // mid-turn -- would otherwise never learn the answer.

@@ -38,6 +38,7 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.StoryProjection;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.chapter.Chapters;
 import org.jwcarman.nessy.backend.event.AgentEvent;
@@ -200,6 +201,8 @@ class EventAgentStoriesTest {
                   assertThat(((Narration.ActionsRequested) narrated.event()).usage())
                       .isEqualTo(Usage.of("a-model", 25, 6)));
       assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
+      assertCallEventsCarryTheRequestedKey(heard);
+      assertCallEventsCarryTheRequestedKey(stories.of(TYPE, agent).replay(Seq.NONE, 100));
     }
   }
 
@@ -334,5 +337,30 @@ class EventAgentStoriesTest {
     Backend(AgentEvents events, Payloads payloads, Locks locks, JacksonCodecFactory codecs) {
       this(events, payloads, locks, new InMemoryChapters(codecs), new InMemoryLeases());
     }
+  }
+
+  /** Every call event told, live or replayed, carries the key its request gave the call. */
+  private static void assertCallEventsCarryTheRequestedKey(List<Narrated> story) {
+    IdempotencyKey requested =
+        story.stream()
+            .map(Narrated::event)
+            .filter(Narration.ActionsRequested.class::isInstance)
+            .map(Narration.ActionsRequested.class::cast)
+            .flatMap(asked -> asked.calls().stream())
+            .map(Narration.ActionsRequested.Call::idempotencyKey)
+            .findFirst()
+            .orElseThrow();
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallApproved.class::isInstance)
+        .singleElement()
+        .extracting(event -> ((Narration.CallApproved) event).idempotencyKey())
+        .isEqualTo(requested);
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallFinished.class::isInstance)
+        .singleElement()
+        .extracting(event -> ((Narration.CallFinished) event).idempotencyKey())
+        .isEqualTo(requested);
   }
 }

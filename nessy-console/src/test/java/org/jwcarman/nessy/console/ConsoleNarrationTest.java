@@ -55,9 +55,9 @@ class ConsoleNarrationTest {
                     new Narration.ActionsRequested.Call(
                         new CallId("c1"), KEY, new ToolName("depth"), "depth")),
                 Usage.unreported()),
-            new Narration.CallDenied(CALL, "not today"),
-            new Narration.CallFailed(CALL, "boom"),
-            new Narration.CallFinished(CALL),
+            new Narration.CallDenied(CALL, KEY, "not today"),
+            new Narration.CallFailed(CALL, KEY, "boom"),
+            new Narration.CallFinished(CALL, KEY),
             new Narration.ContentDelta("230"),
             new Narration.Terminated())) {
       narration.on(Envelopes.of(CHAT, AGENT, event));
@@ -119,7 +119,7 @@ class ConsoleNarrationTest {
             new Narration.InferenceRetried(
                 new TurnId(1), FailureKind.TRANSIENT, "busy", Usage.unreported()),
             new Narration.Commentary("hmm"),
-            new Narration.CallApproved(CALL),
+            new Narration.CallApproved(CALL, KEY),
             new Narration.ApprovalSought(CALL, "restart"),
             new Narration.ApprovalDeferred(CALL, "restart", java.time.Instant.EPOCH),
             new Narration.CallDeferred(CALL, new ToolName("t"), java.time.Instant.EPOCH),

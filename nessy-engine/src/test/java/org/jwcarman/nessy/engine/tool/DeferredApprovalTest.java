@@ -35,12 +35,14 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -187,7 +189,11 @@ class DeferredApprovalTest {
         .as("the grant carries the join to whoever actually said yes")
         .isEqualTo(
             new AgentEvent.ToolApproved(
-                new Seq(3), new TurnId(1), new CallId("call_1"), Optional.of("u_carol")));
+                new Seq(3),
+                new TurnId(1),
+                new CallId("call_1"),
+                Optional.of("u_carol"),
+                requestedKey(story)));
     assertThat(story.get(3)).isInstanceOf(AgentEvent.ToolSucceeded.class);
     assertThat(story.get(4)).isInstanceOf(AgentEvent.InferenceAnswered.class);
   }
@@ -288,5 +294,11 @@ class DeferredApprovalTest {
     assertThat(engine.replies().approve(token, ApprovalResult.approved()))
         .as("and the real answer still works afterwards")
         .isInstanceOf(ReplyOutcome.Settled.class);
+  }
+
+  /** The key the story's one request gave its first call. */
+  private static IdempotencyKey requestedKey(List<AgentEvent> story) {
+    AgentEvent.ActionsRequested requested = (AgentEvent.ActionsRequested) story.get(1);
+    return ((ActionRequest.ToolCall) requested.actions().getFirst()).idempotencyKey();
   }
 }

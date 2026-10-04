@@ -71,9 +71,9 @@ public class ApprovalsDesk implements Approver, NarrationListener {
     AgentType agentType = narrated.agentType();
     AgentId agentId = narrated.agentId();
     switch (narrated.event()) {
-      case Narration.CallApproved(var callId) ->
+      case Narration.CallApproved(var callId, _) ->
           repository.answered(agentType, agentId, callId, "approved", null, clock.instant());
-      case Narration.CallDenied(var callId, String reason) ->
+      case Narration.CallDenied(var callId, _, String reason) ->
           repository.answered(agentType, agentId, callId, "denied", reason, clock.instant());
       default -> {
         // Only decisions change the board.

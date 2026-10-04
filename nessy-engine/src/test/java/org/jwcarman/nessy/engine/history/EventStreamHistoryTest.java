@@ -211,8 +211,8 @@ class EventStreamHistoryTest {
                   new ActionRequest.ToolCall(refund, refundTool, "refund forty dollars", KEY),
                   new ActionRequest.ToolCall(audit, auditTool, "audit the buyer", KEY)),
               Usage.unreported()),
-          new AgentEvent.ToolSucceeded(new Seq(3), new TurnId(1), refund, result, "refunded"),
-          new AgentEvent.ToolFailed(new Seq(4), new TurnId(1), audit, "no such buyer"));
+          new AgentEvent.ToolSucceeded(new Seq(3), new TurnId(1), refund, result, "refunded", KEY),
+          new AgentEvent.ToolFailed(new Seq(4), new TurnId(1), audit, "no such buyer", KEY));
 
       List<Turn> found = history().turnsBetween(new TurnId(1), new TurnId(1));
 
@@ -240,14 +240,14 @@ class EventStreamHistoryTest {
               request,
               List.of(new ActionRequest.ToolCall(id, tool, "refund the first", KEY)),
               Usage.unreported()),
-          new AgentEvent.ToolSucceeded(new Seq(3), new TurnId(1), id, result, "first"),
+          new AgentEvent.ToolSucceeded(new Seq(3), new TurnId(1), id, result, "first", KEY),
           new AgentEvent.ActionsRequested(
               new Seq(4),
               new TurnId(1),
               request,
               List.of(new ActionRequest.ToolCall(id, tool, "refund the second", KEY)),
               Usage.unreported()),
-          new AgentEvent.ToolFailed(new Seq(5), new TurnId(1), id, "no such buyer"),
+          new AgentEvent.ToolFailed(new Seq(5), new TurnId(1), id, "no such buyer", KEY),
           new AgentEvent.InferenceAnswered(new Seq(6), new TurnId(1), answer, Usage.unreported()),
           new AgentEvent.TurnStarted(new Seq(7), new TurnId(7), laterInput, Instant.now()),
           new AgentEvent.ActionsRequested(

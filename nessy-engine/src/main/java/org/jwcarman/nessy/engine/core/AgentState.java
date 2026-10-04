@@ -375,12 +375,15 @@ public sealed interface AgentState {
       return switch (done.outcome()) {
         case AgentCommand.ApprovalOutcome.Approved ok ->
             Decision.of(
-                List.of(new AgentEvent.ToolApproved(at, turn, done.callId(), ok.reference())),
+                List.of(
+                    new AgentEvent.ToolApproved(
+                        at, turn, done.callId(), ok.reference(), call.idempotencyKey())),
                 List.of(performing(turn, requestSeq, call)));
         case AgentCommand.ApprovalOutcome.Denied no ->
             continuing(
                 at,
-                new AgentEvent.ToolDenied(at, turn, done.callId(), no.reason(), no.reference()),
+                new AgentEvent.ToolDenied(
+                    at, turn, done.callId(), no.reason(), no.reference(), call.idempotencyKey()),
                 policy,
                 now);
       };
@@ -404,9 +407,11 @@ public sealed interface AgentState {
       AgentEvent event =
           switch (done.outcome()) {
             case AgentCommand.ToolOutcome.Succeeded ok ->
-                new AgentEvent.ToolSucceeded(at, turn, done.callId(), ok.result(), ok.rendered());
+                new AgentEvent.ToolSucceeded(
+                    at, turn, done.callId(), ok.result(), ok.rendered(), call.idempotencyKey());
             case AgentCommand.ToolOutcome.Failed no ->
-                new AgentEvent.ToolFailed(at, turn, done.callId(), no.message());
+                new AgentEvent.ToolFailed(
+                    at, turn, done.callId(), no.message(), call.idempotencyKey());
           };
       return continuing(at, event, policy, now);
     }

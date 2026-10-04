@@ -928,7 +928,8 @@ class AgentStateTest {
       AgentState inferring =
           idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
       AgentEvent tooEarly =
-          new AgentEvent.ToolSucceeded(Seq.of(9), Seq.of(9).opensTurn(), CALL, RESULT, "found it");
+          new AgentEvent.ToolSucceeded(
+              Seq.of(9), Seq.of(9).opensTurn(), CALL, RESULT, "found it", KEY);
 
       assertThatThrownBy(() -> inferring.apply(tooEarly))
           .isInstanceOf(IllegalArgumentException.class)
@@ -1250,6 +1251,173 @@ class AgentStateTest {
       assertThatThrownBy(dead::seq)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("no position");
+    }
+  }
+
+  @Nested
+  @DisplayName("the call's key on the events it writes")
+  class Keys {
+
+    private static final CallId FIRST = new CallId("call-first");
+    private static final CallId SECOND = new CallId("call-second");
+    private static final IdempotencyKey FIRST_KEY =
+        IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-0000000000a1"));
+    private static final IdempotencyKey SECOND_KEY =
+        IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-0000000000a2"));
+
+    /** A turn whose one request asks for the two calls, each with its own key. */
+    private AgentState awaitingBoth() {
+      AgentState state = idle;
+      state =
+          state.applyAll(state.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+      return state.applyAll(
+          state
+              .execute(
+                  new AgentCommand.CompleteInference(
+                      TURN,
+                      new AgentCommand.InferenceOutcome.RequestedActions(
+                          MAIL,
+                          List.of(
+                              new ActionRequest.ToolCall(FIRST, TOOL, "tool", FIRST_KEY),
+                              new ActionRequest.ToolCall(SECOND, TOOL, "tool", SECOND_KEY)),
+                          Usage.unreported())))
+              .events());
+    }
+
+    private AgentState approved(AgentState state, CallId call) {
+      return state.applyAll(
+          state
+              .execute(
+                  new AgentCommand.CompleteApproval(
+                      TURN,
+                      REQUEST,
+                      call,
+                      new AgentCommand.ApprovalOutcome.Approved(Optional.empty())))
+              .events());
+    }
+
+    @Test
+    void an_approval_is_recorded_with_the_calls_key() {
+      Decision decision =
+          awaitingBoth()
+              .execute(
+                  new AgentCommand.CompleteApproval(
+                      TURN,
+                      REQUEST,
+                      SECOND,
+                      new AgentCommand.ApprovalOutcome.Approved(Optional.empty())));
+
+      assertThat(decision.events())
+          .singleElement()
+          .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.ToolApproved.class))
+          .extracting(AgentEvent.ToolApproved::idempotencyKey)
+          .isEqualTo(SECOND_KEY);
+    }
+
+    @Test
+    void a_denial_is_recorded_with_the_calls_key() {
+      Decision decision =
+          awaitingBoth()
+              .execute(
+                  new AgentCommand.CompleteApproval(
+                      TURN,
+                      REQUEST,
+                      FIRST,
+                      new AgentCommand.ApprovalOutcome.Denied("no", Optional.empty())));
+
+      assertThat(decision.events())
+          .first()
+          .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.ToolDenied.class))
+          .extracting(AgentEvent.ToolDenied::idempotencyKey)
+          .isEqualTo(FIRST_KEY);
+    }
+
+    @Test
+    void a_result_is_recorded_with_the_calls_key() {
+      AgentState running = approved(awaitingBoth(), SECOND);
+
+      Decision decision =
+          running.execute(
+              new AgentCommand.CompleteToolCall(
+                  TURN,
+                  REQUEST,
+                  SECOND,
+                  new AgentCommand.ToolOutcome.Succeeded(RESULT, "found it")));
+
+      assertThat(decision.events())
+          .first()
+          .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.ToolSucceeded.class))
+          .extracting(AgentEvent.ToolSucceeded::idempotencyKey)
+          .isEqualTo(SECOND_KEY);
+    }
+
+    @Test
+    void a_failure_is_recorded_with_the_calls_key() {
+      AgentState running = approved(awaitingBoth(), FIRST);
+
+      Decision decision =
+          running.execute(
+              new AgentCommand.CompleteToolCall(
+                  TURN, REQUEST, FIRST, new AgentCommand.ToolOutcome.Failed("broke")));
+
+      assertThat(decision.events())
+          .first()
+          .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.ToolFailed.class))
+          .extracting(AgentEvent.ToolFailed::idempotencyKey)
+          .isEqualTo(FIRST_KEY);
+    }
+
+    @Test
+    void a_call_that_failed_before_it_was_approved_is_recorded_with_its_key() {
+      Decision decision =
+          awaitingBoth()
+              .execute(
+                  new AgentCommand.CompleteToolCall(
+                      TURN, REQUEST, SECOND, new AgentCommand.ToolOutcome.Failed("expired")));
+
+      assertThat(decision.events())
+          .first()
+          .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.ToolFailed.class))
+          .extracting(AgentEvent.ToolFailed::idempotencyKey)
+          .isEqualTo(SECOND_KEY);
+    }
+
+    @Test
+    void two_calls_in_one_request_are_each_recorded_with_their_own_key() {
+      AgentState both = approved(approved(awaitingBoth(), FIRST), SECOND);
+
+      Decision first =
+          both.execute(
+              new AgentCommand.CompleteToolCall(
+                  TURN, REQUEST, FIRST, new AgentCommand.ToolOutcome.Failed("one")));
+      Decision second =
+          both.execute(
+              new AgentCommand.CompleteToolCall(
+                  TURN, REQUEST, SECOND, new AgentCommand.ToolOutcome.Succeeded(RESULT, "two")));
+
+      assertThat(first.events().getFirst())
+          .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.ToolFailed.class))
+          .extracting(AgentEvent.ToolFailed::idempotencyKey)
+          .isEqualTo(FIRST_KEY);
+      assertThat(second.events().getFirst())
+          .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.ToolSucceeded.class))
+          .extracting(AgentEvent.ToolSucceeded::idempotencyKey)
+          .isEqualTo(SECOND_KEY);
+    }
+
+    @Test
+    void a_late_answer_for_an_earlier_request_writes_nothing() {
+      AgentState awaiting = awaitingBoth();
+
+      Decision decision =
+          awaiting.execute(
+              new AgentCommand.CompleteApproval(
+                  TURN,
+                  Seq.of(1),
+                  FIRST,
+                  new AgentCommand.ApprovalOutcome.Approved(Optional.empty())));
+
+      assertThat(decision).isEqualTo(Decision.ignore());
     }
   }
 }

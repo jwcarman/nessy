@@ -65,10 +65,10 @@ class OdysseyNarratorTest {
                   new Narration.ActionsRequested.Call(
                       new CallId("c"), KEY, new ToolName("t"), "do t")),
               Usage.unreported()),
-          new Narration.CallApproved(new CallId("c")),
-          new Narration.CallDenied(new CallId("c"), "r"),
-          new Narration.CallFinished(new CallId("c")),
-          new Narration.CallFailed(new CallId("c"), "m"),
+          new Narration.CallApproved(new CallId("c"), KEY),
+          new Narration.CallDenied(new CallId("c"), KEY, "r"),
+          new Narration.CallFinished(new CallId("c"), KEY),
+          new Narration.CallFailed(new CallId("c"), KEY, "m"),
           new Narration.Terminated(),
           new Narration.ApprovalSought(new CallId("c"), "a"),
           new Narration.ApprovalDeferred(new CallId("c"), "a", Instant.EPOCH),
@@ -113,7 +113,7 @@ class OdysseyNarratorTest {
     assertThat(json.has("input"))
         .as("narration names what happened; it does not carry the words it happened to")
         .isFalse();
-    JsonNode denied = mapper.valueToTree(new Narration.CallDenied(new CallId("c1"), "no"));
+    JsonNode denied = mapper.valueToTree(new Narration.CallDenied(new CallId("c1"), KEY, "no"));
     assertThat(denied.path("callId").asString()).isEqualTo("c1");
   }
 

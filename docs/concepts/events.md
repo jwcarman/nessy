@@ -24,10 +24,10 @@ public sealed interface AgentEvent {
   record InferenceAttempted(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {}
   record TurnStopped(Seq seq, TurnId turn, String reason) implements AgentEvent {}
   record ActionsRequested(Seq seq, TurnId turn, PayloadRef request, List<ActionRequest> actions, Usage usage) implements AgentEvent {}
-  record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> reference) implements AgentEvent {}
-  record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> reference) implements AgentEvent {}
-  record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, String rendered) implements AgentEvent {}
-  record ToolFailed(Seq seq, TurnId turn, CallId callId, String message) implements AgentEvent {}
+  record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> reference, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> reference, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, String rendered, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolFailed(Seq seq, TurnId turn, CallId callId, String message, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record Terminated(Seq seq) implements AgentEvent {}
 }
 ```
@@ -51,6 +51,10 @@ may be empty. Each line is at most 1,000 characters (`ToolConfig.LINE_CAP`);
 the cap is applied when the binding is built, not by the records that carry the lines. A line is
 fixed when it is written and never worked out again. See
 [Tools](tools.md#what-a-call-leaves-behind).
+
+Each of the four call events (`ToolApproved`, `ToolDenied`, `ToolSucceeded`, `ToolFailed`)
+carries the `IdempotencyKey` its call was requested with, copied from the call the agent is
+waiting for. A reader joins a call's events by that key.
 
 Events hold other text too. A failed call's message is at most 1,000
 characters; a longer one has its middle dropped and `...` in the gap, and the

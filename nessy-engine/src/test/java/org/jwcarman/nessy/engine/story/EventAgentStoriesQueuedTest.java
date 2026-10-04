@@ -33,6 +33,7 @@ import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -105,6 +106,8 @@ class EventAgentStoriesQueuedTest {
           .containsSubsequence(
               "TurnStarted", "ActionsRequested", "CallApproved", "CallFinished", "Answered");
       assertThat(replayed(engine, type, agent)).isEqualTo(story);
+      assertCallEventsCarryTheRequestedKey(story);
+      assertCallEventsCarryTheRequestedKey(replayed(engine, type, agent));
     }
   }
 
@@ -146,5 +149,30 @@ class EventAgentStoriesQueuedTest {
           .containsSubsequence("TurnStarted", "InferenceRetried", "ActionsRequested", "Answered");
       assertThat(replayed(engine, type, agent)).isEqualTo(story);
     }
+  }
+
+  /** Every call event told, live or replayed, carries the key its request gave the call. */
+  private static void assertCallEventsCarryTheRequestedKey(List<Narrated> story) {
+    IdempotencyKey requested =
+        story.stream()
+            .map(Narrated::event)
+            .filter(Narration.ActionsRequested.class::isInstance)
+            .map(Narration.ActionsRequested.class::cast)
+            .flatMap(asked -> asked.calls().stream())
+            .map(Narration.ActionsRequested.Call::idempotencyKey)
+            .findFirst()
+            .orElseThrow();
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallApproved.class::isInstance)
+        .singleElement()
+        .extracting(event -> ((Narration.CallApproved) event).idempotencyKey())
+        .isEqualTo(requested);
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallFinished.class::isInstance)
+        .singleElement()
+        .extracting(event -> ((Narration.CallFinished) event).idempotencyKey())
+        .isEqualTo(requested);
   }
 }

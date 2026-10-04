@@ -349,7 +349,7 @@ class ReplLoopTest {
                         new Narration.ActionsRequested.Call(
                             new CallId("c1"), KEY, new ToolName("days_until"), "days_until")),
                     Usage.unreported()),
-                new Narration.CallFinished(new CallId("c1")),
+                new Narration.CallFinished(new CallId("c1"), KEY),
                 ended()));
     FakeConsole console = new FakeConsole("when is christmas", "quit");
     run(harness, console, config());
