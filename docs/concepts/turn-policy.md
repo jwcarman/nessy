@@ -43,7 +43,7 @@ returns a real answer, slightly early; one that was stuck stops spending.
 The caller still receives `Outcome.Answered`.
 
 **`FailTurn(reason)`** ends the turn outright. It produces an
-`AgentEvent.TurnFailed`, a watcher hears `Narration.TurnFailed`, and a
+`AgentEvent.TurnFailed`, a watcher hears `Narration.TurnStopped`, and a
 caller receives `Outcome.Failed` — one vocabulary from the decision to the
 answer. `reason` cannot be blank; a turn ended on purpose must say why.
 

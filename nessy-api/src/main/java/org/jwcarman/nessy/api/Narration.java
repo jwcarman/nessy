@@ -36,11 +36,12 @@ import org.jwcarman.nessy.api.tool.ToolName;
  * -- and plenty of entries are not worth announcing. Trying to derive one from the other would
  * force both to be shaped by the other's needs.
  *
- * <p><b>Two tiers, and the difference is who says them.</b> Facts come from the engine, after a
- * fold has committed, so by the time one is announced it is true. Deltas come from a provider while
- * a call is still in flight, and are true only of that attempt -- a call that fails and is retried
- * narrates twice, and a watcher should treat deltas as what is being said rather than as what was
- * said.
+ * <p><b>Two groups, and the difference is whether anything is stored.</b> A {@link Story} event is
+ * the agent's record told as it commits, so by the time one is heard it is true, and it is told the
+ * same way however many times the story is replayed. A {@link Live} signal is heard only as it
+ * happens: a delta from a provider is true only of the attempt that is streaming -- a call that
+ * fails and is retried narrates twice -- and a watcher should treat it as what is being said rather
+ * than as what was said.
  *
  * <p><b>No timestamp and no agent.</b> A sink stamps events if it cares, rather than every delta
  * paying for a clock read; and identity is passed beside the event by {@link Narrator}, which is
@@ -96,7 +97,7 @@ public sealed interface Narration {
     TurnId turn();
   }
 
-  // ---- facts: from the engine, after the fold commits ---------------------------------
+  // ---- story: stored, and heard once the fold that wrote it has committed ---------------
 
   /**
    * A turn opened. An input was taken up and a turn opened on it.
@@ -106,9 +107,6 @@ public sealed interface Narration {
    * told what it already had.
    */
   record TurnStarted(TurnId turn) implements Story {}
-
-  /** The model is being asked. Narrated before the call, so a watcher can show waiting. */
-  record Thinking() implements Live {}
 
   /**
    * The turn produced an answer, and ended on it.
@@ -175,22 +173,6 @@ public sealed interface Narration {
       implements Story {}
 
   /**
-   * What the model said while asking for work -- "Let me look that up."
-   *
-   * <p>Its own event rather than a field on {@link ActionsRequested}, because it is a different
-   * kind of thing to show: prose a person reads, beside a list of machinery. A console prints one
-   * as a sentence and the other as a list, and a watcher that wants only one can take it.
-   *
-   * <p>Announced only when the model actually said something -- plenty of calls arrive with no
-   * prose at all, and an empty line is worse than none.
-   *
-   * <p>Needs no block kind of its own to be told apart from an answer: the same {@code Text} inside
-   * a request for actions is commentary and inside an answer is the answer. The grammar says which
-   * by where it sits.
-   */
-  record Commentary(String text) implements Live {}
-
-  /**
    * The model asked for work before it would answer.
    *
    * <p>One entry per call, each carrying the call's id, because every later event about a call --
@@ -242,7 +224,28 @@ public sealed interface Narration {
   /** The agent will accept nothing further. */
   record Terminated() implements Story {}
 
-  // ---- waiting: the reason this channel exists ----------------------------------------
+  // ---- live: heard only as it happens ---------------------------------------------------
+
+  /** The model is being asked. Narrated before the call, so a watcher can show waiting. */
+  record Thinking() implements Live {}
+
+  /**
+   * What the model said while asking for work -- "Let me look that up."
+   *
+   * <p>Its own event rather than a field on {@link ActionsRequested}, because it is a different
+   * kind of thing to show: prose a person reads, beside a list of machinery. A console prints one
+   * as a sentence and the other as a list, and a watcher that wants only one can take it.
+   *
+   * <p>Announced only when the model actually said something -- plenty of calls arrive with no
+   * prose at all, and an empty line is worse than none.
+   *
+   * <p>Needs no block kind of its own to be told apart from an answer: the same {@code Text} inside
+   * a request for actions is commentary and inside an answer is the answer. The grammar says which
+   * by where it sits.
+   */
+  record Commentary(String text) implements Live {}
+
+  // -- waiting: the reason this channel exists
 
   /**
    * Somebody is being asked whether a call may run.
@@ -265,7 +268,7 @@ public sealed interface Narration {
   /** A tool started work and will report back. Same reasoning as {@link ApprovalDeferred}. */
   record CallDeferred(CallId callId, ToolName toolName, Instant until) implements Live {}
 
-  // ---- deltas: from a provider, while a call is in flight -------------------------------
+  // -- deltas: from a provider, while a call is in flight
 
   /**
    * A fragment of reasoning, as it arrives.
