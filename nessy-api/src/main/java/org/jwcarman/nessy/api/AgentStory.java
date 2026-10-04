@@ -44,4 +44,11 @@ public interface AgentStory {
    * @throws NullPointerException if {@code projection} is null
    */
   <T> T project(StoryProjection<T> projection);
+
+  /**
+   * What this story refers to: the content behind its events.
+   *
+   * <p>The story itself carries none; see {@link StoryContent}.
+   */
+  StoryContent content();
 }

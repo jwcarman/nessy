@@ -61,7 +61,8 @@ class EventAgentStoriesTest {
 
   private final JacksonCodecFactory codecs = new JacksonCodecFactory(JsonMapper.builder().build());
   private final AgentEvents events = new InMemoryAgentEvents(codecs);
-  private final EventAgentStories stories = new EventAgentStories(events);
+  private final EventAgentStories stories =
+      new EventAgentStories(events, new InMemoryPayloads(codecs));
   private final AgentId agent = AgentId.random();
 
   private static AgentEvent started(long seq) {

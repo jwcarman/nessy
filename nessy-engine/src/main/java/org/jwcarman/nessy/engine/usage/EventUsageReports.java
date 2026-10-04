@@ -58,7 +58,7 @@ public final class EventUsageReports implements UsageReports {
   @Override
   public UsageReport of(AgentType type, AgentId id) {
     for (AgentEvents store : stores) {
-      Tally tally = new EventAgentStories(store).of(type, id).project(new Spent());
+      Tally tally = EventAgentStories.project(store, type, id, new Spent());
       if (tally.any) {
         return new UsageReport(type, id, new ArrayList<>(tally.byModel.values()), tally.unreported);
       }

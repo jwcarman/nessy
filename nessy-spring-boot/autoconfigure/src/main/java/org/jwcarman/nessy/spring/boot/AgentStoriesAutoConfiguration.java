@@ -20,7 +20,6 @@ import java.util.List;
 import org.jwcarman.nessy.api.AgentStories;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.QueuedBackend;
-import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.AnyNestedCondition;
@@ -59,9 +58,13 @@ public class AgentStoriesAutoConfiguration {
   @ConditionalOnMissingBean
   public AgentStories nessyAgentStories(
       ObjectProvider<QueuedBackend> queued, ObjectProvider<DirectBackend> direct) {
-    List<AgentEvents> stores = new ArrayList<>();
-    queued.ifAvailable(backend -> stores.add(backend.events()));
-    direct.ifAvailable(backend -> stores.add(backend.events()));
+    List<FirstStoreHoldingStories.Store> stores = new ArrayList<>();
+    queued.ifAvailable(
+        backend ->
+            stores.add(new FirstStoreHoldingStories.Store(backend.events(), backend.payloads())));
+    direct.ifAvailable(
+        backend ->
+            stores.add(new FirstStoreHoldingStories.Store(backend.events(), backend.payloads())));
     return new FirstStoreHoldingStories(stores);
   }
 }

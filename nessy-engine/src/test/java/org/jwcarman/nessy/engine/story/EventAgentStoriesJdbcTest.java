@@ -62,15 +62,15 @@ class EventAgentStoriesJdbcTest {
     Instant nanos = Instant.parse("2026-01-01T00:00:00.123456789Z");
     AgentId agent = AgentId.random();
 
+    JdbcDirectBackend backend =
+        new JdbcDirectBackend(database, new JdbcTransactionManager(database), codecs);
+
     List<Narrated> heard =
-        StoryTurn.heard(
-            TYPE,
-            agent,
-            new JdbcDirectBackend(database, new JdbcTransactionManager(database), codecs),
-            Clock.fixed(nanos, ZoneOffset.UTC));
+        StoryTurn.heard(TYPE, agent, backend, Clock.fixed(nanos, ZoneOffset.UTC));
 
     List<Narrated> replayed =
-        new EventAgentStories(new JdbcAgentEvents(JdbcClient.create(database), codecs))
+        new EventAgentStories(
+                new JdbcAgentEvents(JdbcClient.create(database), codecs), backend.payloads())
             .of(TYPE, agent)
             .replay(Seq.NONE, 100);
     assertThat(heard).isNotEmpty();

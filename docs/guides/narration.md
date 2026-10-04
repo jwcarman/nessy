@@ -190,6 +190,41 @@ written at the same instant. Only story events are replayed; a live signal
 was never stored. In a Boot application an `AgentStories` bean is configured
 over the stored events of both doors.
 
+## Reading content
+
+The story never carries content: no message text and no tool results. An event
+holds identifiers, status and a reference. What the references point to is read
+separately, with `AgentStory.content()`, and every read is addressed by a turn,
+a key or a position.
+
+```java
+StoryContent content = stories.of(new AgentType("reporter"), agentId).content();
+
+TurnContent turn = content.turn(turnId);
+List<Block.InputContent> input = turn.input();
+Optional<List<Block.AnswerContent>> answer = turn.answer();
+
+Optional<List<Block.ToolResultContent>> result = content.result(idempotencyKey);
+
+List<CallResult> results = content.results(Seq.NONE, 100);
+```
+
+- `turn(turnId)` returns the turn's input, what the model wrote each time it
+  asked for tool calls (a `RequestContent` with the position of its event), and
+  its answer. The answer is empty when the turn did not end in one. A turn that
+  is not in the agent's story is refused.
+- `result(key)` returns what the call with that `IdempotencyKey` returned. It is
+  empty when the key is not in this agent's story, or when the call did not
+  succeed.
+- `results(after, limit)` returns up to `limit` successful results after a
+  position, oldest first. Each `CallResult` has the position of the event that
+  recorded the success and the call's key. The limit rule is the one `replay`
+  uses.
+
+Content can be removed on a different schedule from the story. A reference
+with nothing behind it is a fault, and is thrown as an `IllegalStateException`
+that names the reference.
+
 ## Projections
 
 To fold the whole story into one value, give `AgentStory.project` a
