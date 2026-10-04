@@ -20,6 +20,7 @@ import javax.sql.DataSource;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.TypeRef;
+import org.jwcarman.nessy.api.IdentityCodec;
 import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.agent.Agents;
 import org.jwcarman.nessy.backend.backlog.Backlogs;
@@ -66,12 +67,46 @@ public final class JdbcQueuedBackend implements QueuedBackend {
    */
   public JdbcQueuedBackend(
       DataSource dataSource, PlatformTransactionManager transactions, CodecFactory codecs) {
+    this(dataSource, transactions, codecs, codecs, IdentityCodec.INSTANCE);
+  }
+
+  /**
+   * For a caller that has a storage transform and holds it apart from the value codec. Every store
+   * is built over the two composed, as the other constructor's factory would be, except the
+   * payloads, which get them apart so a payload's reference is a hash of its content before the
+   * transform. With the other constructor, a factory that already includes a transform is hashed
+   * after it.
+   *
+   * @param values the value codec, with no transform applied
+   * @param transform the storage transform
+   */
+  public JdbcQueuedBackend(
+      DataSource dataSource,
+      PlatformTransactionManager transactions,
+      CodecFactory values,
+      Codec<byte[]> transform) {
+    this(
+        dataSource,
+        transactions,
+        StorageCodecs.compose(
+            Objects.requireNonNull(values, "values must not be null"),
+            Objects.requireNonNull(transform, "transform must not be null")),
+        values,
+        transform);
+  }
+
+  private JdbcQueuedBackend(
+      DataSource dataSource,
+      PlatformTransactionManager transactions,
+      CodecFactory codecs,
+      CodecFactory values,
+      Codec<byte[]> transform) {
     Objects.requireNonNull(dataSource, "dataSource must not be null");
     Objects.requireNonNull(transactions, "transactions must not be null");
     this.codecs = Objects.requireNonNull(codecs, "codecs must not be null");
     this.jdbc = JdbcClient.create(dataSource);
     this.events = new JdbcAgentEvents(jdbc, codecs);
-    this.payloads = new JdbcPayloads(jdbc, codecs);
+    this.payloads = new JdbcPayloads(jdbc, values, transform);
     this.locks = new JdbcRowLocks(dataSource, transactions);
     this.chapters = new JdbcChapters(jdbc, codecs);
     this.leases = new JdbcLeases(jdbc);

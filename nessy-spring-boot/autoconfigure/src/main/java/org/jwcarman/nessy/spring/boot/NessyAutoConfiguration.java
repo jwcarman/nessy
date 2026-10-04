@@ -18,9 +18,7 @@ package org.jwcarman.nessy.spring.boot;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Base64;
 import java.util.List;
-import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
-import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.IdentityCodec;
 import org.jwcarman.nessy.api.QueuedHarness;
@@ -114,18 +112,20 @@ public class NessyAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
-  public CodecFactory codecFactory(ObjectMapper mapper, StorageCodecConfigurer configurer) {
-    CodecFactory jackson = new JacksonCodecFactory(mapper);
-    Codec<byte[]> transform = configurer.configure(IdentityCodec.INSTANCE);
-    if (transform == IdentityCodec.INSTANCE) {
-      return jackson;
-    }
-    return new CodecFactory() {
-      @Override
-      public <T> Codec<T> create(TypeRef<T> type) {
-        return jackson.create(type).andThen(transform);
-      }
-    };
+  public CodecFactory codecFactory(StorageLayers layers) {
+    return layers.composed();
+  }
+
+  /**
+   * The two layers {@link #codecFactory} is made of, kept apart for the backends: they hand a
+   * payload store the value codec and the transform separately, so a payload's reference is a hash
+   * of its content before the transform.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  StorageLayers storageLayers(ObjectMapper mapper, StorageCodecConfigurer configurer) {
+    return StorageLayers.of(
+        new JacksonCodecFactory(mapper), configurer.configure(IdentityCodec.INSTANCE));
   }
 
   /**

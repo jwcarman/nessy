@@ -26,6 +26,7 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.PayloadRef;
@@ -294,5 +295,112 @@ class JdbcPayloadsTest {
     assertThatThrownBy(() -> payloads.getDocument(ref))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage("payload " + ref + " has an unknown kind: MYSTERY");
+  }
+
+  private static final Codec<byte[]> REVERSED =
+      new Codec<>() {
+        @Override
+        public byte[] encode(byte[] bytes) {
+          return reverse(bytes);
+        }
+
+        @Override
+        public byte[] decode(byte[] bytes) {
+          return reverse(bytes);
+        }
+      };
+
+  private static byte[] reverse(byte[] bytes) {
+    byte[] out = new byte[bytes.length];
+    for (int i = 0; i < bytes.length; i++) {
+      out[i] = bytes[bytes.length - 1 - i];
+    }
+    return out;
+  }
+
+  private Payloads under(Codec<byte[]> transform, AgentId agent) {
+    return new JdbcPayloads(jdbc, new JacksonCodecFactory(MAPPER), transform).forAgent(agent);
+  }
+
+  private long rows(AgentId agent) {
+    return jdbc.sql("SELECT count(*) FROM nessy_payload WHERE agent_id = ?")
+        .params(agent.value())
+        .query(Long.class)
+        .single();
+  }
+
+  @Test
+  @DisplayName(
+      "the same content is one reference and one row under a transform that never writes the same bytes twice")
+  void
+      the_same_content_is_one_reference_and_one_row_under_a_transform_that_never_writes_the_same_bytes_twice() {
+    AgentId agent = AgentId.random();
+    Payloads nonced = under(new NeverTheSameBytes(), agent);
+    List<Block> blocks = List.of(new Block.Text("say it again"));
+
+    PayloadRef first = nonced.put(blocks);
+    PayloadRef again = nonced.put(blocks);
+
+    assertThat(again).isEqualTo(first);
+    assertThat(rows(agent)).isEqualTo(1L);
+    assertThat(nonced.get(first)).isEqualTo(new Payloads.Resolved.Found(blocks));
+  }
+
+  @Test
+  @DisplayName(
+      "the same document is one reference and one row under a transform that never writes the same bytes twice")
+  void
+      the_same_document_is_one_reference_and_one_row_under_a_transform_that_never_writes_the_same_bytes_twice() {
+    AgentId agent = AgentId.random();
+    Payloads nonced = under(new NeverTheSameBytes(), agent);
+
+    PayloadRef first = nonced.putDocument(document());
+    PayloadRef again = nonced.putDocument(document());
+
+    assertThat(again).isEqualTo(first);
+    assertThat(rows(agent)).isEqualTo(1L);
+    assertThat(nonced.getDocument(first)).isEqualTo(document());
+  }
+
+  @Test
+  @DisplayName("a reference does not depend on the storage transform")
+  void a_reference_does_not_depend_on_the_storage_transform() {
+    Payloads transformed = under(REVERSED, AgentId.random());
+    Payloads plain = forSomeAgent();
+    List<Block> blocks = List.of(new Block.Text("same words"));
+
+    assertThat(transformed.put(blocks)).isEqualTo(plain.put(blocks));
+    assertThat(transformed.putDocument(document())).isEqualTo(plain.putDocument(document()));
+  }
+
+  @Test
+  @DisplayName("the stored bytes are still transformed and read back")
+  void the_stored_bytes_are_still_transformed_and_read_back() {
+    AgentId agent = AgentId.random();
+    Payloads transformed = under(REVERSED, agent);
+    List<Block> blocks = List.of(new Block.Text("same words"));
+
+    PayloadRef blocksRef = transformed.put(blocks);
+    PayloadRef documentRef = transformed.putDocument(document());
+
+    List<byte[]> stored =
+        jdbc.sql("SELECT content FROM nessy_payload WHERE agent_id = ?")
+            .params(agent.value())
+            .query(byte[].class)
+            .list();
+    assertThat(stored).hasSize(2);
+    assertThat(stored).allSatisfy(row -> assertThat(row[0]).isNotEqualTo((byte) '{'));
+    assertThat(transformed.get(blocksRef)).isEqualTo(new Payloads.Resolved.Found(blocks));
+    assertThat(transformed.getDocument(documentRef)).isEqualTo(document());
+  }
+
+  @Test
+  @DisplayName("blocks and a document never share a reference")
+  void blocks_and_a_document_never_share_a_reference() {
+    Payloads payloads = forSomeAgent();
+    PayloadRef emptyBlocks = payloads.put(List.of());
+
+    assertThat(emptyBlocks).isNotEqualTo(payloads.putDocument(MAPPER.createObjectNode()));
+    assertThat(emptyBlocks).isNotEqualTo(payloads.putDocument(MAPPER.createArrayNode()));
   }
 }

@@ -24,6 +24,7 @@ import org.jwcarman.nessy.backend.jdbc.JdbcLeases;
 import org.jwcarman.nessy.backend.jdbc.JdbcQueuedBackend;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.backend.lease.Leases;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -106,7 +107,12 @@ public class JdbcBackendAutoConfiguration {
       DataSource dataSource,
       PlatformTransactionManager transactions,
       CodecFactory codecs,
+      ObjectProvider<StorageLayers> layers,
       NessySchema schema) {
+    StorageLayers ours = layers.getIfAvailable();
+    if (ours != null && ours.composedInto(codecs)) {
+      return new JdbcDirectBackend(dataSource, transactions, ours.values(), ours.transform());
+    }
     return new JdbcDirectBackend(dataSource, transactions, codecs);
   }
 
@@ -116,7 +122,12 @@ public class JdbcBackendAutoConfiguration {
       DataSource dataSource,
       PlatformTransactionManager transactions,
       CodecFactory codecs,
+      ObjectProvider<StorageLayers> layers,
       NessySchema schema) {
+    StorageLayers ours = layers.getIfAvailable();
+    if (ours != null && ours.composedInto(codecs)) {
+      return new JdbcQueuedBackend(dataSource, transactions, ours.values(), ours.transform());
+    }
     return new JdbcQueuedBackend(dataSource, transactions, codecs);
   }
 

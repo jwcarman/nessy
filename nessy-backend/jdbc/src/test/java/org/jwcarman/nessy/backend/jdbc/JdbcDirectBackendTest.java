@@ -32,7 +32,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
-import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
@@ -117,15 +116,7 @@ class JdbcDirectBackendTest {
           }
         };
     DirectBackend backend =
-        new JdbcDirectBackend(
-            dataSource,
-            new JdbcTransactionManager(dataSource),
-            new CodecFactory() {
-              @Override
-              public <T> Codec<T> create(TypeRef<T> type) {
-                return jackson.create(type).andThen(flip);
-              }
-            });
+        new JdbcDirectBackend(dataSource, new JdbcTransactionManager(dataSource), jackson, flip);
     AgentId agent = AgentId.random();
     Chapter chapter = new Chapter(TYPE, agent, new TurnId(1), new TurnId(2));
     backend.chapters().append(TYPE, agent, Optional.empty(), List.of(chapter));

@@ -93,6 +93,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **An approval's `decidedBy` and a denial's `reason` are cut, never refused.** Nessy keeps what
   the application gives and cuts one longer than 1,000 characters to that length.
+- **A payload's reference is a hash of its content before the storage transform.** The reference
+  was a hash of the bytes the storage transform wrote, so a transform that encrypts with a fresh
+  nonce gave the same content a new reference and a new row on every put. It is now a SHA-256 of
+  the content as the value codec writes it, so the same content is one reference and one row
+  whatever the transform does. `JdbcPayloads`, `InMemoryPayloads` and the four backends gain a
+  constructor that takes the value `CodecFactory` and the `Codec<byte[]>` transform apart; with the
+  older constructor, a factory that already includes a transform is hashed after it. Recreate the
+  database.
 
 ### Fixed
 

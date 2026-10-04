@@ -15,7 +15,10 @@
  */
 package org.jwcarman.nessy.backend.inmemory;
 
+import java.util.Objects;
+import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.nessy.api.IdentityCodec;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.chapter.Chapters;
 import org.jwcarman.nessy.backend.event.AgentEvents;
@@ -46,8 +49,31 @@ public final class InMemoryDirectBackend implements DirectBackend {
    * for a durable backend in a test without standing in for a kinder one.
    */
   public InMemoryDirectBackend(CodecFactory codecs) {
+    this(codecs, codecs, IdentityCodec.INSTANCE);
+  }
+
+  /**
+   * For a caller that has a storage transform and holds it apart from the value codec. Every store
+   * is built over the two composed, as the other constructor's factory would be, except the
+   * payloads, which get them apart so a payload's reference is a hash of its content before the
+   * transform. With the other constructor, a factory that already includes a transform is hashed
+   * after it.
+   *
+   * @param values the value codec, with no transform applied
+   * @param transform the storage transform
+   */
+  public InMemoryDirectBackend(CodecFactory values, Codec<byte[]> transform) {
+    this(
+        StorageCodecs.compose(
+            Objects.requireNonNull(values, "values must not be null"),
+            Objects.requireNonNull(transform, "transform must not be null")),
+        values,
+        transform);
+  }
+
+  private InMemoryDirectBackend(CodecFactory codecs, CodecFactory values, Codec<byte[]> transform) {
     this.events = new InMemoryAgentEvents(codecs);
-    this.payloads = new InMemoryPayloads(codecs);
+    this.payloads = new InMemoryPayloads(values, transform);
     this.chapters = new InMemoryChapters(codecs);
   }
 
