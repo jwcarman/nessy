@@ -312,20 +312,52 @@ class EventAgentStoriesQueuedTest {
           .extracting(event -> ((Narration.CallFailed) event).kind())
           .isEqualTo(CallFailure.PAST_DEADLINE);
       assertThat(replayed(engine, type, agent)).isEqualTo(story);
+      assertTheFailedCallCarriesTheRequestedKey(story);
+      assertTheFailedCallCarriesTheRequestedKey(replayed(engine, type, agent));
+    }
+  }
+
+  @Test
+  void a_denied_call_reads_the_same_live_and_replayed() {
+    AgentType type = new AgentType("queued-denied");
+    AgentId agent = AgentId.random();
+    NarrationListener recording = heard::add;
+
+    try (EngineFixture engine = new EngineFixture(callsThenAnswers(), recording)) {
+      engine
+          .harnesses()
+          .<String>create(
+              type,
+              String.class,
+              config ->
+                  config
+                      .systemPrompt("You are a test assistant.")
+                      .tool(
+                          StoryTurn.lookup(),
+                          t ->
+                              t.action(query -> "looked up " + query.q())
+                                  .approver(StoryTurn.deniesAsDave()))
+                      .inference(in -> in.model("a-model"))
+                      .effects(e -> e.pollInterval(Duration.ofMillis(50))))
+          .tell(agent, "how deep is Loch Ness?");
+      await()
+          .atMost(Duration.ofSeconds(30))
+          .until(
+              () ->
+                  heard.stream()
+                      .anyMatch(narrated -> narrated.event() instanceof Narration.Answered));
+
+      List<Narrated> story =
+          heard.stream().filter(narrated -> narrated.event() instanceof Narration.Story).toList();
+      assertThat(replayed(engine, type, agent)).isEqualTo(story);
+      assertTheDenialCarriesTheRequestedKey(story);
+      assertTheDenialCarriesTheRequestedKey(replayed(engine, type, agent));
     }
   }
 
   /** Every call event told, live or replayed, carries the key its request gave the call. */
   private static void assertCallEventsCarryTheRequestedKey(List<Narrated> story) {
-    IdempotencyKey requested =
-        story.stream()
-            .map(Narrated::event)
-            .filter(Narration.ActionsRequested.class::isInstance)
-            .map(Narration.ActionsRequested.class::cast)
-            .flatMap(asked -> asked.calls().stream())
-            .map(Narration.ActionsRequested.Call::idempotencyKey)
-            .findFirst()
-            .orElseThrow();
+    IdempotencyKey requested = StoryTurn.requestedKey(story);
     assertThat(story)
         .map(Narrated::event)
         .filteredOn(Narration.CallApproved.class::isInstance)
@@ -344,5 +376,30 @@ class EventAgentStoriesQueuedTest {
         .singleElement()
         .extracting(event -> ((Narration.CallFinished) event).idempotencyKey())
         .isEqualTo(requested);
+  }
+
+  /** The one denial told, live or replayed, carries the request's key and the one who refused. */
+  private static void assertTheDenialCarriesTheRequestedKey(List<Narrated> story) {
+    IdempotencyKey requested = StoryTurn.requestedKey(story);
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallDenied.class::isInstance)
+        .singleElement()
+        .satisfies(
+            event -> {
+              Narration.CallDenied denied = (Narration.CallDenied) event;
+              assertThat(denied.idempotencyKey()).isEqualTo(requested);
+              assertThat(denied.decidedBy()).isEqualTo(Optional.of(StoryTurn.DENIER));
+            });
+  }
+
+  /** The one failed call told, live or replayed, carries the key its request gave it. */
+  private static void assertTheFailedCallCarriesTheRequestedKey(List<Narrated> story) {
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallFailed.class::isInstance)
+        .singleElement()
+        .extracting(event -> ((Narration.CallFailed) event).idempotencyKey())
+        .isEqualTo(StoryTurn.requestedKey(story));
   }
 }

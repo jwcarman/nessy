@@ -281,6 +281,21 @@ class EventAgentStoriesTest {
           .extracting(event -> ((Narration.CallFailed) event).kind())
           .isEqualTo(CallFailure.PAST_DEADLINE);
       assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
+      assertTheFailedCallCarriesTheRequestedKey(heard);
+      assertTheFailedCallCarriesTheRequestedKey(stories.of(TYPE, agent).replay(Seq.NONE, 100));
+    }
+
+    @Test
+    void a_denied_call_reads_the_same_live_and_replayed() {
+      DirectBackend backend =
+          new Backend(events, new InMemoryPayloads(codecs), new InMemoryLocks(), codecs);
+
+      List<Narrated> heard =
+          StoryTurn.heardWithADeniedToolCall(TYPE, agent, backend, Clock.fixed(AT, ZoneOffset.UTC));
+
+      assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
+      assertTheDenialCarriesTheRequestedKey(heard);
+      assertTheDenialCarriesTheRequestedKey(stories.of(TYPE, agent).replay(Seq.NONE, 100));
     }
 
     @Test
@@ -443,15 +458,7 @@ class EventAgentStoriesTest {
 
   /** Every call event told, live or replayed, carries the key its request gave the call. */
   private static void assertCallEventsCarryTheRequestedKey(List<Narrated> story) {
-    IdempotencyKey requested =
-        story.stream()
-            .map(Narrated::event)
-            .filter(Narration.ActionsRequested.class::isInstance)
-            .map(Narration.ActionsRequested.class::cast)
-            .flatMap(asked -> asked.calls().stream())
-            .map(Narration.ActionsRequested.Call::idempotencyKey)
-            .findFirst()
-            .orElseThrow();
+    IdempotencyKey requested = StoryTurn.requestedKey(story);
     assertThat(story)
         .map(Narrated::event)
         .filteredOn(Narration.CallApproved.class::isInstance)
@@ -470,5 +477,30 @@ class EventAgentStoriesTest {
         .singleElement()
         .extracting(event -> ((Narration.CallFinished) event).idempotencyKey())
         .isEqualTo(requested);
+  }
+
+  /** The one denial told, live or replayed, carries the request's key and the one who refused. */
+  private static void assertTheDenialCarriesTheRequestedKey(List<Narrated> story) {
+    IdempotencyKey requested = StoryTurn.requestedKey(story);
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallDenied.class::isInstance)
+        .singleElement()
+        .satisfies(
+            event -> {
+              Narration.CallDenied denied = (Narration.CallDenied) event;
+              assertThat(denied.idempotencyKey()).isEqualTo(requested);
+              assertThat(denied.decidedBy()).isEqualTo(Optional.of(StoryTurn.DENIER));
+            });
+  }
+
+  /** The one failed call told, live or replayed, carries the key its request gave it. */
+  private static void assertTheFailedCallCarriesTheRequestedKey(List<Narrated> story) {
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallFailed.class::isInstance)
+        .singleElement()
+        .extracting(event -> ((Narration.CallFailed) event).idempotencyKey())
+        .isEqualTo(StoryTurn.requestedKey(story));
   }
 }

@@ -36,6 +36,7 @@ import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -126,6 +127,33 @@ final class StoryTurn {
   }
 
   /**
+   * Runs one turn in which the model asks for a {@code lookup} call that {@link #DENIER} refuses,
+   * and then answers, and returns the story events the listener heard, oldest first.
+   */
+  static List<Narrated> heardWithADeniedToolCall(
+      AgentType type, AgentId agent, DirectBackend backend, Clock clock) {
+    InferenceProvider provider =
+        (request, narrator) ->
+            request.context().turns().stream().anyMatch(turn -> !turn.exchanges().isEmpty())
+                ? new InferenceResult.Answer(
+                    List.of(new Block.Text("I was not allowed to look.")),
+                    Usage.of("a-model", 40, 9))
+                : new InferenceResult.Actions(
+                    List.of(new Block.ToolCall("call_1", "lookup", "{\"q\":\"loch ness\"}")),
+                    Usage.of("a-model", 25, 6));
+    return heard(
+        type,
+        agent,
+        backend,
+        clock,
+        provider,
+        config ->
+            config.tool(
+                lookup(),
+                t -> t.action(query -> "looked up " + query.q()).approver(deniesAsDave())));
+  }
+
+  /**
    * Runs one turn in which the model asks for a {@code lookup} that never returns, so the call is
    * cut off at its deadline, and returns the story events the listener heard, oldest first.
    */
@@ -190,6 +218,26 @@ final class StoryTurn {
   /** An approver that allows every call and says who allowed it. */
   static Approver decidesAsCarol() {
     return _ -> Awaited.ready(ApprovalResult.approvedBy(DECIDER));
+  }
+
+  /** The name every denial in these stories is decided under. */
+  static final String DENIER = "u_dave";
+
+  /** An approver that refuses every call and says who refused it. */
+  static Approver deniesAsDave() {
+    return _ -> Awaited.ready(ApprovalResult.deniedBy("not today", DENIER));
+  }
+
+  /** The key the first request in the story gave its call. */
+  static IdempotencyKey requestedKey(List<Narrated> story) {
+    return story.stream()
+        .map(Narrated::event)
+        .filter(Narration.ActionsRequested.class::isInstance)
+        .map(Narration.ActionsRequested.class::cast)
+        .flatMap(asked -> asked.calls().stream())
+        .map(Narration.ActionsRequested.Call::idempotencyKey)
+        .findFirst()
+        .orElseThrow();
   }
 
   record Query(String q) {}
