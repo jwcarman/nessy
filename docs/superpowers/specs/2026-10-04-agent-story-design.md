@@ -212,6 +212,7 @@ All of this changes stored shapes. Existing databases are recreated; there is no
 | `ToolApproved` | `reference` is replaced by `Optional<String> decidedBy`; gains `Optional<PayloadRef> question` |
 | `ToolDenied` | the same two changes |
 | `ToolFailed` | gains `CallFailure kind` and `Optional<PayloadRef> question` |
+| `ToolApproved`, `ToolDenied`, `ToolSucceeded`, `ToolFailed` | each gains the call's `IdempotencyKey` |
 | `ApprovalDeferred(seq, turn, callId, until, question)` | new |
 | `ToolDeferred(seq, turn, callId, until)` | new |
 | `TurnFailed` (policy) | renamed `TurnStopped` (§13.1) |
@@ -528,8 +529,9 @@ the same `requestSeq`, the same `TurnStats`. Every other state rejects them as i
 event that cannot happen there. Neither command consults the `TurnPolicy`, and neither event
 changes a tally.
 
-**2. Fields carried through.** The fold copies each from the command it was given to the event
-it writes, and decides nothing on any of them:
+**2. Fields carried through.** The fold copies each to the event it writes, from the command it
+was given or, for the call's key, from the state it already holds, and decides nothing on any of
+them:
 
 | Event | Fields | From |
 |---|---|---|
@@ -538,6 +540,7 @@ it writes, and decides nothing on any of them:
 | `InferenceAnswered` | `truncated` | `CompleteInference` |
 | `ToolApproved`, `ToolDenied` | `decidedBy`, `question` | `CompleteApproval` |
 | `ToolFailed` | `kind`, `question` | `CompleteToolCall` |
+| `ToolApproved`, `ToolDenied`, `ToolSucceeded`, `ToolFailed` | `idempotencyKey` | the call's own `OutstandingAction`, which has held it since the request was recorded |
 
 **3. A rename:** the stored policy event `TurnFailed` becomes `TurnStopped` (§13.1).
 
