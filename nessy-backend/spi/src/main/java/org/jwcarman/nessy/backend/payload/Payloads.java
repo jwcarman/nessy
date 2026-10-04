@@ -22,9 +22,11 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.block.Block;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Where content lives, for the content the core never sees.
@@ -66,8 +68,31 @@ public interface Payloads {
    */
   PayloadRef put(List<? extends Block> content);
 
-  /** What is behind a reference. */
+  /**
+   * Keeps a JSON document, and says where it went.
+   *
+   * <p>The same rules as {@link #put}: <b>idempotent</b>, so the same document is the same
+   * reference and one copy. The document is stored as given, its fields in the order it has them,
+   * so two callers that build the same document the same way get the same reference.
+   *
+   * @param document a JSON object, array or value; never null and never JSON {@code null}
+   */
+  PayloadRef putDocument(JsonNode document);
+
+  /**
+   * What is behind a reference, when it is blocks.
+   *
+   * @throws IllegalStateException when the reference holds a document rather than blocks
+   */
   Resolved get(PayloadRef ref);
+
+  /**
+   * The document behind a reference.
+   *
+   * @throws IllegalStateException when nothing is behind the reference, which is always a fault,
+   *     and when what is there is blocks rather than a document
+   */
+  JsonNode getDocument(PayloadRef ref);
 
   /**
    * Everything behind these references, in one go.
@@ -79,6 +104,7 @@ public interface Payloads {
    *
    * @return what was found, keyed by reference. A reference with nothing behind it maps to {@link
    *     Resolved.Missing}, so the result always has an entry for every reference asked about.
+   * @throws IllegalStateException when any reference holds a document rather than blocks
    */
   default Map<PayloadRef, Resolved> get(Collection<PayloadRef> refs) {
     Map<PayloadRef, Resolved> found = new LinkedHashMap<>();
@@ -97,6 +123,19 @@ public interface Payloads {
    * nothing would fail until a reader compared the two.
    */
   record Content(List<Block> blocks) {}
+
+  /**
+   * The shape a document takes once written down: encoded on its own, apart from {@link Content},
+   * and kept with a kind that says it is a document, so neither is ever decoded as the other.
+   *
+   * @param document the JSON document, never null
+   */
+  record Document(JsonNode document) {
+
+    public Document {
+      Objects.requireNonNull(document, "document must not be null");
+    }
+  }
 
   /**
    * The reference for content that encodes to {@code bytes}.

@@ -63,6 +63,8 @@ class ContentColumnsTest {
           "nessy_agent_effect.status",
           // What kind of lease it is, a short name from the code.
           "nessy_lease.kind",
+          // What a payload is, BLOCKS or DOCUMENT; a fixed word from the code.
+          "nessy_payload.kind",
           // Observability plumbing: a W3C trace parent, never what anybody said.
           "nessy_agent_effect.trace_context");
 

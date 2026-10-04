@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+- **`nessy_payload` gained a `kind` column.** A payload holds message blocks or a JSON document,
+  and `kind` says which: `BLOCKS` or `DOCUMENT`. `Payloads` gains two abstract methods, so a
+  custom implementation must add them. Recreate the database.
 - **Narration is reshaped into the agent's story.** `Narration` has two groups, `Story` (stored
   events) and `Live` (signals heard only as they happen). `TurnEnded` is removed: a turn ends in
   exactly one `TurnEnding` event (`Answered`, `TurnRefused`, `TurnFailed` or `TurnStopped`), and
@@ -63,6 +66,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Payloads.putDocument(JsonNode)` and `Payloads.getDocument(PayloadRef)` keep and read JSON
+  documents beside message blocks. The same document is one reference and one row. Reading a
+  payload as the wrong kind, or a document that is not there, throws an `IllegalStateException`
+  that names the reference.
 - `EmptyInput`, a public empty record for a tool that takes no arguments and for a harness
   whose turns are started by a bare nudge; such a harness sets `inputRenderer` to say what the
   nudge means.

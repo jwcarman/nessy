@@ -53,6 +53,7 @@ import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceResult;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
@@ -140,7 +141,17 @@ class InferenceHandlerTest {
           }
 
           @Override
+          public PayloadRef putDocument(JsonNode document) {
+            throw new UnsupportedOperationException();
+          }
+
+          @Override
           public Resolved get(PayloadRef ref) {
+            throw new UnsupportedOperationException();
+          }
+
+          @Override
+          public JsonNode getDocument(PayloadRef ref) {
             throw new UnsupportedOperationException();
           }
         };

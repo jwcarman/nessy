@@ -120,6 +120,9 @@ CREATE TABLE IF NOT EXISTS nessy_payload
     -- likely than the row being corrupted underneath us, and strong enough that a crafted one
     -- is not a thing anybody can do.
     hash       BYTEA       NOT NULL,
+    -- What the content is, so a reader knows how to decode it before it decodes anything:
+    -- 'BLOCKS' for message blocks, 'DOCUMENT' for a JSON document. A fixed word from the code.
+    kind       VARCHAR(16) NOT NULL,
     content    BYTEA       NOT NULL,
     written_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     PRIMARY KEY (agent_id, hash)

@@ -161,7 +161,7 @@ Everything else is stored as itself, and is what a query needs to find, order
 or fence a row, or is plumbing:
 
 - identifiers: the agent type and agent id on every table, a note's id, a
-  lease's kind and holder, and the hash that addresses a payload;
+  lease's kind and holder, the hash that addresses a payload, and its `kind`;
 - sequence numbers, turn bounds and positions: `seq`, `from_turn`,
   `through_turn`, `after_turn`, and the ordinal of a backlog item, a note and a
   plan task;
@@ -212,6 +212,15 @@ same row rather than a second copy — and it makes removing an agent's
 payload rows one statement over one table, with nothing shared out from
 under another agent. Identical content in two agents is stored twice, and
 that is the trade.
+
+A payload holds either message blocks or a JSON document, and its `kind`
+column says which, `BLOCKS` or `DOCUMENT`. `Payloads.put` keeps blocks and `Payloads.putDocument`
+keeps a document; a document's reference is the hash of its encoded bytes, so
+the same document is one reference and one row, with its fields in the order
+it has them. Asking for blocks where a document is kept, or the reverse,
+throws an `IllegalStateException` that names the reference and what is there,
+and `getDocument` on a reference with nothing behind it throws too. Documents
+go through the storage codec like every other stored byte.
 
 That statement is not everything the agent said. For each tool call the
 events also hold two lines of text, what the call would do and what it

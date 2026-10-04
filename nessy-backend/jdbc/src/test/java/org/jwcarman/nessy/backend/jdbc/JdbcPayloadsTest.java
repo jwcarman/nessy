@@ -19,6 +19,7 @@ package org.jwcarman.nessy.backend.jdbc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import javax.sql.DataSource;
@@ -33,6 +34,7 @@ import org.jwcarman.nessy.backend.payload.Payloads;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /** Content, kept where nothing else has to look at it. */
@@ -54,9 +56,10 @@ class JdbcPayloadsTest {
     return database;
   }
 
-  private final Payloads unscoped =
-      new JdbcPayloads(
-          JdbcClient.create(database()), new JacksonCodecFactory(JsonMapper.builder().build()));
+  private static final JsonMapper MAPPER = JsonMapper.builder().build();
+
+  private final JdbcClient jdbc = JdbcClient.create(database());
+  private final Payloads unscoped = new JdbcPayloads(jdbc, new JacksonCodecFactory(MAPPER));
 
   private Payloads forSomeAgent() {
     return unscoped.forAgent(AgentId.random());
@@ -141,5 +144,140 @@ class JdbcPayloadsTest {
     assertThatThrownBy(() -> unscoped.put(content))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("not scoped");
+  }
+
+  private static JsonNode document() {
+    return MAPPER.readTree(
+        """
+        {"tool":"refund","amount":12.5,"urgent":true,"note":null,
+         "lines":[1,"two",{"three":3}],"who":{"name":"Ada","roles":["admin","approver"]}}
+        """);
+  }
+
+  @Test
+  @DisplayName("keeps a document and hands it back whole")
+  void a_document_round_trips() {
+    Payloads payloads = forSomeAgent();
+    JsonNode document = document();
+
+    PayloadRef ref = payloads.putDocument(document);
+
+    assertThat(payloads.getDocument(ref)).isEqualTo(document);
+  }
+
+  @Test
+  @DisplayName("putting the same document twice is one reference and one copy")
+  void putting_the_same_document_twice_is_one_reference_and_one_copy() {
+    AgentId agent = AgentId.random();
+    Payloads payloads = unscoped.forAgent(agent);
+
+    PayloadRef first = payloads.putDocument(document());
+    PayloadRef again = payloads.putDocument(document());
+
+    assertThat(again).isEqualTo(first);
+    assertThat(
+            jdbc.sql("SELECT count(*) FROM nessy_payload WHERE agent_id = ?")
+                .params(agent.value())
+                .query(Long.class)
+                .single())
+        .isEqualTo(1L);
+  }
+
+  @Test
+  @DisplayName("a document asked for as blocks fails by name")
+  void a_document_asked_for_as_blocks_fails_by_name() {
+    Payloads payloads = forSomeAgent();
+    PayloadRef ref = payloads.putDocument(document());
+
+    assertThatThrownBy(() -> payloads.get(ref))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("payload " + ref + " holds a document, not blocks");
+  }
+
+  @Test
+  @DisplayName("blocks asked for as a document fail by name")
+  void blocks_asked_for_as_a_document_fail_by_name() {
+    Payloads payloads = forSomeAgent();
+    PayloadRef ref = payloads.put(List.of(new Block.Text("words")));
+
+    assertThatThrownBy(() -> payloads.getDocument(ref))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("payload " + ref + " holds blocks, not a document");
+  }
+
+  @Test
+  @DisplayName("a document that is not there is a fault")
+  void a_document_that_is_not_there_is_a_fault() {
+    Payloads payloads = forSomeAgent();
+    PayloadRef never = new PayloadRef("00".repeat(32));
+
+    assertThatThrownBy(() -> payloads.getDocument(never))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("no payload behind " + never);
+  }
+
+  @Test
+  @DisplayName("a batch read that meets a document fails by name")
+  void a_batch_read_that_meets_a_document_fails_by_name() {
+    Payloads payloads = forSomeAgent();
+    PayloadRef blocks = payloads.put(List.of(new Block.Text("words")));
+    PayloadRef document = payloads.putDocument(document());
+    List<PayloadRef> both = List.of(blocks, document);
+
+    assertThatThrownBy(() -> payloads.get(both))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("payload " + document + " holds a document, not blocks");
+  }
+
+  @Test
+  @DisplayName("an agent cannot resolve another agent's document")
+  void agents_do_not_share_documents() {
+    Payloads mine = forSomeAgent();
+    Payloads theirs = forSomeAgent();
+    PayloadRef ref = mine.putDocument(document());
+    PayloadRef theirOwn = theirs.putDocument(document());
+
+    assertThat(theirOwn).as("the same document, the same reference").isEqualTo(ref);
+    assertThat(mine.getDocument(ref)).isEqualTo(document());
+    PayloadRef elsewhere = mine.putDocument(MAPPER.readTree("{\"only\":\"mine\"}"));
+
+    assertThatThrownBy(() -> theirs.getDocument(elsewhere))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("no payload behind " + elsewhere);
+  }
+
+  private String kindOf(AgentId agent, PayloadRef ref) {
+    return jdbc.sql("SELECT kind FROM nessy_payload WHERE agent_id = ? AND hash = ?")
+        .params(agent.value(), HexFormat.of().parseHex(ref.value()))
+        .query(String.class)
+        .single();
+  }
+
+  @Test
+  @DisplayName("says in the row whether it holds blocks or a document")
+  void the_row_says_its_kind() {
+    AgentId agent = AgentId.random();
+    Payloads payloads = unscoped.forAgent(agent);
+
+    PayloadRef blocks = payloads.put(List.of(new Block.Text("words")));
+    PayloadRef document = payloads.putDocument(document());
+
+    assertThat(kindOf(agent, blocks)).isEqualTo("BLOCKS");
+    assertThat(kindOf(agent, document)).isEqualTo("DOCUMENT");
+  }
+
+  @Test
+  @DisplayName("a row with a kind it does not know is a fault that names the reference")
+  void an_unknown_kind_is_a_fault() {
+    AgentId agent = AgentId.random();
+    Payloads payloads = unscoped.forAgent(agent);
+    PayloadRef ref = payloads.put(List.of(new Block.Text("words")));
+    jdbc.sql("UPDATE nessy_payload SET kind = 'MYSTERY' WHERE agent_id = ?")
+        .params(agent.value())
+        .update();
+
+    assertThatThrownBy(() -> payloads.get(ref))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("payload " + ref + " has an unknown kind: MYSTERY");
   }
 }

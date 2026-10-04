@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.backend.inmemory;
 
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -24,6 +26,7 @@ import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import tools.jackson.databind.JsonNode;
 
 /**
  * A claim check that is a map, for work that outlives nothing.
@@ -45,12 +48,22 @@ import org.jwcarman.nessy.backend.payload.Payloads;
  */
 public final class InMemoryPayloads implements Payloads {
 
-  private final Codec<Payloads.Content> codec;
-  private final Map<PayloadRef, byte[]> content = new ConcurrentHashMap<>();
+  /** The encoded bytes and what they are, so a reader knows how to decode before it decodes. */
+  private record Kept(Kind kind, byte[] encoded) {}
+
+  private enum Kind {
+    BLOCKS,
+    DOCUMENT
+  }
+
+  private final Codec<Payloads.Content> blocksCodec;
+  private final Codec<Payloads.Document> documentCodec;
+  private final Map<PayloadRef, Kept> content = new ConcurrentHashMap<>();
 
   public InMemoryPayloads(CodecFactory codecs) {
-    this.codec =
-        Objects.requireNonNull(codecs, "codecs must not be null").create(Payloads.Content.class);
+    Objects.requireNonNull(codecs, "codecs must not be null");
+    this.blocksCodec = codecs.create(Payloads.Content.class);
+    this.documentCodec = codecs.create(Payloads.Document.class);
   }
 
   /**
@@ -60,17 +73,50 @@ public final class InMemoryPayloads implements Payloads {
    */
   @Override
   public PayloadRef put(List<? extends Block> blocks) {
-    byte[] encoded = codec.encode(new Payloads.Content(List.copyOf(blocks)));
-    PayloadRef ref = Payloads.reference(encoded);
-    content.put(ref, encoded);
-    return ref;
+    return keep(Kind.BLOCKS, blocksCodec.encode(new Payloads.Content(List.copyOf(blocks))));
+  }
+
+  @Override
+  public PayloadRef putDocument(JsonNode document) {
+    return keep(Kind.DOCUMENT, documentCodec.encode(new Payloads.Document(document)));
   }
 
   @Override
   public Resolved get(PayloadRef ref) {
-    byte[] found = content.get(ref);
-    return found == null
-        ? new Resolved.Missing()
-        : new Resolved.Found(codec.decode(found).blocks());
+    Kept found = content.get(ref);
+    if (found == null) {
+      return new Resolved.Missing();
+    }
+    if (found.kind() != Kind.BLOCKS) {
+      throw new IllegalStateException("payload " + ref + " holds a document, not blocks");
+    }
+    return new Resolved.Found(blocksCodec.decode(found.encoded()).blocks());
+  }
+
+  @Override
+  public Map<PayloadRef, Resolved> get(Collection<PayloadRef> refs) {
+    Map<PayloadRef, Resolved> found = new LinkedHashMap<>();
+    for (PayloadRef ref : refs) {
+      found.computeIfAbsent(ref, this::get);
+    }
+    return found;
+  }
+
+  @Override
+  public JsonNode getDocument(PayloadRef ref) {
+    Kept found = content.get(ref);
+    if (found == null) {
+      throw new IllegalStateException("no payload behind " + ref);
+    }
+    if (found.kind() != Kind.DOCUMENT) {
+      throw new IllegalStateException("payload " + ref + " holds blocks, not a document");
+    }
+    return documentCodec.decode(found.encoded()).document();
+  }
+
+  private PayloadRef keep(Kind kind, byte[] encoded) {
+    PayloadRef ref = Payloads.reference(encoded);
+    content.put(ref, new Kept(kind, encoded));
+    return ref;
   }
 }
