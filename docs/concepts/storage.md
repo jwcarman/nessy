@@ -11,7 +11,7 @@ it all when the process stops.
 |---|---|---|
 | An agent, so there is something to lock | `nessy_agent` | until it is terminated, and after |
 | What happened to an agent, one row per event, append-only | `nessy_agent_event` | forever, unless you prune it |
-| Content: what a message or a tool result actually said (the events keep two short lines per tool call) | `nessy_payload` | forever, unless you prune it |
+| Content: what a message or a tool result actually said, and JSON documents (the events keep two short lines per tool call) | `nessy_payload` | forever, unless you prune it |
 | Work an agent owes, with its deadline | `nessy_agent_effect` | until it completes or is given up on |
 | Work offered to a busy agent, waiting its turn (queued door only) | `nessy_agent_backlog` | until it is claimed or coalesced away |
 | Closed chapters of an agent's history, each with the summary that stands in for it once written | `nessy_chapter` | forever, unless you prune it |
@@ -36,7 +36,8 @@ suite runs the same DDL against a real PostgreSQL container.
 ## Applying the schema
 
 `Schemas` gathers every module's `nessy-schema.sql` from the classpath and
-runs them, in one call, safe to repeat:
+runs them, in one call, safe to repeat. It creates what is missing and never
+alters an existing table, so a changed table means recreating the database:
 
 ```java
 Schemas.initialize(dataSource);
@@ -141,7 +142,7 @@ every piece of content Nessy stores:
 | Content | Column |
 |---|---|
 | What happened to an agent | `nessy_agent_event.payload` |
-| What a message or a tool result said | `nessy_payload.content` |
+| What a message or a tool result said, or a JSON document | `nessy_payload.content` |
 | Work an agent owes, and what to tell it if that work can never run | `nessy_agent_effect.payload`, `failure_payload`, `failed_attempts` |
 | Input waiting its turn | `nessy_agent_backlog.payload` |
 | A chapter's summary | `nessy_chapter.summary` |
@@ -161,7 +162,7 @@ Everything else is stored as itself, and is what a query needs to find, order
 or fence a row, or is plumbing:
 
 - identifiers: the agent type and agent id on every table, a note's id, a
-  lease's kind and holder, and the hash that addresses a payload;
+  lease's kind and holder, the hash that addresses a payload, and its `kind`;
 - sequence numbers, turn bounds and positions: `seq`, `from_turn`,
   `through_turn`, `after_turn`, and the ordinal of a backlog item, a note and a
   plan task;
@@ -212,6 +213,15 @@ same row rather than a second copy — and it makes removing an agent's
 payload rows one statement over one table, with nothing shared out from
 under another agent. Identical content in two agents is stored twice, and
 that is the trade.
+
+A payload holds either message blocks or a JSON document, and its `kind`
+column says which, `BLOCKS` or `DOCUMENT`. `Payloads.put` keeps blocks and `Payloads.putDocument`
+keeps a document; a document's reference is the hash of its encoded bytes, so
+the same document is one reference and one row, with its fields in the order
+it has them. Asking for blocks where a document is kept, or the reverse,
+throws an `IllegalStateException` that names the reference and what is there,
+and `getDocument` on a reference with nothing behind it throws too. Documents
+go through the storage codec like every other stored byte.
 
 That statement is not everything the agent said. For each tool call the
 events also hold two lines of text, what the call would do and what it

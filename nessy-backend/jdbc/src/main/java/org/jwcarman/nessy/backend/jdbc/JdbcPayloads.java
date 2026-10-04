@@ -31,14 +31,15 @@ import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Content in {@code nessy_payload}, addressed by its own hash and scoped to one agent.
  *
- * <p>Inputs, answers and tool results are written here, and what goes beside the record of an
- * agent's life is a reference. The exception is two lines of text per tool call, what the call
- * would do and what it returned, each at most 1,000 characters, which stay in the events. The
- * summaries of an agent's chapters are in {@code nessy_chapter}. So this table is where most of
+ * <p>Inputs, answers, tool results and JSON documents are written here, and what goes beside the
+ * record of an agent's life is a reference. The exception is two lines of text per tool call, what
+ * the call would do and what it returned, each at most 1,000 characters, which stay in the events.
+ * The summaries of an agent's chapters are in {@code nessy_chapter}. So this table is where most of
  * what an agent said lives and not all of it.
  *
  * <p><b>Addressed, not minted.</b> The reference is the SHA-256 of the encoded content, so putting
@@ -55,47 +56,87 @@ public final class JdbcPayloads implements Payloads {
 
   private static final String PUT =
       """
-      INSERT INTO nessy_payload (agent_id, hash, content)
-      VALUES (?, ?, ?)
+      INSERT INTO nessy_payload (agent_id, hash, kind, content)
+      VALUES (?, ?, ?, ?)
           ON CONFLICT (agent_id, hash) DO NOTHING
       """;
 
-  private static final String GET =
-      "SELECT hash, content FROM nessy_payload WHERE agent_id = ? AND hash = ANY (?)";
+  private static final String BLOCKS = "BLOCKS";
+  private static final String DOCUMENT = "DOCUMENT";
 
-  /**
-   * What is written, rather than the bare list.
-   *
-   * <p>Jackson stamps a block with its type id only where the declared type is {@link Block}. A
-   * list handed over as a list is serialised by each element's runtime class, the ids are left out,
-   * and it reads back as nothing at all. Declaring the field is what keeps them.
-   */
+  /** One row as read: its kind, and the encoded bytes not yet decoded. */
+  private record Stored(String kind, byte[] content) {}
+
+  private static final String GET =
+      "SELECT hash, kind, content FROM nessy_payload WHERE agent_id = ? AND hash = ANY (?)";
+
   private final JdbcClient jdbc;
 
-  private final Codec<Payloads.Content> codec;
+  private final Codec<Payloads.Content> blocksCodec;
+  private final Codec<Payloads.Document> documentCodec;
   private final AgentId agent;
 
   public JdbcPayloads(JdbcClient jdbc, CodecFactory codecs) {
-    this(jdbc, codecs.create(Payloads.Content.class), null);
+    this(
+        jdbc,
+        Objects.requireNonNull(codecs, "codecs must not be null").create(Payloads.Content.class),
+        codecs.create(Payloads.Document.class),
+        null);
   }
 
-  private JdbcPayloads(JdbcClient jdbc, Codec<Payloads.Content> codec, AgentId agent) {
+  private JdbcPayloads(
+      JdbcClient jdbc,
+      Codec<Payloads.Content> blocksCodec,
+      Codec<Payloads.Document> documentCodec,
+      AgentId agent) {
     this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
-    this.codec = Objects.requireNonNull(codec, "codec must not be null");
+    this.blocksCodec = Objects.requireNonNull(blocksCodec, "blocksCodec must not be null");
+    this.documentCodec = Objects.requireNonNull(documentCodec, "documentCodec must not be null");
     this.agent = agent;
   }
 
   @Override
   public Payloads forAgent(AgentId agent) {
-    return new JdbcPayloads(jdbc, codec, Objects.requireNonNull(agent, "agent must not null"));
+    return new JdbcPayloads(
+        jdbc, blocksCodec, documentCodec, Objects.requireNonNull(agent, "agent must not be null"));
   }
 
   @Override
   public PayloadRef put(List<? extends Block> content) {
-    byte[] encoded = codec.encode(new Payloads.Content(List.copyOf(content)));
+    return keep(BLOCKS, blocksCodec.encode(new Payloads.Content(List.copyOf(content))));
+  }
+
+  @Override
+  public PayloadRef putDocument(JsonNode document) {
+    return keep(DOCUMENT, documentCodec.encode(new Payloads.Document(document)));
+  }
+
+  private PayloadRef keep(String kind, byte[] encoded) {
+    AgentId scope = scoped();
     PayloadRef ref = Payloads.reference(encoded);
-    jdbc.sql(PUT).params(scoped().value(), HexFormat.of().parseHex(ref.value()), encoded).update();
+    jdbc.sql(PUT)
+        .params(scope.value(), HexFormat.of().parseHex(ref.value()), kind, encoded)
+        .update();
     return ref;
+  }
+
+  @Override
+  public JsonNode getDocument(PayloadRef ref) {
+    List<Stored> rows =
+        jdbc.sql(GET)
+            .params(scoped().value(), new byte[][] {HexFormat.of().parseHex(ref.value())})
+            .query((rs, _) -> new Stored(rs.getString("kind"), rs.getBytes("content")))
+            .list();
+    if (rows.isEmpty()) {
+      throw new IllegalStateException("no payload behind " + ref);
+    }
+    Stored row = rows.getFirst();
+    return switch (row.kind()) {
+      case DOCUMENT -> documentCodec.decode(row.content()).document();
+      case BLOCKS ->
+          throw new IllegalStateException("payload " + ref + " holds blocks, not a document");
+      default -> throw unknownKind(ref, row.kind());
+    };
   }
 
   @Override
@@ -120,11 +161,25 @@ public final class JdbcPayloads implements Payloads {
         .query(
             (rs, _) -> {
               PayloadRef ref = new PayloadRef(HexFormat.of().formatHex(rs.getBytes("hash")));
-              found.put(ref, new Resolved.Found(codec.decode(rs.getBytes("content")).blocks()));
+              String kind = rs.getString("kind");
+              switch (kind) {
+                case BLOCKS ->
+                    found.put(
+                        ref,
+                        new Resolved.Found(blocksCodec.decode(rs.getBytes("content")).blocks()));
+                case DOCUMENT ->
+                    throw new IllegalStateException(
+                        "payload " + ref + " holds a document, not blocks");
+                default -> throw unknownKind(ref, kind);
+              }
               return ref;
             })
         .list();
     return found;
+  }
+
+  private static IllegalStateException unknownKind(PayloadRef ref, String kind) {
+    return new IllegalStateException("payload " + ref + " has an unknown kind: " + kind);
   }
 
   private AgentId scoped() {

@@ -31,7 +31,7 @@ Stored shapes change. Databases are recreated; there is no migration.
 
 Each is a choice the spec left open. They are listed so James can overrule one before it is built.
 
-1. **A stored payload says its kind inside its own content, with no new column.** `Payloads.Content` becomes `Content(List<Block> blocks, JsonNode document)`, exactly one of the two non-null. Asking for the wrong kind throws `IllegalStateException` naming the reference and the kind that is there. This works whatever the application's `ObjectMapper` does with unknown properties, and the storage codec covers it with no further work.
+1. **A stored payload says its kind in its row.** `nessy_payload` gains a `kind` column (`BLOCKS` or `DOCUMENT`); James ruled this on 2026-10-04. `Payloads.Content(blocks)` stays as it is and a sibling `Payloads.Document(JsonNode document)` is encoded through the same codec factory, so the storage codec covers both. Asking for the wrong kind throws `IllegalStateException` naming the reference and the kind that is there, without decoding the row.
 2. **`getDocument` on a reference that is not there throws `IllegalStateException`.** The spec's signature returns `JsonNode`, and a dangling reference is always a fault.
 3. **When the approver throws, the handler stores the question and rethrows.** The exception it rethrows is engine-internal (`ApproverFailed`, carrying the cause and the reference). The dispatcher's retry of a failed ask is unchanged, because the handler still throws; `AskingTerms.failed` reads the reference from the exception.
 4. **The question document is built field by field, in a fixed order,** never by serializing the record, so the reply token cannot leak and the same question gives the same reference.
@@ -42,7 +42,7 @@ Each is a choice the spec left open. They are listed so James can overrule one b
 - **Red first.** Every task writes its tests first and sees them fail for the right reason. A fold task's test goes in `AgentStateTest`.
 - **Nothing else moved.** `AgentStateTest`, `AgentStateRepeatedCallIdTest`, `UnattributableAnswerTest`, `RepeatedCallIdLateOutcomeTest`, `DispatcherFailureTest`, `GiveUpTest` and `HarnessLoopTest` change only where a constructor gained an argument. No assertion in them is removed or weakened. Each report lists the pre-existing test files it edited and why.
 - **The stored shape is written out by hand.** Each task that changes a stored event adds or updates a `ValueTypeCodecTest` case with the event's JSON as a literal string holding a real value for the new field, asserted on the decoded event and in the encoded string. A literal without the new key is also read, and reads as absent.
-- New public names are exactly: `Payloads.putDocument`, `Payloads.getDocument` (backend SPI), and `StoryContent.question` (`nessy-api`), all from spec §12 and §9c. A task that needs another stops and reports.
+- New public names are exactly: `Payloads.putDocument`, `Payloads.getDocument`, `Payloads.Document` (backend SPI), and `StoryContent.question` (`nessy-api`), all from spec §12 and §9c. A task that needs another stops and reports.
 - No `@SuppressWarnings`, `// NOSONAR` or any other suppression. No star imports. No mocking library. Prose test names. One throwing call inside an exception-assertion lambda (S5778). Non-emptiness asserted before an all-match or none-match (S5841).
 - `./mvnw spotless:apply license:format` before each commit. Scoped builds by artifactId with `-am`. One Maven process in a worktree. Before the gate: `./mvnw -B -q clean test-compile; echo $? > target/tc.exit` reads 0.
 - A task's last step is the gate: `./mvnw -B -q clean verify -Dnessy.excludedGroups=live; echo $? > target/gate.exit`, and Maven's exit code is read from that file.
@@ -67,7 +67,7 @@ Each is a choice the spec left open. They are listed so James can overrule one b
 
 **Interfaces:**
 - `PayloadRef putDocument(JsonNode document);` and `JsonNode getDocument(PayloadRef ref);` on `Payloads`, abstract, with javadoc. `JsonNode` is `tools.jackson.databind.JsonNode`.
-- `record Content(List<Block> blocks, JsonNode document)`: exactly one non-null, checked in its compact constructor; static factories `Content.ofBlocks(List<Block>)` and `Content.ofDocument(JsonNode)`. The reference stays `Payloads.reference(encodedBytes)`.
+- `record Content(List<Block> blocks)` is unchanged; `record Document(JsonNode document)` is new beside it, null refused. Each store keeps the kind with the content: the `kind` column in JDBC, a field beside the bytes in memory. The reference stays `Payloads.reference(encodedBytes)`.
 - `put` and `get` keep their signatures and `Resolved` keeps its two arms. `get` (single and batch) on a payload that holds a document throws `IllegalStateException("payload <ref> holds a document, not blocks")`. `getDocument` on blocks throws `IllegalStateException("payload <ref> holds blocks, not a document")`; on nothing, `IllegalStateException("no payload behind <ref>")`.
 - `putDocument` is idempotent as `put` is: the same document is the same reference and one row.
 

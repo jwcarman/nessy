@@ -108,6 +108,7 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.AbstractPlatformTransactionManager;
 import org.springframework.transaction.support.DefaultTransactionStatus;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -2017,9 +2018,19 @@ class DefaultDirectHarnessTest {
     }
 
     @Override
+    public PayloadRef putDocument(JsonNode document) {
+      return delegate.putDocument(document);
+    }
+
+    @Override
     public Resolved get(PayloadRef ref) {
       singles++;
       return delegate.get(ref);
+    }
+
+    @Override
+    public JsonNode getDocument(PayloadRef ref) {
+      return delegate.getDocument(ref);
     }
 
     @Override

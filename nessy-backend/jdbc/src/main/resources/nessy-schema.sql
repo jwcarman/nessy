@@ -99,7 +99,7 @@ CREATE INDEX IF NOT EXISTS ix_nessy_agent_effect_actionable
     ON nessy_agent_effect (agent_type, status, actionable_at);
 -- Content, kept away from the record of what happened to it.
 --
--- Everything a model was shown or said -- inputs, answers, tool results -- lives here, and the
+-- Everything a model was shown or said -- inputs, answers, tool results, JSON documents -- lives here, and the
 -- tables that describe an agent's life hold references to it. Two bounded lines of text per tool
 -- call are the exception: what a call would do and what it returned, each at most 1,000
 -- characters, kept in nessy_agent_event. The summaries of an agent's chapters are in nessy_chapter.
@@ -120,6 +120,9 @@ CREATE TABLE IF NOT EXISTS nessy_payload
     -- likely than the row being corrupted underneath us, and strong enough that a crafted one
     -- is not a thing anybody can do.
     hash       BYTEA       NOT NULL,
+    -- What the content is, so a reader knows how to decode it before it decodes anything:
+    -- 'BLOCKS' for message blocks, 'DOCUMENT' for a JSON document. A fixed word from the code.
+    kind       VARCHAR(16) NOT NULL,
     content    BYTEA       NOT NULL,
     written_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     PRIMARY KEY (agent_id, hash)

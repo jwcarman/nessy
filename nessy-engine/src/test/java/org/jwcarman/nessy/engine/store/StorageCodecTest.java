@@ -28,11 +28,15 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.InferenceResult;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Something done to every stored byte, after Jackson: the rows are not JSON any more, and the
@@ -127,6 +131,28 @@ class StorageCodecTest {
             .params(agentId.value())
             .query(byte[].class)
             .list();
-    assertThat(content).isNotEmpty().allSatisfy(row -> assertThat(row[0]).isNotEqualTo((byte) '['));
+    assertThat(content).isNotEmpty().allSatisfy(row -> assertThat(row[0]).isNotEqualTo((byte) '{'));
+  }
+
+  @Test
+  void a_document_is_covered_by_the_storage_codec() {
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    JsonNode document = JsonMapper.builder().build().readTree("{\"asked\":\"may I?\",\"n\":[1,2]}");
+    Payloads payloads = engine.payloads().forAgent(agentId);
+
+    PayloadRef ref = payloads.putDocument(document);
+
+    List<byte[]> stored =
+        engine
+            .jdbc()
+            .sql("SELECT content FROM nessy_payload WHERE agent_id = ?")
+            .params(agentId.value())
+            .query(byte[].class)
+            .list();
+    assertThat(stored).hasSize(1).allSatisfy(row -> assertThat(row[0]).isNotEqualTo((byte) '{'));
+    assertThat(new String(reverse(stored.getFirst()), java.nio.charset.StandardCharsets.UTF_8))
+        .as("and it is the encoded document once the codec is undone")
+        .startsWith("{\"document\":");
+    assertThat(payloads.getDocument(ref)).isEqualTo(document);
   }
 }
