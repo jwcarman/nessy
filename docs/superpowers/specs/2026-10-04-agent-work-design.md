@@ -1,9 +1,8 @@
 # Work in flight: an agent's status, and settling a call by its key
 
-**Status: DESIGN, NOTHING BUILT. The direction was settled in conversation with James on
-2026-10-04; this record writes it down and fills in what the conversation left open. New public
-names are in §10 and the resolutions this record made on its own are in §11. Both await
-sign-off.**
+**Status: APPROVED by James on 2026-10-04, NOTHING BUILT. The direction was settled in conversation
+with him that day; this record writes it down and fills in what the conversation left open. He
+approved it as a whole, the names in §10 and the resolutions in §11 included.**
 
 Date: 2026-10-04. The second of three records. It sits on
 `2026-10-04-agent-story-design.md` ("the story record"), which must be built first: this one
@@ -348,7 +347,7 @@ Settled in conversation with James on 2026-10-04:
 - the schema may change to make this effective
 - only calls Nessy is waiting on are in the books
 
-Proposed by this record, awaiting sign-off:
+Proposed by this record, and approved with it:
 
 - `AgentWork`, `AgentStatus`, `AgentStatus.Activity` and its four values
 - `InFlight`, `InFlight.Kind`, `InFlightQuery`
@@ -358,7 +357,7 @@ Proposed by this record, awaiting sign-off:
 
 ## 11. Resolutions this record made
 
-Each is a decision the conversation did not reach. Each is asked, not assumed.
+Each is a decision the conversation did not reach. James approved them with the record.
 
 1. **A call index table.** The conversation spoke of indexed columns on the effect row. Those
    find a call only while it is waiting. To tell a late answerer why, a key must still resolve
