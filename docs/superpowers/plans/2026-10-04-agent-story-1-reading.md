@@ -16,7 +16,7 @@ The spec is built in five plans. **This plan changes nothing in the fold and no 
 
 | Plan | Builds | Touches the fold? |
 |---|---|---|
-| **1 (this one)** | the adapter; `Story` / `Live` / `TurnEnding`; `Usage`, `FailureKind`, `TurnStopped`, `InferenceRetried` on narration; the envelope; `replay`, `project`, `follow`; content by turn and by key; `UsageReports` as a projection | **no** |
+| **1 (this one)** | the adapter; `Story` / `Live` / `TurnEnding`; `Usage`, `FailureKind`, `TurnStopped`, `InferenceRetried` on narration; the envelope; `replay`, `project`; content by turn and by key; `UsageReports` as a projection | **no** |
 | 2 | stored fields carried through: the key on call events, `decidedBy`, `CallFailure`, `truncated`, `label`, `arrivedAt`, the stored `TurnFailed` → `TurnStopped` rename, the shown-deadline fix | pass-through fields, one rename |
 | 3 | deferral events and the park step, `parked_at` | two new commands and events |
 | 4 | the approval question, `Payloads.putDocument` | pass-through fields |
@@ -41,11 +41,9 @@ What plan 1 leaves for plan 2, by necessity: the call events (`CallApproved`, `C
 
 Inputs the spec implies and no task's happy path exercises, most likely first. Each has a test in the task named.
 
-1. **A listener that throws while `follow` replays** must not stop the replay or lose later events for that listener. (Task 7)
-2. **Events committed while `follow` is replaying** must be heard once, in order, after the replay. (Task 7)
-3. **`replay` with a limit of zero or less, or above the ceiling**: `IllegalArgumentException` for zero or less; a limit above 1,000 is capped at 1,000. (Task 4)
-4. **A handler registered for a group type** (`Narration.TurnEnding`, `Narration.Story`) must hear every event of that group; today's lookup is by exact class. (Task 2)
-5. **A projection that throws** must surface its own exception from `project`, and leave nothing half-applied in the store. (Task 5)
+1. **`replay` with a limit of zero or less, or above the ceiling**: `IllegalArgumentException` for zero or less; a limit above 1,000 is capped at 1,000. (Task 4)
+2. **A handler registered for a group type** (`Narration.TurnEnding`, `Narration.Story`) must hear every event of that group; today's lookup is by exact class. (Task 2)
+3. **A projection that throws** must surface its own exception from `project`, and leave nothing half-applied in the store. (Task 5)
 
 ---
 
@@ -262,7 +260,7 @@ public sealed interface Narration {
 
   `everyKind()` supplies one instance of each of the twelve `AgentEvent` records. Add single-event tests for the remaining kinds: `InferenceRefused` → `TurnRefused(TURN, category, usage)`; `InferenceFailed` with each of the four `Failure` arms → `TurnFailed(TURN, <kind>, reason, usage)`; `ActionsRequested` → the `turn`, the `usage`, and each `Call` with its `idempotencyKey`.
 
-- [ ] **Step 2: Write the group-handler test** (Review Focus 4) in `nessy-api/src/test/java/org/jwcarman/nessy/api/NarrationListenerConfigTest.java`:
+- [ ] **Step 2: Write the group-handler test** (Review Focus 2) in `nessy-api/src/test/java/org/jwcarman/nessy/api/NarrationListenerConfigTest.java`:
 
 ```java
   @Test
@@ -423,14 +421,14 @@ public interface AgentStory {
 }
 ```
 
-  `AgentEvents` gains `Stream<Written> streamWrittenFrom(AgentType type, AgentId agent, Seq after)` with `record Written(AgentEvent event, Instant at)`, so a replay reads each event with its time in one query. `EventAgentStories(AgentEvents events)` is the engine's implementation. Tasks 5 to 7 add methods to `AgentStory` and constructor arguments to `EventAgentStories`.
+  `AgentEvents` gains `Stream<Written> streamWrittenFrom(AgentType type, AgentId agent, Seq after)` with `record Written(AgentEvent event, Instant at)`, so a replay reads each event with its time in one query. `EventAgentStories(AgentEvents events)` is the engine's implementation. Tasks 5 and 6 add methods to `AgentStory` and constructor arguments to `EventAgentStories`.
 
 - [ ] **Step 1: Write the failing tests** in `EventAgentStoriesTest` (in-memory backend, events appended by hand with a fixed instant):
   - `an_agent_nobody_told_anything_has_an_empty_story`
   - `a_story_is_replayed_oldest_first_with_each_events_position`: three appended events come back as three `Narrated`, each `position()` holding the event's `seq` and the appended instant
   - `a_replay_after_a_position_starts_with_the_next_event`
   - `a_replay_returns_no_more_than_its_limit`
-  - `a_limit_of_zero_or_less_is_refused` (`IllegalArgumentException`, message `limit must be positive`), and `a_limit_above_a_thousand_is_capped` (Review Focus 3)
+  - `a_limit_of_zero_or_less_is_refused` (`IllegalArgumentException`, message `limit must be positive`), and `a_limit_above_a_thousand_is_capped` (Review Focus 1)
   - `what_a_listener_heard_live_is_what_the_replay_returns`: run one scripted direct-door turn with a recording listener, keep the `Narrated` whose event is a `Narration.Story`, and assert the list equals `stories.of(TYPE, agent).replay(Seq.NONE, 100)`
 
 - [ ] **Step 2: Run and see them fail to compile.**
@@ -460,7 +458,7 @@ public interface StoryProjection<T> {
 <T> T project(StoryProjection<T> projection);
 ```
 
-- [ ] **Step 1: Write the failing tests:** a projection counting `TurnStarted` over a three-turn story returns 3; a projection over an empty story returns `initial()`; `a_projection_that_throws_surfaces_its_own_exception` (Review Focus 5: the thrown `IllegalStateException("boom")` reaches the caller, and a second `project` on the same story still works).
+- [ ] **Step 1: Write the failing tests:** a projection counting `TurnStarted` over a three-turn story returns 3; a projection over an empty story returns `initial()`; `a_projection_that_throws_surfaces_its_own_exception` (Review Focus 3: the thrown `IllegalStateException("boom")` reaches the caller, and a second `project` on the same story still works).
 - [ ] **Step 2: Implement `project`** as a fold over `streamWrittenFrom(type, id, Seq.NONE)`, closing the stream in `finally`.
 - [ ] **Step 3: Reimplement `EventUsageReports` over the story.** It sums the `Usage` of `ActionsRequested`, `Answered`, `TurnRefused`, `TurnFailed` and `InferenceRetried`, by model, and counts each as one inference. **`EventUsageReportsTest` must pass with no edit**: that is the proof the totals are unchanged.
 - [ ] **Step 4: Run** `./mvnw -B -q -pl :nessy-engine -am test -Dtest='EventAgentStoriesTest,EventUsageReportsTest' -Dsurefire.failIfNoSpecifiedTests=false` (exit 0; `git diff --stat` shows no change to `EventUsageReportsTest.java`).
@@ -506,34 +504,9 @@ StoryContent content();
 
 ---
 
-### Task 7: Following a story
+### Task 7: (dropped)
 
-**Files:**
-- Create: `nessy-api/.../Following.java`
-- Create: `nessy-engine/.../story/StoryHub.java`, `nessy-engine/src/test/.../story/FollowingTest.java`
-- Modify: `AgentStory.java`, `EventAgentStories.java` (constructor gains the hubs), `DefaultDirectHarnessFactory.java`, `DefaultQueuedHarnessFactory.java`, `AgentStoriesAutoConfiguration.java`
-
-**Interfaces:**
-- Produces:
-
-```java
-public interface Following extends AutoCloseable { @Override void close(); }
-// on AgentStory:
-Following follow(Seq after, NarrationListener listener);
-```
-
-  `StoryHub implements NarrationListener` (engine-internal): each factory registers one as an engine-wide listener and exposes it; `EventAgentStories` is given the hubs of the doors it reads.
-
-  `follow` does, in order: subscribe to the hubs **held back**, so everything narrated for this agent queues; replay everything stored after `after`, delivering each to the listener and remembering the last `seq`; release the queue, dropping any story event whose `seq` is at or before the last replayed and delivering the rest in the order they arrived; from then on deliver as it arrives. A listener that throws is logged at WARN and the delivery goes on, as `Listeners` does today.
-
-- [ ] **Step 1: Write the failing tests:**
-  - `everything_after_a_position_is_heard_and_then_what_happens_next`
-  - `an_event_committed_while_the_replay_runs_is_heard_once` (Review Focus 2): the listener, on its first replayed event, makes the test thread run a second turn to completion on the same agent; assert every story event of both turns is heard exactly once, in `seq` order
-  - `a_listener_that_throws_during_the_replay_still_hears_the_rest` (Review Focus 1)
-  - `live_signals_held_during_the_replay_arrive_after_it`
-  - `a_closed_following_hears_nothing_more`
-- [ ] **Step 2: Implement** `StoryHub` (subscriptions keyed by agent type and id, a per-subscription queue and a held flag, both guarded by the subscription's own lock) and `follow`.
-- [ ] **Step 3: Docs** (a "Following" section: what it is for, and that the live part is this process's narration) **, gate and commit.** Message `feat: a story can be followed from a position, replay first and then live`.
+`AgentStory.follow` was dropped on 2026-10-04, by James's ruling: Odyssey resumes its own streams, and no other watcher needs it. The spec lists it under what is left for later.
 
 ---
 

@@ -421,31 +421,19 @@ public interface AgentStory {
   /** Up to {@code limit} story events after {@code after}, oldest first. */
   List<Narrated> replay(Seq after, int limit);
 
-  /** Everything after {@code after}, then what happens next, with no gap and no repeat. */
-  Following follow(Seq after, NarrationListener listener);
-
   /** The whole story, folded. */
   <T> T project(StoryProjection<T> projection);
 
   StoryContent content();
-}
-
-public interface Following extends AutoCloseable {
-  @Override
-  void close();
 }
 ```
 
 `replay` returns story events only, each with its position. An agent with no story is an empty
 list. Both doors' agents are read the same way: they store the same events.
 
-`follow` is for a watcher that reconnects and has nothing that resumes for it. (A stream published
-through Odyssey resumes itself: Odyssey assigns its own event ids and replays from them.)
-It registers the listener, held back; replays what is stored after `after`; then releases what
-was held, dropping any story event at or before the last one replayed. Live signals held during
-the replay are delivered after it. From then on the listener hears what any listener hears. Live
-narration is what this process's doors commit, as it is today: in a deployment of several
-instances, `follow` replays what any of them stored and continues with this one's.
+There is no "replay, then carry on live" here. A watcher that reconnects through Odyssey is
+resumed by Odyssey, which assigns its own event ids and replays from them, and no application
+that streams some other way has asked for it (§14).
 
 The engine's implementation is built over a backend's stores, as `EventUsageReports` is, and
 the Boot starter offers an `AgentStories` bean over both doors' stores, as it does for
@@ -603,8 +591,6 @@ Beyond §10c:
 - **The manifest.** Two calls with unchanged sections store no new payloads; a changed ambient
   section stores one. The manifest's references resolve to exactly what the request held. No
   type in `nessy-api` names it.
-- **`follow`.** No story event is missed or heard twice when events are committed during the
-  replay.
 - **Content.** `results` pages in order and holds only successful calls. A document asked for as
   blocks fails by name.
 - **Stored shapes**, written out by hand, for each changed and new event.
@@ -630,7 +616,7 @@ Proposed by this record, and approved with it:
 
 - `Narration.TurnEnding`
 - `Narrated` and `Narrated.Position`; `NarrationListener.on(Narrated)`
-- `AgentStories`, `AgentStory`, `Following`
+- `AgentStories`, `AgentStory`
 - `StoryProjection`
 - `StoryContent`, `TurnContent`, `RequestContent`, `CallResult`
 - `inputLabel` on `DirectHarnessConfig` and `QueuedHarnessConfig`
@@ -671,6 +657,8 @@ Each is a decision the conversation did not reach. James approved them with the 
   `AlreadySettled`, `Expired` or `Unknown` from the fence's result. This is where `Replies`
   reporting `Settled` for an answer that lost its fence is fixed.
 - A tool reading its own call's decision (F1).
+- Following a story: replaying from a position and then carrying on live with no gap. Dropped
+  on 2026-10-04: Odyssey resumes its own streams, and nothing else needs it yet.
 - Retention and erasure of stored history (F13). This record adds content to the story; what
   expires it is still unanswered.
 - The Actuator endpoint and fleet metrics.
