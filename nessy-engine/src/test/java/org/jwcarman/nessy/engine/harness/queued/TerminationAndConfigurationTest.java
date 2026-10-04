@@ -117,7 +117,7 @@ class TerminationAndConfigurationTest {
     harness.tell(agentId, "hello");
     await()
         .atMost(Duration.ofSeconds(20))
-        .until(() -> events.stream().anyMatch(Narration.TurnEnded.class::isInstance));
+        .until(() -> events.stream().anyMatch(Narration.TurnEnding.class::isInstance));
     harness.terminate(agentId);
     await()
         .atMost(Duration.ofSeconds(10))

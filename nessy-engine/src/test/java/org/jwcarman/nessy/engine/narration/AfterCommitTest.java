@@ -51,14 +51,14 @@ class AfterCommitTest {
   private final AfterCommit narration =
       new AfterCommit(
           (_, agentId, event) ->
-              heard.add(label(agentId) + ":" + ((Narration.TurnEnded) event).turn().value()));
+              heard.add(label(agentId) + ":" + ((Narration.TurnEnding) event).turn().value()));
 
   private String label(AgentId who) {
     return who.equals(agent) ? "agent" : "other";
   }
 
-  private static Narration.TurnEnded ended(long turn) {
-    return new Narration.TurnEnded(new TurnId(turn));
+  private static Narration.TurnEnding ended(long turn) {
+    return new Narration.TurnStopped(new TurnId(turn), "limit");
   }
 
   private static String told(String who, long turn) {
@@ -306,7 +306,7 @@ class AfterCommitTest {
       AfterCommit impatient =
           new AfterCommit(
               (_, agentId, event) -> {
-                heard.add(label(agentId) + ":" + ((Narration.TurnEnded) event).turn().value());
+                heard.add(label(agentId) + ":" + ((Narration.TurnEnding) event).turn().value());
                 behind.countDown();
               },
               Duration.ofMillis(50));

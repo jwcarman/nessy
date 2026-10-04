@@ -92,7 +92,7 @@ public interface NarrationListener {
    *
    * <pre>{@code
    * NarrationListener.of(
-   *     c -> c.agentType(CHAT).onTurnEnded((type, id, ended) -> summarize(id)));
+   *     c -> c.agentType(CHAT).onTurnEnding((type, id, ended) -> summarize(id)));
    * }</pre>
    */
   static NarrationListener of(Customizer<NarrationListenerConfig> customizer) {

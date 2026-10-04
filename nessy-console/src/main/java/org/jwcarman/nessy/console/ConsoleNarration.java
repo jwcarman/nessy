@@ -64,7 +64,7 @@ final class ConsoleNarration implements NarrationListener {
       case Narration.Answered _ -> {
         /* the answer itself is the caller's, not the watcher's */
       }
-      case Narration.ActionsRequested(var calls) ->
+      case Narration.ActionsRequested(_, var calls, _) ->
           calls.forEach(
               call ->
                   io.write(
@@ -79,13 +79,16 @@ final class ConsoleNarration implements NarrationListener {
           io.write("  [" + callId.value() + " failed: " + message + "]" + System.lineSeparator());
       case Narration.CallDenied(var callId, String reason) ->
           io.write("  [" + callId.value() + " denied: " + reason + "]" + System.lineSeparator());
-      case Narration.TurnFailed _, Narration.TurnRefused _, Narration.Terminated _ -> {
+      case Narration.TurnFailed _,
+          Narration.TurnStopped _,
+          Narration.TurnRefused _,
+          Narration.Terminated _ -> {
         // How it ended is the outcome's to report, and the loop has it.
       }
       // Thinking is shown as a marker, not as content: a model's reasoning is not its answer.
       case Narration.Thinking() -> io.write("  [thinking]" + System.lineSeparator());
       case Narration.TurnStarted _,
-          Narration.TurnEnded _,
+          Narration.InferenceRetried _,
           Narration.Commentary _,
           Narration.CallApproved _,
           Narration.ApprovalSought _,

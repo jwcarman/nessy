@@ -63,7 +63,7 @@ class NarrationAfterCommitTest {
   private static NarrationListener checkingTheHistory(
       AgentEvents events, List<Boolean> readableWhenHeard) {
     return (type, agent, event) -> {
-      if (event instanceof Narration.TurnEnded ended) {
+      if (event instanceof Narration.TurnEnding ended) {
         readableWhenHeard.add(
             events.readAll(type, agent).stream()
                 .anyMatch(
@@ -95,7 +95,7 @@ class NarrationAfterCommitTest {
             .hasMessage("the commit of call 1 failed");
         harness.ask(kept, "hello");
 
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(kept).contains("TurnEnded"));
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(kept).contains("Answered"));
         assertThat(heard.kindsFor(lost)).isEmpty();
       }
     }
@@ -138,10 +138,9 @@ class NarrationAfterCommitTest {
             .containsExactly("TurnStarted");
         held.release();
         first.orTimeout(PATIENCE.toSeconds(), TimeUnit.SECONDS).join();
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(agent).size() == 6);
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(agent).size() == 4);
         assertThat(heard.kindsFor(agent))
-            .containsExactly(
-                "TurnStarted", "Answered", "TurnEnded", "TurnStarted", "Answered", "TurnEnded");
+            .containsExactly("TurnStarted", "Answered", "TurnStarted", "Answered");
       }
     }
 
@@ -160,11 +159,11 @@ class NarrationAfterCommitTest {
 
         harness.ask(quick, "hello");
 
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(quick).contains("TurnEnded"));
-        assertThat(heard.kindsFor(slow)).doesNotContain("TurnEnded");
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(quick).contains("Answered"));
+        assertThat(heard.kindsFor(slow)).doesNotContain("Answered");
         held.release();
         first.orTimeout(PATIENCE.toSeconds(), TimeUnit.SECONDS).join();
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(slow).contains("TurnEnded"));
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(slow).contains("Answered"));
       }
     }
   }
@@ -192,7 +191,7 @@ class NarrationAfterCommitTest {
             .hasMessage("the commit of call 1 failed");
         harness.tell(kept, "hello");
 
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(kept).contains("TurnEnded"));
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(kept).contains("Answered"));
         assertThat(heard.kindsFor(lost)).isEmpty();
       }
     }
@@ -240,9 +239,8 @@ class NarrationAfterCommitTest {
         held.release();
         first.orTimeout(PATIENCE.toSeconds(), TimeUnit.SECONDS).join();
 
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(agent).contains("TurnEnded"));
-        assertThat(heard.kindsFor(agent))
-            .containsExactly("TurnStarted", "Thinking", "Answered", "TurnEnded");
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(agent).contains("Answered"));
+        assertThat(heard.kindsFor(agent)).containsExactly("TurnStarted", "Thinking", "Answered");
       }
     }
 
@@ -261,11 +259,11 @@ class NarrationAfterCommitTest {
 
         harness.tell(quick, "hello");
 
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(quick).contains("TurnEnded"));
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(quick).contains("Answered"));
         assertThat(heard.kindsFor(slow)).isEmpty();
         held.release();
         first.orTimeout(PATIENCE.toSeconds(), TimeUnit.SECONDS).join();
-        await().atMost(PATIENCE).until(() -> heard.kindsFor(slow).contains("TurnEnded"));
+        await().atMost(PATIENCE).until(() -> heard.kindsFor(slow).contains("Answered"));
       }
     }
   }

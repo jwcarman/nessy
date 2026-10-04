@@ -397,6 +397,6 @@ final class DefaultQueuedHarness<I>
     if (!narrator.listening()) {
       return;
     }
-    StoryEvents.of(event).forEach(step::narrate);
+    step.narrate(StoryEvents.of(event));
   }
 }

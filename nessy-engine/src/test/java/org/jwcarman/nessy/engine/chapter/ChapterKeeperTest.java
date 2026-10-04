@@ -767,7 +767,7 @@ class ChapterKeeperTest {
     void the_listener_keeps_the_agent_whose_turn_ended_on_this_type() {
       NarrationListener listener = keeper().listener();
 
-      listener.on(TYPE, AGENT, new Narration.TurnEnded(id(2)));
+      listener.on(TYPE, AGENT, new Narration.TurnStopped(id(2), "limit"));
 
       await().atMost(Duration.ofSeconds(10)).until(() -> !asked.isEmpty());
       assertThat(asked).containsExactly(chapter(1, 2));
@@ -779,7 +779,7 @@ class ChapterKeeperTest {
       NarrationListener told = async.delegate();
       AgentType other = new AgentType("other");
 
-      told.on(other, AGENT, new Narration.TurnEnded(id(2)));
+      told.on(other, AGENT, new Narration.TurnStopped(id(2), "limit"));
 
       assertThat(asked).isEmpty();
       assertThat(chapters.closedThrough(TYPE, AGENT)).isEmpty();
@@ -801,7 +801,7 @@ class ChapterKeeperTest {
       NarrationListener.Async async = (NarrationListener.Async) keeper().listener();
       NarrationListener told = async.delegate();
 
-      told.on(TYPE, AGENT, new Narration.TurnEnded(id(2)));
+      told.on(TYPE, AGENT, new Narration.TurnStopped(id(2), "limit"));
 
       assertThat(asked).containsExactly(chapter(1, 2));
     }

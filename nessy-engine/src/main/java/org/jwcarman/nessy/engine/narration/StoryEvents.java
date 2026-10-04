@@ -15,69 +15,77 @@
  */
 package org.jwcarman.nessy.engine.narration;
 
-import java.util.List;
+import org.jwcarman.nessy.api.FailureKind;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.inference.Failure;
 
 /**
  * What a stored event is told as. The one mapping from the agent's record to its narration: both
- * doors use it as events commit, so what a listener hears cannot differ by door.
+ * doors use it as events commit, so what a listener hears cannot differ by door. One stored event
+ * is told as exactly one {@link Narration.Story} event.
  */
 public final class StoryEvents {
 
   private StoryEvents() {}
 
-  /** What {@code event} is told as, in order; empty when it is not told. */
-  public static List<Narration> of(AgentEvent event) {
+  /** What {@code event} is told as. */
+  public static Narration.Story of(AgentEvent event) {
     return switch (event) {
-      // Not narrated. A watcher is told what is happening to a turn, and a call being tried
-      // again is the engine keeping its own promise rather than anything the turn did. It is in
-      // the story for whoever is counting what the turn spent.
-      case AgentEvent.InferenceAttempted _ -> List.of();
+      // A call being tried again is the engine keeping its own promise rather than anything the
+      // turn did, but it cost something, and the story is where a watcher learns that.
+      case AgentEvent.InferenceAttempted attempted ->
+          new Narration.InferenceRetried(
+              attempted.turn(),
+              kindOf(attempted.failure()),
+              attempted.failure().reason(),
+              attempted.usage());
       case AgentEvent.ActionsRequested asked ->
-          List.of(
-              new Narration.ActionsRequested(
-                  asked.actions().stream()
-                      .filter(ActionRequest.ToolCall.class::isInstance)
-                      .map(ActionRequest.ToolCall.class::cast)
-                      .map(
-                          call ->
-                              new Narration.ActionsRequested.Call(
-                                  call.id(), call.name(), call.action()))
-                      .toList()));
-      case AgentEvent.ToolApproved approved ->
-          List.of(new Narration.CallApproved(approved.callId()));
+          new Narration.ActionsRequested(
+              asked.turn(),
+              asked.actions().stream()
+                  .filter(ActionRequest.ToolCall.class::isInstance)
+                  .map(ActionRequest.ToolCall.class::cast)
+                  .map(
+                      call ->
+                          new Narration.ActionsRequested.Call(
+                              call.id(), call.idempotencyKey(), call.name(), call.action()))
+                  .toList(),
+              asked.usage());
+      case AgentEvent.ToolApproved approved -> new Narration.CallApproved(approved.callId());
       case AgentEvent.ToolDenied denied ->
-          List.of(new Narration.CallDenied(denied.callId(), denied.reason()));
-      case AgentEvent.ToolSucceeded done -> List.of(new Narration.CallFinished(done.callId()));
+          new Narration.CallDenied(denied.callId(), denied.reason());
+      case AgentEvent.ToolSucceeded done -> new Narration.CallFinished(done.callId());
       case AgentEvent.ToolFailed failed ->
-          List.of(new Narration.CallFailed(failed.callId(), failed.message()));
+          new Narration.CallFailed(failed.callId(), failed.message());
       // Said as a fact once the fold has committed. The deltas a provider streamed are what is
       // ARRIVING; this is what was said, and a watcher that saw neither -- a page opened
       // mid-turn -- would otherwise never learn the answer.
       case AgentEvent.InferenceAnswered answered ->
-          List.of(new Narration.Answered(), new Narration.TurnEnded(answered.turn()));
-      // However it ended, it ended: the one event to hear when the story grew by a turn. An
-      // answer, a refusal and a fault all close one; asking for actions does not.
+          new Narration.Answered(answered.turn(), answered.usage());
       case AgentEvent.InferenceRefused refused ->
-          List.of(
-              new Narration.TurnRefused(refused.category()),
-              new Narration.TurnEnded(refused.turn()));
+          new Narration.TurnRefused(refused.turn(), refused.category(), refused.usage());
       case AgentEvent.InferenceFailed failed ->
-          List.of(
-              new Narration.TurnFailed(failed.failure().reason()),
-              new Narration.TurnEnded(failed.turn()));
-      // Heard exactly as any other failed turn is. A watcher does not care whether the model
-      // could not answer or a policy decided it had answered enough; either way the turn is over
-      // and the reason is the whole of what is worth saying about it.
-      case AgentEvent.TurnFailed ended ->
-          List.of(new Narration.TurnFailed(ended.reason()), new Narration.TurnEnded(ended.turn()));
-      case AgentEvent.Terminated _ -> List.of(new Narration.Terminated());
+          new Narration.TurnFailed(
+              failed.turn(), kindOf(failed.failure()), failed.failure().reason(), failed.usage());
+      // Not a failed model call: a policy ended the turn, and no call was made.
+      case AgentEvent.TurnFailed stopped ->
+          new Narration.TurnStopped(stopped.turn(), stopped.reason());
+      case AgentEvent.Terminated _ -> new Narration.Terminated();
       // Said even though the caller knows: the caller is not the only watcher. A page on the
       // narration stream while the request blocks, or a second one opened beside it, learns what
       // is happening only from here.
-      case AgentEvent.TurnStarted started -> List.of(new Narration.TurnStarted(started.turn()));
+      case AgentEvent.TurnStarted started -> new Narration.TurnStarted(started.turn());
+    };
+  }
+
+  private static FailureKind kindOf(Failure failure) {
+    return switch (failure) {
+      case Failure.Transient _ -> FailureKind.TRANSIENT;
+      case Failure.Unknown _ -> FailureKind.UNKNOWN;
+      case Failure.Permanent _ -> FailureKind.PERMANENT;
+      case Failure.Rejected _ -> FailureKind.REJECTED;
     };
   }
 }

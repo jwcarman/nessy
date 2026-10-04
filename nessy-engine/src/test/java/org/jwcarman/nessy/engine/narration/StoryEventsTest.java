@@ -21,9 +21,13 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.jwcarman.nessy.api.FailureKind;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
@@ -50,72 +54,118 @@ class StoryEventsTest {
     assertThat(
             StoryEvents.of(
                 new AgentEvent.TurnStarted(SEQ, TURN, PayloadRef.of("p"), Instant.EPOCH)))
-        .containsExactly(new Narration.TurnStarted(TURN));
+        .isEqualTo(new Narration.TurnStarted(TURN));
   }
 
   @Test
-  void an_answer_is_told_as_answered_and_then_the_turn_ending() {
+  void an_answer_ends_its_turn_and_says_what_the_call_cost() {
+    Usage usage = Usage.of("a-model", 100, 20);
+
     assertThat(
-            StoryEvents.of(
-                new AgentEvent.InferenceAnswered(
-                    SEQ, TURN, PayloadRef.of("p"), Usage.unreported())))
-        .containsExactly(new Narration.Answered(), new Narration.TurnEnded(TURN));
+            StoryEvents.of(new AgentEvent.InferenceAnswered(SEQ, TURN, PayloadRef.of("p"), usage)))
+        .isEqualTo(new Narration.Answered(TURN, usage));
   }
 
   @Test
-  void a_retried_model_call_is_not_told() {
+  void a_retried_model_call_is_told_with_its_kind_and_cost() {
+    Usage usage = Usage.of("a-model", 100, 0);
+
     assertThat(
             StoryEvents.of(
                 new AgentEvent.InferenceAttempted(
-                    SEQ, TURN, new Failure.Transient("busy"), Usage.unreported())))
-        .isEmpty();
+                    SEQ, TURN, new Failure.Unknown("no answer"), usage)))
+        .isEqualTo(new Narration.InferenceRetried(TURN, FailureKind.UNKNOWN, "no answer", usage));
   }
 
   @Test
-  void requested_actions_are_told_with_each_calls_id_tool_and_action() {
+  void requested_actions_are_told_with_the_usage_and_each_calls_id_key_tool_and_action() {
+    Usage usage = Usage.of("a-model", 10, 5);
     AgentEvent.ActionsRequested asked =
         new AgentEvent.ActionsRequested(
             SEQ,
             TURN,
             PayloadRef.of("p"),
             List.of(new ActionRequest.ToolCall(CALL, new ToolName("lookup"), "look it up", KEY)),
-            Usage.unreported());
+            usage);
 
     assertThat(StoryEvents.of(asked))
-        .containsExactly(
+        .isEqualTo(
             new Narration.ActionsRequested(
+                TURN,
                 List.of(
                     new Narration.ActionsRequested.Call(
-                        CALL, new ToolName("lookup"), "look it up"))));
+                        CALL, KEY, new ToolName("lookup"), "look it up")),
+                usage));
   }
 
   @Test
-  void a_refused_turn_is_told_as_refused_and_then_the_turn_ending() {
-    assertThat(
-            StoryEvents.of(
-                new AgentEvent.InferenceRefused(SEQ, TURN, "policy", Usage.unreported())))
-        .containsExactly(new Narration.TurnRefused("policy"), new Narration.TurnEnded(TURN));
+  void a_refused_turn_is_told_with_the_category_and_cost() {
+    Usage usage = Usage.of("a-model", 7, 0);
+
+    assertThat(StoryEvents.of(new AgentEvent.InferenceRefused(SEQ, TURN, "policy", usage)))
+        .isEqualTo(new Narration.TurnRefused(TURN, "policy", usage));
   }
 
   @Test
-  void a_failed_model_call_is_told_with_its_reason_and_then_the_turn_ending() {
-    assertThat(
-            StoryEvents.of(
-                new AgentEvent.InferenceFailed(
-                    SEQ, TURN, new Failure.Permanent("broken"), Usage.unreported())))
-        .containsExactly(new Narration.TurnFailed("broken"), new Narration.TurnEnded(TURN));
+  void a_transient_failure_ends_the_turn_as_a_transient_failure() {
+    assertFailureTold(new Failure.Transient("busy"), FailureKind.TRANSIENT, "busy");
   }
 
   @Test
-  void a_turn_a_policy_ended_is_told_with_its_reason_and_then_the_turn_ending() {
+  void an_unknown_failure_ends_the_turn_as_an_unknown_failure() {
+    assertFailureTold(new Failure.Unknown("silence"), FailureKind.UNKNOWN, "silence");
+  }
+
+  @Test
+  void a_permanent_failure_ends_the_turn_as_a_permanent_failure() {
+    assertFailureTold(new Failure.Permanent("broken"), FailureKind.PERMANENT, "broken");
+  }
+
+  @Test
+  void a_rejected_failure_ends_the_turn_as_a_rejected_failure() {
+    assertFailureTold(new Failure.Rejected("bad input"), FailureKind.REJECTED, "bad input");
+  }
+
+  @Test
+  void a_turn_a_policy_stopped_is_not_a_failed_model_call() {
     assertThat(StoryEvents.of(new AgentEvent.TurnFailed(SEQ, TURN, "too many calls")))
-        .containsExactly(new Narration.TurnFailed("too many calls"), new Narration.TurnEnded(TURN));
+        .isEqualTo(new Narration.TurnStopped(TURN, "too many calls"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("everyKind")
+  void every_stored_event_is_told_as_exactly_one_story_event(AgentEvent event) {
+    assertThat(StoryEvents.of(event)).isInstanceOf(Narration.Story.class);
+  }
+
+  static Stream<AgentEvent> everyKind() {
+    Usage usage = Usage.unreported();
+    return Stream.of(
+        new AgentEvent.TurnStarted(SEQ, TURN, PayloadRef.of("p"), Instant.EPOCH),
+        new AgentEvent.InferenceAnswered(SEQ, TURN, PayloadRef.of("p"), usage),
+        new AgentEvent.InferenceRefused(SEQ, TURN, "policy", usage),
+        new AgentEvent.InferenceFailed(SEQ, TURN, new Failure.Permanent("x"), usage),
+        new AgentEvent.InferenceAttempted(SEQ, TURN, new Failure.Transient("x"), usage),
+        new AgentEvent.TurnFailed(SEQ, TURN, "x"),
+        new AgentEvent.ActionsRequested(SEQ, TURN, PayloadRef.of("p"), List.of(), usage),
+        new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty()),
+        new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty()),
+        new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok"),
+        new AgentEvent.ToolFailed(SEQ, TURN, CALL, "boom"),
+        new AgentEvent.Terminated(SEQ));
+  }
+
+  private static void assertFailureTold(Failure failure, FailureKind kind, String reason) {
+    Usage usage = Usage.of("a-model", 1, 1);
+
+    assertThat(StoryEvents.of(new AgentEvent.InferenceFailed(SEQ, TURN, failure, usage)))
+        .isEqualTo(new Narration.TurnFailed(TURN, kind, reason, usage));
   }
 
   @Test
   void an_approved_call_is_told_as_approved() {
     assertThat(StoryEvents.of(new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty())))
-        .containsExactly(new Narration.CallApproved(CALL));
+        .isEqualTo(new Narration.CallApproved(CALL));
   }
 
   @Test
@@ -123,25 +173,25 @@ class StoryEventsTest {
     assertThat(
             StoryEvents.of(
                 new AgentEvent.ToolDenied(SEQ, TURN, CALL, "not allowed", Optional.empty())))
-        .containsExactly(new Narration.CallDenied(CALL, "not allowed"));
+        .isEqualTo(new Narration.CallDenied(CALL, "not allowed"));
   }
 
   @Test
   void a_call_that_succeeded_is_told_as_finished() {
     assertThat(
             StoryEvents.of(new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok")))
-        .containsExactly(new Narration.CallFinished(CALL));
+        .isEqualTo(new Narration.CallFinished(CALL));
   }
 
   @Test
   void a_call_that_failed_is_told_with_the_message() {
     assertThat(StoryEvents.of(new AgentEvent.ToolFailed(SEQ, TURN, CALL, "boom")))
-        .containsExactly(new Narration.CallFailed(CALL, "boom"));
+        .isEqualTo(new Narration.CallFailed(CALL, "boom"));
   }
 
   @Test
   void termination_is_told_as_terminated() {
     assertThat(StoryEvents.of(new AgentEvent.Terminated(SEQ)))
-        .containsExactly(new Narration.Terminated());
+        .isEqualTo(new Narration.Terminated());
   }
 }

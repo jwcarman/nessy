@@ -18,8 +18,10 @@ package org.jwcarman.nessy.engine.harness.queued;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Narration;
@@ -51,7 +53,8 @@ class NarrationCoverageTest {
           "TurnStarted",
           "Thinking",
           "Answered",
-          "TurnEnded",
+          "TurnStopped",
+          "InferenceRetried",
           "TurnFailed",
           "TurnRefused",
           "Commentary",
@@ -77,10 +80,7 @@ class NarrationCoverageTest {
   @DisplayName("every arm of the narration grammar has somebody whose job it is to say it")
   void every_arm_is_accounted_for() {
     Set<String> declared =
-        new TreeSet<>(
-            Arrays.stream(Narration.class.getPermittedSubclasses())
-                .map(Class::getSimpleName)
-                .toList());
+        new TreeSet<>(arms(Narration.class).stream().map(Class::getSimpleName).toList());
 
     Set<String> accounted = new TreeSet<>(SAID_BY_THE_ENGINE);
     accounted.addAll(SAID_BY_A_PROVIDER);
@@ -101,5 +101,12 @@ class NarrationCoverageTest {
     assertThat(both)
         .as("a fact is announced once, after a fold; a delta is what a provider is saying now")
         .isEmpty();
+  }
+
+  /** The records at the leaves of the sealed grammar; the groups in between are not arms. */
+  private static List<Class<?>> arms(Class<?> group) {
+    return Arrays.stream(group.getPermittedSubclasses())
+        .flatMap(member -> member.isInterface() ? arms(member).stream() : Stream.of(member))
+        .toList();
   }
 }

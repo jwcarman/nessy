@@ -850,7 +850,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     if (!narrator.listening()) {
       return;
     }
-    StoryEvents.of(event).forEach(step::narrate);
+    step.narrate(StoryEvents.of(event));
   }
 
   /**

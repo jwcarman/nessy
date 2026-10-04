@@ -63,7 +63,7 @@ A listener that does real work — a model call, a slow write — wraps itself:
 ```java
 NarrationListener listener = NarrationListener.of(on -> on
         .agentType(TYPE)
-        .onTurnEnded((type, id, ended) -> reporter.reportIfDue(id)))
+        .onTurnEnding((type, id, ended) -> reporter.reportIfDue(id)))
     .async();
 ```
 
@@ -87,42 +87,67 @@ NarrationListener console = NarrationListener.of(on -> on
         .onActionsRequested((type, id, asked) -> asked.calls()
                 .forEach(call -> note("calling " + call.toolName() + ": " + call.action())))
         .onApprovalDeferred((type, id, waiting) -> note("asked, until " + waiting.until()))
-        .onTurnEnded((type, id, ended) -> out.println()));
+        .onTurnEnding((type, id, ended) -> out.println()));
 ```
 
 ## The kinds
 
+`Narration` has two groups. A story event says something the agent's record
+holds, and is told once the fold that wrote it has committed. A live signal
+is heard only as it happens: nothing is stored, so a watcher that was not
+listening never hears it.
+
+### Story events (stored)
+
 | Event | When |
 |---|---|
 | `TurnStarted(turn)` | an input was taken up and a turn opened |
+| `ActionsRequested(turn, calls, usage)` | the model asked for tools; each `Call(callId, idempotencyKey, toolName, action)` is what later call events join to by `callId` |
+| `CallApproved(callId)`, `CallDenied(callId, reason)` | the decision |
+| `CallFinished(callId)`, `CallFailed(callId, message)` | a call's outcome |
+| `Answered(turn, usage)` | the turn produced an answer |
+| `TurnRefused(turn, category, usage)` | the model declined to answer |
+| `TurnFailed(turn, kind, reason, usage)` | a model call failed and ended the turn |
+| `TurnStopped(turn, reason)` | a policy stopped the turn; no model call failed |
+| `InferenceRetried(turn, kind, reason, usage)` | a model call failed and was tried again; the turn carries on |
+| `Terminated` | the agent will accept nothing further |
+
+A turn ends in exactly one of four events: `Answered`, `TurnRefused`,
+`TurnFailed` or `TurnStopped`. They share the group `TurnEnding`, and
+`onTurnEnding` hears all four. It is what the engine's chapter keeper
+listens for.
+
+### Live signals
+
+| Event | When |
+|---|---|
 | `Thinking` | the model is being asked |
 | `ThinkingDelta(text)`, `ContentDelta(text)` | reasoning and prose, as they stream |
 | `Commentary(text)` | prose the model said beside a request for actions |
-| `ActionsRequested(calls)` | the model asked for tools; each `Call(callId, toolName, action)` is what later call events join to by `callId` |
 | `ApprovalSought(callId, action)` | somebody is being asked whether a call may run |
 | `ApprovalDeferred(callId, action, until)` | nobody answered yet; the question stands until `until` |
-| `CallApproved(callId)`, `CallDenied(callId, reason)` | the decision |
 | `CallDeferred(callId, toolName, until)` | a tool started work and will report back |
-| `CallFinished(callId)`, `CallFailed(callId, message)` | a call's outcome |
-| `Answered` | the turn produced an answer |
-| `TurnFailed(reason)` | the turn ended without an answer |
-| `TurnRefused(category)` | the model declined to answer |
-| `TurnEnded(turn)` | the turn is over, however it ended; the one the engine's chapter keeper listens for |
-| `Terminated` | the agent will accept nothing further |
 
 `Answered` carries no text: the direct door hands the answer back to the
 caller who asked, and anything else watching reads it from the story. A
 provider that streams has already said the words delta by delta.
 
 `TurnFailed` carries `reason`, the provider adapter's own account of what
-went wrong. It matters most on the queued door: `QueuedHarness.tell`
-returns nothing, so this is the only place a watcher learns why a turn
-failed. The direct door hands the same text back from `ask` as
-`Outcome.Failed`.
+went wrong, and `kind`, a `FailureKind`: `TRANSIENT` (it might work next
+time), `UNKNOWN` (nobody heard back), `PERMANENT` (the same request fails
+the same way) or `REJECTED` (the provider named the input it refused). It
+matters most on the queued door: `QueuedHarness.tell` returns nothing, so
+this is the only place a watcher learns why a turn failed. The direct door
+hands the same text back from `ask` as `Outcome.Failed`.
 
 `TurnRefused` carries `category`, the provider's own word for why —
 unchanged and uninterpreted. A refusal is not a failure: the call
 succeeded and the model chose not to answer.
+
+`TurnStopped` carries the policy's `reason` and no `usage`: nothing was
+asked of the model. `Answered`, `TurnRefused`, `TurnFailed`,
+`InferenceRetried` and `ActionsRequested` carry the `Usage` of the model
+call they tell about, including the calls that were retried.
 
 `ApprovalDeferred` is the arm that pays for this whole channel. "Awaiting a
 person" is the state an operator most wants to see, and the engine
@@ -130,7 +155,7 @@ deliberately does not store it — the fold cannot tell a tool that takes
 three days from one that takes 200 milliseconds, and should not learn. So
 it is announced rather than recorded, which is the one place it belongs.
 
-On the wire each kind has a kebab-case name, `turn-ended`, `content-delta`,
+On the wire each kind has a kebab-case name, `turn-stopped`, `content-delta`,
 `approval-deferred`, carried as the JSON `type` field.
 
 ## Streams for a browser

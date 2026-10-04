@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking changes
+
+- **Narration is reshaped into the agent's story.** `Narration` has two groups, `Story` (stored
+  events) and `Live` (signals heard only as they happen). `TurnEnded` is removed: a turn ends in
+  exactly one `TurnEnding` event (`Answered`, `TurnRefused`, `TurnFailed` or `TurnStopped`), and
+  `NarrationListenerConfig.onTurnEnding` hears all four. A turn a policy stopped is `TurnStopped`,
+  no longer `TurnFailed`. `Answered`, `TurnRefused`, `TurnFailed` and `ActionsRequested` carry
+  their turn and the model call's `Usage`; `TurnFailed` carries a `FailureKind`; each requested
+  call carries its `IdempotencyKey`. A retried model call is told as `InferenceRetried`.
+
 ## [0.4.0] - 2026-10-03
 
 ### Breaking changes

@@ -152,7 +152,7 @@ function listen() {
     appendLine("system", "the agent declined to answer");
     idle();
   });
-  events.addEventListener("turn-ended", idle);
+  events.addEventListener("turn-stopped", idle);
   events.addEventListener("terminated", idle);
   events.onerror = () => {
     // EventSource reconnects on its own; the input must not stay disabled while it does.

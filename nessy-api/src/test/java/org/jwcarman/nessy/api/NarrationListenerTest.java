@@ -40,13 +40,13 @@ class NarrationListenerTest {
     NarrationListener listener =
         NarrationListener.of(
             c ->
-                c.onTurnEnded((type, id, ended) -> heard.add("ended " + ended.turn().value()))
-                    .onTurnEnded((type, id, ended) -> heard.add("and again"))
+                c.onTurnStopped((type, id, ended) -> heard.add("ended " + ended.turn().value()))
+                    .onTurnStopped((type, id, ended) -> heard.add("and again"))
                     .onAnswered((type, id, _) -> heard.add("said")));
 
-    listener.on(CHAT, ONE, new Narration.TurnEnded(new TurnId(3)));
+    listener.on(CHAT, ONE, new Narration.TurnStopped(new TurnId(3), "limit"));
     listener.on(CHAT, ONE, new Narration.Thinking());
-    listener.on(CHAT, ONE, new Narration.Answered());
+    listener.on(CHAT, ONE, new Narration.Answered(new TurnId(3), Usage.unreported()));
 
     assertThat(heard).containsExactly("ended 3", "and again", "said");
   }
@@ -57,10 +57,10 @@ class NarrationListenerTest {
     AtomicInteger heard = new AtomicInteger();
     NarrationListener listener =
         NarrationListener.of(
-            c -> c.agentType(CHAT).onTurnEnded((type, id, ended) -> heard.incrementAndGet()));
+            c -> c.agentType(CHAT).onTurnStopped((type, id, ended) -> heard.incrementAndGet()));
 
-    listener.on(WATCHMAN, ONE, new Narration.TurnEnded(new TurnId(1)));
-    listener.on(CHAT, ONE, new Narration.TurnEnded(new TurnId(1)));
+    listener.on(WATCHMAN, ONE, new Narration.TurnStopped(new TurnId(1), "limit"));
+    listener.on(CHAT, ONE, new Narration.TurnStopped(new TurnId(1), "limit"));
 
     assertThat(heard).hasValue(1);
   }

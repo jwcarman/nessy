@@ -77,7 +77,7 @@ class ListenersTraceTest {
                   listeners.narrate(
                       TYPE,
                       new AgentId(UUID.randomUUID()),
-                      new Narration.TurnEnded(new TurnId(1))));
+                      new Narration.TurnStopped(new TurnId(1), "limit")));
       await().atMost(Duration.ofSeconds(5)).until(() -> seen.size() == 2);
     }
 
@@ -90,7 +90,8 @@ class ListenersTraceTest {
     NarrationListener async =
         ((NarrationListener) (_, _, _) -> seen.add(Thread.currentThread().getName())).async();
 
-    async.on(TYPE, new AgentId(UUID.randomUUID()), new Narration.TurnEnded(new TurnId(1)));
+    async.on(
+        TYPE, new AgentId(UUID.randomUUID()), new Narration.TurnStopped(new TurnId(1), "limit"));
 
     await().atMost(Duration.ofSeconds(5)).until(() -> !seen.isEmpty());
     assertThat(seen).containsExactly("nessy-listener");

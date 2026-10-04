@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.time.Instant;
 import java.util.List;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
 
 /**
@@ -55,9 +56,10 @@ import org.jwcarman.nessy.api.tool.ToolName;
   @JsonSubTypes.Type(value = Narration.TurnStarted.class, name = "turn-started"),
   @JsonSubTypes.Type(value = Narration.Thinking.class, name = "thinking"),
   @JsonSubTypes.Type(value = Narration.Answered.class, name = "answered"),
-  @JsonSubTypes.Type(value = Narration.TurnEnded.class, name = "turn-ended"),
+  @JsonSubTypes.Type(value = Narration.TurnStopped.class, name = "turn-stopped"),
   @JsonSubTypes.Type(value = Narration.TurnFailed.class, name = "turn-failed"),
   @JsonSubTypes.Type(value = Narration.TurnRefused.class, name = "turn-refused"),
+  @JsonSubTypes.Type(value = Narration.InferenceRetried.class, name = "inference-retried"),
   @JsonSubTypes.Type(value = Narration.Commentary.class, name = "commentary"),
   @JsonSubTypes.Type(value = Narration.ActionsRequested.class, name = "actions-requested"),
   @JsonSubTypes.Type(value = Narration.CallApproved.class, name = "call-approved"),
@@ -73,6 +75,27 @@ import org.jwcarman.nessy.api.tool.ToolName;
 })
 public sealed interface Narration {
 
+  /**
+   * An event the agent's story records: stored, and told the same way however many times it is
+   * replayed.
+   */
+  sealed interface Story extends Narration {}
+
+  /**
+   * A signal heard only as it happens: nothing is stored, so a watcher that was not listening never
+   * hears it.
+   */
+  sealed interface Live extends Narration {}
+
+  /**
+   * One of the ways a turn ends: {@link Answered}, {@link TurnRefused}, {@link TurnFailed} or
+   * {@link TurnStopped}. A turn ends in exactly one, so a handler for this hears the story grow by
+   * a turn without caring how.
+   */
+  sealed interface TurnEnding extends Story {
+    TurnId turn();
+  }
+
   // ---- facts: from the engine, after the fold commits ---------------------------------
 
   /**
@@ -82,28 +105,34 @@ public sealed interface Narration {
    * narration says what is happening, and repeating content into it makes every watcher pay to be
    * told what it already had.
    */
-  record TurnStarted(TurnId turn) implements Narration {}
+  record TurnStarted(TurnId turn) implements Story {}
 
   /** The model is being asked. Narrated before the call, so a watcher can show waiting. */
-  record Thinking() implements Narration {}
+  record Thinking() implements Live {}
 
   /**
-   * The turn produced an answer.
+   * The turn produced an answer, and ended on it.
    *
    * <p>Not the answer itself. The direct door returns it to the caller who asked, and anything
    * watching a queued agent reads it from the story; a provider that streams has already said it
    * delta by delta. Carrying it here would be a third copy of the same words.
+   *
+   * @param usage what the model call cost, as the vendor counted it
    */
-  record Answered() implements Narration {}
+  record Answered(TurnId turn, Usage usage) implements TurnEnding {}
 
   /**
-   * The turn is over, however it ended -- answered, failed or refused. One event to listen for when
-   * what matters is that the story grew by a turn, not how.
+   * The turn was stopped on purpose, and this is why.
+   *
+   * <p>Not a model call that failed: a policy decided the turn had gone on long enough, and no call
+   * was made. So it carries a reason and no {@link Usage}.
+   *
+   * @param reason the policy's account of why it stopped the turn
    */
-  record TurnEnded(TurnId turn) implements Narration {}
+  record TurnStopped(TurnId turn, String reason) implements TurnEnding {}
 
   /**
-   * The turn ended without an answer, and might have gone otherwise.
+   * The turn ended without an answer because a model call failed, and might have gone otherwise.
    *
    * <p><b>Carries why, because for one door this is the only place it is said.</b> The direct door
    * hands the reason back from {@code ask} as an {@code Outcome.Failed}; the queued door's {@code
@@ -111,21 +140,39 @@ public sealed interface Narration {
    * reading the event stream -- which is a backend concern rather than something an application
    * should have to reach for.
    *
+   * @param kind what is known about whether trying again could work
    * @param reason the provider adapter's account of what went wrong, the same text the direct door
    *     returns
+   * @param usage what the failed call cost, which is often nothing counted
    */
-  record TurnFailed(String reason) implements Narration {}
+  record TurnFailed(TurnId turn, FailureKind kind, String reason, Usage usage)
+      implements TurnEnding {}
 
   /**
    * The turn was declined, and would be declined again.
    *
    * <p>Carries the category for the same reason {@link TurnFailed} carries its text. A refusal is
    * not a failure -- the call succeeded and the model chose not to answer -- and the category is
-   * the whole of what it said about choosing.
+   * the whole of what it said about choosing. It still costs: the model read the input first.
    *
    * @param category the provider's own word for why, unchanged and uninterpreted
+   * @param usage what the call cost
    */
-  record TurnRefused(String category) implements Narration {}
+  record TurnRefused(TurnId turn, String category, Usage usage) implements TurnEnding {}
+
+  /**
+   * A model call failed and was tried again.
+   *
+   * <p>The turn carries on, which is what tells this apart from {@link TurnFailed}. It is told
+   * because the attempt cost something and nothing else says so.
+   *
+   * @param kind {@link FailureKind#TRANSIENT} for a provider that said it might work next time,
+   *     {@link FailureKind#UNKNOWN} for a call nobody heard back from
+   * @param reason what went wrong, in words
+   * @param usage what the attempt cost
+   */
+  record InferenceRetried(TurnId turn, FailureKind kind, String reason, Usage usage)
+      implements Story {}
 
   /**
    * What the model said while asking for work -- "Let me look that up."
@@ -141,7 +188,7 @@ public sealed interface Narration {
    * a request for actions is commentary and inside an answer is the answer. The grammar says which
    * by where it sits.
    */
-  record Commentary(String text) implements Narration {}
+  record Commentary(String text) implements Live {}
 
   /**
    * The model asked for work before it would answer.
@@ -149,8 +196,10 @@ public sealed interface Narration {
    * <p>One entry per call, each carrying the call's id, because every later event about a call --
    * {@link CallApproved}, {@link CallDenied}, {@link CallFinished}, {@link CallFailed} -- names
    * only the id. This is where a watcher learns which tool that id is.
+   *
+   * @param usage what the model call that asked for the work cost
    */
-  record ActionsRequested(List<Call> calls) implements Narration {
+  record ActionsRequested(TurnId turn, List<Call> calls, Usage usage) implements Story {
     public ActionsRequested {
       calls = List.copyOf(calls);
     }
@@ -163,10 +212,12 @@ public sealed interface Narration {
      * content, and they are in the story.
      *
      * @param callId the id every later event about this call carries
+     * @param idempotencyKey the key the call runs under, stable across every retry of it
      * @param toolName the tool asked for
      * @param action the sentence the binding's stringifier wrote for this call
      */
-    public record Call(CallId callId, ToolName toolName, String action) {}
+    public record Call(
+        CallId callId, IdempotencyKey idempotencyKey, ToolName toolName, String action) {}
   }
 
   /**
@@ -177,19 +228,19 @@ public sealed interface Narration {
    * something the story does not. A watcher that wants the name joins by id to the {@link
    * ActionsRequested.Call} it heard a moment ago.
    */
-  record CallApproved(CallId callId) implements Narration {}
+  record CallApproved(CallId callId) implements Story {}
 
   /** A call was refused, and never ran. */
-  record CallDenied(CallId callId, String reason) implements Narration {}
+  record CallDenied(CallId callId, String reason) implements Story {}
 
   /** A call ran and produced something. */
-  record CallFinished(CallId callId) implements Narration {}
+  record CallFinished(CallId callId) implements Story {}
 
   /** A call did not produce something. The message is what the model will read. */
-  record CallFailed(CallId callId, String message) implements Narration {}
+  record CallFailed(CallId callId, String message) implements Story {}
 
   /** The agent will accept nothing further. */
-  record Terminated() implements Narration {}
+  record Terminated() implements Story {}
 
   // ---- waiting: the reason this channel exists ----------------------------------------
 
@@ -199,7 +250,7 @@ public sealed interface Narration {
    * <p>Carries {@code action} -- the sentence a person is shown -- because an operator watching an
    * agent wants to know what is being asked, not which call id is outstanding.
    */
-  record ApprovalSought(CallId callId, String action) implements Narration {}
+  record ApprovalSought(CallId callId, String action) implements Live {}
 
   /**
    * Nobody has answered yet, and the question stands until {@code until}.
@@ -209,10 +260,10 @@ public sealed interface Narration {
    * that takes three days from one that takes 200ms, and should not learn. So it is announced
    * rather than stored, which is the one place it belongs.
    */
-  record ApprovalDeferred(CallId callId, String action, Instant until) implements Narration {}
+  record ApprovalDeferred(CallId callId, String action, Instant until) implements Live {}
 
   /** A tool started work and will report back. Same reasoning as {@link ApprovalDeferred}. */
-  record CallDeferred(CallId callId, ToolName toolName, Instant until) implements Narration {}
+  record CallDeferred(CallId callId, ToolName toolName, Instant until) implements Live {}
 
   // ---- deltas: from a provider, while a call is in flight -------------------------------
 
@@ -234,7 +285,7 @@ public sealed interface Narration {
    * <p>The arm most likely to be filtered: an operator's console may want it and an end user's may
    * not.
    */
-  record ThinkingDelta(String text) implements Narration {}
+  record ThinkingDelta(String text) implements Live {}
 
   /**
    * A fragment of the answer, as it arrives.
@@ -242,5 +293,5 @@ public sealed interface Narration {
    * <p>The same text that lands in the story a moment later as an answer, arriving early. Not a
    * second copy of anything: a watcher that missed every delta still sees {@link Answered}.
    */
-  record ContentDelta(String text) implements Narration {}
+  record ContentDelta(String text) implements Live {}
 }

@@ -55,9 +55,10 @@ public class OdysseyNarrator implements NarrationListener {
       case Narration.TurnStarted _ -> "turn-started";
       case Narration.Thinking _ -> "thinking";
       case Narration.Answered _ -> "answered";
-      case Narration.TurnEnded _ -> "turn-ended";
+      case Narration.TurnStopped _ -> "turn-stopped";
       case Narration.TurnFailed _ -> "turn-failed";
       case Narration.TurnRefused _ -> "turn-refused";
+      case Narration.InferenceRetried _ -> "inference-retried";
       case Narration.Commentary _ -> "commentary";
       case Narration.ActionsRequested _ -> "actions-requested";
       case Narration.CallApproved _ -> "call-approved";

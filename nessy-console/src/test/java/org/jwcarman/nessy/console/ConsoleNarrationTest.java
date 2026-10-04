@@ -23,9 +23,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.FailureKind;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
 
 @DisplayName("What the console says about an agent")
@@ -33,6 +36,8 @@ class ConsoleNarrationTest {
 
   private static final AgentType CHAT = new AgentType("chat");
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
   private static final CallId CALL = new CallId("c1");
 
   @Test
@@ -45,9 +50,11 @@ class ConsoleNarrationTest {
             new Narration.TurnStarted(new TurnId(1)),
             new Narration.Thinking(),
             new Narration.ActionsRequested(
+                new TurnId(1),
                 List.of(
                     new Narration.ActionsRequested.Call(
-                        new CallId("c1"), new ToolName("depth"), "depth"))),
+                        new CallId("c1"), KEY, new ToolName("depth"), "depth")),
+                Usage.unreported()),
             new Narration.CallDenied(CALL, "not today"),
             new Narration.CallFailed(CALL, "boom"),
             new Narration.CallFinished(CALL),
@@ -69,7 +76,10 @@ class ConsoleNarrationTest {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
-    narration.on(CHAT, new AgentId(UUID.randomUUID()), new Narration.Answered());
+    narration.on(
+        CHAT,
+        new AgentId(UUID.randomUUID()),
+        new Narration.Answered(new TurnId(1), Usage.unreported()));
 
     assertThat(console.written()).isEmpty();
   }
@@ -79,7 +89,7 @@ class ConsoleNarrationTest {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
-    narration.on(CHAT, AGENT, new Narration.Answered());
+    narration.on(CHAT, AGENT, new Narration.Answered(new TurnId(1), Usage.unreported()));
 
     assertThat(console.written()).isEmpty();
     assertThat(narration.spoke()).isFalse();
@@ -90,12 +100,19 @@ class ConsoleNarrationTest {
     FakeConsole console = new FakeConsole();
     ConsoleNarration narration = new ConsoleNarration(AGENT, console);
 
-    narration.on(CHAT, AGENT, new Narration.TurnFailed("the provider gave up"));
-    narration.on(CHAT, AGENT, new Narration.TurnRefused("safety"));
+    narration.on(
+        CHAT,
+        AGENT,
+        new Narration.TurnFailed(
+            new TurnId(1), FailureKind.PERMANENT, "the provider gave up", Usage.unreported()));
+    narration.on(
+        CHAT, AGENT, new Narration.TurnRefused(new TurnId(1), "safety", Usage.unreported()));
+    narration.on(CHAT, AGENT, new Narration.TurnStopped(new TurnId(1), "too many calls"));
 
     for (Narration quiet :
         List.of(
-            new Narration.TurnEnded(new TurnId(1)),
+            new Narration.InferenceRetried(
+                new TurnId(1), FailureKind.TRANSIENT, "busy", Usage.unreported()),
             new Narration.Commentary("hmm"),
             new Narration.CallApproved(CALL),
             new Narration.ApprovalSought(CALL, "restart"),

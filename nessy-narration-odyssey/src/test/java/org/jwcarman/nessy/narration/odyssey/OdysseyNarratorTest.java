@@ -25,9 +25,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.FailureKind;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.odyssey.core.TtlPolicy;
 import tools.jackson.databind.JsonNode;
@@ -38,6 +41,8 @@ class OdysseyNarratorTest {
 
   private static final AgentType CHAT = new AgentType("chat");
   private static final AgentId ONE = new AgentId(UUID.randomUUID());
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
   private static final TtlPolicy A_DAY =
       new TtlPolicy(Duration.ofDays(1), Duration.ofDays(1), Duration.ofHours(1));
 
@@ -45,14 +50,20 @@ class OdysseyNarratorTest {
       List.of(
           new Narration.TurnStarted(new TurnId(1)),
           new Narration.Thinking(),
-          new Narration.Answered(),
-          new Narration.TurnEnded(new TurnId(1)),
-          new Narration.TurnFailed("the provider gave up"),
-          new Narration.TurnRefused("safety"),
+          new Narration.Answered(new TurnId(1), Usage.unreported()),
+          new Narration.TurnStopped(new TurnId(1), "too many calls"),
+          new Narration.TurnFailed(
+              new TurnId(1), FailureKind.PERMANENT, "the provider gave up", Usage.unreported()),
+          new Narration.TurnRefused(new TurnId(1), "safety", Usage.unreported()),
+          new Narration.InferenceRetried(
+              new TurnId(1), FailureKind.TRANSIENT, "busy", Usage.unreported()),
           new Narration.Commentary("x"),
           new Narration.ActionsRequested(
+              new TurnId(1),
               List.of(
-                  new Narration.ActionsRequested.Call(new CallId("c"), new ToolName("t"), "do t"))),
+                  new Narration.ActionsRequested.Call(
+                      new CallId("c"), KEY, new ToolName("t"), "do t")),
+              Usage.unreported()),
           new Narration.CallApproved(new CallId("c")),
           new Narration.CallDenied(new CallId("c"), "r"),
           new Narration.CallFinished(new CallId("c")),
