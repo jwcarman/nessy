@@ -154,7 +154,9 @@ public sealed interface AgentState {
           Seq at = seq.next();
           TurnId opened = at.opensTurn();
           yield Decision.of(
-              List.of(new AgentEvent.TurnStarted(at, opened, start.input(), start.at())),
+              List.of(
+                  new AgentEvent.TurnStarted(
+                      at, opened, start.input(), start.label(), start.arrivedAt(), start.at())),
               List.of(new AgentEffect.Infer(opened)));
         }
         case AgentCommand.Terminate _ ->

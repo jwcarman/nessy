@@ -106,8 +106,11 @@ public sealed interface Narration {
    * <p>The input is not echoed here. Whoever sent it has it, and anybody else reads the story;
    * narration says what is happening, and repeating content into it makes every watcher pay to be
    * told what it already had.
+   *
+   * <p>{@code label} says what started the turn, and {@code arrivedAt} is when its input reached
+   * the harness. How long the input waited is this event's time minus {@code arrivedAt}.
    */
-  record TurnStarted(TurnId turn) implements Story {}
+  record TurnStarted(TurnId turn, String label, Instant arrivedAt) implements Story {}
 
   /**
    * The turn produced an answer, and ended on it.

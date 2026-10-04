@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine.store;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -447,5 +448,27 @@ class ValueTypeCodecTest {
     assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
         .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"")
         .contains("\"kind\":\"PAST_DEADLINE\"");
+  }
+
+  @Test
+  void aTurnStartIsStoredWithWhatStartedItAndWhenItsInputArrived() {
+    String stored =
+        """
+        {"type":"turn-started","seq":1,"turn":1,"input":"a3d9f0b1","label":"Invoice",\
+        "arrivedAt":"2026-03-04T05:06:07Z","startedAt":"2026-03-04T05:06:09Z"}""";
+    AgentEvent.TurnStarted written =
+        new AgentEvent.TurnStarted(
+            new Seq(1),
+            new TurnId(1),
+            PayloadRef.of("a3d9f0b1"),
+            "Invoice",
+            Instant.parse("2026-03-04T05:06:07Z"),
+            Instant.parse("2026-03-04T05:06:09Z"));
+
+    assertThat(readStored(stored)).isEqualTo(written);
+    assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
+        .contains("\"label\":\"Invoice\"")
+        .contains("\"arrivedAt\":\"2026-03-04T05:06:07Z\"")
+        .contains("\"startedAt\":\"2026-03-04T05:06:09Z\"");
   }
 }

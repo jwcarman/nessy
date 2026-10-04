@@ -86,6 +86,7 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
   private SystemPrompt systemPrompt = new SystemPrompt("You are a helpful assistant.");
   private final Instructions instructions = new Instructions();
   private InputRenderer<I> renderer = InputRenderer.asString();
+  private Optional<Stringifier<I>> label = Optional.empty();
   private final List<NarrationListener> listeners = new ArrayList<>();
   private final List<ToolRequest<?>> tools = new ArrayList<>();
   private final Inference inference;
@@ -124,6 +125,12 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
   @Override
   public DirectHarnessConfig<I> inputRenderer(InputRenderer<I> renderer) {
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
+    return this;
+  }
+
+  @Override
+  public DirectHarnessConfig<I> inputLabel(Stringifier<I> label) {
+    this.label = Optional.of(Objects.requireNonNull(label, "label must not be null"));
     return this;
   }
 
@@ -205,6 +212,10 @@ public final class DefaultDirectHarnessConfig<I> implements DirectHarnessConfig<
 
   InputRenderer<I> renderer() {
     return renderer;
+  }
+
+  Optional<Stringifier<I>> label() {
+    return label;
   }
 
   List<NarrationListener> listeners() {

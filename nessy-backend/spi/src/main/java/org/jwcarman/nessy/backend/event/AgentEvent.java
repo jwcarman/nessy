@@ -88,8 +88,13 @@ public sealed interface AgentEvent {
    * would depend on when the replay happened. {@code AgentEvents.writtenAt} is the store's own
    * clock and answers a different question, which is when the row was written rather than when the
    * turn began.
+   *
+   * <p>{@code label} says what started the turn, in a few words: the application's own label for
+   * the input, or the input's simple class name. {@code arrivedAt} is when the input reached the
+   * harness; {@code startedAt} minus {@code arrivedAt} is how long it waited.
    */
-  record TurnStarted(Seq seq, TurnId turn, PayloadRef input, Instant startedAt)
+  record TurnStarted(
+      Seq seq, TurnId turn, PayloadRef input, String label, Instant arrivedAt, Instant startedAt)
       implements AgentEvent {}
 
   /**

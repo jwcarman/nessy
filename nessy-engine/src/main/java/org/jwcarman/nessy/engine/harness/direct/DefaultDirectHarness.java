@@ -63,6 +63,7 @@ import org.jwcarman.nessy.engine.core.TurnTally;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
+import org.jwcarman.nessy.engine.harness.InputLabels;
 import org.jwcarman.nessy.engine.narration.AfterCommit;
 import org.jwcarman.nessy.engine.narration.AfterCommit.Step;
 import org.jwcarman.nessy.engine.narration.StoryEvents;
@@ -165,6 +166,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   private final AgentType agentType;
   private final InputRenderer<I> renderer;
+  private final InputLabels<I> labels;
 
   /**
    * What a deadline recovery enforces is measured from -- the same clock {@link EffectHandlers}'
@@ -248,6 +250,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       AgentType agentType,
       Clock clock,
       InputRenderer<I> renderer,
+      InputLabels<I> labels,
       OutputReader<O> reading,
       AfterCommit narrator,
       EffectHandlers handlers,
@@ -259,6 +262,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     this.agentType = agentType;
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
+    this.labels = Objects.requireNonNull(labels, "labels must not be null");
     this.reading = Objects.requireNonNull(reading, "reading must not be null");
     this.narrator = Objects.requireNonNull(narrator, "narrator must not be null");
     this.handlers = Objects.requireNonNull(handlers, "handlers must not be null");
@@ -316,9 +320,10 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     // happen inside the first locked step, after the phase check, so a declined caller writes no
     // payload at all (§3, §4d).
     List<Block.InputContent> rendered = renderer.render(input);
+    String label = labels.of(input);
     StepResult<O> first =
         narrator.locked(
-            backend.locks(), agentType, agent, step -> beginTurn(step, agent, rendered));
+            backend.locks(), agentType, agent, step -> beginTurn(step, agent, rendered, label));
     return switch (first) {
       case StepResult.Declined<O> declined -> declined.outcome();
       case StepResult.Advanced<O> advanced -> drive(agent, advanced.turn(), advanced.effects());
@@ -363,7 +368,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * -- because whatever it was waiting on had already passed its own deadline -- or reports that it
    * is genuinely busy.
    */
-  private StepResult<O> beginTurn(Step step, AgentId agent, List<Block.InputContent> rendered) {
+  private StepResult<O> beginTurn(
+      Step step, AgentId agent, List<Block.InputContent> rendered, String label) {
     Instant at = clock.instant().truncatedTo(ChronoUnit.MICROS);
     AgentState state = reconstitute(agent);
     if (state instanceof AgentState.Terminal) {
@@ -378,7 +384,8 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       case RecoveryOutcome.Recovered(AgentState.Idle idle) -> {
         Payloads content = backend.payloads().forAgent(agent);
         Decision decision =
-            idle.execute(new AgentCommand.StartTurn(content.put(rendered), clock.instant()));
+            idle.execute(
+                new AgentCommand.StartTurn(content.put(rendered), label, at, clock.instant()));
         backend.events().append(agentType, agent, decision.events(), idle.seq(), at);
         decision.events().forEach(event -> narrate(step, event, at));
         TurnId turn = ((AgentEvent.TurnStarted) decision.events().getFirst()).turn();

@@ -75,7 +75,8 @@ class EventUsageReportsTest {
     TurnId turn = new TurnId(1);
     append(
         store,
-        new AgentEvent.TurnStarted(new Seq(1), turn, said("q"), Instant.now()),
+        new AgentEvent.TurnStarted(
+            new Seq(1), turn, said("q"), "Question", Instant.now(), Instant.now()),
         new AgentEvent.ActionsRequested(
             new Seq(2), turn, said("calls"), List.of(), usage("big", 1000, 50, 800)),
         new AgentEvent.InferenceAttempted(

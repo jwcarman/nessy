@@ -240,18 +240,26 @@ public final class EngineFixture implements AutoCloseable {
    * turn it opens -- the same rule {@code AgentState} applies.
    *
    * <p><b>Except for when.</b> A real engine stamps {@code startedAt} from its own clock, and this
-   * factory has no way to know what that was. The instant here is a placeholder, so compare with
-   * {@link #ignoringWhenItStarted()} rather than by equality.
+   * factory has no way to know what that was, nor when the input arrived. Both instants here are
+   * placeholders, so compare with {@link #ignoringWhenItStarted()} rather than by equality. The
+   * label is the one an input of type {@code String} gets.
    */
   public AgentEvent.TurnStarted turnStarted(AgentId agent, long seq, String said) {
     Seq at = new Seq(seq);
     return new AgentEvent.TurnStarted(
-        at, at.opensTurn(), ref(agent, List.of(new Block.Text(said))), Instant.EPOCH);
+        at,
+        at.opensTurn(),
+        ref(agent, List.of(new Block.Text(said))),
+        "String",
+        Instant.EPOCH,
+        Instant.EPOCH);
   }
 
-  /** Everything about a turn's opening except the moment it happened. */
+  /** Everything about a turn's opening except the moments it arrived and started. */
   public static RecursiveComparisonConfiguration ignoringWhenItStarted() {
-    return RecursiveComparisonConfiguration.builder().withIgnoredFields("startedAt").build();
+    return RecursiveComparisonConfiguration.builder()
+        .withIgnoredFields("startedAt", "arrivedAt")
+        .build();
   }
 
   /** The event recording an answer of {@code said}, as the fold would have written it. */

@@ -176,7 +176,13 @@ class JdbcDirectBackendTest {
     DirectBackend reader = backend(dataSource);
     AgentId agent = AgentId.random();
     AgentEvent event =
-        new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), new PayloadRef("p1"), Instant.EPOCH);
+        new AgentEvent.TurnStarted(
+            new Seq(1),
+            new TurnId(1),
+            new PayloadRef("p1"),
+            "Question",
+            Instant.EPOCH,
+            Instant.EPOCH);
 
     writer.events().append(TYPE, agent, List.of(event), Seq.NONE, Instant.EPOCH);
 

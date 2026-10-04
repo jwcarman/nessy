@@ -54,10 +54,13 @@ class StoryEventsTest {
 
   @Test
   void a_turn_starting_is_told_as_turn_started() {
+    Instant arrived = Instant.parse("2026-03-04T05:06:07Z");
+
     assertThat(
             StoryEvents.of(
-                new AgentEvent.TurnStarted(SEQ, TURN, PayloadRef.of("p"), Instant.EPOCH)))
-        .isEqualTo(new Narration.TurnStarted(TURN));
+                new AgentEvent.TurnStarted(
+                    SEQ, TURN, PayloadRef.of("p"), "Invoice", arrived, Instant.EPOCH)))
+        .isEqualTo(new Narration.TurnStarted(TURN, "Invoice", arrived));
   }
 
   @Test
@@ -155,7 +158,8 @@ class StoryEventsTest {
   static Stream<AgentEvent> everyKind() {
     Usage usage = Usage.unreported();
     return Stream.of(
-        new AgentEvent.TurnStarted(SEQ, TURN, PayloadRef.of("p"), Instant.EPOCH),
+        new AgentEvent.TurnStarted(
+            SEQ, TURN, PayloadRef.of("p"), "Invoice", Instant.EPOCH, Instant.EPOCH),
         new AgentEvent.InferenceAnswered(SEQ, TURN, PayloadRef.of("p"), false, usage),
         new AgentEvent.InferenceRefused(SEQ, TURN, "policy", usage),
         new AgentEvent.InferenceFailed(SEQ, TURN, new Failure.Permanent("x"), usage),

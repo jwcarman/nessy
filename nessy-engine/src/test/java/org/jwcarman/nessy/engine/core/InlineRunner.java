@@ -86,7 +86,8 @@ final class InlineRunner {
     AgentState state = AgentState.idle(Seq.NONE);
 
     Deque<AgentCommand> pending = new ArrayDeque<>();
-    pending.add(new AgentCommand.StartTurn(claimCheck(question), Instant.EPOCH));
+    pending.add(
+        new AgentCommand.StartTurn(claimCheck(question), "Question", Instant.EPOCH, Instant.EPOCH));
 
     while (!pending.isEmpty()) {
       Decision decision = state.execute(pending.poll());

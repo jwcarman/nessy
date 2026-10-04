@@ -86,7 +86,11 @@ class AgentStateRepeatedCallIdTest {
 
   /** Request 1 asked for c, it was approved and succeeded; the model is inferring again. */
   private AgentState inferringAfterFirstRequest() {
-    AgentState state = after(idle, idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)));
+    AgentState state =
+        after(
+            idle,
+            idle.execute(
+                new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH)));
     state = approved(askingForC(state), FIRST_REQUEST);
     return after(
         state,

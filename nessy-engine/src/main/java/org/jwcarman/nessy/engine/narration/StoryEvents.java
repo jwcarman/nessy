@@ -81,7 +81,8 @@ public final class StoryEvents {
       // Said even though the caller knows: the caller is not the only watcher. A page on the
       // narration stream while the request blocks, or a second one opened beside it, learns what
       // is happening only from here.
-      case AgentEvent.TurnStarted started -> new Narration.TurnStarted(started.turn());
+      case AgentEvent.TurnStarted started ->
+          new Narration.TurnStarted(started.turn(), started.label(), started.arrivedAt());
     };
   }
 

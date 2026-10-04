@@ -76,7 +76,7 @@ same way a duplicate at-least-once delivery of anything else is silent.
 not the durable events themselves, but an announcement of what just
 happened or is about to. A turn's arms, in the order a watcher sees them:
 
-- `Narration.TurnStarted(TurnId turn)` — a turn opened on an input.
+- `Narration.TurnStarted(TurnId turn, String label, Instant arrivedAt)` — a turn opened on an input; the label says what started it and `arrivedAt` is when the input reached the harness.
 - `Narration.Thinking()` — the model is about to be asked, narrated before
   the call so a watcher can show waiting.
 - One of four ways the turn ends, each a `Narration.TurnEnding`:

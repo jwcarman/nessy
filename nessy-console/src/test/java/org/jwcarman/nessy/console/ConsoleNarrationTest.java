@@ -17,6 +17,7 @@ package org.jwcarman.nessy.console;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -49,7 +50,7 @@ class ConsoleNarrationTest {
 
     for (Narration event :
         List.of(
-            new Narration.TurnStarted(new TurnId(1)),
+            new Narration.TurnStarted(new TurnId(1), "Question", Instant.EPOCH),
             new Narration.Thinking(),
             new Narration.ActionsRequested(
                 new TurnId(1),

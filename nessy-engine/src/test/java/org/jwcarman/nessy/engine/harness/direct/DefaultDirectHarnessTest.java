@@ -1226,7 +1226,13 @@ class DefaultDirectHarnessTest {
         TYPE,
         agent,
         List.of(
-            new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput, Instant.EPOCH)),
+            new AgentEvent.TurnStarted(
+                new Seq(1),
+                new TurnId(1),
+                abandonedInput,
+                "Question",
+                Instant.EPOCH,
+                Instant.EPOCH)),
         Seq.NONE,
         clock.instant());
 
@@ -1306,7 +1312,13 @@ class DefaultDirectHarnessTest {
         TYPE,
         agent,
         List.of(
-            new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput, Instant.EPOCH),
+            new AgentEvent.TurnStarted(
+                new Seq(1),
+                new TurnId(1),
+                abandonedInput,
+                "Question",
+                Instant.EPOCH,
+                Instant.EPOCH),
             new AgentEvent.ActionsRequested(
                 new Seq(2),
                 new TurnId(1),
@@ -1383,7 +1395,13 @@ class DefaultDirectHarnessTest {
         TYPE,
         agent,
         List.of(
-            new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), abandonedInput, Instant.EPOCH),
+            new AgentEvent.TurnStarted(
+                new Seq(1),
+                new TurnId(1),
+                abandonedInput,
+                "Question",
+                Instant.EPOCH,
+                Instant.EPOCH),
             new AgentEvent.ActionsRequested(
                 new Seq(2),
                 new TurnId(1),
@@ -1470,6 +1488,8 @@ class DefaultDirectHarnessTest {
                 secondTurnSeq,
                 secondTurnSeq.opensTurn(),
                 payloads.forAgent(agent).put(List.of(new Block.Text("second"))),
+                "Question",
+                Instant.EPOCH,
                 Instant.EPOCH)),
         lastSeq,
         clock.instant());
@@ -1603,6 +1623,8 @@ class DefaultDirectHarnessTest {
                   opening,
                   opening.opensTurn(),
                   payloads.forAgent(agent).put(List.of(new Block.Text("somebody else's input"))),
+                  "Question",
+                  Instant.EPOCH,
                   Instant.EPOCH),
               new AgentEvent.InferenceAnswered(
                   opening.next(),

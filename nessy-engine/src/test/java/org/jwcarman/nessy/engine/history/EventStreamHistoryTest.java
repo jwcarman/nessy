@@ -74,14 +74,17 @@ class EventStreamHistoryTest {
     PayloadRef input = payloads.put(List.of(new Block.Text("q" + id)));
     PayloadRef answer = payloads.put(List.of(new Block.Text("a" + id)));
     append(
-        new AgentEvent.TurnStarted(new Seq(id), new TurnId(id), input, Instant.now()),
+        new AgentEvent.TurnStarted(
+            new Seq(id), new TurnId(id), input, "Question", Instant.now(), Instant.now()),
         new AgentEvent.InferenceAnswered(
             new Seq(id + 1), new TurnId(id), answer, false, Usage.unreported()));
   }
 
   private void turnUnderWay(long id) {
     PayloadRef input = payloads.put(List.of(new Block.Text("q" + id)));
-    append(new AgentEvent.TurnStarted(new Seq(id), new TurnId(id), input, Instant.now()));
+    append(
+        new AgentEvent.TurnStarted(
+            new Seq(id), new TurnId(id), input, "Question", Instant.now(), Instant.now()));
   }
 
   private static List<Long> ids(List<Turn> turns) {
@@ -203,7 +206,8 @@ class EventStreamHistoryTest {
                   new Block.ToolCall(audit, auditTool, "{}")));
       PayloadRef result = payloads.put(List.of(new Block.Text("done")));
       append(
-          new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), input, Instant.now()),
+          new AgentEvent.TurnStarted(
+              new Seq(1), new TurnId(1), input, "Question", Instant.now(), Instant.now()),
           new AgentEvent.ActionsRequested(
               new Seq(2),
               new TurnId(1),
@@ -235,7 +239,8 @@ class EventStreamHistoryTest {
       PayloadRef answer = payloads.put(List.of(new Block.Text("a1")));
       PayloadRef laterInput = payloads.put(List.of(new Block.Text("q7")));
       append(
-          new AgentEvent.TurnStarted(new Seq(1), new TurnId(1), input, Instant.now()),
+          new AgentEvent.TurnStarted(
+              new Seq(1), new TurnId(1), input, "Question", Instant.now(), Instant.now()),
           new AgentEvent.ActionsRequested(
               new Seq(2),
               new TurnId(1),
@@ -253,7 +258,8 @@ class EventStreamHistoryTest {
               new Seq(5), new TurnId(1), id, CallFailure.FAILED, "no such buyer", KEY),
           new AgentEvent.InferenceAnswered(
               new Seq(6), new TurnId(1), answer, false, Usage.unreported()),
-          new AgentEvent.TurnStarted(new Seq(7), new TurnId(7), laterInput, Instant.now()),
+          new AgentEvent.TurnStarted(
+              new Seq(7), new TurnId(7), laterInput, "Question", Instant.now(), Instant.now()),
           new AgentEvent.ActionsRequested(
               new Seq(8),
               new TurnId(7),

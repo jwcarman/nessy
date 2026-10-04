@@ -66,6 +66,22 @@ final class StoryTurn {
         config -> {});
   }
 
+  /**
+   * Runs one turn that answers "ok" for an application that labels its input, and returns the story
+   * events the listener heard, oldest first.
+   */
+  static List<Narrated> heardWithAnInputLabel(
+      AgentType type, AgentId agent, DirectBackend backend, Clock clock) {
+    return heard(
+        type,
+        agent,
+        backend,
+        clock,
+        (request, narrator) ->
+            new InferenceResult.Answer(List.of(new Block.Text("ok")), Usage.unreported()),
+        config -> config.inputLabel(said -> "Greeting"));
+  }
+
   /** A model whose one reply is cut off at the output limit. */
   static InferenceProvider cutOffAtTheOutputLimit() {
     return (request, narrator) ->

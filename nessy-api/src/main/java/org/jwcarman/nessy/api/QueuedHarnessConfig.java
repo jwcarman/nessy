@@ -60,6 +60,16 @@ public interface QueuedHarnessConfig<I> extends HarnessConfig<QueuedHarnessConfi
   QueuedHarnessConfig<I> inputRenderer(InputRenderer<I> renderer);
 
   /**
+   * A short label for each input, written on the start of the turn that takes it up and told in the
+   * story, so a reader of the story can see what started a turn without opening its input.
+   *
+   * <p>Defaults to the input's simple class name, which is also what is written when this label
+   * throws, returns null or returns a blank string. A label that fails never fails or delays the
+   * turn; a warning names the agent type.
+   */
+  QueuedHarnessConfig<I> inputLabel(Stringifier<I> label);
+
+  /**
    * What the backlog becomes when an input arrives while the agent is busy.
    *
    * <p>Defaults to {@link BacklogPolicy#keepAll()} -- right for anything a person said, wrong for a

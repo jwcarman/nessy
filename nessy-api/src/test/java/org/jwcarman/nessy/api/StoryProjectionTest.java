@@ -43,9 +43,9 @@ class StoryProjectionTest {
             0, (n, narrated) -> narrated.event() instanceof Narration.TurnStarted ? n + 1 : n);
     List<Narrated> story =
         List.of(
-            at(1, new Narration.TurnStarted(new TurnId(1))),
+            at(1, new Narration.TurnStarted(new TurnId(1), "Question", Instant.EPOCH)),
             at(2, new Narration.Terminated()),
-            at(3, new Narration.TurnStarted(new TurnId(3))));
+            at(3, new Narration.TurnStarted(new TurnId(3), "Question", Instant.EPOCH)));
 
     int counted = turns.initial();
     for (Narrated narrated : story) {

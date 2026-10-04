@@ -54,9 +54,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each event of that group, not only an event of exactly that class.
 - **A stored event's `written_at` is the engine's clock reading for its step,** to the microsecond,
   not the database's `now()`.
+- **A turn's start says what started it and when its input arrived.** `AgentEvent.TurnStarted`
+  gains `label` and `arrivedAt` before `startedAt`; `AgentCommand.StartTurn` gains `label` and
+  `arrivedAt` before `at`; `Narration.TurnStarted` gains `label` and `arrivedAt`. The stored
+  `turn-started` event has `label` and `arrivedAt` fields; recreate the database. On the queued
+  door `arrivedAt` is when `tell` was called, and on the direct door when `ask` read its clock.
 
 ### Added
 
+- `DirectHarnessConfig.inputLabel(Stringifier)` and `QueuedHarnessConfig.inputLabel(Stringifier)`
+  set the label written on a turn's start. It defaults to the input's simple class name, which is
+  also used when the label throws or returns null or a blank string.
 - `StoryProjection.of(initial, step)` makes a projection from a lambda; `StoryContent.allResults(after)`
   streams every successful result, reading a page at a time.
 - **`AgentStory.content()` reads what a story refers to:** a turn's input, what the model wrote and its answer; a call's result by its `IdempotencyKey`; and an agent's successful results, paged.

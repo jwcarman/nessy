@@ -85,7 +85,11 @@ class AgentStateTest {
   /** Runs a turn to the point where one call is outstanding and running. */
   private AgentState awaitingOneRunningCall() {
     AgentState state = idle;
-    state = state.applyAll(state.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+    state =
+        state.applyAll(
+            state
+                .execute(new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                .events());
     state =
         state.applyAll(
             state
@@ -114,7 +118,8 @@ class AgentStateTest {
 
     @Test
     void an_idle_agent_records_the_turn_and_asks_the_model() {
-      Decision decision = idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH));
+      Decision decision =
+          idle.execute(new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH));
 
       assertThat(decision.events()).singleElement().isInstanceOf(AgentEvent.TurnStarted.class);
       assertThat(decision.effects()).singleElement().isInstanceOf(AgentEffect.Infer.class);
@@ -123,19 +128,39 @@ class AgentStateTest {
     @Test
     @DisplayName("the turn's id is the seq its opening event landed at")
     void the_turn_takes_its_id_from_its_position() {
-      Decision decision = idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH));
+      Decision decision =
+          idle.execute(new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH));
 
       AgentEvent.TurnStarted started = (AgentEvent.TurnStarted) decision.events().getFirst();
       assertThat(started.turn()).isEqualTo(started.seq().opensTurn());
     }
 
     @Test
+    void a_turn_starts_with_the_label_and_arrival_it_was_given() {
+      Instant arrived = Instant.parse("2026-02-03T04:05:06Z");
+      Instant started = Instant.parse("2026-02-03T04:05:09Z");
+
+      Decision decision =
+          idle.execute(new AgentCommand.StartTurn(MAIL, "Invoice", arrived, started));
+
+      AgentEvent.TurnStarted turnStarted = (AgentEvent.TurnStarted) decision.events().getFirst();
+      assertThat(turnStarted.label()).isEqualTo("Invoice");
+      assertThat(turnStarted.arrivedAt()).isEqualTo(arrived);
+      assertThat(turnStarted.startedAt()).isEqualTo(started);
+    }
+
+    @Test
     @DisplayName("a busy agent records nothing: the harness holds the work and asks again")
     void a_busy_agent_ignores_it() {
       AgentState busy =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
 
-      assertThat(busy.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)))
+      assertThat(
+              busy.execute(
+                  new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH)))
           .isInstanceOf(Decision.Ignore.class);
     }
   }
@@ -147,7 +172,10 @@ class AgentStateTest {
     @Test
     void applying_a_turn_start_leaves_the_agent_inferring() {
       AgentState state =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
 
       assertThat(state).isInstanceOf(AgentState.Inferring.class);
     }
@@ -156,7 +184,10 @@ class AgentStateTest {
     @DisplayName("an answer closes the turn and the agent is idle again")
     void an_answer_returns_to_idle() {
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
 
       AgentState after =
           inferring.applyAll(
@@ -174,7 +205,10 @@ class AgentStateTest {
     @Test
     void a_truncated_answer_is_recorded_as_truncated() {
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
 
       Decision decision =
           inferring.execute(
@@ -192,7 +226,10 @@ class AgentStateTest {
     @Test
     void a_whole_answer_is_not() {
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
 
       Decision decision =
           inferring.execute(
@@ -210,7 +247,10 @@ class AgentStateTest {
     /** A turn with one tool call approved and running: the state a discharge lands on. */
     private AgentState awaitingOneCall() {
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       AgentState awaiting =
           inferring.applyAll(
               inferring
@@ -310,7 +350,8 @@ class AgentStateTest {
     void the_tally_is_rebuilt_by_replay() {
       Instant opened = Instant.parse("2026-09-27T12:00:00Z");
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, opened)).events());
+          idle.applyAll(
+              idle.execute(new AgentCommand.StartTurn(MAIL, "Question", opened, opened)).events());
 
       AgentState after =
           inferring
@@ -351,7 +392,10 @@ class AgentStateTest {
     @DisplayName("a call tried again leaves the agent still inferring, one seq further on")
     void a_retried_attempt_does_not_close_the_turn() {
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
 
       AgentState after =
           inferring.apply(
@@ -373,7 +417,10 @@ class AgentStateTest {
     @DisplayName("a turn that stumbled and then answered still ends idle")
     void attempts_do_not_disturb_the_close() {
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       AgentState stumbled =
           inferring.apply(
               new AgentEvent.InferenceAttempted(
@@ -399,7 +446,10 @@ class AgentStateTest {
     @DisplayName("a call that took three goes writes each one down before the answer")
     void attempts_are_written_before_the_event_that_closes_the_call() {
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       List<FailedAttempt> attempts =
           List.of(
               new FailedAttempt(new Failure.Transient("busy"), Usage.of("a-model", 11, 0)),
@@ -433,7 +483,10 @@ class AgentStateTest {
     @DisplayName("a redelivered answer writes nothing, its attempts included")
     void attempts_are_not_written_twice_by_a_redelivery() {
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       AgentState closed =
           inferring.applyAll(
               inferring
@@ -461,7 +514,10 @@ class AgentStateTest {
         "an event out of order is refused rather than quietly building a state that never existed")
     void out_of_order_is_refused() {
       AgentState state =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       AgentEvent stale =
           new AgentEvent.InferenceAnswered(
               Seq.NONE, state.seq().opensTurn(), ANSWER, false, Usage.unreported());
@@ -475,7 +531,8 @@ class AgentStateTest {
     @DisplayName("the same event twice is refused for the same reason")
     void re_applying_one_event_is_refused() {
       List<AgentEvent> events =
-          idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events();
+          idle.execute(new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+              .events();
       AgentState once = idle.applyAll(events);
 
       assertThatThrownBy(() -> once.applyAll(events)).isInstanceOf(IllegalArgumentException.class);
@@ -490,7 +547,10 @@ class AgentStateTest {
     @DisplayName("a request for actions asks for approval first, not for the call")
     void actions_are_approved_before_they_run() {
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
 
       Decision decision =
           inferring.execute(
@@ -508,7 +568,10 @@ class AgentStateTest {
     @DisplayName("an approval releases the call, and only then")
     void approval_releases_the_call() {
       AgentState awaiting =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       awaiting =
           awaiting.applyAll(
               awaiting
@@ -569,7 +632,10 @@ class AgentStateTest {
         "before approval, an outstanding call's since is the seq of the actions being requested")
     void since_before_approval_is_the_actions_requested_seq() {
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       Decision requested =
           inferring.execute(
               new AgentCommand.CompleteInference(
@@ -603,7 +669,10 @@ class AgentStateTest {
       CallId other = new CallId("call-2");
       ToolName otherTool = new ToolName("audit");
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       Decision requested =
           inferring.execute(
               new AgentCommand.CompleteInference(
@@ -641,7 +710,9 @@ class AgentStateTest {
   class EndingBadly {
 
     private AgentState inferring() {
-      return idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+      return idle.applyAll(
+          idle.execute(new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+              .events());
     }
 
     @Test
@@ -698,7 +769,10 @@ class AgentStateTest {
     @DisplayName("a tool result while the model is being asked records nothing")
     void a_tool_result_while_inferring() {
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
 
       assertThat(
               inferring.execute(
@@ -746,7 +820,11 @@ class AgentStateTest {
     private AgentState inferringOnTheSecondTurn() {
       AgentState state = idle;
       state =
-          state.applyAll(state.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          state.applyAll(
+              state
+                  .execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       state =
           state.applyAll(
               state
@@ -757,7 +835,9 @@ class AgentStateTest {
                               ANSWER, false, Usage.unreported())))
                   .events());
       return state.applyAll(
-          state.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          state
+              .execute(new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+              .events());
     }
 
     @Test
@@ -802,7 +882,10 @@ class AgentStateTest {
       AgentState awaiting = idle;
       awaiting =
           awaiting.applyAll(
-              awaiting.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+              awaiting
+                  .execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       awaiting =
           awaiting.applyAll(
               awaiting
@@ -855,7 +938,11 @@ class AgentStateTest {
     private AgentState awaitingApproval() {
       AgentState state = idle;
       state =
-          state.applyAll(state.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          state.applyAll(
+              state
+                  .execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       return state.applyAll(
           state
               .execute(
@@ -978,7 +1065,10 @@ class AgentStateTest {
     @DisplayName("a tool outcome applied mid-inference is refused")
     void a_tool_outcome_cannot_land_while_inferring() {
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       AgentEvent tooEarly =
           new AgentEvent.ToolSucceeded(
               Seq.of(9), Seq.of(9).opensTurn(), CALL, RESULT, "found it", KEY);
@@ -1022,7 +1112,11 @@ class AgentStateTest {
     private AgentState threeRunning() {
       AgentState state = idle;
       state =
-          state.applyAll(state.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          state.applyAll(
+              state
+                  .execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       state =
           state.applyAll(
               state
@@ -1056,7 +1150,10 @@ class AgentStateTest {
     @DisplayName("one approval per call is asked for, not one for the batch")
     void every_call_is_approved_separately() {
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
 
       Decision decision =
           inferring.execute(
@@ -1133,7 +1230,11 @@ class AgentStateTest {
     void a_denial_discharges_the_call() {
       AgentState state = idle;
       state =
-          state.applyAll(state.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          state.applyAll(
+              state
+                  .execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       state =
           state.applyAll(
               state
@@ -1178,7 +1279,11 @@ class AgentStateTest {
     void a_result_before_approval_is_ignored() {
       AgentState state = idle;
       state =
-          state.applyAll(state.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          state.applyAll(
+              state
+                  .execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       state =
           state.applyAll(
               state
@@ -1217,7 +1322,10 @@ class AgentStateTest {
     @DisplayName("mid-turn, terminate records nothing: the turn in flight has to finish")
     void terminate_mid_turn_is_held() {
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
 
       assertThat(inferring.execute(new AgentCommand.Terminate()))
           .isInstanceOf(Decision.Ignore.class);
@@ -1236,7 +1344,10 @@ class AgentStateTest {
     @DisplayName("and it takes once the turn closes, which is when the harness asks again")
     void terminate_takes_once_the_turn_closes() {
       AgentState inferring =
-          idle.applyAll(idle.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          idle.applyAll(
+              idle.execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       AgentState after =
           inferring.applyAll(
               inferring
@@ -1256,7 +1367,8 @@ class AgentStateTest {
     @DisplayName("a terminated agent refuses to start a turn, loudly")
     void terminal_refuses_work() {
       AgentState dead = idle.applyAll(idle.execute(new AgentCommand.Terminate()).events());
-      AgentCommand.StartTurn startTurn = new AgentCommand.StartTurn(MAIL, Instant.EPOCH);
+      AgentCommand.StartTurn startTurn =
+          new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH);
 
       assertThatThrownBy(() -> dead.execute(startTurn))
           .isInstanceOf(IllegalStateException.class)
@@ -1294,7 +1406,8 @@ class AgentStateTest {
     void terminal_is_a_dead_end() {
       AgentState dead = idle.applyAll(idle.execute(new AgentCommand.Terminate()).events());
       AgentEvent later =
-          new AgentEvent.TurnStarted(Seq.of(99), Seq.of(99).opensTurn(), MAIL, Instant.EPOCH);
+          new AgentEvent.TurnStarted(
+              Seq.of(99), Seq.of(99).opensTurn(), MAIL, "Question", Instant.EPOCH, Instant.EPOCH);
 
       assertThatThrownBy(() -> dead.apply(later)).isInstanceOf(IllegalStateException.class);
     }
@@ -1325,7 +1438,11 @@ class AgentStateTest {
     private AgentState awaitingBoth() {
       AgentState state = idle;
       state =
-          state.applyAll(state.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          state.applyAll(
+              state
+                  .execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       return state.applyAll(
           state
               .execute(
@@ -1551,7 +1668,11 @@ class AgentStateTest {
     private AgentState awaitingApproval() {
       AgentState state = idle;
       state =
-          state.applyAll(state.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+          state.applyAll(
+              state
+                  .execute(
+                      new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH))
+                  .events());
       return state.applyAll(
           state
               .execute(

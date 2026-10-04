@@ -794,7 +794,12 @@ class ChapterKeeperTest {
       NarrationListener told = async.delegate();
 
       told.on(
-          Narrated.story(TYPE, AGENT, new Narration.TurnStarted(id(3)), new Seq(1), Instant.EPOCH));
+          Narrated.story(
+              TYPE,
+              AGENT,
+              new Narration.TurnStarted(id(3), "Question", Instant.EPOCH),
+              new Seq(1),
+              Instant.EPOCH));
 
       assertThat(asked).isEmpty();
       assertThat(chapters.closedThrough(TYPE, AGENT)).isEmpty();

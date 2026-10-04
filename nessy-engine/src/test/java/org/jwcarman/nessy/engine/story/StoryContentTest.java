@@ -84,7 +84,8 @@ class StoryContentTest {
   }
 
   private AgentEvent.TurnStarted started(PayloadRef input) {
-    return new AgentEvent.TurnStarted(new Seq(last + 1), new TurnId(last + 1), input, AT);
+    return new AgentEvent.TurnStarted(
+        new Seq(last + 1), new TurnId(last + 1), input, "Question", AT, AT);
   }
 
   private AgentEvent.ActionsRequested requested(

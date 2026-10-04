@@ -72,7 +72,12 @@ class EventAgentStoriesTest {
 
   private static AgentEvent started(long seq) {
     return new AgentEvent.TurnStarted(
-        new Seq(seq), new TurnId(seq), new PayloadRef("p"), Instant.EPOCH);
+        new Seq(seq),
+        new TurnId(seq),
+        new PayloadRef("p"),
+        "Question",
+        Instant.EPOCH,
+        Instant.EPOCH);
   }
 
   private static AgentEvent answered(long seq, long turn) {
@@ -209,6 +214,29 @@ class EventAgentStoriesTest {
       List<Narrated> heard = StoryTurn.heard(TYPE, agent, backend, Clock.fixed(AT, ZoneOffset.UTC));
 
       assertThat(heard).isNotEmpty();
+      assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
+    }
+  }
+
+  @Nested
+  class A_turn_whose_input_was_labelled {
+
+    @Test
+    void reads_its_label_and_arrival_live_and_replayed() {
+      DirectBackend backend =
+          new Backend(events, new InMemoryPayloads(codecs), new InMemoryLocks(), codecs);
+
+      List<Narrated> heard =
+          StoryTurn.heardWithAnInputLabel(TYPE, agent, backend, Clock.fixed(AT, ZoneOffset.UTC));
+
+      assertThat(heard)
+          .map(Narrated::event)
+          .filteredOn(Narration.TurnStarted.class::isInstance)
+          .singleElement()
+          .extracting(
+              event -> ((Narration.TurnStarted) event).label(),
+              event -> ((Narration.TurnStarted) event).arrivedAt())
+          .containsExactly("Greeting", AT);
       assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
     }
   }

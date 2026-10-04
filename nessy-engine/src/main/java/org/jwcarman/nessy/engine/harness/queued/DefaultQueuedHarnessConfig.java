@@ -94,6 +94,7 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
   private SystemPrompt systemPrompt;
   private final Instructions instructions = new Instructions();
   private InputRenderer<I> renderer = InputRenderer.asString();
+  private Optional<Stringifier<I>> label = Optional.empty();
   private BacklogPolicy<I> policy = BacklogPolicy.keepAll();
 
   private final Inference inference;
@@ -165,6 +166,12 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
   @Override
   public DefaultQueuedHarnessConfig<I> inputRenderer(InputRenderer<I> renderer) {
     this.renderer = renderer;
+    return this;
+  }
+
+  @Override
+  public DefaultQueuedHarnessConfig<I> inputLabel(Stringifier<I> label) {
+    this.label = Optional.of(Objects.requireNonNull(label, "label must not be null"));
     return this;
   }
 
@@ -274,6 +281,10 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
 
   InputRenderer<I> renderer() {
     return renderer;
+  }
+
+  Optional<Stringifier<I>> label() {
+    return label;
   }
 
   BacklogPolicy<I> policy() {

@@ -113,7 +113,7 @@ listening never hears it.
 
 | Event | When |
 |---|---|
-| `TurnStarted(turn)` | an input was taken up and a turn opened |
+| `TurnStarted(turn, label, arrivedAt)` | an input was taken up and a turn opened; `label` says what started it and `arrivedAt` is when its input reached the harness. How long the input waited is the event's time minus `arrivedAt` |
 | `ActionsRequested(turn, calls, usage)` | the model asked for tools; each `Call(callId, idempotencyKey, toolName, action)` is what later call events join to, by `callId` or by `idempotencyKey` |
 | `CallApproved(callId, idempotencyKey, decidedBy)`, `CallDenied(callId, idempotencyKey, reason, decidedBy)` | the decision, and who or what decided it (`decidedBy` is empty when nobody is named; Nessy never interprets it) |
 | `CallFinished(callId, idempotencyKey)`, `CallFailed(callId, idempotencyKey, kind, message)` | a call's outcome; `kind` is a `CallFailure`: `FAILED` (the tool ran and failed, or could not be run), `PAST_DEADLINE` (the call did not finish before its deadline, and whether it ran is not known) or `NOT_AUTHORISED` (permission was never given: the approval's deadline passed, or the approver failed) |

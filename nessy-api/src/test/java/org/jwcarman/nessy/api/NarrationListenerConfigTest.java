@@ -39,7 +39,7 @@ class NarrationListenerConfigTest {
 
   private static final List<Narration> EVERY_KIND =
       List.of(
-          new Narration.TurnStarted(new TurnId(1)),
+          new Narration.TurnStarted(new TurnId(1), "Question", Instant.EPOCH),
           new Narration.Thinking(),
           new Narration.Answered(new TurnId(1), false, Usage.unreported()),
           new Narration.TurnStopped(new TurnId(1), "too many calls"),
