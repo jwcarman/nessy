@@ -211,9 +211,9 @@ public sealed interface Narration {
    *
    * <p>Names the call and not the tool, because the entry this is derived from does not carry the
    * tool's name and inventing a lookup to fill the field would make the announcement claim
-   * something the story does not. A watcher that wants the name joins by id to the {@link
-   * ActionsRequested.Call} it heard a moment ago. A watcher joins a call's events by its key: the
-   * same {@code idempotencyKey} is on the request, the decision and the outcome.
+   * something the story does not. A watcher that wants the name joins by key to the {@link
+   * ActionsRequested.Call} it heard a moment ago: the same {@code idempotencyKey} is on the
+   * request, the decision and the outcome.
    *
    * @param callId the id the call was requested with
    * @param idempotencyKey the call's own key, the same on its request, its approval and its outcome

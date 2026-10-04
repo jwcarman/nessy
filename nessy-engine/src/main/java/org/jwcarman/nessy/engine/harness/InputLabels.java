@@ -19,16 +19,19 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Stringifier;
+import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * What an input is called when it starts a turn, worked out the same way on both doors.
  *
- * <p>The application's {@link Stringifier} when it gave one; the input's simple class name when it
- * did not, when the stringifier throws, and when it returns null or a blank string. A label never
- * fails or delays a turn, so a stringifier that fails is told as a warning naming the agent type
- * and the turn goes on. An application that gave none has chosen the default, and is not warned.
+ * <p>The application's {@link Stringifier} when it gave one, made one line and cut to {@link
+ * ToolConfig#LINE_CAP} characters; the input's simple class name when it did not, when the
+ * stringifier throws, and when it returns null or a blank string (the full class name for a class
+ * with no simple name, such as an anonymous one). A label never fails a turn, so a stringifier that
+ * throws is told as a warning naming the agent type and the turn goes on. An application that gave
+ * none has chosen the default, and is not warned.
  *
  * @param <I> what a caller hands in
  */
@@ -41,7 +44,9 @@ public final class InputLabels<I> {
 
   public InputLabels(AgentType agentType, Optional<Stringifier<I>> configured) {
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
-    this.configured = Objects.requireNonNull(configured, "configured must not be null");
+    this.configured =
+        Objects.requireNonNull(configured, "configured must not be null")
+            .map(label -> label.dropTail(ToolConfig.LINE_CAP));
   }
 
   /** The label for {@code input}, never null and never blank. */
@@ -59,6 +64,7 @@ public final class InputLabels<I> {
             e.getClass().getName());
       }
     }
-    return input.getClass().getSimpleName();
+    String simple = input.getClass().getSimpleName();
+    return simple.isBlank() ? input.getClass().getName() : simple;
   }
 }

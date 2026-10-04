@@ -293,9 +293,11 @@ harness
     .inputLabel(invoice -> "Invoice " + invoice.number());
 ```
 
-With no label configured, the label is the input's simple class name. It is the
-same when the label throws, returns null or returns a blank string: the turn
-runs as usual and a warning names the agent type. The turn's start also records
+A label is made one line and cut to 1000 characters, as an action line is. With
+no label configured, the label is the input's simple class name. It is the same
+when the label throws, returns null or returns a blank string. The turn runs as
+usual in each case, and only a label that throws is warned about, with a message
+that names the agent type. The turn's start also records
 when its input arrived. On the queued door that is when `tell` was called, which
 can be well before the turn opened.
 

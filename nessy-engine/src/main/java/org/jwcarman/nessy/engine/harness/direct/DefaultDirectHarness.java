@@ -831,8 +831,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       // A provider that throws rather than returning a Fault -- infer() hands provider.infer(...)
       // to a switch with no try around it -- surfaces here instead of escaping runTurn with the
       // agent stuck Inferring. Delivered as a failure of the attempt, not as an expiry: attempted,
-      // and nobody found out
-      // how it went.
+      // and nobody found out how it went.
       return EffectOutcomes.command(
           turn,
           EffectOutcomes.requestOf(effect),

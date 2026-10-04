@@ -234,22 +234,6 @@ class ApprovalHandlerTest {
             });
   }
 
-  /** Generous by nature, and unrelated to what the tool itself is worth waiting for. */
-  @Test
-  void theApproverIsToldWhenTheQuestionStopsStanding() {
-    Instant[] seen = new Instant[1];
-    ask(
-        bound(
-            request -> {
-              seen[0] = request.deadline();
-              return Awaited.ready(ApprovalResult.approved());
-            },
-            Duration.ofHours(2),
-            new RetryPolicy.Never()));
-
-    assertThat(seen[0]).isEqualTo(Instant.parse("2026-09-08T12:10:00Z"));
-  }
-
   // ---- the deadline shown is the deadline kept ---------------------------------------------
 
   /**

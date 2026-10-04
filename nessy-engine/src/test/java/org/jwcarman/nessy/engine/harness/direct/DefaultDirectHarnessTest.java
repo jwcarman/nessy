@@ -1201,6 +1201,65 @@ class DefaultDirectHarnessTest {
         .extracting(e -> e.getClass().getSimpleName())
         .as("nobody said no, but the call is still discharged as failed")
         .contains("ToolFailed");
+    assertThat(history)
+        .filteredOn(AgentEvent.ToolFailed.class::isInstance)
+        .map(AgentEvent.ToolFailed.class::cast)
+        .singleElement()
+        .extracting(AgentEvent.ToolFailed::kind)
+        .isEqualTo(CallFailure.NOT_AUTHORISED);
+  }
+
+  @Test
+  @DisplayName("a tool is shown the deadline the direct door holds its call to")
+  void a_tool_is_shown_the_deadline_the_direct_door_holds_its_call_to() {
+    AgentId agent = AgentId.random();
+    Scripted model = new Scripted().then(asking("lookup")).then(answering("done"));
+    Instant[] shown = new Instant[1];
+    Tool<Lookup> recording =
+        new Tool<Lookup>() {
+          @Override
+          public Class<Lookup> inputType() {
+            return Lookup.class;
+          }
+
+          @Override
+          public ToolName name() {
+            return LOOKUP;
+          }
+
+          @Override
+          public String description() {
+            return "records the deadline it is shown";
+          }
+
+          @Override
+          public Awaited<ToolResult> call(ToolCallRequest<Lookup> request) {
+            shown[0] = request.deadline();
+            return Awaited.ready(ToolResult.ok(new Block.Text("ok")));
+          }
+        };
+    Duration timeout = Duration.ofSeconds(30);
+    DirectHarness<String, String> harness =
+        DefaultDirectHarnessFactory.of(
+                f ->
+                    f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
+                        .provider(ProviderId.of("test"), model)
+                        .schemas(SCHEMAS)
+                        .mapper(MAPPER)
+                        .clock(clock))
+            .<String>create(
+                TYPE,
+                c -> {
+                  c.systemPrompt("You are terse.")
+                      .inputRenderer(said -> List.of(new Block.Text(said)))
+                      .inference(in -> in.provider("test").model("a-model"));
+                  c.tool(recording, t -> t.timeout(timeout).approver(Approver.allow()));
+                });
+    Instant started = clock.instant();
+
+    harness.ask(agent, "look it up");
+
+    assertThat(shown[0]).isEqualTo(started.plus(timeout));
   }
 
   // ---- lazy recovery, by deadline (design record 2026-09-25-locks-as-plumbing, §4d) -------------

@@ -24,8 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A failed call says why it failed.** `AgentEvent.ToolFailed`, `EffectOutcome.ToolFailed`,
   `AgentCommand.ToolOutcome.Failed` and `Narration.CallFailed` gain a `CallFailure kind` before
   `message`: `FAILED`, `PAST_DEADLINE` or `NOT_AUTHORISED`. The stored `tool-failed` event has a
-  `kind` field; recreate the database. `PAST_DEADLINE` is what a tool call that does not finish in time reads on both
-  doors: the queued door's expiry, and the direct door cutting a running call off.
+  `kind` field; recreate the database. `PAST_DEADLINE` is what a tool call that does not finish in
+  time reads on both doors: the queued door's expiry, and the direct door cutting a running call
+  off.
 - **An answer says when it was cut off.** `AgentEvent.InferenceAnswered`,
   `EffectOutcome.InferenceAnswered`, `AgentCommand.InferenceOutcome.Answered` and
   `Narration.Answered` gain a `boolean truncated`, true when the model was cut off at its output
@@ -83,6 +84,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   live `ApprovalDeferred` and `CallDeferred` were worked out again when the call was handled, so a
   call that waited in the queue showed a later instant than the one it was given up on. They are now
   the effect's own deadline.
+- **On the direct door, an inference that times out gives `ask`'s caller a plainer reason.** The
+  reason is now "the inference did not complete before its deadline; whether it ran is not known",
+  in place of "no answer within PT...". The duration is in the WARN log.
 
 ## [0.4.0] - 2026-10-03
 

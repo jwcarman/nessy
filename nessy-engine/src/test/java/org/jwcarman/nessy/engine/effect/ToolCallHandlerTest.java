@@ -310,39 +310,6 @@ class ToolCallHandlerTest {
     assertThat(((EffectOutcome.ToolFailed) outcome).callId()).isEqualTo(new CallId("c1"));
   }
 
-  /** The deadline the tool is handed is the harness's budget, counted from now. */
-  @Test
-  void theToolIsToldWhenItsAnswerStopsBeingWanted() {
-    Instant[] seen = new Instant[1];
-    Tool<Query> records =
-        new Tool<>() {
-          @Override
-          public Class<Query> inputType() {
-            return Query.class;
-          }
-
-          @Override
-          public ToolName name() {
-            return new ToolName("lookup");
-          }
-
-          @Override
-          public String description() {
-            return "records its deadline";
-          }
-
-          @Override
-          public Awaited<ToolResult> call(ToolCallRequest<Query> request) {
-            seen[0] = request.deadline();
-            return Awaited.ready(ToolResult.ok(new Block.Text("ok")));
-          }
-        };
-
-    handle(bound(records), story(new Block.ToolCall("c1", "lookup", "{\"q\":\"x\"}")));
-
-    assertThat(seen[0]).isEqualTo(Instant.parse("2026-09-08T12:00:30Z"));
-  }
-
   /**
    * The row was written before this clock reading and says when the call stands until. The tool is
    * shown that instant, not the clock plus the binding's timeout.

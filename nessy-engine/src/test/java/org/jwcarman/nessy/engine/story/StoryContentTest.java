@@ -301,6 +301,58 @@ class StoryContentTest {
   }
 
   @Nested
+  class A_call_that_failed_or_was_denied {
+
+    private final CountingEvents counting = new CountingEvents(events);
+    private final StoryContent counted =
+        new EventAgentStories(counting, payloads).of(TYPE, agent).content();
+
+    private static AgentEvent.ToolDenied denied(
+        long seq, long turn, String callId, IdempotencyKey key) {
+      return new AgentEvent.ToolDenied(
+          new Seq(seq), new TurnId(turn), CallId.of(callId), "no", Optional.empty(), key);
+    }
+
+    /** Fills the story after the call's own events with more than two pages of other calls. */
+    private void laterCalls(int calls) {
+      PayloadRef request = keep(toolCall("c1"));
+      PayloadRef result = keep(new Block.Text("r"));
+      for (int i = 0; i < calls; i++) {
+        IdempotencyKey key = IdempotencyKey.of(UUID.randomUUID());
+        write(
+            requested(last + 1, 1, request, call("c1", key)),
+            succeeded(last + 2, 1, "c1", key, result));
+      }
+    }
+
+    @Test
+    void has_no_result_and_the_read_stops_at_its_own_event() {
+      write(
+          started(keep(new Block.Text("go"))),
+          requested(2, 1, keep(toolCall("a")), call("a", keyOfFailed)),
+          failed(3, 1, "a", keyOfFailed));
+      laterCalls(1_200);
+
+      assertThat(counted.result(keyOfFailed)).isEmpty();
+      assertThat(counting.pagesAfter).isNotEmpty();
+      assertThat(counting.pagesAfter).allMatch(read -> read.value() == 0);
+    }
+
+    @Test
+    void that_was_denied_has_no_result_and_the_read_stops_at_its_own_event() {
+      write(
+          started(keep(new Block.Text("go"))),
+          requested(2, 1, keep(toolCall("a")), call("a", keyOfFailed)),
+          denied(3, 1, "a", keyOfFailed));
+      laterCalls(1_200);
+
+      assertThat(counted.result(keyOfFailed)).isEmpty();
+      assertThat(counting.pagesAfter).isNotEmpty();
+      assertThat(counting.pagesAfter).allMatch(read -> read.value() == 0);
+    }
+  }
+
+  @Nested
   class An_agents_results {
 
     @Test

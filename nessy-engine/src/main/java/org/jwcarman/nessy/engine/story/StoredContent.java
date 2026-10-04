@@ -47,9 +47,10 @@ import org.jwcarman.nessy.backend.payload.Payloads;
  * The content one agent's story refers to, read from its stored events and payloads.
  *
  * <p>Every read of events is made with a limit, a page at a time, and stops as soon as it has what
- * it was asked for. A call's key and id come from the request that made it, and its result from the
- * success with that id in the same request: a model may repeat a call id in a later request of one
- * turn, so an id is only meaningful inside the request that carries it.
+ * it was asked for. A call's key and id come from the request that made it, and its result is the
+ * success carrying that key: a model may repeat a call id in a later request of one turn, so only
+ * the key says which call is meant. A call that failed or was denied has no result, and the read
+ * for its key ends at that event.
  */
 final class StoredContent implements StoryContent {
 
@@ -116,11 +117,15 @@ final class StoredContent implements StoryContent {
     scan(
         Seq.NONE,
         event -> {
-          if (event instanceof AgentEvent.ToolSucceeded done && done.idempotencyKey().equals(key)) {
-            found[0] = done.result();
-            return false;
-          }
-          return true;
+          return switch (event) {
+            case AgentEvent.ToolSucceeded done when done.idempotencyKey().equals(key) -> {
+              found[0] = done.result();
+              yield false;
+            }
+            case AgentEvent.ToolFailed failed -> !failed.idempotencyKey().equals(key);
+            case AgentEvent.ToolDenied refused -> !refused.idempotencyKey().equals(key);
+            default -> true;
+          };
         });
     if (found[0] == null) {
       return Optional.empty();
