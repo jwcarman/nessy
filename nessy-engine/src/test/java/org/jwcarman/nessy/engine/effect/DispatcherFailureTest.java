@@ -32,14 +32,17 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
@@ -228,6 +231,31 @@ class DispatcherFailureTest {
         .untilAsserted(() -> assertThat(delivered.outcomes).hasSize(1));
     assertThat(delivered.turns).containsExactly(Optional.empty());
     assertThat(delivered.requests).containsExactly(Optional.empty());
+  }
+
+  /**
+   * The stored failure of a call whose effect will not decode is the only account of why it failed,
+   * so what it says about the kind is what the agent is told.
+   */
+  @Test
+  void an_undecodable_effect_delivers_its_stored_failure_with_its_kind() {
+    Effects effects = new Effects();
+    effects.due = List.of(attempt(NOW.plusSeconds(60), 1));
+    effects.effectFails = new IllegalStateException("an effect from a build that was rolled back");
+    effects.storedFailure =
+        new EffectOutcome.ToolFailed(
+            new CallId("c1"), CallFailure.PAST_DEADLINE, "the call did not complete in time");
+
+    dispatcherFor(effects, answering()).dispatch();
+
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(() -> assertThat(delivered.outcomes).hasSize(1));
+    assertThat(delivered.outcomes)
+        .singleElement()
+        .asInstanceOf(InstanceOfAssertFactories.type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.PAST_DEADLINE);
   }
 
   /** A failed attempt with attempts left is written down to be tried again. */
@@ -597,6 +625,7 @@ class DispatcherFailureTest {
     private RuntimeException claimFails;
     private RuntimeException effectFails;
     private RuntimeException failureFails;
+    private EffectOutcome storedFailure;
     private boolean rescheduleWins = true;
     private final List<Integer> batchSizes = new CopyOnWriteArrayList<>();
     private final List<UUID> retired = new CopyOnWriteArrayList<>();
@@ -628,6 +657,9 @@ class DispatcherFailureTest {
     public EffectOutcome failureOf(Attempt attempt) {
       if (failureFails != null) {
         throw failureFails;
+      }
+      if (storedFailure != null) {
+        return storedFailure;
       }
       return handlers.termsFor(new AgentEffect.Infer(TURN)).undispatchable();
     }

@@ -29,6 +29,7 @@ import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.FailureKind;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.PayloadRef;
@@ -163,7 +164,7 @@ class StoryEventsTest {
         new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), KEY),
         new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty(), KEY),
         new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok", KEY),
-        new AgentEvent.ToolFailed(SEQ, TURN, CALL, "boom", KEY),
+        new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", KEY),
         new AgentEvent.Terminated(SEQ));
   }
 
@@ -201,8 +202,21 @@ class StoryEventsTest {
 
   @Test
   void a_call_that_failed_is_told_with_the_message() {
-    assertThat(StoryEvents.of(new AgentEvent.ToolFailed(SEQ, TURN, CALL, "boom", KEY)))
-        .isEqualTo(new Narration.CallFailed(CALL, KEY, "boom"));
+    assertThat(
+            StoryEvents.of(
+                new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", KEY)))
+        .isEqualTo(new Narration.CallFailed(CALL, KEY, CallFailure.FAILED, "boom"));
+  }
+
+  @Test
+  void a_call_that_failed_is_told_with_why_it_failed() {
+    assertThat(
+            StoryEvents.of(
+                new AgentEvent.ToolFailed(
+                    SEQ, TURN, CALL, CallFailure.NOT_AUTHORISED, "no approver answered", KEY)))
+        .isEqualTo(
+            new Narration.CallFailed(
+                CALL, KEY, CallFailure.NOT_AUTHORISED, "no approver answered"));
   }
 
   @Test

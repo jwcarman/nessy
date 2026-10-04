@@ -27,6 +27,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
@@ -35,6 +37,10 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -156,6 +162,74 @@ class EventAgentStoriesQueuedTest {
       assertThat(story)
           .extracting(narrated -> narrated.event().getClass().getSimpleName())
           .containsSubsequence("TurnStarted", "InferenceRetried", "ActionsRequested", "Answered");
+      assertThat(replayed(engine, type, agent)).isEqualTo(story);
+    }
+  }
+
+  /** A lookup that hands the work off and never reports back. */
+  private static Tool<StoryTurn.Query> lookupThatNeverReportsBack() {
+    return new Tool<>() {
+      @Override
+      public Class<StoryTurn.Query> inputType() {
+        return StoryTurn.Query.class;
+      }
+
+      @Override
+      public ToolName name() {
+        return new ToolName("lookup");
+      }
+
+      @Override
+      public String description() {
+        return "looks a thing up, eventually";
+      }
+
+      @Override
+      public Awaited<ToolResult> call(ToolCallRequest<StoryTurn.Query> request) {
+        return Awaited.deferred();
+      }
+    };
+  }
+
+  @Test
+  void a_call_that_fails_at_its_deadline_says_so_heard_live_and_replayed() {
+    AgentType type = new AgentType("queued-deadline");
+    AgentId agent = AgentId.random();
+    NarrationListener recording = heard::add;
+
+    try (EngineFixture engine = new EngineFixture(callsThenAnswers(), recording)) {
+      engine
+          .harnesses()
+          .<String>create(
+              type,
+              String.class,
+              config ->
+                  config
+                      .systemPrompt("You are a test assistant.")
+                      .tool(
+                          lookupThatNeverReportsBack(),
+                          t ->
+                              t.timeout(Duration.ofSeconds(2))
+                                  .action(query -> "looked up " + query.q())
+                                  .approver(StoryTurn.decidesAsCarol()))
+                      .inference(in -> in.model("a-model"))
+                      .effects(e -> e.pollInterval(Duration.ofMillis(50))))
+          .tell(agent, "how deep is Loch Ness?");
+      await()
+          .atMost(Duration.ofSeconds(30))
+          .until(
+              () ->
+                  heard.stream()
+                      .anyMatch(narrated -> narrated.event() instanceof Narration.Answered));
+
+      List<Narrated> story =
+          heard.stream().filter(narrated -> narrated.event() instanceof Narration.Story).toList();
+      assertThat(story)
+          .map(Narrated::event)
+          .filteredOn(Narration.CallFailed.class::isInstance)
+          .singleElement()
+          .extracting(event -> ((Narration.CallFailed) event).kind())
+          .isEqualTo(CallFailure.PAST_DEADLINE);
       assertThat(replayed(engine, type, agent)).isEqualTo(story);
     }
   }

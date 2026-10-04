@@ -26,6 +26,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.FailureKind;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
@@ -69,7 +70,7 @@ class OdysseyNarratorTest {
           new Narration.CallApproved(new CallId("c"), KEY, Optional.empty()),
           new Narration.CallDenied(new CallId("c"), KEY, "r", Optional.empty()),
           new Narration.CallFinished(new CallId("c"), KEY),
-          new Narration.CallFailed(new CallId("c"), KEY, "m"),
+          new Narration.CallFailed(new CallId("c"), KEY, CallFailure.FAILED, "m"),
           new Narration.Terminated(),
           new Narration.ApprovalSought(new CallId("c"), "a"),
           new Narration.ApprovalDeferred(new CallId("c"), "a", Instant.EPOCH),

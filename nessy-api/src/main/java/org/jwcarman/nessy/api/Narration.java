@@ -245,9 +245,10 @@ public sealed interface Narration {
    *
    * @param callId the id the call was requested with
    * @param idempotencyKey the call's own key, the same on its request, its approval and its outcome
+   * @param kind why it did not: it failed, it ran past its deadline, or it was never authorised
    * @param message what the model will read for the call
    */
-  record CallFailed(CallId callId, IdempotencyKey idempotencyKey, String message)
+  record CallFailed(CallId callId, IdempotencyKey idempotencyKey, CallFailure kind, String message)
       implements Story {}
 
   /** The agent will accept nothing further. */

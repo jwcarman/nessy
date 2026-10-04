@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.UnaryOperator;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -123,7 +124,7 @@ final class InlineRunner {
               call.turn(),
               call.requestSeq(),
               call.callId(),
-              new AgentCommand.ToolOutcome.Failed("no such tool"));
+              new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "no such tool"));
         }
         try {
           // Rendered and claim-checked on the way back, exactly as the durable harness would:
@@ -139,7 +140,7 @@ final class InlineRunner {
               call.turn(),
               call.requestSeq(),
               call.callId(),
-              new AgentCommand.ToolOutcome.Failed(broken.getMessage()));
+              new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, broken.getMessage()));
         }
       }
     };

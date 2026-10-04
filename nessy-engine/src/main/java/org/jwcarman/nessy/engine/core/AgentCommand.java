@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -184,6 +185,6 @@ public sealed interface AgentCommand {
     }
 
     /** Names what went wrong, never the values involved. See {@link AgentEvent.ToolFailed}. */
-    record Failed(String message) implements ToolOutcome {}
+    record Failed(CallFailure kind, String message) implements ToolOutcome {}
   }
 }

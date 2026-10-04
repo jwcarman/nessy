@@ -22,6 +22,7 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
@@ -110,7 +111,8 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
           agentId.value(),
           callId,
           effect.requestSeq());
-      return Awaited.ready(new EffectOutcome.ToolFailed(callId, "the call could not be found"));
+      return Awaited.ready(
+          new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, "the call could not be found"));
     }
     ToolCalls.ResolvedCall resolved = found.get();
     Block.ToolCall call = resolved.call();
@@ -122,7 +124,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
       log.warn("[{}] agent {}: no tool named {}", agentType.value(), agentId.value(), call.name());
       return Awaited.ready(
           new EffectOutcome.ToolFailed(
-              callId, "there is no tool named '" + call.name().value() + "'"));
+              callId, CallFailure.FAILED, "there is no tool named '" + call.name().value() + "'"));
     }
 
     ToolBinding<?> binding = bound.get();
@@ -172,6 +174,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
                 case ToolResult.Failure(String message) ->
                     new EffectOutcome.ToolFailed(
                         callId,
+                        CallFailure.FAILED,
                         Objects.requireNonNullElse(message, "the tool failed and gave no message"));
               });
       case Awaited.Deferred<ToolResult> _ -> {

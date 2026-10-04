@@ -35,6 +35,7 @@ import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -160,7 +161,7 @@ class UnattributableAnswerTest {
         agent,
         Optional.<TurnId>empty(),
         Optional.<Seq>empty(),
-        new EffectOutcome.ToolFailed(CALL, "the row could not be read"),
+        new EffectOutcome.ToolFailed(CALL, CallFailure.FAILED, "the row could not be read"),
         "",
         List.of());
   }

@@ -22,10 +22,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -203,7 +205,24 @@ class MisroutedReplyTest {
     assertThat(replies.complete(token(), new ToolResult.Failure(null)))
         .isInstanceOf(ReplyOutcome.Settled.class);
     assertThat(delivered.outcomes)
-        .containsExactly(new EffectOutcome.ToolFailed(CALL, "the tool failed and gave no message"));
+        .containsExactly(
+            new EffectOutcome.ToolFailed(
+                CALL, CallFailure.FAILED, "the tool failed and gave no message"));
+  }
+
+  @Test
+  void a_deferred_failure_is_recorded_as_a_failed_call() {
+    serving();
+    rows.running = List.of(attempt());
+    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL, KEY);
+
+    assertThat(replies.complete(token(), new ToolResult.Failure("the index is locked")))
+        .isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(delivered.outcomes)
+        .singleElement()
+        .asInstanceOf(InstanceOfAssertFactories.type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.FAILED);
   }
 
   /**

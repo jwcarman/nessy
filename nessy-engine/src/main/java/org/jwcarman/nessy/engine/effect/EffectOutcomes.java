@@ -116,9 +116,9 @@ public final class EffectOutcomes {
               request.get(),
               callId,
               new AgentCommand.ToolOutcome.Succeeded(result, rendered));
-      case EffectOutcome.ToolFailed(var callId, String message) ->
+      case EffectOutcome.ToolFailed(var callId, var kind, String message) ->
           new AgentCommand.CompleteToolCall(
-              turn, request.get(), callId, new AgentCommand.ToolOutcome.Failed(message));
+              turn, request.get(), callId, new AgentCommand.ToolOutcome.Failed(kind, message));
       case EffectOutcome.ToolApproved(var callId, var decidedBy) ->
           new AgentCommand.CompleteApproval(
               turn, request.get(), callId, new AgentCommand.ApprovalOutcome.Approved(decidedBy));

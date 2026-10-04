@@ -26,6 +26,7 @@ import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -415,13 +416,15 @@ class ValueTypeCodecTest {
   void aFailureIsStoredWithTheKeyOfItsCall() {
     String stored =
         """
-        {"type":"tool-failed","seq":4,"turn":1,"callId":"c1","message":"boom",\
-        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+        {"type":"tool-failed","seq":4,"turn":1,"callId":"c1","kind":"PAST_DEADLINE",\
+        "message":"boom","idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
     AgentEvent.ToolFailed written =
-        new AgentEvent.ToolFailed(new Seq(4), new TurnId(1), new CallId("c1"), "boom", KEY);
+        new AgentEvent.ToolFailed(
+            new Seq(4), new TurnId(1), new CallId("c1"), CallFailure.PAST_DEADLINE, "boom", KEY);
 
     assertThat(readStored(stored)).isEqualTo(written);
     assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
-        .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"");
+        .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"")
+        .contains("\"kind\":\"PAST_DEADLINE\"");
   }
 }

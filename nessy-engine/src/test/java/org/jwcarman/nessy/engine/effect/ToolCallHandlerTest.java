@@ -31,6 +31,7 @@ import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.RetryPolicy;
@@ -279,7 +280,8 @@ class ToolCallHandlerTest {
 
     assertThat(outcome)
         .isEqualTo(
-            new EffectOutcome.ToolFailed(new CallId("c1"), "the tool failed and gave no message"));
+            new EffectOutcome.ToolFailed(
+                new CallId("c1"), CallFailure.FAILED, "the tool failed and gave no message"));
   }
 
   /**
@@ -415,5 +417,59 @@ class ToolCallHandlerTest {
         .asInstanceOf(type(EffectOutcome.ToolFailed.class))
         .extracting(EffectOutcome.ToolFailed::callId)
         .isEqualTo(new CallId("c1"));
+  }
+
+  @Test
+  void an_unknown_tool_is_reported_as_failed() {
+    EffectOutcome outcome = handle(Tools.none(), story(new Block.ToolCall("c1", "lookup", "{}")));
+
+    assertThat(outcome)
+        .asInstanceOf(type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.FAILED);
+  }
+
+  @Test
+  void a_call_missing_from_the_story_is_reported_as_failed() {
+    EffectOutcome outcome = handle(bound(echo()), nothing());
+
+    assertThat(outcome)
+        .asInstanceOf(type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.FAILED);
+  }
+
+  @Test
+  void a_tool_that_returns_a_failure_is_reported_as_failed() {
+    Tool<Query> failing =
+        new Tool<>() {
+          @Override
+          public Class<Query> inputType() {
+            return Query.class;
+          }
+
+          @Override
+          public ToolName name() {
+            return new ToolName("lookup");
+          }
+
+          @Override
+          public String description() {
+            return "fails with a reason";
+          }
+
+          @Override
+          public Awaited<ToolResult> call(ToolCallRequest<Query> request) {
+            return Awaited.ready(new ToolResult.Failure("no such buyer"));
+          }
+        };
+
+    EffectOutcome outcome =
+        handle(bound(failing), story(new Block.ToolCall("c1", "lookup", "{\"q\":\"x\"}")));
+
+    assertThat(outcome)
+        .asInstanceOf(type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.FAILED);
   }
 }

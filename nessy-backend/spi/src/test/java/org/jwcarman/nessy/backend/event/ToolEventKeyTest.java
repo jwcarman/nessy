@@ -21,6 +21,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -59,7 +60,8 @@ class ToolEventKeyTest {
 
   @Test
   void a_failure_refuses_a_null_key() {
-    assertThatThrownBy(() -> new AgentEvent.ToolFailed(SEQ, TURN, CALL, "boom", null))
+    assertThatThrownBy(
+            () -> new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", null))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("idempotencyKey must not be null");
   }

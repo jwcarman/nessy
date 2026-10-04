@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requested with; the stored shape changes, so recreate the database. The four narration records
   `CallApproved`, `CallDenied`, `CallFinished` and `CallFailed` gain `idempotencyKey` after
   `callId`.
+- **A failed call says why it failed.** `AgentEvent.ToolFailed`, `EffectOutcome.ToolFailed`,
+  `AgentCommand.ToolOutcome.Failed` and `Narration.CallFailed` gain a `CallFailure kind` before
+  `message`: `FAILED`, `PAST_DEADLINE` or `NOT_AUTHORISED`. The stored `tool-failed` event has a
+  `kind` field; recreate the database.
 - **An approval records who decided, not a reference.** `ApprovalResult.reference()` is
   `decidedBy()`, and `approvedBy` and `deniedBy` take a `decidedBy`: who or what decided, as the
   application says it. Nessy never interprets it. The same rename runs through `EffectOutcome.ToolApproved`

@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -148,7 +149,7 @@ class AgentStateRepeatedCallIdTest {
             TURN,
             FIRST_REQUEST,
             C,
-            new AgentCommand.ToolOutcome.Failed("the first call's failure"));
+            new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "the first call's failure"));
 
     Decision decision = awaiting.execute(duplicate);
 

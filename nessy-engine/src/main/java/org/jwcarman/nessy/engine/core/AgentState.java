@@ -411,7 +411,7 @@ public sealed interface AgentState {
                     at, turn, done.callId(), ok.result(), ok.rendered(), call.idempotencyKey());
             case AgentCommand.ToolOutcome.Failed no ->
                 new AgentEvent.ToolFailed(
-                    at, turn, done.callId(), no.message(), call.idempotencyKey());
+                    at, turn, done.callId(), no.kind(), no.message(), call.idempotencyKey());
           };
       return continuing(at, event, policy, now);
     }

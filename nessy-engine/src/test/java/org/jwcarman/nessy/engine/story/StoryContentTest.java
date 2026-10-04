@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.CallResult;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RequestContent;
@@ -101,7 +102,7 @@ class StoryContentTest {
   private static AgentEvent.ToolFailed failed(
       long seq, long turn, String callId, IdempotencyKey key) {
     return new AgentEvent.ToolFailed(
-        new Seq(seq), new TurnId(turn), CallId.of(callId), "broke", key);
+        new Seq(seq), new TurnId(turn), CallId.of(callId), CallFailure.FAILED, "broke", key);
   }
 
   private static AgentEvent.InferenceAnswered answered(long seq, long turn, PayloadRef answer) {

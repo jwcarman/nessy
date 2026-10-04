@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Truncator;
 import org.jwcarman.nessy.api.Usage;
@@ -155,9 +156,10 @@ public sealed interface EffectOutcome {
    * is what is stored and what the model reads back for the call. Every failure is made here, so
    * every failure is bounded wherever it was built.
    */
-  record ToolFailed(CallId callId, String message) implements EffectOutcome {
+  record ToolFailed(CallId callId, CallFailure kind, String message) implements EffectOutcome {
     public ToolFailed {
       Objects.requireNonNull(callId, "callId must not be null");
+      Objects.requireNonNull(kind, "kind must not be null");
       Objects.requireNonNull(message, "message must not be null");
       message = Truncator.dropMiddle().truncate(message, ToolConfig.LINE_CAP);
     }

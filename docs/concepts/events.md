@@ -27,7 +27,7 @@ public sealed interface AgentEvent {
   record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> decidedBy, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> decidedBy, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, String rendered, IdempotencyKey idempotencyKey) implements AgentEvent {}
-  record ToolFailed(Seq seq, TurnId turn, CallId callId, String message, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolFailed(Seq seq, TurnId turn, CallId callId, CallFailure kind, String message, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record Terminated(Seq seq) implements AgentEvent {}
 }
 ```
@@ -55,6 +55,12 @@ fixed when it is written and never worked out again. See
 Each of the four call events (`ToolApproved`, `ToolDenied`, `ToolSucceeded`, `ToolFailed`)
 carries the `IdempotencyKey` its call was requested with, copied from the call the agent is
 waiting for. A reader joins a call's events by that key.
+
+`ToolFailed.kind` is a `CallFailure` and says why the call did not produce a result when nobody
+refused it: `FAILED`, the tool ran and failed or could not be run; `PAST_DEADLINE`, the call did
+not finish before its deadline and whether it ran is not known; `NOT_AUTHORISED`, permission was
+never given because the approval's deadline passed or the approver itself failed. A refusal is
+`ToolDenied`, not a `ToolFailed`.
 
 Events hold other text too. A failed call's message is at most 1,000
 characters; a longer one has its middle dropped and `...` in the gap, and the

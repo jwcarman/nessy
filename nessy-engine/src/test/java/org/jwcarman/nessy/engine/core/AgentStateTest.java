@@ -27,6 +27,9 @@ import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.Tokens;
@@ -898,7 +901,10 @@ class AgentStateTest {
               running
                   .execute(
                       new AgentCommand.CompleteToolCall(
-                          TURN, REQUEST, CALL, new AgentCommand.ToolOutcome.Failed("broke")))
+                          TURN,
+                          REQUEST,
+                          CALL,
+                          new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "broke")))
                   .events())
           .as("a failure")
           .first()
@@ -1068,7 +1074,10 @@ class AgentStateTest {
       Decision last =
           state.execute(
               new AgentCommand.CompleteToolCall(
-                  TURN, REQUEST, B, new AgentCommand.ToolOutcome.Failed("nope")));
+                  TURN,
+                  REQUEST,
+                  B,
+                  new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "nope")));
 
       assertThat(last.effects()).singleElement().isInstanceOf(AgentEffect.Infer.class);
     }
@@ -1412,7 +1421,10 @@ class AgentStateTest {
       Decision decision =
           running.execute(
               new AgentCommand.CompleteToolCall(
-                  TURN, REQUEST, FIRST, new AgentCommand.ToolOutcome.Failed("broke")));
+                  TURN,
+                  REQUEST,
+                  FIRST,
+                  new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "broke")));
 
       assertThat(decision.events())
           .first()
@@ -1427,7 +1439,10 @@ class AgentStateTest {
           awaitingBoth()
               .execute(
                   new AgentCommand.CompleteToolCall(
-                      TURN, REQUEST, SECOND, new AgentCommand.ToolOutcome.Failed("expired")));
+                      TURN,
+                      REQUEST,
+                      SECOND,
+                      new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "expired")));
 
       assertThat(decision.events())
           .first()
@@ -1443,7 +1458,10 @@ class AgentStateTest {
       Decision first =
           both.execute(
               new AgentCommand.CompleteToolCall(
-                  TURN, REQUEST, FIRST, new AgentCommand.ToolOutcome.Failed("one")));
+                  TURN,
+                  REQUEST,
+                  FIRST,
+                  new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "one")));
       Decision second =
           both.execute(
               new AgentCommand.CompleteToolCall(
@@ -1472,6 +1490,80 @@ class AgentStateTest {
                   new AgentCommand.ApprovalOutcome.Approved(Optional.empty())));
 
       assertThat(decision).isEqualTo(Decision.ignore());
+    }
+  }
+
+  @Nested
+  @DisplayName("Why a call failed")
+  class WhyACallFailed {
+
+    private static final CallId ASKED = new CallId("call-asked");
+    private static final IdempotencyKey ASKED_KEY =
+        IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-0000000000b1"));
+
+    private AgentState awaitingApproval() {
+      AgentState state = idle;
+      state =
+          state.applyAll(state.execute(new AgentCommand.StartTurn(MAIL, Instant.EPOCH)).events());
+      return state.applyAll(
+          state
+              .execute(
+                  new AgentCommand.CompleteInference(
+                      TURN,
+                      new AgentCommand.InferenceOutcome.RequestedActions(
+                          MAIL,
+                          List.of(new ActionRequest.ToolCall(ASKED, TOOL, "tool", ASKED_KEY)),
+                          Usage.unreported())))
+              .events());
+    }
+
+    @ParameterizedTest
+    @EnumSource(CallFailure.class)
+    void a_failed_call_is_recorded_with_why_it_failed(CallFailure kind) {
+      AgentState running =
+          awaitingApproval()
+              .applyAll(
+                  awaitingApproval()
+                      .execute(
+                          new AgentCommand.CompleteApproval(
+                              TURN,
+                              REQUEST,
+                              ASKED,
+                              new AgentCommand.ApprovalOutcome.Approved(Optional.empty())))
+                      .events());
+
+      Decision decision =
+          running.execute(
+              new AgentCommand.CompleteToolCall(
+                  TURN, REQUEST, ASKED, new AgentCommand.ToolOutcome.Failed(kind, "broke")));
+
+      assertThat(decision.events())
+          .singleElement()
+          .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.ToolFailed.class))
+          .extracting(AgentEvent.ToolFailed::kind)
+          .isEqualTo(kind);
+    }
+
+    @Test
+    void a_call_that_was_never_authorised_is_recorded_as_such_while_it_still_awaited_approval() {
+      Decision decision =
+          awaitingApproval()
+              .execute(
+                  new AgentCommand.CompleteToolCall(
+                      TURN,
+                      REQUEST,
+                      ASKED,
+                      new AgentCommand.ToolOutcome.Failed(
+                          CallFailure.NOT_AUTHORISED, "the approval expired")));
+
+      assertThat(decision.events())
+          .singleElement()
+          .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.ToolFailed.class))
+          .satisfies(
+              failed -> {
+                assertThat(failed.kind()).isEqualTo(CallFailure.NOT_AUTHORISED);
+                assertThat(failed.idempotencyKey()).isEqualTo(ASKED_KEY);
+              });
     }
   }
 }

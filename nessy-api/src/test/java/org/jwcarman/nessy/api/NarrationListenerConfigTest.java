@@ -58,7 +58,7 @@ class NarrationListenerConfigTest {
           new Narration.CallApproved(CALL, IdempotencyKey.of(KEY_ID), Optional.empty()),
           new Narration.CallDenied(CALL, IdempotencyKey.of(KEY_ID), "no", Optional.empty()),
           new Narration.CallFinished(CALL, IdempotencyKey.of(KEY_ID)),
-          new Narration.CallFailed(CALL, IdempotencyKey.of(KEY_ID), "boom"),
+          new Narration.CallFailed(CALL, IdempotencyKey.of(KEY_ID), CallFailure.FAILED, "boom"),
           new Narration.Terminated(),
           new Narration.ApprovalSought(CALL, "restart"),
           new Narration.ApprovalDeferred(CALL, "restart", Instant.EPOCH),

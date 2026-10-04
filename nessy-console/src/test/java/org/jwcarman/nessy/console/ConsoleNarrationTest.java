@@ -24,6 +24,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.FailureKind;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.TurnId;
@@ -57,7 +58,7 @@ class ConsoleNarrationTest {
                         new CallId("c1"), KEY, new ToolName("depth"), "depth")),
                 Usage.unreported()),
             new Narration.CallDenied(CALL, KEY, "not today", Optional.empty()),
-            new Narration.CallFailed(CALL, KEY, "boom"),
+            new Narration.CallFailed(CALL, KEY, CallFailure.FAILED, "boom"),
             new Narration.CallFinished(CALL, KEY),
             new Narration.ContentDelta("230"),
             new Narration.Terminated())) {

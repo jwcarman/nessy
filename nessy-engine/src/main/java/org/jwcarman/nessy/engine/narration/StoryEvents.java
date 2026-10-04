@@ -62,7 +62,8 @@ public final class StoryEvents {
       case AgentEvent.ToolSucceeded done ->
           new Narration.CallFinished(done.callId(), done.idempotencyKey());
       case AgentEvent.ToolFailed failed ->
-          new Narration.CallFailed(failed.callId(), failed.idempotencyKey(), failed.message());
+          new Narration.CallFailed(
+              failed.callId(), failed.idempotencyKey(), failed.kind(), failed.message());
       // Said as a fact once the fold has committed. The deltas a provider streamed are what is
       // ARRIVING; this is what was said, and a watcher that saw neither -- a page opened
       // mid-turn -- would otherwise never learn the answer.

@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -122,6 +123,7 @@ public final class DefaultReplies implements Replies {
               case ToolResult.Failure(String message) ->
                   new EffectOutcome.ToolFailed(
                       callId,
+                      CallFailure.FAILED,
                       Objects.requireNonNullElse(message, "the tool failed and gave no message"));
             });
   }

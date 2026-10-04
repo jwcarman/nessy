@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -259,9 +260,15 @@ public sealed interface AgentEvent {
    * back for the call.
    */
   record ToolFailed(
-      Seq seq, TurnId turn, CallId callId, String message, IdempotencyKey idempotencyKey)
+      Seq seq,
+      TurnId turn,
+      CallId callId,
+      CallFailure kind,
+      String message,
+      IdempotencyKey idempotencyKey)
       implements AgentEvent {
     public ToolFailed {
+      Objects.requireNonNull(kind, "kind must not be null");
       Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
     }
   }

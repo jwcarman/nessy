@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.RetryPolicy;
@@ -376,6 +377,7 @@ class ApprovalHandlerTest {
         .isEqualTo(
             new EffectOutcome.ToolFailed(
                 new CallId("c1"),
+                CallFailure.FAILED,
                 "what the call would do could not be described, so it was not put to an approver"));
   }
 
@@ -535,5 +537,52 @@ class ApprovalHandlerTest {
         .asInstanceOf(type(EffectOutcome.ToolFailed.class))
         .extracting(EffectOutcome.ToolFailed::callId)
         .isEqualTo(new CallId("c1"));
+  }
+
+  /** Every way the gate discharges a call without asking is a failure of the call itself. */
+  @Test
+  void a_call_for_a_tool_that_is_not_bound_is_discharged_as_failed() {
+    assertThat(ask(Tools.none()))
+        .asInstanceOf(type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.FAILED);
+  }
+
+  @Test
+  void a_call_missing_from_the_story_is_discharged_as_failed() {
+    assertThat(ask(bound(Approver.allow()), (agentId, requestSeq, callId) -> Optional.empty()))
+        .asInstanceOf(type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.FAILED);
+  }
+
+  @Test
+  void a_call_with_unreadable_arguments_is_discharged_as_failed() {
+    assertThat(ask(bound(Approver.allow()), story("{\"q\": ")))
+        .asInstanceOf(type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.FAILED);
+  }
+
+  @Test
+  void a_call_whose_action_could_not_be_said_is_discharged_as_failed() {
+    Stringifier<Query> throwing =
+        query -> {
+          throw new IllegalStateException("boom");
+        };
+
+    EffectOutcome outcome =
+        ask(
+            bound(
+                Approver.allow(),
+                Duration.ofMinutes(10),
+                new RetryPolicy.Never(),
+                Optional.of(throwing)),
+            story("{\"q\":\"loch ness\"}", "lookup (what it would do could not be said)"));
+
+    assertThat(outcome)
+        .asInstanceOf(type(EffectOutcome.ToolFailed.class))
+        .extracting(EffectOutcome.ToolFailed::kind)
+        .isEqualTo(CallFailure.FAILED);
   }
 }

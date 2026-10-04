@@ -20,6 +20,7 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
@@ -108,7 +109,9 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
           effect.toolName());
       return Awaited.ready(
           new EffectOutcome.ToolFailed(
-              callId, "there is no tool named '" + effect.toolName().value() + "'"));
+              callId,
+              CallFailure.FAILED,
+              "there is no tool named '" + effect.toolName().value() + "'"));
     }
 
     Optional<ToolCalls.ResolvedCall> found = calls.find(agentId, effect.requestSeq(), callId);
@@ -119,7 +122,8 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
           agentId.value(),
           callId,
           effect.requestSeq());
-      return Awaited.ready(new EffectOutcome.ToolFailed(callId, "the call could not be found"));
+      return Awaited.ready(
+          new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, "the call could not be found"));
     }
     ToolCalls.ResolvedCall resolved = found.get();
 
@@ -135,7 +139,8 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
           agentId.value(),
           callId,
           effect.toolName());
-      return Awaited.ready(new EffectOutcome.ToolFailed(callId, COULD_NOT_BE_DESCRIBED));
+      return Awaited.ready(
+          new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, COULD_NOT_BE_DESCRIBED));
     }
     ApprovalRequest question;
     try {
@@ -165,7 +170,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
           effect.toolName());
       return Awaited.ready(
           new EffectOutcome.ToolFailed(
-              callId, "the arguments could not be read: " + e.getMessage()));
+              callId, CallFailure.FAILED, "the arguments could not be read: " + e.getMessage()));
     }
 
     // Said before the approver is asked, because a question that never comes back must still

@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -212,7 +213,8 @@ class EventStreamHistoryTest {
                   new ActionRequest.ToolCall(audit, auditTool, "audit the buyer", KEY)),
               Usage.unreported()),
           new AgentEvent.ToolSucceeded(new Seq(3), new TurnId(1), refund, result, "refunded", KEY),
-          new AgentEvent.ToolFailed(new Seq(4), new TurnId(1), audit, "no such buyer", KEY));
+          new AgentEvent.ToolFailed(
+              new Seq(4), new TurnId(1), audit, CallFailure.FAILED, "no such buyer", KEY));
 
       List<Turn> found = history().turnsBetween(new TurnId(1), new TurnId(1));
 
@@ -247,7 +249,8 @@ class EventStreamHistoryTest {
               request,
               List.of(new ActionRequest.ToolCall(id, tool, "refund the second", KEY)),
               Usage.unreported()),
-          new AgentEvent.ToolFailed(new Seq(5), new TurnId(1), id, "no such buyer", KEY),
+          new AgentEvent.ToolFailed(
+              new Seq(5), new TurnId(1), id, CallFailure.FAILED, "no such buyer", KEY),
           new AgentEvent.InferenceAnswered(new Seq(6), new TurnId(1), answer, Usage.unreported()),
           new AgentEvent.TurnStarted(new Seq(7), new TurnId(7), laterInput, Instant.now()),
           new AgentEvent.ActionsRequested(

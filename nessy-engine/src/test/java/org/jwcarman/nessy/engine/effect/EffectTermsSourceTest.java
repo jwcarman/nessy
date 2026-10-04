@@ -21,9 +21,11 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
@@ -154,6 +156,36 @@ class EffectTermsSourceTest {
       assertThat(terms.timeout()).isEqualTo(TOOL_TIMEOUT);
       assertThat(terms.retryPolicy()).isEqualTo(TOOL_RETRY);
     }
+
+    @Test
+    void a_tool_call_that_ran_past_its_deadline_says_it_ran_past_its_deadline() {
+      EffectOutcome outcome =
+          source(Tools.none())
+              .termsFor(
+                  new AgentEffect.CallTool(
+                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone"), KEY))
+              .undispatchable();
+
+      assertThat(outcome)
+          .asInstanceOf(InstanceOfAssertFactories.type(EffectOutcome.ToolFailed.class))
+          .extracting(EffectOutcome.ToolFailed::kind)
+          .isEqualTo(CallFailure.PAST_DEADLINE);
+    }
+
+    @Test
+    void a_tool_call_that_threw_says_it_failed() {
+      EffectOutcome outcome =
+          source(Tools.none())
+              .termsFor(
+                  new AgentEffect.CallTool(
+                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone"), KEY))
+              .failed(new IllegalStateException("boom"));
+
+      assertThat(outcome)
+          .asInstanceOf(InstanceOfAssertFactories.type(EffectOutcome.ToolFailed.class))
+          .extracting(EffectOutcome.ToolFailed::kind)
+          .isEqualTo(CallFailure.FAILED);
+    }
   }
 
   @Nested
@@ -190,6 +222,36 @@ class EffectTermsSourceTest {
 
       assertThat(terms.timeout()).isEqualTo(APPROVAL_TIMEOUT);
       assertThat(terms.retryPolicy()).isEqualTo(APPROVAL_RETRY);
+    }
+
+    @Test
+    void an_approval_that_ran_past_its_deadline_says_the_call_was_never_authorised() {
+      EffectOutcome outcome =
+          source(Tools.none())
+              .termsFor(
+                  new AgentEffect.Approve(
+                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone"), KEY))
+              .undispatchable();
+
+      assertThat(outcome)
+          .asInstanceOf(InstanceOfAssertFactories.type(EffectOutcome.ToolFailed.class))
+          .extracting(EffectOutcome.ToolFailed::kind)
+          .isEqualTo(CallFailure.NOT_AUTHORISED);
+    }
+
+    @Test
+    void an_approver_that_threw_says_the_call_was_never_authorised() {
+      EffectOutcome outcome =
+          source(Tools.none())
+              .termsFor(
+                  new AgentEffect.Approve(
+                      new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone"), KEY))
+              .failed(new IllegalStateException("boom"));
+
+      assertThat(outcome)
+          .asInstanceOf(InstanceOfAssertFactories.type(EffectOutcome.ToolFailed.class))
+          .extracting(EffectOutcome.ToolFailed::kind)
+          .isEqualTo(CallFailure.NOT_AUTHORISED);
     }
   }
 

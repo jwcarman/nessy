@@ -24,6 +24,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Nested;
@@ -32,6 +33,7 @@ import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentStory;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.PayloadRef;
@@ -39,6 +41,7 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.StoryProjection;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.chapter.Chapters;
@@ -165,6 +168,37 @@ class EventAgentStoriesTest {
       assertThatThrownBy(() -> story.replay(null, 10))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("after must not be null");
+    }
+
+    @Test
+    void a_stored_call_failure_is_replayed_with_why_it_failed() {
+      IdempotencyKey key =
+          IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
+      events.append(
+          TYPE,
+          agent,
+          List.of(
+              started(1),
+              new AgentEvent.ToolFailed(
+                  new Seq(2),
+                  new TurnId(1),
+                  new CallId("c1"),
+                  CallFailure.PAST_DEADLINE,
+                  "the call did not complete before its deadline",
+                  key)),
+          Seq.NONE,
+          AT);
+
+      assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 10))
+          .map(Narrated::event)
+          .filteredOn(Narration.CallFailed.class::isInstance)
+          .singleElement()
+          .isEqualTo(
+              new Narration.CallFailed(
+                  new CallId("c1"),
+                  key,
+                  CallFailure.PAST_DEADLINE,
+                  "the call did not complete before its deadline"));
     }
 
     @Test
