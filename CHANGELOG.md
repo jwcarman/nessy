@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requested with; the stored shape changes, so recreate the database. The four narration records
   `CallApproved`, `CallDenied`, `CallFinished` and `CallFailed` gain `idempotencyKey` after
   `callId`.
+- **An approval records who decided, not a reference.** `ApprovalResult.reference()` is
+  `decidedBy()`, and `approvedBy` and `deniedBy` take a `decidedBy`: who or what decided, as the
+  application says it. Nessy never interprets it. The same rename runs through `EffectOutcome.ToolApproved`
+  and `ToolDenied`, `AgentCommand.ApprovalOutcome.Approved` and `Denied`, and the stored
+  `ToolApproved` and `ToolDenied` events, whose JSON field is now `decidedBy`; recreate the
+  database. The narration records `CallApproved` and `CallDenied` gain a trailing `decidedBy`.
 - **`NarrationListener.on` takes a `Narrated` envelope:** the agent, the event, and for a story
   event its position (`seq` and time written). `NarrationListenerConfig.Handler` is
   `on(Narrated narrated, E event)`, and `Narrator.narrate` takes a `Narrated`. A story event's

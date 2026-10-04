@@ -178,16 +178,16 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
       case Awaited.Ready<ApprovalResult>(ApprovalResult result) ->
           Awaited.ready(
               switch (result) {
-                case ApprovalResult.Approved(var reference) ->
-                    new EffectOutcome.ToolApproved(callId, reference);
-                case ApprovalResult.Denied(String reason, var reference) -> {
+                case ApprovalResult.Approved(var decidedBy) ->
+                    new EffectOutcome.ToolApproved(callId, decidedBy);
+                case ApprovalResult.Denied(String reason, var decidedBy) -> {
                   log.info(
                       "[{}] agent {}: {} was denied ({})",
                       agentType.value(),
                       agentId.value(),
                       question.action(),
                       reason);
-                  yield new EffectOutcome.ToolDenied(callId, reason, reference);
+                  yield new EffectOutcome.ToolDenied(callId, reason, decidedBy);
                 }
               });
       // The ordinary case for a person, not an exotic one. The approver has the reply

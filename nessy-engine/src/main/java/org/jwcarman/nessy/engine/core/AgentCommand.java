@@ -170,9 +170,9 @@ public sealed interface AgentCommand {
 
   /** What an approver decided. */
   sealed interface ApprovalOutcome {
-    record Approved(Optional<String> reference) implements ApprovalOutcome {}
+    record Approved(Optional<String> decidedBy) implements ApprovalOutcome {}
 
-    record Denied(String reason, Optional<String> reference) implements ApprovalOutcome {}
+    record Denied(String reason, Optional<String> decidedBy) implements ApprovalOutcome {}
   }
 
   /** What a tool produced. */

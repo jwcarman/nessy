@@ -19,6 +19,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -207,17 +208,45 @@ public sealed interface Narration {
    * <p>Names the call and not the tool, because the entry this is derived from does not carry the
    * tool's name and inventing a lookup to fill the field would make the announcement claim
    * something the story does not. A watcher that wants the name joins by id to the {@link
-   * ActionsRequested.Call} it heard a moment ago.
+   * ActionsRequested.Call} it heard a moment ago. A watcher joins a call's events by its key: the
+   * same {@code idempotencyKey} is on the request, the decision and the outcome.
+   *
+   * @param callId the id the call was requested with
+   * @param idempotencyKey the call's own key, the same on its request, its approval and its outcome
+   * @param decidedBy who or what decided, as the application said it; empty when nobody is named.
+   *     Nessy never interprets it.
    */
-  record CallApproved(CallId callId, IdempotencyKey idempotencyKey) implements Story {}
+  record CallApproved(CallId callId, IdempotencyKey idempotencyKey, Optional<String> decidedBy)
+      implements Story {}
 
-  /** A call was refused, and never ran. */
-  record CallDenied(CallId callId, IdempotencyKey idempotencyKey, String reason) implements Story {}
+  /**
+   * A call was refused, and never ran.
+   *
+   * @param callId the id the call was requested with
+   * @param idempotencyKey the call's own key, the same on its request, its approval and its outcome
+   * @param reason why the call was refused
+   * @param decidedBy who or what refused it, as the application said it; empty when nobody is
+   *     named. Nessy never interprets it.
+   */
+  record CallDenied(
+      CallId callId, IdempotencyKey idempotencyKey, String reason, Optional<String> decidedBy)
+      implements Story {}
 
-  /** A call ran and produced something. */
+  /**
+   * A call ran and produced something.
+   *
+   * @param callId the id the call was requested with
+   * @param idempotencyKey the call's own key, the same on its request, its approval and its outcome
+   */
   record CallFinished(CallId callId, IdempotencyKey idempotencyKey) implements Story {}
 
-  /** A call did not produce something. The message is what the model will read. */
+  /**
+   * A call did not produce something. The message is what the model will read.
+   *
+   * @param callId the id the call was requested with
+   * @param idempotencyKey the call's own key, the same on its request, its approval and its outcome
+   * @param message what the model will read for the call
+   */
   record CallFailed(CallId callId, IdempotencyKey idempotencyKey, String message)
       implements Story {}
 

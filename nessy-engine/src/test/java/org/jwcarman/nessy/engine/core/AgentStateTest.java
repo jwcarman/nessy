@@ -1333,6 +1333,60 @@ class AgentStateTest {
     }
 
     @Test
+    void an_approval_records_who_decided() {
+      Decision decision =
+          awaitingBoth()
+              .execute(
+                  new AgentCommand.CompleteApproval(
+                      TURN,
+                      REQUEST,
+                      SECOND,
+                      new AgentCommand.ApprovalOutcome.Approved(Optional.of("u_carol"))));
+
+      assertThat(decision.events())
+          .singleElement()
+          .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.ToolApproved.class))
+          .extracting(AgentEvent.ToolApproved::decidedBy)
+          .isEqualTo(Optional.of("u_carol"));
+    }
+
+    @Test
+    void a_denial_records_who_decided() {
+      Decision decision =
+          awaitingBoth()
+              .execute(
+                  new AgentCommand.CompleteApproval(
+                      TURN,
+                      REQUEST,
+                      FIRST,
+                      new AgentCommand.ApprovalOutcome.Denied("no", Optional.of("u_dave"))));
+
+      assertThat(decision.events())
+          .first()
+          .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.ToolDenied.class))
+          .extracting(AgentEvent.ToolDenied::decidedBy)
+          .isEqualTo(Optional.of("u_dave"));
+    }
+
+    @Test
+    void an_approval_nobody_is_named_for_records_no_one() {
+      Decision decision =
+          awaitingBoth()
+              .execute(
+                  new AgentCommand.CompleteApproval(
+                      TURN,
+                      REQUEST,
+                      SECOND,
+                      new AgentCommand.ApprovalOutcome.Approved(Optional.empty())));
+
+      assertThat(decision.events())
+          .singleElement()
+          .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.ToolApproved.class))
+          .extracting(AgentEvent.ToolApproved::decidedBy)
+          .isEqualTo(Optional.empty());
+    }
+
+    @Test
     void a_result_is_recorded_with_the_calls_key() {
       AgentState running = approved(awaitingBoth(), SECOND);
 

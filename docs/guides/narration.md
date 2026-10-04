@@ -115,7 +115,7 @@ listening never hears it.
 |---|---|
 | `TurnStarted(turn)` | an input was taken up and a turn opened |
 | `ActionsRequested(turn, calls, usage)` | the model asked for tools; each `Call(callId, idempotencyKey, toolName, action)` is what later call events join to, by `callId` or by `idempotencyKey` |
-| `CallApproved(callId, idempotencyKey)`, `CallDenied(callId, idempotencyKey, reason)` | the decision |
+| `CallApproved(callId, idempotencyKey, decidedBy)`, `CallDenied(callId, idempotencyKey, reason, decidedBy)` | the decision, and who or what decided it (`decidedBy` is empty when nobody is named; Nessy never interprets it) |
 | `CallFinished(callId, idempotencyKey)`, `CallFailed(callId, idempotencyKey, message)` | a call's outcome |
 | `Answered(turn, usage)` | the turn produced an answer |
 | `TurnRefused(turn, category, usage)` | the model declined to answer |

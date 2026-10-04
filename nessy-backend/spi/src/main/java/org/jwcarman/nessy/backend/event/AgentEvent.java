@@ -203,7 +203,7 @@ public sealed interface AgentEvent {
       Seq seq,
       TurnId turn,
       CallId callId,
-      Optional<String> reference,
+      Optional<String> decidedBy,
       IdempotencyKey idempotencyKey)
       implements AgentEvent {
     public ToolApproved {
@@ -217,7 +217,7 @@ public sealed interface AgentEvent {
       TurnId turn,
       CallId callId,
       String reason,
-      Optional<String> reference,
+      Optional<String> decidedBy,
       IdempotencyKey idempotencyKey)
       implements AgentEvent {
     public ToolDenied {

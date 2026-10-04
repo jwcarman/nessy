@@ -33,6 +33,8 @@ import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
+import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -85,7 +87,18 @@ final class StoryTurn {
         backend,
         clock,
         provider,
-        config -> config.tool(lookup(), t -> t.action(query -> "looked up " + query.q())));
+        config ->
+            config.tool(
+                lookup(),
+                t -> t.action(query -> "looked up " + query.q()).approver(decidesAsCarol())));
+  }
+
+  /** The name every approval in these stories is decided under. */
+  static final String DECIDER = "u_carol";
+
+  /** An approver that allows every call and says who allowed it. */
+  static Approver decidesAsCarol() {
+    return _ -> Awaited.ready(ApprovalResult.approvedBy(DECIDER));
   }
 
   record Query(String q) {}

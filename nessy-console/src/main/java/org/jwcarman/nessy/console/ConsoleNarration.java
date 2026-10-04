@@ -77,7 +77,7 @@ final class ConsoleNarration implements NarrationListener {
           io.write("  [" + callId.value() + " answered]" + System.lineSeparator());
       case Narration.CallFailed(var callId, _, String message) ->
           io.write("  [" + callId.value() + " failed: " + message + "]" + System.lineSeparator());
-      case Narration.CallDenied(var callId, _, String reason) ->
+      case Narration.CallDenied(var callId, _, String reason, _) ->
           io.write("  [" + callId.value() + " denied: " + reason + "]" + System.lineSeparator());
       case Narration.TurnFailed _,
           Narration.TurnStopped _,

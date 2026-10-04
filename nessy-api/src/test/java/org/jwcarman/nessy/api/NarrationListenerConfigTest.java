@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -54,8 +55,8 @@ class NarrationListenerConfigTest {
                   new Narration.ActionsRequested.Call(
                       CALL, IdempotencyKey.of(KEY_ID), new ToolName("t"), "do t")),
               Usage.unreported()),
-          new Narration.CallApproved(CALL, IdempotencyKey.of(KEY_ID)),
-          new Narration.CallDenied(CALL, IdempotencyKey.of(KEY_ID), "no"),
+          new Narration.CallApproved(CALL, IdempotencyKey.of(KEY_ID), Optional.empty()),
+          new Narration.CallDenied(CALL, IdempotencyKey.of(KEY_ID), "no", Optional.empty()),
           new Narration.CallFinished(CALL, IdempotencyKey.of(KEY_ID)),
           new Narration.CallFailed(CALL, IdempotencyKey.of(KEY_ID), "boom"),
           new Narration.Terminated(),

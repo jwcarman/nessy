@@ -135,8 +135,20 @@ replies.approve(token, ApprovalResult.denied("not this time"));
 
 The model is told the call was refused, with the reason, and decides what to
 do about that. It is not a failed turn, and it must not look like a broken
-tool. `ApprovalResult.approvedBy(reference)` and `deniedBy(reason,
-reference)` carry who decided, for the record.
+tool.
+
+## Who decided
+
+`ApprovalResult.approvedBy(decidedBy)` and `deniedBy(reason, decidedBy)` name
+who or what decided: a user id, a ticket number, a policy's name, however the
+application chooses to say it. `approved()` and `denied(reason)` name no one.
+
+`decidedBy` is an opaque string. Nessy never interprets it. It is stored on
+`ToolApproved` and `ToolDenied` and told on `CallApproved` and `CallDenied`, as
+given. The record of the decision itself, the evidence and the reasons, stays
+with the application. Every event about a call carries the call's
+`IdempotencyKey`, and that key is the join from the story to the
+application's own record.
 
 ## Reply tokens
 

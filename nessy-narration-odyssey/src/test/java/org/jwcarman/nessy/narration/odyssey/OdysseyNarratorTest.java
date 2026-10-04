@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -65,8 +66,8 @@ class OdysseyNarratorTest {
                   new Narration.ActionsRequested.Call(
                       new CallId("c"), KEY, new ToolName("t"), "do t")),
               Usage.unreported()),
-          new Narration.CallApproved(new CallId("c"), KEY),
-          new Narration.CallDenied(new CallId("c"), KEY, "r"),
+          new Narration.CallApproved(new CallId("c"), KEY, Optional.empty()),
+          new Narration.CallDenied(new CallId("c"), KEY, "r", Optional.empty()),
           new Narration.CallFinished(new CallId("c"), KEY),
           new Narration.CallFailed(new CallId("c"), KEY, "m"),
           new Narration.Terminated(),
@@ -113,7 +114,8 @@ class OdysseyNarratorTest {
     assertThat(json.has("input"))
         .as("narration names what happened; it does not carry the words it happened to")
         .isFalse();
-    JsonNode denied = mapper.valueToTree(new Narration.CallDenied(new CallId("c1"), KEY, "no"));
+    JsonNode denied =
+        mapper.valueToTree(new Narration.CallDenied(new CallId("c1"), KEY, "no", Optional.empty()));
     assertThat(denied.path("callId").asString()).isEqualTo("c1");
   }
 

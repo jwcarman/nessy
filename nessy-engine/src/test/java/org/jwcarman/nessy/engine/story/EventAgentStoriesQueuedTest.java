@@ -20,6 +20,7 @@ import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Tag;
@@ -88,7 +89,11 @@ class EventAgentStoriesQueuedTest {
               config ->
                   config
                       .systemPrompt("You are a test assistant.")
-                      .tool(StoryTurn.lookup(), t -> t.action(query -> "looked up " + query.q()))
+                      .tool(
+                          StoryTurn.lookup(),
+                          t ->
+                              t.action(query -> "looked up " + query.q())
+                                  .approver(StoryTurn.decidesAsCarol()))
                       .inference(in -> in.model("a-model"))
                       .effects(e -> e.pollInterval(Duration.ofMillis(50))))
           .tell(agent, "how deep is Loch Ness?");
@@ -126,7 +131,11 @@ class EventAgentStoriesQueuedTest {
               config ->
                   config
                       .systemPrompt("You are a test assistant.")
-                      .tool(StoryTurn.lookup(), t -> t.action(query -> "looked up " + query.q()))
+                      .tool(
+                          StoryTurn.lookup(),
+                          t ->
+                              t.action(query -> "looked up " + query.q())
+                                  .approver(StoryTurn.decidesAsCarol()))
                       .inference(
                           in ->
                               in.model("a-model")
@@ -168,6 +177,12 @@ class EventAgentStoriesQueuedTest {
         .singleElement()
         .extracting(event -> ((Narration.CallApproved) event).idempotencyKey())
         .isEqualTo(requested);
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallApproved.class::isInstance)
+        .singleElement()
+        .extracting(event -> ((Narration.CallApproved) event).decidedBy())
+        .isEqualTo(Optional.of(StoryTurn.DECIDER));
     assertThat(story)
         .map(Narrated::event)
         .filteredOn(Narration.CallFinished.class::isInstance)

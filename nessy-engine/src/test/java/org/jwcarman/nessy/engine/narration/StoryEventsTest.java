@@ -177,7 +177,7 @@ class StoryEventsTest {
   @Test
   void an_approved_call_is_told_as_approved() {
     assertThat(StoryEvents.of(new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), KEY)))
-        .isEqualTo(new Narration.CallApproved(CALL, KEY));
+        .isEqualTo(new Narration.CallApproved(CALL, KEY, Optional.empty()));
   }
 
   @Test
@@ -185,7 +185,7 @@ class StoryEventsTest {
     assertThat(
             StoryEvents.of(
                 new AgentEvent.ToolDenied(SEQ, TURN, CALL, "not allowed", Optional.empty(), KEY)))
-        .isEqualTo(new Narration.CallDenied(CALL, KEY, "not allowed"));
+        .isEqualTo(new Narration.CallDenied(CALL, KEY, "not allowed", Optional.empty()));
   }
 
   @Test

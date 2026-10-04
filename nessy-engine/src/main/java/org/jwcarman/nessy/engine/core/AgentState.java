@@ -377,13 +377,13 @@ public sealed interface AgentState {
             Decision.of(
                 List.of(
                     new AgentEvent.ToolApproved(
-                        at, turn, done.callId(), ok.reference(), call.idempotencyKey())),
+                        at, turn, done.callId(), ok.decidedBy(), call.idempotencyKey())),
                 List.of(performing(turn, requestSeq, call)));
         case AgentCommand.ApprovalOutcome.Denied no ->
             continuing(
                 at,
                 new AgentEvent.ToolDenied(
-                    at, turn, done.callId(), no.reason(), no.reference(), call.idempotencyKey()),
+                    at, turn, done.callId(), no.reason(), no.decidedBy(), call.idempotencyKey()),
                 policy,
                 now);
       };

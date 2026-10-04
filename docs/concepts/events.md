@@ -24,8 +24,8 @@ public sealed interface AgentEvent {
   record InferenceAttempted(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {}
   record TurnStopped(Seq seq, TurnId turn, String reason) implements AgentEvent {}
   record ActionsRequested(Seq seq, TurnId turn, PayloadRef request, List<ActionRequest> actions, Usage usage) implements AgentEvent {}
-  record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> reference, IdempotencyKey idempotencyKey) implements AgentEvent {}
-  record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> reference, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> decidedBy, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> decidedBy, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, String rendered, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ToolFailed(Seq seq, TurnId turn, CallId callId, String message, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record Terminated(Seq seq) implements AgentEvent {}
@@ -59,7 +59,7 @@ waiting for. A reader joins a call's events by that key.
 Events hold other text too. A failed call's message is at most 1,000
 characters; a longer one has its middle dropped and `...` in the gap, and the
 shortened text is what the model reads back for the call. A denial's reason and
-its reference, why a turn failed, a refusal's category and a failure's reason
+its `decidedBy`, why a turn failed, a refusal's category and a failure's reason
 are not bounded.
 
 So an agent's content is in three places: its payload rows, the lines and

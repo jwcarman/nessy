@@ -101,10 +101,10 @@ public final class DefaultReplies implements Replies {
         AgentEffect.Approve.class,
         (callId, _, _, _) ->
             switch (result) {
-              case ApprovalResult.Approved(var reference) ->
-                  new EffectOutcome.ToolApproved(callId, reference);
-              case ApprovalResult.Denied(String reason, var reference) ->
-                  new EffectOutcome.ToolDenied(callId, reason, reference);
+              case ApprovalResult.Approved(var decidedBy) ->
+                  new EffectOutcome.ToolApproved(callId, decidedBy);
+              case ApprovalResult.Denied(String reason, var decidedBy) ->
+                  new EffectOutcome.ToolDenied(callId, reason, decidedBy);
             });
   }
 

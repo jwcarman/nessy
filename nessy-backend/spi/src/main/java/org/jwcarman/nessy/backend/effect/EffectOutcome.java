@@ -164,7 +164,7 @@ public sealed interface EffectOutcome {
   }
 
   /** A call was never run, because an approver said no. */
-  record ToolDenied(CallId callId, String reason, Optional<String> reference)
+  record ToolDenied(CallId callId, String reason, Optional<String> decidedBy)
       implements EffectOutcome {
 
     public ToolDenied(CallId callId, String reason) {
@@ -180,7 +180,7 @@ public sealed interface EffectOutcome {
    * fold checks the call's phase rather than merely its presence -- a redelivered approval must not
    * dispatch a second attempt at a tool that is already running.
    */
-  record ToolApproved(CallId callId, Optional<String> reference) implements EffectOutcome {
+  record ToolApproved(CallId callId, Optional<String> decidedBy) implements EffectOutcome {
 
     /**
      * Allowed, with nothing standing behind it -- an ungated tool, or a rule that is its own

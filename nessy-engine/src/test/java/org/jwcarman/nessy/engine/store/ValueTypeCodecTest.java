@@ -258,7 +258,7 @@ class ValueTypeCodecTest {
   }
 
   @Test
-  void aGrantNamesItsCallAsAStringAndKeepsAnAbsentReferenceAbsent() {
+  void aGrantNamesItsCallAsAStringAndKeepsAnAbsentDecidedByAbsent() {
     String written =
         new String(
             entries.encode(
@@ -266,7 +266,7 @@ class ValueTypeCodecTest {
                     new Seq(3), new TurnId(1), new CallId("c1"), Optional.of("jcarman"), KEY)),
             StandardCharsets.UTF_8);
 
-    assertThat(written).contains("\"callId\":\"c1\"").contains("\"reference\":\"jcarman\"");
+    assertThat(written).contains("\"callId\":\"c1\"").contains("\"decidedBy\":\"jcarman\"");
   }
 
   /**
@@ -369,7 +369,7 @@ class ValueTypeCodecTest {
   void aGrantIsStoredWithTheKeyOfItsCall() {
     String stored =
         """
-        {"type":"tool-approved","seq":3,"turn":1,"callId":"c1","reference":"jcarman",\
+        {"type":"tool-approved","seq":3,"turn":1,"callId":"c1","decidedBy":"jcarman",\
         "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
     AgentEvent.ToolApproved written =
         new AgentEvent.ToolApproved(
@@ -384,7 +384,7 @@ class ValueTypeCodecTest {
   void aDenialIsStoredWithTheKeyOfItsCall() {
     String stored =
         """
-        {"type":"tool-denied","seq":3,"turn":1,"callId":"c1","reason":"no","reference":null,\
+        {"type":"tool-denied","seq":3,"turn":1,"callId":"c1","reason":"no","decidedBy":null,\
         "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
     AgentEvent.ToolDenied written =
         new AgentEvent.ToolDenied(

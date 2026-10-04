@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Nested;
@@ -356,6 +357,12 @@ class EventAgentStoriesTest {
         .singleElement()
         .extracting(event -> ((Narration.CallApproved) event).idempotencyKey())
         .isEqualTo(requested);
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallApproved.class::isInstance)
+        .singleElement()
+        .extracting(event -> ((Narration.CallApproved) event).decidedBy())
+        .isEqualTo(Optional.of(StoryTurn.DECIDER));
     assertThat(story)
         .map(Narrated::event)
         .filteredOn(Narration.CallFinished.class::isInstance)
