@@ -95,6 +95,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The starter offers an `AgentWork` bean.** `AgentWorkAutoConfiguration` registers one
+  `AgentWork` over whichever backends the application has, replaceable by a bean of its own. An
+  agent is read from the first door, queued before direct, whose store holds an event for it. With
+  a queued backend `waitingApprovals` lists the approvals parked on people; with only a direct
+  backend `status` works and both `waitingApprovals` forms return empty lists.
 - **An approval's facts are recorded with its decision, its deferral or its failure.** The facts
   an approver was shown, as they stood when it decided, are written on the `ToolApproved` or
   `ToolDenied` event, including facts it added while deciding. A deferral records them on
