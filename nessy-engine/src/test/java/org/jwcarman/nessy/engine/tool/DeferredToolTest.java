@@ -20,9 +20,13 @@ import static org.assertj.core.api.InstanceOfAssertFactories.type;
 import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -30,6 +34,8 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.Narrated;
+import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.Stringifier;
@@ -48,6 +54,9 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.EngineFixture;
+import org.jwcarman.nessy.engine.ParkRefusingBackend;
+import org.jwcarman.nessy.engine.agent.OutstandingAction;
+import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 
@@ -94,6 +103,16 @@ class DeferredToolTest {
 
   /** Starts something and says it will report back -- a queue, a build, a long HTTP call. */
   private Tool<Job> slowJob() {
+    return slowJob(
+        request -> {
+          // Whatever actually does the work is handed the address. Keeping it is the tool's
+          // obligation exactly as it is an approver's: nothing else can settle this call.
+          handed.add(request.replyToken());
+          return Awaited.deferred();
+        });
+  }
+
+  private Tool<Job> slowJob(Function<ToolCallRequest<Job>, Awaited<ToolResult>> behaviour) {
     return new Tool<>() {
       @Override
       public Class<Job> inputType() {
@@ -112,17 +131,23 @@ class DeferredToolTest {
 
       @Override
       public Awaited<ToolResult> call(ToolCallRequest<Job> request) {
-        // Whatever actually does the work is handed the address. Keeping it is the tool's
-        // obligation exactly as it is an approver's: nothing else can settle this call.
-        handed.add(request.replyToken());
-        return Awaited.deferred();
+        return behaviour.apply(request);
       }
     };
   }
 
   private QueuedHarness<String> harness(
       AgentType type, Duration toolBudget, Customizer<ToolConfig<Job>> more) {
-    return engine
+    return harness(engine, type, toolBudget, more, slowJob());
+  }
+
+  private QueuedHarness<String> harness(
+      EngineFixture fixture,
+      AgentType type,
+      Duration toolBudget,
+      Customizer<ToolConfig<Job>> more,
+      Tool<Job> job) {
+    return fixture
         .harnesses()
         .create(
             type,
@@ -133,7 +158,7 @@ class DeferredToolTest {
                     // Nothing gates it: permission is granted at once, so the call itself is what
                     // parks. A tool cannot defer before it has been allowed to run.
                     .tool(
-                        slowJob(),
+                        job,
                         t -> {
                           t.timeout(toolBudget);
                           more.customize(t);
@@ -154,6 +179,37 @@ class DeferredToolTest {
         .params(agentId.value())
         .query(Integer.class)
         .single();
+  }
+
+  /** What the effect table holds for the one effect of a test's agent type. */
+  private record Row(
+      OffsetDateTime parkedAt,
+      OffsetDateTime actionableAt,
+      OffsetDateTime deadline,
+      String status) {}
+
+  private static Row rowOf(EngineFixture fixture, AgentType type) {
+    return fixture
+        .jdbc()
+        .sql(
+            "SELECT parked_at, actionable_at, deadline, status FROM nessy_agent_effect"
+                + " WHERE agent_type = ?")
+        .params(type.value())
+        .query(
+            (rs, n) ->
+                new Row(
+                    rs.getObject("parked_at", OffsetDateTime.class),
+                    rs.getObject("actionable_at", OffsetDateTime.class),
+                    rs.getObject("deadline", OffsetDateTime.class),
+                    rs.getString("status")))
+        .single();
+  }
+
+  private static List<AgentEvent.ToolDeferred> deferralsIn(List<AgentEvent> story) {
+    return story.stream()
+        .filter(AgentEvent.ToolDeferred.class::isInstance)
+        .map(AgentEvent.ToolDeferred.class::cast)
+        .toList();
   }
 
   private AgentId park(AgentType type, Duration toolBudget) {
@@ -193,15 +249,18 @@ class DeferredToolTest {
 
     List<AgentEvent> story = engine.story(type, agentId);
     assertThat(story.get(3))
+        .as("the deferral is on the record, after the grant and before the result")
+        .isInstanceOf(AgentEvent.ToolDeferred.class);
+    assertThat(story.get(4))
         .isEqualTo(
             new AgentEvent.ToolSucceeded(
-                new Seq(4),
+                new Seq(5),
                 new TurnId(1),
                 new CallId("call_1"),
                 engine.ref(agentId, List.of(new Block.Text("reindexed 91"))),
                 "reindexed 91",
                 requestedKey(story)));
-    assertThat(story.get(4)).isInstanceOf(AgentEvent.InferenceAnswered.class);
+    assertThat(story.get(5)).isInstanceOf(AgentEvent.InferenceAnswered.class);
   }
 
   /**
@@ -223,7 +282,8 @@ class DeferredToolTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
-    assertThat(engine.story(type, agentId).get(3))
+    assertThat(engine.story(type, agentId).get(3)).isInstanceOf(AgentEvent.ToolDeferred.class);
+    assertThat(engine.story(type, agentId).get(4))
         .asInstanceOf(type(AgentEvent.ToolSucceeded.class))
         .extracting(AgentEvent.ToolSucceeded::rendered)
         .isEqualTo(line.stringify(reported))
@@ -247,7 +307,8 @@ class DeferredToolTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
-    assertThat(engine.story(type, agentId).get(3))
+    assertThat(engine.story(type, agentId).get(3)).isInstanceOf(AgentEvent.ToolDeferred.class);
+    assertThat(engine.story(type, agentId).get(4))
         .asInstanceOf(type(AgentEvent.ToolFailed.class))
         .satisfies(
             failed -> {
@@ -309,7 +370,8 @@ class DeferredToolTest {
               assertThat(outstandingEffects(agentId)).isZero();
             });
 
-    assertThat(engine.story(type, agentId).get(3))
+    assertThat(engine.story(type, agentId).get(3)).isInstanceOf(AgentEvent.ToolDeferred.class);
+    assertThat(engine.story(type, agentId).get(4))
         .asInstanceOf(type(AgentEvent.ToolFailed.class))
         .satisfies(
             failed -> {
@@ -335,6 +397,141 @@ class DeferredToolTest {
 
     assertThat(engine.replies().complete(handed.peek(), ToolResult.ok(new Block.Text("too late"))))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);
+  }
+
+  // ---- the deferral is on the record -------------------------------------------------------
+
+  /** Recorded when it happens: the story holds the deferral before anyone has reported back. */
+  @Test
+  void a_deferred_tool_is_on_the_record_when_it_happens() {
+    AgentType type = new AgentType("deferred-tool-on-record");
+    AgentId agentId = park(type, Duration.ofMinutes(30));
+
+    await()
+        .atMost(Duration.ofSeconds(15))
+        .untilAsserted(() -> assertThat(deferralsIn(engine.story(type, agentId))).hasSize(1));
+
+    List<AgentEvent> story = engine.story(type, agentId);
+    assertThat(story.get(3)).isInstanceOf(AgentEvent.ToolDeferred.class);
+    AgentEvent.ToolDeferred deferred = (AgentEvent.ToolDeferred) story.get(3);
+    assertThat(deferred.seq()).isEqualTo(new Seq(4));
+    assertThat(deferred.turn()).isEqualTo(new TurnId(1));
+    assertThat(deferred.callId()).isEqualTo(new CallId("call_1"));
+    assertThat(deferred.idempotencyKey()).as("the call's own key").isEqualTo(requestedKey(story));
+    assertThat(deferred.until())
+        .as("until is the instant the row holds the call to")
+        .isEqualTo(rowOf(engine, type).deadline().toInstant().truncatedTo(ChronoUnit.MICROS));
+    assertThat(story)
+        .as("nobody has reported back yet")
+        .noneMatch(AgentEvent.ToolSucceeded.class::isInstance);
+  }
+
+  /** The row is marked, and it comes due once more at the deadline and not before. */
+  @Test
+  void a_parked_row_is_marked_and_due_at_its_deadline() {
+    AgentType type = new AgentType("deferred-tool-parked-row");
+    AgentId agentId = park(type, Duration.ofMinutes(30));
+
+    await()
+        .atMost(Duration.ofSeconds(15))
+        .untilAsserted(() -> assertThat(deferralsIn(engine.story(type, agentId))).hasSize(1));
+
+    Row row = rowOf(engine, type);
+    assertThat(row.parkedAt()).as("marked as parked").isNotNull();
+    assertThat(row.actionableAt().toInstant())
+        .as("due at its deadline")
+        .isEqualTo(row.deadline().toInstant());
+    assertThat(row.status()).as("still the attempt that is waiting").isEqualTo("RUNNING");
+  }
+
+  /**
+   * The event and the mark stand or fall together. With the effect table refusing the mark, the
+   * event appended a moment earlier in the same step is rolled back with it, nothing is narrated,
+   * and the call still waits for its report.
+   */
+  @Test
+  void the_event_and_the_mark_are_one_transaction() {
+    AgentType type = new AgentType("deferred-tool-one-transaction");
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    AtomicInteger refusals = new AtomicInteger();
+    ConcurrentLinkedQueue<Narrated> heard = new ConcurrentLinkedQueue<>();
+    try (EngineFixture refusing =
+        new EngineFixture(
+            MODEL, heard::add, backend -> new ParkRefusingBackend(backend, refusals))) {
+      harness(refusing, type, Duration.ofMinutes(30), Customizer.withDefaults(), slowJob())
+          .tell(agentId, "kick off the reindex");
+
+      await()
+          .atMost(Duration.ofSeconds(15))
+          .untilAsserted(() -> assertThat(refusals.get()).isEqualTo(1));
+
+      List<AgentEvent> story = refusing.story(type, agentId);
+      assertThat(story).as("the turn is under way").isNotEmpty();
+      assertThat(deferralsIn(story)).as("no deferral was stored").isEmpty();
+      Row row = rowOf(refusing, type);
+      assertThat(row.parkedAt()).as("the row is unmarked").isNull();
+      assertThat(row.status()).isEqualTo("RUNNING");
+      assertThat(refusing.stateOf(type, agentId))
+          .asInstanceOf(type(AgentState.AwaitingActions.class))
+          .satisfies(
+              awaiting ->
+                  assertThat(awaiting.outstanding().get(new CallId("call_1")).phase())
+                      .isEqualTo(OutstandingAction.Phase.RUNNING));
+      assertThat(heard).as("the turn was heard").isNotEmpty();
+      assertThat(heard)
+          .extracting(Narrated::event)
+          .as("nothing was said about a deferral that did not happen")
+          .noneMatch(Narration.CallDeferred.class::isInstance);
+      assertThat(handed).as("the tool was started once").hasSize(1);
+
+      assertThat(refusing.replies().complete(handed.peek(), ToolResult.ok(new Block.Text("done"))))
+          .as("the call still waits for its report")
+          .isInstanceOf(ReplyOutcome.Settled.class);
+      await()
+          .atMost(Duration.ofSeconds(20))
+          .untilAsserted(
+              () ->
+                  assertThat(refusing.stateOf(type, agentId)).isInstanceOf(AgentState.Idle.class));
+      assertThat(handed).as("and was never started again").hasSize(1);
+      assertThat(deferralsIn(refusing.story(type, agentId)))
+          .as("the finished story holds no deferral")
+          .isEmpty();
+    }
+  }
+
+  /**
+   * A report can beat the dispatcher's own record of the deferral: the tool reports through {@code
+   * Replies} and only then says it will report later. The call is already discharged, so the fold
+   * writes nothing for the deferral.
+   */
+  @Test
+  void an_answer_that_lands_first_leaves_the_park_writing_nothing() {
+    AgentType type = new AgentType("deferred-tool-answer-first");
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    ConcurrentLinkedQueue<ReplyOutcome> outcomes = new ConcurrentLinkedQueue<>();
+    Tool<Job> reportingFirst =
+        slowJob(
+            request -> {
+              outcomes.add(
+                  engine
+                      .replies()
+                      .complete(request.replyToken(), ToolResult.ok(new Block.Text("done"))));
+              return Awaited.deferred();
+            });
+
+    harness(engine, type, Duration.ofMinutes(30), Customizer.withDefaults(), reportingFirst)
+        .tell(agentId, "kick off the reindex");
+
+    await()
+        .atMost(Duration.ofSeconds(20))
+        .untilAsserted(
+            () -> assertThat(engine.stateOf(type, agentId)).isInstanceOf(AgentState.Idle.class));
+    List<AgentEvent> story = engine.story(type, agentId);
+    assertThat(outcomes).singleElement().isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(story)
+        .as("the result is on the record")
+        .anyMatch(AgentEvent.ToolSucceeded.class::isInstance);
+    assertThat(deferralsIn(story)).as("and the deferral that came too late is not").isEmpty();
   }
 
   /** The key the story's one request gave its first call. */

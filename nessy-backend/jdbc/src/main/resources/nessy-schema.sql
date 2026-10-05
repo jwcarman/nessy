@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS nessy_agent_effect
     -- attempt stops being believed. Either way it is when the row is due, which is why one column
     -- serves both and no query needs to know which it is looking at.
     --
+    -- On a parked row it is the deadline itself: nothing takes the row again before then.
+    --
     -- It never runs past deadline. A row coming due at its deadline comes due to be given up on,
     -- not to be tried again, and a backoff that would land beyond it is not a later retry.
     attempts_made INT          NOT NULL CHECK (attempts_made >= 0),
@@ -91,7 +93,11 @@ CREATE TABLE IF NOT EXISTS nessy_agent_effect
     failed_attempts BYTEA,
     actionable_at TIMESTAMP WITH TIME ZONE   NOT NULL,
     created_at  TIMESTAMP WITH TIME ZONE NOT NULL,
-    updated_at  TIMESTAMP WITH TIME ZONE
+    updated_at  TIMESTAMP WITH TIME ZONE,
+    -- When the attempt was parked: it asked for more time and is waiting for an answer from outside
+    -- rather than working. NULL on every row that was never parked. A parked row stays RUNNING, so
+    -- a late reply still finds it, and its actionable_at is its deadline.
+    parked_at   TIMESTAMP WITH TIME ZONE
 );
 
 -- Shaped for the one query that matters: due work of one agent type, oldest first.

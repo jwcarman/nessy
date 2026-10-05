@@ -122,6 +122,8 @@ listening never hears it.
 | `TurnFailed(turn, kind, reason, usage)` | a model call failed and ended the turn |
 | `TurnStopped(turn, reason)` | a policy stopped the turn; no model call failed |
 | `InferenceRetried(turn, kind, reason, usage)` | a model call failed and was tried again; the turn carries on |
+| `ApprovalDeferred(callId, idempotencyKey, until)` | a call waiting on an approval was put aside; the question stands until `until` |
+| `CallDeferred(callId, idempotencyKey, until)` | a running call was put aside; the tool will report back, and the call stands until `until` |
 | `Terminated` | the agent will accept nothing further |
 
 A turn ends in exactly one of four events: `Answered`, `TurnRefused`,
@@ -137,8 +139,6 @@ listens for.
 | `ThinkingDelta(text)`, `ContentDelta(text)` | reasoning and prose, as they stream |
 | `Commentary(text)` | prose the model said beside a request for actions |
 | `ApprovalSought(callId, action)` | somebody is being asked whether a call may run |
-| `ApprovalDeferred(callId, action, until)` | nobody answered yet; the question stands until `until` |
-| `CallDeferred(callId, toolName, until)` | a tool started work and will report back |
 
 `Answered` carries no text: the direct door hands the answer back to the
 caller who asked, and anything else watching reads it from the story. A
@@ -162,11 +162,15 @@ asked of the model. `Answered`, `TurnRefused`, `TurnFailed`,
 `InferenceRetried` and `ActionsRequested` carry the `Usage` of the model
 call they tell about, including the calls that were retried.
 
-`ApprovalDeferred` is the arm that pays for this whole channel. "Awaiting a
-person" is the state an operator most wants to see, and the engine
-deliberately does not store it — the fold cannot tell a tool that takes
-three days from one that takes 200 milliseconds, and should not learn. So
-it is announced rather than recorded, which is the one place it belongs.
+`ApprovalDeferred` and `CallDeferred` are story events: each is told from a
+stored event, `AgentEvent.ApprovalDeferred` and `AgentEvent.ToolDeferred`.
+Each is heard once the step that recorded the deferral commits, with its
+position in the story, and heard again, equal, when the story is replayed. They
+name the call and its key and not the action or the tool. A watcher that wants
+those joins by `idempotencyKey` to the `ActionsRequested.Call` it heard
+earlier; call ids can repeat across the requests of one turn. On the direct
+door a deferral is a failed call, no event is stored for it, and it is not
+narrated.
 
 On the wire each kind has a kebab-case name, `turn-stopped`, `content-delta`,
 `approval-deferred`, carried as the JSON `type` field.

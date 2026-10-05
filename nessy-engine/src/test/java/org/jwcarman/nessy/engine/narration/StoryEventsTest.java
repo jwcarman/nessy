@@ -170,6 +170,8 @@ class StoryEventsTest {
         new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty(), KEY),
         new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok", KEY),
         new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", KEY),
+        new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, Instant.EPOCH, PayloadRef.of("q"), KEY),
+        new AgentEvent.ToolDeferred(SEQ, TURN, CALL, Instant.EPOCH, KEY),
         new AgentEvent.Terminated(SEQ));
   }
 
@@ -186,6 +188,24 @@ class StoryEventsTest {
             StoryEvents.of(
                 new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.of("u_carol"), KEY)))
         .isEqualTo(new Narration.CallApproved(CALL, KEY, Optional.of("u_carol")));
+  }
+
+  @Test
+  void a_deferred_approval_is_told_with_its_call_its_key_and_its_deadline() {
+    Instant until = Instant.parse("2026-10-05T09:30:00Z");
+
+    assertThat(
+            StoryEvents.of(
+                new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, until, PayloadRef.of("q"), KEY)))
+        .isEqualTo(new Narration.ApprovalDeferred(CALL, KEY, until));
+  }
+
+  @Test
+  void a_deferred_tool_call_is_told_with_its_call_its_key_and_its_deadline() {
+    Instant until = Instant.parse("2026-10-05T09:30:00Z");
+
+    assertThat(StoryEvents.of(new AgentEvent.ToolDeferred(SEQ, TURN, CALL, until, KEY)))
+        .isEqualTo(new Narration.CallDeferred(CALL, KEY, until));
   }
 
   @Test

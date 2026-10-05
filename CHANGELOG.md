@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+- **`nessy_agent_effect` gained a nullable `parked_at` column,** and `Effects` gains
+  `park(effectId, attemptsMade, at)`, so a custom implementation must add it. Recreate the
+  database.
 - **`nessy_payload` gained a `kind` column.** A payload holds message blocks or a JSON document,
   and `kind` says which: `BLOCKS` or `DOCUMENT`. `Payloads` gains two abstract methods, so a
   custom implementation must add them. Recreate the database.
@@ -19,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no longer `TurnFailed`. `Answered`, `TurnRefused`, `TurnFailed` and `ActionsRequested` carry
   their turn and the model call's `Usage`; `TurnFailed` carries a `FailureKind`; each requested
   call carries its `IdempotencyKey`. A retried model call is told as `InferenceRetried`.
+- **A deferral is a stored event and a story event.** `AgentEvent` gains `ApprovalDeferred(seq,
+  turn, callId, until, question, idempotencyKey)` and `ToolDeferred(seq, turn, callId, until,
+  idempotencyKey)`, stored as `approval-deferred` and `tool-deferred`; recreate the database. The
+  narrations `ApprovalDeferred` and `CallDeferred` are `Story` events, told from those stored
+  events, and have the shape `(callId, idempotencyKey, until)`: they carry no `action` or
+  `toolName`, and a watcher joins by key to the `ActionsRequested.Call` that has them.
 - **Every call event carries the call's `IdempotencyKey`.** `ToolApproved`, `ToolDenied`,
   `ToolSucceeded` and `ToolFailed` gain a trailing `idempotencyKey`, the key the call was
   requested with; the stored shape changes, so recreate the database. The four narration records
@@ -80,6 +89,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   also used when the label throws or returns null or a blank string.
 - `StoryProjection.of(initial, step)` makes a projection from a lambda; `StoryContent.allResults(after)`
   streams every successful result, reading a page at a time.
+- **A deferral is recorded when it happens.** When an approver or a tool returns
+  `Awaited.deferred()`, the queued door writes `ApprovalDeferred` or `ToolDeferred`, with the
+  instant the question or the call stands until, and marks the effect row parked, in one locked
+  step. The deferral is heard once that step commits, and heard again, equal, on replay. A
+  deferral that cannot be recorded is logged and changes nothing else: the call is not failed or
+  retried because of it, and an unmarked row is left exactly as it was claimed.
 - **`AgentStory.content()` reads what a story refers to:** a turn's input, what the model wrote and its answer; a call's result by its `IdempotencyKey`; and an agent's successful results, paged.
 - **`AgentStory.project` folds an agent's story with a `StoryProjection`; `UsageReports` is one.**
 - **`AgentStories` replays an agent's story:** the stored events, as the `Narrated` a live
@@ -105,10 +120,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **The deadline an approver and a tool are shown is the deadline the call is held to.** The
-  `deadline` on an `ApprovalRequest`, the `deadline` on a `ToolCallRequest`, and the `until` of the
-  live `ApprovalDeferred` and `CallDeferred` were worked out again when the call was handled, so a
-  call that waited in the queue showed a later instant than the one it was given up on. They are now
-  the effect's own deadline.
+  `deadline` on an `ApprovalRequest` and the `deadline` on a `ToolCallRequest` were worked out
+  again when the call was handled, so a call that waited in the queue showed a later instant than
+  the one it was given up on. They are now the effect's own deadline.
 - **On the direct door, an inference that times out gives `ask`'s caller a plainer reason.** The
   reason is now "the inference did not complete before its deadline; whether it ran is not known",
   in place of "no answer within PT...". The duration is in the WARN log.

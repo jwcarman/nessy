@@ -30,7 +30,17 @@ depends on its status:
 | `status` | what `actionable_at` means |
 |---|---|
 | `PENDING` | when this may be attempted: now, or after a retry's backoff |
-| `RUNNING` | the attempt's watchdog: when a worker that never reported back is treated as dead, or when a deferred call's term is up |
+| `RUNNING` | the attempt's watchdog: when a worker that never reported back is treated as dead |
+| `RUNNING`, with `parked_at` set | the row's deadline, and not before |
+
+A running row can be marked parked: `Effects.park` sets `parked_at` and moves
+`actionable_at` to the row's deadline. A parked row is waiting for an answer
+from outside, not working, so nothing takes it again before its deadline, even
+when the clock of the process that claimed it ran behind the one that wrote
+the row. It stays `RUNNING`: a reply that arrives while it waits still finds
+it, and completing it deletes it like any other. `park` is fenced on the
+attempt's status and count, like `complete` and `reschedule`, and returns
+false when the row was settled or another attempt holds it.
 
 There is no reaper. A row whose `actionable_at` has passed is simply
 eligible again, picked up by the same query that would attempt a fresh
@@ -105,13 +115,29 @@ nothing here can wait for it". A caller at the direct door is already
 waiting and has nowhere for a late answer to arrive.
 
 On the queued door, a tool or an approver that returns `Awaited.deferred()`
-has parked the call. The row stays running, its `actionable_at` set to the binding's
-timeout, and the agent moves on to whatever else its turn is waiting for.
-Nothing holds a thread. The fold deliberately cannot tell a tool that takes
-three days from one that takes 200 milliseconds and should not learn; the
-one place "awaiting a person" appears is narration, as `ApprovalDeferred`
-or `CallDeferred` with the moment the question expires. See
-[Narration](../guides/narration.md).
+has parked the call, and the deferral is recorded when it happens. One locked
+step has the fold write the event, `ApprovalDeferred` or `ToolDeferred`, with
+the moment the question or the call stands until, and marks the effect row
+parked. Both are in one transaction, so a marked row always has a deferral in
+the story. If the row has moved on by the time the deferral is recorded (another
+attempt re-claimed it), the deferral stands and no row is marked. The event is told as
+the narration `ApprovalDeferred` or `CallDeferred` once that step commits. See
+[Events](events.md) and [Narration](../guides/narration.md).
+
+An approval's event also holds the stored question the approver was shown.
+
+The row stays running and is due at its deadline, and nothing takes it before
+then. The agent moves on to whatever else its turn is waiting for. Nothing holds
+a thread, and the question is not asked again while it stands. The fold
+deliberately cannot tell a tool that takes three days from one that takes 200
+milliseconds and should not learn; the story records only that the call is
+waiting, and until when.
+
+The step writes nothing when the call has already moved on. If the answer
+reaches the engine before the deferral is recorded, the answer settles the call
+and its row, and no deferral is written. If the deferral cannot be recorded at
+all, the failure is logged and the call is unaffected: the row stays as it was
+claimed, and an answer or the deadline still settles it.
 
 If the term passes with no answer, the stored failure reaches the agent and
 the turn carries on with a failed call. Whether a timeout should be a

@@ -71,6 +71,8 @@ import org.jwcarman.nessy.inference.Failure;
   @JsonSubTypes.Type(value = AgentEvent.ToolDenied.class, name = "tool-denied"),
   @JsonSubTypes.Type(value = AgentEvent.ToolSucceeded.class, name = "tool-succeeded"),
   @JsonSubTypes.Type(value = AgentEvent.ToolFailed.class, name = "tool-failed"),
+  @JsonSubTypes.Type(value = AgentEvent.ApprovalDeferred.class, name = "approval-deferred"),
+  @JsonSubTypes.Type(value = AgentEvent.ToolDeferred.class, name = "tool-deferred"),
   @JsonSubTypes.Type(value = AgentEvent.Terminated.class, name = "terminated")
 })
 public sealed interface AgentEvent {
@@ -279,6 +281,42 @@ public sealed interface AgentEvent {
       implements AgentEvent {
     public ToolFailed {
       Objects.requireNonNull(kind, "kind must not be null");
+      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+    }
+  }
+
+  /**
+   * A call waiting on an approval was put aside: nobody has answered yet, and the question stands
+   * until {@code until}.
+   *
+   * <p>Carries {@code question}, a reference to the JSON document the approver left for whoever
+   * answers, and {@code idempotencyKey}, the key the call was requested with. The question is a
+   * document and not message content, so nothing that reads a turn's messages follows it.
+   */
+  record ApprovalDeferred(
+      Seq seq,
+      TurnId turn,
+      CallId callId,
+      Instant until,
+      PayloadRef question,
+      IdempotencyKey idempotencyKey)
+      implements AgentEvent {
+    public ApprovalDeferred {
+      Objects.requireNonNull(until, "until must not be null");
+      Objects.requireNonNull(question, "question must not be null");
+      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+    }
+  }
+
+  /**
+   * A running call was put aside: the tool started work and will report back, and the call stands
+   * until {@code until}. {@code idempotencyKey} is the key the call was requested with.
+   */
+  record ToolDeferred(
+      Seq seq, TurnId turn, CallId callId, Instant until, IdempotencyKey idempotencyKey)
+      implements AgentEvent {
+    public ToolDeferred {
+      Objects.requireNonNull(until, "until must not be null");
       Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
     }
   }

@@ -61,8 +61,8 @@ class NarrationListenerConfigTest {
           new Narration.CallFailed(CALL, IdempotencyKey.of(KEY_ID), CallFailure.FAILED, "boom"),
           new Narration.Terminated(),
           new Narration.ApprovalSought(CALL, "restart"),
-          new Narration.ApprovalDeferred(CALL, "restart", Instant.EPOCH),
-          new Narration.CallDeferred(CALL, new ToolName("t"), Instant.EPOCH),
+          new Narration.ApprovalDeferred(CALL, IdempotencyKey.of(KEY_ID), Instant.EPOCH),
+          new Narration.CallDeferred(CALL, IdempotencyKey.of(KEY_ID), Instant.EPOCH),
           new Narration.ThinkingDelta("h"),
           new Narration.ContentDelta("c"));
 
@@ -89,7 +89,8 @@ class NarrationListenerConfigTest {
                     .onTerminated((_, e) -> heard.add("terminated"))
                     .onApprovalSought((_, e) -> heard.add("sought " + e.action()))
                     .onApprovalDeferred((_, e) -> heard.add("deferred " + e.until()))
-                    .onCallDeferred((_, e) -> heard.add("call deferred " + e.toolName()))
+                    .onCallDeferred(
+                        (_, e) -> heard.add("call deferred " + e.idempotencyKey().value()))
                     .onThinkingDelta((_, e) -> heard.add("thinking delta " + e.text()))
                     .onContentDelta((_, e) -> heard.add("content delta " + e.text())));
 
@@ -113,7 +114,7 @@ class NarrationListenerConfigTest {
             "terminated",
             "sought restart",
             "deferred 1970-01-01T00:00:00Z",
-            "call deferred t",
+            "call deferred " + KEY_ID,
             "thinking delta h",
             "content delta c");
   }

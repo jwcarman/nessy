@@ -183,12 +183,11 @@ class InferenceHandlerTest {
       List<Block.AnswerContent> written = List.of(new Block.Text("The answer begins"));
       script.add(new InferenceResult.Truncated(written, reading(0)));
 
-      Awaited<EffectOutcome> outcome =
-          handler.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)), DEADLINE);
+      Handled outcome = handler.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)), DEADLINE);
 
       assertThat(outcome)
           .isEqualTo(
-              Awaited.ready(
+              Handled.settled(
                   new EffectOutcome.InferenceAnswered(PayloadRef.of("p"), true, reading(0))));
       assertThat(stored).containsExactly(written);
     }
@@ -198,12 +197,11 @@ class InferenceHandlerTest {
       List<Block.AnswerContent> written = List.of(new Block.Text("The answer"));
       script.add(new InferenceResult.Answer(written, reading(0)));
 
-      Awaited<EffectOutcome> outcome =
-          handler.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)), DEADLINE);
+      Handled outcome = handler.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)), DEADLINE);
 
       assertThat(outcome)
           .isEqualTo(
-              Awaited.ready(
+              Handled.settled(
                   new EffectOutcome.InferenceAnswered(PayloadRef.of("p"), false, reading(0))));
       assertThat(stored).containsExactly(written);
     }
@@ -215,11 +213,11 @@ class InferenceHandlerTest {
     private List<ActionRequest> requestedFor(Block.ToolCall... calls) {
       script.add(new InferenceResult.Actions(List.of(calls), reading(0)));
 
-      Awaited<EffectOutcome> outcome =
+      Handled outcome =
           handlerWithTools.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)), DEADLINE);
 
-      assertThat(outcome).isInstanceOf(Awaited.Ready.class);
-      EffectOutcome value = ((Awaited.Ready<EffectOutcome>) outcome).value();
+      assertThat(outcome).isInstanceOf(Handled.Settled.class);
+      EffectOutcome value = ((Handled.Settled) outcome).outcome();
       return ((EffectOutcome.InferenceRequestedActions) value).actions();
     }
 

@@ -271,7 +271,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
                 agentType, assembler, inference, provider, config, tools, narrator, payloads,
                 terms),
             createApprovalHandler(agentType, tools, narrator, terms, payloads),
-            createToolCallHandler(agentType, tools, narrator, payloads, terms));
+            createToolCallHandler(agentType, tools, payloads, terms));
     Outbox effects = new Outbox(agentType, handlers, backend.effects());
     Backlogs<I> backlogs = backend.backlogs(config.inputType());
     DefaultQueuedHarness<I> harness =
@@ -318,17 +318,12 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   }
 
   private @NonNull ToolCallHandler createToolCallHandler(
-      AgentType agentType,
-      Tools tools,
-      AfterCommit narrator,
-      Payloads payloads,
-      EffectTermsSource terms) {
+      AgentType agentType, Tools tools, Payloads payloads, EffectTermsSource terms) {
     return new ToolCallHandler(
         agentType,
         tools,
         new EventStreamToolCalls(backend.events(), payloads, agentType),
         replyTokens,
-        narrator,
         terms,
         payloads);
   }
@@ -346,7 +341,8 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
         replyTokens,
         narrator,
         terms,
-        clock);
+        clock,
+        payloads);
   }
 
   private <I> @NonNull InferenceHandler createInferenceHandler(

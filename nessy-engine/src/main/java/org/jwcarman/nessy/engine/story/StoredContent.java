@@ -243,6 +243,8 @@ final class StoredContent implements StoryContent {
           case AgentEvent.ToolDenied e -> before(e.turn());
           case AgentEvent.ToolSucceeded e -> before(e.turn());
           case AgentEvent.ToolFailed e -> before(e.turn());
+          case AgentEvent.ApprovalDeferred e -> before(e.turn());
+          case AgentEvent.ToolDeferred e -> before(e.turn());
           case AgentEvent.Terminated e -> new Seq(e.seq().value() - 1);
         });
   }

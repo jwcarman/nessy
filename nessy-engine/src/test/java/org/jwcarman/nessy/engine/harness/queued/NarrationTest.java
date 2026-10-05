@@ -20,6 +20,7 @@ import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.junit.jupiter.api.AfterEach;
@@ -28,6 +29,8 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Narrated;
+import org.jwcarman.nessy.api.Narrated.Position;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
@@ -37,6 +40,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
@@ -217,55 +221,94 @@ class NarrationTest {
   }
 
   /**
-   * The arm that pays for the whole channel.
-   *
-   * <p>"Awaiting a human" is the state an operator most wants to see, and the fold deliberately
-   * never learns it -- a tool that takes three days and one that takes 200ms are the same thing to
-   * the state machine. So this is the only place it exists, and if it is not announced here it is
-   * not anywhere.
+   * The state an operator most wants to see: a person has been asked, and the answer may take days.
+   * The state machine does not learn it from time passing -- the dispatcher records it when the
+   * approver says it will answer later -- so it is a story event, stored, and it is heard with the
+   * place it has in the story.
    */
   @Test
-  void aQuestionWaitingOnAPersonIsTheOneThingOnlyNarrationCanSay() {
+  void a_deferral_is_heard_as_a_story_event_with_its_position() {
+    ConcurrentLinkedQueue<Narrated> heard = new ConcurrentLinkedQueue<>();
+    narratedBy(heard::add);
     AgentType type = new AgentType("narrated-deferred");
     AgentId agentId = new AgentId(UUID.randomUUID());
 
-    QueuedHarness<String> harness =
-        engine
-            .harnesses()
-            .create(
-                type,
-                String.class,
-                config ->
-                    config
-                        .systemPrompt("You are a test assistant.")
-                        .tool(
-                            lookup(),
-                            t ->
-                                t.action(query -> "look up " + query.q())
-                                    .approver(
-                                        _ -> Awaited.deferred(),
-                                        a -> a.timeout(Duration.ofMinutes(30))))
-                        .inference(in -> in.model("a-model"))
-                        .effects(e -> e.pollInterval(Duration.ofMillis(50))));
-
-    harness.tell(agentId, "how deep is Loch Ness?");
+    deferringHarness(type).tell(agentId, "how deep is Loch Ness?");
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(() -> assertThat(of(Narration.ApprovalDeferred.class)).isNotEmpty());
+        .untilAsserted(
+            () ->
+                assertThat(heard)
+                    .extracting(Narrated::event)
+                    .anyMatch(Narration.ApprovalDeferred.class::isInstance));
 
-    assertThat(of(Narration.ApprovalDeferred.class))
+    List<AgentEvent> story = engine.story(type, agentId);
+    AgentEvent.ApprovalDeferred stored =
+        story.stream()
+            .filter(AgentEvent.ApprovalDeferred.class::isInstance)
+            .map(AgentEvent.ApprovalDeferred.class::cast)
+            .findFirst()
+            .orElseThrow();
+    List<Narrated> deferrals =
+        heard.stream().filter(n -> n.event() instanceof Narration.ApprovalDeferred).toList();
+    assertThat(deferrals)
         .singleElement()
         .satisfies(
-            waiting -> {
-              assertThat(waiting.callId()).isEqualTo(new CallId("call_1"));
-              assertThat(waiting.action())
-                  .as("what a person is being asked, not which call id is outstanding")
-                  .isEqualTo("look up loch ness");
-              assertThat(waiting.until()).isNotNull();
+            n -> {
+              assertThat(n.event())
+                  .isEqualTo(
+                      new Narration.ApprovalDeferred(
+                          new CallId("call_1"), stored.idempotencyKey(), stored.until()));
+              assertThat(n.position()).isPresent();
+              assertThat(n.position().get().seq()).isEqualTo(stored.seq());
             });
     assertThat(agentStateOf(type, agentId))
         .as("and the state says only that a call is outstanding, as designed")
         .isEqualTo("AwaitingActions");
+    List<Narration> events = heard.stream().map(Narrated::event).toList();
+    int sought = indexOfFirst(events, Narration.ApprovalSought.class);
+    int deferred = indexOfFirst(events, Narration.ApprovalDeferred.class);
+    assertThat(sought).as("the question was heard being asked").isNotNegative();
+    assertThat(sought).as("before it was heard being deferred").isLessThan(deferred);
+    List<Optional<Position>> askingPositions =
+        heard.stream()
+            .filter(n -> n.event() instanceof Narration.ApprovalSought)
+            .map(Narrated::position)
+            .toList();
+    assertThat(askingPositions).as("the asking was heard").isNotEmpty();
+    assertThat(askingPositions)
+        .as("the asking is live, so it has no place in the story")
+        .allSatisfy(position -> assertThat(position).isEmpty());
+  }
+
+  private static int indexOfFirst(List<Narration> events, Class<? extends Narration> kind) {
+    for (int i = 0; i < events.size(); i++) {
+      if (kind.isInstance(events.get(i))) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  /** An approver that says it will answer later, and a model that asks for the lookup. */
+  private QueuedHarness<String> deferringHarness(AgentType type) {
+    return engine
+        .harnesses()
+        .create(
+            type,
+            String.class,
+            config ->
+                config
+                    .systemPrompt("You are a test assistant.")
+                    .tool(
+                        lookup(),
+                        t ->
+                            t.action(query -> "look up " + query.q())
+                                .approver(
+                                    _ -> Awaited.deferred(),
+                                    a -> a.timeout(Duration.ofMinutes(30))))
+                    .inference(in -> in.model("a-model"))
+                    .effects(e -> e.pollInterval(Duration.ofMillis(50))));
   }
 
   /**

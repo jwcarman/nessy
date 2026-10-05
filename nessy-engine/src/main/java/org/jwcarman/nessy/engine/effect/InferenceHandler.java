@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
@@ -99,14 +98,13 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
   }
 
   @Override
-  public Awaited<EffectOutcome> handle(
-      AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
+  public Handled handle(AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
     InferenceResult result =
         inference.infer(new InferenceInvocation(agentType, agentId, options, effect.answerOnly()));
     // Always ready. A provider call blocks until it answers or fails, and there is nobody who
     // could come back about it afterwards -- so the one thing this cannot return is the one
     // thing the wrapper makes explicit.
-    return Awaited.ready(
+    return Handled.settled(
         switch (result) {
           case InferenceResult.Answer(var blocks, var usage) -> {
             log.debug("model answered agent {} with {} block(s)", agentId.value(), blocks.size());

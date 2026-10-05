@@ -33,9 +33,9 @@ import org.jwcarman.nessy.api.tool.ToolName;
  * costs a watcher a line; the fact it described is still in the story.
  *
  * <p>That difference is what makes the two vocabularies diverge rather than mirror each other.
- * Plenty here leaves no entry at all -- a call waiting on a person, a token arriving mid-sentence
- * -- and plenty of entries are not worth announcing. Trying to derive one from the other would
- * force both to be shaped by the other's needs.
+ * Plenty here leaves no entry at all -- a person being asked, a token arriving mid-sentence -- and
+ * plenty of entries are not worth announcing. Trying to derive one from the other would force both
+ * to be shaped by the other's needs.
  *
  * <p><b>Two groups, and the difference is whether anything is stored.</b> A {@link Story} event is
  * the agent's record told as it commits, so by the time one is heard it is true, and it is told the
@@ -258,6 +258,33 @@ public sealed interface Narration {
   /** The agent will accept nothing further. */
   record Terminated() implements Story {}
 
+  /**
+   * A call waiting on an approval was put aside: nobody has answered yet, and the question stands
+   * until {@code until}.
+   *
+   * <p>Stored, so it is heard once the fold that wrote it has committed and told the same way on
+   * every replay. Names the call and its key and not the action: a watcher that wants the action
+   * joins by key to the {@link ActionsRequested.Call} it heard earlier.
+   *
+   * @param callId the id the call was requested with
+   * @param idempotencyKey the call's own key, the same on its request and on everything after it
+   * @param until when the question stops standing
+   */
+  record ApprovalDeferred(CallId callId, IdempotencyKey idempotencyKey, Instant until)
+      implements Story {}
+
+  /**
+   * A running call was put aside: the tool started work and will report back by {@code until}.
+   * Stored, and told as {@link ApprovalDeferred} is; a watcher joins by key to the {@link
+   * ActionsRequested.Call} for the tool's name.
+   *
+   * @param callId the id the call was requested with
+   * @param idempotencyKey the call's own key, the same on its request and on everything after it
+   * @param until when the call stops standing
+   */
+  record CallDeferred(CallId callId, IdempotencyKey idempotencyKey, Instant until)
+      implements Story {}
+
   // ---- live: heard only as it happens ---------------------------------------------------
 
   /** The model is being asked. Narrated before the call, so a watcher can show waiting. */
@@ -288,19 +315,6 @@ public sealed interface Narration {
    * agent wants to know what is being asked, not which call id is outstanding.
    */
   record ApprovalSought(CallId callId, String action) implements Live {}
-
-  /**
-   * Nobody has answered yet, and the question stands until {@code until}.
-   *
-   * <p><b>The arm that pays for this whole channel.</b> "Awaiting a human" is the state an operator
-   * most wants to see, and the engine deliberately does not record it: the fold cannot tell a tool
-   * that takes three days from one that takes 200ms, and should not learn. So it is announced
-   * rather than stored, which is the one place it belongs.
-   */
-  record ApprovalDeferred(CallId callId, String action, Instant until) implements Live {}
-
-  /** A tool started work and will report back. Same reasoning as {@link ApprovalDeferred}. */
-  record CallDeferred(CallId callId, ToolName toolName, Instant until) implements Live {}
 
   // -- deltas: from a provider, while a call is in flight
 

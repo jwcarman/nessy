@@ -63,6 +63,7 @@ import org.jwcarman.nessy.engine.core.TurnTally;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
+import org.jwcarman.nessy.engine.effect.Handled;
 import org.jwcarman.nessy.engine.harness.InputLabels;
 import org.jwcarman.nessy.engine.narration.AfterCommit;
 import org.jwcarman.nessy.engine.narration.AfterCommit.Step;
@@ -745,7 +746,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * <p>What performs the effect, once there is budget left to spend, is {@link
    * EffectHandlers#perform}, the same call the queued door's dispatcher makes. The only things this
    * door adds are {@link #within}'s deadline and the one arm {@link EffectHandlers#perform} can
-   * return that a queued row can park and this door cannot: {@link Awaited.Deferred}. Nothing here
+   * return that a queued row can park and this door cannot: {@link Handled.Deferred}. Nothing here
    * is coming back for that answer, so it is a failure by the effect's own terms rather than a
    * denial this door has no standing to hand out.
    *
@@ -774,9 +775,9 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         terms,
         () ->
             switch (handlers.perform(agent, effect, deadline)) {
-              case Awaited.Ready<EffectOutcome>(EffectOutcome outcome) ->
+              case Handled.Settled(EffectOutcome outcome) ->
                   EffectOutcomes.command(turn, request, outcome, NO_ATTEMPTS);
-              case Awaited.Deferred<EffectOutcome> _ ->
+              case Handled.Deferred _ ->
                   EffectOutcomes.command(
                       turn,
                       request,

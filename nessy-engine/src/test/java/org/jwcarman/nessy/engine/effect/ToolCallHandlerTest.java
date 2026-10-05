@@ -22,7 +22,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,9 +33,6 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.JsonSchema;
-import org.jwcarman.nessy.api.Narrated;
-import org.jwcarman.nessy.api.Narration;
-import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.Stringifier;
@@ -164,13 +160,12 @@ class ToolCallHandlerTest {
         new RetryPolicy.Never());
   }
 
-  private Awaited<EffectOutcome> handled(Tools tools, ToolCalls calls) {
-    return handled(tools, calls, Narrator.silent(), CLOCK.instant().plus(Duration.ofSeconds(30)));
+  private Handled handled(Tools tools, ToolCalls calls) {
+    return handled(tools, calls, CLOCK.instant().plus(Duration.ofSeconds(30)));
   }
 
-  private Awaited<EffectOutcome> handled(
-      Tools tools, ToolCalls calls, Narrator narrator, Instant deadline) {
-    return new ToolCallHandler(TYPE, tools, calls, TOKENS, narrator, terms(tools), PAYLOADS)
+  private Handled handled(Tools tools, ToolCalls calls, Instant deadline) {
+    return new ToolCallHandler(TYPE, tools, calls, TOKENS, terms(tools), PAYLOADS)
         .handle(
             AGENT,
             new AgentEffect.CallTool(
@@ -179,9 +174,9 @@ class ToolCallHandlerTest {
   }
 
   private EffectOutcome handle(Tools tools, ToolCalls calls) {
-    Awaited<EffectOutcome> awaited = handled(tools, calls);
-    assertThat(awaited).isInstanceOf(Awaited.Ready.class);
-    return ((Awaited.Ready<EffectOutcome>) awaited).value();
+    Handled handled = handled(tools, calls);
+    assertThat(handled).isInstanceOf(Handled.Settled.class);
+    return ((Handled.Settled) handled).outcome();
   }
 
   @Test
@@ -344,14 +339,13 @@ class ToolCallHandlerTest {
     handled(
         bound(records),
         story(new Block.ToolCall("c1", "lookup", "{\"q\":\"x\"}")),
-        Narrator.silent(),
         WRITTEN_DEADLINE);
 
     assertThat(seen[0]).isEqualTo(WRITTEN_DEADLINE);
   }
 
   @Test
-  void a_deferred_call_is_narrated_as_standing_until_the_deadline_it_was_written_with() {
+  void a_tool_that_defers_leaves_the_call_deferred() {
     Tool<Query> defers =
         new Tool<>() {
           @Override
@@ -374,22 +368,49 @@ class ToolCallHandlerTest {
             return new Awaited.Deferred<>();
           }
         };
-    List<Narrated> heard = new ArrayList<>();
 
-    handled(
-        bound(defers),
-        story(new Block.ToolCall("c1", "lookup", "{\"q\":\"x\"}")),
-        heard::add,
-        WRITTEN_DEADLINE);
+    Handled handled =
+        handled(
+            bound(defers),
+            story(new Block.ToolCall("c1", "lookup", "{\"q\":\"x\"}")),
+            WRITTEN_DEADLINE);
 
-    List<Narration.CallDeferred> deferrals =
-        heard.stream()
-            .map(Narrated::event)
-            .filter(Narration.CallDeferred.class::isInstance)
-            .map(Narration.CallDeferred.class::cast)
-            .toList();
-    assertThat(deferrals).hasSize(1);
-    assertThat(deferrals.getFirst().until()).isEqualTo(WRITTEN_DEADLINE);
+    assertThat(handled).isInstanceOf(Handled.Deferred.class);
+  }
+
+  /** A tool has no question to keep: what is waited for is the tool's own answer. */
+  @Test
+  void a_deferred_tool_call_hands_back_a_deferral() {
+    Tool<Query> defers =
+        new Tool<>() {
+          @Override
+          public Class<Query> inputType() {
+            return Query.class;
+          }
+
+          @Override
+          public ToolName name() {
+            return new ToolName("lookup");
+          }
+
+          @Override
+          public String description() {
+            return "will answer later";
+          }
+
+          @Override
+          public Awaited<ToolResult> call(ToolCallRequest<Query> request) {
+            return new Awaited.Deferred<>();
+          }
+        };
+
+    Handled handled =
+        handled(
+            bound(defers),
+            story(new Block.ToolCall("c1", "lookup", "{\"q\":\"x\"}")),
+            WRITTEN_DEADLINE);
+
+    assertThat(handled).isEqualTo(Handled.deferred());
   }
 
   // ---- terms ---------------------------------------------------------------------------
@@ -418,8 +439,7 @@ class ToolCallHandlerTest {
                     new RetryPolicy.Never())));
 
     EffectTerms resolved =
-        new ToolCallHandler(
-                TYPE, tools, nothing(), TOKENS, Narrator.silent(), terms(tools), PAYLOADS)
+        new ToolCallHandler(TYPE, tools, nothing(), TOKENS, terms(tools), PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(
                     new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));
@@ -435,14 +455,7 @@ class ToolCallHandlerTest {
   @Test
   void anUnboundToolFallsBackToTheHarnessTerms() {
     EffectTerms resolved =
-        new ToolCallHandler(
-                TYPE,
-                Tools.none(),
-                nothing(),
-                TOKENS,
-                Narrator.silent(),
-                terms(Tools.none()),
-                PAYLOADS)
+        new ToolCallHandler(TYPE, Tools.none(), nothing(), TOKENS, terms(Tools.none()), PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(
                     new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone"), KEY));
@@ -458,14 +471,7 @@ class ToolCallHandlerTest {
   @Test
   void bothStoredFailuresNameTheCallTheyDischarge() {
     EffectTerms resolved =
-        new ToolCallHandler(
-                TYPE,
-                Tools.none(),
-                nothing(),
-                TOKENS,
-                Narrator.silent(),
-                terms(Tools.none()),
-                PAYLOADS)
+        new ToolCallHandler(TYPE, Tools.none(), nothing(), TOKENS, terms(Tools.none()), PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(
                     new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));

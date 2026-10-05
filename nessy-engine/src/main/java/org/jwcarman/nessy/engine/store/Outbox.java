@@ -95,6 +95,10 @@ public class Outbox {
     return rows.reschedule(effectId, attemptsMade, at, failedAttempts);
   }
 
+  public boolean park(UUID effectId, int attemptsMade, Instant at) {
+    return rows.park(effectId, attemptsMade, at);
+  }
+
   /** What the attempts before this one learned. Empty for a row nobody has retried. */
   public List<FailedAttempt> attemptsOf(Attempt attempt) {
     return rows.attemptsOf(attempt);

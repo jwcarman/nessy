@@ -16,26 +16,32 @@
 package org.jwcarman.nessy.engine.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.InstanceOfAssertFactories.type;
 import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Narrated;
+import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
+import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
@@ -47,8 +53,12 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.EngineFixture;
+import org.jwcarman.nessy.engine.ParkRefusingBackend;
+import org.jwcarman.nessy.engine.agent.OutstandingAction;
+import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
+import tools.jackson.databind.JsonNode;
 
 /**
  * An answer that arrives long after the question, through real Postgres.
@@ -117,7 +127,20 @@ class DeferredApprovalTest {
 
   /** Asks once, keeps the address, says nothing -- the whole of a deferring approver. */
   private QueuedHarness<String> harness(AgentType type, Duration questionStands) {
-    return engine
+    return harness(engine, type, questionStands, deferring());
+  }
+
+  private Approver deferring() {
+    return request -> {
+      handed.add(request.replyToken());
+      shownDeadlines.add(request.deadline());
+      return Awaited.deferred();
+    };
+  }
+
+  private QueuedHarness<String> harness(
+      EngineFixture fixture, AgentType type, Duration questionStands, Approver approver) {
+    return fixture
         .harnesses()
         .create(
             type,
@@ -129,13 +152,7 @@ class DeferredApprovalTest {
                         lookup(),
                         t ->
                             t.action(query -> "look up " + query.q())
-                                .approver(
-                                    request -> {
-                                      handed.add(request.replyToken());
-                                      shownDeadlines.add(request.deadline());
-                                      return Awaited.deferred();
-                                    },
-                                    a -> a.timeout(questionStands)))
+                                .approver(approver, a -> a.timeout(questionStands)))
                     .inference(in -> in.model("a-model"))
                     .effects(e -> e.pollInterval(Duration.ofMillis(50))));
   }
@@ -155,10 +172,46 @@ class DeferredApprovalTest {
   }
 
   private ReplyToken parkOne(AgentType type, Duration questionStands) {
+    parkAgent(type, questionStands);
+    return handed.peek();
+  }
+
+  private AgentId parkAgent(AgentType type, Duration questionStands) {
     AgentId agentId = new AgentId(UUID.randomUUID());
     harness(type, questionStands).tell(agentId, "what lake?");
     await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(handed).isNotEmpty());
-    return handed.peek();
+    return agentId;
+  }
+
+  /** What the effect table holds for the one effect of a test's agent type. */
+  private record Row(
+      OffsetDateTime parkedAt,
+      OffsetDateTime actionableAt,
+      OffsetDateTime deadline,
+      String status) {}
+
+  private static Row rowOf(EngineFixture fixture, AgentType type) {
+    return fixture
+        .jdbc()
+        .sql(
+            "SELECT parked_at, actionable_at, deadline, status FROM nessy_agent_effect"
+                + " WHERE agent_type = ?")
+        .params(type.value())
+        .query(
+            (rs, n) ->
+                new Row(
+                    rs.getObject("parked_at", OffsetDateTime.class),
+                    rs.getObject("actionable_at", OffsetDateTime.class),
+                    rs.getObject("deadline", OffsetDateTime.class),
+                    rs.getString("status")))
+        .single();
+  }
+
+  private static List<AgentEvent.ApprovalDeferred> deferralsIn(List<AgentEvent> story) {
+    return story.stream()
+        .filter(AgentEvent.ApprovalDeferred.class::isInstance)
+        .map(AgentEvent.ApprovalDeferred.class::cast)
+        .toList();
   }
 
   /**
@@ -190,16 +243,19 @@ class DeferredApprovalTest {
     assertThat(ran).containsExactly("loch ness");
     List<AgentEvent> story = engine.story(type, agentId);
     assertThat(story.get(2))
+        .as("the deferral is on the record before the answer that settles it")
+        .isInstanceOf(AgentEvent.ApprovalDeferred.class);
+    assertThat(story.get(3))
         .as("the grant carries the join to whoever actually said yes")
         .isEqualTo(
             new AgentEvent.ToolApproved(
-                new Seq(3),
+                new Seq(4),
                 new TurnId(1),
                 new CallId("call_1"),
                 Optional.of("u_carol"),
                 requestedKey(story)));
-    assertThat(story.get(3)).isInstanceOf(AgentEvent.ToolSucceeded.class);
-    assertThat(story.get(4)).isInstanceOf(AgentEvent.InferenceAnswered.class);
+    assertThat(story.get(4)).isInstanceOf(AgentEvent.ToolSucceeded.class);
+    assertThat(story.get(5)).isInstanceOf(AgentEvent.InferenceAnswered.class);
   }
 
   /**
@@ -237,6 +293,188 @@ class DeferredApprovalTest {
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(ran).as("never authorised").isEmpty());
+  }
+
+  // ---- the deferral is on the record -------------------------------------------------------
+
+  /**
+   * Recorded when it happens, not when the answer arrives: the story holds the question, until when
+   * it stands, and what was asked, before anybody has said anything.
+   */
+  @Test
+  void a_deferred_approval_is_on_the_record_when_it_happens() {
+    AgentType type = new AgentType("deferred-on-record");
+    AgentId agentId = parkAgent(type, Duration.ofMinutes(30));
+
+    await()
+        .atMost(Duration.ofSeconds(15))
+        .untilAsserted(() -> assertThat(deferralsIn(engine.story(type, agentId))).hasSize(1));
+
+    List<AgentEvent> story = engine.story(type, agentId);
+    assertThat(story.get(2)).isInstanceOf(AgentEvent.ApprovalDeferred.class);
+    AgentEvent.ApprovalDeferred deferred = (AgentEvent.ApprovalDeferred) story.get(2);
+    assertThat(deferred.seq()).isEqualTo(new Seq(3));
+    assertThat(deferred.turn()).isEqualTo(new TurnId(1));
+    assertThat(deferred.callId()).isEqualTo(new CallId("call_1"));
+    assertThat(deferred.idempotencyKey()).as("the call's own key").isEqualTo(requestedKey(story));
+    assertThat(deferred.until())
+        .as("until is the instant the row holds the question to")
+        .isEqualTo(rowOf(engine, type).deadline().toInstant().truncatedTo(ChronoUnit.MICROS));
+    assertThat(story)
+        .as("nobody has answered yet")
+        .noneMatch(AgentEvent.ToolApproved.class::isInstance);
+
+    JsonNode question = engine.payloads().forAgent(agentId).getDocument(deferred.question());
+    assertThat(question.path("callId").asString()).isEqualTo("call_1");
+    assertThat(question.path("toolName").asString()).isEqualTo("lookup");
+    assertThat(question.path("action").asString()).isEqualTo("look up loch ness");
+    assertThat(question.path("idempotencyKey").asString())
+        .isEqualTo(deferred.idempotencyKey().value().toString());
+    assertThat(question.path("deadline").asString()).isEqualTo(deferred.until().toString());
+  }
+
+  /** The row is marked, and it comes due once more at the deadline and not before. */
+  @Test
+  void a_parked_row_is_marked_and_due_at_its_deadline() {
+    AgentType type = new AgentType("deferred-parked-row");
+    AgentId agentId = parkAgent(type, Duration.ofMinutes(30));
+
+    await()
+        .atMost(Duration.ofSeconds(15))
+        .untilAsserted(() -> assertThat(deferralsIn(engine.story(type, agentId))).hasSize(1));
+
+    Row row = rowOf(engine, type);
+    assertThat(row.parkedAt()).as("marked as parked").isNotNull();
+    assertThat(row.actionableAt().toInstant())
+        .as("due at its deadline")
+        .isEqualTo(row.deadline().toInstant());
+    assertThat(row.status()).as("still the attempt that is waiting").isEqualTo("RUNNING");
+  }
+
+  /**
+   * The event and the mark stand or fall together. With the effect table refusing the mark, the
+   * event that was appended a moment earlier in the same step is rolled back with it: the story
+   * does not hold a deferral the row does not know about, and nothing is narrated that did not
+   * happen. The call is unaffected -- it still waits, and an answer still settles it.
+   */
+  @Test
+  void the_event_and_the_mark_are_one_transaction() {
+    AgentType type = new AgentType("deferred-one-transaction");
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    AtomicInteger refusals = new AtomicInteger();
+    ConcurrentLinkedQueue<Narrated> heard = new ConcurrentLinkedQueue<>();
+    try (EngineFixture refusing =
+        new EngineFixture(
+            MODEL, heard::add, backend -> new ParkRefusingBackend(backend, refusals))) {
+      harness(refusing, type, Duration.ofMinutes(30), deferring()).tell(agentId, "what lake?");
+
+      await()
+          .atMost(Duration.ofSeconds(15))
+          .untilAsserted(() -> assertThat(refusals.get()).isEqualTo(1));
+
+      List<AgentEvent> story = refusing.story(type, agentId);
+      assertThat(story).as("the turn is under way").isNotEmpty();
+      assertThat(deferralsIn(story)).as("no deferral was stored").isEmpty();
+      Row row = rowOf(refusing, type);
+      assertThat(row.parkedAt()).as("the row is unmarked").isNull();
+      assertThat(row.status()).isEqualTo("RUNNING");
+      assertThat(refusing.stateOf(type, agentId))
+          .asInstanceOf(type(AgentState.AwaitingActions.class))
+          .satisfies(
+              awaiting ->
+                  assertThat(awaiting.outstanding().get(new CallId("call_1")).phase())
+                      .isEqualTo(OutstandingAction.Phase.AWAITING_APPROVAL));
+      assertThat(heard).as("the turn was heard").isNotEmpty();
+      assertThat(heard)
+          .extracting(Narrated::event)
+          .as("nothing was said about a deferral that did not happen")
+          .noneMatch(Narration.ApprovalDeferred.class::isInstance);
+      assertThat(handed).as("the approver was asked once").hasSize(1);
+
+      assertThat(refusing.replies().approve(handed.peek(), ApprovalResult.approved()))
+          .as("the call still waits for its answer")
+          .isInstanceOf(ReplyOutcome.Settled.class);
+      await()
+          .atMost(Duration.ofSeconds(20))
+          .untilAsserted(
+              () ->
+                  assertThat(refusing.stateOf(type, agentId)).isInstanceOf(AgentState.Idle.class));
+      assertThat(ran).containsExactly("loch ness");
+      assertThat(handed).as("and was never asked again").hasSize(1);
+      assertThat(deferralsIn(refusing.story(type, agentId)))
+          .as("the finished story holds no deferral")
+          .isEmpty();
+    }
+  }
+
+  /**
+   * An answer can beat the dispatcher's own record of the deferral: the approver replies through
+   * {@code Replies} and only then says it will answer later. The call has moved on, so the fold
+   * writes nothing for the deferral, and the row -- settled by the answer -- is not marked.
+   */
+  @Test
+  void an_answer_that_lands_first_leaves_the_park_writing_nothing() {
+    AgentType type = new AgentType("deferred-answer-first");
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    ConcurrentLinkedQueue<ReplyOutcome> outcomes = new ConcurrentLinkedQueue<>();
+    Approver answeringFirst =
+        request -> {
+          outcomes.add(engine.replies().approve(request.replyToken(), ApprovalResult.approved()));
+          return Awaited.deferred();
+        };
+
+    harness(engine, type, Duration.ofMinutes(30), answeringFirst).tell(agentId, "what lake?");
+
+    await()
+        .atMost(Duration.ofSeconds(20))
+        .untilAsserted(
+            () -> assertThat(engine.stateOf(type, agentId)).isInstanceOf(AgentState.Idle.class));
+    List<AgentEvent> story = engine.story(type, agentId);
+    assertThat(outcomes).singleElement().isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(story)
+        .as("the decision is on the record")
+        .anyMatch(AgentEvent.ToolApproved.class::isInstance);
+    assertThat(deferralsIn(story)).as("and the deferral that came too late is not").isEmpty();
+    assertThat(ran).containsExactly("loch ness");
+  }
+
+  /**
+   * Asking again is pestering. Once the question is parked it stands until its deadline, and
+   * recording it must not make the row due sooner, nor be written twice.
+   */
+  @Test
+  void a_parked_approval_is_asked_once() {
+    AgentType type = new AgentType("deferred-asked-once");
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    AtomicInteger asked = new AtomicInteger();
+    Approver counting =
+        request -> {
+          asked.incrementAndGet();
+          return Awaited.deferred();
+        };
+
+    harness(engine, type, Duration.ofSeconds(3), counting).tell(agentId, "what lake?");
+
+    await()
+        .atMost(Duration.ofSeconds(15))
+        .untilAsserted(() -> assertThat(asked.get()).isEqualTo(1));
+    await()
+        .during(Duration.ofSeconds(1))
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(
+            () -> {
+              assertThat(asked.get()).as("the ask count").isEqualTo(1);
+              assertThat(deferralsIn(engine.story(type, agentId)))
+                  .as("one deferral on the record")
+                  .hasSize(1);
+            });
+
+    await()
+        .atMost(Duration.ofSeconds(25))
+        .untilAsserted(
+            () -> assertThat(engine.stateOf(type, agentId)).isInstanceOf(AgentState.Idle.class));
+    assertThat(asked.get()).as("still once, after the deadline").isEqualTo(1);
+    assertThat(deferralsIn(engine.story(type, agentId))).hasSize(1);
   }
 
   // ---- answers at the wrong moment ---------------------------------------------------------
