@@ -47,7 +47,7 @@ so the conversion is never silent.
 
 `AgentCommand.CompleteInference`, `CompleteApproval` and `CompleteToolCall`
 each carry the `TurnId` they complete. `StartTurn` and `Terminate` do not,
-because neither one answers anything — one opens a turn, the other ends an
+because neither one answers anything — one opens a turn, the other terminates an
 agent between turns.
 
 That `TurnId` is not decoration. Delivery of a completion is
@@ -110,7 +110,7 @@ The facts a turn produces are `AgentEvent`s, and every one but
 `Terminated` carries the `TurnId` it belongs to: `TurnStarted`,
 `InferenceAnswered`, `InferenceRefused`, `InferenceFailed`,
 `ActionsRequested`, `ToolApproved`, `ToolDenied`, `ToolSucceeded` and
-`ToolFailed`. `Terminated` carries none, because ending an agent sits
+`ToolFailed`. `Terminated` carries none, because terminating an agent sits
 between turns rather than inside one.
 
 Replaying that stream in order, from `AgentState.idle`, rebuilds the exact

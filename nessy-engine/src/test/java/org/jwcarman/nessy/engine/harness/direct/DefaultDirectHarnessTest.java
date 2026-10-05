@@ -753,7 +753,7 @@ class DefaultDirectHarnessTest {
     DirectHarness<String, String> harness = harness(new Scripted().then(answering("ok")));
     harness.ask(agent, "hello");
 
-    assertThat(harness.terminate(agent)).isEqualTo(new TerminationOutcome.Ended());
+    assertThat(harness.terminate(agent)).isEqualTo(new TerminationOutcome.Terminated());
 
     assertThat(harness.ask(agent, "again")).isEqualTo(new AskOutcome.Terminated<String>());
   }
@@ -793,7 +793,7 @@ class DefaultDirectHarnessTest {
     harness.ask(agent, "hello");
     harness.terminate(agent);
 
-    assertThat(harness.terminate(agent)).isEqualTo(new TerminationOutcome.AlreadyEnded());
+    assertThat(harness.terminate(agent)).isEqualTo(new TerminationOutcome.AlreadyTerminated());
   }
 
   /**

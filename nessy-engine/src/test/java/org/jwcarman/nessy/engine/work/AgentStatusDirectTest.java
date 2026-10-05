@@ -160,9 +160,9 @@ class AgentStatusDirectTest {
 
       TerminationOutcome outcome = harness.terminate(agent);
 
-      assertThat(outcome).isInstanceOf(TerminationOutcome.Ended.class);
+      assertThat(outcome).isInstanceOf(TerminationOutcome.Terminated.class);
       assertThat(factory.work().status(TYPE, agent))
-          .isEqualTo(new AgentStatus(Activity.ENDED, 0, Optional.empty(), List.of(), 0));
+          .isEqualTo(new AgentStatus(Activity.TERMINATED, 0, Optional.empty(), List.of(), 0));
     }
   }
 

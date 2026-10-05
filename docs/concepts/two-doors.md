@@ -120,7 +120,7 @@ interface with the queued door as a superset: `DirectBackend` needs
 `AgentEvents`, `Payloads` and `Locks` — enough to fold a turn and lock
 around it — plus `Chapters` (an agent's closed chapters) and `Leases`
 (background work that must run once). `QueuedBackend` needs those same five,
-plus `Agents` (whether an agent has been told to end), `Effects` (the outbox
+plus `Agents` (whether an agent has been told to terminate), `Effects` (the outbox
 a queued turn's work is dispatched through) and `backlogs(TypeRef<I>)` (the
 waiting-input store above). Nothing takes a `DirectBackend` hoping to be handed a queued one:
 a backend that can do more than a direct door needs is not a direct

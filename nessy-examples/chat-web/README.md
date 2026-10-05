@@ -11,13 +11,12 @@ person, and where that person is asked.
 ## What it shows
 
 **The queued door.** `POST /api/agents/{id}/messages` tells the agent
-and returns `202` with an empty body. The turn runs on the engine's own
+and answers at once, with an empty body. The turn runs on the engine's own
 threads, so no request is held while the model works. A message with no
-text, or only blanks, is a `400`. Once an ended conversation's last turn
-is over, a message is a `409`. While that last turn is still in progress,
-it can wait on an approval card for the whole approval term, and a message
-is answered `202` and dropped: Nessy takes no more input for an ended
-agent and does not report it.
+text, or only blanks, is a `400`. The harness says whether the agent took the
+message: `Accepted` is `202`, and `Terminated` is `409`, at once, even while
+the terminated conversation's last turn is still in progress. A message
+told to a terminated agent is dropped and nothing is queued.
 
 **One stream carries the rest.** It says what the agent is doing, and when a
 turn has answered. A streaming provider's words arrive on it as
@@ -74,10 +73,10 @@ or if the state read fails, the page opens a new stream after three seconds.
 answering. This example puts no login in front of the page's endpoint, so
 an application that copies it must guard it.
 
-Other endpoint: `DELETE /api/agents/{id}` ends the conversation. The story
+Other endpoint: `DELETE /api/agents/{id}` terminates the conversation. The story
 is kept; the agent takes no more input. A message sent after that is a `409`
-once the last turn is over (see the queued door above). The page then says
-the conversation has ended.
+(see the queued door above). The page then says the conversation has been
+terminated.
 
 `send_email` sends nothing. It is the right *shape* — outward-facing and
 irreversible — without being something you could point at a stranger.

@@ -175,7 +175,7 @@ class TellNudgeTest {
     harness.tell(agent, "go");
     awaitStatus(story, agent, Activity.IDLE);
     harness.terminate(agent);
-    awaitStatus(story, agent, Activity.ENDED);
+    awaitStatus(story, agent, Activity.TERMINATED);
     countNudges(story, harness);
 
     TellOutcome outcome = harness.tell(agent, "too late");

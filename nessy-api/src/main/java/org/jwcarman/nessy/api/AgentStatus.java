@@ -26,7 +26,7 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
  * @param activity the one word for it
  * @param queued how many inputs it has been told and has not started; always zero on the direct
  *     door, which keeps no queue
- * @param turn the turn in progress, empty when the agent is between turns or has ended
+ * @param turn the turn in progress, empty when the agent is between turns or has been terminated
  * @param waitingApprovals the approval requests the agent is waiting on
  * @param waitingToolCalls how many tool calls the agent has put aside and is waiting on
  */
@@ -46,7 +46,7 @@ public record AgentStatus(
     /** Everything it has outstanding is put aside, waiting on an answer from outside. */
     WAITING,
     /** Told to terminate and done; it takes nothing more. */
-    ENDED
+    TERMINATED
   }
 
   public AgentStatus {

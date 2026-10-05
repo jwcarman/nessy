@@ -42,9 +42,9 @@ import java.util.function.Function;
  * time-dependent uses {@code incoming.arrivedAt()} as now, which is why that field is the arriving
  * item's own time rather than a clock read while queuing.
  *
- * <p><b>Never consulted for an agent that has ended.</b> An arrival that got past that check would
- * be put into an emptied backlog and read as work the next time it was asked, undoing a termination
- * that had already happened.
+ * <p><b>Never consulted for an agent that has been terminated.</b> An arrival that got past that
+ * check would be put into an emptied backlog and read as work the next time it was asked, undoing a
+ * termination that had already happened.
  *
  * @param <I> the application's input type
  */

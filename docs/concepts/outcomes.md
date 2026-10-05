@@ -3,7 +3,7 @@
 Nessy prefers a value that names what happened over an exception or a
 silent no-op. Two sealed interfaces carry that preference at the two places
 a caller most needs it: `AskOutcome<T>`, what came of asking, and
-`TerminationOutcome`, what came of asking an agent to end. Both are in
+`TerminationOutcome`, what came of asking an agent to terminate. Both are in
 `nessy-api`, and both make a caller write an exhaustive `switch` rather than
 a `catch` — the case has to be acknowledged, not discovered later in
 production.
@@ -79,22 +79,23 @@ for what `TurnStats` holds and how to read it.
 
 ```java
 public sealed interface TerminationOutcome {
-  record Ended() implements TerminationOutcome {}
-  record AlreadyEnded() implements TerminationOutcome {}
+  record Terminated() implements TerminationOutcome {}
+  record AlreadyTerminated() implements TerminationOutcome {}
   record Busy() implements TerminationOutcome {}
 }
 ```
 
-`DirectHarness.terminate` returns this. The principle it draws out: ending
+`DirectHarness.terminate` returns this. The principle it draws out: terminating
 an agent mid-turn is not allowed. A turn in flight is owed its outcome —
 abandoning it would leave effects with nobody to deliver them to — so a
-request to end a busy agent is refused rather than silently ignored while
+request to terminate a busy agent is refused rather than silently ignored while
 the caller assumes it worked.
 
-`Ended` means this call is the one that ended the agent. `AlreadyEnded`
-means the agent was already over — told apart from `Ended` because a
+`Terminated` means this call is the one that terminated the agent.
+`AlreadyTerminated` means the agent had been terminated already — told apart
+from `Terminated` because a
 caller reconciling its own records wants to know whether *this* request is
-what did it, even though both mean the agent is finished. `Busy` means a
+what did it, even though both mean the agent is terminated. `Busy` means a
 turn is in flight and nothing was written — the agent is exactly as it was
 before the call.
 
@@ -103,14 +104,14 @@ direct door: there is nowhere on that door to record that somebody asked,
 so a caller that means it must ask again. `QueuedHarness.terminate` doesn't
 return an outcome at all — it returns `void`, because that door has
 somewhere to put the intent instead of a caller's hand. It writes the
-ending down and always accepts, taking effect at once if the agent is idle
+termination down and always accepts, taking effect at once if the agent is idle
 or as soon as the turn already in flight finishes owing its outcome — the
-same [backlog](backlog.md) that holds a `tell` arriving mid-turn holds an
-ending, too, as the `Pill` a busy agent drains into next.
+same [backlog](backlog.md) that holds a `tell` arriving mid-turn holds a
+termination, too, as the `Pill` a busy agent drains into next.
 
 An operation that quietly does nothing is the failure mode this design
 refuses. Returning `void` for `terminate` would have made a refused
-ending indistinguishable from a successful one — the caller asked, nothing
+termination indistinguishable from a successful one — the caller asked, nothing
 happened, and nothing in the API said so. `TerminationOutcome` exists to
 make that gap visible instead of silent.
 

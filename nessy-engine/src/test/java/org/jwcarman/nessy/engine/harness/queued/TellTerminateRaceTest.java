@@ -144,7 +144,7 @@ class TellTerminateRaceTest {
       go.countDown();
       TellOutcome outcome = told.get(20, TimeUnit.SECONDS);
       terminated.get(20, TimeUnit.SECONDS);
-      awaitStatus(story, agent, Activity.ENDED);
+      awaitStatus(story, agent, Activity.TERMINATED);
 
       if (outcome instanceof TellOutcome.Accepted) {
         assertThat(turnsStarted(story, agent)).as("round %d: accepted, so it ran", round).isOne();
@@ -173,7 +173,7 @@ class TellTerminateRaceTest {
     release.countDown();
 
     assertThat(outcome).isEqualTo(new TellOutcome.Accepted());
-    awaitStatus(story, agent, Activity.ENDED);
+    awaitStatus(story, agent, Activity.TERMINATED);
     assertThat(turnsStarted(story, agent)).as("the accepted second input never ran").isOne();
   }
 

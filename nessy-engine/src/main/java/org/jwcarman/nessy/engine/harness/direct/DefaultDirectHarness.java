@@ -335,7 +335,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     // The core only takes Terminate from Idle: asking while a turn is running is declined by the
     // fold itself (Decision.ignore()), and waiting for the turn is not this door's habit. What the
     // fold decided is the answer -- an empty decision IS the refusal, so nothing needs to re-derive
-    // which states accept ending.
+    // which states accept termination.
     return narrator.locked(
         backend.locks(),
         agentType,
@@ -344,17 +344,18 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
           Instant at = clock.instant().truncatedTo(ChronoUnit.MICROS);
           AgentState state = reconstitute(agent);
           if (state instanceof AgentState.Terminal) {
-            return new TerminationOutcome.AlreadyEnded();
+            return new TerminationOutcome.AlreadyTerminated();
           }
           Decision decision =
               state.execute(new AgentCommand.Terminate(), turnPolicy, clock.instant());
           if (decision.events().isEmpty()) {
-            LOG.debug("[{}] agent {} is mid-turn; ending it was refused", agentType.value(), agent);
+            LOG.debug(
+                "[{}] agent {} is mid-turn; terminating it was refused", agentType.value(), agent);
             return new TerminationOutcome.Busy();
           }
           backend.events().append(agentType, agent, decision.events(), state.seq(), at);
           decision.events().forEach(event -> narrate(step, event, at));
-          return new TerminationOutcome.Ended();
+          return new TerminationOutcome.Terminated();
         });
   }
 

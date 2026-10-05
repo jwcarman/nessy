@@ -73,23 +73,23 @@ public interface DirectHarness<I, O> {
   AskOutcome<O> ask(AgentId agent, I input);
 
   /**
-   * This agent is finished, if it was in a position to be told.
+   * This agent is terminated, if it was in a position to be told.
    *
    * <p>It refuses everything afterwards, loudly, and there is no way back -- so this is a decision
    * about the agent rather than about this object. Letting a harness be collected leaves its agent
-   * resumable, which is the right default: abandoning a conversation and ending one are different
-   * acts, and only one of them has a method.
+   * resumable, which is the right default: abandoning a conversation and terminating one are
+   * different acts, and only one of them has a method.
    *
-   * <p><b>An agent is only ever ended from idle, and this says whether that happened.</b> A turn in
-   * flight is owed its outcome -- abandoning it would leave effects with nobody to deliver them to
-   * -- so ending is not delivered mid-turn. This door has nowhere to record that somebody asked:
-   * unlike the queued door, which writes the ending down and honours it when the agent next falls
-   * idle, here a refused termination is simply refused. Returning false rather than nothing is the
-   * difference between a caller knowing that and a caller assuming.
+   * <p><b>An agent is only ever terminated from idle, and this says whether that happened.</b> A
+   * turn in flight is owed its outcome -- abandoning it would leave effects with nobody to deliver
+   * them to -- so termination is not delivered mid-turn. This door has nowhere to record that
+   * somebody asked: unlike the queued door, which writes the termination down and honours it when
+   * the agent next falls idle, here a refused termination is simply refused. Returning false rather
+   * than nothing is the difference between a caller knowing that and a caller assuming.
    *
    * <p>A caller driving its own turns rarely sees false: {@link #ask} returns when the turn is
-   * over, so an agent is idle by the time that caller asks to end it. False is what another thread
-   * gets for ending an agent somebody else is still asking.
+   * over, so an agent is idle by the time that caller asks to terminate it. False is what another
+   * thread gets for terminating an agent somebody else is still asking.
    *
    * @return which of the three happened; see {@link TerminationOutcome}
    */

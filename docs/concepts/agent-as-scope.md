@@ -79,7 +79,7 @@ a second result the provider will reject. The constructor refuses to build
 an instance whose map is empty: an agent awaiting nothing is not awaiting,
 because nothing would ever arrive to move it on.
 
-**`Terminal` is a dead end reachable from nowhere but `Idle`.** Ending
+**`Terminal` is a dead end reachable from nowhere but `Idle`.** Terminating
 cannot be delivered mid-turn — a turn already owes an outcome for the work
 it started, and abandoning it would leave effects with nobody to deliver
 them to — so termination only ever leaves `Idle`, and once there it refuses

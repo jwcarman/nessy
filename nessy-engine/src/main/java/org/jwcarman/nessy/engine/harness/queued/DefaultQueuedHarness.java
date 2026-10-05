@@ -173,11 +173,11 @@ final class DefaultQueuedHarness<I>
                     backend.agents().ensure(agentType, agentId);
                     Backlog<I> backlog = backlogs.forAgent(agentType, agentId);
                     if (backend.agents().terminated(agentType, agentId)) {
-                      // Ended. Coalescing now would put something into an emptied backlog and
+                      // Terminated. Coalescing now would put something into an emptied backlog and
                       // be
                       // read as work next time, undoing a termination that has happened.
                       log.debug(
-                          "[{}] agent {} has ended; the input is refused",
+                          "[{}] agent {} has been terminated; the input is dropped",
                           agentType.value(),
                           agentId.value());
                       return new Told(new TellOutcome.Terminated(), false);
@@ -199,11 +199,11 @@ final class DefaultQueuedHarness<I>
   private record Told(TellOutcome outcome, boolean nudge) {}
 
   /**
-   * Ends an agent.
+   * Terminates an agent.
    *
    * <p>It cannot be delivered to one mid-turn, because the fold takes it only from idle. So the
-   * backlog is emptied and the agent marked, and the next time it is idle and asks for work, ending
-   * is the work.
+   * backlog is emptied and the agent marked, and the next time it is idle and asks for work,
+   * terminating is the work.
    */
   @Override
   public void terminate(AgentId agentId) {
@@ -220,7 +220,7 @@ final class DefaultQueuedHarness<I>
               int abandoned = backend.agents().seal(agentType, agentId);
               if (abandoned > 0) {
                 log.info(
-                    "[{}] agent {} ended with {} input(s) waiting; abandoned",
+                    "[{}] agent {} terminated with {} input(s) waiting; abandoned",
                     agentType.value(),
                     agentId.value(),
                     abandoned);
@@ -362,8 +362,8 @@ final class DefaultQueuedHarness<I>
    * <p>An outcome whose row could not be decoded names no turn and no request, and the only ones it
    * can be attributed to are those the agent is on -- which is what the fold used to assume of
    * every outcome, and the reason a late answer could be written down as somebody else's. An idle
-   * or ended agent has no turn at all, so there is nothing such an outcome could settle, and an
-   * agent not waiting on a request has no request for it to settle.
+   * or terminated agent has no turn at all, so there is nothing such an outcome could settle, and
+   * an agent not waiting on a request has no request for it to settle.
    */
   private Folded fold(
       Step step,
@@ -420,8 +420,8 @@ final class DefaultQueuedHarness<I>
    * Takes the next thing waiting, if the agent has nothing else to do.
    *
    * <p>Where an agent comes out of idle, and it happens inside the transaction that made it idle --
-   * so at every commit an agent is busy, its backlog is empty, or it has ended. Never idle with
-   * work waiting.
+   * so at every commit an agent is busy, its backlog is empty, or it has been terminated. Never
+   * idle with work waiting.
    *
    * @return whether anything was written that an effect dispatcher should be told about
    */

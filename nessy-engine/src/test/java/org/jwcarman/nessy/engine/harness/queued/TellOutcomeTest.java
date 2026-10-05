@@ -245,7 +245,7 @@ class TellOutcomeTest {
       harness.tell(agent, "go");
       awaitStatus(story, agent, Activity.IDLE);
       harness.terminate(agent);
-      awaitStatus(story, agent, Activity.ENDED);
+      awaitStatus(story, agent, Activity.TERMINATED);
       List<AgentEvent> before = engine.story(typeOf(story), agent);
 
       TellOutcome outcome = harness.tell(agent, "too late");

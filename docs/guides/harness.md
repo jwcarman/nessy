@@ -152,19 +152,19 @@ TerminationOutcome result = harness.terminate(agentId);
 ```
 
 `terminate` returns `TerminationOutcome` rather than nothing, because a
-caller asking to end an agent somebody else is still asking is an ordinary
+caller asking to terminate an agent somebody else is still asking is an ordinary
 race, and being told so is the whole point of the type:
 
 | Arm | What it means |
 |---|---|
-| `Ended()` | This call is the one that ended the agent |
-| `AlreadyEnded()` | It was already over before this call |
+| `Terminated()` | This call is the one that terminated the agent |
+| `AlreadyTerminated()` | The agent had been terminated before this call |
 | `Busy()` | A turn is in flight; nothing was written, ask again |
 
-An agent is only ever ended from idle: a turn in flight is owed its
-outcome, so a request to end a busy agent is refused rather than queued.
+An agent is only ever terminated from idle: a turn in flight is owed its
+outcome, so a request to terminate a busy agent is refused rather than queued.
 The direct door has nowhere to record that somebody asked — unlike the
-queued door, which writes the ending down and honours it once the agent
+queued door, which writes the termination down and honours it once the agent
 falls idle — so a `Busy` termination here is simply refused, and a caller
 that means it must ask again.
 
@@ -182,11 +182,24 @@ QueuedHarness<String> harness = factory.create(new AgentType("watchman"), config
 harness.tell(AgentId.random(), "the porch light came on");
 ```
 
-`tell` is a post, not a call: it returns as soon as the input is durable,
-and the turn happens afterwards on the harness's own dispatcher. There is
-nothing to return, because by the time the turn runs whoever spoke has
-gone — the answer reaches a caller through a listener instead (see
-[Narration](narration.md)).
+`tell` is a post, not a call: it returns as soon as the agent has taken the
+input, and the turn happens afterwards on the harness's own dispatcher. What
+it returns is a `TellOutcome`, never how the turn went, because by the time
+the turn runs whoever spoke has gone — the answer reaches a caller through a
+listener instead (see [Narration](narration.md)).
+
+| Arm | What it means |
+|---|---|
+| `Accepted()` | The agent took the input |
+| `Terminated()` | The agent has been terminated; the input was dropped |
+
+`Accepted` means the input was handed to the agent type's backlog policy, and
+that a turn starts at once when the agent is idle. The policy decides what
+waits: it may keep the input, merge it with what waits, replace what waits,
+drop older inputs to hold a bound, or discard the arrival as a repeat. So an
+accepted input is not a promise that it will run by itself, or at all, and an
+input still waiting when the agent is terminated is abandoned. Inside a
+caller's transaction, `Accepted` is only as durable as the caller's commit.
 
 `QueuedHarnessFactory.create(agentType, customizer)` takes a model and
 token cap from the factory's own `inference(providerId, options)` unless
@@ -200,12 +213,12 @@ harness.terminate(agentId);
 ```
 
 Takes effect at once if the agent is idle. One mid-turn stops accepting
-immediately and ends once the turn it already owes an outcome for is
-finished — an effect already written down cannot be cancelled, and
-abandoning it would leave a row nobody will ever discharge. Nothing is
-written to the story: what ended is the agent, not its conversation.
-Idempotent and irreversible; a question arriving afterwards is answered
-`AskOutcome.Terminated`, whenever it arrives.
+immediately and is terminated once the turn it already owes an outcome for
+is finished — an effect already written down cannot be cancelled, and
+abandoning it would leave a row nobody will ever discharge. A `Terminated`
+event is written to the story: at once for an idle agent, and when its turn
+finishes otherwise. Idempotent and irreversible; an input arriving afterwards
+is answered `TellOutcome.Terminated`, whenever it arrives.
 
 ## Coalescing: what happens to what is already waiting
 
@@ -416,7 +429,7 @@ The activity is one of four:
 | `IDLE` | no turn in progress and nothing queued. An agent nobody has told anything is idle |
 | `WORKING` | something can make progress: a turn is in a model call, or has a call that is not parked, or no turn is in progress and input is queued |
 | `WAITING` | a turn is in progress and every call it has outstanding is parked, waiting for an answer from outside |
-| `ENDED` | the agent was terminated and its story ends |
+| `TERMINATED` | the agent was terminated and takes no more input |
 
 Some cases that are easy to get wrong:
 
@@ -429,7 +442,7 @@ Some cases that are easy to get wrong:
 - A parked call whose deadline has passed is not waiting. An agent with only
   such calls is `WORKING`.
 - An agent told to terminate during a turn is `WORKING` or `WAITING` until
-  that turn ends. Then it is `ENDED`.
+  that turn ends. Then it is `TERMINATED`.
 
 "Is this case finished?" is `IDLE`. "Is it waiting on a person?" is `WAITING`,
 and `waitingApprovals` says for what.

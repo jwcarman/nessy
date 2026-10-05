@@ -79,7 +79,7 @@ final class FakeHarness implements DirectHarness<String, String> {
   public TerminationOutcome terminate(AgentId agent) {
     terminated.add(agent);
     narrator.on(Envelopes.of(TYPE, agent, new Narration.Terminated()));
-    return new TerminationOutcome.Ended();
+    return new TerminationOutcome.Terminated();
   }
 
   /** The agent each question was put to, in order. */
