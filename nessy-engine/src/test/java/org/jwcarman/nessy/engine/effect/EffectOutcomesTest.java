@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -82,5 +83,44 @@ class EffectOutcomesTest {
                 REQUEST,
                 CALL,
                 new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), Optional.empty())));
+  }
+
+  @Test
+  void a_failure_carries_its_question_into_the_command() {
+    EffectOutcome outcome =
+        new EffectOutcome.ToolFailed(
+            CALL,
+            CallFailure.NOT_AUTHORISED,
+            "the call could not be authorised: down",
+            Optional.of(QUESTION));
+
+    AgentCommand command = EffectOutcomes.command(TURN, Optional.of(REQUEST), outcome, List.of());
+
+    assertThat(command)
+        .isEqualTo(
+            new AgentCommand.CompleteToolCall(
+                TURN,
+                REQUEST,
+                CALL,
+                new AgentCommand.ToolOutcome.Failed(
+                    CallFailure.NOT_AUTHORISED,
+                    "the call could not be authorised: down",
+                    Optional.of(QUESTION))));
+  }
+
+  @Test
+  void a_failure_without_a_question_becomes_a_command_without_one() {
+    EffectOutcome outcome = new EffectOutcome.ToolFailed(CALL, CallFailure.FAILED, "broke");
+
+    AgentCommand command = EffectOutcomes.command(TURN, Optional.of(REQUEST), outcome, List.of());
+
+    assertThat(command)
+        .isEqualTo(
+            new AgentCommand.CompleteToolCall(
+                TURN,
+                REQUEST,
+                CALL,
+                new AgentCommand.ToolOutcome.Failed(
+                    CallFailure.FAILED, "broke", Optional.empty())));
   }
 }

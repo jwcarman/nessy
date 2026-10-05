@@ -190,6 +190,7 @@ class EventAgentStoriesTest {
                   new CallId("c1"),
                   CallFailure.PAST_DEADLINE,
                   "the call did not complete before its deadline",
+                  Optional.empty(),
                   key)),
           Seq.NONE,
           AT);

@@ -1040,7 +1040,8 @@ class AgentStateTest {
                           TURN,
                           REQUEST,
                           CALL,
-                          new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "broke")))
+                          new AgentCommand.ToolOutcome.Failed(
+                              CallFailure.FAILED, "broke", Optional.empty())))
                   .events())
           .as("a failure")
           .first()
@@ -1224,7 +1225,8 @@ class AgentStateTest {
                   TURN,
                   REQUEST,
                   B,
-                  new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "nope")));
+                  new AgentCommand.ToolOutcome.Failed(
+                      CallFailure.FAILED, "nope", Optional.empty())));
 
       assertThat(last.effects()).singleElement().isInstanceOf(AgentEffect.Infer.class);
     }
@@ -1599,7 +1601,8 @@ class AgentStateTest {
                   TURN,
                   REQUEST,
                   FIRST,
-                  new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "broke")));
+                  new AgentCommand.ToolOutcome.Failed(
+                      CallFailure.FAILED, "broke", Optional.empty())));
 
       assertThat(decision.events())
           .first()
@@ -1617,7 +1620,8 @@ class AgentStateTest {
                       TURN,
                       REQUEST,
                       SECOND,
-                      new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "expired")));
+                      new AgentCommand.ToolOutcome.Failed(
+                          CallFailure.FAILED, "expired", Optional.empty())));
 
       assertThat(decision.events())
           .first()
@@ -1636,7 +1640,8 @@ class AgentStateTest {
                   TURN,
                   REQUEST,
                   FIRST,
-                  new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "one")));
+                  new AgentCommand.ToolOutcome.Failed(
+                      CallFailure.FAILED, "one", Optional.empty())));
       Decision second =
           both.execute(
               new AgentCommand.CompleteToolCall(
@@ -1715,7 +1720,10 @@ class AgentStateTest {
       Decision decision =
           running.execute(
               new AgentCommand.CompleteToolCall(
-                  TURN, REQUEST, ASKED, new AgentCommand.ToolOutcome.Failed(kind, "broke")));
+                  TURN,
+                  REQUEST,
+                  ASKED,
+                  new AgentCommand.ToolOutcome.Failed(kind, "broke", Optional.empty())));
 
       assertThat(decision.events())
           .singleElement()
@@ -1734,7 +1742,7 @@ class AgentStateTest {
                       REQUEST,
                       ASKED,
                       new AgentCommand.ToolOutcome.Failed(
-                          CallFailure.NOT_AUTHORISED, "the approval expired")));
+                          CallFailure.NOT_AUTHORISED, "the approval expired", Optional.empty())));
 
       assertThat(decision.events())
           .singleElement()

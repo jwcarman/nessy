@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -152,5 +153,100 @@ class AgentStateQuestionTest {
         .isEqualTo(state.applyAll(approvedWithout.events()));
     assertThat(state.applyAll(deniedWith.events()))
         .isEqualTo(state.applyAll(deniedWithout.events()));
+  }
+
+  private static AgentCommand.CompleteToolCall fail(Optional<PayloadRef> question) {
+    return new AgentCommand.CompleteToolCall(
+        TURN,
+        REQUEST,
+        CALL,
+        new AgentCommand.ToolOutcome.Failed(
+            CallFailure.NOT_AUTHORISED, "the call could not be authorised: down", question));
+  }
+
+  /** A call that was running, so its failure is the tool's own. */
+  private static AgentState running() {
+    return after(awaiting(), approve(Optional.empty()));
+  }
+
+  @Test
+  void a_failed_call_is_recorded_with_the_question_that_stood() {
+    Decision decision = awaiting().execute(fail(Optional.of(QUESTION)));
+
+    assertThat(decision)
+        .isEqualTo(
+            Decision.of(
+                List.of(
+                    new AgentEvent.ToolFailed(
+                        Seq.of(3),
+                        TURN,
+                        CALL,
+                        CallFailure.NOT_AUTHORISED,
+                        "the call could not be authorised: down",
+                        Optional.of(QUESTION),
+                        KEY)),
+                List.of(new AgentEffect.Infer(TURN))));
+  }
+
+  @Test
+  void a_failed_call_with_no_question_records_none() {
+    Decision asking = awaiting().execute(fail(Optional.empty()));
+    Decision running = running().execute(fail(Optional.empty()));
+
+    assertThat(asking.events())
+        .containsExactly(
+            new AgentEvent.ToolFailed(
+                Seq.of(3),
+                TURN,
+                CALL,
+                CallFailure.NOT_AUTHORISED,
+                "the call could not be authorised: down",
+                Optional.empty(),
+                KEY));
+    assertThat(running.events())
+        .containsExactly(
+            new AgentEvent.ToolFailed(
+                Seq.of(4),
+                TURN,
+                CALL,
+                CallFailure.NOT_AUTHORISED,
+                "the call could not be authorised: down",
+                Optional.empty(),
+                KEY));
+  }
+
+  @Test
+  void a_failure_of_a_running_call_records_the_question_it_was_given() {
+    Decision decision = running().execute(fail(Optional.of(QUESTION)));
+
+    assertThat(decision.events())
+        .containsExactly(
+            new AgentEvent.ToolFailed(
+                Seq.of(4),
+                TURN,
+                CALL,
+                CallFailure.NOT_AUTHORISED,
+                "the call could not be authorised: down",
+                Optional.of(QUESTION),
+                KEY));
+  }
+
+  /** The question is a record of the failure, not an input to anything that follows it. */
+  @Test
+  void the_question_changes_no_decision_for_a_failure() {
+    AgentState asking = awaiting();
+    AgentState running = running();
+
+    Decision askingWith = asking.execute(fail(Optional.of(QUESTION)));
+    Decision askingWithout = asking.execute(fail(Optional.empty()));
+    Decision runningWith = running.execute(fail(Optional.of(QUESTION)));
+    Decision runningWithout = running.execute(fail(Optional.empty()));
+
+    assertThat(askingWith.effects()).isNotEmpty().isEqualTo(askingWithout.effects());
+    assertThat(runningWith.effects()).isNotEmpty().isEqualTo(runningWithout.effects());
+    assertThat(asking.applyAll(askingWith.events()))
+        .isEqualTo(asking.applyAll(askingWithout.events()));
+    assertThat(running.applyAll(runningWith.events()))
+        .isEqualTo(running.applyAll(runningWithout.events()));
   }
 }

@@ -222,6 +222,7 @@ public sealed interface AgentCommand {
     }
 
     /** Names what went wrong, never the values involved. See {@link AgentEvent.ToolFailed}. */
-    record Failed(CallFailure kind, String message) implements ToolOutcome {}
+    record Failed(CallFailure kind, String message, Optional<PayloadRef> question)
+        implements ToolOutcome {}
   }
 }

@@ -169,7 +169,8 @@ class StoryEventsTest {
         new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), Optional.empty(), KEY),
         new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty(), Optional.empty(), KEY),
         new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok", KEY),
-        new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", KEY),
+        new AgentEvent.ToolFailed(
+            SEQ, TURN, CALL, CallFailure.FAILED, "boom", Optional.empty(), KEY),
         new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, Instant.EPOCH, PayloadRef.of("q"), KEY),
         new AgentEvent.ToolDeferred(SEQ, TURN, CALL, Instant.EPOCH, KEY),
         new AgentEvent.Terminated(SEQ));
@@ -230,7 +231,8 @@ class StoryEventsTest {
   void a_call_that_failed_is_told_with_the_message() {
     assertThat(
             StoryEvents.of(
-                new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", KEY)))
+                new AgentEvent.ToolFailed(
+                    SEQ, TURN, CALL, CallFailure.FAILED, "boom", Optional.empty(), KEY)))
         .isEqualTo(new Narration.CallFailed(CALL, KEY, CallFailure.FAILED, "boom"));
   }
 
@@ -239,7 +241,13 @@ class StoryEventsTest {
     assertThat(
             StoryEvents.of(
                 new AgentEvent.ToolFailed(
-                    SEQ, TURN, CALL, CallFailure.NOT_AUTHORISED, "no approver answered", KEY)))
+                    SEQ,
+                    TURN,
+                    CALL,
+                    CallFailure.NOT_AUTHORISED,
+                    "no approver answered",
+                    Optional.empty(),
+                    KEY)))
         .isEqualTo(
             new Narration.CallFailed(
                 CALL, KEY, CallFailure.NOT_AUTHORISED, "no approver answered"));

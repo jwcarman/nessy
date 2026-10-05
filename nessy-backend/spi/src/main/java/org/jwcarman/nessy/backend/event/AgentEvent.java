@@ -284,6 +284,10 @@ public sealed interface AgentEvent {
    * the values involved. It is at most 1,000 characters: a longer message has its middle dropped
    * and {@code ...} in the gap before it is stored, and what is stored is the text the model reads
    * back for the call.
+   *
+   * <p>{@code question} is the document the approver was asked, when the approver itself failed and
+   * the document could be kept; for a retried ask it is the last one asked. It is empty for every
+   * other failure, and for a row written before the field existed.
    */
   record ToolFailed(
       Seq seq,
@@ -291,9 +295,11 @@ public sealed interface AgentEvent {
       CallId callId,
       CallFailure kind,
       String message,
+      Optional<PayloadRef> question,
       IdempotencyKey idempotencyKey)
       implements AgentEvent {
     public ToolFailed {
+      question = question == null ? Optional.empty() : question;
       Objects.requireNonNull(kind, "kind must not be null");
       Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
     }

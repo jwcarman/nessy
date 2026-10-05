@@ -69,7 +69,9 @@ class ToolEventKeyTest {
   @Test
   void a_failure_refuses_a_null_key() {
     assertThatThrownBy(
-            () -> new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", null))
+            () ->
+                new AgentEvent.ToolFailed(
+                    SEQ, TURN, CALL, CallFailure.FAILED, "boom", Optional.empty(), null))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("idempotencyKey must not be null");
   }
@@ -78,7 +80,8 @@ class ToolEventKeyTest {
   void a_failure_refuses_a_null_kind() {
     IdempotencyKey key = IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
-    assertThatThrownBy(() -> new AgentEvent.ToolFailed(SEQ, TURN, CALL, null, "boom", key))
+    assertThatThrownBy(
+            () -> new AgentEvent.ToolFailed(SEQ, TURN, CALL, null, "boom", Optional.empty(), key))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("kind must not be null");
   }

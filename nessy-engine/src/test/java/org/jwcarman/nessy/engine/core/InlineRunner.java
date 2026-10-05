@@ -126,7 +126,8 @@ final class InlineRunner {
               call.turn(),
               call.requestSeq(),
               call.callId(),
-              new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "no such tool"));
+              new AgentCommand.ToolOutcome.Failed(
+                  CallFailure.FAILED, "no such tool", Optional.empty()));
         }
         try {
           // Rendered and claim-checked on the way back, exactly as the durable harness would:
@@ -142,7 +143,8 @@ final class InlineRunner {
               call.turn(),
               call.requestSeq(),
               call.callId(),
-              new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, broken.getMessage()));
+              new AgentCommand.ToolOutcome.Failed(
+                  CallFailure.FAILED, broken.getMessage(), Optional.empty()));
         }
       }
     };

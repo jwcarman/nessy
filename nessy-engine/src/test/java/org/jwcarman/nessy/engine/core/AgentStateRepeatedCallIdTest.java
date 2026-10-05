@@ -156,7 +156,8 @@ class AgentStateRepeatedCallIdTest {
             TURN,
             FIRST_REQUEST,
             C,
-            new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "the first call's failure"));
+            new AgentCommand.ToolOutcome.Failed(
+                CallFailure.FAILED, "the first call's failure", Optional.empty()));
 
     Decision decision = awaiting.execute(duplicate);
 

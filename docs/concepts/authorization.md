@@ -48,6 +48,12 @@ and puts its reference on the `ToolApproved` or `ToolDenied` event. A decision t
 a deferral carries no question of its own: the question stored with the deferral is its question.
 If the question cannot be stored, the decision stands without it.
 
+When the approver itself fails, by throwing, the call ends as not authorised and the record keeps
+the question the approver was asked: the `ToolFailed` event carries its reference. The message
+the model reads is the approver's own, as before. If the approval policy asks again, each ask
+stores a new question, and the failure names the one that was asked last. A failure that comes
+from an expired deferral carries no question; the deferral's question stands.
+
 How long the question stands is the binding's term, not the approver's:
 
 ```java

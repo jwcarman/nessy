@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine.effect;
 
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Usage;
@@ -177,10 +178,13 @@ public final class EffectTermsSource {
 
     @Override
     public EffectOutcome failed(RuntimeException cause) {
+      // The message is the approver's own, as it always was; an ApproverFailed reads as the
+      // exception it wraps, and adds the question that was asked.
       return new EffectOutcome.ToolFailed(
           callId,
           CallFailure.NOT_AUTHORISED,
-          "the call could not be authorised: " + cause.getMessage());
+          "the call could not be authorised: " + cause.getMessage(),
+          cause instanceof ApproverFailed asked ? asked.question() : Optional.empty());
     }
   }
 

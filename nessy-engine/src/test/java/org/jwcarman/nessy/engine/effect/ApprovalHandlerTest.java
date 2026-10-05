@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.effect;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.InstanceOfAssertFactories.type;
 
 import java.time.Clock;
@@ -518,6 +519,77 @@ class ApprovalHandlerTest {
                 new EffectOutcome.ToolDenied(
                     new CallId("c1"), "out of hours", Optional.of("u_dave"), Optional.empty())));
     assertThat(asks[0]).as("one ask per decision, never a second").isEqualTo(2);
+  }
+
+  // ---- an approver that threw leaves its question -----------------------------------------
+
+  /**
+   * The handler still throws, so the dispatcher's retry sees the same failed ask it always saw; the
+   * exception it throws says what the approver was asked.
+   */
+  @Test
+  void an_approver_that_throws_leaves_its_question_stored() {
+    ApprovalRequest[] seen = new ApprovalRequest[1];
+    IllegalStateException broken = new IllegalStateException("approval service down");
+    Approver throwing =
+        request -> {
+          seen[0] = request;
+          request.fact("depth", JsonNodeFactory.instance.numberNode(230));
+          throw broken;
+        };
+    ApprovalHandler handler = handler(bound(throwing));
+
+    assertThatThrownBy(() -> asked(handler, WRITTEN_DEADLINE))
+        .isInstanceOfSatisfying(
+            ApproverFailed.class,
+            thrown -> {
+              assertThat(thrown).hasCause(broken).hasMessage("approval service down");
+              assertThat(thrown.question()).isPresent();
+              JsonNode stored = PAYLOADS.forAgent(AGENT).getDocument(thrown.question().get());
+              assertThat(stored.toString())
+                  .isEqualTo(ApprovalQuestions.document(seen[0]).toString());
+              assertThat(stored.get("facts").get("depth").asInt()).isEqualTo(230);
+            });
+  }
+
+  /**
+   * Keeping the question is a courtesy to whoever reads the story later: it must not turn a failed
+   * ask into some other failure, and it must not ask again.
+   */
+  @Test
+  void an_approver_that_throws_still_throws_when_its_question_cannot_be_stored() {
+    int[] asks = {0};
+    IllegalStateException broken = new IllegalStateException("approval service down");
+    Approver throwing =
+        _ -> {
+          asks[0]++;
+          throw broken;
+        };
+    ApprovalHandler handler =
+        handler(bound(throwing), story(), Narrator.silent(), storeThatCannotKeepADocument());
+
+    assertThatThrownBy(() -> asked(handler, WRITTEN_DEADLINE))
+        .isInstanceOfSatisfying(
+            ApproverFailed.class,
+            thrown -> {
+              assertThat(thrown).hasCause(broken).hasMessage("approval service down");
+              assertThat(thrown.question()).isEmpty();
+            });
+    assertThat(asks[0]).as("asked once, and not again").isEqualTo(1);
+  }
+
+  /** A failure before the approver is asked is not an approver's failure and is not wrapped. */
+  @Test
+  void a_failure_that_is_not_the_approvers_is_not_wrapped() {
+    Narrator broken =
+        _ -> {
+          throw new IllegalStateException("narrator down");
+        };
+    ApprovalHandler handler = handler(bound(Approver.allow()), story(), broken);
+
+    assertThatThrownBy(() -> asked(handler, WRITTEN_DEADLINE))
+        .isExactlyInstanceOf(IllegalStateException.class)
+        .hasMessage("narrator down");
   }
 
   /** The reply token settles the call, and a stored document is read by far more than the reply. */

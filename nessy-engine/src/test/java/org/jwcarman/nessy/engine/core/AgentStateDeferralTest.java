@@ -109,7 +109,10 @@ class AgentStateDeferralTest {
 
   private static AgentCommand.CompleteToolCall fail(CallId call, CallFailure kind) {
     return new AgentCommand.CompleteToolCall(
-        TURN, REQUEST, call, new AgentCommand.ToolOutcome.Failed(kind, "it broke"));
+        TURN,
+        REQUEST,
+        call,
+        new AgentCommand.ToolOutcome.Failed(kind, "it broke", Optional.empty()));
   }
 
   private static AgentEvent.ApprovalDeferred approvalDeferred(
@@ -418,14 +421,26 @@ class AgentStateDeferralTest {
               Decision.of(
                   List.of(
                       new AgentEvent.ToolFailed(
-                          Seq.of(3), TURN, CALL, CallFailure.NOT_AUTHORISED, "it broke", KEY)),
+                          Seq.of(3),
+                          TURN,
+                          CALL,
+                          CallFailure.NOT_AUTHORISED,
+                          "it broke",
+                          Optional.empty(),
+                          KEY)),
                   List.of(new AgentEffect.Infer(TURN))));
       assertThat(with)
           .isEqualTo(
               Decision.of(
                   List.of(
                       new AgentEvent.ToolFailed(
-                          Seq.of(4), TURN, CALL, CallFailure.NOT_AUTHORISED, "it broke", KEY)),
+                          Seq.of(4),
+                          TURN,
+                          CALL,
+                          CallFailure.NOT_AUTHORISED,
+                          "it broke",
+                          Optional.empty(),
+                          KEY)),
                   List.of(new AgentEffect.Infer(TURN))));
     }
 
@@ -442,14 +457,26 @@ class AgentStateDeferralTest {
               Decision.of(
                   List.of(
                       new AgentEvent.ToolFailed(
-                          Seq.of(4), TURN, CALL, CallFailure.FAILED, "it broke", KEY)),
+                          Seq.of(4),
+                          TURN,
+                          CALL,
+                          CallFailure.FAILED,
+                          "it broke",
+                          Optional.empty(),
+                          KEY)),
                   List.of(new AgentEffect.Infer(TURN))));
       assertThat(with)
           .isEqualTo(
               Decision.of(
                   List.of(
                       new AgentEvent.ToolFailed(
-                          Seq.of(5), TURN, CALL, CallFailure.FAILED, "it broke", KEY)),
+                          Seq.of(5),
+                          TURN,
+                          CALL,
+                          CallFailure.FAILED,
+                          "it broke",
+                          Optional.empty(),
+                          KEY)),
                   List.of(new AgentEffect.Infer(TURN))));
     }
 

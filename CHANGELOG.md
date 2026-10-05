@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `AgentEvent.ToolDenied` gain `Optional<PayloadRef> question` before `idempotencyKey`, and
   `EffectOutcome.ToolApproved` and `EffectOutcome.ToolDenied` gain it as their last component. The
   stored events change shape; recreate the database.
+- **`ToolFailed` carries the question the approver was asked.** `AgentEvent.ToolFailed` gains
+  `Optional<PayloadRef> question` before `idempotencyKey`, `EffectOutcome.ToolFailed` gains it as
+  its last component (the three-argument constructor stays, and gives none), and
+  `AgentCommand.ToolOutcome.Failed` gains it too. The stored `tool-failed` event and the stored
+  failure response on an effect row change shape; recreate the database.
 
 - **`nessy_agent_effect` gained a nullable `parked_at` column,** and `Effects` gains
   `park(effectId, attemptsMade, at)`, so a custom implementation must add it. Recreate the
@@ -87,6 +92,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deciding are in it, and its reference is on the `ToolApproved` or `ToolDenied` event. A decision
   that arrives after a deferral carries none: the `ApprovalDeferred` before it holds the question.
   If the question cannot be stored, the decision stands without it.
+- **An approver that throws leaves its question on the failure.** When the approver itself fails,
+  the question as it stood is stored and the `NOT_AUTHORISED` `ToolFailed` carries its reference.
+  A retried ask stores a new question each time, and the failure names the last one. The message
+  the model is told, and the retry, do not change. A failure from an expired deferral carries no
+  question.
 - `Payloads.putDocument(JsonNode)` and `Payloads.getDocument(PayloadRef)` keep and read JSON
   documents beside message blocks. The same document is one reference and one row. Reading a
   payload as the wrong kind, or a document that is not there, throws an `IllegalStateException`

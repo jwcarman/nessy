@@ -27,7 +27,7 @@ public sealed interface AgentEvent {
   record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> decidedBy, Optional<PayloadRef> question, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> decidedBy, Optional<PayloadRef> question, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, String rendered, IdempotencyKey idempotencyKey) implements AgentEvent {}
-  record ToolFailed(Seq seq, TurnId turn, CallId callId, CallFailure kind, String message, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolFailed(Seq seq, TurnId turn, CallId callId, CallFailure kind, String message, Optional<PayloadRef> question, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ApprovalDeferred(Seq seq, TurnId turn, CallId callId, Instant until, PayloadRef question, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ToolDeferred(Seq seq, TurnId turn, CallId callId, Instant until, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record Terminated(Seq seq) implements AgentEvent {}
@@ -76,6 +76,12 @@ refused it: `FAILED`, the tool ran and failed or could not be run; `PAST_DEADLIN
 not finish before its deadline and whether it ran is not known; `NOT_AUTHORISED`, permission was
 never given because the approval's deadline passed or the approver itself failed. A refusal is
 `ToolDenied`, not a `ToolFailed`.
+
+`ToolFailed.question` is a `PayloadRef` to the JSON document the approver was shown, present
+when the approver itself failed and the document could be stored. If the ask was retried, it is
+the question of the last ask. It is empty for every other failure, including one from an expired
+deferral, whose question is on the `ApprovalDeferred` before it. Like the deferral's, it is not
+message content, so nothing that reads a turn's messages fetches it.
 
 Events hold other text too. A failed call's message is at most 1,000
 characters; a longer one has its middle dropped and `...` in the gap, and the

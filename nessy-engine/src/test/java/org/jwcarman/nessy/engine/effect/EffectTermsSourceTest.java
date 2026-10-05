@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -252,6 +253,73 @@ class EffectTermsSourceTest {
           .asInstanceOf(InstanceOfAssertFactories.type(EffectOutcome.ToolFailed.class))
           .extracting(EffectOutcome.ToolFailed::kind)
           .isEqualTo(CallFailure.NOT_AUTHORISED);
+    }
+
+    private static EffectTerms askingTerms() {
+      return source(Tools.none())
+          .termsFor(
+              new AgentEffect.Approve(
+                  new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone"), KEY));
+    }
+
+    @Test
+    void a_failed_ask_names_its_question() {
+      PayloadRef question = PayloadRef.of("q-7");
+      ApproverFailed failure =
+          new ApproverFailed(
+              new IllegalStateException("approval service down"), Optional.of(question));
+
+      EffectOutcome outcome = askingTerms().failed(failure);
+
+      assertThat(outcome)
+          .isEqualTo(
+              new EffectOutcome.ToolFailed(
+                  new CallId("c1"),
+                  CallFailure.NOT_AUTHORISED,
+                  "the call could not be authorised: approval service down",
+                  Optional.of(question)));
+    }
+
+    @Test
+    void a_failed_ask_whose_question_could_not_be_kept_names_none() {
+      ApproverFailed failure =
+          new ApproverFailed(new IllegalStateException("approval service down"), Optional.empty());
+
+      EffectOutcome outcome = askingTerms().failed(failure);
+
+      assertThat(outcome)
+          .isEqualTo(
+              new EffectOutcome.ToolFailed(
+                  new CallId("c1"),
+                  CallFailure.NOT_AUTHORISED,
+                  "the call could not be authorised: approval service down"));
+    }
+
+    @Test
+    void any_other_exception_gives_the_same_message_and_no_question() {
+      EffectOutcome outcome =
+          askingTerms().failed(new IllegalStateException("approval service down"));
+
+      assertThat(outcome)
+          .isEqualTo(
+              new EffectOutcome.ToolFailed(
+                  new CallId("c1"),
+                  CallFailure.NOT_AUTHORISED,
+                  "the call could not be authorised: approval service down",
+                  Optional.empty()));
+    }
+
+    @Test
+    void an_approval_that_ran_past_its_deadline_names_no_question() {
+      EffectOutcome outcome = askingTerms().undispatchable();
+
+      assertThat(outcome)
+          .isEqualTo(
+              new EffectOutcome.ToolFailed(
+                  new CallId("c1"),
+                  CallFailure.NOT_AUTHORISED,
+                  "the call could not be authorised, so it was not run",
+                  Optional.empty()));
     }
   }
 

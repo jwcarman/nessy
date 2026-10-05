@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -29,9 +30,12 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
@@ -40,6 +44,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.EngineFixture;
@@ -69,12 +74,26 @@ class ApprovalQuestionTest {
     engine.close();
   }
 
+  /** What the model was told about calls that failed, whichever agent it was told it for. */
+  private static final ConcurrentLinkedQueue<String> TOLD_OF_FAILURES =
+      new ConcurrentLinkedQueue<>();
+
   private static final InferenceProvider MODEL =
-      (request, _) ->
-          request.context().turns().stream().anyMatch(turn -> !turn.exchanges().isEmpty())
-              ? new InferenceResult.Answer(List.of(new Block.Text("all done")))
-              : new InferenceResult.Actions(
-                  List.of(new Block.ToolCall("call_1", "lookup", "{\"q\":\"loch ness\"}")));
+      (request, _) -> {
+        request.context().turns().stream()
+            .flatMap(turn -> turn.exchanges().stream())
+            .flatMap(exchange -> exchange.outcomes().stream())
+            .forEach(
+                outcome -> {
+                  if (outcome instanceof ToolOutcome.Failed failed) {
+                    TOLD_OF_FAILURES.add(failed.message());
+                  }
+                });
+        return request.context().turns().stream().anyMatch(turn -> !turn.exchanges().isEmpty())
+            ? new InferenceResult.Answer(List.of(new Block.Text("all done")))
+            : new InferenceResult.Actions(
+                List.of(new Block.ToolCall("call_1", "lookup", "{\"q\":\"loch ness\"}")));
+      };
 
   record Query(String q) {}
 
@@ -105,6 +124,10 @@ class ApprovalQuestionTest {
   }
 
   private QueuedHarness<String> harness(AgentType type, Approver approver) {
+    return harness(type, approver, new RetryPolicy.Never());
+  }
+
+  private QueuedHarness<String> harness(AgentType type, Approver approver, RetryPolicy onAsking) {
     return engine
         .harnesses()
         .create(
@@ -117,7 +140,9 @@ class ApprovalQuestionTest {
                         lookup(),
                         t ->
                             t.action(query -> "look up " + query.q())
-                                .approver(approver, a -> a.timeout(Duration.ofMinutes(30))))
+                                .approver(
+                                    approver,
+                                    a -> a.timeout(Duration.ofMinutes(30)).retryPolicy(onAsking)))
                     .inference(in -> in.model("a-model"))
                     .effects(e -> e.pollInterval(Duration.ofMillis(50))));
   }
@@ -202,5 +227,77 @@ class ApprovalQuestionTest {
     AgentEvent.ToolApproved approved = (AgentEvent.ToolApproved) story.get(3);
     assertThat(approved.question()).as("the deferral's question is the decision's").isEmpty();
     assertNamesTheCall(agentId, deferred.question(), requestedCall(story));
+  }
+
+  /** An approver that records what it was shown, and fails the first {@code failures} times. */
+  private static Approver failing(List<ApprovalRequest> shown, int failures, String message) {
+    return request -> {
+      shown.add(request);
+      if (shown.size() <= failures) {
+        throw new IllegalStateException(message);
+      }
+      return Awaited.ready(ApprovalResult.approvedBy("u_carol"));
+    };
+  }
+
+  private static String askedAt(AgentId agentId, PayloadRef question) {
+    return engine.payloads().forAgent(agentId).getDocument(question).path("askedAt").asString();
+  }
+
+  /**
+   * Retrying a failed ask is the dispatcher's, and it asks the policy, not the exception. The
+   * failure that is finally recorded names the question that was last asked.
+   */
+  @Test
+  void an_approver_that_throws_twice_is_asked_twice_and_the_failure_names_the_second_question() {
+    AgentType type = new AgentType("question-throws-twice");
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    List<ApprovalRequest> shown = new CopyOnWriteArrayList<>();
+    String message = "approval service down (twice)";
+    harness(
+            type,
+            failing(shown, 2, message),
+            new RetryPolicy.FixedDelay(2, Duration.ofMillis(100), Duration.ZERO))
+        .tell(agentId, "what lake?");
+    settled(type, agentId);
+
+    List<AgentEvent> story = engine.story(type, agentId);
+
+    assertThat(shown).as("asked exactly twice").hasSize(2);
+    assertThat(story.get(2)).isInstanceOf(AgentEvent.ToolFailed.class);
+    AgentEvent.ToolFailed failed = (AgentEvent.ToolFailed) story.get(2);
+    assertThat(failed.kind()).isEqualTo(CallFailure.NOT_AUTHORISED);
+    assertThat(failed.message()).isEqualTo("the call could not be authorised: " + message);
+    assertThat(failed.question()).isPresent();
+    assertNamesTheCall(agentId, failed.question().get(), requestedCall(story));
+    String lastAsked = askedAt(agentId, failed.question().get());
+    assertThat(lastAsked).isEqualTo(shown.get(1).askedAt().toString());
+    assertThat(lastAsked).isNotEqualTo(shown.get(0).askedAt().toString());
+    assertThat(TOLD_OF_FAILURES).contains("the call could not be authorised: " + message);
+    assertThat(story).noneMatch(event -> event instanceof AgentEvent.ToolApproved);
+  }
+
+  @Test
+  void an_approver_that_throws_once_then_approves_runs_the_call() {
+    AgentType type = new AgentType("question-throws-once");
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    List<ApprovalRequest> shown = new CopyOnWriteArrayList<>();
+    harness(
+            type,
+            failing(shown, 1, "approval service down (once)"),
+            new RetryPolicy.FixedDelay(2, Duration.ofMillis(100), Duration.ZERO))
+        .tell(agentId, "what lake?");
+    settled(type, agentId);
+
+    List<AgentEvent> story = engine.story(type, agentId);
+
+    assertThat(shown).as("asked twice").hasSize(2);
+    assertThat(story).noneMatch(event -> event instanceof AgentEvent.ToolFailed);
+    assertThat(story.get(2)).isInstanceOf(AgentEvent.ToolApproved.class);
+    AgentEvent.ToolApproved approved = (AgentEvent.ToolApproved) story.get(2);
+    assertThat(approved.question()).isPresent();
+    assertThat(askedAt(agentId, approved.question().get()))
+        .isEqualTo(shown.get(1).askedAt().toString());
+    assertThat(story.get(3)).isInstanceOf(AgentEvent.ToolSucceeded.class);
   }
 }

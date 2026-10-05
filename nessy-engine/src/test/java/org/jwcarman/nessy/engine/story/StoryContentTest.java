@@ -103,7 +103,13 @@ class StoryContentTest {
   private static AgentEvent.ToolFailed failed(
       long seq, long turn, String callId, IdempotencyKey key) {
     return new AgentEvent.ToolFailed(
-        new Seq(seq), new TurnId(turn), CallId.of(callId), CallFailure.FAILED, "broke", key);
+        new Seq(seq),
+        new TurnId(turn),
+        CallId.of(callId),
+        CallFailure.FAILED,
+        "broke",
+        Optional.empty(),
+        key);
   }
 
   private static AgentEvent.InferenceAnswered answered(long seq, long turn, PayloadRef answer) {

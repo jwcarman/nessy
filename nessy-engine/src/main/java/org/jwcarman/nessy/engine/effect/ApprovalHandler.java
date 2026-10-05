@@ -188,7 +188,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
     narrator.narrate(
         Narrated.live(agentType, agentId, new Narration.ApprovalSought(callId, question.action())));
 
-    return switch (binding.approve(question)) {
+    return switch (answer(binding, agentId, callId, question)) {
       case Awaited.Ready<ApprovalResult>(ApprovalResult result) -> {
         // Kept after the approver has answered, so a fact it added while deciding is in what it
         // was shown, and never inside the approver call: that call's exceptions are a failed ask.
@@ -229,6 +229,26 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
                 "the call stays parked on its row, but its deferral will not be recorded"));
       }
     };
+  }
+
+  /**
+   * The approver's answer, or its failure carrying the question it was asked.
+   *
+   * <p>Only the approver's own call is inside the {@code try}. When it throws, the question as it
+   * stood is kept and the failure is thrown again as an {@link ApproverFailed}, so the failure that
+   * is finally recorded can name it. It is still a throw, so the dispatcher's retry sees what it
+   * always saw.
+   */
+  private Awaited<ApprovalResult> answer(
+      ToolBinding<?> binding, AgentId agentId, CallId callId, ApprovalRequest question) {
+    try {
+      return binding.approve(question);
+    } catch (RuntimeException e) {
+      throw new ApproverFailed(
+          e,
+          storedQuestion(
+              agentId, callId, question, "the failure of the ask is recorded without it"));
+    }
   }
 
   /**

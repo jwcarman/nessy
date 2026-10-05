@@ -580,12 +580,89 @@ class ValueTypeCodecTest {
         "message":"boom","idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
     AgentEvent.ToolFailed written =
         new AgentEvent.ToolFailed(
-            new Seq(4), new TurnId(1), new CallId("c1"), CallFailure.PAST_DEADLINE, "boom", KEY);
+            new Seq(4),
+            new TurnId(1),
+            new CallId("c1"),
+            CallFailure.PAST_DEADLINE,
+            "boom",
+            Optional.empty(),
+            KEY);
 
     assertThat(readStored(stored)).isEqualTo(written);
     assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
         .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"")
         .contains("\"kind\":\"PAST_DEADLINE\"");
+  }
+
+  @Test
+  void aFailureIsStoredWithTheQuestionTheApproverWasAsked() {
+    String stored =
+        """
+        {"type":"tool-failed","seq":4,"turn":1,"callId":"c1","kind":"NOT_AUTHORISED",\
+        "message":"the call could not be authorised: down","question":"b81e0c47",\
+        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+    AgentEvent.ToolFailed written =
+        new AgentEvent.ToolFailed(
+            new Seq(4),
+            new TurnId(1),
+            new CallId("c1"),
+            CallFailure.NOT_AUTHORISED,
+            "the call could not be authorised: down",
+            Optional.of(PayloadRef.of("b81e0c47")),
+            KEY);
+
+    assertThat(readStored(stored)).isEqualTo(written);
+    assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
+        .contains("\"question\":\"b81e0c47\"");
+  }
+
+  /** A row written before the field existed has no key for it, and reads as no question. */
+  @Test
+  void aFailureStoredWithoutAQuestionReadsAsHavingNone() {
+    String stored =
+        """
+        {"type":"tool-failed","seq":4,"turn":1,"callId":"c1","kind":"FAILED",\
+        "message":"boom","idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+
+    AgentEvent.ToolFailed read = (AgentEvent.ToolFailed) readStored(stored);
+
+    assertThat(read.question()).isEmpty();
+  }
+
+  /** The stored failure response on an effect row is the same shape. */
+  @Test
+  void a_tool_failed_outcome_keeps_its_question_through_its_codec() {
+    Codec<EffectOutcome> outcomes =
+        new JacksonCodecFactory(JsonMapper.builder().build()).create(EffectOutcome.class);
+    EffectOutcome.ToolFailed withQuestion =
+        new EffectOutcome.ToolFailed(
+            new CallId("c1"),
+            CallFailure.NOT_AUTHORISED,
+            "the call could not be authorised: down",
+            Optional.of(PayloadRef.of("b81e0c47")));
+    EffectOutcome.ToolFailed without =
+        new EffectOutcome.ToolFailed(new CallId("c1"), CallFailure.FAILED, "boom");
+
+    byte[] withBytes = outcomes.encode(withQuestion);
+    byte[] withoutBytes = outcomes.encode(without);
+
+    assertThat(new String(withBytes, StandardCharsets.UTF_8)).contains("\"question\":\"b81e0c47\"");
+    assertThat(outcomes.decode(withBytes)).isEqualTo(withQuestion);
+    assertThat(outcomes.decode(withoutBytes)).isEqualTo(without);
+  }
+
+  @Test
+  void a_tool_failed_outcome_stored_without_a_question_reads_as_having_none() {
+    Codec<EffectOutcome> outcomes =
+        new JacksonCodecFactory(JsonMapper.builder().build()).create(EffectOutcome.class);
+    byte[] stored =
+        """
+        {"type":"tool-failed","callId":"c1","kind":"FAILED","message":"boom"}"""
+            .getBytes(StandardCharsets.UTF_8);
+
+    EffectOutcome.ToolFailed read = (EffectOutcome.ToolFailed) outcomes.decode(stored);
+
+    assertThat(read.question()).isEmpty();
   }
 
   @Test

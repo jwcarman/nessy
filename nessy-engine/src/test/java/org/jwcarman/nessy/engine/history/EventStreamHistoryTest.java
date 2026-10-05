@@ -219,7 +219,13 @@ class EventStreamHistoryTest {
               Usage.unreported()),
           new AgentEvent.ToolSucceeded(new Seq(3), new TurnId(1), refund, result, "refunded", KEY),
           new AgentEvent.ToolFailed(
-              new Seq(4), new TurnId(1), audit, CallFailure.FAILED, "no such buyer", KEY));
+              new Seq(4),
+              new TurnId(1),
+              audit,
+              CallFailure.FAILED,
+              "no such buyer",
+              Optional.empty(),
+              KEY));
 
       List<Turn> found = history().turnsBetween(new TurnId(1), new TurnId(1));
 
@@ -256,7 +262,13 @@ class EventStreamHistoryTest {
               List.of(new ActionRequest.ToolCall(id, tool, "refund the second", KEY)),
               Usage.unreported()),
           new AgentEvent.ToolFailed(
-              new Seq(5), new TurnId(1), id, CallFailure.FAILED, "no such buyer", KEY),
+              new Seq(5),
+              new TurnId(1),
+              id,
+              CallFailure.FAILED,
+              "no such buyer",
+              Optional.empty(),
+              KEY),
           new AgentEvent.InferenceAnswered(
               new Seq(6), new TurnId(1), answer, false, Usage.unreported()),
           new AgentEvent.TurnStarted(
@@ -348,6 +360,55 @@ class EventStreamHistoryTest {
       assertThat(exchange.resultOf(id)).contains("refunded");
       assertThat(with.getFirst().input()).isEqualTo(without.getFirst().input());
       assertThat(with.getFirst().exchanges()).isEqualTo(without.getFirst().exchanges());
+    }
+  }
+
+  @Nested
+  class A_turn_with_a_failure_that_names_its_question {
+
+    private final CallId id = new CallId("call-1");
+    private final ToolName tool = new ToolName("refund");
+
+    @Test
+    void reads_even_though_the_question_is_a_document_and_not_message_content() {
+      PayloadRef input = payloads.put(List.of(new Block.Text("q1")));
+      PayloadRef request = payloads.put(List.of(new Block.ToolCall(id, tool, "{}")));
+      PayloadRef answer = payloads.put(List.of(new Block.Text("a1")));
+      PayloadRef question =
+          payloads.putDocument(JsonMapper.builder().build().createObjectNode().put("ask", "ok?"));
+      AgentId agent = new AgentId(UUID.randomUUID());
+      events.append(
+          TYPE,
+          agent,
+          List.of(
+              new AgentEvent.TurnStarted(
+                  new Seq(1), new TurnId(1), input, "Question", Instant.EPOCH, Instant.EPOCH),
+              new AgentEvent.ActionsRequested(
+                  new Seq(2),
+                  new TurnId(1),
+                  request,
+                  List.of(new ActionRequest.ToolCall(id, tool, "refund forty dollars", KEY)),
+                  Usage.unreported()),
+              new AgentEvent.ToolFailed(
+                  new Seq(3),
+                  new TurnId(1),
+                  id,
+                  CallFailure.NOT_AUTHORISED,
+                  "the call could not be authorised: down",
+                  Optional.of(question),
+                  KEY),
+              new AgentEvent.InferenceAnswered(
+                  new Seq(4), new TurnId(1), answer, false, Usage.unreported())),
+          Seq.NONE,
+          Instant.EPOCH);
+
+      List<Turn> found =
+          new EventStreamHistory(events, new Transcript(payloads), TYPE, agent)
+              .turnsBetween(new TurnId(1), new TurnId(1));
+
+      assertThat(found).hasSize(1);
+      assertThat(found.getFirst().complete()).isTrue();
+      assertThat(found.getFirst().exchanges().getFirst().resultOf(id)).isEmpty();
     }
   }
 }

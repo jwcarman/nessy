@@ -162,13 +162,22 @@ public sealed interface EffectOutcome {
    * has its middle dropped and {@code ...} in the gap, whitespace untouched, and the shortened text
    * is what is stored and what the model reads back for the call. Every failure is made here, so
    * every failure is bounded wherever it was built.
+   *
+   * <p>{@code question} is the document the approver was asked, when the approver itself failed and
+   * the document could be kept; empty for every other failure.
    */
-  record ToolFailed(CallId callId, CallFailure kind, String message) implements EffectOutcome {
+  record ToolFailed(CallId callId, CallFailure kind, String message, Optional<PayloadRef> question)
+      implements EffectOutcome {
     public ToolFailed {
       Objects.requireNonNull(callId, "callId must not be null");
       Objects.requireNonNull(kind, "kind must not be null");
       Objects.requireNonNull(message, "message must not be null");
       message = Truncator.dropMiddle().truncate(message, ToolConfig.LINE_CAP);
+      question = question == null ? Optional.empty() : question;
+    }
+
+    public ToolFailed(CallId callId, CallFailure kind, String message) {
+      this(callId, kind, message, Optional.empty());
     }
   }
 
