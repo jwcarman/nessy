@@ -30,7 +30,7 @@
 
 ## Order of execution
 
-Tasks 1 to 3 (replies) and Tasks 4 to 6 (the reads) do not depend on each other and run at the same time in two worktrees, each told the exact commit to branch from. Task 7 needs both. Tasks 8 and 9 need Task 7. The second line to land merges the first by hand and gates the merged tree.
+Tasks 1 to 3 (replies) and Tasks 4 to 6 (the reads) do not depend on each other and run at the same time in two worktrees, each told the exact commit to branch from. Task 7 needs both. Task 8 needs Task 7. Task 9 is not built. The second line to land merges the first by hand and gates the merged tree.
 
 ## Review Focus
 
@@ -166,14 +166,9 @@ The watchman keeps no approvals table and no "is it still waiting" check of its 
 - [ ] **Step 1: Tests, red:** the page lists a waiting approval with no table behind it; approving it runs the call; a second answer is told the approval was no longer waiting. The table `watchman_pending_approval` is gone from the schema.
 - [ ] **Step 2:** Implement. Do not start the application or Docker compose; tests only. Gate. Commit: `refactor: the watchman reads what is waiting from Nessy`.
 
-### Task 9: chat-web reads the books
+### Task 9: chat-web reads the books — NOT BUILT
 
-**Files:** `nessy-examples/chat-web` (`ApprovalDesk`, its controller, `static/app.js`, tests, README).
-
-The same change: the in-memory `ApprovalDesk` that holds approval requests goes; the page lists waiting approvals from `AgentWork`, and answers by agent and key.
-
-- [ ] **Step 1: Tests, red,** as in Task 8, for chat-web's page and its SSE flow.
-- [ ] **Step 2:** Implement. Tests only. Gate. Commit: `refactor: chat-web reads what is waiting from Nessy`.
+Dropped from this plan by James on 2026-10-05. chat-web is on the direct door: its approver holds the turn until a person answers, so it never defers and has no waiting approvals to list. Converting chat-web to the queued door (tell and return, the answer over its event stream, an approver that defers, the page reading `AgentWork` and answering through `Replies`) is follow-on work with its own plan.
 
 ---
 
@@ -188,4 +183,4 @@ The final whole-branch review (Opus) is given the spec, this plan and the branch
 - confirm no reply token, token key or token property remains in main code, configuration or the docs site;
 - confirm nothing is remembered in process between calls;
 - confirm a rebuilt `ApprovalRequest` can differ from the one the approver was shown only in `askedAt`;
-- confirm the examples have no approvals store of their own.
+- confirm the watchman has no approvals store of its own.

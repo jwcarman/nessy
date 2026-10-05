@@ -269,10 +269,10 @@ Two places could disturb what exists, and both get the high-risk review on Opus:
 | Application | Today | After |
 |---|---|---|
 | watchman | `watchman_pending_approval`, a stored reply token, its own "is it still waiting" checks, an encryption key in its configuration | lists `work.waitingApprovals()`, shows each request, answers with the agent and the key. The table and the key go |
-| chat-web | `ApprovalDesk` holding approval requests in memory, an encryption key | the same |
+| chat-web | on the direct door: its approver holds the turn on an in-memory desk until a person answers | unchanged by this work. It cannot defer on the direct door, so it has no waiting approvals to list. Moving it to the queued door, where it defers and reads `AgentWork`, is follow-on work |
 | nessy-ap | `pending_decision` with a `reply_token` column, `TurnHistories` to ask whether an agent is busy | keeps `pending_decision` for its own workflow (role, buyer, ERP result), keyed by `IdempotencyKey`; drops the token column and the key property; treats `Ignored` as it treated `NotAwaiting`; asks `status` |
 
-The examples are changed as part of this work. They are the proof that an application needs no
+The watchman is changed as part of this work. It is the proof that an application needs no
 desk of its own.
 
 ## 9. Rulings
