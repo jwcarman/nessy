@@ -324,7 +324,7 @@ Without `inputLabel`, the label is `EmptyInput`.
 
 ## Writing an approver
 
-An approver answers a question about one call. It can answer now:
+An approver answers the approval request for one call. It can answer now:
 
 ```java
 Approver always = request -> Awaited.ready(ApprovalResult.approved());

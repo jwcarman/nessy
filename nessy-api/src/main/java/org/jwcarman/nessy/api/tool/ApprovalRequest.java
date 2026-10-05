@@ -26,22 +26,26 @@ import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The question an approver answers: this agent wants to make this call, and here is what it means.
+ * The approval request an approver answers: this agent wants to make this call, and here is what it
+ * means.
  *
- * <p><b>A document, by contract.</b> An approver may defer, which parks the question until a person
- * answers it -- possibly days later, in another process, on a page that never saw the agent. So
- * everything here must survive being written down and read back, and what was written down is the
- * record of what was decided on.
+ * <p><b>Built to be kept elsewhere.</b> An approver may defer, which leaves the request open until
+ * a person answers it -- possibly days later, in another process, on a page that never saw the
+ * agent. The application may keep the request itself for that (an approvals page, a ticket), so
+ * everything here must survive being written down and read back. Nessy does not keep the request:
+ * it records the request's {@link #facts() facts} on the event that records the decision, the
+ * deferral or the failure, and nothing else of the request, because the rest is already in the
+ * story.
  *
  * <p><b>{@link #action()} is fixed here, at ask time, and never re-derived.</b> A person must be
  * answering the same sentence that was shown to them, not one recomputed later from arguments whose
  * meaning may have moved, by a stringifier somebody has since edited.
  *
- * <p><b>A carrier, not a value.</b> The engine builds the question; {@link ApprovalEnricher}s add
- * to it. {@link #fact(String, JsonNode)} writes onto this request in place, and whatever has been
- * written by the time an approver returns is what a person eventually reads. That is the point: an
- * enricher that resolves a principal or scores a risk has somewhere to put what it found, so the
- * question that gets parked is complete rather than one sentence.
+ * <p><b>A carrier, not a value.</b> The engine builds the approval request; {@link
+ * ApprovalEnricher}s add to it. {@link #fact(String, JsonNode)} writes onto this request in place,
+ * and whatever has been written by the time an approver returns is what a person eventually reads.
+ * That is the point: an enricher that resolves a principal or scores a risk has somewhere to put
+ * what it found, so the request that reaches a person is complete rather than one sentence.
  *
  * <p>Because it is a carrier, do not treat it as a value: it is mutable, so it is not safe as a map
  * key, not safe to share across threads without care, and not guaranteed to stay as you found it.
@@ -50,7 +54,7 @@ import tools.jackson.databind.node.ObjectNode;
  * ApprovalResult.Denied} is an answer -- the approver was reached and said no -- so nothing about
  * it is worth attempting again. Asking twice until somebody relents is not a retry, it is
  * pestering, and an engine that did it would eventually get the answer it wanted. The only thing
- * here that can fail and deserve another attempt is <em>delivering the question</em>.
+ * here that can fail and deserve another attempt is <em>delivering the approval request</em>.
  *
  * @param agentType what kind of agent is asking -- a shared approvals page shows calls from several
  *     kinds side by side, and an id alone does not say which is which
@@ -65,9 +69,9 @@ import tools.jackson.databind.node.ObjectNode;
  *     trusted
  * @param action what will actually happen if this is approved, in words a person can consent to;
  *     the binding's action stringifier ({@link ToolConfig#action}) produced it
- * @param askedAt when the question was raised -- dwell time on an approvals page, and the fixed
- *     point the deadline was measured from, so a restart cannot silently extend one
- * @param deadline when the question stops standing
+ * @param askedAt when the approval request was raised -- dwell time on an approvals page, and the
+ *     fixed point the deadline was measured from, so a restart cannot silently extend one
+ * @param deadline when the approval request stops standing
  * @param facts whatever enrichers have added; empty when the engine first builds it
  */
 public record ApprovalRequest(
@@ -84,7 +88,7 @@ public record ApprovalRequest(
     ReplyToken replyToken,
     ObjectNode facts) {
 
-  /** The question as the engine first asks it: nothing has annotated it yet. */
+  /** The approval request as the engine first asks it: nothing has annotated it yet. */
   public ApprovalRequest(
       AgentType agentType,
       AgentId agentId,
@@ -132,9 +136,9 @@ public record ApprovalRequest(
    *
    * <p><b>Namespace the name</b> when the enricher is not the application's own code -- {@code
    * "risk.score"}, {@code "quota.remaining"}, {@code "policy.term"} -- so two modules annotating
-   * the same question cannot collide. Names rather than typed keys on purpose: a typed bag would
-   * make this package own a vocabulary of facts, which is exactly the thing it is trying not to
-   * own. The two sides agree by convention, and a module publishes its convention as a constant.
+   * the same approval request cannot collide. Names rather than typed keys on purpose: a typed bag
+   * would make this package own a vocabulary of facts, which is exactly the thing it is trying not
+   * to own. The two sides agree by convention, and a module publishes its convention as a constant.
    *
    * <p>A tree rather than text, unlike every other JSON on this API. The rule is what anybody does
    * with it: a schema and a call's arguments are only ever <em>moved</em> -- generated once, handed
@@ -163,9 +167,9 @@ public record ApprovalRequest(
   /**
    * Where a person's answer goes, if this approver defers.
    *
-   * <p>Kept apart from the rest in how it is read and logged, because it is not part of the
-   * question: the question is what an approvals page stores and renders, and this is the authority
-   * to settle the call. A credential has no business in a projection.
+   * <p>Kept apart from the rest in how it is read and logged, because it is not one of the
+   * request's facts: the facts are what is recorded and what an approvals page may render, and this
+   * is the authority to settle the call. A credential has no business in a projection.
    */
   @Override
   public ReplyToken replyToken() {

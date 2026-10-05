@@ -28,7 +28,7 @@ for it, the approver puts a card on the approvals stream
 page sends as `POST /api/agents/{id}/approvals/{callId}` with
 `{"decision": "approve"}` or anything else for a denial. The waiting turn
 holds the POST that started it. It waits at most five minutes; no answer in
-that time is a denial. A second click on a question already answered gets
+that time is a denial. A second click on an approval request already answered gets
 `409`.
 
 The cards live in this process's memory. A restart loses them, and a turn

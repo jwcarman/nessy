@@ -199,7 +199,7 @@ class RiskTest {
 
     @Test
     @DisplayName("it sees the request, so a policy can turn on the tool and what it was asked")
-    void it_is_given_the_whole_question() {
+    void it_is_given_the_whole_approval_request() {
       Risk.assessing(
               request -> {
                 assertThat(request.toolName()).isEqualTo(new ToolName("prune_images"));

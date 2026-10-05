@@ -101,8 +101,9 @@ class ApprovalsPageTest {
   }
 
   @Test
-  @DisplayName("a waiting question draws with the agent, the action, and how long it has waited")
-  void the_page_draws_a_waiting_question() throws Exception {
+  @DisplayName(
+      "a waiting approval request draws with the agent, the action, and how long it has waited")
+  void the_page_draws_a_waiting_approval_request() throws Exception {
     mvc.perform(get("/"))
         .andExpect(status().isOk())
         .andExpect(content().string(containsString("docker image prune -af")))
@@ -198,7 +199,8 @@ class ApprovalsPageTest {
 
     // The board's other writer is the desk, which records a decision when the engine narrates it.
     // The redirect lands inside that window, so the person who just clicked is the one guaranteed
-    // to see the question they have already answered still sitting on the board -- unless the
+    // to see the approval request they have already answered still sitting on the board -- unless
+    // the
     // controller writes too.
     // The database is shared by every test in the class, so the board is read for THIS house.
     private List<PendingApproval> waitingOnHouse() {
@@ -207,7 +209,7 @@ class ApprovalsPageTest {
 
     @Test
     @DisplayName("the row is gone from the board once the decision has been recorded")
-    void answering_takes_the_question_off_the_board() {
+    void answering_takes_the_approval_request_off_the_board() {
       assertThat(waitingOnHouse()).hasSize(1);
       controller.recordLocally(first, ApprovalResult.denied("that seems dangerous"));
       assertThat(waitingOnHouse()).isEmpty();
@@ -241,11 +243,11 @@ class ApprovalsPageTest {
   }
 
   @Nested
-  @DisplayName("telling two agents' questions apart")
+  @DisplayName("telling two agents' approval requests apart")
   class Identity {
 
     @Test
-    @DisplayName("two agents waiting on the same call id are two questions, not one")
+    @DisplayName("two agents waiting on the same call id are two approval requests, not one")
     void a_call_id_is_only_unique_within_one_response() {
       AgentId other = new AgentId(UUID.randomUUID());
       approvals.asked(
@@ -263,19 +265,19 @@ class ApprovalsPageTest {
               Optional.empty(),
               Optional.empty()));
       assertThat(approvals.pending())
-          .as("one row would mean one house's question silently replaced the other's")
+          .as("one row would mean one house's approval request silently replaced the other's")
           .extracting(PendingApproval::agentId)
           .contains(house, other);
     }
 
     /**
      * A model's call id repeats: a later request in the same agent can be "call-1" again. Keyed on
-     * the call id, the answered row was found and the new question was never shown, so it timed out
-     * unanswered.
+     * the call id, the answered row was found and the new approval request was never shown, so it
+     * timed out unanswered.
      */
     @Test
     @DisplayName("a second call-1 from the same agent is shown after the first was answered")
-    void a_repeated_call_id_is_a_new_question() {
+    void a_repeated_call_id_is_a_new_approval_request() {
       controller.recordLocally(first, ApprovalResult.approved());
       IdempotencyKey second = IdempotencyKey.of(UUID.randomUUID());
 

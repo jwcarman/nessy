@@ -31,11 +31,11 @@ import org.jwcarman.nessy.api.tool.Approver;
 /**
  * The two writers of the board.
  *
- * <p>As the {@link Approver}, it writes a question down the moment the engine asks -- the request
- * carries everything the row needs, the reply token included, so there is no second half to wait
- * for. As the {@link NarrationListener}, it hears the engine settle a call and marks the row
- * answered, which is how a decision made from another tab, or by the engine itself when the term
- * runs out, reaches the board.
+ * <p>As the {@link Approver}, it writes a row for the approval request the moment the engine asks
+ * -- the request carries everything the row needs, the reply token included, so there is no second
+ * half to wait for. As the {@link NarrationListener}, it hears the engine settle a call and marks
+ * the row answered, which is how a decision made from another tab, or by the engine itself when the
+ * term runs out, reaches the board.
  */
 public class ApprovalsDesk implements Approver, NarrationListener {
 

@@ -139,7 +139,7 @@ public class ChatController {
     return streams.resume(ChatConfiguration.TYPE, agent(id), lastEventId);
   }
 
-  /** The desk's questions for this agent, as a stream of their own. */
+  /** The desk's approval requests for this agent, as a stream of their own. */
   @GetMapping("/{id}/approvals/events")
   public SseEmitter approvalEvents(
       @PathVariable("id") String id,
@@ -152,11 +152,11 @@ public class ChatController {
       @PathVariable("id") String id,
       @PathVariable("callId") String callId,
       @RequestBody Decision body) {
-    ApprovalDesk.Waiting question =
+    ApprovalDesk.Waiting waiting =
         desk.card(new CallId(callId)).isPresent()
             ? desk.take(new CallId(callId)).orElse(null)
             : null;
-    if (question == null) {
+    if (waiting == null) {
       // Already answered, by another tab or another person. Not an error: the page should redraw
       // and see what was decided, rather than be shown a stack trace for losing a race.
       return ResponseEntity.status(HttpStatus.CONFLICT).build();

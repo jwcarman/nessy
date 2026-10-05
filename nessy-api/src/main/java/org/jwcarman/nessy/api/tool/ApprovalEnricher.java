@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.api.tool;
 
 /**
- * Adds to the question before anybody answers it.
+ * Adds to the approval request before anybody answers it.
  *
  * <p>Who the principal is, what the caller's quota looks like, what this tool did the last three
  * times, what a risk model makes of it. Facts a decision might weigh, and might not.
@@ -25,10 +25,10 @@ package org.jwcarman.nessy.api.tool;
  * {@link ApprovalRequest#fact(String, String)} would let any {@link Approver} do both. <b>An
  * enricher never decides.</b> It only makes something available -- so several can run in any order
  * before anything weighs them, a new one can be added without touching the approver, and the same
- * approver can be reused against agents whose questions are enriched differently.
+ * approver can be reused against agents whose approval requests are enriched differently.
  *
- * <p>It also serves a reader who is not the approver. When a question is deferred, what was
- * gathered here is what a person eventually sees on a page, hours later -- so an enricher is
+ * <p>It also serves a reader who is not the approver. When an approval request is deferred, what
+ * was gathered here is what a person eventually sees on a page, hours later -- so an enricher is
  * writing evidence for a human as much as input for a rule.
  *
  * <p>Runs on the dispatcher's thread, off the agent's row lock, once per call, so it may do I/O. It
@@ -45,7 +45,7 @@ package org.jwcarman.nessy.api.tool;
 public interface ApprovalEnricher {
 
   /**
-   * @param request the question so far, to be annotated in place
+   * @param request the approval request so far, to be annotated in place
    */
   void enrich(ApprovalRequest request);
 }

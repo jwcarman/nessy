@@ -184,7 +184,7 @@ public final class ToolBinding<I> {
   }
 
   /**
-   * Builds the question this call raises.
+   * Builds the approval request this call raises.
    *
    * <p>The action is the sentence stored when the model asked, shown as it is and never worked out
    * again. The arguments are still read into the tool's input type here, before anyone is asked: a
@@ -195,7 +195,7 @@ public final class ToolBinding<I> {
    * first and discharges it, because there is no sentence to put to an approver and a yes would run
    * a call nobody could see.
    */
-  public ApprovalRequest question(
+  public ApprovalRequest approvalRequest(
       AgentType agentType,
       AgentId agentId,
       TurnId turn,
@@ -207,7 +207,7 @@ public final class ToolBinding<I> {
       Instant deadline,
       ReplyToken replyToken) {
     mapper.readValue(arguments, tool.inputType());
-    ApprovalRequest question =
+    ApprovalRequest request =
         new ApprovalRequest(
             agentType,
             agentId,
@@ -220,14 +220,14 @@ public final class ToolBinding<I> {
             askedAt,
             deadline,
             replyToken);
-    // After the question is built, so an enricher can read the sentence a person will be
+    // After the approval request is built, so an enricher can read the sentence a person will be
     // shown; before the approver, which is the whole ordering there is. Anything thrown here
     // reaches the handler and discharges the call as one that could not be authorised --
     // which is right, because a gatherer that broke is not a gatherer that found nothing.
     for (ApprovalEnricher enricher : enrichers) {
-      enricher.enrich(question);
+      enricher.enrich(request);
     }
-    return question;
+    return request;
   }
 
   /**
@@ -305,8 +305,8 @@ public final class ToolBinding<I> {
    * approver that says yes, not a null to check for. A gate that is sometimes not there is a gate
    * somebody eventually forgets to look for.
    */
-  public Awaited<ApprovalResult> approve(ApprovalRequest question) {
-    return approver.approve(question);
+  public Awaited<ApprovalResult> approve(ApprovalRequest request) {
+    return approver.approve(request);
   }
 
   public Duration approvalTimeout() {
@@ -317,9 +317,9 @@ public final class ToolBinding<I> {
    * How hard failing to <em>ask</em> is worth repeating -- and never the verdict.
    *
    * <p>Safe to widen where a tool's own policy is not. Asking twice changes nothing in the world:
-   * the question is the same question, and an approver that already answered answers the same way.
-   * That is the practical difference between this and {@link #retryPolicy()}, and the reason the
-   * two are configured apart.
+   * the approval request is the same request, and an approver that already answered answers the
+   * same way. That is the practical difference between this and {@link #retryPolicy()}, and the
+   * reason the two are configured apart.
    */
   public RetryPolicy approvalRetryPolicy() {
     return approvalRetryPolicy;

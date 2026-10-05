@@ -81,8 +81,8 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
 
   /**
    * Generous, because the deferred path is the ordinary one for an approval: a human takes as long
-   * as a human takes, and a question that expires while somebody is reading it is worse than one
-   * that stands a little too long.
+   * as a human takes, and an approval request that expires while somebody is reading it is worse
+   * than one that stands a little too long.
    */
   private static final Duration DEFAULT_APPROVAL_TIMEOUT = Duration.ofMinutes(10);
 
@@ -388,10 +388,10 @@ public final class DefaultQueuedHarnessConfig<I> implements QueuedHarnessConfig<
   /**
    * One approver's terms, which are genuinely its own.
    *
-   * <p>Asking is its own effect with its own row, so this retry policy governs the question not
-   * arriving and nothing else. It can be widened where a tool's cannot: re-asking changes nothing
-   * in the world, while re-running a tool whose outcome was never observed may repeat something
-   * that already happened.
+   * <p>Asking is its own effect with its own row, so this retry policy governs the approval request
+   * not arriving and nothing else. It can be widened where a tool's cannot: re-asking changes
+   * nothing in the world, while re-running a tool whose outcome was never observed may repeat
+   * something that already happened.
    */
   private static final class ApprovalTerms implements ApproverConfig {
 

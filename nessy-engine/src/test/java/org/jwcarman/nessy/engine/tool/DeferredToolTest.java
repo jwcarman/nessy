@@ -69,7 +69,8 @@ import org.jwcarman.nessy.inference.InferenceResult;
  * is which parked row an answer may settle.
  *
  * <p>Permission is granted here on the spot, so what parks is the call itself rather than the
- * question about it. That order matters: a tool cannot defer until it has been allowed to run.
+ * approval request about it. That order matters: a tool cannot defer until it has been allowed to
+ * run.
  */
 class DeferredToolTest {
 

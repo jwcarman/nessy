@@ -55,8 +55,8 @@ public final class PolicyApprover implements Approver {
 
   /**
    * Namespaced, and on the request rather than in a field or a thread-local, because the depth has
-   * to travel with the question: a delegate may itself be a {@code PolicyApprover}, and the count
-   * only means anything if the next one can see it.
+   * to travel with the approval request: a delegate may itself be a {@code PolicyApprover}, and the
+   * count only means anything if the next one can see it.
    */
   static final String DEPTH = "policy.depth";
 

@@ -47,8 +47,8 @@ public interface ToolCalls {
    * A call, and where in the story it sits.
    *
    * <p>The turn comes back with it because an address names a position and the turn is part of what
-   * that position means: it is what tells one turn's {@code "call_1"} from the next one's, and a
-   * question parked for a person has to survive a restart still knowing which.
+   * that position means: it is what tells one turn's {@code "call_1"} from the next one's, and an
+   * approval request left for a person has to survive a restart still knowing which.
    *
    * <p>The action is what the call would do, in words, as it was recorded when the model asked. An
    * approver is shown that sentence and not one made again.

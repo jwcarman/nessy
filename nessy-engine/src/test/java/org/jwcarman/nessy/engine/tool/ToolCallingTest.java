@@ -515,11 +515,11 @@ class ToolCallingTest {
    * <p>The whole of parking, and there is deliberately no mechanism behind it. {@code
    * actionable_at} was pinned to the deadline when the row was claimed, so the effect comes due
    * exactly once more -- at the moment the agent stops being willing to wait -- and the failure
-   * stored beside it discharges the call then. An unanswered question becomes a denial the model
-   * reads, which is the only safe reading of silence.
+   * stored beside it discharges the call then. An unanswered approval request becomes a denial the
+   * model reads, which is the only safe reading of silence.
    *
    * <p>What this pins is that the row is neither retired nor retried. Retiring would strand the
-   * agent; retrying would ask a person the same question twice.
+   * agent; retrying would ask a person the same approval request twice.
    */
   @Test
   void aDeferredApprovalParksTheCallAndExpiresIntoAFailure() {
@@ -559,7 +559,7 @@ class ToolCallingTest {
 
     harness.tell(agentId, "what lake?");
 
-    // Parked: the question was asked once, the row is still there, and the agent is waiting.
+    // Parked: the approval request was made once, the row is still there, and the agent is waiting.
     await()
         .atMost(Duration.ofSeconds(10))
         .untilAsserted(
@@ -612,7 +612,7 @@ class ToolCallingTest {
    * <p>The permit is released when the attempt returns, not when the row retires, and a deferral
    * returns immediately. And a parked row is {@code RUNNING} with {@code actionable_at} pinned to
    * its deadline, so the claim query -- which takes only rows already due -- cannot see it at all.
-   * Neither threads nor claim slots are held by a question somebody is thinking about.
+   * Neither threads nor claim slots are held by an approval request somebody is thinking about.
    */
   @Test
   void aParkedCallHoldsNeitherAPermitNorAClaimSlot() {
@@ -661,7 +661,8 @@ class ToolCallingTest {
     harness.tell(waiting, "park this one");
     await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(handed).hasSize(1));
 
-    // The parked question stands for half an hour. If it held the only permit, or if its row
+    // The parked approval request stands for half an hour. If it held the only permit, or if its
+    // row
     // were still claimable, nothing below would ever finish.
     harness.tell(working, "and answer this one");
 

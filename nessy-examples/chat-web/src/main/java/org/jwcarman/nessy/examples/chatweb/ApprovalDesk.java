@@ -35,12 +35,12 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The questions waiting for a person, in memory.
+ * The approval requests waiting for a person, in memory.
  *
- * <p>In memory because this is an example: a restart loses the cards, though not the questions --
- * the engine still holds each call open until its deadline, and a real desk would keep the token
+ * <p>In memory because this is an example: a restart loses the cards, though not the calls -- the
+ * engine still holds each call open until its deadline, and a real desk would keep the token
  * somewhere durable. The reply token is held here and never rendered; it is the credential that
- * answers the question, not a fact about it.
+ * answers the approval request, not a fact about it.
  */
 @Component
 public class ApprovalDesk {
@@ -70,10 +70,10 @@ public class ApprovalDesk {
   private final ConcurrentMap<CallId, Waiting> waiting = new ConcurrentHashMap<>();
 
   /**
-   * What a blocked turn is waiting on, per question.
+   * What a blocked turn is waiting on, per approval request.
    *
    * <p>The difference between a desk that parks a turn and one that holds it. On the queued door
-   * the engine writes the question down and comes back for the answer whenever it arrives; here the
+   * the engine leaves the call open and comes back for the answer whenever it arrives; here the
    * turn is on somebody's request thread and the answer has to reach it there.
    */
   private final ConcurrentMap<CallId, CompletableFuture<ApprovalResult>> answers =
@@ -92,12 +92,14 @@ public class ApprovalDesk {
             request.replyToken()));
   }
 
-  /** A question as the page draws it. The token is not on it; a card is not a credential. */
+  /**
+   * An approval request as the page draws it. The token is not on it; a card is not a credential.
+   */
   public record Card(String id, String tool, String args, String what, Instant askedAt) {}
 
   public List<Card> pending(AgentId agentId) {
     return waiting.values().stream()
-        .filter(question -> question.agentId().equals(agentId))
+        .filter(waiting -> waiting.agentId().equals(agentId))
         .sorted(java.util.Comparator.comparing(Waiting::askedAt))
         .map(ApprovalDesk::render)
         .toList();
@@ -112,12 +114,12 @@ public class ApprovalDesk {
   }
 
   /**
-   * Waits for a person to answer this question.
+   * Waits for a person to answer this approval request.
    *
    * <p>Blocks the turn, which is what the direct door means: the caller is holding the answer, so
    * the approval is part of what it is holding. Bounded, because a request thread waiting forever
-   * on somebody who closed the tab is a thread nobody gets back -- and a question nobody answered
-   * is a no, which is the safe direction for a gate to fail in.
+   * on somebody who closed the tab is a thread nobody gets back -- and an approval request nobody
+   * answered is a no, which is the safe direction for a gate to fail in.
    */
   public ApprovalResult await(CallId callId, Duration patience) {
     CompletableFuture<ApprovalResult> answer =
@@ -144,12 +146,12 @@ public class ApprovalDesk {
     return answer.complete(result);
   }
 
-  private static Card render(Waiting question) {
+  private static Card render(Waiting waiting) {
     return new Card(
-        question.callId().value(),
-        question.tool(),
-        question.arguments(),
-        question.description(),
-        question.askedAt());
+        waiting.callId().value(),
+        waiting.tool(),
+        waiting.arguments(),
+        waiting.description(),
+        waiting.askedAt());
   }
 }

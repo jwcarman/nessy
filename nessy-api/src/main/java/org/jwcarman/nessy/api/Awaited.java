@@ -42,9 +42,9 @@ public sealed interface Awaited<T> {
   /**
    * Not yet, and not from here.
    *
-   * <p>Carries nothing -- not even how long it expects to take. The question's deadline was fixed
-   * when it was asked, from the binding's own configuration, so a deferral cannot extend it and
-   * there is nothing to negotiate.
+   * <p>Carries nothing -- not even how long it expects to take. The deadline was fixed when it was
+   * asked, from the binding's own configuration, so a deferral cannot extend it and there is
+   * nothing to negotiate.
    */
   record Deferred<T>() implements Awaited<T> {}
 

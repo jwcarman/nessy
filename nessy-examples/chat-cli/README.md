@@ -35,7 +35,7 @@ that is about THIS program: what it is for, and what it can do.
       allow? [y/N]
   ```
 
-  It answers on the spot rather than parking the question, because the person
+  It answers on the spot rather than deferring, because the person
   is at the keyboard with the agent's output still on screen. Anything but
   `y`/`yes` is a no, and end of input is a no — silence is not consent.
 - **Streaming.** The answer is typed out as the model writes it.

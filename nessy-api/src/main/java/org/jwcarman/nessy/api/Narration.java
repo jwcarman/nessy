@@ -259,8 +259,8 @@ public sealed interface Narration {
   record Terminated() implements Story {}
 
   /**
-   * A call waiting on an approval was put aside: nobody has answered yet, and the question stands
-   * until {@code until}.
+   * A call waiting on an approval was put aside: nobody has answered yet, and the approval request
+   * stands until {@code until}.
    *
    * <p>Stored, so it is heard once the fold that wrote it has committed and told the same way on
    * every replay. Names the call and its key and not the action: a watcher that wants the action
@@ -268,7 +268,7 @@ public sealed interface Narration {
    *
    * @param callId the id the call was requested with
    * @param idempotencyKey the call's own key, the same on its request and on everything after it
-   * @param until when the question stops standing
+   * @param until when the approval request stops standing
    */
   record ApprovalDeferred(CallId callId, IdempotencyKey idempotencyKey, Instant until)
       implements Story {}

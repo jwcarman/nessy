@@ -25,11 +25,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * The desk's questions, one stream per agent, beside the agent's own.
+ * The desk's approval requests, one stream per agent, beside the agent's own.
  *
  * <p>A card is the desk's to say, not the engine's, so it does not go on the engine's stream of
  * {@code AgentEvent}s; it goes on this one, typed as what it is. Journaled like the other, so a
- * page that opens after the question was asked still finds it -- and so does one that reconnects.
+ * page that opens after the approval request was made still finds it -- and so does one that
+ * reconnects.
  */
 @Component
 public class ApprovalStreams {
