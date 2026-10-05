@@ -272,10 +272,10 @@ and beside the payload a second blob, `failure_payload`, saying what to
 tell the agent if the work can never be dispatched at all. See
 [Durable Computation](durable-computation.md).
 
-What an agent is waiting on is read from these rows and from its story. A row
-that is parked now, and the approval request in the story that matches it, are
-all `AgentWork` needs, so nothing extra is stored for it. The table holds live
-work only: a finished call's row is deleted, so a read never lists finished
+What an agent is waiting on is read from these rows, from the agent's story
+and from its payloads. Nothing extra is stored for it. A row that is parked
+now says a call is waiting. The story holds the approval request. The payloads
+hold the call's arguments. The table holds live work only: a finished call's row is deleted, so a read never lists finished
 work. See [The Harness](../guides/harness.md#what-is-waiting-and-answering-it).
 
 ## Chapters

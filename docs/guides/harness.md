@@ -447,7 +447,8 @@ request carried. The `facts` are the ones the approver left when it deferred.
 `askedAt` is when the approver deferred, and `deadline` is when the call
 stops waiting.
 
-The list is oldest first. It holds at most 500. When more are waiting, the
+The list is oldest first by when the call's work was written, which is the
+creation of its effect row. That can be earlier than `askedAt`. It holds at most 500. When more are waiting, the
 oldest 500 are returned, and the rest appear as those are answered. There is
 no paging.
 
@@ -481,7 +482,8 @@ String told = switch (outcome) {
   had passed, the answer was the wrong kind for the call, or no waiting call
   matches the three values. A caller does the same thing in each case.
 
-Nessy does not check who is answering. See
+Nessy does not check who is answering. Your endpoint must check who is
+calling it. See
 [Authorization](../concepts/authorization.md#answering-a-waiting-call) for
 who may answer, and for the transaction an answer joins.
 

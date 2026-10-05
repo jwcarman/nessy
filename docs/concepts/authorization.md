@@ -367,11 +367,18 @@ wires them.
 
 ## A desk on a page
 
-`nessy-examples/chat-web` is the worked desk: an approver that remembers the
-request and defers, a card pushed to the browser over the approvals event
-stream, and a `POST` that answers through `Replies` with `approvedBy` or
-`deniedBy` and the note the person typed. A second tab that answers first
-gets a `409`, because losing a race to another person is not an error.
+`nessy-examples/chat-web` is on the direct door. Its approver holds the turn
+while a card is pushed to the browser over the approvals event stream. It
+returns `Awaited.ready(...)` once a person answers, or a denial if nobody
+answers within five minutes.
+
+A `POST` answers through the desk, with `ApprovalResult.approved()` or
+`ApprovalResult.denied(note)`. A second tab that answers after the first gets
+a `409`, because losing a race to another person is not an error.
+
+`nessy-examples/watchman` is the other shape: an approver that returns
+`Awaited.deferred()`, and a page that lists `AgentWork.waitingApprovals()`
+and answers through `Replies`.
 
 ## See also
 
