@@ -17,6 +17,10 @@ package org.jwcarman.nessy.engine.effect;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
@@ -33,6 +37,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.JsonSchema;
+import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Stringifier;
@@ -58,6 +63,7 @@ import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceResult;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -73,6 +79,8 @@ class InferenceHandlerTest {
   private final Deque<InferenceResult> script = new ArrayDeque<>();
 
   private final List<List<? extends Block>> stored = new ArrayList<>();
+
+  private final List<Narrated> narrated = new ArrayList<>();
 
   /** What the service says the request it sent was made of. */
   private final InferenceRequestManifest served = Manifests.numbered(7);
@@ -135,7 +143,7 @@ class InferenceHandlerTest {
             Duration.ofSeconds(1),
             new RetryPolicy.Never()),
         payloads,
-        _ -> {},
+        narrated::add,
         tools);
   }
 
@@ -333,6 +341,95 @@ class InferenceHandlerTest {
               .map(ActionRequest.ToolCall::idempotencyKey)
               .toList();
       assertThat(keys).hasSize(2).doesNotHaveDuplicates();
+    }
+  }
+
+  @Nested
+  class Refusing_a_response_that_repeats_a_call_id {
+
+    private static final String REPEATED = "call_7";
+
+    private Handled handleRepeating() {
+      script.add(
+          new InferenceResult.Actions(
+              List.of(
+                  new Block.Commentary("Looking into it."),
+                  new Block.ToolCall(
+                      CallId.of(REPEATED), ToolName.of("search"), "{\"query\":\"a\"}"),
+                  new Block.ToolCall(CallId.of("call_8"), ToolName.of("search"), "{}"),
+                  new Block.ToolCall(
+                      CallId.of(REPEATED), ToolName.of("search"), "{\"query\":\"SECRET\"}")),
+              reading(3)));
+      return handlerWithTools.handle(AGENT, new AgentEffect.Infer(TurnId.of(4)), DEADLINE);
+    }
+
+    @Test
+    void a_response_that_repeats_a_call_id_is_a_failed_inference() {
+      Handled outcome = handleRepeating();
+
+      assertThat(outcome).isInstanceOf(Handled.Settled.class);
+      EffectOutcome value = ((Handled.Settled) outcome).outcome();
+      assertThat(value)
+          .asInstanceOf(InstanceOfAssertFactories.type(EffectOutcome.InferenceFailed.class))
+          .satisfies(
+              failed -> {
+                assertThat(failed.usage()).isEqualTo(reading(3));
+                assertThat(failed.manifest()).isEqualTo(Optional.of(served));
+                assertThat(failed.failure())
+                    .isInstanceOf(Failure.Permanent.class)
+                    .extracting(Failure::reason)
+                    .asString()
+                    .contains(REPEATED)
+                    .contains("repeated a call id");
+              });
+      assertThat(stored).isEmpty();
+      assertThat(narrated).isEmpty();
+    }
+
+    @Test
+    void it_is_logged_once_at_error_naming_the_agent_the_turn_and_the_id_but_not_the_arguments() {
+      Logger handlerLog = (Logger) LoggerFactory.getLogger(InferenceHandler.class);
+      ListAppender<ILoggingEvent> appender = new ListAppender<>();
+      appender.start();
+      handlerLog.addAppender(appender);
+      try {
+        handleRepeating();
+      } finally {
+        handlerLog.detachAppender(appender);
+      }
+
+      List<ILoggingEvent> errors =
+          appender.list.stream().filter(entry -> entry.getLevel() == Level.ERROR).toList();
+      assertThat(errors).hasSize(1);
+      String message = errors.getFirst().getFormattedMessage();
+      assertThat(message)
+          .contains(TYPE.value())
+          .contains(String.valueOf(AGENT.value()))
+          .contains(REPEATED)
+          .contains("4")
+          .doesNotContain("SECRET");
+    }
+
+    @Test
+    void a_response_with_distinct_call_ids_is_requested_as_before() {
+      script.add(
+          new InferenceResult.Actions(
+              List.of(
+                  new Block.ToolCall(CallId.of("c1"), ToolName.of("search"), "{}"),
+                  new Block.ToolCall(CallId.of("c2"), ToolName.of("search"), "{}")),
+              reading(0)));
+
+      Handled outcome =
+          handlerWithTools.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)), DEADLINE);
+
+      assertThat(outcome).isInstanceOf(Handled.Settled.class);
+      assertThat(((Handled.Settled) outcome).outcome())
+          .asInstanceOf(
+              InstanceOfAssertFactories.type(EffectOutcome.InferenceRequestedActions.class))
+          .extracting(EffectOutcome.InferenceRequestedActions::actions)
+          .asInstanceOf(InstanceOfAssertFactories.LIST)
+          .hasSize(2);
+      assertThat(stored).hasSize(1);
     }
   }
 }

@@ -48,6 +48,11 @@ wasn't the thing requested, which is a failure of the asking rather than a
 refusal by the model. Handing back something that doesn't fit the caller's
 type would be far less honest than saying the shape wasn't met.
 
+A model response that repeats a call id is not a valid response either. The
+engine refuses it as a failed inference, logs an error that names the repeated
+id, and requests no call, so no approver is asked and no tool runs. The turn's
+usage is on the record.
+
 **`Busy<T>`** means no turn happened: somebody else is already running a
 turn on this scope, so nothing was appended and nothing was spent. It's
 also the only one worth simply retrying — the other three are answers, and

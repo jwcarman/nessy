@@ -146,6 +146,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A model response that repeats a call id is a failed inference.** Two tool calls in one
+  response with the same call id make the response invalid. The turn fails as it does for any
+  failed inference, with a permanent failure that names the repeated id, and the response's usage
+  is on the record. Nothing of the response is stored, narrated or requested, and no approver is
+  asked and no tool runs. The engine logs one error naming the agent, the turn and the id.
 - **An approval's `decidedBy` and a denial's `reason` are cut, never refused.** Nessy keeps what
   the application gives and cuts one longer than 1,000 characters to that length.
 - **A payload's reference is a hash of its content before the storage transform.** The reference

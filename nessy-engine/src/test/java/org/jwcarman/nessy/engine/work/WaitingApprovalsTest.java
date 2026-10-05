@@ -85,12 +85,6 @@ class WaitingApprovalsTest {
         if (exchanges > 0) {
           return answer();
         }
-        if (story.startsWith("twice")) {
-          return new InferenceResult.Actions(
-              List.of(
-                  new Block.ToolCall("call_1", "lookup", "{\"q\":\"one\"}"),
-                  new Block.ToolCall("call_1", "lookup", "{\"q\":\"two\"}")));
-        }
         return story.startsWith("ping")
             ? actions("call_1", "ping", "{\"q\":\"nothing\"}")
             : actions("call_1", "lookup", "{\"q\":\"loch ness\"}");
@@ -379,21 +373,6 @@ class WaitingApprovalsTest {
                       .extracting(ApprovalRequest::idempotencyKey)
                       .isNotEmpty()
                       .doesNotContain(answered.idempotencyKey()));
-    }
-
-    @Test
-    void two_calls_with_one_call_id_in_one_response_each_get_their_own_action_and_arguments() {
-      AgentType type = new AgentType("twice-one-call-id");
-      harness(type);
-      AgentId agent = AgentId.random();
-      harnesses.get(type).tell(agent, "go");
-      await().atMost(PATIENT).until(() -> engine.work().waitingApprovals(type).size() == 2);
-
-      List<ApprovalRequest> waiting = engine.work().waitingApprovals(type);
-
-      assertThat(waiting)
-          .extracting(ApprovalRequest::arguments)
-          .containsExactly("{\"q\":\"one\"}", "{\"q\":\"two\"}");
     }
 
     @Test
