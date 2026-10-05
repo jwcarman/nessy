@@ -435,6 +435,9 @@ class AgentStatusTest {
       harness.terminate(agent);
       ApprovalRequest request = HANDED.get(story);
 
+      assertThat(engine.backend().agents().terminated(typeOf(story), agent))
+          .as("the termination was taken")
+          .isTrue();
       assertThat(status(story, agent).activity()).isEqualTo(Activity.WAITING);
       ReplyOutcome outcome =
           engine

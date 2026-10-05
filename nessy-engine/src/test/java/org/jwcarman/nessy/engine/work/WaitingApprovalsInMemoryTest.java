@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
@@ -41,6 +42,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.backend.effect.LiveEffect;
 import org.jwcarman.nessy.backend.inmemory.InMemoryQueuedBackend;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -88,6 +90,10 @@ class WaitingApprovalsInMemoryTest {
   }
 
   private static Tool<Query> lookup() {
+    return tool("lookup", false);
+  }
+
+  private static Tool<Query> tool(String name, boolean deferred) {
     return new Tool<>() {
       @Override
       public Class<Query> inputType() {
@@ -96,7 +102,7 @@ class WaitingApprovalsInMemoryTest {
 
       @Override
       public ToolName name() {
-        return new ToolName("lookup");
+        return new ToolName(name);
       }
 
       @Override
@@ -106,17 +112,23 @@ class WaitingApprovalsInMemoryTest {
 
       @Override
       public Awaited<ToolResult> call(ToolCallRequest<Query> request) {
-        return Awaited.ready(ToolResult.ok(new Block.Text("the answer to " + request.input().q())));
+        return deferred
+            ? Awaited.deferred()
+            : Awaited.ready(ToolResult.ok(new Block.Text("the answer to " + request.input().q())));
       }
     };
   }
 
   private DefaultQueuedHarnessFactory factory() {
+    return factory(MODEL);
+  }
+
+  private DefaultQueuedHarnessFactory factory(InferenceProvider model) {
     return DefaultQueuedHarnessFactory.of(
         engine ->
             engine
                 .backend(memory)
-                .provider(ProviderId.of("test"), MODEL)
+                .provider(ProviderId.of("test"), model)
                 .inference(ProviderId.of("test"), InferenceOptions.of("a-model")));
   }
 
@@ -143,7 +155,7 @@ class WaitingApprovalsInMemoryTest {
                 .effects(e -> e.pollInterval(Duration.ofMillis(20))));
   }
 
-  private AgentId parkAnother(QueuedHarness<String> harness) {
+  private AgentId parkAnother(AgentType type, QueuedHarness<String> harness) {
     int before = shown.size();
     AgentId agent = AgentId.random();
     harness.tell(agent, "go");
@@ -151,9 +163,11 @@ class WaitingApprovalsInMemoryTest {
     await()
         .atMost(PATIENT)
         .untilAsserted(
-            () ->
-                assertThat(memory.effects().liveFor(shown.peek().agentType(), agent))
-                    .allMatch(row -> row.parkedAt().isPresent()));
+            () -> {
+              List<LiveEffect> live = memory.effects().liveFor(type, agent);
+              assertThat(live).isNotEmpty();
+              assertThat(live).allMatch(row -> row.parkedAt().isPresent());
+            });
     return agent;
   }
 
@@ -161,7 +175,7 @@ class WaitingApprovalsInMemoryTest {
   void a_waiting_approval_is_the_request_the_approver_was_shown_with_the_facts_it_left() {
     AgentType type = new AgentType("memory-shown");
     try (DefaultQueuedHarnessFactory factory = factory()) {
-      AgentId agent = parkAnother(harness(factory, type));
+      AgentId agent = parkAnother(type, harness(factory, type));
       Instant parkedAt = memory.effects().liveFor(type, agent).getFirst().parkedAt().orElseThrow();
 
       List<ApprovalRequest> waiting = factory.work().waitingApprovals(type);
@@ -197,9 +211,9 @@ class WaitingApprovalsInMemoryTest {
     try (DefaultQueuedHarnessFactory factory = factory()) {
       QueuedHarness<String> wantedHarness = harness(factory, wanted);
       QueuedHarness<String> otherHarness = harness(factory, other);
-      AgentId first = parkAnother(wantedHarness);
-      AgentId second = parkAnother(otherHarness);
-      AgentId third = parkAnother(wantedHarness);
+      AgentId first = parkAnother(wanted, wantedHarness);
+      AgentId second = parkAnother(other, otherHarness);
+      AgentId third = parkAnother(wanted, wantedHarness);
 
       List<ApprovalRequest> everything = factory.work().waitingApprovals();
       List<ApprovalRequest> named = factory.work().waitingApprovals(wanted);
@@ -215,7 +229,7 @@ class WaitingApprovalsInMemoryTest {
   void an_answered_approval_is_gone_and_a_late_clock_finds_none() {
     AgentType type = new AgentType("memory-answered");
     try (DefaultQueuedHarnessFactory factory = factory()) {
-      parkAnother(harness(factory, type));
+      parkAnother(type, harness(factory, type));
       AgentWork later =
           StoredAgentWork.queued(
               memory, Clock.fixed(Instant.now().plus(Duration.ofDays(1)), ZoneOffset.UTC));
@@ -243,9 +257,9 @@ class WaitingApprovalsInMemoryTest {
     AgentType type = new AgentType("memory-capped");
     try (DefaultQueuedHarnessFactory factory = factory()) {
       QueuedHarness<String> harness = harness(factory, type);
-      AgentId first = parkAnother(harness);
-      AgentId second = parkAnother(harness);
-      parkAnother(harness);
+      AgentId first = parkAnother(type, harness);
+      AgentId second = parkAnother(type, harness);
+      parkAnother(type, harness);
       AgentWork capped = StoredAgentWork.queued(memory, Clock.systemUTC(), 2);
 
       List<ApprovalRequest> waiting = capped.waitingApprovals(type);
@@ -254,6 +268,66 @@ class WaitingApprovalsInMemoryTest {
       assertThat(factory.work().status(type, first).waitingApprovals())
           .extracting(ApprovalRequest::agentId)
           .containsExactly(first);
+    }
+  }
+
+  /**
+   * The first agent asks for a call that is put aside, the second for one that needs approval. With
+   * a cap of one, the first page holds only the older, non-approval row; the approval is on the
+   * next page.
+   */
+  @Test
+  void a_full_page_of_other_parked_work_does_not_hide_an_approval_behind_it() {
+    AgentType type = new AgentType("memory-paged");
+    AtomicInteger asked = new AtomicInteger();
+    InferenceProvider model =
+        (request, _) -> {
+          boolean fresh =
+              request.context().turns().stream().allMatch(turn -> turn.exchanges().isEmpty());
+          if (!fresh) {
+            return new InferenceResult.Answer(List.of(new Block.Text("all done")));
+          }
+          String tool = asked.getAndIncrement() == 0 ? "ping" : "lookup";
+          return new InferenceResult.Actions(
+              List.of(new Block.ToolCall("call_1", tool, "{\"q\":\"x\"}")));
+        };
+    try (DefaultQueuedHarnessFactory factory = factory(model)) {
+      QueuedHarness<String> harness =
+          factory.create(
+              type,
+              String.class,
+              config ->
+                  config
+                      .systemPrompt("You are a test assistant.")
+                      .tool(
+                          tool("ping", true),
+                          t ->
+                              t.action(query -> "ping " + query.q())
+                                  .timeout(Duration.ofMinutes(30)))
+                      .tool(
+                          lookup(),
+                          t ->
+                              t.action(query -> "look up " + query.q())
+                                  .approver(
+                                      request -> {
+                                        shown.add(copyOf(request));
+                                        return Awaited.deferred();
+                                      },
+                                      a -> a.timeout(Duration.ofMinutes(30))))
+                      .inference(in -> in.model("a-model"))
+                      .effects(e -> e.pollInterval(Duration.ofMillis(20))));
+      AgentId pinged = AgentId.random();
+      harness.tell(pinged, "go");
+      await()
+          .atMost(PATIENT)
+          .untilAsserted(
+              () -> assertThat(factory.work().status(type, pinged).waitingToolCalls()).isOne());
+      AgentId approving = parkAnother(type, harness);
+      AgentWork capped = StoredAgentWork.queued(memory, Clock.systemUTC(), 1);
+
+      List<ApprovalRequest> waiting = capped.waitingApprovals(type);
+
+      assertThat(waiting).extracting(ApprovalRequest::agentId).containsExactly(approving);
     }
   }
 }

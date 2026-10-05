@@ -41,30 +41,52 @@ public final class RequestedCalls {
    * stored request content of {@code agentPayloads}.
    *
    * <p>Empty when the entry is not there, when the content is gone, or when the content holds no
-   * block for the entry's call id.
+   * block at the entry's position that is the entry's call.
    */
   public static Optional<ToolCalls.ResolvedCall> resolve(
       Payloads agentPayloads,
       AgentEvent.ActionsRequested asked,
       Predicate<ActionRequest.ToolCall> entry) {
-    return asked.actions().stream()
-        .filter(ActionRequest.ToolCall.class::isInstance)
-        .map(ActionRequest.ToolCall.class::cast)
-        .filter(entry)
-        .findFirst()
-        .flatMap(stored -> blockFor(agentPayloads, asked, stored));
+    List<ActionRequest.ToolCall> entries =
+        asked.actions().stream()
+            .filter(ActionRequest.ToolCall.class::isInstance)
+            .map(ActionRequest.ToolCall.class::cast)
+            .toList();
+    for (int position = 0; position < entries.size(); position++) {
+      if (entry.test(entries.get(position))) {
+        return blockAt(agentPayloads, asked, entries.get(position), position);
+      }
+    }
+    return Optional.empty();
   }
 
-  private static Optional<ToolCalls.ResolvedCall> blockFor(
-      Payloads agentPayloads, AgentEvent.ActionsRequested asked, ActionRequest.ToolCall stored) {
+  /**
+   * The entries were made one for each tool-use block, in order, so the entry at a position and the
+   * block at that position are the same call. The call id is no key: a response may repeat one.
+   * When there is no block at the position, or the block there is not the entry's call, nothing is
+   * guessed. (A request with more blocks than entries still resolves the entries it has: an entry
+   * is never recorded for a block that was not asked for, and the handlers rely on that leniency.)
+   */
+  private static Optional<ToolCalls.ResolvedCall> blockAt(
+      Payloads agentPayloads,
+      AgentEvent.ActionsRequested asked,
+      ActionRequest.ToolCall stored,
+      int position) {
     return switch (agentPayloads.get(asked.request())) {
-      case Payloads.Resolved.Found(List<Block> blocks) ->
-          blocks.stream()
-              .filter(Block.ToolCall.class::isInstance)
-              .map(Block.ToolCall.class::cast)
-              .filter(call -> call.id().equals(stored.id()))
-              .findFirst()
-              .map(call -> new ToolCalls.ResolvedCall(asked.turn(), call, stored.action()));
+      case Payloads.Resolved.Found(List<Block> blocks) -> {
+        List<Block.ToolCall> calls =
+            blocks.stream()
+                .filter(Block.ToolCall.class::isInstance)
+                .map(Block.ToolCall.class::cast)
+                .toList();
+        if (position >= calls.size()) {
+          yield Optional.empty();
+        }
+        Block.ToolCall call = calls.get(position);
+        yield call.id().equals(stored.id()) && call.name().equals(stored.name())
+            ? Optional.of(new ToolCalls.ResolvedCall(asked.turn(), call, stored.action()))
+            : Optional.empty();
+      }
       // A request whose content is gone is not a call that can be performed, and saying so is
       // better than performing one with arguments nobody can see.
       case Payloads.Resolved.Missing _ -> Optional.empty();

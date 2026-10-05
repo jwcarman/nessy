@@ -202,13 +202,19 @@ public final class StoredAgentWork implements AgentWork {
 
   private List<ApprovalRequest> waiting(Optional<AgentType> type) {
     Instant now = clock.instant();
-    List<LiveEffect> approvals = new ArrayList<>();
+    Map<String, List<AgentEvent>> stories = new HashMap<>();
+    Function<LiveEffect, List<AgentEvent>> story =
+        row ->
+            stories.computeIfAbsent(
+                row.agentType().value() + '\u0000' + row.agentId().value(),
+                _ -> events.sinceLastTurnStarted(row.agentType(), row.agentId()));
+    List<ApprovalRequest> requests = new ArrayList<>();
     Optional<LiveEffect> after = Optional.empty();
-    while (approvals.size() < maximumWaiting) {
+    while (requests.size() < maximumWaiting) {
       List<LiveEffect> page = rows.parkedNow(type, now, after, maximumWaiting);
       for (LiveEffect row : page) {
-        if (row.effect() instanceof AgentEffect.Approve && approvals.size() < maximumWaiting) {
-          approvals.add(row);
+        if (requests.size() < maximumWaiting) {
+          rebuiltOne(row, story).ifPresent(requests::add);
         }
       }
       if (page.size() < maximumWaiting) {
@@ -216,13 +222,7 @@ public final class StoredAgentWork implements AgentWork {
       }
       after = Optional.of(page.getLast());
     }
-    Map<String, List<AgentEvent>> stories = new HashMap<>();
-    return rebuilt(
-        approvals,
-        row ->
-            stories.computeIfAbsent(
-                row.agentType().value() + '\u0000' + row.agentId().value(),
-                _ -> events.sinceLastTurnStarted(row.agentType(), row.agentId())));
+    return List.copyOf(requests);
   }
 
   /**
@@ -231,17 +231,25 @@ public final class StoredAgentWork implements AgentWork {
    */
   private List<ApprovalRequest> rebuilt(
       List<LiveEffect> parked, Function<LiveEffect, List<AgentEvent>> story) {
-    List<ApprovalRequest> requests = new ArrayList<>();
-    for (LiveEffect row : parked) {
-      if (row.effect() instanceof AgentEffect.Approve approve) {
-        try {
-          rebuild(row, approve, story.apply(row)).ifPresent(requests::add);
-        } catch (RuntimeException e) {
-          skipped(row, approve, e.toString());
-        }
-      }
+    return parked.stream().map(row -> rebuiltOne(row, story)).flatMap(Optional::stream).toList();
+  }
+
+  private Optional<ApprovalRequest> rebuiltOne(
+      LiveEffect row, Function<LiveEffect, List<AgentEvent>> story) {
+    if (!(row.effect() instanceof AgentEffect.Approve approve)) {
+      return Optional.empty();
     }
-    return List.copyOf(requests);
+    try {
+      return rebuild(row, approve, story.apply(row));
+    } catch (RuntimeException e) {
+      log.warn(
+          "[{}] agent {}: waiting approval {} skipped",
+          row.agentType().value(),
+          row.agentId().value(),
+          approve.idempotencyKey(),
+          e);
+      return Optional.empty();
+    }
   }
 
   private Optional<ApprovalRequest> rebuild(
@@ -260,7 +268,7 @@ public final class StoredAgentWork implements AgentWork {
                         asked,
                         entry -> entry.idempotencyKey().equals(key)));
     if (call.isEmpty()) {
-      skipped(row, approve, "the story does not hold the request");
+      skipped(row, approve);
       return Optional.empty();
     }
     ObjectNode facts =
@@ -286,13 +294,12 @@ public final class StoredAgentWork implements AgentWork {
             facts));
   }
 
-  private static void skipped(LiveEffect row, AgentEffect.Approve approve, String why) {
+  private static void skipped(LiveEffect row, AgentEffect.Approve approve) {
     log.warn(
-        "[{}] agent {}: waiting approval {} skipped: {}",
+        "[{}] agent {}: waiting approval {} skipped: the story does not hold the request",
         row.agentType().value(),
         row.agentId().value(),
-        approve.idempotencyKey(),
-        why);
+        approve.idempotencyKey());
   }
 
   private static AgentStatus status(
