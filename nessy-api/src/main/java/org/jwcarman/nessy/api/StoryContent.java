@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
+import tools.jackson.databind.JsonNode;
 
 /**
  * What an agent's story refers to but does not carry: the words said, and what tools returned.
@@ -81,4 +82,24 @@ public interface StoryContent {
    *     page holding it is read
    */
   Stream<CallResult> allResults(Seq after);
+
+  /**
+   * The question the call's approval was decided on, or is waiting on.
+   *
+   * <p>A decision's own question wins. A decision made after a deferral carries none, and a call
+   * that expired while waiting carries none, so for those the question the call was deferred on
+   * answers; when a call was asked again, it is the last one asked before the decision.
+   *
+   * <p>Empty when the key is not in this agent's story, when the call was never put to an approver,
+   * and when the question could not be kept. A stored document reads numbers back in the narrowest
+   * type, so compare documents by their text or field by field, not with {@code equals}.
+   *
+   * <p>Reads the story from its start until the call is decided, a page at a time, so its cost
+   * grows with the story.
+   *
+   * @throws NullPointerException if {@code key} is null
+   * @throws IllegalStateException if the document the story refers to is no longer stored, or is
+   *     not a document
+   */
+  Optional<JsonNode> question(IdempotencyKey key);
 }

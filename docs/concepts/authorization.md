@@ -46,7 +46,8 @@ The question the approver was shown is kept for every decision. A decision made 
 once stores it after the approver returns, so facts the approver added while deciding are in it,
 and puts its reference on the `ToolApproved` or `ToolDenied` event. A decision that arrives after
 a deferral carries no question of its own: the question stored with the deferral is its question.
-If the question cannot be stored, the decision stands without it.
+If the question cannot be stored, the decision stands without it. `StoryContent.question(key)`
+reads the question back for a call, whether it is waiting or decided.
 
 When the approver itself fails, by throwing, the call ends as not authorised and the record keeps
 the question the approver was asked: the `ToolFailed` event carries its reference. The message

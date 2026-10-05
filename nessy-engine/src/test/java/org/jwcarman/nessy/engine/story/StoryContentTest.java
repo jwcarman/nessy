@@ -50,7 +50,9 @@ import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.inmemory.InMemoryAgentEvents;
 import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class StoryContentTest {
@@ -547,6 +549,306 @@ class StoryContentTest {
       assertThatThrownBy(() -> content.results(null, 10))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("after must not be null");
+    }
+  }
+
+  @Nested
+  class The_question_a_call_was_decided_on {
+
+    private final CountingEvents counting = new CountingEvents(events);
+    private final StoryContent counted =
+        new EventAgentStories(counting, payloads).of(TYPE, agent).content();
+
+    private final IdempotencyKey first = IdempotencyKey.of(UUID.randomUUID());
+    private final IdempotencyKey second = IdempotencyKey.of(UUID.randomUUID());
+
+    private PayloadRef document(String action) {
+      ObjectNode node = JsonMapper.builder().build().createObjectNode();
+      node.put("action", action);
+      node.put("count", 3);
+      return payloads.forAgent(agent).putDocument(node);
+    }
+
+    private String text(Optional<JsonNode> question) {
+      assertThat(question).isPresent();
+      return question.get().toString();
+    }
+
+    private String textOf(PayloadRef ref) {
+      return payloads.forAgent(agent).getDocument(ref).toString();
+    }
+
+    private AgentEvent.ToolApproved approved(
+        long seq, String callId, IdempotencyKey key, Optional<PayloadRef> question) {
+      return new AgentEvent.ToolApproved(
+          new Seq(seq), new TurnId(1), CallId.of(callId), Optional.of("u_carol"), question, key);
+    }
+
+    private AgentEvent.ToolDenied denied(
+        long seq, String callId, IdempotencyKey key, Optional<PayloadRef> question) {
+      return new AgentEvent.ToolDenied(
+          new Seq(seq),
+          new TurnId(1),
+          CallId.of(callId),
+          "no",
+          Optional.of("u_dave"),
+          question,
+          key);
+    }
+
+    private AgentEvent.ApprovalDeferred deferred(
+        long seq, String callId, IdempotencyKey key, PayloadRef question) {
+      return new AgentEvent.ApprovalDeferred(
+          new Seq(seq), new TurnId(1), CallId.of(callId), AT.plusSeconds(60), question, key);
+    }
+
+    private AgentEvent.ToolFailed failedWith(
+        long seq, String callId, IdempotencyKey key, Optional<PayloadRef> question) {
+      return new AgentEvent.ToolFailed(
+          new Seq(seq),
+          new TurnId(1),
+          CallId.of(callId),
+          CallFailure.NOT_AUTHORISED,
+          "broke",
+          question,
+          key);
+    }
+
+    private AgentEvent.TurnStarted opening() {
+      return started(keep(new Block.Text("go")));
+    }
+
+    private AgentEvent.ActionsRequested asking(ActionRequest... actions) {
+      return requested(2, 1, keep(toolCall("a")), actions);
+    }
+
+    private void laterCalls(int calls) {
+      PayloadRef request = keep(toolCall("c1"));
+      PayloadRef result = keep(new Block.Text("r"));
+      for (int i = 0; i < calls; i++) {
+        IdempotencyKey key = IdempotencyKey.of(UUID.randomUUID());
+        write(
+            requested(last + 1, 1, request, call("c1", key)),
+            succeeded(last + 2, 1, "c1", key, result));
+      }
+    }
+
+    @Test
+    void is_the_approvals_own_when_the_call_was_approved_at_once() {
+      PayloadRef asked = document("approve me");
+      write(opening(), asking(call("a", first)), approved(3, "a", first, Optional.of(asked)));
+
+      assertThat(text(content.question(first))).isEqualTo(textOf(asked));
+    }
+
+    @Test
+    void is_the_denials_own_when_the_call_was_denied_at_once() {
+      PayloadRef asked = document("deny me");
+      write(opening(), asking(call("a", first)), denied(3, "a", first, Optional.of(asked)));
+
+      assertThat(text(content.question(first))).isEqualTo(textOf(asked));
+    }
+
+    @Test
+    void is_the_deferrals_while_the_call_is_still_waiting() {
+      PayloadRef asked = document("wait for me");
+      write(opening(), asking(call("a", first)), deferred(3, "a", first, asked));
+
+      assertThat(text(content.question(first))).isEqualTo(textOf(asked));
+    }
+
+    @Test
+    void is_the_deferrals_when_the_call_was_approved_later_with_none_of_its_own() {
+      PayloadRef asked = document("later yes");
+      write(
+          opening(),
+          asking(call("a", first)),
+          deferred(3, "a", first, asked),
+          approved(4, "a", first, Optional.empty()));
+
+      assertThat(text(content.question(first))).isEqualTo(textOf(asked));
+    }
+
+    @Test
+    void is_the_deferrals_when_the_call_was_denied_later_with_none_of_its_own() {
+      PayloadRef asked = document("later no");
+      write(
+          opening(),
+          asking(call("a", first)),
+          deferred(3, "a", first, asked),
+          denied(4, "a", first, Optional.empty()));
+
+      assertThat(text(content.question(first))).isEqualTo(textOf(asked));
+    }
+
+    @Test
+    void is_the_deferrals_when_the_call_expired_with_a_failure_that_has_none() {
+      PayloadRef asked = document("never answered");
+      write(
+          opening(),
+          asking(call("a", first)),
+          deferred(3, "a", first, asked),
+          failedWith(4, "a", first, Optional.empty()));
+
+      assertThat(text(content.question(first))).isEqualTo(textOf(asked));
+    }
+
+    @Test
+    void is_the_failures_own_when_the_approver_threw() {
+      PayloadRef asked = document("asked and failed");
+      write(opening(), asking(call("a", first)), failedWith(3, "a", first, Optional.of(asked)));
+
+      assertThat(text(content.question(first))).isEqualTo(textOf(asked));
+    }
+
+    @Test
+    void stays_the_approvals_when_the_tool_then_failed_with_none() {
+      PayloadRef asked = document("approved then ran");
+      write(
+          opening(),
+          asking(call("a", first)),
+          approved(3, "a", first, Optional.of(asked)),
+          failedWith(4, "a", first, Optional.empty()));
+
+      assertThat(text(content.question(first))).isEqualTo(textOf(asked));
+    }
+
+    @Test
+    void stays_the_approvals_when_the_tool_then_succeeded() {
+      PayloadRef asked = document("approved then succeeded");
+      write(
+          opening(),
+          asking(call("a", first)),
+          approved(3, "a", first, Optional.of(asked)),
+          succeeded(4, 1, "a", first, keep(new Block.Text("done"))));
+
+      assertThat(text(content.question(first))).isEqualTo(textOf(asked));
+    }
+
+    @Test
+    void is_the_last_deferrals_when_the_call_was_asked_again() {
+      PayloadRef early = document("asked early");
+      PayloadRef again = document("asked again");
+      write(
+          opening(),
+          asking(call("a", first)),
+          deferred(3, "a", first, early),
+          deferred(4, "a", first, again),
+          approved(5, "a", first, Optional.empty()));
+
+      assertThat(text(content.question(first))).isEqualTo(textOf(again));
+      assertThat(textOf(again)).isNotEqualTo(textOf(early));
+    }
+
+    @Test
+    void is_each_calls_own_when_two_calls_were_made_in_one_request() {
+      PayloadRef one = document("the first call");
+      PayloadRef two = document("the second call");
+      write(
+          opening(),
+          asking(call("a", first), call("b", second)),
+          approved(3, "a", first, Optional.of(one)),
+          deferred(4, "b", second, two));
+
+      assertThat(text(content.question(first))).isEqualTo(textOf(one));
+      assertThat(text(content.question(second))).isEqualTo(textOf(two));
+    }
+
+    @Test
+    void is_the_one_an_ungated_call_was_shown_because_every_call_goes_to_an_approver() {
+      PayloadRef shown = document("allowed by default");
+      write(
+          opening(),
+          asking(call("a", first)),
+          approved(3, "a", first, Optional.of(shown)),
+          succeeded(4, 1, "a", first, keep(new Block.Text("done"))));
+
+      assertThat(text(content.question(first))).isEqualTo(textOf(shown));
+    }
+
+    @Test
+    void is_empty_when_the_decision_was_recorded_without_a_question() {
+      write(opening(), asking(call("a", first)), approved(3, "a", first, Optional.empty()));
+
+      assertThat(content.question(first)).isEmpty();
+    }
+
+    @Test
+    void is_empty_when_the_key_is_not_in_the_story() {
+      write(
+          opening(),
+          asking(call("a", first)),
+          approved(3, "a", first, Optional.of(document("someone else's"))));
+
+      assertThat(content.question(second)).isEmpty();
+    }
+
+    @Test
+    void is_empty_for_an_agent_with_no_story() {
+      assertThat(content.question(first)).isEmpty();
+    }
+
+    @Test
+    void is_a_fault_when_the_document_behind_the_reference_is_gone() {
+      PayloadRef gone = new PayloadRef("0".repeat(64));
+      write(opening(), asking(call("a", first)), approved(3, "a", first, Optional.of(gone)));
+
+      assertThatThrownBy(() -> content.question(first))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining(gone.toString());
+    }
+
+    @Test
+    void is_a_fault_when_the_reference_holds_blocks_and_not_a_document() {
+      PayloadRef blocks = keep(new Block.Text("not a document"));
+      write(opening(), asking(call("a", first)), approved(3, "a", first, Optional.of(blocks)));
+
+      assertThatThrownBy(() -> content.question(first))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining(blocks.toString());
+    }
+
+    @Test
+    void is_refused_for_a_null_key() {
+      assertThatThrownBy(() -> content.question(null)).isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void is_read_without_reading_past_the_decision() {
+      write(
+          opening(),
+          asking(call("a", first)),
+          approved(3, "a", first, Optional.of(document("decided long ago"))));
+      laterCalls(1_200);
+
+      assertThat(counted.question(first)).isPresent();
+      assertThat(counting.pagesAfter).isNotEmpty();
+      assertThat(counting.pagesAfter).allMatch(read -> read.value() == 0);
+    }
+
+    @Test
+    void is_read_without_reading_past_a_failure_of_the_ask() {
+      write(
+          opening(),
+          asking(call("a", first)),
+          deferred(3, "a", first, document("asked")),
+          failedWith(4, "a", first, Optional.empty()));
+      laterCalls(1_200);
+
+      assertThat(counted.question(first)).isPresent();
+      assertThat(counting.pagesAfter).isNotEmpty();
+      assertThat(counting.pagesAfter).allMatch(read -> read.value() == 0);
+    }
+
+    @Test
+    void is_read_to_the_end_of_the_story_while_the_call_is_waiting() {
+      write(
+          opening(), asking(call("a", first)), deferred(3, "a", first, document("still waiting")));
+      laterCalls(1_200);
+
+      assertThat(counted.question(first)).isPresent();
+      assertThat(counting.pagesAfter).isNotEmpty();
+      assertThat(counting.pagesAfter).anyMatch(read -> read.value() >= 2_000);
     }
   }
 

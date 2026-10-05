@@ -87,6 +87,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`StoryContent.question(IdempotencyKey)` reads the question behind a call's approval.** It
+  returns the document the call's approval was decided on, or is waiting on: a decision's own
+  question, else the question of the last deferral before it. It is empty when the key is unknown
+  or the question could not be kept, and it stops reading at the call's decision. A custom
+  `StoryContent` must add the method.
 - **A decision made at once keeps its question.** When an approver approves or denies without
   deferring, the document it was shown is stored after it returns, so facts it added while
   deciding are in it, and its reference is on the `ToolApproved` or `ToolDenied` event. A decision

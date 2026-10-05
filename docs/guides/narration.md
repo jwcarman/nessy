@@ -215,6 +215,8 @@ Optional<List<Block.AnswerContent>> answer = turn.answer();
 
 Optional<List<Block.ToolResultContent>> result = content.result(idempotencyKey);
 
+Optional<JsonNode> question = content.question(idempotencyKey);
+
 List<CallResult> results = content.results(Seq.NONE, 100);
 ```
 
@@ -225,6 +227,15 @@ List<CallResult> results = content.results(Seq.NONE, 100);
 - `result(key)` returns what the call with that `IdempotencyKey` returned. It is
   empty when the key is not in this agent's story, or when the call did not
   succeed.
+- `question(key)` returns the document the call's approval was decided on, or is
+  waiting on. A decision's own question is the answer. A decision made after a
+  deferral carries none, and so does a call that expired while waiting, so the
+  question the call was deferred on is the answer; when the call was asked
+  again, it is the last one asked before the decision. It is empty when the key
+  is not in this agent's story, when the call was never put to an approver, and
+  when the question could not be kept. The read stops at the call's decision. A
+  stored document reads numbers back in the narrowest type, so compare questions
+  by their text or field by field, not with `equals`.
 - `results(after, limit)` returns up to `limit` successful results after a
   position, oldest first. Each `CallResult` has the position of the event that
   recorded the success and the call's key. The limit rule is the one `replay`

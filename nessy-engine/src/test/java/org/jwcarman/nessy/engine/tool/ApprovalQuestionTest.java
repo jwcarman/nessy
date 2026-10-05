@@ -20,6 +20,7 @@ import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.Codec;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -34,10 +36,12 @@ import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.RetryPolicy;
+import org.jwcarman.nessy.api.StoryContent;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -48,6 +52,7 @@ import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.EngineFixture;
+import org.jwcarman.nessy.engine.story.EventAgentStories;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 import tools.jackson.databind.JsonNode;
@@ -72,6 +77,28 @@ class ApprovalQuestionTest {
   @AfterAll
   static void stopEngine() {
     engine.close();
+  }
+
+  /** Not a cipher; enough to make a row unreadable to anyone who does not undo it. */
+  private static final Codec<byte[]> REVERSED =
+      new Codec<>() {
+        @Override
+        public byte[] encode(byte[] bytes) {
+          return reverse(bytes);
+        }
+
+        @Override
+        public byte[] decode(byte[] bytes) {
+          return reverse(bytes);
+        }
+      };
+
+  private static byte[] reverse(byte[] bytes) {
+    byte[] reversed = new byte[bytes.length];
+    for (int i = 0; i < bytes.length; i++) {
+      reversed[i] = bytes[bytes.length - 1 - i];
+    }
+    return reversed;
   }
 
   /** What the model was told about calls that failed, whichever agent it was told it for. */
@@ -128,8 +155,12 @@ class ApprovalQuestionTest {
   }
 
   private QueuedHarness<String> harness(AgentType type, Approver approver, RetryPolicy onAsking) {
-    return engine
-        .harnesses()
+    return harness(engine, type, approver, onAsking);
+  }
+
+  private QueuedHarness<String> harness(
+      EngineFixture on, AgentType type, Approver approver, RetryPolicy onAsking) {
+    return on.harnesses()
         .create(
             type,
             String.class,
@@ -148,12 +179,23 @@ class ApprovalQuestionTest {
   }
 
   private static void settled(AgentType type, AgentId agentId) {
+    settled(engine, type, agentId);
+  }
+
+  private static void settled(EngineFixture on, AgentType type, AgentId agentId) {
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(
             () ->
-                assertThat(engine.stateOf(type, agentId).getClass().getSimpleName())
-                    .isEqualTo("Idle"));
+                assertThat(on.stateOf(type, agentId).getClass().getSimpleName()).isEqualTo("Idle"));
+  }
+
+  private static StoryContent contentOf(EngineFixture on, AgentType type, AgentId agentId) {
+    return new EventAgentStories(on.events(), on.payloads()).of(type, agentId).content();
+  }
+
+  private static IdempotencyKey keyOfTheCall(EngineFixture on, AgentType type, AgentId agentId) {
+    return requestedCall(on.story(type, agentId)).idempotencyKey();
   }
 
   private static ActionRequest.ToolCall requestedCall(List<AgentEvent> story) {
@@ -299,5 +341,69 @@ class ApprovalQuestionTest {
     assertThat(askedAt(agentId, approved.question().get()))
         .isEqualTo(shown.get(1).askedAt().toString());
     assertThat(story.get(3)).isInstanceOf(AgentEvent.ToolSucceeded.class);
+  }
+
+  @Test
+  void a_deferred_question_reads_the_same_while_the_call_waits_and_after_it_is_answered() {
+    AgentType type = new AgentType("question-read-deferred");
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    harness(
+            type,
+            request -> {
+              handed.add(request.replyToken());
+              return Awaited.deferred();
+            })
+        .tell(agentId, "what lake?");
+    await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(handed).hasSize(1));
+    IdempotencyKey key = keyOfTheCall(engine, type, agentId);
+    StoryContent content = contentOf(engine, type, agentId);
+
+    Optional<JsonNode> waiting = content.question(key);
+
+    assertThat(waiting).isPresent();
+    assertThat(waiting.get().path("action").asString()).isEqualTo("look up loch ness");
+    assertThat(engine.replies().approve(handed.peek(), ApprovalResult.approvedBy("u_carol")))
+        .isInstanceOf(ReplyOutcome.Settled.class);
+    settled(type, agentId);
+    Optional<JsonNode> answered = content.question(key);
+    assertThat(answered).isPresent();
+    assertThat(answered.get().toString()).isEqualTo(waiting.get().toString());
+  }
+
+  @Test
+  void an_approval_decided_at_once_reads_back_after_the_turn() {
+    AgentType type = new AgentType("question-read-approved");
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    harness(type, _ -> Awaited.ready(ApprovalResult.approvedBy("u_carol")))
+        .tell(agentId, "what lake?");
+    settled(type, agentId);
+
+    Optional<JsonNode> question =
+        contentOf(engine, type, agentId).question(keyOfTheCall(engine, type, agentId));
+
+    assertThat(question).isPresent();
+    assertThat(question.get().path("toolName").asString()).isEqualTo("lookup");
+    assertThat(question.get().path("action").asString()).isEqualTo("look up loch ness");
+  }
+
+  @Test
+  void a_question_still_reads_back_when_the_storage_is_transformed() {
+    AgentType type = new AgentType("question-read-transformed");
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    try (EngineFixture transformed = new EngineFixture(MODEL, REVERSED)) {
+      harness(
+              transformed,
+              type,
+              _ -> Awaited.ready(ApprovalResult.deniedBy("out of hours", "u_dave")),
+              new RetryPolicy.Never())
+          .tell(agentId, "what lake?");
+      settled(transformed, type, agentId);
+
+      Optional<JsonNode> question =
+          contentOf(transformed, type, agentId).question(keyOfTheCall(transformed, type, agentId));
+
+      assertThat(question).isPresent();
+      assertThat(question.get().path("action").asString()).isEqualTo("look up loch ness");
+    }
   }
 }
