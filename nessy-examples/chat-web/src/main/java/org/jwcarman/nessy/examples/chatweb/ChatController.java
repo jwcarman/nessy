@@ -109,8 +109,10 @@ public class ChatController {
   }
 
   /**
-   * Says something. It is accepted at once and the answer comes on the stream and in the
-   * transcript. A message with no text, or only blanks, is a {@code 400}, before anything else.
+   * Says something. It is accepted at once. What the agent then does is narrated on the stream,
+   * with the answer's words only when the provider streams them; the answer itself is in the
+   * transcript, and the stream's {@code answered} event says only which turn it ended. A message
+   * with no text, or only blanks, is a {@code 400}, before anything else.
    *
    * <p>A message told while a turn is in progress waits its turn and runs after it. The one thing
    * that refuses a message is an agent that has been ended, and {@code tell} does not report that:
@@ -246,7 +248,8 @@ public class ChatController {
         case TurnResult.Refused _ ->
             lines.add(new Line(t, "system", "the agent declined to answer"));
         case null -> {
-          // Still being worked on; what it says arrives on the stream.
+          // Still being worked on. What it does next is narrated on the stream (its words only
+          // from a provider that streams), and its answer is here once the turn ends.
         }
       }
     }
