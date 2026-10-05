@@ -214,6 +214,23 @@ payload rows one statement over one table, with nothing shared out from
 under another agent. Identical content in two agents is stored twice, and
 that is the trade.
 
+Each model call also puts the parts of its request into `nessy_payload`: the prompt,
+the tools offered, the options, and each memory, state and ambient section,
+and its event holds the references. The summaries shown are named by the last turn they cover.
+A part that is the same as on an earlier call is the same
+reference, so the insert changes nothing and no second row is written. What a call costs the
+store is those inserts, one statement for each part, and most of them find their row already there.
+
+Every part a model was shown, other than the summaries and the turns, is kept, by reference,
+with the call; the summaries and the turns shown are named by the turns they cover and are not
+stored again. A part is stored once per agent for each distinct content, and the rows are kept:
+nothing in the engine deletes them (see [Retention](#retention)). A source whose
+output differs on every call, such as a retrieval result or a clock with second resolution, adds
+one row per model call, about the size of that section. The in-memory store keeps these parts on
+the heap. Whatever a memory, state or ambient source returns, and the values of vendor
+properties, are stored: an application that must not keep some data must not return it from a
+source.
+
 The reference depends on the content as the value codec writes it, and not on the storage
 transform. A transform that never writes the same bytes twice, such as AES-GCM with a fresh
 nonce, still gives the same content one reference and one row. The stores that take the value

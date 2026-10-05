@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
@@ -78,15 +79,30 @@ class EventUsageReportsTest {
         new AgentEvent.TurnStarted(
             new Seq(1), turn, said("q"), "Question", Instant.now(), Instant.now()),
         new AgentEvent.ActionsRequested(
-            new Seq(2), turn, said("calls"), List.of(), usage("big", 1000, 50, 800)),
+            new Seq(2),
+            turn,
+            said("calls"),
+            List.of(),
+            usage("big", 1000, 50, 800),
+            Optional.empty()),
         new AgentEvent.InferenceAttempted(
-            new Seq(3), turn, new Failure.Transient("timeout"), usage("big", 900, 0, null)),
-        new AgentEvent.InferenceRefused(new Seq(4), turn, "policy", usage("big", 100, 5, null)),
+            new Seq(3),
+            turn,
+            new Failure.Transient("timeout"),
+            usage("big", 900, 0, null),
+            Optional.empty()),
+        new AgentEvent.InferenceRefused(
+            new Seq(4), turn, "policy", usage("big", 100, 5, null), Optional.empty()),
         new AgentEvent.InferenceFailed(
-            new Seq(5), turn, new Failure.Permanent("bad"), usage("small", 30, 2, null)),
+            new Seq(5),
+            turn,
+            new Failure.Permanent("bad"),
+            usage("small", 30, 2, null),
+            Optional.empty()),
         new AgentEvent.InferenceAnswered(
-            new Seq(6), turn, said("a"), false, usage("small", 70, 8, null)),
-        new AgentEvent.InferenceAnswered(new Seq(7), turn, said("b"), false, Usage.unreported()));
+            new Seq(6), turn, said("a"), false, usage("small", 70, 8, null), Optional.empty()),
+        new AgentEvent.InferenceAnswered(
+            new Seq(7), turn, said("b"), false, Usage.unreported(), Optional.empty()));
   }
 
   @Test

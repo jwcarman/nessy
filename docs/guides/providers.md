@@ -268,7 +268,8 @@ config take both.
 Each adapter owns a prefix -- `openai.` (both OpenAI adapters, whatever
 vendor they report), `anthropic.`, `gemini.`, `bedrock.` -- and supports
 exactly the names listed for it below. Properties are fixed when the harness
-is built, sent with every request, and never written to the event log.
+is built, sent with every request, and recorded, by reference, with each
+model call.
 
 - **A supported name is parsed** into its constant's type, and a value that
   does not parse fails the build naming the property and the value

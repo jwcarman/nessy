@@ -104,10 +104,10 @@ public sealed interface Block {
    * What background may carry.
    *
    * <p>Things nobody said. Saved notes, a standing plan, what time it is -- assembled when the
-   * model is called, shown once, and thrown away. Its own position rather than a reuse of {@link
-   * InputContent}, because an input is something that <em>happened</em> and is written down
-   * forever, while this is a view of the world as it stands right now. Letting one stand in for the
-   * other is how a note ends up in a transcript.
+   * model is called and shown on that call; no later call reads it back. Its own position rather
+   * than a reuse of {@link InputContent}, because an input is something that <em>happened</em> and
+   * is written down forever, while this is a view of the world as it stands right now. Letting one
+   * stand in for the other is how a note ends up in a transcript.
    */
   sealed interface AmbientContent extends Block {}
 

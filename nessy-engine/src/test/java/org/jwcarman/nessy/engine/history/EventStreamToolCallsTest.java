@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
@@ -80,7 +81,12 @@ class EventStreamToolCallsTest {
         new AgentEvent.TurnStarted(
             new Seq(id), new TurnId(id), input, "Question", Instant.now(), Instant.now()),
         new AgentEvent.ActionsRequested(
-            new Seq(id + 1), new TurnId(id), request, recorded, Usage.unreported()));
+            new Seq(id + 1),
+            new TurnId(id),
+            request,
+            recorded,
+            Usage.unreported(),
+            Optional.empty()));
   }
 
   @Test

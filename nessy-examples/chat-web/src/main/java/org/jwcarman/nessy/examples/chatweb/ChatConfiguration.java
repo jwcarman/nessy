@@ -123,7 +123,7 @@ public class ChatConfiguration {
                 .inputRenderer(said -> List.of(new Block.Text(said)))
                 .systemPrompt(properties.resolveSystemPrompt())
                 // Two sources of background: the notebook's index and the current plan. Both
-                // ambient, so they are asked afresh every call and never written to the story --
+                // ambient, so they are asked afresh every call and never part of the story --
                 // the model sees them as they stand NOW.
                 .inference(
                     in ->

@@ -16,7 +16,9 @@
 package org.jwcarman.nessy.backend.effect;
 
 import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.Usage;
+import org.jwcarman.nessy.backend.event.RequestManifest;
 import org.jwcarman.nessy.inference.Failure;
 
 /**
@@ -28,17 +30,21 @@ import org.jwcarman.nessy.inference.Failure;
  * nobody is looking.
  *
  * <p><b>Not an event.</b> This is the carrier between the row and the fold; what the fold writes
- * down is an {@code AgentEvent.InferenceAttempted} per attempt, with these two values flattened
- * into it. The two exist separately because one is a durable row's business and the other is the
+ * down is an {@code AgentEvent.InferenceAttempted} per attempt, with these values flattened into
+ * it. The two exist separately because one is a durable row's business and the other is the
  * story's.
  *
  * <p>Only a failure worth repeating ever becomes one of these. An attempt that ended the work has
  * nothing to accumulate: it is the outcome.
+ *
+ * @param request what the request of that attempt was made of, when one was in hand: a call the
+ *     provider answered with a failure has one, an attempt that threw has none
  */
-public record FailedAttempt(Failure failure, Usage usage) {
+public record FailedAttempt(Failure failure, Usage usage, Optional<RequestManifest> request) {
 
   public FailedAttempt {
     Objects.requireNonNull(failure, "failure must not be null");
     usage = usage == null ? Usage.unreported() : usage;
+    request = request == null ? Optional.empty() : request;
   }
 }

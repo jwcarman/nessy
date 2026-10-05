@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -123,7 +124,8 @@ class JdbcQueuedBackendTest {
             agent,
             new AgentEffect.Infer(new TurnId(1)),
             Duration.ofMinutes(1),
-            new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported()),
+            new EffectOutcome.InferenceRefused(
+                "undispatchable", Usage.unreported(), Optional.empty()),
             now.plus(Duration.ofHours(1)),
             null,
             now);

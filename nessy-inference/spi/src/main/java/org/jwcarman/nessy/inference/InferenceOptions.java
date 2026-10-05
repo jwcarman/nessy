@@ -27,7 +27,8 @@ import java.util.Objects;
  * <p>Fixed when a harness is built and identical on every call, which is why properties live here
  * rather than on {@link InferenceRequest}: they are the agent type's configuration, like its model.
  * An adapter reads the entries under its own prefix and ignores the rest; see {@code
- * InferenceProvider#validate}. Never written to the event log.
+ * InferenceProvider#validate}. The engine records them with each model call, by reference to a
+ * stored document, vendor property values included; the storage codec covers them.
  *
  * @param modelName the model, as the provider names it
  * @param maxTokens the longest answer to allow, or zero for the provider's default

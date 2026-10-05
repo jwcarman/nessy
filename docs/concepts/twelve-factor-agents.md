@@ -474,8 +474,9 @@ Things to know:
 
 - A source is asked on every model call, not once per turn. A slow or costly
   fetch repeats within a turn unless the source caches.
-- What a source returns is shown and discarded. It is not stored in the
-  story.
+- What a source returns is shown on that call. It is not part of the story,
+  and no later call reads it back. The call's record keeps what it was shown,
+  by reference.
 - Where it lands matters for caching. Memory and state sit at the head of the
   active turn, and ambient sits at the very end of the request. See
   [Which stratum something belongs in](context.md#which-stratum-something-belongs-in).

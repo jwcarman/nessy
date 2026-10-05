@@ -26,6 +26,7 @@ import java.util.UUID;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
@@ -37,9 +38,13 @@ import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.inference.Failure;
 import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -148,7 +153,8 @@ class ValueTypeCodecTest {
                             new ToolName("lake_depth"),
                             "how deep is Lake Tahoe",
                             KEY)),
-                    Usage.unreported())),
+                    Usage.unreported(),
+                    Optional.empty())),
             StandardCharsets.UTF_8);
 
     assertThat(written)
@@ -174,7 +180,8 @@ class ValueTypeCodecTest {
                     new CallId("a"), new ToolName("lake_depth"), "how deep is Lake Tahoe", KEY),
                 new ActionRequest.ToolCall(
                     new CallId("b"), new ToolName("lake_area"), "lake_area (no such tool)", KEY)),
-            Usage.unreported());
+            Usage.unreported(),
+            Optional.empty());
 
     byte[] bytes = entries.encode(written);
 
@@ -380,7 +387,8 @@ class ValueTypeCodecTest {
                     new TurnId(1),
                     PayloadRef.of("a3d9f0b1"),
                     false,
-                    Usage.unreported())),
+                    Usage.unreported(),
+                    Optional.empty())),
             StandardCharsets.UTF_8);
 
     assertThat(written).contains("\"seq\":5").contains("\"turn\":1").doesNotContain("\"value\"");
@@ -434,7 +442,12 @@ class ValueTypeCodecTest {
         {"type":"inference-answered","seq":2,"turn":1,"answer":"a3d9f0b1","truncated":true}""";
     AgentEvent.InferenceAnswered written =
         new AgentEvent.InferenceAnswered(
-            new Seq(2), new TurnId(1), PayloadRef.of("a3d9f0b1"), true, Usage.unreported());
+            new Seq(2),
+            new TurnId(1),
+            PayloadRef.of("a3d9f0b1"),
+            true,
+            Usage.unreported(),
+            Optional.empty());
 
     AgentEvent.InferenceAnswered read = (AgentEvent.InferenceAnswered) readStored(stored);
 
@@ -526,5 +539,269 @@ class ValueTypeCodecTest {
         .contains("\"label\":\"Invoice\"")
         .contains("\"arrivedAt\":\"2026-03-04T05:06:07Z\"")
         .contains("\"startedAt\":\"2026-03-04T05:06:09Z\"");
+  }
+
+  // ---- the request manifest ------------------------------------------------------------
+
+  private final Codec<RequestManifest> manifests =
+      new JacksonCodecFactory(JsonMapper.builder().build()).create(RequestManifest.class);
+
+  private static final String WHOLE_MANIFEST =
+      """
+      {"engineVersion":"0.5.0-SNAPSHOT",
+       "instructions":"1111aaaa",
+       "tools":"2222bbbb",
+       "answerShape":"3333cccc",
+       "options":"4444dddd",
+       "summarizedThrough":9,
+       "tail":{"from":11,"through":13},
+       "memory":[{"kind":"facts","content":"7777aaaa"}],
+       "state":[{"kind":"notebook","content":"8888bbbb"}],
+       "ambient":[{"kind":"clock","content":"9999cccc"}]}""";
+
+  private static final String MINIMAL_MANIFEST =
+      """
+      {"engineVersion":"0.5.0-SNAPSHOT",
+       "instructions":"1111aaaa",
+       "tools":"2222bbbb",
+       "answerShape":null,
+       "options":"4444dddd",
+       "summarizedThrough":null,
+       "tail":null,
+       "memory":[],
+       "state":[],
+       "ambient":[]}""";
+
+  private static RequestManifest wholeManifest() {
+    return new RequestManifest(
+        "0.5.0-SNAPSHOT",
+        new PayloadRef("1111aaaa"),
+        new PayloadRef("2222bbbb"),
+        Optional.of(new PayloadRef("3333cccc")),
+        new PayloadRef("4444dddd"),
+        Optional.of(new TurnId(9)),
+        Optional.of(new RequestManifest.TurnRange(new TurnId(11), new TurnId(13))),
+        List.of(new RequestManifest.Section("facts", new PayloadRef("7777aaaa"))),
+        List.of(new RequestManifest.Section("notebook", new PayloadRef("8888bbbb"))),
+        List.of(new RequestManifest.Section("clock", new PayloadRef("9999cccc"))));
+  }
+
+  private static RequestManifest minimalManifest() {
+    return new RequestManifest(
+        "0.5.0-SNAPSHOT",
+        new PayloadRef("1111aaaa"),
+        new PayloadRef("2222bbbb"),
+        Optional.empty(),
+        new PayloadRef("4444dddd"),
+        Optional.empty(),
+        Optional.empty(),
+        List.of(),
+        List.of(),
+        List.of());
+  }
+
+  private RequestManifest readManifest(String json) {
+    return manifests.decode(json.getBytes(StandardCharsets.UTF_8));
+  }
+
+  private JsonNode writtenTree(RequestManifest manifest) {
+    return mapper.readTree(new String(manifests.encode(manifest), StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void aManifestIsStoredAsItsReferences() {
+    assertThat(readManifest(WHOLE_MANIFEST)).isEqualTo(wholeManifest());
+    assertThat(writtenTree(wholeManifest())).isEqualTo(mapper.readTree(WHOLE_MANIFEST));
+  }
+
+  @Test
+  void aMinimalManifestIsStoredWithNothingWhereThereIsNothing() {
+    assertThat(readManifest(MINIMAL_MANIFEST)).isEqualTo(minimalManifest());
+    assertThat(writtenTree(minimalManifest())).isEqualTo(mapper.readTree(MINIMAL_MANIFEST));
+  }
+
+  @Test
+  void aManifestWithTheOptionalKeysAbsentReadsThemAsEmpty() {
+    String stored =
+        """
+        {"engineVersion":"0.5.0-SNAPSHOT","instructions":"1111aaaa","tools":"2222bbbb","options":"4444dddd"}""";
+
+    assertThat(readManifest(stored)).isEqualTo(minimalManifest());
+  }
+
+  // ---- the manifest on a stored model-call event ---------------------------------------
+
+  private static final String NO_USAGE =
+      """
+      {"model":null,"inputTokens":null,"outputTokens":null,"cacheReadTokens":null,"cacheWriteTokens":null,"reasoningTokens":null}""";
+
+  private static String event(String type, String fields, String manifestKey, String manifest) {
+    return "{\"type\":\"%s\",\"seq\":3,\"turn\":1,%s\"usage\":%s,\"%s\":%s}"
+        .formatted(type, fields, NO_USAGE, manifestKey, manifest);
+  }
+
+  private void assertStoredBothWays(String stored, AgentEvent expected) {
+    assertThat(readStored(stored)).isEqualTo(expected);
+    assertThat(mapper.readTree(new String(entries.encode(expected), StandardCharsets.UTF_8)))
+        .isEqualTo(mapper.readTree(stored));
+  }
+
+  @Test
+  void aStoredAnswerCarriesWhatItsRequestWasMadeOf() {
+    assertStoredBothWays(
+        event(
+            "inference-answered",
+            "\"answer\":\"a3d9f0b1\",\"truncated\":false,",
+            "request",
+            WHOLE_MANIFEST),
+        new AgentEvent.InferenceAnswered(
+            new Seq(3),
+            new TurnId(1),
+            PayloadRef.of("a3d9f0b1"),
+            false,
+            Usage.unreported(),
+            Optional.of(wholeManifest())));
+  }
+
+  @Test
+  void aStoredRefusalCarriesWhatItsRequestWasMadeOf() {
+    assertStoredBothWays(
+        event("inference-refused", "\"category\":\"safety\",", "request", WHOLE_MANIFEST),
+        new AgentEvent.InferenceRefused(
+            new Seq(3), new TurnId(1), "safety", Usage.unreported(), Optional.of(wholeManifest())));
+  }
+
+  @Test
+  void aStoredFailureCarriesWhatItsRequestWasMadeOf() {
+    assertStoredBothWays(
+        event(
+            "inference-failed",
+            "\"failure\":{\"type\":\"permanent\",\"reason\":\"no\"},",
+            "request",
+            WHOLE_MANIFEST),
+        new AgentEvent.InferenceFailed(
+            new Seq(3),
+            new TurnId(1),
+            new Failure.Permanent("no"),
+            Usage.unreported(),
+            Optional.of(wholeManifest())));
+  }
+
+  @Test
+  void aStoredAttemptCarriesWhatItsRequestWasMadeOf() {
+    assertStoredBothWays(
+        event(
+            "inference-attempted",
+            "\"failure\":{\"type\":\"transient\",\"reason\":\"busy\"},",
+            "request",
+            WHOLE_MANIFEST),
+        new AgentEvent.InferenceAttempted(
+            new Seq(3),
+            new TurnId(1),
+            new Failure.Transient("busy"),
+            Usage.unreported(),
+            Optional.of(wholeManifest())));
+  }
+
+  /** The key is named {@code manifest} here because {@code request} is what the model wrote. */
+  @Test
+  void storedRequestedActionsCarryWhatTheirRequestWasMadeOfUnderTheNameManifest() {
+    assertStoredBothWays(
+        event(
+            "actions-requested",
+            "\"request\":\"c7f1e2a9\",\"actions\":[],",
+            "manifest",
+            WHOLE_MANIFEST),
+        new AgentEvent.ActionsRequested(
+            new Seq(3),
+            new TurnId(1),
+            PayloadRef.of("c7f1e2a9"),
+            List.of(),
+            Usage.unreported(),
+            Optional.of(wholeManifest())));
+  }
+
+  /** An entry written with no request in hand, or by a build that kept none, reads as empty. */
+  @Test
+  void aStoredFailureWithoutTheKeyReadsAsHavingNoRequest() {
+    String stored =
+        """
+        {"type":"inference-failed","seq":3,"turn":1,"failure":{"type":"unknown","reason":"no answer"}}""";
+
+    assertThat(readStored(stored))
+        .isEqualTo(
+            new AgentEvent.InferenceFailed(
+                new Seq(3),
+                new TurnId(1),
+                new Failure.Unknown("no answer"),
+                Usage.unreported(),
+                Optional.empty()));
+  }
+
+  @Test
+  void anEmptyRequestIsWrittenAsNullAndReadBackEmpty() {
+    AgentEvent.InferenceFailed written =
+        new AgentEvent.InferenceFailed(
+            new Seq(3),
+            new TurnId(1),
+            new Failure.Unknown("no answer"),
+            Usage.unreported(),
+            Optional.empty());
+
+    byte[] bytes = entries.encode(written);
+
+    assertThat(mapper.readTree(new String(bytes, StandardCharsets.UTF_8)).get("request").isNull())
+        .isTrue();
+    assertThat(entries.decode(bytes)).isEqualTo(written);
+  }
+
+  @Test
+  void anInferenceFailureOutcomeStoredWithoutTheKeyReadsAsHavingNoRequest() {
+    Codec<EffectOutcome> outcomes =
+        new JacksonCodecFactory(JsonMapper.builder().build()).create(EffectOutcome.class);
+    String stored =
+        """
+        {"type":"inference-failed","failure":{"type":"unknown","reason":"no answer"}}""";
+
+    EffectOutcome read = outcomes.decode(stored.getBytes(StandardCharsets.UTF_8));
+
+    assertThat(read)
+        .isEqualTo(
+            new EffectOutcome.InferenceFailed(
+                new Failure.Unknown("no answer"), Usage.unreported(), Optional.empty()));
+  }
+
+  // ---- the attempts kept on an effect row -----------------------------------------------
+
+  private final Codec<List<FailedAttempt>> attempts =
+      new JacksonCodecFactory(JsonMapper.builder().build())
+          .create(new TypeRef<List<FailedAttempt>>() {});
+
+  @Test
+  void aKeptAttemptCarriesWhatItsRequestWasMadeOf() {
+    String stored =
+        """
+        [{"failure":{"type":"transient","reason":"busy"},"usage":%s,"request":%s}]"""
+            .formatted(NO_USAGE, WHOLE_MANIFEST);
+    List<FailedAttempt> expected =
+        List.of(
+            new FailedAttempt(
+                new Failure.Transient("busy"), Usage.unreported(), Optional.of(wholeManifest())));
+
+    assertThat(attempts.decode(stored.getBytes(StandardCharsets.UTF_8))).isEqualTo(expected);
+    assertThat(mapper.readTree(new String(attempts.encode(expected), StandardCharsets.UTF_8)))
+        .isEqualTo(mapper.readTree(stored));
+  }
+
+  @Test
+  void aKeptAttemptWrittenWithoutTheKeyReadsAsHavingNoRequest() {
+    String stored =
+        """
+        [{"failure":{"type":"transient","reason":"busy"},"usage":%s}]"""
+            .formatted(NO_USAGE);
+
+    assertThat(attempts.decode(stored.getBytes(StandardCharsets.UTF_8)))
+        .containsExactly(
+            new FailedAttempt(new Failure.Transient("busy"), Usage.unreported(), Optional.empty()));
   }
 }

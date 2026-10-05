@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -52,7 +53,7 @@ class InMemoryEffectsParkTest {
         agent,
         new AgentEffect.Infer(new TurnId(1)),
         TIMEOUT,
-        new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported()),
+        new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported(), Optional.empty()),
         DEADLINE,
         null,
         START);

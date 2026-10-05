@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -41,6 +42,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -203,6 +205,10 @@ class NotebookPatternTest {
    * would be re-sent verbatim forever, and a note about a frozen deploy would still be in front of
    * the model long after the deploy unfroze -- stated as a fact somebody said rather than as a view
    * that has since moved.
+   *
+   * <p>The story is the events and the turn's own content. What the model was shown is recorded by
+   * reference beside the story, not in it: each model call's manifest names the ambient section as
+   * a payload, stored once however many calls were made with the same text.
    */
   @Test
   void backgroundIsNeverWrittenToTheStory() {
@@ -231,7 +237,43 @@ class NotebookPatternTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
-    String story =
+    assertThat(engine.story(type, agentId).toString())
+        .as("no event carries the background: events are references and facts")
+        .doesNotContain("it is Tuesday");
+    assertThat(engine.history().forAgent(type, agentId).completedAfter(Optional.empty()))
+        .as("the turn's input, model requests, tool results and answer do not hold it")
+        .isNotEmpty()
+        .allSatisfy(turn -> assertThat(turn.toString()).doesNotContain("it is Tuesday"));
+
+    List<byte[]> holding =
+        engine
+            .jdbc()
+            .sql(
+                "SELECT hash FROM nessy_payload "
+                    + "WHERE agent_id = ? AND position('it is Tuesday' in convert_from(content,'UTF8')) > 0")
+            .params(agentId.value())
+            .query(byte[].class)
+            .list();
+    assertThat(holding)
+        .as("exactly one payload holds it: the ambient section the request's manifest recorded")
+        .hasSize(1);
+    AgentEvent.InferenceAnswered answered =
+        engine.story(type, agentId).stream()
+            .filter(AgentEvent.InferenceAnswered.class::isInstance)
+            .map(AgentEvent.InferenceAnswered.class::cast)
+            .findFirst()
+            .orElseThrow();
+    assertThat(answered.request().orElseThrow().ambient())
+        .singleElement()
+        .satisfies(
+            section -> {
+              assertThat(section.kind()).isEqualTo("clock");
+              assertThat(section.content().value())
+                  .as("the stored event's manifest names that very payload")
+                  .isEqualTo(HexFormat.of().formatHex(holding.getFirst()));
+            });
+
+    String payloadContent =
         engine
             .jdbc()
             .sql(
@@ -240,9 +282,8 @@ class NotebookPatternTest {
             .params(agentId.value())
             .query(String.class)
             .single();
-    assertThat(story)
-        .as("no door through which background could reach a transcript")
-        .doesNotContain("it is Tuesday")
+    assertThat(payloadContent)
+        .as("the kind label is in no payload: it is on the manifest, not in what was shown")
         .doesNotContain("clock");
   }
 

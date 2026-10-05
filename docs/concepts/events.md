@@ -18,12 +18,12 @@ public sealed interface AgentEvent {
   Seq seq();
 
   record TurnStarted(Seq seq, TurnId turn, PayloadRef input, String label, Instant arrivedAt, Instant startedAt) implements AgentEvent {}
-  record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer, boolean truncated, Usage usage) implements AgentEvent {}
-  record InferenceRefused(Seq seq, TurnId turn, String category, Usage usage) implements AgentEvent {}
-  record InferenceFailed(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {}
-  record InferenceAttempted(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {}
+  record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer, boolean truncated, Usage usage, Optional<RequestManifest> request) implements AgentEvent {}
+  record InferenceRefused(Seq seq, TurnId turn, String category, Usage usage, Optional<RequestManifest> request) implements AgentEvent {}
+  record InferenceFailed(Seq seq, TurnId turn, Failure failure, Usage usage, Optional<RequestManifest> request) implements AgentEvent {}
+  record InferenceAttempted(Seq seq, TurnId turn, Failure failure, Usage usage, Optional<RequestManifest> request) implements AgentEvent {}
   record TurnStopped(Seq seq, TurnId turn, String reason) implements AgentEvent {}
-  record ActionsRequested(Seq seq, TurnId turn, PayloadRef request, List<ActionRequest> actions, Usage usage) implements AgentEvent {}
+  record ActionsRequested(Seq seq, TurnId turn, PayloadRef request, List<ActionRequest> actions, Usage usage, Optional<RequestManifest> manifest) implements AgentEvent {}
   record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> decidedBy, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> decidedBy, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, String rendered, IdempotencyKey idempotencyKey) implements AgentEvent {}
@@ -105,6 +105,20 @@ a provider saying the call might work next time, and `Failure.Unknown`, a
 call nobody heard back from. A provider returns `Unknown` for a dropped
 connection, with whatever usage it reported; an attempt that threw is
 recorded as `Unknown` too, with its usage unreported.
+
+**Five arms record what their request was made of**: `InferenceAnswered`,
+`InferenceRefused`, `InferenceFailed`, `InferenceAttempted` and
+`ActionsRequested`, the last under the name `manifest` because its `request`
+is what the model wrote. Each holds, by reference, the prompt, the tools
+offered and the choice made, the shape of the answer asked for, the options,
+and each memory, state and ambient section. The summaries shown are named by
+the last turn they cover, and the turns shown by the range of turns, so neither
+is stored again.
+The stored parts are payloads, so a part that did not change from one call to the next
+is the same reference and is stored once. A failure recorded with no request in
+hand, such as a call that timed out or whose handler threw, has none. This
+record is stored with the event; it is not part of the public story and
+narration does not carry it.
 
 **`TurnStopped` is a turn ended by a policy** — see
 [Turn Policy](turn-policy.md) — rather than an inference that failed:

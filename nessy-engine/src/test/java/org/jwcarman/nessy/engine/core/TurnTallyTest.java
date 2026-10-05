@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
@@ -55,7 +56,8 @@ class TurnTallyTest {
             TURN,
             PayloadRef.of("p"),
             List.of(new ActionRequest.ToolCall(CALL, new ToolName("t"), "does it", KEY)),
-            USAGE));
+            USAGE,
+            Optional.empty()));
     if (withDeferrals) {
       story.add(
           new AgentEvent.ApprovalDeferred(
@@ -64,7 +66,7 @@ class TurnTallyTest {
     }
     story.add(
         new AgentEvent.InferenceAnswered(
-            new Seq(story.size() + 1), TURN, PayloadRef.of("a"), false, USAGE));
+            new Seq(story.size() + 1), TURN, PayloadRef.of("a"), false, USAGE, Optional.empty()));
     return story;
   }
 

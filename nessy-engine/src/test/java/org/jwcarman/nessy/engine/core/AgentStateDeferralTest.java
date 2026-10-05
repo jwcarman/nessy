@@ -143,7 +143,7 @@ class AgentStateDeferralTest {
         new AgentCommand.CompleteInference(
             TURN,
             new AgentCommand.InferenceOutcome.RequestedActions(
-                MAIL, requests, Usage.unreported())));
+                MAIL, requests, Usage.unreported(), Optional.empty())));
   }
 
   private static IdempotencyKey keyOf(CallId call) {
@@ -624,7 +624,7 @@ class AgentStateDeferralTest {
             new AgentCommand.CompleteInference(
                 TURN,
                 new AgentCommand.InferenceOutcome.RequestedActions(
-                    MAIL, requests, Usage.unreported())));
+                    MAIL, requests, Usage.unreported(), Optional.empty())));
       }
 
       void assertReplayEqualsLive(int events, Class<? extends AgentState> ending) {
@@ -659,7 +659,7 @@ class AgentStateDeferralTest {
                   new AgentCommand.CompleteInference(
                       TURN,
                       new AgentCommand.InferenceOutcome.Answered(
-                          ANSWER, false, Usage.unreported())));
+                          ANSWER, false, Usage.unreported(), Optional.empty())));
 
       run.assertReplayEqualsLive(5, AgentState.Idle.class);
     }

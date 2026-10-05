@@ -214,6 +214,24 @@
   </dependencies>
 
   <build>
+    <!-- Only the version file is filtered, so that the build writes the project's version into
+         it. Every other resource is copied as it is. -->
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+        <includes>
+          <include>org/jwcarman/nessy/engine/version.properties</include>
+        </includes>
+      </resource>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>false</filtering>
+        <excludes>
+          <exclude>org/jwcarman/nessy/engine/version.properties</exclude>
+        </excludes>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

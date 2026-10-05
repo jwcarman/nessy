@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -84,7 +85,7 @@ class JdbcAgentEventsTest {
 
   private AgentEvent answered(long seq, long turn) {
     return new AgentEvent.InferenceAnswered(
-        new Seq(seq), new TurnId(turn), somewhere, false, Usage.unreported());
+        new Seq(seq), new TurnId(turn), somewhere, false, Usage.unreported(), Optional.empty());
   }
 
   /** Rebuilt the way a harness rebuilds it: the last turn, replayed onto idle. */

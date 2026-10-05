@@ -35,9 +35,9 @@ model sees and what stands in for the rest. See [Storage](storage.md).
 | Ambient | The clock, a plan the agent edits, a notebook index | Whenever it likes, including mid-turn |
 
 Memory, state and ambient are none of them part of the story. Each source
-is asked again on every call, what it returns is shown and thrown away, and
-nothing holds an earlier answer for it. A view of the world that was
-recorded forever would stop being one.
+is asked again on every call, and no later call reads an earlier answer back.
+What a call was shown is kept on that call's record, beside the story and not
+in it, so a view of the world does not become something that was said.
 
 ## Which stratum something belongs in
 
@@ -287,10 +287,10 @@ signal, so the decision can be replayed from the history alone. The first
 open turn is never a boundary, since nothing precedes it to close.
 `maxChapterLength` still applies.
 
-## Ambient: true now, never written down
+## Ambient: true now
 
-An `AmbientSource` is asked afresh on every call and its answer is never
-appended to the story:
+An `AmbientSource` is asked afresh on every call. Its answer is not part of the
+story's content and is not shown to later calls:
 
 ```java
 public interface AmbientSource {
@@ -306,6 +306,11 @@ plan or nothing. Each source names a `kind`, two ambient sources may not
 claim the same one, and each provider adapter renders the kinds the way its
 vendor prefers. See [Providers](../guides/providers.md#where-each-stratum-goes). Memory and
 state sources are on the [Memory](memory.md#memory-and-state) page.
+
+What the model was shown on a call is recorded, by reference, with that
+call's event, and that includes each ambient section as it was on that call.
+The record is for looking back at what a call was made of. A later call does
+not read it: it asks the sources again.
 
 `AmbientSource.of(...)` makes a small one inline. The date, as
 `nessy-examples/chat-cli` gives it to the model:
