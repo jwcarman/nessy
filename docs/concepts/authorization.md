@@ -212,6 +212,10 @@ Two answers at once to one call give one `Applied` and one `Ignored`.
 endpoint can answer the call. Your endpoint checks who is calling it, not Nessy. Send the address
 only to the party who should answer.
 
+To find which approval requests are waiting without a table of your own, read
+`AgentWork`; see
+[The Harness](../guides/harness.md#what-is-waiting-and-answering-it).
+
 A reply runs on the calling thread. On a JDBC backend it joins a transaction the caller has open,
 so an application can record its own decision and answer the call in one commit, and if that
 transaction rolls back, the call is still waiting. The in-memory backend has no transaction to

@@ -190,6 +190,12 @@ Every `NarrationListener` bean is attached to it the same way.
 **With either backend** (`UsageReportsAutoConfiguration`): a `UsageReports` bean, the usage of
 each agent by model, projected from the stored events of both doors.
 
+**With either backend** (`AgentWorkAutoConfiguration`): an `AgentWork` bean. `status` is answered
+from the first store that holds the agent, the queued store and then the direct one. Waiting
+approvals come from the queued backend; with only a direct backend the list is empty. An
+application's own `AgentWork` bean replaces it. See
+[The Harness](harness.md#what-is-waiting-and-answering-it).
+
 **With a `DataSource` bean and `nessy-backend-jdbc` on the classpath**
 (`JdbcBackendAutoConfiguration`):
 

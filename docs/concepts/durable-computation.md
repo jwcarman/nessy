@@ -163,6 +163,12 @@ already settled, had expired, was answered the wrong way, or is not known here. 
 check who is answering; guard the endpoint that calls `Replies`. See
 [Authorization](authorization.md#answering-a-waiting-call).
 
+What is waiting is read, not kept. A call is waiting now when its effect row
+is parked, still running, and not yet at its deadline. An application reads
+the agent's activity, and the approval requests waiting on a person, through
+`AgentWork`; nothing is stored for it beyond the rows and the story. See
+[The Harness](../guides/harness.md#what-is-waiting-and-answering-it).
+
 ## What this costs
 
 Tool execution is at-least-once. A tool that was running when its process
@@ -178,3 +184,4 @@ about a distributed system.
 - [Storage](storage.md), the tables
 - [Authorization](authorization.md), approvers, grants and answering a waiting call
 - [Tools](tools.md), `Awaited`, and how a tool defers
+- [The Harness](../guides/harness.md#what-is-waiting-and-answering-it), reading what is waiting
