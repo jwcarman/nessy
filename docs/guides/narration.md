@@ -322,8 +322,10 @@ as a listener like any other bean. Retention is `nessy.narration.odyssey.*`:
 a day of inactivity and a day per entry by default, an hour once a stream
 is completed.
 
-`nessy-examples/chat-web` streams both the conversation and the approval
-desk's cards this way, on two streams.
+`nessy-examples/chat-web` streams the conversation this way, on one stream
+per agent. The answer arrives there, not in the response to the message. The
+approval cards are not on it: the page reads them from the agent's state when
+it loads and after each decision.
 
 ## Where next
 

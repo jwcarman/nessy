@@ -1,7 +1,8 @@
 # Nessy Example: Chat Web
 
 The same conversation as `chat-cli`, in a browser, with the thing a terminal
-cannot show well: **a tool that waits for a person.**
+cannot show well: **a tool that waits for a person, and keeps waiting if the
+page closes.**
 
 It consumes `nessy-spring-boot-starter`, so there is no engine wiring here.
 What is left is the application: how it reaches a model, what its tools are, which of them needs a
@@ -9,35 +10,46 @@ person, and where that person is asked.
 
 ## What it shows
 
-**The answer is the response to your message.** The app runs on the direct
-door. `POST /api/agents/{id}/messages` runs the turn on the request thread
-and returns when it is over: `200` with `said`, `tokens` and `calls` for an
-answer, `200` with `refused` for a refusal, `500` with `failed` when the
-turn ended without one, and `409` when another request is already mid-turn
-on that agent.
+**The queued door.** `POST /api/agents/{id}/messages` tells the agent
+and returns `202` with an empty body. The turn runs on the engine's own
+threads, so no request is held while the model works. A conversation that
+has ended answers a new message with `409`.
 
-**The stream shows the turn happening.** A page also holds an
-`EventSource` on `GET /api/agents/{id}/events`, which carries the deltas as
-the model writes them. That stream is narration, not delivery: the answer
-comes back on the POST, and a browser that reconnects with `Last-Event-ID`
+**One stream carries the rest.** The answer, the deltas as the model writes
+them, and every step the agent takes arrive on `GET /api/agents/{id}/events`.
+The stream is journaled. A browser that reconnects with `Last-Event-ID`
 catches up on what it missed.
 
-**Approval holds the request.** `send_email` is gated. When the model asks
-for it, the approver puts a card on the approvals stream
-(`GET /api/agents/{id}/approvals/events`) and waits for a click, which the
-page sends as `POST /api/agents/{id}/approvals/{callId}` with
-`{"decision": "approve"}` or anything else for a denial. The waiting turn
-holds the POST that started it. It waits at most five minutes; no answer in
-that time is a denial. A second click on an approval request already answered gets
-`409`.
+**Messages sent while the agent is working are batched.** They wait in the
+agent's queue and are given to it together, as one message: joined with a
+blank line, in the order they arrived, and answered in one turn
+(`BacklogPolicy.mergeBy` in `ChatConfiguration`). A message to an idle agent
+starts its turn at once.
 
-The cards live in this process's memory. A restart loses them, and a turn
-cannot outlive its request: the direct door never parks a call. A tool that
-must wait for days needs the queued door.
+**The approval waits in Nessy.** `send_email` is gated. Its approver defers
+and keeps nothing, so the application holds no approval state. The approval
+request waits in Nessy and outlives the page and the process.
 
-Other endpoints: `GET /api/agents/{id}` returns the transcript and the
-pending cards, and `DELETE /api/agents/{id}` ends the conversation (the
-story is kept; the agent takes no more input).
+A card is listed from `AgentWork.status(...).waitingApprovals()`, which the
+page reads with `GET /api/agents/{id}`. That call also returns the
+transcript. A decision is `POST /api/agents/{id}/approvals/{key}` with
+`{"decision": "approve"}`, or anything else for a denial. The key is the
+call's idempotency key, and it is the same after a restart. The controller
+passes the decision to `Replies.approve(type, agent, key, result)`.
+`Applied` is `202`. `Ignored` is `409`: the request was already answered,
+its deadline passed, or the key is not waiting. A key that is not a UUID is
+`400`. After any answer the page redraws its cards from the state.
+
+**A person has five minutes.** `chat.approval-term` (`CHAT_APPROVAL_TERM`,
+default `PT5M`) is how long. After it, the call is recorded as failed and
+the card is gone.
+
+**The endpoint decides who may answer.** Nessy does not check who is
+answering. This example puts no login in front of the page's endpoint, so
+an application that copies it must guard it.
+
+Other endpoint: `DELETE /api/agents/{id}` ends the conversation. The story
+is kept; the agent takes no more input.
 
 `send_email` sends nothing. It is the right *shape* — outward-facing and
 irreversible — without being something you could point at a stranger.
@@ -59,7 +71,7 @@ The compose file publishes Postgres on port 5432, so the example cannot run
 beside another one that does the same.
 
 Then open <http://localhost:8080>. Ask it to email someone and watch the card
-appear.
+appear. Close the tab and open it again: the card is still there.
 
 Locally, `qwen/qwen3-coder-30b` answers well and makes its tool calls quickly,
 but it does not write summaries: asked for one, it repeats the transcript. Have
@@ -81,6 +93,7 @@ CHAT_SUMMARY_MODEL_ID=google/gemma-4-e4b \
 | `CHAT_CHAPTER_TURNS` | `20` | turns per chapter |
 | `CHAT_SUMMARY_MODEL_ID` | the agent's model | the model that writes chapter summaries, on the same provider |
 | `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | the compose file's database | where the agents are kept |
+| `CHAT_APPROVAL_TERM` | `PT5M` | how long a person has to answer an email approval request |
 | `OTLP_TRACES_URL` | `http://localhost:4318/v1/traces` | where traces go |
 
 OpenAI itself works too: export `OPENAI_API_KEY`, which lights the starter's `openai`

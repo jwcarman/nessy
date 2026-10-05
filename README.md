@@ -120,9 +120,10 @@ ambient background, gated on a tool that asks at the prompt:
 ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
 ```
 
-**`chat-web`**: the same agent as a page: streamed answers over SSE, an
-approval desk you click, and `Last-Event-ID` resume when a browser
-reconnects.
+**`chat-web`**: the same agent as a page, on the queued door. A message
+is told and the request returns; the answer arrives on a resumable SSE
+stream. The email tool's approval waits in Nessy, so the page lists it as a
+card and it survives a closed tab or a restart.
 
 ```bash
 cd nessy-examples/chat-web && ../../mvnw spring-boot:run

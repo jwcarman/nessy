@@ -287,10 +287,9 @@ replies.complete(agentType, agentId, key, ToolResult.ok(new Block.Text("Yes, go 
 What is missing: there is no built-in ask-a-human tool, no delivery to
 Slack, email or any channel, and no webhook receiver. The application
 supplies the `inbox` and the endpoint that calls `Replies`. In the examples,
-`nessy-examples/watchman` lists the approvals Nessy is waiting on
-(`AgentWork`) and answers them over HTTP (`Replies`), so they survive a
-restart. `nessy-examples/chat-web` holds
-the request open while a card waits in the browser, so its approvals do not.
+`nessy-examples/watchman` and `nessy-examples/chat-web` list the approvals
+Nessy is waiting on (`AgentWork`) and answer them over HTTP (`Replies`), so
+they survive a restart.
 
 A tool's default timeout is 30 seconds, so a human-facing tool needs a
 longer one, as above.
@@ -410,7 +409,8 @@ answer. `tell` is for work nobody is waiting on. The repository shows four
 uses:
 
 - A console loop (`nessy-console`, used by `nessy-examples/chat-cli`).
-- An HTTP endpoint that calls `ask` (`nessy-examples/chat-web`).
+- An HTTP endpoint that calls `tell` and returns `202`; the answer arrives
+  on a resumable event stream (`nessy-examples/chat-web`).
 - A schedule that calls `tell` (`nessy-examples/watchman`, with Spring's
   `@Scheduled`).
 - An HTTP endpoint that answers a parked approval (`watchman` and

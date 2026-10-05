@@ -173,6 +173,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **chat-web runs on the queued door.** A message is told and the request returns `202`; the
+  answer arrives on the journaled event stream. Messages sent while the agent is working are given
+  to it together, as one. The email approval is deferred and read from Nessy (`AgentWork`,
+  `Replies`) where the example held it in memory, and `chat.approval-term` sets how long a person
+  has to answer it.
 - **An approval's `decidedBy` and a denial's `reason` are cut, never refused.** Nessy keeps what
   the application gives and cuts one longer than 1,000 characters to that length.
 - **A payload's reference is a hash of its content before the storage transform.** The reference
