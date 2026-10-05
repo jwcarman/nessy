@@ -405,6 +405,7 @@ class RepliesByKeyTest {
       await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(started).isNotEmpty());
       ToolCallRequest<Query> running = started.peek();
       List<AgentEvent> before = engine.story(type, agent);
+      assertThat(rowsOf(agent)).as("the running call's row, the CallTool").isOne();
 
       ReplyOutcome outcome =
           engine
@@ -417,8 +418,46 @@ class RepliesByKeyTest {
 
       assertThat(outcome).isEqualTo(new ReplyOutcome.Ignored());
       assertThat(engine.story(type, agent)).isEqualTo(before);
+      assertThat(rowsOf(agent)).as("a verdict left the running row alone").isOne();
       release.countDown();
       idle(type, agent);
+    }
+
+    @Test
+    void
+        a_result_for_a_call_that_is_running_and_not_deferred_is_applied_and_the_tools_own_result_is_dropped()
+            throws Exception {
+      AgentType type = newType();
+      CountDownLatch release = new CountDownLatch(1);
+      held.add(release);
+      toolBehaviour =
+          _ -> {
+            try {
+              release.await(60, TimeUnit.SECONDS);
+            } catch (InterruptedException _) {
+              Thread.currentThread().interrupt();
+            }
+            return Awaited.ready(ToolResult.ok(new Block.Text("the tool's own")));
+          };
+      harness(type, _ -> Awaited.ready(ApprovalResult.approved()), Duration.ofMinutes(30));
+      AgentId agent = new AgentId(UUID.randomUUID());
+      current.tell(agent, "what lake?");
+      await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(started).isNotEmpty());
+
+      ReplyOutcome outcome =
+          complete(started.peek(), ToolResult.ok(new Block.Text("the reply's own")));
+
+      assertThat(outcome).isEqualTo(new ReplyOutcome.Applied());
+      assertThat(count(type, agent, AgentEvent.ToolSucceeded.class)).isOne();
+      release.countDown();
+      idle(type, agent);
+      List<AgentEvent.ToolSucceeded> results =
+          engine.story(type, agent).stream()
+              .filter(AgentEvent.ToolSucceeded.class::isInstance)
+              .map(AgentEvent.ToolSucceeded.class::cast)
+              .toList();
+      assertThat(results).as("the tool's own result wrote nothing").hasSize(1);
+      assertThat(results.getFirst().rendered()).contains("the reply's own");
     }
 
     @Test

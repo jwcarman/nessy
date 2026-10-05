@@ -362,10 +362,10 @@ class DeferredToolTest {
   /**
    * The one place the two kinds of deferral are told apart.
    *
-   * <p>Both handlers mint their address from the same coordinates -- agent, request, call -- so a
-   * token for a parked tool decodes to exactly what a token for its approval would have. What
-   * separates them is which kind of effect the answer is allowed to settle. Without that, a verdict
-   * could settle a running tool.
+   * <p>The approval and the tool call of one call share the idempotency key, so the key alone does
+   * not say which of the two an answer is for. What separates them is the kind of answer: a verdict
+   * settles only a call that awaits approval, a result only a call that runs. Without that, a
+   * verdict could settle a running tool.
    */
   @Test
   void aVerdictCannotAnswerAJobThatIsAlreadyRunning() {
