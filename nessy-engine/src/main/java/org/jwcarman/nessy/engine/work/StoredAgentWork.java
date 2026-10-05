@@ -164,11 +164,23 @@ public final class StoredAgentWork implements AgentWork {
   public AgentStatus status(AgentType type, AgentId id) {
     Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(id, "id must not be null");
-    List<AgentEvent> lastTurn = events.sinceLastTurnStarted(type, id);
-    AgentState state = reconstitute(lastTurn);
+    Stories stories = new Stories(type, id, events.sinceLastTurnStarted(type, id));
+    AgentState state = reconstitute(stories.current(type, id));
     List<LiveEffect> live = rows.live(type, id);
     int queued = rows.queued(type, id);
     Instant now = clock.instant();
+    if (state instanceof AgentState.AwaitingActions
+        && live.stream()
+            .filter(row -> row.parkedNow(now))
+            .map(LiveEffect::effect)
+            .filter(AgentEffect.Approve.class::isInstance)
+            .map(AgentEffect.Approve.class::cast)
+            .anyMatch(approve -> !holds(stories.current(type, id), approve))) {
+      // A parked row is newer than the story: the story was read just before the step that
+      // recorded it. The state is worked out again from the fresh story, so that the status is
+      // built from one story and not from two.
+      state = reconstitute(stories.readAgain(type, id).orElseGet(() -> stories.current(type, id)));
+    }
     return switch (state) {
       case AgentState.Terminal _ -> status(Activity.ENDED, queued, Optional.empty(), List.of(), 0);
       case AgentState.Idle _ ->
@@ -185,9 +197,7 @@ public final class StoredAgentWork implements AgentWork {
               waiting(live, now) ? Activity.WAITING : Activity.WORKING,
               queued,
               Optional.of(awaiting.turn()),
-              rebuilt(
-                  live.stream().filter(row -> row.parkedNow(now)).toList(),
-                  new Stories(type, id, lastTurn)),
+              rebuilt(live.stream().filter(row -> row.parkedNow(now)).toList(), stories),
               waitingToolCalls(live, now));
     };
   }
@@ -232,22 +242,20 @@ public final class StoredAgentWork implements AgentWork {
   }
 
   /**
-   * One row's request. A row parked now that the story read does not hold is a request written
-   * after that read, so the story is read once more for that agent and the row rebuilt from the
-   * fresh read; only a row the fresh read does not hold either is skipped.
+   * One row's request. A row parked now was parked in the step that wrote its request and its
+   * deferral, so a story that lacks either was read before that step: the story is read once more
+   * for that agent and the row rebuilt from the fresh read. A row the fresh read does not hold
+   * either is skipped, and one whose deferral it still lacks has empty facts.
    */
   private Optional<ApprovalRequest> rebuiltOne(LiveEffect row, Stories stories) {
     if (!(row.effect() instanceof AgentEffect.Approve approve)) {
       return Optional.empty();
     }
     try {
-      Optional<ApprovalRequest> request = rebuild(row, approve, stories.of(row));
-      if (request.isEmpty()) {
-        Optional<List<AgentEvent>> fresh = stories.readAgain(row);
-        if (fresh.isPresent()) {
-          request = rebuild(row, approve, fresh.get());
-        }
+      if (!holds(stories.of(row), approve)) {
+        stories.readAgain(row.agentType(), row.agentId());
       }
+      Optional<ApprovalRequest> request = rebuild(row, approve, stories.of(row));
       if (request.isEmpty()) {
         skipped(row, approve);
       }
@@ -284,21 +292,38 @@ public final class StoredAgentWork implements AgentWork {
     }
 
     List<AgentEvent> of(LiveEffect row) {
-      return read.computeIfAbsent(
-          keyOf(row.agentType(), row.agentId()),
-          _ -> events.sinceLastTurnStarted(row.agentType(), row.agentId()));
+      return current(row.agentType(), row.agentId());
+    }
+
+    /** The story as this call holds it: read now if this call has not read it yet. */
+    List<AgentEvent> current(AgentType type, AgentId id) {
+      return read.computeIfAbsent(keyOf(type, id), _ -> events.sinceLastTurnStarted(type, id));
     }
 
     /** The story read again, the first time that is asked for this agent in this call. */
-    Optional<List<AgentEvent>> readAgain(LiveEffect row) {
-      String key = keyOf(row.agentType(), row.agentId());
+    Optional<List<AgentEvent>> readAgain(AgentType type, AgentId id) {
+      String key = keyOf(type, id);
       if (!readAgain.add(key)) {
         return Optional.empty();
       }
-      List<AgentEvent> fresh = events.sinceLastTurnStarted(row.agentType(), row.agentId());
+      List<AgentEvent> fresh = events.sinceLastTurnStarted(type, id);
       read.put(key, fresh);
       return Optional.of(fresh);
     }
+  }
+
+  /** Whether a story holds both the request an approval row is for and the row's deferral. */
+  private static boolean holds(List<AgentEvent> story, AgentEffect.Approve approve) {
+    return story.stream()
+            .anyMatch(
+                event ->
+                    event instanceof AgentEvent.ActionsRequested asked
+                        && asked.seq().equals(approve.requestSeq()))
+        && story.stream()
+            .anyMatch(
+                event ->
+                    event instanceof AgentEvent.ApprovalDeferred deferred
+                        && deferred.idempotencyKey().equals(approve.idempotencyKey()));
   }
 
   private Optional<ApprovalRequest> rebuild(
