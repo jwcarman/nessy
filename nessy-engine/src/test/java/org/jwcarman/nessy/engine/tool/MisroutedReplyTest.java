@@ -310,7 +310,7 @@ class MisroutedReplyTest {
     private final List<Optional<Seq>> requests = new CopyOnWriteArrayList<>();
 
     @Override
-    public void deliverOutcome(
+    public boolean deliverOutcome(
         AgentId agentId,
         Optional<TurnId> turn,
         Optional<Seq> request,
@@ -319,6 +319,7 @@ class MisroutedReplyTest {
         List<FailedAttempt> priorAttempts) {
       outcomes.add(outcome);
       requests.add(request);
+      return true;
     }
 
     @Override
