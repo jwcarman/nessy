@@ -62,6 +62,10 @@ import tools.jackson.databind.json.JsonMapper;
  * claim that returns more rows than it was asked for makes that difference negative: the semaphore
  * throws, the drained permits are never returned, and the agent type stops dispatching for good.
  * Passes overlap by design -- a nudge per fold plus the poll -- so this is the case that matters.
+ *
+ * <p>The park tests show that a running row of the right attempt can be marked parked, that it is
+ * then due at its deadline and not before, that it is still found running and retired as any other,
+ * and that a settled row, a pending row or another attempt's number marks nothing.
  */
 @Tag("container")
 @DisplayName("Claiming effects")

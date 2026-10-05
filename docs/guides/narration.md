@@ -167,9 +167,10 @@ stored event, `AgentEvent.ApprovalDeferred` and `AgentEvent.ToolDeferred`.
 Each is heard once the step that recorded the deferral commits, with its
 position in the story, and heard again, equal, when the story is replayed. They
 name the call and its key and not the action or the tool. A watcher that wants
-those joins by `callId` or `idempotencyKey` to the `ActionsRequested.Call` it
-heard earlier. On the direct door a deferral is a failed call, nothing is
-stored for it, and it is not narrated.
+those joins by `idempotencyKey` to the `ActionsRequested.Call` it heard
+earlier; call ids can repeat across the requests of one turn. On the direct
+door a deferral is a failed call, no event is stored for it, and it is not
+narrated.
 
 On the wire each kind has a kebab-case name, `turn-stopped`, `content-delta`,
 `approval-deferred`, carried as the JSON `type` field.

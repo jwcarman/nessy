@@ -280,7 +280,10 @@ final class DefaultQueuedHarness<I>
                   approve.requestSeq(),
                   approve.callId(),
                   attempt.deadline(),
-                  question.orElseThrow());
+                  question.orElseThrow(
+                      () ->
+                          new IllegalStateException(
+                              "an approval deferral has no stored question, so nothing is recorded")));
           case AgentEffect.CallTool call ->
               new AgentCommand.DeferToolCall(
                   call.turn(), call.requestSeq(), call.callId(), attempt.deadline());

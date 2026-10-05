@@ -30,7 +30,7 @@ depends on its status:
 | `status` | what `actionable_at` means |
 |---|---|
 | `PENDING` | when this may be attempted: now, or after a retry's backoff |
-| `RUNNING` | the attempt's watchdog: when a worker that never reported back is treated as dead, or when a deferred call's term is up |
+| `RUNNING` | the attempt's watchdog: when a worker that never reported back is treated as dead |
 | `RUNNING`, with `parked_at` set | the row's deadline, and not before |
 
 A running row can be marked parked: `Effects.park` sets `parked_at` and moves

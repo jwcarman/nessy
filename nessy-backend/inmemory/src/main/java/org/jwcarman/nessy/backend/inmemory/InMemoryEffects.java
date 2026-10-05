@@ -74,7 +74,6 @@ public final class InMemoryEffects implements Effects {
     private Status status = Status.PENDING;
     private int attemptsMade;
     private Instant actionableAt;
-    private Instant parkedAt;
 
     private Row(
         UUID effectId,
@@ -223,7 +222,6 @@ public final class InMemoryEffects implements Effects {
     if (row == null || row.status != Status.RUNNING || row.attemptsMade != attemptsMade) {
       return false;
     }
-    row.parkedAt = at;
     row.actionableAt = row.deadline;
     return true;
   }

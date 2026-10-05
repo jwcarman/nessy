@@ -469,7 +469,53 @@ class EventAgentStoriesQueuedTest {
               event -> {
                 Narration.ApprovalDeferred deferred = (Narration.ApprovalDeferred) event;
                 assertThat(deferred.idempotencyKey()).isEqualTo(StoryTurn.requestedKey(story));
-                assertThat(deferred.until().truncatedTo(ChronoUnit.MICROS)).isEqualTo(rowDeadline);
+                assertThat(deferred.until()).isEqualTo(rowDeadline);
+              });
+    }
+  }
+
+  @Test
+  void a_deferred_approval_that_expires_reads_the_same_heard_live_and_replayed() {
+    AgentType type = new AgentType("queued-approval-expires");
+    AgentId agent = AgentId.random();
+    NarrationListener recording = heard::add;
+    ConcurrentLinkedQueue<ReplyToken> handed = new ConcurrentLinkedQueue<>();
+
+    try (EngineFixture engine = new EngineFixture(callsThenAnswers(), recording)) {
+      engine
+          .harnesses()
+          .<String>create(
+              type,
+              String.class,
+              config ->
+                  config
+                      .systemPrompt("You are a test assistant.")
+                      .tool(
+                          StoryTurn.lookup(),
+                          t ->
+                              t.action(query -> "looked up " + query.q())
+                                  .approver(
+                                      defersAndKeepsTheAddress(handed),
+                                      a -> a.timeout(Duration.ofSeconds(2))))
+                      .inference(in -> in.model("a-model"))
+                      .effects(e -> e.pollInterval(Duration.ofMillis(50))))
+          .tell(agent, "how deep is Loch Ness?");
+      awaitHeard(Narration.Answered.class);
+
+      List<Narrated> story = heardStory();
+      assertThat(replayed(engine, type, agent)).isEqualTo(story);
+      assertThat(story)
+          .extracting(narrated -> narrated.event().getClass().getSimpleName())
+          .containsSubsequence("ActionsRequested", "ApprovalDeferred", "CallFailed");
+      assertThat(story)
+          .map(Narrated::event)
+          .filteredOn(Narration.CallFailed.class::isInstance)
+          .singleElement()
+          .satisfies(
+              event -> {
+                Narration.CallFailed failed = (Narration.CallFailed) event;
+                assertThat(failed.kind()).isEqualTo(CallFailure.NOT_AUTHORISED);
+                assertThat(failed.idempotencyKey()).isEqualTo(StoryTurn.requestedKey(story));
               });
     }
   }
@@ -519,7 +565,7 @@ class EventAgentStoriesQueuedTest {
               event -> {
                 Narration.CallDeferred deferred = (Narration.CallDeferred) event;
                 assertThat(deferred.idempotencyKey()).isEqualTo(StoryTurn.requestedKey(story));
-                assertThat(deferred.until().truncatedTo(ChronoUnit.MICROS)).isEqualTo(rowDeadline);
+                assertThat(deferred.until()).isEqualTo(rowDeadline);
               });
     }
   }
@@ -564,7 +610,7 @@ class EventAgentStoriesQueuedTest {
       List<Narrated> story = heardStory();
       assertThat(story)
           .extracting(narrated -> narrated.event().getClass().getSimpleName())
-          .containsSubsequence(
+          .containsExactly(
               "TurnStarted",
               "InferenceRetried",
               "ActionsRequested",

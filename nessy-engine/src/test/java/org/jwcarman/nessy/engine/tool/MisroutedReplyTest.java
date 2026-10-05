@@ -274,7 +274,6 @@ class MisroutedReplyTest {
     private AgentEffect effect = new AgentEffect.Infer(TURN);
     private RuntimeException effectFails;
     private boolean completeWins = true;
-    private final List<UUID> parked = new CopyOnWriteArrayList<>();
 
     private Rows() {
       super(TYPE, null, null);
@@ -300,7 +299,6 @@ class MisroutedReplyTest {
 
     @Override
     public boolean park(UUID effectId, int attemptsMade, Instant at) {
-      parked.add(effectId);
       return true;
     }
   }

@@ -20,6 +20,7 @@ import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.junit.jupiter.api.AfterEach;
@@ -29,6 +30,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Narrated;
+import org.jwcarman.nessy.api.Narrated.Position;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
@@ -268,13 +270,14 @@ class NarrationTest {
     int deferred = indexOfFirst(events, Narration.ApprovalDeferred.class);
     assertThat(sought).as("the question was heard being asked").isNotNegative();
     assertThat(sought).as("before it was heard being deferred").isLessThan(deferred);
-    assertThat(heard.stream().map(Narrated::event).toList().get(sought))
+    List<Optional<Position>> askingPositions =
+        heard.stream()
+            .filter(n -> n.event() instanceof Narration.ApprovalSought)
+            .map(Narrated::position)
+            .toList();
+    assertThat(askingPositions).as("the asking was heard").isNotEmpty();
+    assertThat(askingPositions)
         .as("the asking is live, so it has no place in the story")
-        .isInstanceOf(Narration.Live.class);
-    assertThat(
-            heard.stream()
-                .filter(n -> n.event() instanceof Narration.ApprovalSought)
-                .map(Narrated::position))
         .allSatisfy(position -> assertThat(position).isEmpty());
   }
 

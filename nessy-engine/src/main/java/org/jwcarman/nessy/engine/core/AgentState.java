@@ -52,8 +52,9 @@ import org.jwcarman.nessy.engine.agent.OutstandingAction;
  *
  * <p><b>Only {@link Idle} accepts a command from outside.</b> {@code StartTurn} and {@code
  * Terminate} are both held by the harness and presented when the agent can take them; a busy state
- * accepts only the completion of work it is already waiting for. That is one rule rather than two,
- * and it is what removes the need for a state that means "terminating, but finishing first".
+ * accepts only news of work it is already waiting for -- that the work finished, or that it was put
+ * aside to finish later. That is one rule rather than two, and it is what removes the need for a
+ * state that means "terminating, but finishing first".
  *
  * <p>A busy state answering with {@link Decision.Ignore} is not the mechanism -- the harness not
  * presenting is. The refusal is what makes a race harmless when two harnesses both read an idle

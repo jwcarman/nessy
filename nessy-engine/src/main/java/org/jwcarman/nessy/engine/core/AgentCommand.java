@@ -38,10 +38,10 @@ import org.jwcarman.nessy.inference.Failure;
  * state may decline; the {@code ToolSucceeded} inside it is a fact that already happened. Both
  * words are correct and both are in the right position.
  *
- * <p><b>Grouped by the effect they complete</b>, one apiece, rather than one command per outcome or
- * one envelope over all of them. An arm therefore knows from the command alone whether it is
- * concerned -- only the one that is looks inside -- and the switch it then does is real logic
- * rather than routing.
+ * <p><b>Grouped by the effect they answer</b>, rather than one command per outcome or one envelope
+ * over all of them; an effect that is put aside has a command of its own that records it and
+ * completes nothing. An arm therefore knows from the command alone whether it is concerned -- only
+ * the one that is looks inside -- and the switch it then does is real logic rather than routing.
  *
  * <p><b>Content by reference.</b> Content is claim-checked by the harness before it gets here, so a
  * command carries a reference to it. The text it does carry is mostly short and bounded: for a tool

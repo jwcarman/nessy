@@ -226,7 +226,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
    *
    * <p>Failing to keep it must not fail the deferral: the approver has already been asked and may
    * have told a person, so an exception here would be read as a failed ask and the retry policy
-   * might ask again. The deferral stands without a question instead.
+   * might ask again. The call stays parked on its row, but its deferral will not be recorded.
    */
   private Optional<PayloadRef> storedQuestion(
       AgentId agentId, CallId callId, ApprovalRequest question) {
@@ -235,7 +235,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
           payloads.forAgent(agentId).putDocument(ApprovalQuestions.document(question)));
     } catch (RuntimeException e) {
       log.warn(
-          "[{}] agent {}: the question for call {} could not be stored; the deferral stands without it",
+          "[{}] agent {}: the question for call {} could not be stored; the call stays parked on its row, but its deferral will not be recorded",
           agentType.value(),
           agentId.value(),
           callId,
