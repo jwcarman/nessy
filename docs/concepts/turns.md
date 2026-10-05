@@ -20,7 +20,7 @@ the agent before they read its state: the direct door's `ask` and
 `terminate`, and the queued door's `tell`, `terminate` and its effect
 completions. Whoever holds the lock reads idle-or-not honestly and, if
 idle, starts the turn inside the same locked step; whoever arrives a
-moment later reads busy and is turned away — `Outcome.Busy` on the direct
+moment later reads busy and is turned away — `AskOutcome.Busy` on the direct
 door, held in the backlog on the queued one. See
 [Two Doors](two-doors.md) for what each door does with that answer.
 

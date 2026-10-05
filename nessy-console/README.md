@@ -80,7 +80,7 @@ prompt is a complete program.
 ## The one thing worth reading the source for
 
 `DirectHarness#ask` is a call, not a post: it runs the whole turn on the
-calling thread and returns the `Outcome` when it is over, so `ReplLoop` has
+calling thread and returns the `AskOutcome` when it is over, so `ReplLoop` has
 nothing to wait for once it has called it. What makes streaming work
 without printing an answer twice is the listener: a provider that streams
 writes each delta to the terminal as it arrives, and `reportAnswer` prints

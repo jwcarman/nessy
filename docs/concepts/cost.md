@@ -121,14 +121,14 @@ what; `TurnStats` is how many calls and how much, full stop.
 
 ## Reading cost off an answer
 
-`Outcome.Answered`, `Refused` and `Failed` all carry a `TurnStats`
+`AskOutcome.Answered`, `Refused` and `Failed` all carry a `TurnStats`
 alongside their own content — a caller who waited for the answer is
 entitled to know what it spent, without reaching into the event store to
 find out. A controller that answers over HTTP on the direct door can read
 it straight off the outcome:
 
 ```java
-case Outcome.Answered<String>(String said, TurnStats stats) ->
+case AskOutcome.Answered<String>(String said, TurnStats stats) ->
     ResponseEntity.ok(
         Map.of(
             "said", said,

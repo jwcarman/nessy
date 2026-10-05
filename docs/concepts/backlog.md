@@ -9,7 +9,7 @@ This is entirely a [queued-door](../guides/harness.md) concern. The direct
 door's bargain is different: a caller using `DirectHarness.ask` is standing
 there, on the calling thread, waiting for the turn it started. A second
 caller arriving mid-turn is not made to wait its turn in a queue — it is
-told `Outcome.Busy` and sent away to decide for itself whether to retry.
+told `AskOutcome.Busy` and sent away to decide for itself whether to retry.
 There is nothing to coalesce, because there is no queue: `DefaultDirectHarness`
 holds none of the backlog machinery — no coalescing, no claims, no leases,
 no deferral. `QueuedHarness.tell`, by contrast, always accepts. Something

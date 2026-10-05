@@ -36,7 +36,7 @@ public sealed interface TurnDecision {
    * from a long honest one -- research and multi-file work genuinely run long -- so the first thing
    * a bound does is ask for an answer rather than take the turn away. A turn that was fine returns
    * a real answer, slightly early; one that was stuck stops spending. A caller still receives
-   * {@link Outcome.Answered}.
+   * {@link AskOutcome.Answered}.
    */
   record AnswerNow() implements TurnDecision {}
 
@@ -44,7 +44,7 @@ public sealed interface TurnDecision {
    * End the turn, with this reason.
    *
    * <p>Named for what it produces: the fact is an {@code AgentEvent.TurnStopped}, a watcher hears
-   * {@link Narration.TurnStopped}, and a caller receives {@link Outcome.Failed}.
+   * {@link Narration.TurnStopped}, and a caller receives {@link AskOutcome.Failed}.
    *
    * <p>Distinct from {@link RetryDecision.GiveUp}, which is about one call rather than a whole
    * turn, and carries no reason because a caller of that one never sees it.

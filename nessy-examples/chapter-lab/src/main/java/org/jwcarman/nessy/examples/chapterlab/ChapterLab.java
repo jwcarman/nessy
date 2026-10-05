@@ -32,9 +32,9 @@ import java.util.TreeMap;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AskOutcome;
 import org.jwcarman.nessy.api.ChapterPolicy;
 import org.jwcarman.nessy.api.DirectHarness;
-import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.Summarizer;
 import org.jwcarman.nessy.api.SystemPrompt;
@@ -721,8 +721,8 @@ public final class ChapterLab {
     for (int i = 0; i < turns.size(); i++) {
       LocomoConversation.Recorded turn = turns.get(i);
       replay.next(turn.reply(), conversation.endsSession(i));
-      Outcome<String> outcome = harness.ask(agent, turn.input());
-      if (!(outcome instanceof Outcome.Answered<String>)) {
+      AskOutcome<String> outcome = harness.ask(agent, turn.input());
+      if (!(outcome instanceof AskOutcome.Answered<String>)) {
         throw new IllegalStateException("turn %d did not complete: %s".formatted(i + 1, outcome));
       }
       if (settings.chapters()) {

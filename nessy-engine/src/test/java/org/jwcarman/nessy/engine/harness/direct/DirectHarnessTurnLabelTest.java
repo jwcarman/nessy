@@ -29,10 +29,10 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AskOutcome;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
-import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
@@ -61,7 +61,7 @@ class DirectHarnessTurnLabelTest {
       new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
   private final AgentId agent = AgentId.random();
 
-  private Outcome<String> askWith(Customizer<DirectHarnessConfig<Invoice>> labelling) {
+  private AskOutcome<String> askWith(Customizer<DirectHarnessConfig<Invoice>> labelling) {
     InferenceProvider model =
         (request, narrator) ->
             new InferenceResult.Answer(List.of(new Block.Text("ok")), Usage.unreported());
@@ -112,7 +112,7 @@ class DirectHarnessTurnLabelTest {
 
     @Test
     void falls_back_to_the_class_name_and_the_turn_still_runs_when_the_label_throws() {
-      Outcome<String> outcome =
+      AskOutcome<String> outcome =
           askWith(
               c ->
                   c.inputLabel(
@@ -120,7 +120,7 @@ class DirectHarnessTurnLabelTest {
                         throw new IllegalStateException("no label today");
                       }));
 
-      assertThat(outcome).isInstanceOf(Outcome.Answered.class);
+      assertThat(outcome).isInstanceOf(AskOutcome.Answered.class);
       assertThat(theTurnStart().label()).isEqualTo("Invoice");
     }
 

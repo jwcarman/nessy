@@ -10,7 +10,7 @@ already knows where it lives.
 
 ```java
 public interface DirectHarness<I, O> {
-  Outcome<O> ask(AgentId agent, I input);
+  AskOutcome<O> ask(AgentId agent, I input);
   TerminationOutcome terminate(AgentId agent);
 }
 
@@ -42,7 +42,7 @@ that looks for due work. Neither has to be closed — a caller that never does
 loses nothing that outlives its own turns — but a container managing the
 lifecycle should.
 
-## The direct door: ask, and get an `Outcome`
+## The direct door: ask, and get an `AskOutcome`
 
 ```java
 DirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> config
@@ -56,7 +56,7 @@ DirectHarness<String, String> harness = factory.<String>create(
                 .inference(in -> in.provider(providerId.value()).model("claude-sonnet-5-5"))
                 .tool(new AddTool()));
 
-Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
+AskOutcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
 ```
 
 Here `backend`, `provider` and `providerId` are as built in
@@ -83,17 +83,17 @@ To ask from code that runs inside a transaction, suspend it for the call:
 ```java
 TransactionTemplate outside = new TransactionTemplate(transactionManager);
 outside.setPropagationBehavior(TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
-Outcome<String> outcome = outside.execute(status -> harness.ask(agent, input));
+AskOutcome<String> outcome = outside.execute(status -> harness.ask(agent, input));
 ```
 
 The queued door is the other way round: `tell` joins the caller's
 transaction on purpose, so consuming a message and telling an agent about it
 commit or roll back together.
 
-### Outcome
+### AskOutcome
 
 `ask` never throws for anything it understands. What it hands back is one of
-four arms:
+five arms:
 
 | Arm | What it means |
 |---|---|
@@ -101,25 +101,27 @@ four arms:
 | `Refused<T>(String category, TurnStats stats)` | The model declined, and would decline again |
 | `Failed<T>(String reason, TurnStats stats)` | The turn ended without an answer — worth retrying, unlike a refusal |
 | `Busy<T>()` | Somebody else is already running a turn on this agent; nothing happened |
+| `Terminated<T>()` | The agent has been terminated; no turn ran, and it stays terminated |
 
-`Busy` is the only arm where no turn ran at all: nothing was appended,
-nothing was spent, nothing about the agent changed. That is also what makes
-it the only one worth simply asking again for — the other three are
-answers, and asking again gets another one.
+`Busy` and `Terminated` are the arms where no turn ran at all: nothing was
+appended, nothing was spent, nothing about the agent changed. `Busy` is the
+only one worth simply asking again for — the other four are answers, and
+asking again gets another one.
 
 A sealed interface, so a caller can match every arm and the compiler holds
 it to that:
 
 ```java
 switch (outcome) {
-    case Outcome.Answered<String>(String said, _) -> System.out.println(said);
-    case Outcome.Refused<String>(String category, _) -> System.out.println("refused: " + category);
-    case Outcome.Failed<String>(String reason, _) -> System.out.println("failed: " + reason);
-    case Outcome.Busy<String> _ -> System.out.println("busy; try again");
+    case AskOutcome.Answered<String>(String said, _) -> System.out.println(said);
+    case AskOutcome.Refused<String>(String category, _) -> System.out.println("refused: " + category);
+    case AskOutcome.Failed<String>(String reason, _) -> System.out.println("failed: " + reason);
+    case AskOutcome.Busy<String> _ -> System.out.println("busy; try again");
+    case AskOutcome.Terminated<String> _ -> System.out.println("terminated");
 }
 ```
 
-`Busy` carries nothing, because no turn ran to tally. The other three end in
+`Busy` and `Terminated` carry nothing, because no turn ran to tally. The other three end in
 a `TurnStats`, what the turn did and what it cost; the `_` ignores it here.
 
 ### Answering in a shape
@@ -136,11 +138,11 @@ DirectHarness<String, Verdict> harness = factory.<String, Verdict>create(
                 .systemPrompt("You review a request and decide.")
                 .inference(in -> in.provider(providerId.value()).model("claude-sonnet-5-5")));
 
-Outcome<Verdict> outcome = harness.ask(AgentId.random(), "may I deploy on a Friday?");
+AskOutcome<Verdict> outcome = harness.ask(AgentId.random(), "may I deploy on a Friday?");
 ```
 
 A vendor or model that will not constrain an answer ends the turn
-`Outcome.Failed` rather than handing back something that does not fit the
+`AskOutcome.Failed` rather than handing back something that does not fit the
 shape.
 
 ### Terminating a direct harness
@@ -202,8 +204,8 @@ immediately and ends once the turn it already owes an outcome for is
 finished — an effect already written down cannot be cancelled, and
 abandoning it would leave a row nobody will ever discharge. Nothing is
 written to the story: what ended is the agent, not its conversation.
-Idempotent and irreversible; an input arriving afterwards is refused,
-whenever it arrives.
+Idempotent and irreversible; a question arriving afterwards is answered
+`AskOutcome.Terminated`, whenever it arrives.
 
 ## Coalescing: what happens to what is already waiting
 

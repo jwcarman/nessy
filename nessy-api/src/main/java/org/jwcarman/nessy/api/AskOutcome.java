@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.api;
 
 /** What came of asking. */
-public sealed interface Outcome<T> {
+public sealed interface AskOutcome<T> {
 
   /**
    * The model answered.
@@ -27,7 +27,7 @@ public sealed interface Outcome<T> {
    *
    * @param stats what the turn that produced it did and what it cost
    */
-  record Answered<T>(T value, TurnStats stats) implements Outcome<T> {}
+  record Answered<T>(T value, TurnStats stats) implements AskOutcome<T> {}
 
   /**
    * The model declined, and would decline again.
@@ -35,7 +35,7 @@ public sealed interface Outcome<T> {
    * @param stats what the turn that declined did and what it cost -- a refusal is not free, since
    *     the model read the input before deciding not to answer it
    */
-  record Refused<T>(String category, TurnStats stats) implements Outcome<T> {}
+  record Refused<T>(String category, TurnStats stats) implements AskOutcome<T> {}
 
   /**
    * The turn ended without an answer.
@@ -51,21 +51,34 @@ public sealed interface Outcome<T> {
    * @param stats what the turn spent before it failed, which is the reading that matters most -- a
    *     turn that failed expensively is a different problem from one that failed at once
    */
-  record Failed<T>(String reason, TurnStats stats) implements Outcome<T> {}
+  record Failed<T>(String reason, TurnStats stats) implements AskOutcome<T> {}
 
   /**
    * Somebody else is already running a turn on this scope, so this one never started.
    *
-   * <p>The only arm that means no turn happened: nothing was appended, nothing was spent, and
-   * nothing about the scope changed. Which is also what makes it the only one worth simply asking
-   * again for -- the other three are answers, and asking again gets another one.
+   * <p>One of two arms that mean no turn happened: nothing was appended, nothing was spent, and
+   * nothing about the scope changed. It is the only one worth simply asking again for -- {@link
+   * Terminated} gets the same answer every time, and the other three are answers, so asking again
+   * gets another one.
    *
    * <p>Says nothing about who holds the scope or for how long. Nothing can know that honestly; only
    * that a moment ago it was taken.
    *
-   * <p><b>The one arm with no tally</b>, because there was no turn to tally. Every other arm can
-   * say what it cost; this one would have to invent an empty one, and an empty tally reads as a
-   * turn that ran and spent nothing rather than as a turn that never was.
+   * <p><b>No tally</b>, because there was no turn to tally. The three arms of a turn can say what
+   * it cost; this one would have to invent an empty one, and an empty tally reads as a turn that
+   * ran and spent nothing rather than as a turn that never was.
    */
-  record Busy<T>() implements Outcome<T> {}
+  record Busy<T>() implements AskOutcome<T> {}
+
+  /**
+   * The agent has been terminated, so this turn never started.
+   *
+   * <p>Like {@link Busy}, no turn happened: nothing was appended, nothing was spent, and nothing
+   * about the agent changed. Unlike {@link Busy}, asking again gets the same answer, because a
+   * terminated agent stays terminated.
+   *
+   * <p><b>No tally</b>, for the reason {@link Busy} has none: there was no turn to tally, and an
+   * empty one would read as a turn that ran and spent nothing.
+   */
+  record Terminated<T>() implements AskOutcome<T> {}
 }

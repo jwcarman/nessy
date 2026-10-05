@@ -40,11 +40,11 @@ loop cannot be told apart from a long honest one — research and
 multi-file work genuinely run long — so the first thing a bound does is
 ask for an answer rather than take the turn away. A turn that was fine
 returns a real answer, slightly early; one that was stuck stops spending.
-The caller still receives `Outcome.Answered`.
+The caller still receives `AskOutcome.Answered`.
 
 **`FailTurn(reason)`** ends the turn outright. It produces an
 `AgentEvent.TurnStopped`, a watcher hears `Narration.TurnStopped`, and a
-caller receives `Outcome.Failed` — one vocabulary from the decision to the
+caller receives `AskOutcome.Failed` — one vocabulary from the decision to the
 answer. `reason` cannot be blank; a turn ended on purpose must say why.
 
 ## The default: `TurnPolicy.calls(20, 25)`

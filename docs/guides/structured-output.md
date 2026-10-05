@@ -47,21 +47,23 @@ generated. The transcript keeps the model's own text, wrapper included.
 ## Asking, and reading the outcome
 
 ```java
-Outcome<Weather> outcome = forecaster.ask(agentId, "what's the weather in Columbus, Ohio?");
+AskOutcome<Weather> outcome = forecaster.ask(agentId, "what's the weather in Columbus, Ohio?");
 
 switch (outcome) {
-  case Outcome.Answered<Weather>(Weather weather, _) -> System.out.println(weather);
-  case Outcome.Refused<Weather>(String category, _) -> System.out.println("declined: " + category);
-  case Outcome.Failed<Weather>(String reason, _) -> System.out.println("failed: " + reason);
-  case Outcome.Busy<Weather> _ -> System.out.println("busy, try again");
+  case AskOutcome.Answered<Weather>(Weather weather, _) -> System.out.println(weather);
+  case AskOutcome.Refused<Weather>(String category, _) -> System.out.println("declined: " + category);
+  case AskOutcome.Failed<Weather>(String reason, _) -> System.out.println("failed: " + reason);
+  case AskOutcome.Busy<Weather> _ -> System.out.println("busy, try again");
+  case AskOutcome.Terminated<Weather> _ -> System.out.println("terminated");
 }
 ```
 
-`Outcome<O>` is the same sealed answer shape `DirectHarness.ask` always
+`AskOutcome<O>` is the same sealed answer shape `DirectHarness.ask` always
 returns, whatever `O` is. `Answered` carries the value in the shape that
 was asked for — `Weather` here, plain text when no shape was named.
 `Refused` is the model declining. `Busy` means another turn was already
-running on this agent and nothing happened.
+running on this agent and nothing happened. `Terminated` means the agent
+has been terminated and no turn ran.
 
 `Failed` is where a model's answer that would not fit the requested shape
 arrives. The turn happened and the model spoke; what came back did not

@@ -34,7 +34,7 @@ package org.jwcarman.nessy.api;
  * and backed by a durable store resumes; neither changes a line of this interface.
  *
  * <p><b>One turn at a time per agent, and the second caller is told so.</b> A queued harness gets
- * that from its queue; this gets it from a lock, and being refused is an {@link Outcome.Busy}
+ * that from its queue; this gets it from a lock, and being refused is an {@link AskOutcome.Busy}
  * rather than a wait -- the caller is standing right there and would rather know than block. What
  * kind of lock decides whether that holds across machines or only inside this one.
  *
@@ -60,7 +60,7 @@ public interface DirectHarness<I, O> {
    *
    * <p>Support for a shape is not universal and is sometimes per model: a vendor that will not
    * constrain an answer, or a model that answers around the shape, ends the turn {@link
-   * Outcome.Failed} rather than handing back something that does not fit.
+   * AskOutcome.Failed} rather than handing back something that does not fit.
    *
    * <p><b>Never inside a caller's transaction.</b> A turn makes at least one model call, a network
    * call that can take seconds, and nothing should hold a transaction open across one; on a JDBC
@@ -70,7 +70,7 @@ public interface DirectHarness<I, O> {
    *
    * @throws IllegalStateException if a transaction is open on the calling thread
    */
-  Outcome<O> ask(AgentId agent, I input);
+  AskOutcome<O> ask(AgentId agent, I input);
 
   /**
    * This agent is finished, if it was in a position to be told.

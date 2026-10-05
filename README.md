@@ -29,7 +29,7 @@ the front door: enough to run something real and decide what to install.
 ## The five-minute example
 
 Two harness doors, and they are peers. `DirectHarness<I, O>.ask` runs a
-turn on the calling thread and hands back an `Outcome<O>` — for a caller
+turn on the calling thread and hands back an `AskOutcome<O>` — for a caller
 standing there waiting on an answer. `QueuedHarness<I>.tell` always accepts
 and returns nothing — for work nobody is waiting on. Build one once, keep
 it, and ask it things:
@@ -66,7 +66,7 @@ DirectHarness<String, String> harness = factory.<String>create(
                 .inference(in -> in.provider("anthropic").model("claude-sonnet-5-5"))
                 .tool(new AddTool()));
 
-Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
+AskOutcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
 ```
 
 The example needs Java 25 and four dependencies: `nessy-engine`,
@@ -76,8 +76,8 @@ manage it). [Getting Started](https://jwcarman.github.io/nessy/guides/getting-st
 has the pom and the imports.
 
 `ask` never throws for anything it understands: a model declining, a turn
-running out of budget or the agent already being busy are `Outcome` arms —
-`Answered`, `Refused`, `Failed`, `Busy` — to branch on, not faults. See
+running out of budget or the agent already being busy are `AskOutcome` arms —
+`Answered`, `Refused`, `Failed`, `Busy`, `Terminated` — to branch on, not faults. See
 [The Harness](https://jwcarman.github.io/nessy/guides/harness/) for the
 queued door, which trades that returned outcome for a backlog and answers
 narrated to listeners.
@@ -187,7 +187,7 @@ add `nessy-inference-spi`; an application building an agent depends on
 
 | Artifact | What it is for |
 |---|---|
-| `nessy-api` | the shared vocabulary: `Tool`, `Approver`, `Awaited`, blocks, `NarrationListener`, `Outcome` |
+| `nessy-api` | the shared vocabulary: `Tool`, `Approver`, `Awaited`, blocks, `NarrationListener`, `AskOutcome` |
 | `nessy-inference-spi` | adapter authors: `InferenceProvider` |
 | `nessy-backend-spi` | backend authors: `DirectBackend`, `QueuedBackend`, `Chapters` for an agent's closed chapters, and `Leases` for work that must run once across processes |
 | `nessy-backend-jdbc` | one PostgreSQL `DataSource` behind either door, and `Schemas` |

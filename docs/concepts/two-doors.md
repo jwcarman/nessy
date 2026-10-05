@@ -9,13 +9,13 @@ application needs.
 ## The bargain each makes
 
 `DirectHarness.ask(agent, input)` runs a turn on the calling thread and
-hands back an `Outcome<O>` before it returns. The caller is standing there
+hands back an `AskOutcome<O>` before it returns. The caller is standing there
 holding the answer. That gives `ask` two freedoms a queued call does not
 have: it can refuse to start at all, and it can answer in a typed shape
 `O` rather than always prose.
 
 ```java
-Outcome<Reply> outcome = harness.ask(agentId, "what's the weather?");
+AskOutcome<Reply> outcome = harness.ask(agentId, "what's the weather?");
 ```
 
 `QueuedHarness.tell(agent, input)` returns nothing. Telling an agent
@@ -49,7 +49,7 @@ nothing durable either, for the same reason: the story is one committed
 step behind the crash, never mid-write.
 
 **Whether backpressure is visible.** `ask` makes it visible immediately: a
-second caller arriving while a turn is in flight is told `Outcome.Busy`
+second caller arriving while a turn is in flight is told `AskOutcome.Busy`
 rather than being made to wait, because the caller is standing there and
 would rather know than block. `tell` makes backpressure invisible by
 design — there is no second caller to notice anything, because arrivals
@@ -65,7 +65,7 @@ waiting has nowhere for a late answer to arrive, and no work is ever
 attempted twice. See [Durable Computation](durable-computation.md).
 
 **What the caller can learn about failure.** `ask` gets the reason
-directly, as `Outcome.Failed(reason)` or `Outcome.Refused(category)`. A
+directly, as `AskOutcome.Failed(reason)` or `AskOutcome.Refused(category)`. A
 `tell` caller gets nothing back at all — not even a promise to poll —
 because it has already gone by the time the turn resolves. See
 [Outcomes](outcomes.md) for the shapes and
@@ -99,9 +99,9 @@ chance to be told no.
 
 ## How failure reaches the caller
 
-On the direct door, `ask` hands back the reason inline: `Outcome.Failed`
+On the direct door, `ask` hands back the reason inline: `AskOutcome.Failed`
 carries the provider adapter's account of what went wrong, and
-`Outcome.Refused` carries the model's own category for declining. The
+`AskOutcome.Refused` carries the model's own category for declining. The
 caller has it before its next line of code runs.
 
 On the queued door, `tell` returns nothing, so there is no inline path at

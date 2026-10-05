@@ -26,9 +26,9 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AskOutcome;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Narration;
-import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
@@ -107,7 +107,7 @@ class ReplLoopTest {
   void an_answer_that_was_not_streamed_is_printed_whole() {
     FakeHarness harness =
         new FakeHarness(List.of(new Narration.Answered(new TurnId(1), false, Usage.unreported())))
-            .answering(new Outcome.Answered<>("all at once", ANY_STATS));
+            .answering(new AskOutcome.Answered<>("all at once", ANY_STATS));
     FakeConsole console = new FakeConsole("hi", "quit");
     run(harness, console, config());
     assertThat(console.written()).contains("all at once");
@@ -364,7 +364,7 @@ class ReplLoopTest {
     void a_silent_completion_says_so_rather_than_printing_nothing() {
       FakeHarness harness =
           new FakeHarness(List.of(new Narration.Answered(new TurnId(1), false, Usage.unreported())))
-              .answering(new Outcome.Answered<>("", ANY_STATS));
+              .answering(new AskOutcome.Answered<>("", ANY_STATS));
       FakeConsole console = new FakeConsole("hello", "/exit");
       run(harness, console, config());
       assertThat(console.written()).contains("ended the turn without saying anything");
@@ -373,17 +373,25 @@ class ReplLoopTest {
     @Test
     void a_refusal_is_reported() {
       FakeHarness harness =
-          new FakeHarness(List.of()).answering(new Outcome.Refused<>("self-harm", ANY_STATS));
+          new FakeHarness(List.of()).answering(new AskOutcome.Refused<>("self-harm", ANY_STATS));
       FakeConsole console = new FakeConsole("hello", "/exit");
       run(harness, console, config());
       assertThat(console.written()).contains("refused");
     }
 
     @Test
+    void a_terminated_conversation_is_reported_as_terminated() {
+      FakeHarness harness = new FakeHarness(List.of()).answering(new AskOutcome.Terminated<>());
+      FakeConsole console = new FakeConsole("hello", "/exit");
+      run(harness, console, config());
+      assertThat(console.written()).contains("that conversation has been terminated");
+    }
+
+    @Test
     void a_failure_is_reported() {
       FakeHarness harness =
           new FakeHarness(List.of())
-              .answering(new Outcome.Failed<>("the model was unreachable", ANY_STATS));
+              .answering(new AskOutcome.Failed<>("the model was unreachable", ANY_STATS));
       FakeConsole console = new FakeConsole("hello", "/exit");
       run(harness, console, config());
       assertThat(console.written()).contains("failed");

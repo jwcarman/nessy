@@ -21,10 +21,10 @@ import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AskOutcome;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.NarrationListener;
-import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.TerminationOutcome;
 import org.jwcarman.nessy.api.TurnStats;
 
@@ -46,7 +46,7 @@ final class FakeHarness implements DirectHarness<String, String> {
   private final List<AgentId> askedOf = new ArrayList<>();
   private final List<AgentId> terminated = new ArrayList<>();
   private NarrationListener narrator = NarrationListener.none();
-  private Outcome<String> outcome = new Outcome.Answered<>("(already streamed)", ANY_STATS);
+  private AskOutcome<String> outcome = new AskOutcome.Answered<>("(already streamed)", ANY_STATS);
   private int next;
 
   @SafeVarargs
@@ -60,13 +60,13 @@ final class FakeHarness implements DirectHarness<String, String> {
   }
 
   /** What ask should hand back, for the cases a terminal has to report rather than print. */
-  FakeHarness answering(Outcome<String> outcome) {
+  FakeHarness answering(AskOutcome<String> outcome) {
     this.outcome = outcome;
     return this;
   }
 
   @Override
-  public Outcome<String> ask(AgentId agent, String input) {
+  public AskOutcome<String> ask(AgentId agent, String input) {
     asked.add(input);
     askedOf.add(agent);
     if (next < answers.size()) {

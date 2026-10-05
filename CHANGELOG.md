@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+- **`Outcome` is `AskOutcome`.** `DirectHarness.ask` returns `AskOutcome<O>`, with the same arms
+  `Answered`, `Refused`, `Failed` and `Busy`, and a fifth, `Terminated`. Asking a terminated agent
+  returns `AskOutcome.Terminated`, not `Refused` with the category `terminated`: no turn runs,
+  nothing is appended, and the outcome carries no `TurnStats`. A `switch` over the outcome must
+  handle `Terminated`.
 - **The reply token is removed.** `ReplyToken`, `ApprovalRequest.replyToken()` and its record
   component, `ToolCallRequest.replyToken()`, the engine's `ReplyTokens`,
   `QueuedHarnessFactoryConfig.replyTokens(...)` and the `nessy.reply-token-encryption-keys`

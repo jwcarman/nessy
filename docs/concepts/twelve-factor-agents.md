@@ -217,7 +217,7 @@ asks that an agent launch through a simple API, pause for long operations,
 and resume from an external trigger, including the gap between choosing a
 tool and running it.
 
-- **Launch.** `DirectHarness.ask(agent, input)` returns an `Outcome`.
+- **Launch.** `DirectHarness.ask(agent, input)` returns an `AskOutcome`.
   `QueuedHarness.tell(agent, input)` returns once the input is durable.
 - **Pause.** A tool or an approver returns `Awaited.deferred()`. The call is
   parked as a row, holds no thread, and survives a restart.
@@ -362,9 +362,9 @@ sends `{"error": message}`.
 Model-side failures are handled differently. A failed inference is not shown
 to the model. A failure the adapter classifies as transient can be retried
 under the inference `retryPolicy`, which defaults to `Never`; otherwise the
-turn ends with `Outcome.Failed`. A reply cut off at the output limit is
+turn ends with `AskOutcome.Failed`. A reply cut off at the output limit is
 delivered as the answer, with a WARN in the log and the finish reason on the
-trace. `Outcome` carries no flag for it.
+trace. `AskOutcome` carries no flag for it.
 
 What is missing: there is no consecutive-error counter. The only bound on a
 model that keeps failing a tool is the turn policy, which counts model

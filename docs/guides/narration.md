@@ -151,7 +151,7 @@ the same way) or `REJECTED` (the provider named the input it refused). It
 matters most on the queued door: `QueuedHarness.tell` returns nothing, so
 a watcher learns why a turn failed here as it happens, and
 `AgentStories.replay` reads it afterwards. The direct door
-hands the same text back from `ask` as `Outcome.Failed`.
+hands the same text back from `ask` as `AskOutcome.Failed`.
 
 `TurnRefused` carries `category`, the provider's own word for why —
 unchanged and uninterpreted. A refusal is not a failure: the call

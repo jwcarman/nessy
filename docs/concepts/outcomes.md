@@ -2,20 +2,21 @@
 
 Nessy prefers a value that names what happened over an exception or a
 silent no-op. Two sealed interfaces carry that preference at the two places
-a caller most needs it: `Outcome<T>`, what came of asking, and
+a caller most needs it: `AskOutcome<T>`, what came of asking, and
 `TerminationOutcome`, what came of asking an agent to end. Both are in
 `nessy-api`, and both make a caller write an exhaustive `switch` rather than
 a `catch` — the case has to be acknowledged, not discovered later in
 production.
 
-## `Outcome<T>`
+## `AskOutcome<T>`
 
 ```java
-public sealed interface Outcome<T> {
-  record Answered<T>(T value, TurnStats stats) implements Outcome<T> {}
-  record Refused<T>(String category, TurnStats stats) implements Outcome<T> {}
-  record Failed<T>(String reason, TurnStats stats) implements Outcome<T> {}
-  record Busy<T>() implements Outcome<T> {}
+public sealed interface AskOutcome<T> {
+  record Answered<T>(T value, TurnStats stats) implements AskOutcome<T> {}
+  record Refused<T>(String category, TurnStats stats) implements AskOutcome<T> {}
+  record Failed<T>(String reason, TurnStats stats) implements AskOutcome<T> {}
+  record Busy<T>() implements AskOutcome<T> {}
+  record Terminated<T>() implements AskOutcome<T> {}
 }
 ```
 
@@ -55,25 +56,24 @@ usage is on the record.
 
 **`Busy<T>`** means no turn happened: somebody else is already running a
 turn on this scope, so nothing was appended and nothing was spent. It's
-also the only one worth simply retrying — the other three are answers, and
+also the only one worth simply retrying — the answers are answers, and
 asking again just gets another one.
 
-`Refused` has one case with no turn behind it, too. Asking an agent that
-has been terminated returns `Refused` with the category `terminated`. No
-turn runs, and its `TurnStats` is empty. A caller that shows "the model
-declined" for every `Refused` will say that about a dead agent.
+**`Terminated<T>`** means the agent has been terminated, so no turn ran:
+nothing was appended and nothing was spent. Asking again gets the same
+answer, because a terminated agent stays terminated. It is not a `Refused`,
+which is the model's own no.
 
 **`Answered`, `Refused` and `Failed` each carry a `TurnStats`** — what the
 turn that produced them did, and what it cost. A caller who waited for the
 answer is the one entitled to know what it spent; reading it off the
 outcome means never reaching into a backend to find out. A failed turn's
 tally matters as much as an answered one's: a turn that failed expensively
-is a different problem from one that failed at once. `Busy` carries none —
-**the one arm with no tally**, deliberately. There was no turn, and an
-empty tally would read as a turn that ran and spent nothing rather than as
-a turn that never was. (`Refused("terminated")` carries an empty tally,
-because the arm's shape requires one.) See [Cost](cost.md) for what `TurnStats` holds and
-how to read it.
+is a different problem from one that failed at once. `Busy` and
+`Terminated` carry none — **the two arms with no tally**, deliberately.
+There was no turn, and an empty tally would read as a turn that ran and
+spent nothing rather than as a turn that never was. See [Cost](cost.md)
+for what `TurnStats` holds and how to read it.
 
 ## `TerminationOutcome`
 
@@ -118,20 +118,20 @@ make that gap visible instead of silent.
 
 Both types exist because a `catch` block and a `void` return both let a
 caller not deal with a case. A sealed interface doesn't: `switch` over
-`Outcome<T>` or `TerminationOutcome` that omits an arm doesn't compile, so
+`AskOutcome<T>` or `TerminationOutcome` that omits an arm doesn't compile, so
 the decision to handle `Busy` or not is made at the call site, in the open,
 rather than inherited from whichever exception someone remembered to catch.
 
 The same house rule shows up a level lower, on the wire between a turn and
 its tools: `ToolOutcome` is a sealed `Succeeded` / `Failed` / `Denied`,
-told apart for the same reason `Outcome.Refused` is told apart from
-`Outcome.Failed` — a tool that was never run because an approver said no is
+told apart for the same reason `AskOutcome.Refused` is told apart from
+`AskOutcome.Failed` — a tool that was never run because an approver said no is
 a different fact from a tool that ran and went wrong, and collapsing the
 two would tell the model, and the caller, something that didn't happen.
 
 ## Where next
 
-- [The Harness](../guides/harness.md), the door `Outcome` answers through
+- [The Harness](../guides/harness.md), the door `AskOutcome` answers through
 - [Backlog](backlog.md), where the queued door's `terminate` writes down
   what `Busy` cannot
 - [Tools](tools.md), `ToolOutcome` and the rest of a turn's tool-calling

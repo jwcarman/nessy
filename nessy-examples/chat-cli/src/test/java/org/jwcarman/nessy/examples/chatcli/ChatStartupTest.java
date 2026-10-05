@@ -24,9 +24,9 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AskOutcome;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
-import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -91,10 +91,11 @@ class ChatStartupTest {
               h ->
                   h.systemPrompt("Be brief.").inputRenderer(said -> List.of(new Block.Text(said))));
 
-      Outcome<String> outcome = harness.ask(AgentId.random(), "hi");
+      AskOutcome<String> outcome = harness.ask(AgentId.random(), "hi");
 
-      assertThat(outcome).isInstanceOf(Outcome.Answered.class);
-      assertThat(((Outcome.Answered<String>) outcome).value()).isEqualTo("hello from the script");
+      assertThat(outcome).isInstanceOf(AskOutcome.Answered.class);
+      assertThat(((AskOutcome.Answered<String>) outcome).value())
+          .isEqualTo("hello from the script");
     }
   }
 }
