@@ -29,7 +29,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.random.RandomGenerator;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.RetryDecision;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Usage;
@@ -350,8 +349,7 @@ public class EffectDispatcher {
           attempt.agentId().value(),
           attempt.attemptsMade());
       switch (handlers.perform(attempt.agentId(), effect, attempt.deadline())) {
-        case Awaited.Ready<EffectOutcome>(EffectOutcome.InferenceFailed failed)
-            when worthAnotherGo(failed) -> {
+        case Handled.Settled(EffectOutcome.InferenceFailed failed) when worthAnotherGo(failed) -> {
           // True whatever the policy then decides. Saying "it will be tried again" here would
           // be a promise this line is not in a position to make: with the default policy it
           // will not be, and the next line would contradict this one.
@@ -363,7 +361,7 @@ public class EffectDispatcher {
               failed.failure().getClass().getSimpleName());
           settle(attempt, effect, () -> failed);
         }
-        case Awaited.Ready<EffectOutcome>(EffectOutcome outcome) -> {
+        case Handled.Settled(EffectOutcome outcome) -> {
           // The outcome is folded first: if that commits and this crashes, the row comes
           // due again, is performed again, and the fold recognises the redelivery and
           // ignores it.
@@ -385,7 +383,7 @@ public class EffectDispatcher {
         //
         // Deliberately NOT a retry. The work happened -- somebody was asked -- and asking
         // again is pestering rather than recovering.
-        case Awaited.Deferred<EffectOutcome> _ ->
+        case Handled.Deferred _ ->
             log.info(
                 "[{}] effect {} for agent {} deferred its answer; it stands until {}",
                 agentType.value(),

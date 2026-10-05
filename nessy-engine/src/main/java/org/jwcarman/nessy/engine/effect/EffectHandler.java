@@ -17,9 +17,7 @@ package org.jwcarman.nessy.engine.effect;
 
 import java.time.Instant;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
-import org.jwcarman.nessy.backend.effect.EffectOutcome;
 
 /**
  * Does one kind of effect, and says what that kind is worth.
@@ -59,14 +57,14 @@ public interface EffectHandler<E extends AgentEffect> {
    * retry decision as {@code Failure.Unknown}, which is the honest answer only when nobody found
    * out whether the work happened.
    *
-   * <p><b>{@link Awaited.Deferred} means the work is genuinely elsewhere</b> -- a person has been
+   * <p><b>{@link Handled.Deferred} means the work is genuinely elsewhere</b> -- a person has been
    * asked, a queue has the job -- and an answer will arrive later against a {@link
    * org.jwcarman.nessy.api.tool.ReplyToken}. It is not "try again later": the effect has been
    * performed, in the only sense that matters, and repeating it would ask twice.
    *
    * <p>Uniform even for effects that can never defer. An inference either answers or does not, and
    * there is nobody to come back afterwards -- so {@link InferenceHandler} wraps every return in
-   * {@link Awaited#ready}. One handler shape is worth three wrappers: the alternative is two
+   * {@link Handled#settled}. One handler shape is worth three wrappers: the alternative is two
    * interfaces and a dispatcher that has to know which kind it is holding.
    *
    * <p>The {@code deadline} is the instant this call is held to: the one on the effect's row, or
@@ -75,5 +73,5 @@ public interface EffectHandler<E extends AgentEffect> {
    * differ from the one that decides when the call is given up on. A handler with nobody to show it
    * to ignores it.
    */
-  Awaited<EffectOutcome> handle(AgentId agentId, E effect, Instant deadline);
+  Handled handle(AgentId agentId, E effect, Instant deadline);
 }

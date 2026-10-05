@@ -22,7 +22,6 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CallFailure;
-import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -59,7 +58,6 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
 
   private final Tools tools;
   private final ToolCalls calls;
-  private final Narrator narrator;
   private final ReplyTokens replyTokens;
   private final EffectTermsSource terms;
 
@@ -68,7 +66,6 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
       Tools tools,
       ToolCalls calls,
       ReplyTokens replyTokens,
-      Narrator narrator,
       EffectTermsSource terms,
       Payloads payloads) {
     this.agentType = agentType;
@@ -76,7 +73,6 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
     this.tools = tools;
     this.calls = calls;
     this.replyTokens = replyTokens;
-    this.narrator = narrator;
     this.terms = terms;
   }
 
@@ -93,8 +89,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
   }
 
   @Override
-  public Awaited<EffectOutcome> handle(
-      AgentId agentId, AgentEffect.CallTool effect, Instant deadline) {
+  public Handled handle(AgentId agentId, AgentEffect.CallTool effect, Instant deadline) {
     CallId callId = effect.callId();
     Optional<ToolCalls.ResolvedCall> found = calls.find(agentId, effect.requestSeq(), callId);
     if (found.isEmpty()) {
@@ -106,7 +101,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
           agentId.value(),
           callId,
           effect.requestSeq());
-      return Awaited.ready(
+      return Handled.settled(
           new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, "the call could not be found"));
     }
     ToolCalls.ResolvedCall resolved = found.get();
@@ -117,7 +112,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
       // Ordinary, not exceptional: models ask for tools that do not exist, and telling one
       // so is how it picks a different one.
       log.warn("[{}] agent {}: no tool named {}", agentType.value(), agentId.value(), call.name());
-      return Awaited.ready(
+      return Handled.settled(
           new EffectOutcome.ToolFailed(
               callId, CallFailure.FAILED, "there is no tool named '" + call.name().value() + "'"));
     }
@@ -127,7 +122,6 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
         agentId,
         callId,
         binding,
-        deadline,
         binding.call(
             agentType,
             agentId,
@@ -147,15 +141,11 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
    * elsewhere and will be answered against the reply address. The effect row stays, due at its own
    * deadline, and if nobody answers by then the stored failure discharges the call.
    */
-  private Awaited<EffectOutcome> outcomeOf(
-      AgentId agentId,
-      CallId callId,
-      ToolBinding<?> binding,
-      Instant until,
-      Awaited<ToolResult> awaited) {
+  private Handled outcomeOf(
+      AgentId agentId, CallId callId, ToolBinding<?> binding, Awaited<ToolResult> awaited) {
     return switch (awaited) {
       case Awaited.Ready<ToolResult>(ToolResult result) ->
-          Awaited.ready(
+          Handled.settled(
               switch (result) {
                 // Put away where it was produced. A tool's result is content; what the fold is
                 // told is that the call succeeded, where the result went, and the one bounded
@@ -171,9 +161,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
                         CallFailure.FAILED,
                         Objects.requireNonNullElse(message, "the tool failed and gave no message"));
               });
-      case Awaited.Deferred<ToolResult> _ -> {
-        yield new Awaited.Deferred<>();
-      }
+      case Awaited.Deferred<ToolResult> _ -> Handled.deferred();
     };
   }
 }

@@ -36,7 +36,6 @@ import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
@@ -483,9 +482,8 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(
-        AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
-      return new Awaited.Ready<>(new EffectOutcome.InferenceRefused("stop", Usage.unreported()));
+    public Handled handle(AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
+      return Handled.settled(new EffectOutcome.InferenceRefused("stop", Usage.unreported()));
     }
   }
 
@@ -502,8 +500,7 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(
-        AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
+    public Handled handle(AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
       throw new IllegalStateException("the model call failed");
     }
   }
@@ -527,9 +524,8 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(
-        AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
-      return new Awaited.Ready<>(outcome);
+    public Handled handle(AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
+      return Handled.settled(outcome);
     }
   }
 
@@ -546,8 +542,7 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(
-        AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
+    public Handled handle(AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
       throw new IllegalStateException("the model call failed");
     }
   }
@@ -565,7 +560,7 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(AgentId agentId, E effect, Instant deadline) {
+    public Handled handle(AgentId agentId, E effect, Instant deadline) {
       throw new UnsupportedOperationException("no test here writes this kind of effect");
     }
   }
