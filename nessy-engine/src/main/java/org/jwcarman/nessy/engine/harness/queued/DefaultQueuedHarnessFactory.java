@@ -341,8 +341,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
         replyTokens,
         narrator,
         terms,
-        clock,
-        payloads);
+        clock);
   }
 
   private <I> @NonNull InferenceHandler createInferenceHandler(

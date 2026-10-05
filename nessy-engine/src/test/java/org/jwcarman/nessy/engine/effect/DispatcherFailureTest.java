@@ -38,7 +38,6 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.CallFailure;
-import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -56,6 +55,8 @@ import org.jwcarman.nessy.inference.Failure;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.Trigger;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * What the dispatcher does on a bad day.
@@ -501,9 +502,9 @@ class DispatcherFailureTest {
     Effects effects = new Effects();
     Attempt attempt = attempt(NOW.plusSeconds(600), 1);
     effects.due = List.of(attempt);
-    Optional<PayloadRef> question = Optional.of(PayloadRef.of("q1"));
+    ObjectNode facts = JsonNodeFactory.instance.objectNode().put("risk", "low").put("depth", 2);
 
-    dispatcherFor(effects, deferring(question)).dispatch();
+    dispatcherFor(effects, deferring(facts)).dispatch();
 
     await()
         .atMost(Duration.ofSeconds(5))
@@ -511,7 +512,7 @@ class DispatcherFailureTest {
     Park park = delivered.parks.getFirst();
     assertThat(park.attempt()).isSameAs(attempt);
     assertThat(park.effect()).isEqualTo(new AgentEffect.Infer(Effects.TURN));
-    assertThat(park.question()).isEqualTo(question);
+    assertThat(park.facts()).isEqualTo(facts);
     assertThat(delivered.outcomes).as("a deferral delivers nothing").isEmpty();
     assertThat(effects.retired).as("and retires nothing").isEmpty();
     assertThat(effects.rescheduled).as("and is not tried again").isEmpty();
@@ -528,7 +529,7 @@ class DispatcherFailureTest {
     Effects effects = new Effects();
     effects.due = List.of(attempt(NOW.plusSeconds(600), 1));
     delivered.parkFails = new IllegalStateException("the store is gone");
-    Deferring handler = new Deferring(Optional.of(PayloadRef.of("q1")));
+    Deferring handler = new Deferring(JsonNodeFactory.instance.objectNode().put("risk", "low"));
     EffectDispatcher dispatcher = dispatcherFor(effects, handler);
 
     dispatcher.dispatch();
@@ -606,17 +607,17 @@ class DispatcherFailureTest {
   }
 
   /** A handler whose work is elsewhere: it asks, and an answer will arrive later. */
-  private static Deferring deferring(Optional<PayloadRef> question) {
-    return new Deferring(question);
+  private static Deferring deferring(ObjectNode facts) {
+    return new Deferring(facts);
   }
 
   private static final class Deferring implements EffectHandler<AgentEffect.Infer> {
 
-    private final Optional<PayloadRef> question;
+    private final ObjectNode facts;
     private final AtomicInteger performed = new AtomicInteger();
 
-    private Deferring(Optional<PayloadRef> question) {
-      this.question = question;
+    private Deferring(ObjectNode facts) {
+      this.facts = facts;
     }
 
     @Override
@@ -627,7 +628,7 @@ class DispatcherFailureTest {
     @Override
     public Handled handle(AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
       performed.incrementAndGet();
-      return new Handled.Deferred(question);
+      return new Handled.Deferred(facts);
     }
   }
 
@@ -883,7 +884,7 @@ class DispatcherFailureTest {
   }
 
   /** One deferral, as the callback was handed it. */
-  private record Park(Attempt attempt, AgentEffect effect, Optional<PayloadRef> question) {}
+  private record Park(Attempt attempt, AgentEffect effect, ObjectNode facts) {}
 
   /** Everything the dispatcher managed to tell an agent. */
   private static final class Deliveries implements AgentEffectCallback {
@@ -896,12 +897,12 @@ class DispatcherFailureTest {
     private RuntimeException parkFails;
 
     @Override
-    public void park(Attempt attempt, AgentEffect effect, Optional<PayloadRef> question) {
+    public void park(Attempt attempt, AgentEffect effect, ObjectNode facts) {
       parkAttempts.incrementAndGet();
       if (parkFails != null) {
         throw parkFails;
       }
-      parks.add(new Park(attempt, effect, question));
+      parks.add(new Park(attempt, effect, facts));
     }
 
     @Override

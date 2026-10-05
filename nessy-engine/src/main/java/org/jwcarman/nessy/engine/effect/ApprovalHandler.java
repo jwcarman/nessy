@@ -25,13 +25,11 @@ import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
-import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
-import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
@@ -45,8 +43,8 @@ import org.slf4j.LoggerFactory;
  * <p><b>Asking is not the verdict, and only one of them is worth repeating.</b> A denial is an
  * answer -- the approver was reached and said no -- so nothing about it is retried; asking again
  * until somebody relents is not a retry, it is pestering, and an engine that did it would
- * eventually get the answer it wanted. What can fail and deserve another attempt is the question
- * not arriving: an approval service unreachable, a notification never sent. Those throw, and the
+ * eventually get the answer it wanted. What can fail and deserve another attempt is the ask not
+ * arriving: an approval service unreachable, a notification never sent. Those throw, and the
  * binding's approval policy governs them. That separation is the whole reason this is its own
  * effect rather than a step inside the call.
  *
@@ -69,9 +67,6 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
   private final EffectTermsSource terms;
   private final Clock clock;
 
-  /** Where a question is kept when its answer will come later. */
-  private final Payloads payloads;
-
   public ApprovalHandler(
       AgentType agentType,
       Tools tools,
@@ -79,8 +74,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
       ReplyTokens replyTokens,
       Narrator narrator,
       EffectTermsSource terms,
-      Clock clock,
-      Payloads payloads) {
+      Clock clock) {
     this.agentType = agentType;
     this.tools = tools;
     this.calls = calls;
@@ -88,7 +82,6 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
     this.narrator = narrator;
     this.terms = terms;
     this.clock = clock;
-    this.payloads = payloads;
   }
 
   /**
@@ -150,9 +143,9 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
       return Handled.settled(
           new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, COULD_NOT_BE_DESCRIBED));
     }
-    ApprovalRequest question;
+    ApprovalRequest request;
     try {
-      question =
+      request =
           binding.question(
               agentType,
               agentId,
@@ -165,10 +158,10 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
               deadline,
               replyTokens.mint(agentType, agentId, effect.requestSeq(), callId));
     } catch (RuntimeException e) {
-      // A call whose arguments will not read into the tool's input type has no question to
-      // ask about it -- and could not run whatever anybody answered. Discharged without asking: a
+      // A call whose arguments will not read into the tool's input type has no request to
+      // make about it -- and could not run whatever anybody answered. Discharged without asking: a
       // gate exists to stop execution, and there is no execution here to stop. The same road for
-      // whatever else building the question threw, an enricher included: the call is not put to an
+      // whatever else building the request threw, an enricher included: the call is not put to an
       // approver, so nothing says yes to it. The exception's message may be null; the text is
       // built, never passed on.
       log.warn(
@@ -182,33 +175,30 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
               callId, CallFailure.FAILED, "the arguments could not be read: " + e.getMessage()));
     }
 
-    // Said before the approver is asked, because a question that never comes back must still
+    // Said before the approver is asked, because a request that never comes back must still
     // have been seen going out. A watcher told only about verdicts would see nothing at all
     // for the calls that matter most.
     narrator.narrate(
-        Narrated.live(agentType, agentId, new Narration.ApprovalSought(callId, question.action())));
+        Narrated.live(agentType, agentId, new Narration.ApprovalSought(callId, request.action())));
 
-    return switch (answer(binding, agentId, callId, question)) {
-      case Awaited.Ready<ApprovalResult>(ApprovalResult result) -> {
-        // Kept after the approver has answered, so a fact it added while deciding is in what it
-        // was shown, and never inside the approver call: that call's exceptions are a failed ask.
-        Optional<PayloadRef> kept =
-            storedQuestion(agentId, callId, question, "the decision is recorded without it");
-        yield Handled.settled(
-            switch (result) {
-              case ApprovalResult.Approved(var decidedBy) ->
-                  new EffectOutcome.ToolApproved(callId, decidedBy, kept);
-              case ApprovalResult.Denied(String reason, var decidedBy) -> {
-                log.info(
-                    "[{}] agent {}: {} was denied ({})",
-                    agentType.value(),
-                    agentId.value(),
-                    question.action(),
-                    reason);
-                yield new EffectOutcome.ToolDenied(callId, reason, decidedBy, kept);
-              }
-            });
-      }
+    return switch (answer(binding, request)) {
+      // The facts are taken after the approver has answered, so a fact it added while deciding is
+      // in what it was shown. The outcome holds its own copy.
+      case Awaited.Ready<ApprovalResult>(ApprovalResult result) ->
+          Handled.settled(
+              switch (result) {
+                case ApprovalResult.Approved(var decidedBy) ->
+                    new EffectOutcome.ToolApproved(callId, decidedBy, request.facts());
+                case ApprovalResult.Denied(String reason, var decidedBy) -> {
+                  log.info(
+                      "[{}] agent {}: {} was denied ({})",
+                      agentType.value(),
+                      agentId.value(),
+                      request.action(),
+                      reason);
+                  yield new EffectOutcome.ToolDenied(callId, reason, decidedBy, request.facts());
+                }
+              });
       // The ordinary case for a person, not an exotic one. The approver has the reply
       // address and will come back against it; until then the effect row stays where it is,
       // due at its own deadline, and nothing here says anything to the agent. Silence is
@@ -219,59 +209,26 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
             "[{}] agent {}: {} is waiting on an answer until {}",
             agentType.value(),
             agentId.value(),
-            question.action(),
-            question.deadline());
-        yield new Handled.Deferred(
-            storedQuestion(
-                agentId,
-                callId,
-                question,
-                "the call stays parked on its row, but its deferral will not be recorded"));
+            request.action(),
+            request.deadline());
+        yield new Handled.Deferred(request.facts());
       }
     };
   }
 
   /**
-   * The approver's answer, or its failure carrying the question it was asked.
+   * The approver's answer, or its failure carrying the facts it was shown.
    *
-   * <p>Only the approver's own call is inside the {@code try}. When it throws, the question as it
-   * stood is kept and the failure is thrown again as an {@link ApproverFailed}, so the failure that
-   * is finally recorded can name it. It is still a throw, so the dispatcher's retry sees what it
-   * always saw.
+   * <p>Only the approver's own call is inside the {@code try}. When it throws, the facts as they
+   * stood are copied and the failure is thrown again as an {@link ApproverFailed}, so the failure
+   * that is finally recorded can hold them. It is still a throw, so the dispatcher's retry sees
+   * what it always saw.
    */
-  private Awaited<ApprovalResult> answer(
-      ToolBinding<?> binding, AgentId agentId, CallId callId, ApprovalRequest question) {
+  private Awaited<ApprovalResult> answer(ToolBinding<?> binding, ApprovalRequest request) {
     try {
-      return binding.approve(question);
+      return binding.approve(request);
     } catch (RuntimeException e) {
-      throw new ApproverFailed(
-          e,
-          storedQuestion(
-              agentId, callId, question, "the failure of the ask is recorded without it"));
-    }
-  }
-
-  /**
-   * What the approver was shown, kept where somebody reading the story later can find it.
-   *
-   * <p>Failing to keep it must not fail the decision or the deferral: the approver has already been
-   * asked and may have told a person, so an exception here would be read as a failed ask and the
-   * retry policy might ask again. {@code consequence} says what the failure costs, for the log.
-   */
-  private Optional<PayloadRef> storedQuestion(
-      AgentId agentId, CallId callId, ApprovalRequest question, String consequence) {
-    try {
-      return Optional.of(
-          payloads.forAgent(agentId).putDocument(ApprovalQuestions.document(question)));
-    } catch (RuntimeException e) {
-      log.warn(
-          "[{}] agent {}: the question for call {} could not be stored; {}",
-          agentType.value(),
-          agentId.value(),
-          callId,
-          consequence,
-          e);
-      return Optional.empty();
+      throw new ApproverFailed(e, request.facts());
     }
   }
 }

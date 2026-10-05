@@ -113,6 +113,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 /**
  * A whole turn, on one thread, with a map for storage.
@@ -1976,14 +1977,15 @@ class DefaultDirectHarnessTest {
 
   @Test
   @DisplayName(
-      "an approver that throws fails the call as not authorised, and the story keeps the question")
-  void an_approver_that_throws_fails_the_call_and_the_story_keeps_the_question() {
+      "an approver that throws fails the call as not authorised, and the story keeps the facts")
+  void an_approver_that_throws_fails_the_call_and_the_story_keeps_the_facts() {
     AgentId agent = AgentId.random();
     Scripted model = new Scripted().then(asking("lookup")).then(answering("noted, moving on"));
     List<ApprovalRequest> shown = new ArrayList<>();
     Approver throwing =
         request -> {
           shown.add(request);
+          request.fact("risk", "low");
           throw new IllegalStateException("approval service down");
         };
 
@@ -2007,11 +2009,8 @@ class DefaultDirectHarnessTest {
               assertThat(failed.kind()).isEqualTo(CallFailure.NOT_AUTHORISED);
               assertThat(failed.message())
                   .isEqualTo("the call could not be authorised: approval service down");
-              assertThat(failed.question()).isPresent();
-              JsonNode stored = payloads.forAgent(agent).getDocument(failed.question().get());
-              assertThat(stored.path("askedAt").asString())
-                  .isEqualTo(shown.getFirst().askedAt().toString());
-              assertThat(stored.path("toolName").asString()).isEqualTo("lookup");
+              assertThat(failed.facts())
+                  .isEqualTo(JsonNodeFactory.instance.objectNode().put("risk", "low"));
             });
   }
 
@@ -2064,6 +2063,14 @@ class DefaultDirectHarnessTest {
         .extracting(e -> e.getClass().getSimpleName())
         .contains("ToolFailed")
         .doesNotContain("ApprovalDeferred", "ToolDeferred");
+    assertThat(
+            events.readAll(TYPE, agent).stream()
+                .filter(AgentEvent.ToolFailed.class::isInstance)
+                .map(AgentEvent.ToolFailed.class::cast)
+                .map(AgentEvent.ToolFailed::facts)
+                .toList())
+        .as("a deferral is a failed call here, and the failure holds no facts")
+        .containsExactly(JsonNodeFactory.instance.objectNode());
     await().atMost(Duration.ofSeconds(10)).until(() -> heard.kindsFor(agent).contains("Answered"));
     assertThat(heard.kindsFor(agent))
         .contains("CallFailed")

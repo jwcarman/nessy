@@ -28,7 +28,6 @@ import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.Narration;
-import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -58,6 +57,7 @@ import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * A harness for work nobody is waiting on, and the callback its own effects report through.
@@ -270,7 +270,7 @@ final class DefaultQueuedHarness<I>
    * and emits no effect, so there is nothing for any of them to find.
    */
   @Override
-  public void park(Attempt attempt, AgentEffect effect, Optional<PayloadRef> question) {
+  public void park(Attempt attempt, AgentEffect effect, ObjectNode facts) {
     AgentId agentId = attempt.agentId();
     AgentCommand deferral =
         switch (effect) {
@@ -280,10 +280,7 @@ final class DefaultQueuedHarness<I>
                   approve.requestSeq(),
                   approve.callId(),
                   attempt.deadline(),
-                  question.orElseThrow(
-                      () ->
-                          new IllegalStateException(
-                              "an approval deferral has no stored question, so nothing is recorded")));
+                  facts);
           case AgentEffect.CallTool call ->
               new AgentCommand.DeferToolCall(
                   call.turn(), call.requestSeq(), call.callId(), attempt.deadline());

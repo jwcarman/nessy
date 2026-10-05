@@ -33,6 +33,8 @@ import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * A call id can repeat across two requests of one turn (a vendor that mints none gets {@code
@@ -41,6 +43,10 @@ import org.jwcarman.nessy.backend.event.AgentEvent;
  */
 @DisplayName("A call id that repeats across two requests of one turn")
 class AgentStateRepeatedCallIdTest {
+
+  private static ObjectNode none() {
+    return JsonNodeFactory.instance.objectNode();
+  }
 
   /** Any key: the tests here are not about which one a call gets. */
   private static final IdempotencyKey KEY =
@@ -85,7 +91,7 @@ class AgentStateRepeatedCallIdTest {
                 TURN,
                 request,
                 C,
-                new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), Optional.empty()))));
+                new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none()))));
   }
 
   /** Request 1 asked for c, it was approved and succeeded; the model is inferring again. */
@@ -158,7 +164,7 @@ class AgentStateRepeatedCallIdTest {
             FIRST_REQUEST,
             C,
             new AgentCommand.ToolOutcome.Failed(
-                CallFailure.FAILED, "the first call's failure", Optional.empty()));
+                CallFailure.FAILED, "the first call's failure", none()));
 
     Decision decision = awaiting.execute(duplicate);
 

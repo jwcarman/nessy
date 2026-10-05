@@ -29,6 +29,8 @@ import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.inference.Failure;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * What happened. Facts, in order, and the only thing that moves an {@code AgentState}.
@@ -232,28 +234,27 @@ public sealed interface AgentEvent {
   /**
    * A call was allowed to run. {@code idempotencyKey} is the key the call was requested with.
    *
-   * <p>{@code question} is the document the approver was shown, when the decision was made at once
-   * and the document could be kept. It is empty for an answer that arrived after a deferral, whose
-   * question is on the {@link ApprovalDeferred} before it, and for a row written before the field
-   * existed.
+   * <p>{@code facts} is the facts the approver was shown, as they stood when it decided; an empty
+   * object when there were none. It is empty for an answer that arrived after a deferral, whose
+   * facts are on the {@link ApprovalDeferred} before it. The record holds its own copy.
    */
   record ToolApproved(
       Seq seq,
       TurnId turn,
       CallId callId,
       Optional<String> decidedBy,
-      Optional<PayloadRef> question,
+      ObjectNode facts,
       IdempotencyKey idempotencyKey)
       implements AgentEvent {
     public ToolApproved {
-      question = question == null ? Optional.empty() : question;
+      facts = facts == null ? JsonNodeFactory.instance.objectNode() : facts.deepCopy();
       Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
     }
   }
 
   /**
-   * A call was refused and never ran. {@code question} is as for {@link ToolApproved}: the document
-   * the approver was shown, when the decision was made at once and it could be kept.
+   * A call was refused and never ran. {@code facts} is as for {@link ToolApproved}: the facts the
+   * approver was shown, as they stood when it decided; an empty object when there were none.
    */
   record ToolDenied(
       Seq seq,
@@ -261,11 +262,11 @@ public sealed interface AgentEvent {
       CallId callId,
       String reason,
       Optional<String> decidedBy,
-      Optional<PayloadRef> question,
+      ObjectNode facts,
       IdempotencyKey idempotencyKey)
       implements AgentEvent {
     public ToolDenied {
-      question = question == null ? Optional.empty() : question;
+      facts = facts == null ? JsonNodeFactory.instance.objectNode() : facts.deepCopy();
       Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
     }
   }
@@ -306,9 +307,9 @@ public sealed interface AgentEvent {
    * and {@code ...} in the gap before it is stored, and what is stored is the text the model reads
    * back for the call.
    *
-   * <p>{@code question} is the document the approver was asked, when the approver itself failed and
-   * the document could be kept; for a retried ask it is the last one asked. It is empty for every
-   * other failure, and for a row written before the field existed.
+   * <p>{@code facts} is the facts the approver was shown, as they stood, when the approver itself
+   * failed; for a retried ask they are those of the last ask. It is an empty object for every other
+   * failure.
    */
   record ToolFailed(
       Seq seq,
@@ -316,35 +317,35 @@ public sealed interface AgentEvent {
       CallId callId,
       CallFailure kind,
       String message,
-      Optional<PayloadRef> question,
+      ObjectNode facts,
       IdempotencyKey idempotencyKey)
       implements AgentEvent {
     public ToolFailed {
-      question = question == null ? Optional.empty() : question;
+      facts = facts == null ? JsonNodeFactory.instance.objectNode() : facts.deepCopy();
       Objects.requireNonNull(kind, "kind must not be null");
       Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
     }
   }
 
   /**
-   * A call waiting on an approval was put aside: nobody has answered yet, and the question stands
+   * A call waiting on an approval was put aside: nobody has answered yet, and the request stands
    * until {@code until}.
    *
-   * <p>Carries {@code question}, a reference to the JSON document the approver left for whoever
-   * answers, and {@code idempotencyKey}, the key the call was requested with. The question is a
-   * document and not message content, so nothing that reads a turn's messages follows it.
+   * <p>Carries {@code facts}, the facts the approver was shown, as they stood when it put the call
+   * aside (an empty object when there were none), and {@code idempotencyKey}, the key the call was
+   * requested with.
    */
   record ApprovalDeferred(
       Seq seq,
       TurnId turn,
       CallId callId,
       Instant until,
-      PayloadRef question,
+      ObjectNode facts,
       IdempotencyKey idempotencyKey)
       implements AgentEvent {
     public ApprovalDeferred {
       Objects.requireNonNull(until, "until must not be null");
-      Objects.requireNonNull(question, "question must not be null");
+      facts = facts == null ? JsonNodeFactory.instance.objectNode() : facts.deepCopy();
       Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
     }
   }

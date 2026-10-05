@@ -122,7 +122,7 @@ listening never hears it.
 | `TurnFailed(turn, kind, reason, usage)` | a model call failed and ended the turn |
 | `TurnStopped(turn, reason)` | a policy stopped the turn; no model call failed |
 | `InferenceRetried(turn, kind, reason, usage)` | a model call failed and was tried again; the turn carries on |
-| `ApprovalDeferred(callId, idempotencyKey, until)` | a call waiting on an approval was put aside; the question stands until `until` |
+| `ApprovalDeferred(callId, idempotencyKey, until)` | a call waiting on an approval was put aside; the request stands until `until` |
 | `CallDeferred(callId, idempotencyKey, until)` | a running call was put aside; the tool will report back, and the call stands until `until` |
 | `Terminated` | the agent will accept nothing further |
 
@@ -215,7 +215,7 @@ Optional<List<Block.AnswerContent>> answer = turn.answer();
 
 Optional<List<Block.ToolResultContent>> result = content.result(idempotencyKey);
 
-Optional<JsonNode> question = content.question(idempotencyKey);
+Optional<JsonNode> facts = content.approvalFacts(idempotencyKey);
 
 List<CallResult> results = content.results(Seq.NONE, 100);
 ```
@@ -227,15 +227,17 @@ List<CallResult> results = content.results(Seq.NONE, 100);
 - `result(key)` returns what the call with that `IdempotencyKey` returned. It is
   empty when the key is not in this agent's story, or when the call did not
   succeed.
-- `question(key)` returns the document the call's approval was decided on, or is
-  waiting on. A decision's own question is the answer. A decision made after a
+- `approvalFacts(key)` returns the facts the call's approver was shown, as they
+  stood when it decided or deferred; an empty object when there were none. A
+  decision's own facts are the answer when it has any. A decision made after a
   deferral carries none, and so does a call that expired while waiting, so the
-  question the call was deferred on is the answer; when the call was asked
-  again, it is the last one asked before the decision. It is empty when the key
-  is not in this agent's story, when the call was never put to an approver, and
-  when the question could not be kept. The read stops at the call's decision. A
-  stored document reads numbers back in the narrowest type, so compare questions
-  by their text or field by field, not with `equals`.
+  facts the call was deferred with are the answer; when the call was asked
+  again, they are the last ones before the decision. While the call is waiting
+  they are the last deferral's. The `Optional` is empty when the key is not in
+  this agent's story or the call has not yet been put to its approver. The read
+  stops at the call's decision. Facts read back from storage have numbers in the
+  narrowest type, so compare them by their text or field by field, not with
+  `equals`.
 - `results(after, limit)` returns up to `limit` successful results after a
   position, oldest first. Each `CallResult` has the position of the event that
   recorded the success and the call's key. The limit rule is the one `replay`

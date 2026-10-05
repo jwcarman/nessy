@@ -27,7 +27,6 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.JsonSchema;
-import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -45,6 +44,8 @@ import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.Failure;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * What this resolves is exactly what the three handlers used to resolve themselves, and this is the
@@ -262,12 +263,14 @@ class EffectTermsSourceTest {
                   new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone"), KEY));
     }
 
+    private static ObjectNode facts() {
+      return JsonNodeFactory.instance.objectNode().put("risk", "low").put("depth", 2);
+    }
+
     @Test
-    void a_failed_ask_names_its_question() {
-      PayloadRef question = PayloadRef.of("q-7");
+    void a_failed_ask_names_the_facts_the_approver_was_shown() {
       ApproverFailed failure =
-          new ApproverFailed(
-              new IllegalStateException("approval service down"), Optional.of(question));
+          new ApproverFailed(new IllegalStateException("approval service down"), facts());
 
       EffectOutcome outcome = askingTerms().failed(failure);
 
@@ -277,13 +280,15 @@ class EffectTermsSourceTest {
                   new CallId("c1"),
                   CallFailure.NOT_AUTHORISED,
                   "the call could not be authorised: approval service down",
-                  Optional.of(question)));
+                  facts()));
     }
 
     @Test
-    void a_failed_ask_whose_question_could_not_be_kept_names_none() {
+    void a_failed_ask_with_no_facts_records_an_empty_object() {
       ApproverFailed failure =
-          new ApproverFailed(new IllegalStateException("approval service down"), Optional.empty());
+          new ApproverFailed(
+              new IllegalStateException("approval service down"),
+              JsonNodeFactory.instance.objectNode());
 
       EffectOutcome outcome = askingTerms().failed(failure);
 
@@ -292,11 +297,12 @@ class EffectTermsSourceTest {
               new EffectOutcome.ToolFailed(
                   new CallId("c1"),
                   CallFailure.NOT_AUTHORISED,
-                  "the call could not be authorised: approval service down"));
+                  "the call could not be authorised: approval service down",
+                  JsonNodeFactory.instance.objectNode()));
     }
 
     @Test
-    void any_other_exception_gives_the_same_message_and_no_question() {
+    void any_other_exception_gives_the_same_message_and_no_facts() {
       EffectOutcome outcome =
           askingTerms().failed(new IllegalStateException("approval service down"));
 
@@ -306,11 +312,11 @@ class EffectTermsSourceTest {
                   new CallId("c1"),
                   CallFailure.NOT_AUTHORISED,
                   "the call could not be authorised: approval service down",
-                  Optional.empty()));
+                  JsonNodeFactory.instance.objectNode()));
     }
 
     @Test
-    void an_approval_that_ran_past_its_deadline_names_no_question() {
+    void an_approval_that_ran_past_its_deadline_names_no_facts() {
       EffectOutcome outcome = askingTerms().undispatchable();
 
       assertThat(outcome)
@@ -319,7 +325,7 @@ class EffectTermsSourceTest {
                   new CallId("c1"),
                   CallFailure.NOT_AUTHORISED,
                   "the call could not be authorised, so it was not run",
-                  Optional.empty()));
+                  JsonNodeFactory.instance.objectNode()));
     }
   }
 

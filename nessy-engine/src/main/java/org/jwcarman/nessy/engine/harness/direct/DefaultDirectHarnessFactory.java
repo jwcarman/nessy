@@ -331,7 +331,7 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
                 narrator,
                 tools),
             new ApprovalHandler(
-                config.agentType(), tools, calls, replyTokens, narrator, terms, clock, payloads),
+                config.agentType(), tools, calls, replyTokens, narrator, terms, clock),
             new ToolCallHandler(config.agentType(), tools, calls, replyTokens, terms, payloads));
     return new DefaultDirectHarness<>(
         backend,

@@ -15,9 +15,9 @@
  */
 package org.jwcarman.nessy.engine.effect;
 
-import java.util.Optional;
-import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * What a handler did with an effect, as the dispatcher reads it.
@@ -36,15 +36,20 @@ public sealed interface Handled {
   /**
    * The work is elsewhere and an answer will arrive later.
    *
-   * @param question the stored question somebody is being asked, when the handler asked one
+   * @param facts the facts the approver was shown, as they stood when it put the call aside; an
+   *     empty object for a tool that defers. The record holds its own copy.
    */
-  record Deferred(Optional<PayloadRef> question) implements Handled {}
+  record Deferred(ObjectNode facts) implements Handled {
+    public Deferred {
+      facts = facts == null ? JsonNodeFactory.instance.objectNode() : facts.deepCopy();
+    }
+  }
 
   static Handled settled(EffectOutcome outcome) {
     return new Settled(outcome);
   }
 
   static Handled deferred() {
-    return new Deferred(Optional.empty());
+    return new Deferred(JsonNodeFactory.instance.objectNode());
   }
 }

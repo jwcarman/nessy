@@ -40,11 +40,14 @@ import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.inference.Manifests;
 import org.jwcarman.nessy.inference.Failure;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Each inference outcome becomes the command that carries the very manifest it came with: the
  * manifest is part of what the fold writes down, so a conversion that dropped or swapped it would
- * lose what a call was shown.
+ * lose what a call was shown. A decision or a failure carries the facts the approver was shown into
+ * its command unchanged.
  */
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class EffectOutcomesTest {
@@ -110,12 +113,18 @@ class EffectOutcomesTest {
 
   private static final Seq REQUEST = new Seq(2);
   private static final CallId CALL = new CallId("c1");
-  private static final PayloadRef QUESTION = PayloadRef.of("q1");
+
+  private static ObjectNode facts() {
+    return JsonNodeFactory.instance.objectNode().put("risk", "low").put("depth", 2);
+  }
+
+  private static ObjectNode none() {
+    return JsonNodeFactory.instance.objectNode();
+  }
 
   @Test
-  void an_approval_carries_its_question_into_the_command() {
-    EffectOutcome outcome =
-        new EffectOutcome.ToolApproved(CALL, Optional.of("ann"), Optional.of(QUESTION));
+  void an_approval_carries_its_facts_into_the_command() {
+    EffectOutcome outcome = new EffectOutcome.ToolApproved(CALL, Optional.of("ann"), facts());
 
     AgentCommand command = EffectOutcomes.command(TURN, Optional.of(REQUEST), outcome, List.of());
 
@@ -125,14 +134,12 @@ class EffectOutcomesTest {
                 TURN,
                 REQUEST,
                 CALL,
-                new AgentCommand.ApprovalOutcome.Approved(
-                    Optional.of("ann"), Optional.of(QUESTION))));
+                new AgentCommand.ApprovalOutcome.Approved(Optional.of("ann"), facts())));
   }
 
   @Test
-  void a_denial_carries_its_question_into_the_command() {
-    EffectOutcome outcome =
-        new EffectOutcome.ToolDenied(CALL, "no", Optional.of("ann"), Optional.of(QUESTION));
+  void a_denial_carries_its_facts_into_the_command() {
+    EffectOutcome outcome = new EffectOutcome.ToolDenied(CALL, "no", Optional.of("ann"), facts());
 
     AgentCommand command = EffectOutcomes.command(TURN, Optional.of(REQUEST), outcome, List.of());
 
@@ -142,12 +149,11 @@ class EffectOutcomesTest {
                 TURN,
                 REQUEST,
                 CALL,
-                new AgentCommand.ApprovalOutcome.Denied(
-                    "no", Optional.of("ann"), Optional.of(QUESTION))));
+                new AgentCommand.ApprovalOutcome.Denied("no", Optional.of("ann"), facts())));
   }
 
   @Test
-  void a_decision_without_a_question_becomes_a_command_without_one() {
+  void a_decision_without_facts_becomes_a_command_with_empty_facts() {
     AgentCommand approved =
         EffectOutcomes.command(
             TURN, Optional.of(REQUEST), new EffectOutcome.ToolApproved(CALL), List.of());
@@ -158,17 +164,14 @@ class EffectOutcomesTest {
                 TURN,
                 REQUEST,
                 CALL,
-                new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), Optional.empty())));
+                new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none())));
   }
 
   @Test
-  void a_failure_carries_its_question_into_the_command() {
+  void a_failure_carries_its_facts_into_the_command() {
     EffectOutcome outcome =
         new EffectOutcome.ToolFailed(
-            CALL,
-            CallFailure.NOT_AUTHORISED,
-            "the call could not be authorised: down",
-            Optional.of(QUESTION));
+            CALL, CallFailure.NOT_AUTHORISED, "the call could not be authorised: down", facts());
 
     AgentCommand command = EffectOutcomes.command(TURN, Optional.of(REQUEST), outcome, List.of());
 
@@ -181,11 +184,11 @@ class EffectOutcomesTest {
                 new AgentCommand.ToolOutcome.Failed(
                     CallFailure.NOT_AUTHORISED,
                     "the call could not be authorised: down",
-                    Optional.of(QUESTION))));
+                    facts())));
   }
 
   @Test
-  void a_failure_without_a_question_becomes_a_command_without_one() {
+  void a_failure_without_facts_becomes_a_command_with_empty_facts() {
     EffectOutcome outcome = new EffectOutcome.ToolFailed(CALL, CallFailure.FAILED, "broke");
 
     AgentCommand command = EffectOutcomes.command(TURN, Optional.of(REQUEST), outcome, List.of());
@@ -196,7 +199,6 @@ class EffectOutcomesTest {
                 TURN,
                 REQUEST,
                 CALL,
-                new AgentCommand.ToolOutcome.Failed(
-                    CallFailure.FAILED, "broke", Optional.empty())));
+                new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "broke", none())));
   }
 }

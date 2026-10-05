@@ -412,7 +412,7 @@ public sealed interface AgentState {
                         turn,
                         done.callId(),
                         ok.decidedBy(),
-                        ok.question(),
+                        ok.facts(),
                         call.idempotencyKey())),
                 List.of(performing(turn, requestSeq, call)));
         case AgentCommand.ApprovalOutcome.Denied no ->
@@ -424,7 +424,7 @@ public sealed interface AgentState {
                     done.callId(),
                     no.reason(),
                     no.decidedBy(),
-                    no.question(),
+                    no.facts(),
                     call.idempotencyKey()),
                 policy,
                 now);
@@ -458,7 +458,7 @@ public sealed interface AgentState {
                     done.callId(),
                     no.kind(),
                     no.message(),
-                    no.question(),
+                    no.facts(),
                     call.idempotencyKey());
           };
       return continuing(at, event, policy, now);
@@ -476,7 +476,7 @@ public sealed interface AgentState {
                   turn,
                   done.callId(),
                   done.until(),
-                  done.question(),
+                  done.facts(),
                   call.idempotencyKey())),
           List.of());
     }

@@ -9,15 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
-- **`ToolApproved` and `ToolDenied` carry the question they were decided on.** `AgentEvent.ToolApproved`
-  and `AgentEvent.ToolDenied` gain `Optional<PayloadRef> question` before `idempotencyKey`, and
-  `EffectOutcome.ToolApproved` and `EffectOutcome.ToolDenied` gain it as their last component. The
-  stored events change shape; recreate the database.
-- **`ToolFailed` carries the question the approver was asked.** `AgentEvent.ToolFailed` gains
-  `Optional<PayloadRef> question` before `idempotencyKey`, `EffectOutcome.ToolFailed` gains it as
-  its last component (the three-argument constructor stays, and gives none), and
-  `AgentCommand.ToolOutcome.Failed` gains it too. The stored `tool-failed` event and the stored
-  failure response on an effect row change shape; recreate the database.
+- **An approval's facts are stored on its events.** `ToolApproved`, `ToolDenied`, `ToolFailed` and
+  `ApprovalDeferred` gain a `facts` field, a JSON object, before `idempotencyKey`, and the stored
+  failure response on an effect row gains it too. Stored events and failure responses change
+  shape; recreate the database. A custom `StoryContent` must implement `approvalFacts`.
 - **Stored events and stored effect attempts changed shape.** The five model-call events gain a
   `request` field (`manifest` on `actions-requested`), and a failed attempt kept on an effect row
   gains `request`. Recreate the database.
@@ -35,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   their turn and the model call's `Usage`; `TurnFailed` carries a `FailureKind`; each requested
   call carries its `IdempotencyKey`. A retried model call is told as `InferenceRetried`.
 - **A deferral is a stored event and a story event.** `AgentEvent` gains `ApprovalDeferred(seq,
-  turn, callId, until, question, idempotencyKey)` and `ToolDeferred(seq, turn, callId, until,
+  turn, callId, until, facts, idempotencyKey)` and `ToolDeferred(seq, turn, callId, until,
   idempotencyKey)`, stored as `approval-deferred` and `tool-deferred`; recreate the database. The
   narrations `ApprovalDeferred` and `CallDeferred` are `Story` events, told from those stored
   events, and have the shape `(callId, idempotencyKey, until)`: they carry no `action` or
@@ -89,21 +84,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`StoryContent.question(IdempotencyKey)` reads the question behind a call's approval.** It
-  returns the document the call's approval was decided on, or is waiting on: a decision's own
-  question, else the question of the last deferral before it. It is empty when the key is unknown
-  or the question could not be kept, and it stops reading at the call's decision. A custom
-  `StoryContent` must add the method.
-- **A decision made at once keeps its question.** When an approver approves or denies without
-  deferring, the document it was shown is stored after it returns, so facts it added while
-  deciding are in it, and its reference is on the `ToolApproved` or `ToolDenied` event. A decision
-  that arrives after a deferral carries none: the `ApprovalDeferred` before it holds the question.
-  If the question cannot be stored, the decision stands without it.
-- **An approver that throws leaves its question on the failure.** When the approver itself fails,
-  the question as it stood is stored and the `NOT_AUTHORISED` `ToolFailed` carries its reference.
-  A retried ask stores a new question each time, and the failure names the last one. The message
-  the model is told, and the retry, do not change. A failure from an expired deferral carries no
-  question.
+- **An approval's facts are recorded with its decision, its deferral or its failure.** The facts
+  an approver was shown, as they stood when it decided, are written on the `ToolApproved` or
+  `ToolDenied` event, including facts it added while deciding. A deferral records them on
+  `ApprovalDeferred`, with or without facts, and an answer that arrives after a deferral carries
+  none. When the approver itself fails, the `ToolFailed` event keeps the facts of the ask that was
+  made last. A request with no facts leaves an empty object. Nothing about an approval is written
+  to the payload store, facts are not cut, and narration does not carry them.
+- **`StoryContent.approvalFacts(IdempotencyKey)` reads them back.** It returns the facts the call's
+  approver was shown: a decision's own when it has any, else the last deferral's. It is empty when
+  the key is unknown or the call has not yet been put to its approver, and it stops reading at the
+  call's decision.
 - **Every model-call event records what its request was made of, by reference.**
   `InferenceAnswered`, `InferenceRefused`, `InferenceFailed`, `InferenceAttempted` and
   `ActionsRequested` each hold the prompt, the tools and the choice, the answer shape, the
@@ -128,7 +119,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   streams every successful result, reading a page at a time.
 - **A deferral is recorded when it happens.** When an approver or a tool returns
   `Awaited.deferred()`, the queued door writes `ApprovalDeferred` or `ToolDeferred`, with the
-  instant the question or the call stands until, and marks the effect row parked, in one locked
+  instant the request or the call stands until, and marks the effect row parked, in one locked
   step. The deferral is heard once that step commits, and heard again, equal, on replay. A
   deferral that cannot be recorded is logged and changes nothing else: the call is not failed or
   retried because of it, and an unmarked row is left exactly as it was claimed.

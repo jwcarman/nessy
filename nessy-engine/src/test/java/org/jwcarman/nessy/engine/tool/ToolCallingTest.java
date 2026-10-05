@@ -29,7 +29,6 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
-import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -51,6 +50,8 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.ToolOffer;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * A whole round, through real Postgres: the model asks for work, the work is dispatched as its own
@@ -62,6 +63,10 @@ import org.jwcarman.nessy.inference.ToolOffer;
  * never speak again.
  */
 class ToolCallingTest {
+
+  private static ObjectNode none() {
+    return JsonNodeFactory.instance.objectNode();
+  }
 
   /** Any key: the tests here are not about which one a call gets. */
   private static final IdempotencyKey KEY =
@@ -224,8 +229,6 @@ class ToolCallingTest {
                         new CallId("call_1"), new ToolName("lookup"), "Query[q=loch ness]", KEY)),
                 Usage.unreported(),
                 Optional.empty()));
-    Optional<PayloadRef> kept = ((AgentEvent.ToolApproved) story.get(2)).question();
-    assertThat(kept).as("the question the approver was shown is kept").isPresent();
     assertThat(story.get(2))
         .as("the grant, written before the call was dispatched")
         .isEqualTo(
@@ -234,7 +237,7 @@ class ToolCallingTest {
                 new TurnId(1),
                 new CallId("call_1"),
                 Optional.empty(),
-                kept,
+                none(),
                 requestedKey(story)));
     assertThat(story.get(3))
         .isEqualTo(
@@ -354,8 +357,6 @@ class ToolCallingTest {
         .as("the approver was shown what the call would do, not what the tool is")
         .containsExactly("look up loch ness in the register");
     List<AgentEvent> story = engine.story(type, agentId);
-    Optional<PayloadRef> kept = ((AgentEvent.ToolDenied) story.get(2)).question();
-    assertThat(kept).as("the question the approver was shown is kept").isPresent();
     assertThat(story.get(2))
         .as("a denial is written and no grant ever was")
         .isEqualTo(
@@ -365,7 +366,7 @@ class ToolCallingTest {
                 new CallId("call_1"),
                 "out of hours",
                 Optional.empty(),
-                kept,
+                none(),
                 requestedKey(story)));
     assertThat(story).noneMatch(AgentEvent.ToolApproved.class::isInstance);
     assertThat(story.get(3))
@@ -588,7 +589,7 @@ class ToolCallingTest {
     List<AgentEvent> story = engine.story(type, agentId);
     assertThat(story).noneMatch(AgentEvent.ToolApproved.class::isInstance);
     assertThat(story.get(2))
-        .as("the question standing is on the record, once")
+        .as("the deferral standing is on the record, once")
         .isInstanceOf(AgentEvent.ApprovalDeferred.class);
     assertThat(story.get(3))
         .asInstanceOf(

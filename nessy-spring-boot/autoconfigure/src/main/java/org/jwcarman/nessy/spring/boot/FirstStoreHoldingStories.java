@@ -122,7 +122,7 @@ final class FirstStoreHoldingStories implements AgentStories {
     }
 
     @Override
-    public Optional<JsonNode> question(IdempotencyKey key) {
+    public Optional<JsonNode> approvalFacts(IdempotencyKey key) {
       Objects.requireNonNull(key, "key must not be null");
       return Optional.empty();
     }

@@ -41,6 +41,8 @@ import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.agent.OutstandingAction;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * What the fold does with a deferral: one fact written, nothing else moved.
@@ -60,7 +62,6 @@ class AgentStateDeferralTest {
 
   private static final PayloadRef MAIL = PayloadRef.of("payload-1");
   private static final PayloadRef RESULT = PayloadRef.of("payload-3");
-  private static final PayloadRef QUESTION = PayloadRef.of("q1");
   private static final PayloadRef ANSWER = PayloadRef.of("payload-2");
   private static final Instant UNTIL = Instant.parse("2026-10-05T12:00:00Z");
 
@@ -78,8 +79,16 @@ class AgentStateDeferralTest {
         throw new IllegalStateException("the turn policy was asked");
       };
 
+  private static ObjectNode facts() {
+    return JsonNodeFactory.instance.objectNode().put("risk", "low").put("depth", 2);
+  }
+
+  private static ObjectNode none() {
+    return JsonNodeFactory.instance.objectNode();
+  }
+
   private static AgentCommand.DeferApproval deferApproval(CallId call) {
-    return new AgentCommand.DeferApproval(TURN, REQUEST, call, UNTIL, QUESTION);
+    return new AgentCommand.DeferApproval(TURN, REQUEST, call, UNTIL, facts());
   }
 
   private static AgentCommand.DeferToolCall deferTool(CallId call) {
@@ -88,10 +97,7 @@ class AgentStateDeferralTest {
 
   private static AgentCommand.CompleteApproval approve(CallId call) {
     return new AgentCommand.CompleteApproval(
-        TURN,
-        REQUEST,
-        call,
-        new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), Optional.empty()));
+        TURN, REQUEST, call, new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none()));
   }
 
   private static AgentCommand.CompleteApproval deny(CallId call) {
@@ -99,7 +105,7 @@ class AgentStateDeferralTest {
         TURN,
         REQUEST,
         call,
-        new AgentCommand.ApprovalOutcome.Denied("not today", Optional.of("ann"), Optional.empty()));
+        new AgentCommand.ApprovalOutcome.Denied("not today", Optional.of("ann"), none()));
   }
 
   private static AgentCommand.CompleteToolCall succeed(CallId call) {
@@ -109,15 +115,12 @@ class AgentStateDeferralTest {
 
   private static AgentCommand.CompleteToolCall fail(CallId call, CallFailure kind) {
     return new AgentCommand.CompleteToolCall(
-        TURN,
-        REQUEST,
-        call,
-        new AgentCommand.ToolOutcome.Failed(kind, "it broke", Optional.empty()));
+        TURN, REQUEST, call, new AgentCommand.ToolOutcome.Failed(kind, "it broke", none()));
   }
 
   private static AgentEvent.ApprovalDeferred approvalDeferred(
       int seq, CallId call, IdempotencyKey key) {
-    return new AgentEvent.ApprovalDeferred(Seq.of(seq), TURN, call, UNTIL, QUESTION, key);
+    return new AgentEvent.ApprovalDeferred(Seq.of(seq), TURN, call, UNTIL, facts(), key);
   }
 
   private static AgentEvent.ToolDeferred toolDeferred(int seq, CallId call, IdempotencyKey key) {
@@ -226,7 +229,7 @@ class AgentStateDeferralTest {
 
       Decision decision =
           state.execute(
-              new AgentCommand.DeferApproval(new TurnId(9), REQUEST, CALL, UNTIL, QUESTION));
+              new AgentCommand.DeferApproval(new TurnId(9), REQUEST, CALL, UNTIL, facts()));
 
       assertThat(decision).isEqualTo(Decision.ignore());
       assertThat(decision.events()).isEmpty();
@@ -238,7 +241,7 @@ class AgentStateDeferralTest {
       AgentState state = awaiting(CALL);
 
       Decision decision =
-          state.execute(new AgentCommand.DeferApproval(TURN, Seq.of(1), CALL, UNTIL, QUESTION));
+          state.execute(new AgentCommand.DeferApproval(TURN, Seq.of(1), CALL, UNTIL, facts()));
 
       assertThat(decision).isEqualTo(Decision.ignore());
       assertThat(decision.events()).isEmpty();
@@ -339,14 +342,14 @@ class AgentStateDeferralTest {
               Decision.of(
                   List.of(
                       new AgentEvent.ToolApproved(
-                          Seq.of(3), TURN, CALL, Optional.empty(), Optional.empty(), KEY)),
+                          Seq.of(3), TURN, CALL, Optional.empty(), none(), KEY)),
                   List.of(callTool)));
       assertThat(with)
           .isEqualTo(
               Decision.of(
                   List.of(
                       new AgentEvent.ToolApproved(
-                          Seq.of(4), TURN, CALL, Optional.empty(), Optional.empty(), KEY)),
+                          Seq.of(4), TURN, CALL, Optional.empty(), none(), KEY)),
                   List.of(callTool)));
     }
 
@@ -363,26 +366,14 @@ class AgentStateDeferralTest {
               Decision.of(
                   List.of(
                       new AgentEvent.ToolDenied(
-                          Seq.of(3),
-                          TURN,
-                          CALL,
-                          "not today",
-                          Optional.of("ann"),
-                          Optional.empty(),
-                          KEY)),
+                          Seq.of(3), TURN, CALL, "not today", Optional.of("ann"), none(), KEY)),
                   List.of(new AgentEffect.Infer(TURN))));
       assertThat(with)
           .isEqualTo(
               Decision.of(
                   List.of(
                       new AgentEvent.ToolDenied(
-                          Seq.of(4),
-                          TURN,
-                          CALL,
-                          "not today",
-                          Optional.of("ann"),
-                          Optional.empty(),
-                          KEY)),
+                          Seq.of(4), TURN, CALL, "not today", Optional.of("ann"), none(), KEY)),
                   List.of(new AgentEffect.Infer(TURN))));
     }
 
@@ -426,7 +417,7 @@ class AgentStateDeferralTest {
                           CALL,
                           CallFailure.NOT_AUTHORISED,
                           "it broke",
-                          Optional.empty(),
+                          none(),
                           KEY)),
                   List.of(new AgentEffect.Infer(TURN))));
       assertThat(with)
@@ -439,7 +430,7 @@ class AgentStateDeferralTest {
                           CALL,
                           CallFailure.NOT_AUTHORISED,
                           "it broke",
-                          Optional.empty(),
+                          none(),
                           KEY)),
                   List.of(new AgentEffect.Infer(TURN))));
     }
@@ -457,26 +448,14 @@ class AgentStateDeferralTest {
               Decision.of(
                   List.of(
                       new AgentEvent.ToolFailed(
-                          Seq.of(4),
-                          TURN,
-                          CALL,
-                          CallFailure.FAILED,
-                          "it broke",
-                          Optional.empty(),
-                          KEY)),
+                          Seq.of(4), TURN, CALL, CallFailure.FAILED, "it broke", none(), KEY)),
                   List.of(new AgentEffect.Infer(TURN))));
       assertThat(with)
           .isEqualTo(
               Decision.of(
                   List.of(
                       new AgentEvent.ToolFailed(
-                          Seq.of(5),
-                          TURN,
-                          CALL,
-                          CallFailure.FAILED,
-                          "it broke",
-                          Optional.empty(),
-                          KEY)),
+                          Seq.of(5), TURN, CALL, CallFailure.FAILED, "it broke", none(), KEY)),
                   List.of(new AgentEffect.Infer(TURN))));
     }
 
@@ -557,14 +536,14 @@ class AgentStateDeferralTest {
           new Row(
               "AwaitingActions, another turn",
               holding(waiting),
-              new AgentCommand.DeferApproval(new TurnId(9), REQUEST, CALL, UNTIL, QUESTION),
+              new AgentCommand.DeferApproval(new TurnId(9), REQUEST, CALL, UNTIL, facts()),
               Decision.ignore(),
               new AgentCommand.DeferToolCall(new TurnId(9), REQUEST, CALL, UNTIL),
               Decision.ignore()),
           new Row(
               "AwaitingActions, another request",
               holding(waiting),
-              new AgentCommand.DeferApproval(TURN, Seq.of(1), CALL, UNTIL, QUESTION),
+              new AgentCommand.DeferApproval(TURN, Seq.of(1), CALL, UNTIL, facts()),
               Decision.ignore(),
               new AgentCommand.DeferToolCall(TURN, Seq.of(1), CALL, UNTIL),
               Decision.ignore()),

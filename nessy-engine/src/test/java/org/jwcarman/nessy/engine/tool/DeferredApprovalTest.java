@@ -58,10 +58,10 @@ import org.jwcarman.nessy.engine.agent.OutstandingAction;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
-import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 /**
- * An answer that arrives long after the question, through real Postgres.
+ * An answer that arrives long after the request, through real Postgres.
  *
  * <p>The happy path is one test. The rest are the ways an answer can arrive at the wrong moment,
  * because that is what a days-long gap guarantees will happen: twice, too late, out of order, on a
@@ -126,8 +126,8 @@ class DeferredApprovalTest {
   }
 
   /** Asks once, keeps the address, says nothing -- the whole of a deferring approver. */
-  private QueuedHarness<String> harness(AgentType type, Duration questionStands) {
-    return harness(engine, type, questionStands, deferring());
+  private QueuedHarness<String> harness(AgentType type, Duration requestStands) {
+    return harness(engine, type, requestStands, deferring());
   }
 
   private Approver deferring() {
@@ -139,7 +139,7 @@ class DeferredApprovalTest {
   }
 
   private QueuedHarness<String> harness(
-      EngineFixture fixture, AgentType type, Duration questionStands, Approver approver) {
+      EngineFixture fixture, AgentType type, Duration requestStands, Approver approver) {
     return fixture
         .harnesses()
         .create(
@@ -152,7 +152,7 @@ class DeferredApprovalTest {
                         lookup(),
                         t ->
                             t.action(query -> "look up " + query.q())
-                                .approver(approver, a -> a.timeout(questionStands)))
+                                .approver(approver, a -> a.timeout(requestStands)))
                     .inference(in -> in.model("a-model"))
                     .effects(e -> e.pollInterval(Duration.ofMillis(50))));
   }
@@ -171,14 +171,14 @@ class DeferredApprovalTest {
         .single();
   }
 
-  private ReplyToken parkOne(AgentType type, Duration questionStands) {
-    parkAgent(type, questionStands);
+  private ReplyToken parkOne(AgentType type, Duration requestStands) {
+    parkAgent(type, requestStands);
     return handed.peek();
   }
 
-  private AgentId parkAgent(AgentType type, Duration questionStands) {
+  private AgentId parkAgent(AgentType type, Duration requestStands) {
     AgentId agentId = new AgentId(UUID.randomUUID());
-    harness(type, questionStands).tell(agentId, "what lake?");
+    harness(type, requestStands).tell(agentId, "what lake?");
     await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(handed).isNotEmpty());
     return agentId;
   }
@@ -215,7 +215,7 @@ class DeferredApprovalTest {
   }
 
   /**
-   * The whole point: a question parked, answered later by somebody else entirely, and the turn
+   * The whole point: a request parked, answered later by somebody else entirely, and the turn
    * carries on from exactly where it stopped -- the tool runs, the model is asked again, the agent
    * finishes.
    */
@@ -253,7 +253,7 @@ class DeferredApprovalTest {
                 new TurnId(1),
                 new CallId("call_1"),
                 Optional.of("u_carol"),
-                Optional.empty(),
+                JsonNodeFactory.instance.objectNode(),
                 requestedKey(story)));
     assertThat(story.get(4)).isInstanceOf(AgentEvent.ToolSucceeded.class);
     assertThat(story.get(5)).isInstanceOf(AgentEvent.InferenceAnswered.class);
@@ -261,7 +261,7 @@ class DeferredApprovalTest {
 
   /**
    * The row was written when the effect was emitted and waited in the queue before anyone asked.
-   * What the approver was shown is the instant the row holds the question to, not a later clock
+   * What the approver was shown is the instant the row holds the request to, not a later clock
    * reading plus the timeout.
    */
   @Test
@@ -299,8 +299,8 @@ class DeferredApprovalTest {
   // ---- the deferral is on the record -------------------------------------------------------
 
   /**
-   * Recorded when it happens, not when the answer arrives: the story holds the question, until when
-   * it stands, and what was asked, before anybody has said anything.
+   * Recorded when it happens, not when the answer arrives: the story holds the facts, until when it
+   * stands, and what was asked, before anybody has said anything.
    */
   @Test
   void a_deferred_approval_is_on_the_record_when_it_happens() {
@@ -319,19 +319,15 @@ class DeferredApprovalTest {
     assertThat(deferred.callId()).isEqualTo(new CallId("call_1"));
     assertThat(deferred.idempotencyKey()).as("the call's own key").isEqualTo(requestedKey(story));
     assertThat(deferred.until())
-        .as("until is the instant the row holds the question to")
+        .as("until is the instant the row holds the request to")
         .isEqualTo(rowOf(engine, type).deadline().toInstant().truncatedTo(ChronoUnit.MICROS));
     assertThat(story)
         .as("nobody has answered yet")
         .noneMatch(AgentEvent.ToolApproved.class::isInstance);
 
-    JsonNode question = engine.payloads().forAgent(agentId).getDocument(deferred.question());
-    assertThat(question.path("callId").asString()).isEqualTo("call_1");
-    assertThat(question.path("toolName").asString()).isEqualTo("lookup");
-    assertThat(question.path("action").asString()).isEqualTo("look up loch ness");
-    assertThat(question.path("idempotencyKey").asString())
-        .isEqualTo(deferred.idempotencyKey().value().toString());
-    assertThat(question.path("deadline").asString()).isEqualTo(deferred.until().toString());
+    assertThat(deferred.facts())
+        .as("an approver that added nothing leaves an empty object, and the deferral is recorded")
+        .isEqualTo(JsonNodeFactory.instance.objectNode());
   }
 
   /** The row is marked, and it comes due once more at the deadline and not before. */
@@ -440,7 +436,7 @@ class DeferredApprovalTest {
   }
 
   /**
-   * Asking again is pestering. Once the question is parked it stands until its deadline, and
+   * Asking again is pestering. Once the request is parked it stands until its deadline, and
    * recording it must not make the row due sooner, nor be written twice.
    */
   @Test
@@ -502,7 +498,7 @@ class DeferredApprovalTest {
    * than to believe it landed.
    */
   @Test
-  void anAnswerAfterTheQuestionExpiredIsRefused() {
+  void anAnswerAfterTheRequestExpiredIsRefused() {
     AgentType type = new AgentType("deferred-expired");
     AgentId agentId = new AgentId(UUID.randomUUID());
     harness(type, Duration.ofSeconds(2)).tell(agentId, "what lake?");
@@ -520,7 +516,7 @@ class DeferredApprovalTest {
 
     assertThat(engine.replies().approve(token, ApprovalResult.approved()))
         .isInstanceOf(ReplyOutcome.NotAwaiting.class);
-    assertThat(ran).as("an expired question cannot authorise anything").isEmpty();
+    assertThat(ran).as("an expired request cannot authorise anything").isEmpty();
   }
 
   /** A forged or edited address is refused, and told apart from a stale one. */
@@ -550,7 +546,7 @@ class DeferredApprovalTest {
    * nothing rather than running past the gate.
    */
   @Test
-  void aToolResultCannotAnswerAQuestionAboutPermission() {
+  void aToolResultCannotAnswerARequestForPermission() {
     AgentType type = new AgentType("deferred-wrong-kind");
     ReplyToken token = parkOne(type, Duration.ofMinutes(30));
 

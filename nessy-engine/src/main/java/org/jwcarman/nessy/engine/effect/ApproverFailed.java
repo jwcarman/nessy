@@ -15,14 +15,14 @@
  */
 package org.jwcarman.nessy.engine.effect;
 
-import java.util.Optional;
-import org.jwcarman.nessy.api.PayloadRef;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
- * An approver threw while it was being asked, carrying the question it was asked.
+ * An approver threw while it was being asked, carrying the facts it was shown.
  *
  * <p>Thrown by {@link ApprovalHandler} in place of the approver's own exception, so the failure
- * that is finally recorded can name the question. To everything else it reads as the exception it
+ * that is finally recorded can hold the facts. To everything else it reads as the exception it
  * wraps: {@link #getCause()} is the approver's exception and {@link #getMessage()} is that
  * exception's message. The dispatcher's retry does not look at what was thrown, only that something
  * was, so a retried ask is retried as before.
@@ -31,16 +31,19 @@ final class ApproverFailed extends RuntimeException {
 
   private static final long serialVersionUID = 1L;
 
-  /** Held as its text: an exception is serializable, a reference need not be. */
-  private final String question;
+  /** Its own copy of the facts as they stood. Not serialized: a JSON tree is not serializable. */
+  private final transient ObjectNode facts;
 
-  ApproverFailed(RuntimeException cause, Optional<PayloadRef> question) {
+  ApproverFailed(RuntimeException cause, ObjectNode facts) {
     super(cause.getMessage(), cause);
-    this.question = question.map(PayloadRef::value).orElse(null);
+    this.facts = facts == null ? JsonNodeFactory.instance.objectNode() : facts.deepCopy();
   }
 
-  /** The question the approver was asked, when it could be kept. */
-  Optional<PayloadRef> question() {
-    return Optional.ofNullable(question).map(PayloadRef::new);
+  /**
+   * The facts the approver was shown, as they stood when it threw; an empty object when there were
+   * none, and after the exception has been deserialized.
+   */
+  ObjectNode facts() {
+    return facts == null ? JsonNodeFactory.instance.objectNode() : facts;
   }
 }

@@ -26,6 +26,7 @@ import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.Failure;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 /**
  * What every kind of effect is worth, resolved from {@link Tools} and the harness-wide defaults
@@ -99,7 +100,7 @@ public final class EffectTermsSource {
    *
    * <p>Generous by nature where a person is on the other end, and unrelated to what the tool itself
    * is worth waiting for: a build that takes five minutes may be waved through in milliseconds, and
-   * a one-second lookup may wait an hour for somebody to read the question.
+   * a one-second lookup may wait an hour for somebody to read the request.
    */
   public EffectTerms termsFor(AgentEffect.Approve effect) {
     return tools
@@ -159,11 +160,11 @@ public final class EffectTermsSource {
   }
 
   /**
-   * One question's terms, and the two failures the call might be discharged with.
+   * One approval's terms, and the two failures the call might be discharged with.
    *
    * <p>Both are {@code ToolFailed} rather than {@code ToolDenied}: nobody said no. Claiming a
-   * denial when the question never arrived would tell the model it was refused by somebody who
-   * never saw it.
+   * denial when the ask never arrived would tell the model it was refused by somebody who never saw
+   * it.
    */
   private record AskingTerms(CallId callId, Duration timeout, RetryPolicy retryPolicy)
       implements EffectTerms {
@@ -179,12 +180,14 @@ public final class EffectTermsSource {
     @Override
     public EffectOutcome failed(RuntimeException cause) {
       // The message is the approver's own, as it always was; an ApproverFailed reads as the
-      // exception it wraps, and adds the question that was asked.
+      // exception it wraps, and adds the facts the approver was shown.
       return new EffectOutcome.ToolFailed(
           callId,
           CallFailure.NOT_AUTHORISED,
           "the call could not be authorised: " + cause.getMessage(),
-          cause instanceof ApproverFailed asked ? asked.question() : Optional.empty());
+          cause instanceof ApproverFailed asked
+              ? asked.facts()
+              : JsonNodeFactory.instance.objectNode());
     }
   }
 

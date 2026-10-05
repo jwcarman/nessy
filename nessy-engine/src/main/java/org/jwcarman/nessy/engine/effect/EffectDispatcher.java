@@ -29,7 +29,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.random.RandomGenerator;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryDecision;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Usage;
@@ -45,6 +44,8 @@ import org.jwcarman.nessy.inference.Failure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.TaskScheduler;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * One agent type's obligations, performed.
@@ -342,11 +343,11 @@ public class EffectDispatcher {
     }
 
     traces.nameCurrent(EffectSpans.nameOf(effect));
-    // What a deferral leaves for after the try: whether this attempt deferred, and the stored
-    // question it carries. Recording it is not part of performing, and must not be reachable by
+    // What a deferral leaves for after the try: whether this attempt deferred, and the facts it
+    // carries. Recording it is not part of performing, and must not be reachable by
     // the catch below, which turns an exception into a failed or retried call.
     boolean deferred = false;
-    Optional<PayloadRef> question = Optional.empty();
+    ObjectNode facts = JsonNodeFactory.instance.objectNode();
     try {
       log.debug(
           "[{}] performing {} for agent {} (attempt {})",
@@ -389,7 +390,7 @@ public class EffectDispatcher {
         //
         // Deliberately NOT a retry. The work happened -- somebody was asked -- and asking
         // again is pestering rather than recovering.
-        case Handled.Deferred(Optional<PayloadRef> asked) -> {
+        case Handled.Deferred(ObjectNode shown) -> {
           log.info(
               "[{}] effect {} for agent {} deferred its answer; it stands until {}",
               agentType.value(),
@@ -397,7 +398,7 @@ public class EffectDispatcher {
               attempt.agentId().value(),
               attempt.deadline());
           deferred = true;
-          question = asked;
+          facts = shown;
         }
       }
     } catch (RuntimeException e) {
@@ -410,7 +411,7 @@ public class EffectDispatcher {
       settle(attempt, effect, () -> handlers.termsFor(effect).failed(e));
     }
     if (deferred) {
-      park(attempt, effect, question);
+      park(attempt, effect, facts);
     }
   }
 
@@ -422,9 +423,9 @@ public class EffectDispatcher {
    * record must not cause. So this logs and stops -- no settling, no retry, no giving up. The row
    * is left as it was claimed.
    */
-  private void park(Attempt attempt, AgentEffect effect, Optional<PayloadRef> question) {
+  private void park(Attempt attempt, AgentEffect effect, ObjectNode facts) {
     try {
-      callback.park(attempt, effect, question);
+      callback.park(attempt, effect, facts);
     } catch (RuntimeException e) {
       log.warn(
           "[{}] effect {} for agent {} deferred but could not be parked; its row stands as claimed",

@@ -378,7 +378,7 @@ class ToolCallHandlerTest {
     assertThat(handled).isInstanceOf(Handled.Deferred.class);
   }
 
-  /** A tool has no question to keep: what is waited for is the tool's own answer. */
+  /** A tool has no facts to keep: what is waited for is the tool's own answer. */
   @Test
   void a_deferred_tool_call_hands_back_a_deferral() {
     Tool<Query> defers =

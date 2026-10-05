@@ -42,9 +42,15 @@ import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.inference.Failure;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class StoryEventsTest {
+
+  private static ObjectNode none() {
+    return JsonNodeFactory.instance.objectNode();
+  }
 
   private static final Seq SEQ = new Seq(7);
   private static final TurnId TURN = new TurnId(3);
@@ -174,12 +180,11 @@ class StoryEventsTest {
         new AgentEvent.TurnStopped(SEQ, TURN, "x"),
         new AgentEvent.ActionsRequested(
             SEQ, TURN, PayloadRef.of("p"), List.of(), usage, Optional.empty()),
-        new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), Optional.empty(), KEY),
-        new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty(), Optional.empty(), KEY),
+        new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), none(), KEY),
+        new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty(), none(), KEY),
         new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok", KEY),
-        new AgentEvent.ToolFailed(
-            SEQ, TURN, CALL, CallFailure.FAILED, "boom", Optional.empty(), KEY),
-        new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, Instant.EPOCH, PayloadRef.of("q"), KEY),
+        new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", none(), KEY),
+        new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, Instant.EPOCH, none(), KEY),
         new AgentEvent.ToolDeferred(SEQ, TURN, CALL, Instant.EPOCH, KEY),
         new AgentEvent.Terminated(SEQ));
   }
@@ -197,8 +202,7 @@ class StoryEventsTest {
   void an_approved_call_is_told_as_approved() {
     assertThat(
             StoryEvents.of(
-                new AgentEvent.ToolApproved(
-                    SEQ, TURN, CALL, Optional.of("u_carol"), Optional.empty(), KEY)))
+                new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.of("u_carol"), none(), KEY)))
         .isEqualTo(new Narration.CallApproved(CALL, KEY, Optional.of("u_carol")));
   }
 
@@ -208,7 +212,8 @@ class StoryEventsTest {
 
     assertThat(
             StoryEvents.of(
-                new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, until, PayloadRef.of("q"), KEY)))
+                new AgentEvent.ApprovalDeferred(
+                    SEQ, TURN, CALL, until, none().put("risk", "low"), KEY)))
         .isEqualTo(new Narration.ApprovalDeferred(CALL, KEY, until));
   }
 
@@ -225,7 +230,7 @@ class StoryEventsTest {
     assertThat(
             StoryEvents.of(
                 new AgentEvent.ToolDenied(
-                    SEQ, TURN, CALL, "not allowed", Optional.of("u_dave"), Optional.empty(), KEY)))
+                    SEQ, TURN, CALL, "not allowed", Optional.of("u_dave"), none(), KEY)))
         .isEqualTo(new Narration.CallDenied(CALL, KEY, "not allowed", Optional.of("u_dave")));
   }
 
@@ -242,7 +247,7 @@ class StoryEventsTest {
     assertThat(
             StoryEvents.of(
                 new AgentEvent.ToolFailed(
-                    SEQ, TURN, CALL, CallFailure.FAILED, "boom", Optional.empty(), KEY)))
+                    SEQ, TURN, CALL, CallFailure.FAILED, "boom", none(), KEY)))
         .isEqualTo(new Narration.CallFailed(CALL, KEY, CallFailure.FAILED, "boom"));
   }
 
@@ -256,7 +261,7 @@ class StoryEventsTest {
                     CALL,
                     CallFailure.NOT_AUTHORISED,
                     "no approver answered",
-                    Optional.empty(),
+                    none(),
                     KEY)))
         .isEqualTo(
             new Narration.CallFailed(

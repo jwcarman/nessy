@@ -18,12 +18,16 @@ package org.jwcarman.nessy.engine.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -33,7 +37,6 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CallFailure;
-import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.StoryContent;
@@ -51,21 +54,25 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.backend.event.RequestManifest;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.story.EventAgentStories;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The question an approval was decided on, kept with the decision, through real Postgres.
+ * The facts an approval was decided on, kept on the event that records the decision, through real
+ * Postgres.
  *
- * <p>A decision made at once keeps the question the approver was shown. An answer that arrives
- * after a deferral does not: the deferral kept the question when it was asked, and that one is the
- * decision's.
+ * <p>A decision made at once keeps the facts the approver was shown. An answer that arrives after a
+ * deferral does not: the deferral kept the facts when it put the call aside, and those are the
+ * decision's. Nothing about an approval is written to the payload table.
  */
 @Tag("container")
-class ApprovalQuestionTest {
+class ApprovalFactsTest {
 
   private static EngineFixture engine;
 
@@ -203,37 +210,94 @@ class ApprovalQuestionTest {
     return (ActionRequest.ToolCall) requested.actions().getFirst();
   }
 
-  private static void assertNamesTheCall(
-      AgentId agentId, PayloadRef question, ActionRequest.ToolCall call) {
-    JsonNode document = engine.payloads().forAgent(agentId).getDocument(question);
-    assertThat(document.path("callId").asString()).isEqualTo("call_1");
-    assertThat(document.path("toolName").asString()).isEqualTo("lookup");
-    assertThat(document.path("action").asString()).isEqualTo("look up loch ness");
-    assertThat(document.path("idempotencyKey").asString())
-        .isEqualTo(call.idempotencyKey().value().toString());
+  private static ObjectNode facts() {
+    return JsonNodeFactory.instance.objectNode().put("risk", "low").put("depth", 2);
+  }
+
+  private static ObjectNode none() {
+    return JsonNodeFactory.instance.objectNode();
+  }
+
+  /** An approver that adds the facts of {@link #facts()}, then answers. */
+  private static Approver adding(ApprovalResult answer) {
+    return request -> {
+      request.fact("risk", "low").fact("depth", JsonNodeFactory.instance.numberNode(2));
+      return Awaited.ready(answer);
+    };
+  }
+
+  /** An approver that adds the facts of {@link #facts()}, then puts the call aside. */
+  private Approver deferringWithFacts() {
+    return request -> {
+      request.fact("risk", "low").fact("depth", JsonNodeFactory.instance.numberNode(2));
+      handed.add(request.replyToken());
+      return Awaited.deferred();
+    };
+  }
+
+  /** The parts of the requests the model was shown, which are stored as documents. */
+  private static Set<String> manifestDocuments(List<AgentEvent> story) {
+    Set<String> refs = new HashSet<>();
+    for (AgentEvent event : story) {
+      Optional<RequestManifest> manifest =
+          switch (event) {
+            case AgentEvent.ActionsRequested requested -> requested.manifest();
+            case AgentEvent.InferenceAnswered answered -> answered.request();
+            case AgentEvent.InferenceRefused refused -> refused.request();
+            case AgentEvent.InferenceFailed failed -> failed.request();
+            case AgentEvent.InferenceAttempted attempted -> attempted.request();
+            default -> Optional.empty();
+          };
+      manifest.ifPresent(
+          m -> {
+            refs.add(m.tools().value());
+            refs.add(m.options().value());
+            m.answerShape().ifPresent(shape -> refs.add(shape.value()));
+          });
+    }
+    return refs;
+  }
+
+  /**
+   * Nothing about an approval is written to the payload store. The only documents an agent's rows
+   * hold are the parts of the requests the model was shown, which its model-call events name.
+   */
+  private static void assertNoApprovalDocumentIsStored(AgentType type, AgentId agentId) {
+    List<String> documents =
+        engine
+            .jdbc()
+            .sql(
+                "SELECT encode(hash, 'hex') FROM nessy_payload"
+                    + " WHERE agent_id = ? AND kind = 'DOCUMENT'")
+            .params(agentId.value())
+            .query(String.class)
+            .list();
+    Set<String> named = manifestDocuments(engine.story(type, agentId));
+    assertThat(documents).isNotEmpty();
+    assertThat(named).isNotEmpty();
+    assertThat(named).containsAll(documents);
   }
 
   @Test
-  void an_approval_decided_at_once_is_stored_with_its_question() {
-    AgentType type = new AgentType("question-approved");
+  void an_approval_decided_at_once_is_stored_with_its_facts() {
+    AgentType type = new AgentType("facts-approved");
     AgentId agentId = new AgentId(UUID.randomUUID());
-    harness(type, _ -> Awaited.ready(ApprovalResult.approvedBy("u_carol")))
-        .tell(agentId, "what lake?");
+    harness(type, adding(ApprovalResult.approvedBy("u_carol"))).tell(agentId, "what lake?");
     settled(type, agentId);
 
     List<AgentEvent> story = engine.story(type, agentId);
 
     assertThat(story.get(2)).isInstanceOf(AgentEvent.ToolApproved.class);
     AgentEvent.ToolApproved approved = (AgentEvent.ToolApproved) story.get(2);
-    assertThat(approved.question()).isPresent();
-    assertNamesTheCall(agentId, approved.question().get(), requestedCall(story));
+    assertThat(approved.facts().toString()).isEqualTo(facts().toString());
+    assertNoApprovalDocumentIsStored(type, agentId);
   }
 
   @Test
-  void a_denial_decided_at_once_is_stored_with_its_question() {
-    AgentType type = new AgentType("question-denied");
+  void a_denial_decided_at_once_is_stored_with_its_facts() {
+    AgentType type = new AgentType("facts-denied");
     AgentId agentId = new AgentId(UUID.randomUUID());
-    harness(type, _ -> Awaited.ready(ApprovalResult.deniedBy("out of hours", "u_dave")))
+    harness(type, adding(ApprovalResult.deniedBy("out of hours", "u_dave")))
         .tell(agentId, "what lake?");
     settled(type, agentId);
 
@@ -241,21 +305,15 @@ class ApprovalQuestionTest {
 
     assertThat(story.get(2)).isInstanceOf(AgentEvent.ToolDenied.class);
     AgentEvent.ToolDenied denied = (AgentEvent.ToolDenied) story.get(2);
-    assertThat(denied.question()).isPresent();
-    assertNamesTheCall(agentId, denied.question().get(), requestedCall(story));
+    assertThat(denied.facts().toString()).isEqualTo(facts().toString());
+    assertNoApprovalDocumentIsStored(type, agentId);
   }
 
   @Test
-  void an_answer_after_a_deferral_carries_no_question_and_the_deferral_has_one() {
-    AgentType type = new AgentType("question-deferred");
+  void an_answer_after_a_deferral_carries_no_facts_and_the_deferral_has_them() {
+    AgentType type = new AgentType("facts-deferred");
     AgentId agentId = new AgentId(UUID.randomUUID());
-    harness(
-            type,
-            request -> {
-              handed.add(request.replyToken());
-              return Awaited.deferred();
-            })
-        .tell(agentId, "what lake?");
+    harness(type, deferringWithFacts()).tell(agentId, "what lake?");
     await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(handed).hasSize(1));
 
     assertThat(engine.replies().approve(handed.peek(), ApprovalResult.approvedBy("u_carol")))
@@ -267,38 +325,80 @@ class ApprovalQuestionTest {
     assertThat(story.get(3)).isInstanceOf(AgentEvent.ToolApproved.class);
     AgentEvent.ApprovalDeferred deferred = (AgentEvent.ApprovalDeferred) story.get(2);
     AgentEvent.ToolApproved approved = (AgentEvent.ToolApproved) story.get(3);
-    assertThat(approved.question()).as("the deferral's question is the decision's").isEmpty();
-    assertNamesTheCall(agentId, deferred.question(), requestedCall(story));
+    assertThat(approved.facts()).as("the deferral's facts are the decision's").isEqualTo(none());
+    assertThat(deferred.facts().toString()).isEqualTo(facts().toString());
+    assertNoApprovalDocumentIsStored(type, agentId);
+  }
+
+  /** The deferral is the record that the call was put aside, with facts or without. */
+  @Test
+  void a_deferral_with_no_facts_is_still_recorded_and_its_row_is_parked() {
+    AgentType type = new AgentType("facts-deferred-bare");
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    harness(
+            type,
+            request -> {
+              handed.add(request.replyToken());
+              return Awaited.deferred();
+            })
+        .tell(agentId, "what lake?");
+    await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(handed).hasSize(1));
+
+    await()
+        .atMost(Duration.ofSeconds(15))
+        .untilAsserted(
+            () -> {
+              List<AgentEvent> story = engine.story(type, agentId);
+              assertThat(story).anyMatch(event -> event instanceof AgentEvent.ApprovalDeferred);
+            });
+    List<AgentEvent> story = engine.story(type, agentId);
+    AgentEvent.ApprovalDeferred deferred =
+        story.stream()
+            .filter(AgentEvent.ApprovalDeferred.class::isInstance)
+            .map(AgentEvent.ApprovalDeferred.class::cast)
+            .findFirst()
+            .orElseThrow();
+    assertThat(deferred.facts()).isEqualTo(none());
+    Integer parked =
+        engine
+            .jdbc()
+            .sql(
+                "SELECT count(*) FROM nessy_agent_effect"
+                    + " WHERE agent_id = ? AND parked_at IS NOT NULL")
+            .params(agentId.value())
+            .query(Integer.class)
+            .single();
+    assertThat(parked).as("the approval's row is parked").isEqualTo(1);
+    assertNoApprovalDocumentIsStored(type, agentId);
   }
 
   /** An approver that records what it was shown, and fails the first {@code failures} times. */
-  private static Approver failing(List<ApprovalRequest> shown, int failures, String message) {
+  private static Approver failing(
+      List<ApprovalRequest> shown, AtomicInteger asks, int failures, String message) {
     return request -> {
+      int ask = asks.incrementAndGet();
+      request.fact("ask", JsonNodeFactory.instance.numberNode(ask));
       shown.add(request);
-      if (shown.size() <= failures) {
+      if (ask <= failures) {
         throw new IllegalStateException(message);
       }
       return Awaited.ready(ApprovalResult.approvedBy("u_carol"));
     };
   }
 
-  private static String askedAt(AgentId agentId, PayloadRef question) {
-    return engine.payloads().forAgent(agentId).getDocument(question).path("askedAt").asString();
-  }
-
   /**
    * Retrying a failed ask is the dispatcher's, and it asks the policy, not the exception. The
-   * failure that is finally recorded names the question that was last asked.
+   * failure that is finally recorded holds the facts of the ask that was last made.
    */
   @Test
-  void an_approver_that_throws_twice_is_asked_twice_and_the_failure_names_the_second_question() {
-    AgentType type = new AgentType("question-throws-twice");
+  void an_approver_that_throws_twice_is_asked_twice_and_the_failure_holds_the_second_asks_facts() {
+    AgentType type = new AgentType("facts-throws-twice");
     AgentId agentId = new AgentId(UUID.randomUUID());
     List<ApprovalRequest> shown = new CopyOnWriteArrayList<>();
     String message = "approval service down (twice)";
     harness(
             type,
-            failing(shown, 2, message),
+            failing(shown, new AtomicInteger(), 2, message),
             new RetryPolicy.FixedDelay(2, Duration.ofMillis(100), Duration.ZERO))
         .tell(agentId, "what lake?");
     settled(type, agentId);
@@ -310,23 +410,21 @@ class ApprovalQuestionTest {
     AgentEvent.ToolFailed failed = (AgentEvent.ToolFailed) story.get(2);
     assertThat(failed.kind()).isEqualTo(CallFailure.NOT_AUTHORISED);
     assertThat(failed.message()).isEqualTo("the call could not be authorised: " + message);
-    assertThat(failed.question()).isPresent();
-    assertNamesTheCall(agentId, failed.question().get(), requestedCall(story));
-    String lastAsked = askedAt(agentId, failed.question().get());
-    assertThat(lastAsked).isEqualTo(shown.get(1).askedAt().toString());
-    assertThat(lastAsked).isNotEqualTo(shown.get(0).askedAt().toString());
+    assertThat(failed.facts()).isEqualTo(JsonNodeFactory.instance.objectNode().put("ask", 2));
     assertThat(TOLD_OF_FAILURES).contains("the call could not be authorised: " + message);
+    assertThat(story).isNotEmpty();
     assertThat(story).noneMatch(event -> event instanceof AgentEvent.ToolApproved);
+    assertNoApprovalDocumentIsStored(type, agentId);
   }
 
   @Test
   void an_approver_that_throws_once_then_approves_runs_the_call() {
-    AgentType type = new AgentType("question-throws-once");
+    AgentType type = new AgentType("facts-throws-once");
     AgentId agentId = new AgentId(UUID.randomUUID());
     List<ApprovalRequest> shown = new CopyOnWriteArrayList<>();
     harness(
             type,
-            failing(shown, 1, "approval service down (once)"),
+            failing(shown, new AtomicInteger(), 1, "approval service down (once)"),
             new RetryPolicy.FixedDelay(2, Duration.ofMillis(100), Duration.ZERO))
         .tell(agentId, "what lake?");
     settled(type, agentId);
@@ -334,76 +432,96 @@ class ApprovalQuestionTest {
     List<AgentEvent> story = engine.story(type, agentId);
 
     assertThat(shown).as("asked twice").hasSize(2);
+    assertThat(story).isNotEmpty();
     assertThat(story).noneMatch(event -> event instanceof AgentEvent.ToolFailed);
     assertThat(story.get(2)).isInstanceOf(AgentEvent.ToolApproved.class);
     AgentEvent.ToolApproved approved = (AgentEvent.ToolApproved) story.get(2);
-    assertThat(approved.question()).isPresent();
-    assertThat(askedAt(agentId, approved.question().get()))
-        .isEqualTo(shown.get(1).askedAt().toString());
+    assertThat(approved.facts()).isEqualTo(JsonNodeFactory.instance.objectNode().put("ask", 2));
     assertThat(story.get(3)).isInstanceOf(AgentEvent.ToolSucceeded.class);
   }
 
   @Test
-  void a_deferred_question_reads_the_same_while_the_call_waits_and_after_it_is_answered() {
-    AgentType type = new AgentType("question-read-deferred");
+  void deferred_facts_read_the_same_while_the_call_waits_and_after_it_is_answered() {
+    AgentType type = new AgentType("facts-read-deferred");
     AgentId agentId = new AgentId(UUID.randomUUID());
-    harness(
-            type,
-            request -> {
-              handed.add(request.replyToken());
-              return Awaited.deferred();
-            })
-        .tell(agentId, "what lake?");
+    harness(type, deferringWithFacts()).tell(agentId, "what lake?");
     await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(handed).hasSize(1));
     IdempotencyKey key = keyOfTheCall(engine, type, agentId);
     StoryContent content = contentOf(engine, type, agentId);
 
-    Optional<JsonNode> waiting = content.question(key);
+    await()
+        .atMost(Duration.ofSeconds(15))
+        .untilAsserted(() -> assertThat(content.approvalFacts(key)).isPresent());
+    Optional<JsonNode> waiting = content.approvalFacts(key);
 
     assertThat(waiting).isPresent();
-    assertThat(waiting.get().path("action").asString()).isEqualTo("look up loch ness");
+    assertThat(waiting.get().toString()).isEqualTo(facts().toString());
     assertThat(engine.replies().approve(handed.peek(), ApprovalResult.approvedBy("u_carol")))
         .isInstanceOf(ReplyOutcome.Settled.class);
     settled(type, agentId);
-    Optional<JsonNode> answered = content.question(key);
+    Optional<JsonNode> answered = content.approvalFacts(key);
     assertThat(answered).isPresent();
     assertThat(answered.get().toString()).isEqualTo(waiting.get().toString());
   }
 
   @Test
   void an_approval_decided_at_once_reads_back_after_the_turn() {
-    AgentType type = new AgentType("question-read-approved");
+    AgentType type = new AgentType("facts-read-approved");
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    harness(type, adding(ApprovalResult.approvedBy("u_carol"))).tell(agentId, "what lake?");
+    settled(type, agentId);
+
+    Optional<JsonNode> read =
+        contentOf(engine, type, agentId).approvalFacts(keyOfTheCall(engine, type, agentId));
+
+    assertThat(read).isPresent();
+    assertThat(read.get().toString()).isEqualTo(facts().toString());
+  }
+
+  /** An approver that adds nothing still leaves a decision with an empty object, readable. */
+  @Test
+  void an_approval_with_no_facts_reads_back_as_an_empty_object() {
+    AgentType type = new AgentType("facts-read-bare");
     AgentId agentId = new AgentId(UUID.randomUUID());
     harness(type, _ -> Awaited.ready(ApprovalResult.approvedBy("u_carol")))
         .tell(agentId, "what lake?");
     settled(type, agentId);
 
-    Optional<JsonNode> question =
-        contentOf(engine, type, agentId).question(keyOfTheCall(engine, type, agentId));
+    Optional<JsonNode> read =
+        contentOf(engine, type, agentId).approvalFacts(keyOfTheCall(engine, type, agentId));
 
-    assertThat(question).isPresent();
-    assertThat(question.get().path("toolName").asString()).isEqualTo("lookup");
-    assertThat(question.get().path("action").asString()).isEqualTo("look up loch ness");
+    assertThat(read).contains(none());
   }
 
   @Test
-  void a_question_still_reads_back_when_the_storage_is_transformed() {
-    AgentType type = new AgentType("question-read-transformed");
+  void facts_still_read_back_when_the_storage_is_transformed() {
+    AgentType type = new AgentType("facts-read-transformed");
     AgentId agentId = new AgentId(UUID.randomUUID());
     try (EngineFixture transformed = new EngineFixture(MODEL, REVERSED)) {
       harness(
               transformed,
               type,
-              _ -> Awaited.ready(ApprovalResult.deniedBy("out of hours", "u_dave")),
+              adding(ApprovalResult.deniedBy("out of hours", "u_dave")),
               new RetryPolicy.Never())
           .tell(agentId, "what lake?");
       settled(transformed, type, agentId);
 
-      Optional<JsonNode> question =
-          contentOf(transformed, type, agentId).question(keyOfTheCall(transformed, type, agentId));
+      byte[] row =
+          transformed
+              .jdbc()
+              .sql("SELECT payload FROM nessy_agent_event WHERE agent_id = ? AND seq = 3")
+              .params(agentId.value())
+              .query(byte[].class)
+              .single();
+      Optional<JsonNode> read =
+          contentOf(transformed, type, agentId)
+              .approvalFacts(keyOfTheCall(transformed, type, agentId));
 
-      assertThat(question).isPresent();
-      assertThat(question.get().path("action").asString()).isEqualTo("look up loch ness");
+      assertThat(new String(row, StandardCharsets.UTF_8))
+          .doesNotContain("facts")
+          .doesNotContain("risk");
+      assertThat(read).isPresent();
+      assertThat(read.get().toString()).isEqualTo(facts().toString());
     }
   }
 }

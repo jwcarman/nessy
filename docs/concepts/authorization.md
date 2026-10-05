@@ -30,10 +30,11 @@ Approver always = request -> Awaited.ready(ApprovalResult.approved());
 Approver never  = request -> Awaited.ready(ApprovalResult.denied("not in this tenant"));
 ```
 
-or defer to a person, and answer days later. The question the approver was
-shown is stored, and the deferral is recorded in the agent's story with the
-instant the question stands until. Deferral works only on the queued door. On the direct door a deferred call becomes a failed call, because
-a caller already waiting has nowhere for a late answer to arrive:
+or defer to a person, and answer days later. The deferral is recorded in the
+agent's story with the instant the request stands until and the facts the
+approver was shown, whether or not there were any. Deferral works only on the
+queued door. On the direct door a deferred call becomes a failed call, with no
+facts, because a caller already waiting has nowhere for a late answer to arrive:
 
 ```java
 Approver desk = request -> {
@@ -42,20 +43,23 @@ Approver desk = request -> {
 };
 ```
 
-The question the approver was shown is kept for every decision. A decision made at
-once stores it after the approver returns, so facts the approver added while deciding are in it,
-and puts its reference on the `ToolApproved` or `ToolDenied` event. A decision that arrives after
-a deferral carries no question of its own: the question stored with the deferral is its question.
-If the question cannot be stored, the decision stands without it. `StoryContent.question(key)`
-reads the question back for a call, whether it is waiting or decided.
+The facts of an approval request are kept on the event that records the decision or the
+deferral, as they stood for the approver. A decision made at once takes them after the approver
+returns, so facts the approver added while deciding are in them. They go on the `ToolApproved` or
+`ToolDenied` event; a request that had none leaves an empty object. A decision that arrives
+after a deferral carries none, and the deferral's facts are its facts. Nothing about an approval
+is written to the payload store. `StoryContent.approvalFacts(key)` reads the facts back for a
+call, whether it is waiting or decided.
 
-When the approver itself fails, by throwing, the call ends as not authorised and the record keeps
-the question the approver was asked: the `ToolFailed` event carries its reference. The message
-the model reads is the approver's own, as before. If the approval policy asks again, each ask
-stores a new question, and the failure names the one that was asked last. A failure that comes
-from an expired deferral carries no question; the deferral's question stands.
+When the approver itself fails, by throwing, the call ends as not authorised and the failure
+keeps the facts the approver was shown. The message the model reads is the approver's own. If the
+approval policy asks again, the failure holds the facts of the ask that was made last. A failure
+that comes from an expired deferral carries none; the deferral's facts stand.
 
-How long the question stands is the binding's term, not the approver's:
+Facts are the application's own evidence and are not cut. Keep them small, because they travel in
+the agent's event stream. They are not part of narration: a listener is never sent them.
+
+How long the request stands is the binding's term, not the approver's:
 
 ```java
 config.tool(new PurchaseTool(), binding -> binding
@@ -93,8 +97,8 @@ those tools have different inputs, so a typed request would force a generic
 Cedar, take a JSON document. A typed request would be typed on its way to
 being serialised back.
 
-**`deadline` is the instant the question is held to.** It is the deadline the effect was written
-with, not a time worked out when the approver is asked: a question that waited in the queue shows
+**`deadline` is the instant the request is held to.** It is the deadline the effect was written
+with, not a time worked out when the approver is asked: a request that waited in the queue shows
 the same instant the call is given up on.
 
 **`arguments` is for deciding. `action` is for showing.** A policy reads
@@ -261,7 +265,7 @@ public interface RiskAssessor {
 }
 ```
 
-It sees the whole question, tool name, described action, arguments, and any
+It sees the whole request, tool name, described action, arguments, and any
 facts an earlier approver deposited, so a policy can turn on what was
 actually asked. `RiskAssessor.always(...)` is the common case: a tool whose
 danger does not vary with its input. It is **not** asked whether to allow
