@@ -30,6 +30,7 @@ import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TellOutcome;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.backend.QueuedBackend;
@@ -146,23 +147,24 @@ final class DefaultQueuedHarness<I>
   /**
    * Admits an input.
    *
-   * <p>Always accepts, which is the promise this door keeps -- unless the agent has ended, which is
-   * the one thing that can refuse. What happens to the arrival is the policy's business: appended,
-   * replacing what was waiting, or dropped to hold a bound.
+   * <p>Accepts every input that has somewhere to go, which is the promise this door keeps -- unless
+   * the agent has been terminated, which is the one thing that can refuse, and which is said in the
+   * answer. What happens to an accepted arrival is the policy's business: appended, replacing what
+   * was waiting, or dropped to hold a bound.
    *
    * <p>Then, if the agent is idle, the arrival becomes a turn under this same lock. An agent is
    * never left idle with work waiting.
    */
   @Override
-  public void tell(AgentId agentId, I input) {
+  public TellOutcome tell(AgentId agentId, I input) {
     BacklogItem<I> arrival = new BacklogItem<>(input, clock.instant());
     log.debug("[{}] admitting input for agent {}", agentType.value(), agentId.value());
-    traces.in(
+    return traces.in(
         "nessy.tell",
         new Identity(agentType, agentId),
         () -> {
           String trace = traces.capture();
-          boolean nudge =
+          Told told =
               narrator.locked(
                   backend.locks(),
                   agentType,
@@ -178,17 +180,23 @@ final class DefaultQueuedHarness<I>
                           "[{}] agent {} has ended; the input is refused",
                           agentType.value(),
                           agentId.value());
-                      return false;
+                      return new Told(new TellOutcome.Terminated(), false);
                     }
                     policy.coalesce(backlog, arrival);
-                    return driveIfIdle(step, agentId, backlog, trace);
+                    return new Told(
+                        new TellOutcome.Accepted(), driveIfIdle(step, agentId, backlog, trace));
                   });
-          if (nudge) {
+          if (told.nudge()) {
             dispatch();
           }
-          return null;
+          return told.outcome();
         });
   }
+
+  /**
+   * What a locked tell came to: what to answer the caller, and whether the dispatcher is nudged.
+   */
+  private record Told(TellOutcome outcome, boolean nudge) {}
 
   /**
    * Ends an agent.

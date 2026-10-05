@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+- **`QueuedHarness.tell` returns a `TellOutcome`.** `Accepted` means the agent took the input: it
+  was handed to the backlog policy, whatever the policy then did with it, or it started a turn at
+  once. `Terminated` means the agent has been terminated, including one whose last turn is still in
+  progress: the input was dropped, nothing was stored and the dispatcher was not nudged. It used to
+  return nothing and drop the input without a word. An implementation of `QueuedHarness` must
+  return one.
 - **The reply token is removed.** `ReplyToken`, `ApprovalRequest.replyToken()` and its record
   component, `ToolCallRequest.replyToken()`, the engine's `ReplyTokens`,
   `QueuedHarnessFactoryConfig.replyTokens(...)` and the `nessy.reply-token-encryption-keys`
