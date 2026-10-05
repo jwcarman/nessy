@@ -47,7 +47,8 @@ watchman:
   # How often the watchman does its rounds. A fixed RATE, not a cron: rounds are "every so often",
   # and there is nothing about 3am that a watchman cares about.
   round-interval: ${WATCHMAN_ROUND_INTERVAL:PT30M}
-  # How long an approval request may wait on the page before the engine denies it on the person's behalf.
+  # How long an approval request may wait on the page. When the term runs out, the engine records
+  # the call as failed (not authorised); it is not recorded as a denial.
   approval-term: 3d
 
 management:

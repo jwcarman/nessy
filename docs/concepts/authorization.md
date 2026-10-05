@@ -376,9 +376,12 @@ wires them.
 
 ## A desk on a page
 
-Both page examples are on the queued door. In each, the approver returns
-`Awaited.deferred()` and keeps nothing; the approval request waits in Nessy,
-so it outlives the page and the process.
+Both page examples are on the queued door. In each, the approval request
+waits in Nessy, so it outlives the page and the process, and the application
+keeps nothing. In chat-web the email tool's approver returns
+`Awaited.deferred()` for every request. In the watchman, the approver sits
+behind a risk gate: it approves below `RiskLevel.MODERATE`, denies at or
+above `RiskLevel.VERY_HIGH`, and defers the rest to a deferring approver.
 
 `nessy-examples/chat-web` is a conversation. A person talks to the agent, and
 the email tool needs approval. The page lists the cards from

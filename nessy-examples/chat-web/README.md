@@ -13,7 +13,7 @@ person, and where that person is asked.
 **The queued door.** `POST /api/agents/{id}/messages` tells the agent
 and returns `202` with an empty body. The turn runs on the engine's own
 threads, so no request is held while the model works. A conversation that
-has ended answers a new message with `409`.
+has ended answers another message with `409`.
 
 **One stream carries the rest.** The answer, the deltas as the model writes
 them, and every step the agent takes arrive on `GET /api/agents/{id}/events`.
@@ -32,17 +32,33 @@ request waits in Nessy and outlives the page and the process.
 
 A card is listed from `AgentWork.status(...).waitingApprovals()`, which the
 page reads with `GET /api/agents/{id}`. That call also returns the
-transcript. A decision is `POST /api/agents/{id}/approvals/{key}` with
+transcript and whether the agent is working. A decision is `POST /api/agents/{id}/approvals/{key}` with
 `{"decision": "approve"}`, or anything else for a denial. The key is the
 call's idempotency key, and it is the same after a restart. The controller
 passes the decision to `Replies.approve(type, agent, key, result)`.
 `Applied` is `202`. `Ignored` is `409`: the request was already answered,
 its deadline passed, or the key is not waiting. A key that is not a UUID is
-`400`. After any answer the page redraws its cards from the state.
+`400`. After a `202` or a `409` the page redraws its cards from the state.
+If the answer does not go through, the buttons come back and the page says to
+try again. If the answer is refused with a `400`, the buttons come back and
+the page says the answer was refused.
 
-**A person has five minutes.** `chat.approval-term` (`CHAT_APPROVAL_TERM`,
-default `PT5M`) is how long. After it, the call is recorded as failed and
-the card is gone.
+**A person has the approval term.** `chat.approval-term`
+(`CHAT_APPROVAL_TERM`) is how long: five minutes unless it says otherwise.
+After it, the call is recorded as failed and the card is gone.
+
+**The page shows what the agent is doing.** While a turn is in progress
+the page shows "working…", and "waiting for you…" while an approval card is
+waiting. The input is never disabled, because a message sent now is accepted.
+
+**A page opened or reconnected mid-turn catches up from the state.** The page
+opens the stream first, then reads the state when the stream opens, and reads
+it again on every reconnect. A stream joined without an event id replays
+nothing, so what happened before the page joined is found in the state. A
+turn the page joined in the middle has only its later words on screen; when it
+ends, the page draws the whole answer from the state. A reconnect adds
+answers for turns that ended while the stream was down and leaves what is
+already on screen.
 
 **The endpoint decides who may answer.** Nessy does not check who is
 answering. This example puts no login in front of the page's endpoint, so

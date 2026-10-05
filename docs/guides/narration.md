@@ -324,8 +324,11 @@ is completed.
 
 `nessy-examples/chat-web` streams the conversation this way, on one stream
 per agent. The answer arrives there, not in the response to the message. The
-approval cards are not on it: the page reads them from the agent's state when
-it loads and after each decision.
+approval cards are not on it: the page reads them from the agent's state.
+It reads the state when the stream opens, and again each time the stream
+reopens. It reads the cards again when the stream reports an approval
+deferred, or a call approved, denied, finished or failed. It reads them
+after it sends a decision, unless the decision did not go through.
 
 ## Where next
 
