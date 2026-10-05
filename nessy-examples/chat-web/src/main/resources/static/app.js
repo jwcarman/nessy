@@ -7,10 +7,14 @@
 // from the server's state, and read again whenever the stream says something about a call.
 //
 // The listening is the part worth reading. The stream is NOT the response to the message you
-// sent -- it is a standing subscription to one agent, opened when the page loads and held for as
-// long as the tab is. A turn started in this tab is narrated to every tab, and because the
-// narration is journaled (Odyssey), a connection that drops picks up where it left off: the
-// browser hands back the last event id it saw, and the server replays what came after.
+// sent -- it is a standing subscription to one agent, held for as long as the tab is. A turn
+// started in this tab is narrated to every tab.
+//
+// The page subscribes FIRST and reads the state once the stream is open, and again every time it
+// reopens. A stream joined with no event id starts from now and replays nothing, so what happened
+// before the subscription, or while it was down, is found in the state, never assumed. Everything
+// the stream and those reads draw runs on one chain, in order, and drawing is idempotent: per
+// turn for answers, per key for cards.
 
 const log = document.getElementById("log");
 const approvalsSection = document.getElementById("approvals");
@@ -33,6 +37,20 @@ let drawnTurns = new Set();
 // Every draw the stream causes runs on this one chain, in the order the events arrived, so a slow
 // read for one turn's answer cannot land after the next turn's first words.
 let chain = Promise.resolve();
+// Bumped whenever the page moves to another conversation, so work still queued for the old one
+// draws nothing into the new one.
+let generation = 0;
+// Whether a turn this page watched begin is in progress. A turn the page joined in the middle has
+// only its later words on screen, so its answer is drawn whole from the state when it ends.
+let watching = false;
+let joined = false;
+
+function queue(work) {
+  const mine = generation;
+  chain = chain
+    .then(() => (mine === generation ? work() : undefined))
+    .catch((error) => console.error(error));
+}
 
 function useAgent(id) {
   agentId = id;
@@ -40,9 +58,14 @@ function useAgent(id) {
   localStorage.setItem("agentId", id);
 }
 
-// Shows whether the agent is in a turn. The input is never disabled: a message sent now is accepted.
+// Shows whether the agent is in a turn. The input is never disabled: a message sent now is
+// accepted. When the agent is waiting on a card, the line says it is waiting for the person.
 function setWorking(isWorking) {
   working.hidden = !isWorking;
+}
+
+function waitingFor(cards) {
+  working.textContent = cards.length > 0 ? "waiting for you…" : "working…";
 }
 
 function appendLine(role, text) {
@@ -63,14 +86,37 @@ function drawCards(cards) {
     if (!waiting.has(shown.dataset.call)) shown.remove();
   }
   for (const card of cards) renderApproval(card);
+  waitingFor(cards);
 }
 
+// The state of the conversation, with a time limit: a server that does not answer must not hold
+// the chain, and every draw behind it, forever.
 async function readState() {
-  return await (await fetch(`/api/agents/${agentId}`)).json();
+  const response = await fetch(`/api/agents/${agentId}`, { signal: AbortSignal.timeout(10000) });
+  if (!response.ok) throw new Error("state read answered " + response.status);
+  return await response.json();
 }
 
 async function refreshCards() {
   drawCards((await readState()).approvals);
+}
+
+// The last line of a turn, when it is an assistant line: that is the turn's answer. A turn that
+// failed or was refused ends in a system line, and one still going ends in whatever it said last.
+function answerOf(transcript, turn) {
+  const lines = transcript.filter((line) => line.turn === turn);
+  const last = lines[lines.length - 1];
+  return last && last.role === "assistant" ? last.text : null;
+}
+
+// The turn in progress is the last one in the story, when the agent is working.
+function finishedTurns(state) {
+  const turns = [];
+  for (const line of state.transcript) {
+    if (!turns.includes(line.turn)) turns.push(line.turn);
+  }
+  if (state.working) turns.pop();
+  return turns;
 }
 
 function renderApproval(card) {
@@ -106,14 +152,21 @@ async function decide(key, decision, card) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ decision, note: decision === "deny" ? "denied from the page" : "" }),
+      signal: AbortSignal.timeout(10000),
     });
   } catch (networkError) {
     response = null;
   }
   if (response === null || (response.status !== 202 && response.status !== 409)) {
-    // The answer did not go through and the card is still waiting: let the person try again.
+    // The answer did not go through and the card is still waiting, so the buttons come back. A
+    // 400 is a refusal and trying again will not help; anything else may.
     card.querySelectorAll("button").forEach((b) => (b.disabled = false));
-    appendLine("system", "your answer did not go through; try again");
+    appendLine(
+      "system",
+      response !== null && response.status === 400
+        ? "your answer was refused"
+        : "your answer did not go through; try again",
+    );
     return;
   }
   if (response.status === 202) {
@@ -121,18 +174,31 @@ async function decide(key, decision, card) {
   }
   // 202 or 409 (another tab answered first, or the term ran out), the cards are redrawn from what
   // is waiting now rather than from the click.
-  await refreshCards();
+  try {
+    await refreshCards();
+  } catch (error) {
+    console.error(error);
+  }
 }
 
+// Opens the stream for the current conversation. The first time it opens, the whole conversation
+// is read and drawn. Every later open is a reconnect, and then the state is only reconciled: the
+// log is not wiped, because a bubble may be mid-stream and a line typed may not be in the story
+// yet.
 function listen() {
   if (events) events.close();
-  events = new EventSource(`/api/agents/${agentId}/events`);
+  const source = new EventSource(`/api/agents/${agentId}/events`);
+  events = source;
+  let firstOpen = true;
+  source.onopen = () => {
+    const full = firstOpen;
+    firstOpen = false;
+    queue(full ? load : reconcile);
+  };
 
   // The event names are the engine's own, as the Odyssey narrator journals them.
   const on = (name, handler) =>
-    events.addEventListener(name, (e) => {
-      chain = chain.then(() => handler(e)).catch((error) => console.error(name, error));
-    });
+    source.addEventListener(name, (e) => queue(() => handler(e)));
   const said = (text) => {
     openThinking = null;
     if (!openBubble) openBubble = appendLine("assistant", "");
@@ -143,10 +209,14 @@ function listen() {
     openBubble = null;
     openThinking = null;
     streamed = false;
+    watching = false;
+    joined = false;
     setWorking(false);
   };
   on("turn-started", () => {
     streamed = false;
+    watching = true;
+    joined = false;
     setWorking(true);
   });
   on("content-delta", (e) => {
@@ -196,13 +266,23 @@ function listen() {
   });
   // Says that an answer happened and which turn it ended, and carries no words. A streaming
   // provider has already shown them as deltas; one that does not stream has shown nothing, so the
-  // answer is read from the story and drawn here.
+  // answer is read from the story and drawn here. So is the answer of a turn this page joined in
+  // the middle: it has only the later deltas, a bubble that starts mid-sentence, which is removed
+  // for the whole answer.
   on("answered", async (e) => {
-    const wasStreamed = streamed;
+    const whole = streamed && !joined;
+    const partial = openBubble;
     const turn = JSON.parse(e.data).turn;
     idle();
-    if (wasStreamed) drawnTurns.add(turn);
-    else await drawAnswer(turn);
+    if (whole && !drawnTurns.has(turn)) {
+      drawnTurns.add(turn);
+    } else if (!drawnTurns.has(turn)) {
+      if (partial) partial.remove();
+      await drawAnswer(turn);
+    } else if (partial) {
+      // The story was read after the turn ended and drew its answer already; the bubble repeats it.
+      partial.remove();
+    }
   });
   on("turn-failed", () => {
     appendLine("system", "the agent could not answer");
@@ -217,21 +297,21 @@ function listen() {
     idle();
   });
   on("terminated", idle);
-  events.onerror = () => {
-    // EventSource reconnects on its own and resumes from the last event it saw, so the working
-    // line is left as it is.
+  source.onerror = () => {
+    // EventSource reconnects on its own, and onopen reconciles when it does. The working line is
+    // left as it is until the state says otherwise.
   };
 }
 
-// The answer of one turn, drawn from the story: the turn's last assistant line. Turns are told
-// apart by their id, because the story may already hold the next turn's lines.
+// The answer of one turn, drawn from the story. Turns are told apart by their id, because the
+// story may already hold the next turn's lines.
 async function drawAnswer(turn) {
   const state = await readState();
   if (drawnTurns.has(turn)) return;
-  const mine = state.transcript.filter((line) => line.turn === turn && line.role === "assistant");
-  if (mine.length > 0) {
+  const answer = answerOf(state.transcript, turn);
+  if (answer !== null) {
     drawnTurns.add(turn);
-    appendLine("assistant", mine[mine.length - 1].text);
+    appendLine("assistant", answer);
   }
 }
 
@@ -246,32 +326,73 @@ async function send(event) {
   // 202 and an empty body: the line is now the agent's problem, and everything it says about it
   // arrives on the stream this page is already listening to. Sent while a turn is in progress, it
   // is accepted all the same and answered with whatever else arrived meanwhile.
-  const response = await fetch(`/api/agents/${agentId}/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
-  });
+  let response = null;
+  try {
+    response = await fetch(`/api/agents/${agentId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+  } catch (networkError) {
+    appendLine("system", "that message did not go through");
+    return;
+  }
   if (response.status === 409) {
     appendLine("system", "that conversation has ended; start a new chat");
   }
 }
 
-async function load() {
-  drawnTurns = new Set();
+// Clears what is on screen: a new conversation starts from nothing.
+function clearScreen() {
   log.innerHTML = "";
   approvalsSection.innerHTML = "";
   openBubble = null;
   openThinking = null;
-  const state = await readState();
-  for (const line of state.transcript) appendLine(line.role, line.text);
-  // A turn that has an assistant line has been drawn, except the one in progress, which is the
-  // last, and whose lines so far are commentary rather than its answer.
+  streamed = false;
+  watching = false;
+  joined = false;
   drawnTurns = new Set();
-  const last = state.transcript.length > 0 ? state.transcript[state.transcript.length - 1].turn : 0;
-  for (const line of state.transcript) {
-    if (line.role === "assistant" && !(state.working && line.turn === last)) {
-      drawnTurns.add(line.turn);
+  setWorking(false);
+}
+
+// The whole conversation, drawn from the story: the first read after the stream opens, and a new
+// chat. The turn in progress has only commentary in the story so far, so its answer is not marked
+// drawn, and the page remembers it joined that turn in the middle.
+async function load() {
+  const state = await readState();
+  clearScreen();
+  for (const line of state.transcript) appendLine(line.role, line.text);
+  for (const turn of finishedTurns(state)) {
+    if (answerOf(state.transcript, turn) !== null) drawnTurns.add(turn);
+  }
+  joined = state.working;
+  drawCards(state.approvals);
+  setWorking(state.working);
+}
+
+// A reconnect: the state is read again and only reconciled with the screen. The indication and the
+// cards are set from it, and the answer of any turn that ended while the stream was down is drawn,
+// in turn order, if it is not on screen. A bubble left over from a turn that ended unannounced is
+// replaced by its answer. Nothing already on screen is wiped, so lines typed and not yet in the
+// story stay.
+async function reconcile() {
+  const state = await readState();
+  if (!state.working && openBubble) {
+    openBubble.remove();
+    openBubble = null;
+  }
+  for (const turn of finishedTurns(state)) {
+    const answer = answerOf(state.transcript, turn);
+    if (answer !== null && !drawnTurns.has(turn)) {
+      drawnTurns.add(turn);
+      appendLine("assistant", answer);
     }
+  }
+  if (state.working && !watching) joined = true;
+  if (!state.working) {
+    watching = false;
+    joined = false;
+    streamed = false;
   }
   drawCards(state.approvals);
   setWorking(state.working);
@@ -281,11 +402,14 @@ form.addEventListener("submit", send);
 // "New chat" used to mint a new id and walk away from the old one, which left an agent behind
 // for every conversation anybody ever started, open and waiting. Ending the old one is the whole
 // difference between starting fresh and quietly littering; what it said is kept, it just takes
-// no more.
+// no more. The old stream is closed first and its queued work is dropped, so nothing of the old
+// conversation draws into the new one.
 newChatButton.addEventListener("click", async () => {
   const finished = agentId;
+  if (events) events.close();
+  generation += 1;
   useAgent(crypto.randomUUID());
-  await load();
+  clearScreen();
   listen();
   // After the switch, deliberately: the new conversation should open even if this fails, and an
   // ending the server never heard is a leaked agent, not a broken page.
@@ -297,4 +421,4 @@ newChatButton.addEventListener("click", async () => {
 });
 
 useAgent(agentId);
-load().then(listen);
+listen();
