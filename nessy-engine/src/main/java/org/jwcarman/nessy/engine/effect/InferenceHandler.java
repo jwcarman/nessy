@@ -102,7 +102,9 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
   public Awaited<EffectOutcome> handle(
       AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
     InferenceResult result =
-        inference.infer(new InferenceInvocation(agentType, agentId, options, effect.answerOnly()));
+        inference
+            .infer(new InferenceInvocation(agentType, agentId, options, effect.answerOnly()))
+            .result();
     // Always ready. A provider call blocks until it answers or fails, and there is nobody who
     // could come back about it afterwards -- so the one thing this cannot return is the one
     // thing the wrapper makes explicit.

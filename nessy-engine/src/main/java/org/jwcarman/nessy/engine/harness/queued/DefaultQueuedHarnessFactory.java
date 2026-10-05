@@ -369,7 +369,8 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
             narrator,
             // No shape: what a queued agent answers is not constrained, because nobody is waiting
             // to read it back as a type.
-            Optional.empty()),
+            Optional.empty(),
+            payloads),
         inference.options(),
         terms,
         payloads,

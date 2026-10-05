@@ -15,20 +15,30 @@
  */
 package org.jwcarman.nessy.engine.inference;
 
-import org.jwcarman.nessy.inference.InferenceProvider;
+import java.util.List;
+import java.util.Optional;
+import org.jwcarman.nessy.api.PayloadRef;
+import org.jwcarman.nessy.backend.event.RequestManifest;
 
 /**
- * One inference on an agent's behalf: read its story, choose what to send, send it.
- *
- * <p>The agent-facing half. It knows agents and history and nothing about a provider's protocol,
- * exactly as {@link InferenceProvider} knows the protocol and nothing about agents. Everything that
- * holds both sides at once is in one place, and it is three lines long.
+ * A small fixed manifest, for the tests that need an {@link Inferred} and care about nothing in it.
  */
-@FunctionalInterface
-public interface InferenceService {
+public final class Manifests {
 
-  /**
-   * @return what the model said, and what the request to it was made of
-   */
-  Inferred infer(InferenceInvocation invocation);
+  private Manifests() {}
+
+  public static RequestManifest any() {
+    PayloadRef ref = new PayloadRef("0".repeat(64));
+    return new RequestManifest(
+        "0.0.0",
+        ref,
+        ref,
+        Optional.empty(),
+        ref,
+        List.of(),
+        Optional.empty(),
+        List.of(),
+        List.of(),
+        List.of());
+  }
 }

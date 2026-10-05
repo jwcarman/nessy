@@ -15,20 +15,21 @@
  */
 package org.jwcarman.nessy.engine.inference;
 
-import org.jwcarman.nessy.inference.InferenceProvider;
+import java.util.Objects;
+import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.inference.InferenceResult;
 
 /**
- * One inference on an agent's behalf: read its story, choose what to send, send it.
+ * What one inference came to: the model's result, and the manifest of the request that was sent to
+ * get it.
  *
- * <p>The agent-facing half. It knows agents and history and nothing about a provider's protocol,
- * exactly as {@link InferenceProvider} knows the protocol and nothing about agents. Everything that
- * holds both sides at once is in one place, and it is three lines long.
+ * @param result what the model said
+ * @param request what the request was made of, each part stored and named by reference
  */
-@FunctionalInterface
-public interface InferenceService {
+public record Inferred(InferenceResult result, RequestManifest request) {
 
-  /**
-   * @return what the model said, and what the request to it was made of
-   */
-  Inferred infer(InferenceInvocation invocation);
+  public Inferred {
+    Objects.requireNonNull(result, "result must not be null");
+    Objects.requireNonNull(request, "request must not be null");
+  }
 }

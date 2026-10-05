@@ -49,6 +49,8 @@ import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.jwcarman.nessy.engine.inference.Inferred;
+import org.jwcarman.nessy.engine.inference.Manifests;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -116,7 +118,7 @@ class InferenceHandlerTest {
   private InferenceHandler handlerOver(Tools tools, Payloads payloads) {
     return new InferenceHandler(
         TYPE,
-        invocation -> script.removeFirst(),
+        invocation -> new Inferred(script.removeFirst(), Manifests.any()),
         InferenceOptions.of("model"),
         new EffectTermsSource(
             tools,

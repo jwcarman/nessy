@@ -203,6 +203,10 @@ class NotebookPatternTest {
    * would be re-sent verbatim forever, and a note about a frozen deploy would still be in front of
    * the model long after the deploy unfroze -- stated as a fact somebody said rather than as a view
    * that has since moved.
+   *
+   * <p>The story is the events and the turn's own content. What the model was shown is recorded by
+   * reference beside the story, not in it: each model call's manifest names the ambient section as
+   * a payload, stored once however many calls were made with the same text.
    */
   @Test
   void backgroundIsNeverWrittenToTheStory() {
@@ -231,19 +235,26 @@ class NotebookPatternTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
-    String story =
+    assertThat(engine.story(type, agentId).toString())
+        .as("no event carries the background: events are references and facts")
+        .doesNotContain("it is Tuesday");
+    assertThat(engine.history().forAgent(type, agentId).completedAfter(Optional.empty()))
+        .as("the turn's input, model requests, tool results and answer do not hold it")
+        .isNotEmpty()
+        .allSatisfy(turn -> assertThat(turn.toString()).doesNotContain("it is Tuesday"));
+
+    Long rows =
         engine
             .jdbc()
             .sql(
-                "SELECT string_agg(convert_from(content,'UTF8'), ' ') "
-                    + "FROM nessy_payload WHERE agent_id = ?")
+                "SELECT count(*) FROM nessy_payload "
+                    + "WHERE agent_id = ? AND position('it is Tuesday' in convert_from(content,'UTF8')) > 0")
             .params(agentId.value())
-            .query(String.class)
+            .query(Long.class)
             .single();
-    assertThat(story)
-        .as("no door through which background could reach a transcript")
-        .doesNotContain("it is Tuesday")
-        .doesNotContain("clock");
+    assertThat(rows)
+        .as("exactly one payload holds it: the ambient section the request's manifest recorded")
+        .isEqualTo(1L);
   }
 
   /** Two sections under one label is a contradiction, refused where it is configured. */
