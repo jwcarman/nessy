@@ -132,11 +132,12 @@ public final class EffectTermsSource {
      * What the agent is told when the deadline arrives and nothing else has been said.
      *
      * <p><b>It does not claim the tool did not run</b>, and that is the whole of the wording. This
-     * one blob covers two situations the row cannot tell apart, because nothing about a deferral is
-     * recorded: a call whose deadline passed while it was still queued, which genuinely never ran,
-     * and a call that ran, deferred, and was never reported back on -- which may have charged a
-     * card or started a rebuild. Saying "was not run" is right for the first and dangerously wrong
-     * for the second, and wrong in the direction that invites a model to do it again.
+     * one blob covers two situations the row cannot tell apart, because the stored failure is fixed
+     * when the row is inserted, before anyone knows whether the call will defer: a call whose
+     * deadline passed while it was still queued, which genuinely never ran, and a call that ran,
+     * deferred, and was never reported back on -- which may have charged a card or started a
+     * rebuild. Saying "was not run" is right for the first and dangerously wrong for the second,
+     * and wrong in the direction that invites a model to do it again.
      *
      * <p>So it says only what is known in both: time ran out, and what happened is not known. A
      * model can act on that -- check, ask, or choose something else -- where it cannot safely act

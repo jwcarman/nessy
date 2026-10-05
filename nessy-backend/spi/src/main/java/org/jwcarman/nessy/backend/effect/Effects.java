@@ -78,6 +78,14 @@ public interface Effects {
       UUID effectId, int attemptsMade, Instant at, List<FailedAttempt> failedAttempts);
 
   /**
+   * Marks a running attempt as parked at {@code at} and makes its row due at its deadline, so
+   * nothing takes it again before then. Fenced on the attempt's own status and count.
+   *
+   * @return false when no such row is there: it was settled, or another attempt holds it
+   */
+  boolean park(UUID effectId, int attemptsMade, Instant at);
+
+  /**
    * What the attempts before this one learned, read back off the row.
    *
    * <p>Here rather than on {@link Attempt} for the same reason {@link #effectOf} is: the row keeps

@@ -28,6 +28,7 @@ import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.Narration;
+import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -37,6 +38,7 @@ import org.jwcarman.nessy.backend.backlog.Backlog;
 import org.jwcarman.nessy.backend.backlog.Backlogs;
 import org.jwcarman.nessy.backend.backlog.Pull;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
+import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.backend.event.AgentEvent;
@@ -253,6 +255,77 @@ final class DefaultQueuedHarness<I>
     if (nudge) {
       dispatch();
     }
+  }
+
+  /**
+   * Records that an attempt deferred, and marks its row, in one locked step.
+   *
+   * <p>The fold writes the deferral -- until the attempt's deadline -- only when the call is still
+   * outstanding in the phase the effect was performed for, and the row is marked only when it did.
+   * An answer that landed between the handler returning and this lock being taken leaves nothing to
+   * record and nothing to mark: the call has moved on, and the answer settled the row. Both writes
+   * happen inside the lock's own transaction, so a failure of either leaves neither.
+   *
+   * <p>Starts no inference, drives no backlog and nudges no dispatch: a deferral decides nothing
+   * and emits no effect, so there is nothing for any of them to find.
+   */
+  @Override
+  public void park(Attempt attempt, AgentEffect effect, Optional<PayloadRef> question) {
+    AgentId agentId = attempt.agentId();
+    AgentCommand deferral =
+        switch (effect) {
+          case AgentEffect.Approve approve ->
+              new AgentCommand.DeferApproval(
+                  approve.turn(),
+                  approve.requestSeq(),
+                  approve.callId(),
+                  attempt.deadline(),
+                  question.orElseThrow(
+                      () ->
+                          new IllegalStateException(
+                              "an approval deferral has no stored question, so nothing is recorded")));
+          case AgentEffect.CallTool call ->
+              new AgentCommand.DeferToolCall(
+                  call.turn(), call.requestSeq(), call.callId(), attempt.deadline());
+          case AgentEffect.Infer _ -> null;
+        };
+    if (deferral == null) {
+      log.warn(
+          "[{}] effect {} for agent {} is an inference, which cannot defer; nothing is recorded",
+          agentType.value(),
+          attempt.effectId(),
+          agentId.value());
+      return;
+    }
+    narrator.locked(
+        backend.locks(),
+        agentType,
+        agentId,
+        step -> {
+          Instant at = clock.instant().truncatedTo(ChronoUnit.MICROS);
+          AgentState state = reconstitute(agentId);
+          if (!(state.execute(deferral, turnPolicy, clock.instant())
+              instanceof Decision.Advance advance)) {
+            log.debug(
+                "[{}] agent {}: ignoring {}; the call has moved on, so its row is not marked",
+                agentType.value(),
+                agentId.value(),
+                deferral.getClass().getSimpleName());
+            return null;
+          }
+          backend.events().append(agentType, agentId, advance.events(), state.seq(), at);
+          advance.events().forEach(event -> narrate(step, event, at));
+          if (!effects.park(attempt.effectId(), attempt.attemptsMade(), at)) {
+            // Not an error: the row was settled, or another attempt holds it, between the claim
+            // and this lock. The event is the record of what was true when it was written.
+            log.debug(
+                "[{}] effect {} for agent {} was not marked parked; it is no longer this attempt's",
+                agentType.value(),
+                attempt.effectId(),
+                agentId.value());
+          }
+          return null;
+        });
   }
 
   /**

@@ -52,8 +52,9 @@ import org.jwcarman.nessy.engine.agent.OutstandingAction;
  *
  * <p><b>Only {@link Idle} accepts a command from outside.</b> {@code StartTurn} and {@code
  * Terminate} are both held by the harness and presented when the agent can take them; a busy state
- * accepts only the completion of work it is already waiting for. That is one rule rather than two,
- * and it is what removes the need for a state that means "terminating, but finishing first".
+ * accepts only news of work it is already waiting for -- that the work finished, or that it was put
+ * aside to finish later. That is one rule rather than two, and it is what removes the need for a
+ * state that means "terminating, but finishing first".
  *
  * <p>A busy state answering with {@link Decision.Ignore} is not the mechanism -- the harness not
  * presenting is. The refusal is what makes a race harmless when two harnesses both read an idle
@@ -334,6 +335,12 @@ public sealed interface AgentState {
         case AgentEvent.ToolDenied denied -> discharge(denied.seq(), denied.callId());
         case AgentEvent.ToolSucceeded succeeded -> discharge(succeeded.seq(), succeeded.callId());
         case AgentEvent.ToolFailed failed -> discharge(failed.seq(), failed.callId());
+        // A deferral records that a call was put aside and changes nothing about it: the same
+        // calls in the same phases since the same seqs, and only this state's position moves.
+        case AgentEvent.ApprovalDeferred deferred ->
+            new AwaitingActions(deferred.seq(), turn, requestSeq, outstanding, stats);
+        case AgentEvent.ToolDeferred deferred ->
+            new AwaitingActions(deferred.seq(), turn, requestSeq, outstanding, stats);
         default -> throw unexpected(event, this);
       };
     }
@@ -375,6 +382,14 @@ public sealed interface AgentState {
             Decision.ignore();
         case AgentCommand.CompleteApproval done -> approved(done, policy, now);
         case AgentCommand.CompleteToolCall done -> ran(done, policy, now);
+        case AgentCommand.DeferApproval done when !done.turn().equals(turn) -> Decision.ignore();
+        case AgentCommand.DeferToolCall done when !done.turn().equals(turn) -> Decision.ignore();
+        case AgentCommand.DeferApproval done when !done.requestSeq().equals(requestSeq) ->
+            Decision.ignore();
+        case AgentCommand.DeferToolCall done when !done.requestSeq().equals(requestSeq) ->
+            Decision.ignore();
+        case AgentCommand.DeferApproval done -> approvalDeferred(done);
+        case AgentCommand.DeferToolCall done -> toolDeferred(done);
         // As in Inferring: held by the harness until the turn closes.
         case AgentCommand.StartTurn _, AgentCommand.Terminate _ -> Decision.ignore();
         default -> Decision.ignore();
@@ -430,6 +445,35 @@ public sealed interface AgentState {
                     at, turn, done.callId(), no.kind(), no.message(), call.idempotencyKey());
           };
       return continuing(at, event, policy, now);
+    }
+
+    private Decision approvalDeferred(AgentCommand.DeferApproval done) {
+      OutstandingAction call = outstanding.get(done.callId());
+      if (call == null || call.phase() != OutstandingAction.Phase.AWAITING_APPROVAL) {
+        return Decision.ignore();
+      }
+      return Decision.of(
+          List.of(
+              new AgentEvent.ApprovalDeferred(
+                  seq.next(),
+                  turn,
+                  done.callId(),
+                  done.until(),
+                  done.question(),
+                  call.idempotencyKey())),
+          List.of());
+    }
+
+    private Decision toolDeferred(AgentCommand.DeferToolCall done) {
+      OutstandingAction call = outstanding.get(done.callId());
+      if (call == null || call.phase() != OutstandingAction.Phase.RUNNING) {
+        return Decision.ignore();
+      }
+      return Decision.of(
+          List.of(
+              new AgentEvent.ToolDeferred(
+                  seq.next(), turn, done.callId(), done.until(), call.idempotencyKey())),
+          List.of());
     }
 
     /** The work that performs an outstanding call. */

@@ -2008,12 +2008,24 @@ class DefaultDirectHarnessTest {
           }
         };
 
-    harness(model, watched, _ -> Awaited.deferred()).ask(agent, "look it up");
+    Heard heard = new Heard();
+    harnessWithTools(
+            model,
+            c -> {
+              c.tool(watched, t -> t.approver(_ -> Awaited.deferred()));
+              c.listener(heard);
+            })
+        .ask(agent, "look it up");
 
     assertThat(ran).isFalse();
     assertThat(events.readAll(TYPE, agent))
         .extracting(e -> e.getClass().getSimpleName())
-        .contains("ToolFailed");
+        .contains("ToolFailed")
+        .doesNotContain("ApprovalDeferred", "ToolDeferred");
+    await().atMost(Duration.ofSeconds(10)).until(() -> heard.kindsFor(agent).contains("Answered"));
+    assertThat(heard.kindsFor(agent))
+        .contains("CallFailed")
+        .doesNotContain("ApprovalDeferred", "CallDeferred");
   }
 
   @Test

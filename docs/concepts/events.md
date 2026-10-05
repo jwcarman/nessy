@@ -28,6 +28,8 @@ public sealed interface AgentEvent {
   record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> decidedBy, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, String rendered, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ToolFailed(Seq seq, TurnId turn, CallId callId, CallFailure kind, String message, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ApprovalDeferred(Seq seq, TurnId turn, CallId callId, Instant until, PayloadRef question, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolDeferred(Seq seq, TurnId turn, CallId callId, Instant until, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record Terminated(Seq seq) implements AgentEvent {}
 }
 ```
@@ -55,6 +57,13 @@ fixed when it is written and never worked out again. See
 Each of the four call events (`ToolApproved`, `ToolDenied`, `ToolSucceeded`, `ToolFailed`)
 carries the `IdempotencyKey` its call was requested with, copied from the call the agent is
 waiting for. A reader joins a call's events by that key.
+
+`ApprovalDeferred` and `ToolDeferred` are the two events for a call that was put aside: nobody
+has answered yet, or the tool will report back later, and the call stands until `until`. Each
+carries the call's `IdempotencyKey`. `ApprovalDeferred.question` is a `PayloadRef` to a JSON
+document, the question the approver left for whoever answers; it is not message content, so
+nothing that reads a turn's messages fetches it. A deferral adds nothing to a turn's exchanges,
+its tally or its usage, and the model is shown nothing of it.
 
 `ToolFailed.kind` is a `CallFailure` and says why the call did not produce a result when nobody
 refused it: `FAILED`, the tool ran and failed or could not be run; `PAST_DEADLINE`, the call did

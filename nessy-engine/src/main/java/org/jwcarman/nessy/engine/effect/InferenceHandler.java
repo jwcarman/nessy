@@ -22,7 +22,6 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
@@ -102,17 +101,15 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
   }
 
   @Override
-  public Awaited<EffectOutcome> handle(
-      AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
+  public Handled handle(AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
     Inferred inferred =
         inference.infer(new InferenceInvocation(agentType, agentId, options, effect.answerOnly()));
     InferenceResult result = inferred.result();
     // The request was sent, whatever came back, so every arm records what it was made of.
     Optional<RequestManifest> request = Optional.of(inferred.request());
-    // Always ready. A provider call blocks until it answers or fails, and there is nobody who
-    // could come back about it afterwards -- so the one thing this cannot return is the one
-    // thing the wrapper makes explicit.
-    return Awaited.ready(
+    // Always settled. A provider call blocks until it answers or fails, and there is nobody who
+    // could come back about it afterwards -- so the one thing this cannot return is a deferral.
+    return Handled.settled(
         switch (result) {
           case InferenceResult.Answer(var blocks, var usage) -> {
             log.debug("model answered agent {} with {} block(s)", agentId.value(), blocks.size());

@@ -32,12 +32,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CallFailure;
+import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -488,6 +489,80 @@ class DispatcherFailureTest {
     assertThat(delivered.outcomes).hasSize(PERMITS);
   }
 
+  // ---------------------------------------------------------------- deferral
+
+  /**
+   * A handler that defers has not failed, and the row is neither retired nor rescheduled: the
+   * dispatcher hands the deferral to the callback, which records it and marks the row in one step
+   * of its own. The dispatcher itself never marks a row parked.
+   */
+  @Test
+  void a_deferred_attempt_is_parked() {
+    Effects effects = new Effects();
+    Attempt attempt = attempt(NOW.plusSeconds(600), 1);
+    effects.due = List.of(attempt);
+    Optional<PayloadRef> question = Optional.of(PayloadRef.of("q1"));
+
+    dispatcherFor(effects, deferring(question)).dispatch();
+
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(() -> assertThat(delivered.parks).hasSize(1));
+    Park park = delivered.parks.getFirst();
+    assertThat(park.attempt()).isSameAs(attempt);
+    assertThat(park.effect()).isEqualTo(new AgentEffect.Infer(Effects.TURN));
+    assertThat(park.question()).isEqualTo(question);
+    assertThat(delivered.outcomes).as("a deferral delivers nothing").isEmpty();
+    assertThat(effects.retired).as("and retires nothing").isEmpty();
+    assertThat(effects.rescheduled).as("and is not tried again").isEmpty();
+    assertThat(effects.parked).as("the dispatcher never marks the row itself").isEmpty();
+  }
+
+  /**
+   * A park that fails is only logged. The existing handling turns an exception into a failed or
+   * retried call, and a deferral that could not be written down must never do that: the approver
+   * was asked, and asking again is pestering.
+   */
+  @Test
+  void a_park_that_throws_fails_no_call() {
+    Effects effects = new Effects();
+    effects.due = List.of(attempt(NOW.plusSeconds(600), 1));
+    delivered.parkFails = new IllegalStateException("the store is gone");
+    Deferring handler = new Deferring(Optional.of(PayloadRef.of("q1")));
+    EffectDispatcher dispatcher = dispatcherFor(effects, handler);
+
+    dispatcher.dispatch();
+
+    // The task has ended when its permit is back, which is after everything it does.
+    effects.due = List.of();
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(
+            () -> {
+              dispatcher.dispatch();
+              assertThat(effects.batchSizes.getLast()).isEqualTo(PERMITS);
+            });
+    assertThat(delivered.parkAttempts.get()).as("the park was tried").isEqualTo(1);
+    assertThat(delivered.outcomes).as("no call failed").isEmpty();
+    assertThat(effects.retired).as("nothing was given up on").isEmpty();
+    assertThat(effects.rescheduled).as("nothing was tried again").isEmpty();
+    assertThat(handler.performed.get()).as("the handler ran once").isEqualTo(1);
+  }
+
+  /** An attempt that failed did not defer, so there is nothing to record. */
+  @Test
+  void a_handler_that_throws_is_not_parked() {
+    Effects effects = new Effects();
+    effects.due = List.of(attempt(NOW.plusSeconds(600), 1));
+
+    dispatcherFor(effects, throwing()).dispatch();
+
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(() -> assertThat(effects.rescheduled).hasSize(1));
+    assertThat(delivered.parks).isEmpty();
+  }
+
   // ---------------------------------------------------------------- fixture
 
   private EffectDispatcher dispatcherFor(
@@ -524,10 +599,35 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(
-        AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
-      return new Awaited.Ready<>(
+    public Handled handle(AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
+      return Handled.settled(
           new EffectOutcome.InferenceRefused("stop", Usage.unreported(), Optional.empty()));
+    }
+  }
+
+  /** A handler whose work is elsewhere: it asks, and an answer will arrive later. */
+  private static Deferring deferring(Optional<PayloadRef> question) {
+    return new Deferring(question);
+  }
+
+  private static final class Deferring implements EffectHandler<AgentEffect.Infer> {
+
+    private final Optional<PayloadRef> question;
+    private final AtomicInteger performed = new AtomicInteger();
+
+    private Deferring(Optional<PayloadRef> question) {
+      this.question = question;
+    }
+
+    @Override
+    public EffectTerms termsFor(AgentEffect.Infer effect) {
+      return new Terms();
+    }
+
+    @Override
+    public Handled handle(AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
+      performed.incrementAndGet();
+      return new Handled.Deferred(question);
     }
   }
 
@@ -544,8 +644,7 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(
-        AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
+    public Handled handle(AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
       throw new IllegalStateException("the model call failed");
     }
   }
@@ -560,8 +659,7 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(
-        AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
+    public Handled handle(AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
       throw new IllegalStateException("the model call failed");
     }
   }
@@ -614,9 +712,8 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(
-        AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
-      return new Awaited.Ready<>(outcome);
+    public Handled handle(AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
+      return Handled.settled(outcome);
     }
   }
 
@@ -633,8 +730,7 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(
-        AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
+    public Handled handle(AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
       throw new IllegalStateException("the model call failed");
     }
   }
@@ -652,7 +748,7 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public Awaited<EffectOutcome> handle(AgentId agentId, E effect, Instant deadline) {
+    public Handled handle(AgentId agentId, E effect, Instant deadline) {
       throw new UnsupportedOperationException("no test here writes this kind of effect");
     }
   }
@@ -723,6 +819,7 @@ class DispatcherFailureTest {
     private final List<Integer> batchSizes = new CopyOnWriteArrayList<>();
     private final List<UUID> retired = new CopyOnWriteArrayList<>();
     private final List<UUID> rescheduled = new CopyOnWriteArrayList<>();
+    private final List<UUID> parked = new CopyOnWriteArrayList<>();
     private final List<Instant> rescheduledAt = new CopyOnWriteArrayList<>();
     private final List<List<FailedAttempt>> rescheduledWith = new CopyOnWriteArrayList<>();
 
@@ -765,6 +862,12 @@ class DispatcherFailureTest {
     }
 
     @Override
+    public boolean park(UUID effectId, int attemptsMade, Instant at) {
+      parked.add(effectId);
+      return true;
+    }
+
+    @Override
     public boolean reschedule(
         UUID effectId, int attemptsMade, Instant at, List<FailedAttempt> failedAttempts) {
       rescheduled.add(effectId);
@@ -779,12 +882,27 @@ class DispatcherFailureTest {
     }
   }
 
+  /** One deferral, as the callback was handed it. */
+  private record Park(Attempt attempt, AgentEffect effect, Optional<PayloadRef> question) {}
+
   /** Everything the dispatcher managed to tell an agent. */
   private static final class Deliveries implements AgentEffectCallback {
 
     private final List<EffectOutcome> outcomes = new CopyOnWriteArrayList<>();
     private final List<Optional<TurnId>> turns = new CopyOnWriteArrayList<>();
     private final List<Optional<Seq>> requests = new CopyOnWriteArrayList<>();
+    private final List<Park> parks = new CopyOnWriteArrayList<>();
+    private final AtomicInteger parkAttempts = new AtomicInteger();
+    private RuntimeException parkFails;
+
+    @Override
+    public void park(Attempt attempt, AgentEffect effect, Optional<PayloadRef> question) {
+      parkAttempts.incrementAndGet();
+      if (parkFails != null) {
+        throw parkFails;
+      }
+      parks.add(new Park(attempt, effect, question));
+    }
 
     @Override
     public void deliverOutcome(

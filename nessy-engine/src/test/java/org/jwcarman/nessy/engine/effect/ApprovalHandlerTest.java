@@ -22,19 +22,18 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.JsonSchema;
-import org.jwcarman.nessy.api.Narrated;
-import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
+import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.Stringifier;
@@ -51,10 +50,13 @@ import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
+import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
 import org.jwcarman.nessy.engine.tool.Tools;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -82,6 +84,9 @@ class ApprovalHandlerTest {
    * When the effect's row says the call stands until, whatever the clock reads when it is handled.
    */
   private static final Instant WRITTEN_DEADLINE = Instant.parse("2026-09-08T12:07:30Z");
+
+  private static final Payloads PAYLOADS =
+      new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
 
   record Query(String q) {}
 
@@ -165,6 +170,11 @@ class ApprovalHandlerTest {
   }
 
   private ApprovalHandler handler(Tools tools, ToolCalls calls, Narrator narrator) {
+    return handler(tools, calls, narrator, PAYLOADS);
+  }
+
+  private ApprovalHandler handler(
+      Tools tools, ToolCalls calls, Narrator narrator, Payloads payloads) {
     EffectTermsSource terms =
         new EffectTermsSource(
             tools,
@@ -174,18 +184,18 @@ class ApprovalHandlerTest {
             new RetryPolicy.Never(),
             Duration.ofMinutes(5),
             new RetryPolicy.Never());
-    return new ApprovalHandler(TYPE, tools, calls, TOKENS, narrator, terms, CLOCK);
+    return new ApprovalHandler(TYPE, tools, calls, TOKENS, narrator, terms, CLOCK, payloads);
   }
 
   private EffectOutcome ask(Tools tools) {
     return ask(tools, story());
   }
 
-  private Awaited<EffectOutcome> asked(Tools tools, ToolCalls calls) {
+  private Handled asked(Tools tools, ToolCalls calls) {
     return asked(handler(tools, calls), CLOCK.instant().plus(Duration.ofMinutes(10)));
   }
 
-  private Awaited<EffectOutcome> asked(ApprovalHandler handler, Instant deadline) {
+  private Handled asked(ApprovalHandler handler, Instant deadline) {
     return handler.handle(
         AGENT,
         new AgentEffect.Approve(
@@ -195,9 +205,9 @@ class ApprovalHandlerTest {
 
   /** The answer, for the tests that expect one now. */
   private EffectOutcome ask(Tools tools, ToolCalls calls) {
-    Awaited<EffectOutcome> awaited = asked(tools, calls);
-    assertThat(awaited).isInstanceOf(Awaited.Ready.class);
-    return ((Awaited.Ready<EffectOutcome>) awaited).value();
+    Handled handled = asked(tools, calls);
+    assertThat(handled).isInstanceOf(Handled.Settled.class);
+    return ((Handled.Settled) handled).outcome();
   }
 
   @Test
@@ -259,20 +269,113 @@ class ApprovalHandlerTest {
   }
 
   @Test
-  void a_deferred_approval_is_narrated_as_standing_until_the_deadline_it_was_written_with() {
-    List<Narrated> heard = new ArrayList<>();
-    ApprovalHandler handler = handler(bound(_ -> new Awaited.Deferred<>()), story(), heard::add);
+  void an_approver_that_defers_leaves_the_call_deferred() {
+    ApprovalHandler handler = handler(bound(_ -> new Awaited.Deferred<>()), story());
 
-    asked(handler, WRITTEN_DEADLINE);
+    Handled handled = asked(handler, WRITTEN_DEADLINE);
 
-    List<Narration.ApprovalDeferred> deferrals =
-        heard.stream()
-            .map(Narrated::event)
-            .filter(Narration.ApprovalDeferred.class::isInstance)
-            .map(Narration.ApprovalDeferred.class::cast)
-            .toList();
-    assertThat(deferrals).hasSize(1);
-    assertThat(deferrals.getFirst().until()).isEqualTo(WRITTEN_DEADLINE);
+    assertThat(handled).isInstanceOf(Handled.Deferred.class);
+  }
+
+  /**
+   * What the approver was shown, kept: the deferral hands back where. The deadline in it is the one
+   * the effect was written with, the same one the approver saw.
+   */
+  @Test
+  void a_deferred_approval_hands_back_the_question_it_stored() {
+    ApprovalRequest[] seen = new ApprovalRequest[1];
+    ApprovalHandler handler =
+        handler(
+            bound(
+                request -> {
+                  seen[0] = request;
+                  return new Awaited.Deferred<>();
+                }),
+            story());
+
+    Handled handled = asked(handler, WRITTEN_DEADLINE);
+
+    assertThat(handled).isInstanceOf(Handled.Deferred.class);
+    Optional<PayloadRef> question = ((Handled.Deferred) handled).question();
+    assertThat(question).isPresent();
+    JsonNode stored = PAYLOADS.forAgent(AGENT).getDocument(question.orElseThrow());
+    // Compared as text: a number that went through storage comes back as an int where it was a
+    // long, which JsonNode equality tells apart and a reader does not.
+    assertThat(stored.toString()).isEqualTo(ApprovalQuestions.document(seen[0]).toString());
+    assertThat(stored.get("deadline").asString()).isEqualTo(WRITTEN_DEADLINE.toString());
+    assertThat(stored.get("action").asString()).isEqualTo("Query[q=loch ness]");
+    assertThat(stored.get("callId").asString()).isEqualTo("c1");
+    assertThat(stored.get("toolName").asString()).isEqualTo("lookup");
+    assertThat(stored.get("idempotencyKey").asString()).isEqualTo(KEY.value().toString());
+  }
+
+  /**
+   * The approver was asked and said "later", and may already have told a person. Failing to keep
+   * the question must not turn that into a failed ask, which the retry policy would answer by
+   * asking again.
+   */
+  @Test
+  void a_deferral_still_stands_when_its_question_cannot_be_stored() {
+    int[] asks = {0};
+    Payloads failing =
+        new Payloads() {
+          @Override
+          public PayloadRef put(List<? extends Block> content) {
+            throw new IllegalStateException("not used");
+          }
+
+          @Override
+          public PayloadRef putDocument(JsonNode document) {
+            throw new IllegalStateException("the store is down");
+          }
+
+          @Override
+          public Resolved get(PayloadRef ref) {
+            throw new IllegalStateException("not used");
+          }
+
+          @Override
+          public JsonNode getDocument(PayloadRef ref) {
+            throw new IllegalStateException("not used");
+          }
+        };
+    ApprovalHandler handler =
+        handler(
+            bound(
+                _ -> {
+                  asks[0]++;
+                  return new Awaited.Deferred<>();
+                }),
+            story(),
+            Narrator.silent(),
+            failing);
+
+    Handled handled = asked(handler, WRITTEN_DEADLINE);
+
+    assertThat(handled).isEqualTo(Handled.deferred());
+    assertThat(asks[0]).isEqualTo(1);
+  }
+
+  /** The reply token settles the call, and a stored document is read by far more than the reply. */
+  @Test
+  void the_stored_question_does_not_hold_the_reply_token() {
+    ApprovalRequest[] seen = new ApprovalRequest[1];
+    ApprovalHandler handler =
+        handler(
+            bound(
+                request -> {
+                  seen[0] = request;
+                  return new Awaited.Deferred<>();
+                }),
+            story());
+
+    Handled handled = asked(handler, WRITTEN_DEADLINE);
+
+    Optional<PayloadRef> question = ((Handled.Deferred) handled).question();
+    assertThat(question).isPresent();
+    JsonNode stored = PAYLOADS.forAgent(AGENT).getDocument(question.orElseThrow());
+    assertThat(seen[0].replyToken().value()).isNotBlank();
+    assertThat(stored.toString()).doesNotContain(seen[0].replyToken().value());
   }
 
   // ---- the question ----------------------------------------------------------------------

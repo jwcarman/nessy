@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.random.RandomGenerator;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryDecision;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Usage;
@@ -342,6 +342,11 @@ public class EffectDispatcher {
     }
 
     traces.nameCurrent(EffectSpans.nameOf(effect));
+    // What a deferral leaves for after the try: whether this attempt deferred, and the stored
+    // question it carries. Recording it is not part of performing, and must not be reachable by
+    // the catch below, which turns an exception into a failed or retried call.
+    boolean deferred = false;
+    Optional<PayloadRef> question = Optional.empty();
     try {
       log.debug(
           "[{}] performing {} for agent {} (attempt {})",
@@ -350,8 +355,7 @@ public class EffectDispatcher {
           attempt.agentId().value(),
           attempt.attemptsMade());
       switch (handlers.perform(attempt.agentId(), effect, attempt.deadline())) {
-        case Awaited.Ready<EffectOutcome>(EffectOutcome.InferenceFailed failed)
-            when worthAnotherGo(failed) -> {
+        case Handled.Settled(EffectOutcome.InferenceFailed failed) when worthAnotherGo(failed) -> {
           // True whatever the policy then decides. Saying "it will be tried again" here would
           // be a promise this line is not in a position to make: with the default policy it
           // will not be, and the next line would contradict this one.
@@ -363,7 +367,7 @@ public class EffectDispatcher {
               failed.failure().getClass().getSimpleName());
           settle(attempt, effect, () -> failed);
         }
-        case Awaited.Ready<EffectOutcome>(EffectOutcome outcome) -> {
+        case Handled.Settled(EffectOutcome outcome) -> {
           // The outcome is folded first: if that commits and this crashes, the row comes
           // due again, is performed again, and the fold recognises the redelivery and
           // ignores it.
@@ -376,22 +380,25 @@ public class EffectDispatcher {
               effects.attemptsOf(attempt));
           retire(attempt, "performed");
         }
-        // Neither delivered nor retired nor rescheduled -- the row is left exactly as it
-        // was claimed, and that is the whole of parking. `actionable_at` was set to the
-        // deadline when the row was claimed, so it comes due once more at the moment the
-        // agent stops being willing to wait, and the stored failure discharges the call
-        // then. If an answer arrives first it settles the row instead, fenced by the same
-        // `attempts_made` this attempt carries.
+        // Neither delivered nor retired nor rescheduled. The row stays as it was claimed until
+        // the park step below records the deferral and marks it, which makes it due once more
+        // at the moment the agent stops being willing to wait; the stored failure discharges
+        // the call then. If the park fails the row is left as it was claimed, and is due again
+        // when its claim runs out, as an unmarked row always was. If an answer arrives first
+        // it settles the row instead, fenced by the same `attempts_made` this attempt carries.
         //
         // Deliberately NOT a retry. The work happened -- somebody was asked -- and asking
         // again is pestering rather than recovering.
-        case Awaited.Deferred<EffectOutcome> _ ->
-            log.info(
-                "[{}] effect {} for agent {} deferred its answer; it stands until {}",
-                agentType.value(),
-                attempt.effectId(),
-                attempt.agentId().value(),
-                attempt.deadline());
+        case Handled.Deferred(Optional<PayloadRef> asked) -> {
+          log.info(
+              "[{}] effect {} for agent {} deferred its answer; it stands until {}",
+              agentType.value(),
+              attempt.effectId(),
+              attempt.agentId().value(),
+              attempt.deadline());
+          deferred = true;
+          question = asked;
+        }
       }
     } catch (RuntimeException e) {
       log.error(
@@ -401,6 +408,30 @@ public class EffectDispatcher {
           attempt.attemptsMade(),
           e);
       settle(attempt, effect, () -> handlers.termsFor(effect).failed(e));
+    }
+    if (deferred) {
+      park(attempt, effect, question);
+    }
+  }
+
+  /**
+   * Has the deferral recorded and the row marked, and nothing else.
+   *
+   * <p>Outside the handling of the attempt on purpose: a failure here is not the call's failure.
+   * The approver was asked, or the tool started, and doing either again is the one thing a failed
+   * record must not cause. So this logs and stops -- no settling, no retry, no giving up. The row
+   * is left as it was claimed.
+   */
+  private void park(Attempt attempt, AgentEffect effect, Optional<PayloadRef> question) {
+    try {
+      callback.park(attempt, effect, question);
+    } catch (RuntimeException e) {
+      log.warn(
+          "[{}] effect {} for agent {} deferred but could not be parked; its row stands as claimed",
+          agentType.value(),
+          attempt.effectId(),
+          attempt.agentId().value(),
+          e);
     }
   }
 

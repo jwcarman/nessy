@@ -32,17 +32,17 @@ import org.jwcarman.nessy.backend.event.RequestManifest;
 import org.jwcarman.nessy.inference.Failure;
 
 /**
- * What the harness asks of an {@link AgentState}. Five of them, and the same five whatever the
+ * What the harness asks of an {@link AgentState}. Seven of them, and the same seven whatever the
  * harness is.
  *
  * <p><b>Imperative name, past-tense payload.</b> {@code CompleteToolCall} is a request that the
  * state may decline; the {@code ToolSucceeded} inside it is a fact that already happened. Both
  * words are correct and both are in the right position.
  *
- * <p><b>Grouped by the effect they complete</b>, one apiece, rather than one command per outcome or
- * one envelope over all of them. An arm therefore knows from the command alone whether it is
- * concerned -- only the one that is looks inside -- and the switch it then does is real logic
- * rather than routing.
+ * <p><b>Grouped by the effect they answer</b>, rather than one command per outcome or one envelope
+ * over all of them; an effect that is put aside has a command of its own that records it and
+ * completes nothing. An arm therefore knows from the command alone whether it is concerned -- only
+ * the one that is looks inside -- and the switch it then does is real logic rather than routing.
  *
  * <p><b>Content by reference.</b> Content is claim-checked by the harness before it gets here, so a
  * command carries a reference to it. The text it does carry is mostly short and bounded: for a tool
@@ -132,6 +132,36 @@ public sealed interface AgentCommand {
    *     the work named it
    */
   record CompleteToolCall(TurnId turn, Seq requestSeq, CallId callId, ToolOutcome outcome)
+      implements AgentCommand {}
+
+  /**
+   * An approver put a decision aside: the question is open until {@code until}, and the call keeps
+   * awaiting approval.
+   *
+   * <p>Guarded as {@link CompleteApproval} is: one for another turn, or for another request of the
+   * same turn, is ignored, and so is one for a call that is not outstanding or not awaiting
+   * approval. It writes one fact and asks for no work.
+   *
+   * @param requestSeq where the request that asked for this call sits, as the effect that asked for
+   *     the decision named it
+   * @param question what was put to the approver, kept for whoever answers later
+   */
+  record DeferApproval(
+      TurnId turn, Seq requestSeq, CallId callId, Instant until, PayloadRef question)
+      implements AgentCommand {}
+
+  /**
+   * A running tool call was put aside: the tool started work and will report back, and the call
+   * stands until {@code until}.
+   *
+   * <p>Guarded as {@link CompleteToolCall} is: one for another turn, or for another request of the
+   * same turn, is ignored, and so is one for a call that is not outstanding or not running. It
+   * writes one fact and asks for no work.
+   *
+   * @param requestSeq where the request that asked for this call sits, as the effect that asked for
+   *     the work named it
+   */
+  record DeferToolCall(TurnId turn, Seq requestSeq, CallId callId, Instant until)
       implements AgentCommand {}
 
   /**

@@ -125,8 +125,8 @@ class ConsoleNarrationTest {
             new Narration.Commentary("hmm"),
             new Narration.CallApproved(CALL, KEY, Optional.empty()),
             new Narration.ApprovalSought(CALL, "restart"),
-            new Narration.ApprovalDeferred(CALL, "restart", java.time.Instant.EPOCH),
-            new Narration.CallDeferred(CALL, new ToolName("t"), java.time.Instant.EPOCH),
+            new Narration.ApprovalDeferred(CALL, KEY, java.time.Instant.EPOCH),
+            new Narration.CallDeferred(CALL, KEY, java.time.Instant.EPOCH),
             new Narration.ThinkingDelta("h"))) {
       narration.on(Envelopes.of(CHAT, AGENT, quiet));
     }

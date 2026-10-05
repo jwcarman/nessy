@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine.history;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -286,6 +287,72 @@ class EventStreamHistoryTest {
       assertThat(secondTurn).hasSize(1);
       assertThat(secondTurn.getFirst().actionOf(id)).isEqualTo("refund the third");
       assertThat(secondTurn.getFirst().resultOf(id)).isEmpty();
+    }
+  }
+
+  @Nested
+  class A_turn_with_a_deferral_in_it {
+
+    private final CallId id = new CallId("call-1");
+    private final ToolName tool = new ToolName("refund");
+
+    private List<Turn> turnRead(AgentId agent, boolean deferred) {
+      PayloadRef input = payloads.put(List.of(new Block.Text("q1")));
+      PayloadRef request = payloads.put(List.of(new Block.ToolCall(id, tool, "{}")));
+      PayloadRef result = payloads.put(List.of(new Block.Text("done")));
+      PayloadRef answer = payloads.put(List.of(new Block.Text("a1")));
+      PayloadRef question =
+          payloads.putDocument(JsonMapper.builder().build().createObjectNode().put("ask", "ok?"));
+      List<AgentEvent> story = new ArrayList<>();
+      story.add(
+          new AgentEvent.TurnStarted(
+              new Seq(1), new TurnId(1), input, "Question", Instant.EPOCH, Instant.EPOCH));
+      story.add(
+          new AgentEvent.ActionsRequested(
+              new Seq(2),
+              new TurnId(1),
+              request,
+              List.of(new ActionRequest.ToolCall(id, tool, "refund forty dollars", KEY)),
+              Usage.unreported(),
+              Optional.empty()));
+      long next = 3;
+      if (deferred) {
+        story.add(
+            new AgentEvent.ApprovalDeferred(
+                new Seq(next++), new TurnId(1), id, Instant.EPOCH, question, KEY));
+        story.add(
+            new AgentEvent.ToolDeferred(new Seq(next++), new TurnId(1), id, Instant.EPOCH, KEY));
+      }
+      story.add(
+          new AgentEvent.ToolSucceeded(
+              new Seq(next++), new TurnId(1), id, result, "refunded", KEY));
+      story.add(
+          new AgentEvent.InferenceAnswered(
+              new Seq(next), new TurnId(1), answer, false, Usage.unreported(), Optional.empty()));
+      events.append(TYPE, agent, story, Seq.NONE, Instant.EPOCH);
+      return new EventStreamHistory(events, new Transcript(payloads), TYPE, agent)
+          .turnsBetween(new TurnId(1), new TurnId(1));
+    }
+
+    @Test
+    void reads_even_though_the_deferred_question_is_a_document_and_not_message_content() {
+      List<Turn> found = turnRead(AGENT, true);
+
+      assertThat(found).hasSize(1);
+      assertThat(found.getFirst().complete()).isTrue();
+    }
+
+    @Test
+    void transcribes_exactly_as_the_same_turn_without_one() {
+      List<Turn> without = turnRead(new AgentId(UUID.randomUUID()), false);
+      List<Turn> with = turnRead(new AgentId(UUID.randomUUID()), true);
+
+      assertThat(with).hasSize(1);
+      Exchange exchange = with.getFirst().exchanges().getFirst();
+      assertThat(exchange.actionOf(id)).isEqualTo("refund forty dollars");
+      assertThat(exchange.resultOf(id)).contains("refunded");
+      assertThat(with.getFirst().input()).isEqualTo(without.getFirst().input());
+      assertThat(with.getFirst().exchanges()).isEqualTo(without.getFirst().exchanges());
     }
   }
 }

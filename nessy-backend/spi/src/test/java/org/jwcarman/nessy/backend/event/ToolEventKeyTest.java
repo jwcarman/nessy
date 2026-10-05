@@ -17,6 +17,7 @@ package org.jwcarman.nessy.backend.event;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayNameGeneration;
@@ -75,5 +76,49 @@ class ToolEventKeyTest {
     assertThatThrownBy(() -> new AgentEvent.ToolFailed(SEQ, TURN, CALL, null, "boom", key))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("kind must not be null");
+  }
+
+  private static final Instant UNTIL = Instant.parse("2026-10-05T09:30:00Z");
+  private static final IdempotencyKey KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
+
+  @Test
+  void an_approval_deferral_refuses_a_null_key() {
+    PayloadRef question = PayloadRef.of("a3d9f0b1");
+
+    assertThatThrownBy(
+            () -> new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, UNTIL, question, null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("idempotencyKey must not be null");
+  }
+
+  @Test
+  void an_approval_deferral_refuses_a_null_deadline() {
+    PayloadRef question = PayloadRef.of("a3d9f0b1");
+
+    assertThatThrownBy(() -> new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, null, question, KEY))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("until must not be null");
+  }
+
+  @Test
+  void an_approval_deferral_refuses_a_null_question() {
+    assertThatThrownBy(() -> new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, UNTIL, null, KEY))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("question must not be null");
+  }
+
+  @Test
+  void a_tool_deferral_refuses_a_null_key() {
+    assertThatThrownBy(() -> new AgentEvent.ToolDeferred(SEQ, TURN, CALL, UNTIL, null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("idempotencyKey must not be null");
+  }
+
+  @Test
+  void a_tool_deferral_refuses_a_null_deadline() {
+    assertThatThrownBy(() -> new AgentEvent.ToolDeferred(SEQ, TURN, CALL, null, KEY))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("until must not be null");
   }
 }

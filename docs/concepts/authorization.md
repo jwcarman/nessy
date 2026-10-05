@@ -30,8 +30,9 @@ Approver always = request -> Awaited.ready(ApprovalResult.approved());
 Approver never  = request -> Awaited.ready(ApprovalResult.denied("not in this tenant"));
 ```
 
-or defer to a person, and answer days later. Deferral works only on the
-queued door. On the direct door a deferred call becomes a failed call, because
+or defer to a person, and answer days later. The question the approver was
+shown is stored, and the deferral is recorded in the agent's story with the
+instant the question stands until. Deferral works only on the queued door. On the direct door a deferred call becomes a failed call, because
 a caller already waiting has nowhere for a late answer to arrive:
 
 ```java
@@ -81,7 +82,7 @@ being serialised back.
 
 **`deadline` is the instant the question is held to.** It is the deadline the effect was written
 with, not a time worked out when the approver is asked: a question that waited in the queue shows
-the same instant the call is given up on, and so does the live `ApprovalDeferred` event.
+the same instant the call is given up on.
 
 **`arguments` is for deciding. `action` is for showing.** A policy reads
 the arguments to decide. A page shows `action()`, the sentence the binding's

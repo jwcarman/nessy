@@ -25,11 +25,13 @@ import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
+import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
@@ -67,6 +69,9 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
   private final EffectTermsSource terms;
   private final Clock clock;
 
+  /** Where a question is kept when its answer will come later. */
+  private final Payloads payloads;
+
   public ApprovalHandler(
       AgentType agentType,
       Tools tools,
@@ -74,7 +79,8 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
       ReplyTokens replyTokens,
       Narrator narrator,
       EffectTermsSource terms,
-      Clock clock) {
+      Clock clock,
+      Payloads payloads) {
     this.agentType = agentType;
     this.tools = tools;
     this.calls = calls;
@@ -82,6 +88,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
     this.narrator = narrator;
     this.terms = terms;
     this.clock = clock;
+    this.payloads = payloads;
   }
 
   /**
@@ -96,8 +103,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
   }
 
   @Override
-  public Awaited<EffectOutcome> handle(
-      AgentId agentId, AgentEffect.Approve effect, Instant deadline) {
+  public Handled handle(AgentId agentId, AgentEffect.Approve effect, Instant deadline) {
     CallId callId = effect.callId();
     Optional<ToolBinding<?>> bound = tools.find(effect.toolName());
     if (bound.isEmpty()) {
@@ -109,7 +115,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
           agentType.value(),
           agentId.value(),
           effect.toolName());
-      return Awaited.ready(
+      return Handled.settled(
           new EffectOutcome.ToolFailed(
               callId,
               CallFailure.FAILED,
@@ -124,7 +130,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
           agentId.value(),
           callId,
           effect.requestSeq());
-      return Awaited.ready(
+      return Handled.settled(
           new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, "the call could not be found"));
     }
     ToolCalls.ResolvedCall resolved = found.get();
@@ -141,7 +147,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
           agentId.value(),
           callId,
           effect.toolName());
-      return Awaited.ready(
+      return Handled.settled(
           new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, COULD_NOT_BE_DESCRIBED));
     }
     ApprovalRequest question;
@@ -171,7 +177,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
           agentId.value(),
           callId,
           effect.toolName());
-      return Awaited.ready(
+      return Handled.settled(
           new EffectOutcome.ToolFailed(
               callId, CallFailure.FAILED, "the arguments could not be read: " + e.getMessage()));
     }
@@ -184,7 +190,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
 
     return switch (binding.approve(question)) {
       case Awaited.Ready<ApprovalResult>(ApprovalResult result) ->
-          Awaited.ready(
+          Handled.settled(
               switch (result) {
                 case ApprovalResult.Approved(var decidedBy) ->
                     new EffectOutcome.ToolApproved(callId, decidedBy);
@@ -210,14 +216,31 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
             agentId.value(),
             question.action(),
             question.deadline());
-        // The one thing the fold deliberately never learns, said to whoever is watching.
-        narrator.narrate(
-            Narrated.live(
-                agentType,
-                agentId,
-                new Narration.ApprovalDeferred(callId, question.action(), question.deadline())));
-        yield new Awaited.Deferred<>();
+        yield new Handled.Deferred(storedQuestion(agentId, callId, question));
       }
     };
+  }
+
+  /**
+   * What the approver was shown, kept where somebody reading the story later can find it.
+   *
+   * <p>Failing to keep it must not fail the deferral: the approver has already been asked and may
+   * have told a person, so an exception here would be read as a failed ask and the retry policy
+   * might ask again. The call stays parked on its row, but its deferral will not be recorded.
+   */
+  private Optional<PayloadRef> storedQuestion(
+      AgentId agentId, CallId callId, ApprovalRequest question) {
+    try {
+      return Optional.of(
+          payloads.forAgent(agentId).putDocument(ApprovalQuestions.document(question)));
+    } catch (RuntimeException e) {
+      log.warn(
+          "[{}] agent {}: the question for call {} could not be stored; the call stays parked on its row, but its deferral will not be recorded",
+          agentType.value(),
+          agentId.value(),
+          callId,
+          e);
+      return Optional.empty();
+    }
   }
 }

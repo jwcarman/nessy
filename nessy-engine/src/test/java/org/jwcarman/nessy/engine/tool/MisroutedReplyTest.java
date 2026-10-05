@@ -296,6 +296,11 @@ class MisroutedReplyTest {
     public boolean complete(UUID effectId, int attemptsMade) {
       return completeWins;
     }
+
+    @Override
+    public boolean park(UUID effectId, int attemptsMade, Instant at) {
+      return true;
+    }
   }
 
   private static final class Deliveries implements AgentEffectCallback {
@@ -313,6 +318,11 @@ class MisroutedReplyTest {
         List<FailedAttempt> priorAttempts) {
       outcomes.add(outcome);
       requests.add(request);
+    }
+
+    @Override
+    public void park(Attempt attempt, AgentEffect effect, Optional<PayloadRef> question) {
+      // These tests never defer.
     }
   }
 }
