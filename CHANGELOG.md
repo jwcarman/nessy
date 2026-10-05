@@ -27,8 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   idempotencyKey)`, stored as `approval-deferred` and `tool-deferred`; recreate the database. The
   narrations `ApprovalDeferred` and `CallDeferred` are now `Story` events, not `Live`, and change
   shape to `(callId, idempotencyKey, until)`: `action` and `toolName` are gone, and a watcher joins
-  by key to the `ActionsRequested.Call` that has them. The engine no longer narrates a deferral
-  live.
+  by key to the `ActionsRequested.Call` that has them. A deferral is told when the engine records
+  it, after the step that wrote it commits, and not when the handler returns.
 - **Every call event carries the call's `IdempotencyKey`.** `ToolApproved`, `ToolDenied`,
   `ToolSucceeded` and `ToolFailed` gain a trailing `idempotencyKey`, the key the call was
   requested with; the stored shape changes, so recreate the database. The four narration records
@@ -88,6 +88,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   also used when the label throws or returns null or a blank string.
 - `StoryProjection.of(initial, step)` makes a projection from a lambda; `StoryContent.allResults(after)`
   streams every successful result, reading a page at a time.
+- **A deferral is recorded when it happens.** When an approver or a tool returns
+  `Awaited.deferred()`, the queued door writes `ApprovalDeferred` or `ToolDeferred`, with the
+  instant the question or the call stands until, and marks the effect row parked, in one locked
+  step. `AgentEffectCallback` gains `park(attempt, effect, question)`; a custom implementation
+  must add it. A deferral that cannot be recorded is logged and changes nothing else: the call
+  stands, and is not asked again.
 - **`AgentStory.content()` reads what a story refers to:** a turn's input, what the model wrote and its answer; a call's result by its `IdempotencyKey`; and an agent's successful results, paged.
 - **`AgentStory.project` folds an agent's story with a `StoryProjection`; `UsageReports` is one.**
 - **`AgentStories` replays an agent's story:** the stored events, as the `Narrated` a live

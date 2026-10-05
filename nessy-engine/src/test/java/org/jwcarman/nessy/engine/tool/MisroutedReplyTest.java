@@ -321,5 +321,10 @@ class MisroutedReplyTest {
       outcomes.add(outcome);
       requests.add(request);
     }
+
+    @Override
+    public void park(Attempt attempt, AgentEffect effect, Optional<PayloadRef> question) {
+      // These tests never defer.
+    }
   }
 }

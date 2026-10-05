@@ -164,7 +164,7 @@ call they tell about, including the calls that were retried.
 
 `ApprovalDeferred` and `CallDeferred` are story events: each is told from a
 stored event, `AgentEvent.ApprovalDeferred` and `AgentEvent.ToolDeferred`.
-They name the call and its key and not the action or the tool. A watcher that
+Each is heard once the step that recorded the deferral commits, with its position in the story. They name the call and its key and not the action or the tool. A watcher that
 wants those joins by `idempotencyKey` to the `ActionsRequested.Call` it heard
 earlier.
 

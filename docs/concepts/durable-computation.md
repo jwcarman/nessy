@@ -115,14 +115,28 @@ nothing here can wait for it". A caller at the direct door is already
 waiting and has nowhere for a late answer to arrive.
 
 On the queued door, a tool or an approver that returns `Awaited.deferred()`
-has parked the call. The row stays running, its `actionable_at` set to the binding's
-timeout, and the agent moves on to whatever else its turn is waiting for.
-Nothing holds a thread. The fold deliberately cannot tell a tool that takes
-three days from one that takes 200 milliseconds and should not learn; the
-one place "awaiting a person" can appear is the story, as the events
-`ApprovalDeferred` and `ToolDeferred` with the moment the question expires,
-told as the narrations `ApprovalDeferred` and `CallDeferred`. See
+has parked the call, and the deferral is recorded when it happens. One locked
+step has the fold write the event, `ApprovalDeferred` or `ToolDeferred`, with
+the moment the question or the call stands until, and marks the effect row
+parked. Both are in one transaction, so there is never a deferral in the story
+without a marked row, or a marked row without a deferral. The event is told as
+the narration `ApprovalDeferred` or `CallDeferred` once that step commits. See
 [Events](events.md) and [Narration](../guides/narration.md).
+
+An approval's event also holds the stored question the approver was shown.
+
+The row stays running and is due at its deadline, and nothing takes it before
+then. The agent moves on to whatever else its turn is waiting for. Nothing holds
+a thread, and the question is not asked again while it stands. The fold
+deliberately cannot tell a tool that takes three days from one that takes 200
+milliseconds and should not learn; the story records only that the call is
+waiting, and until when.
+
+The step writes nothing when the call has already moved on. If the answer
+reaches the engine before the deferral is recorded, the answer settles the call
+and its row, and no deferral is written. If the deferral cannot be recorded at
+all, the failure is logged and the call is unaffected: the row stays as it was
+claimed, and an answer or the deadline still settles it.
 
 If the term passes with no answer, the stored failure reaches the agent and
 the turn carries on with a failed call. Whether a timeout should be a

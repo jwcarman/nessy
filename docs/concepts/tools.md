@@ -76,8 +76,9 @@ Awaited.ready(ToolResult.ok(new Block.Text("done")));   // answered
 Awaited.deferred();                                      // somebody else will answer
 ```
 
-**Ready** finishes the call. **Deferred** parks it: the agent records that
-this call is waiting on the world and moves on. It does not hold a thread
+**Ready** finishes the call. **Deferred** parks it: the agent records, as a
+`ToolDeferred` event in its story, that this call is waiting on the world until
+its deadline, and moves on. It does not hold a thread
 or a process. How long it may wait is the binding's `timeout`, decided when
 the call was asked, so a deferral cannot extend it and there is nothing to
 negotiate. The `deadline` on the `ToolCallRequest` is that instant, the one the

@@ -18,8 +18,11 @@ package org.jwcarman.nessy.engine.effect;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.backend.effect.AgentEffect;
+import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
 
@@ -69,4 +72,23 @@ public interface AgentEffectCallback {
       EffectOutcome outcome,
       String traceContext,
       List<FailedAttempt> priorAttempts);
+
+  /**
+   * Records that an attempt deferred, and marks its row as waiting.
+   *
+   * <p>Called after a handler answered that the work is elsewhere and an answer will arrive later.
+   * One locked step has the fold write that the call was deferred -- until the attempt's deadline
+   * -- and marks the effect row parked, so the two stand or fall together. When the fold writes
+   * nothing, because the call was already answered or is no longer the one the agent is waiting on,
+   * the row is not marked.
+   *
+   * <p>The dispatcher calls this outside the handling of the attempt, and a failure here is only
+   * logged: a deferral that could not be recorded leaves the row as it was claimed, and the call
+   * stands as it did before.
+   *
+   * @param attempt the attempt that deferred; its deadline is the instant the deferral stands until
+   * @param effect what the attempt was performing
+   * @param question the stored question somebody is being asked, present when an approver deferred
+   */
+  void park(Attempt attempt, AgentEffect effect, Optional<PayloadRef> question);
 }

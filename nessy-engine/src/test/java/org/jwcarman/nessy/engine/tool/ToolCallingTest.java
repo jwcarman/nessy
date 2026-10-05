@@ -568,6 +568,9 @@ class ToolCallingTest {
     List<AgentEvent> story = engine.story(type, agentId);
     assertThat(story).noneMatch(AgentEvent.ToolApproved.class::isInstance);
     assertThat(story.get(2))
+        .as("the question standing is on the record, once")
+        .isInstanceOf(AgentEvent.ApprovalDeferred.class);
+    assertThat(story.get(3))
         .asInstanceOf(
             org.assertj.core.api.InstanceOfAssertFactories.type(AgentEvent.ToolFailed.class))
         .satisfies(
