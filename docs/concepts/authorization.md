@@ -53,11 +53,13 @@ call, whether it is waiting or decided.
 
 When the approver itself fails, by throwing, the call ends as not authorised and the failure
 keeps the facts the approver was shown. The message the model reads is the approver's own. If the
-approval policy asks again, the failure holds the facts of the ask that was made last. A failure
+approval policy asks again, the failure holds the facts of the ask that was made last; if a
+retried request is not asked again before its deadline, the failure records no facts. A failure
 that comes from an expired deferral carries none; the deferral's facts stand.
 
-Facts are the application's own evidence and are not cut. Keep them small, because they travel in
-the agent's event stream. They are not part of narration: a listener is never sent them.
+Facts are the application's own evidence and are not cut. Facts must be plain JSON, and must not change after the approver
+returns (the request is not safe to share between threads). They are read whenever the agent's
+events are read, so keep them small. They are not part of narration: a listener is never sent them.
 
 How long the request stands is the binding's term, not the approver's:
 

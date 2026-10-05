@@ -241,10 +241,7 @@ public sealed interface EffectOutcome {
       this(callId, decidedBy, JsonNodeFactory.instance.objectNode());
     }
 
-    /**
-     * Allowed, with nothing standing behind it -- an ungated tool, or a rule that is its own
-     * evidence.
-     */
+    /** Allowed, for a decision that carries no decider and no facts. */
     public ToolApproved(CallId callId) {
       this(callId, Optional.empty(), JsonNodeFactory.instance.objectNode());
     }

@@ -785,6 +785,13 @@ class StoryContentTest {
     }
 
     @Test
+    void are_an_empty_object_when_the_call_was_discharged_without_being_asked() {
+      write(opening(), asking(call("a", first)), failedWith(3, "a", first, none()));
+
+      assertThat(content.approvalFacts(first)).contains(none());
+    }
+
+    @Test
     void are_unknown_when_the_call_has_not_yet_been_put_to_its_approver() {
       write(opening(), asking(call("a", first)));
 

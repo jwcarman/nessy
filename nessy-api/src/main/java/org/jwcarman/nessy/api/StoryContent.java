@@ -92,9 +92,11 @@ public interface StoryContent {
    * deferred with answer; when a call was asked again, they are the last ones before the decision.
    * While the call is still waiting they are the last deferral's.
    *
-   * <p>Empty (the {@code Optional}) when the key is not in this agent's story and when the call has
-   * not yet been put to its approver. Facts are read back from storage, where a number reads in the
-   * narrowest type, so compare them by their text or field by field, not with {@code equals}.
+   * <p>Empty (the {@code Optional}) when the key is not in this agent's story or nothing has been
+   * recorded for the call's approval yet. A call discharged before it was put to its approver, or
+   * whose request expired unasked, reads as an empty object. Facts are read back from storage,
+   * where a number reads in the narrowest type, so compare them by their text or field by field,
+   * not with {@code equals}.
    *
    * <p>Reads the story from its start until the call is decided, a page at a time, so its cost
    * grows with the story.

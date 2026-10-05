@@ -221,8 +221,8 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
    *
    * <p>Only the approver's own call is inside the {@code try}. When it throws, the facts as they
    * stood are copied and the failure is thrown again as an {@link ApproverFailed}, so the failure
-   * that is finally recorded can hold them. It is still a throw, so the dispatcher's retry sees
-   * what it always saw.
+   * that is finally recorded can hold them. It is a throw, so the dispatcher's retry policy decides
+   * whether to ask again.
    */
   private Awaited<ApprovalResult> answer(ToolBinding<?> binding, ApprovalRequest request) {
     try {

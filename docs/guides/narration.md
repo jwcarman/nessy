@@ -234,7 +234,9 @@ List<CallResult> results = content.results(Seq.NONE, 100);
   facts the call was deferred with are the answer; when the call was asked
   again, they are the last ones before the decision. While the call is waiting
   they are the last deferral's. The `Optional` is empty when the key is not in
-  this agent's story or the call has not yet been put to its approver. The read
+  this agent's story or nothing has been recorded for the call's approval yet. A
+  call discharged before it was put to its approver, or whose request expired
+  unasked, reads as an empty object. The read
   stops at the call's decision. Facts read back from storage have numbers in the
   narrowest type, so compare them by their text or field by field, not with
   `equals`.

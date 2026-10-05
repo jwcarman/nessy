@@ -11,7 +11,7 @@ it all when the process stops.
 |---|---|---|
 | An agent, so there is something to lock | `nessy_agent` | until it is terminated, and after |
 | What happened to an agent, one row per event, append-only | `nessy_agent_event` | forever, unless you prune it |
-| Content: what a message or a tool result actually said, and JSON documents (the events keep two short lines per tool call) | `nessy_payload` | forever, unless you prune it |
+| Content: what a message or a tool result actually said, and JSON documents (the events keep two short lines per tool call, and an approval's facts) | `nessy_payload` | forever, unless you prune it |
 | Work an agent owes, with its deadline | `nessy_agent_effect` | until it completes or is given up on |
 | Work offered to a busy agent, waiting its turn (queued door only) | `nessy_agent_backlog` | until it is claimed or coalesced away |
 | Closed chapters of an agent's history, each with the summary that stands in for it once written | `nessy_chapter` | forever, unless you prune it |
@@ -252,7 +252,10 @@ That statement is not everything the agent said. For each tool call the
 events also hold two lines of text, what the call would do and what it
 returned, each at most 1,000 characters, and they hold other text: a
 failed call's message, also at most 1,000 characters, and a denial's reason and
-why a turn failed, which are not bounded. The summaries
+why a turn failed, which are not bounded. The facts an approver was shown are on
+the events that record the decision, the deferral or the failure; they are not
+cut, and nothing in the engine deletes them, so an application that must not
+keep some data must not put it in an approval request's facts. The summaries
 of the agent's chapters are in `nessy_chapter`. An agent's content is in
 those three places, its payload rows, its events and its chapters. Nothing
 in the engine deletes any of it today.

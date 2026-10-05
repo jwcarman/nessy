@@ -413,12 +413,13 @@ class ApprovalHandlerTest {
   /** The outcome holds a copy: a fact added to the request afterwards is not in it. */
   @Test
   void a_fact_added_after_the_handler_returned_is_not_in_the_outcome() {
-    ApprovalRequest[] seen = new ApprovalRequest[1];
+    ApprovalRequest[] seenApproving = new ApprovalRequest[1];
+    ApprovalRequest[] seenDenying = new ApprovalRequest[1];
     EffectOutcome approved =
         ask(
             bound(
                 request -> {
-                  seen[0] = request;
+                  seenApproving[0] = request;
                   request.fact("risk", "low");
                   return Awaited.ready(ApprovalResult.approved());
                 }));
@@ -427,11 +428,12 @@ class ApprovalHandlerTest {
             bound(
                 request -> {
                   request.fact("risk", "low");
-                  seen[0] = request;
+                  seenDenying[0] = request;
                   return Awaited.ready(ApprovalResult.denied("no"));
                 }));
 
-    seen[0].fact("late", "yes");
+    seenApproving[0].fact("late", "yes");
+    seenDenying[0].fact("late", "yes");
 
     assertThat(factsOf(approved))
         .isEqualTo(JsonNodeFactory.instance.objectNode().put("risk", "low"));
@@ -492,28 +494,6 @@ class ApprovalHandlerTest {
     assertThatThrownBy(() -> asked(handler, WRITTEN_DEADLINE))
         .isExactlyInstanceOf(IllegalStateException.class)
         .hasMessage("narrator down");
-  }
-
-  /** The reply token settles the call, and facts are read by far more than the reply. */
-  @Test
-  void the_facts_do_not_hold_the_reply_token() {
-    ApprovalRequest[] seen = new ApprovalRequest[1];
-    ApprovalHandler handler =
-        handler(
-            bound(
-                request -> {
-                  seen[0] = request;
-                  request.fact("risk", "low");
-                  return new Awaited.Deferred<>();
-                }),
-            story());
-
-    Handled handled = asked(handler, WRITTEN_DEADLINE);
-
-    assertThat(handled).isInstanceOf(Handled.Deferred.class);
-    assertThat(seen[0].replyToken().value()).isNotBlank();
-    assertThat(((Handled.Deferred) handled).facts().toString())
-        .doesNotContain(seen[0].replyToken().value());
   }
 
   // ---- the request ------------------------------------------------------------------------

@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
-- **An approval's facts are stored on its events.** `ToolApproved`, `ToolDenied`, `ToolFailed` and
-  `ApprovalDeferred` gain a `facts` field, a JSON object, before `idempotencyKey`, and the stored
+- **An approval's facts are stored on its events.** `ToolApproved`, `ToolDenied` and `ToolFailed`
+  gain a `facts` field, a JSON object, before `idempotencyKey`, and the stored
   failure response on an effect row gains it too. Stored events and failure responses change
   shape; recreate the database. A custom `StoryContent` must implement `approvalFacts`.
 - **Stored events and stored effect attempts changed shape.** The five model-call events gain a
@@ -93,8 +93,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the payload store, facts are not cut, and narration does not carry them.
 - **`StoryContent.approvalFacts(IdempotencyKey)` reads them back.** It returns the facts the call's
   approver was shown: a decision's own when it has any, else the last deferral's. It is empty when
-  the key is unknown or the call has not yet been put to its approver, and it stops reading at the
-  call's decision.
+  the key is unknown or nothing has been recorded for the call's approval yet; a call discharged
+  before it was put to its approver, or whose request expired unasked, reads as an empty object.
+  It stops reading at the call's decision.
 - **Every model-call event records what its request was made of, by reference.**
   `InferenceAnswered`, `InferenceRefused`, `InferenceFailed`, `InferenceAttempted` and
   `ActionsRequested` each hold the prompt, the tools and the choice, the answer shape, the

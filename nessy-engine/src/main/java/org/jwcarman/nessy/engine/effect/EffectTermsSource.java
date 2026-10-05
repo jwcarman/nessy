@@ -179,7 +179,7 @@ public final class EffectTermsSource {
 
     @Override
     public EffectOutcome failed(RuntimeException cause) {
-      // The message is the approver's own, as it always was; an ApproverFailed reads as the
+      // The message is the approver's own; an ApproverFailed reads as the
       // exception it wraps, and adds the facts the approver was shown.
       return new EffectOutcome.ToolFailed(
           callId,

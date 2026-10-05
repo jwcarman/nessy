@@ -25,7 +25,7 @@ import tools.jackson.databind.node.ObjectNode;
  * that is finally recorded can hold the facts. To everything else it reads as the exception it
  * wraps: {@link #getCause()} is the approver's exception and {@link #getMessage()} is that
  * exception's message. The dispatcher's retry does not look at what was thrown, only that something
- * was, so a retried ask is retried as before.
+ * was: the failure is a throw, so the dispatcher's retry policy decides whether to ask again.
  */
 final class ApproverFailed extends RuntimeException {
 
