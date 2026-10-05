@@ -588,7 +588,7 @@ Beyond §10c:
 - **The park step.** A deferral writes the event and marks the row in one transaction. An answer
   that lands first leaves the park step writing nothing. A park step that throws leaves the row
   as it was, fails no call and asks no approver again. A parked row is not claimed before its
-  deadline when the claimer's clock runs ahead of the writer's.
+  deadline when the claimer's clock runs behind the writer's.
 - **The question.** Stored for a decision made at once, for a deferral, and for an approver that
   threw; facts the approver added are in it; the reply token is not.
 - **The manifest.** Two calls with unchanged sections store no new payloads; a changed ambient
