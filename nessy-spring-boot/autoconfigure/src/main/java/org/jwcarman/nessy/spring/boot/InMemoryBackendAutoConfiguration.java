@@ -47,6 +47,9 @@ public class InMemoryBackendAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public DirectBackend directBackend(CodecFactory codecs) {
+    if (codecs instanceof StorageLayers ours) {
+      return new InMemoryDirectBackend(ours.values(), ours.transform());
+    }
     return new InMemoryDirectBackend(codecs);
   }
 
@@ -59,6 +62,9 @@ public class InMemoryBackendAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public QueuedBackend queuedBackend(CodecFactory codecs) {
+    if (codecs instanceof StorageLayers ours) {
+      return new InMemoryQueuedBackend(ours.values(), ours.transform());
+    }
     return new InMemoryQueuedBackend(codecs);
   }
 

@@ -206,18 +206,26 @@ the handful of rows per agent that matter to that query, however long the
 conversation.
 
 Events carry content by reference. What a message said, or a tool returned,
-lives in `nessy_payload`, addressed by the SHA-256 hash of its own encoded
-bytes and scoped to the agent that produced it. The events hold a reference
+lives in `nessy_payload`, addressed by the SHA-256 hash of its own content, taken
+before the storage codec's transform, and scoped to the agent that produced it. The events hold a reference
 to it. That buys idempotence — an effect retried after a failure writes the
 same row rather than a second copy — and it makes removing an agent's
 payload rows one statement over one table, with nothing shared out from
 under another agent. Identical content in two agents is stored twice, and
 that is the trade.
 
+The reference depends on the content as the value codec writes it, and not on the storage
+transform. A transform that never writes the same bytes twice, such as AES-GCM with a fresh
+nonce, still gives the same content one reference and one row. The stores that take the value
+codec and the transform as two arguments hash between the two; a store given one factory that
+already includes a transform hashes after it. The references are stored unencrypted beside the
+events, so payloads with equal content have equal references, and a reader of the event table
+can tell that content equals a guess without decrypting it.
+
 A payload holds either message blocks or a JSON document, and its `kind`
 column says which, `BLOCKS` or `DOCUMENT`. `Payloads.put` keeps blocks and `Payloads.putDocument`
-keeps a document; a document's reference is the hash of its encoded bytes, so
-the same document is one reference and one row, with its fields in the order
+keeps a document; a document's reference is the hash of the document as the
+value codec writes it, so the same document is one reference and one row, with its fields in the order
 it has them. Asking for blocks where a document is kept, or the reverse,
 throws an `IllegalStateException` that names the reference and what is there,
 and `getDocument` on a reference with nothing behind it throws too. Documents

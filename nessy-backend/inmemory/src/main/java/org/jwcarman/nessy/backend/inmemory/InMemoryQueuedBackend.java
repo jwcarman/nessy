@@ -21,10 +21,12 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.ToIntBiFunction;
+import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.IdentityCodec;
 import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.agent.Agents;
 import org.jwcarman.nessy.backend.backlog.Backlogs;
@@ -70,10 +72,39 @@ public final class InMemoryQueuedBackend implements QueuedBackend {
    */
   private final List<ToIntBiFunction<AgentType, AgentId>> clearers = new CopyOnWriteArrayList<>();
 
+  /**
+   * For a caller that builds its own codecs: the factory is used as given for every store, payloads
+   * included, so a factory that already has a storage transform is hashed after it: a payload's
+   * reference then depends on what the transform writes. Use the constructor that takes the value
+   * codec and the transform apart when there is a transform.
+   */
   public InMemoryQueuedBackend(CodecFactory codecs) {
+    this(codecs, codecs, IdentityCodec.INSTANCE);
+  }
+
+  /**
+   * For a caller that has a storage transform and holds it apart from the value codec. Every store
+   * is built over the two composed, as the other constructor's factory would be, except the
+   * payloads, which get them apart so a payload's reference is a hash of its content before the
+   * transform. With the other constructor, a factory that already includes a transform is hashed
+   * after it.
+   *
+   * @param values the value codec, with no transform applied
+   * @param transform the storage transform
+   */
+  public InMemoryQueuedBackend(CodecFactory values, Codec<byte[]> transform) {
+    this(
+        StorageCodecs.compose(
+            Objects.requireNonNull(values, "values must not be null"),
+            Objects.requireNonNull(transform, "transform must not be null")),
+        values,
+        transform);
+  }
+
+  private InMemoryQueuedBackend(CodecFactory codecs, CodecFactory values, Codec<byte[]> transform) {
     Objects.requireNonNull(codecs, "codecs must not be null");
     this.events = new InMemoryAgentEvents(codecs);
-    this.payloads = new InMemoryPayloads(codecs);
+    this.payloads = new InMemoryPayloads(values, transform);
     this.chapters = new InMemoryChapters(codecs);
     this.effects = new InMemoryEffects(codecs);
     this.agents = new InMemoryAgents(this::clear);
