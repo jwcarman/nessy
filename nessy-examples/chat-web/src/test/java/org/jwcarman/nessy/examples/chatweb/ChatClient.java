@@ -26,7 +26,7 @@ final class ChatClient {
 
   record Card(String id, String tool, String args, String what, String askedAt, String deadline) {}
 
-  record PageState(List<Map<String, Object>> transcript, List<Card> approvals) {
+  record PageState(List<Map<String, Object>> transcript, List<Card> approvals, boolean working) {
 
     List<String> texts() {
       return transcript.stream().map(line -> String.valueOf(line.get("text"))).toList();

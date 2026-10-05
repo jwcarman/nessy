@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentStatus;
 import org.jwcarman.nessy.api.AgentStatus.Activity;
 import org.jwcarman.nessy.api.AgentWork;
 import org.jwcarman.nessy.api.QueuedHarness;
@@ -99,11 +100,12 @@ public class ChatController {
   public Map<String, Object> state(@PathVariable("id") String id) {
     AgentId agentId = agent(id);
     List<Turn> turns = histories.forAgent(ChatConfiguration.TYPE, agentId).turnsFrom(0);
-    List<Card> cards =
-        work.status(ChatConfiguration.TYPE, agentId).waitingApprovals().stream()
-            .map(ChatController::card)
-            .toList();
-    return Map.of("transcript", lines(turns), "approvals", cards);
+    AgentStatus status = work.status(ChatConfiguration.TYPE, agentId);
+    List<Card> cards = status.waitingApprovals().stream().map(ChatController::card).toList();
+    // Working means a turn is in progress: moving, or parked waiting for a person.
+    boolean working =
+        status.activity() == Activity.WORKING || status.activity() == Activity.WAITING;
+    return Map.of("transcript", lines(turns), "approvals", cards, "working", working);
   }
 
   /**

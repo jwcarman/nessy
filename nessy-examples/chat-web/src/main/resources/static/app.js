@@ -27,6 +27,12 @@ let openThinking = null;
 // delta as it writes it; one that does not says it only as a commentary event, and drawing both
 // would show it twice.
 let streamed = false;
+// The turns whose answer is on screen, so an answer is drawn once however it got here: from the
+// transcript on load, as deltas, or from a late or replayed "answered" event.
+let drawnTurns = new Set();
+// Every draw the stream causes runs on this one chain, in the order the events arrived, so a slow
+// read for one turn's answer cannot land after the next turn's first words.
+let chain = Promise.resolve();
 
 function useAgent(id) {
   agentId = id;
@@ -94,11 +100,22 @@ function renderApproval(card) {
 
 async function decide(key, decision, card) {
   card.querySelectorAll("button").forEach((b) => (b.disabled = true));
-  const response = await fetch(`/api/agents/${agentId}/approvals/${key}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ decision, note: decision === "deny" ? "denied from the page" : "" }),
-  });
+  let response = null;
+  try {
+    response = await fetch(`/api/agents/${agentId}/approvals/${key}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, note: decision === "deny" ? "denied from the page" : "" }),
+    });
+  } catch (networkError) {
+    response = null;
+  }
+  if (response === null || (response.status !== 202 && response.status !== 409)) {
+    // The answer did not go through and the card is still waiting: let the person try again.
+    card.querySelectorAll("button").forEach((b) => (b.disabled = false));
+    appendLine("system", "your answer did not go through; try again");
+    return;
+  }
   if (response.status === 202) {
     appendLine("system", decision === "approve" ? "you approved it" : "you denied it");
   }
@@ -112,6 +129,10 @@ function listen() {
   events = new EventSource(`/api/agents/${agentId}/events`);
 
   // The event names are the engine's own, as the Odyssey narrator journals them.
+  const on = (name, handler) =>
+    events.addEventListener(name, (e) => {
+      chain = chain.then(() => handler(e)).catch((error) => console.error(name, error));
+    });
   const said = (text) => {
     openThinking = null;
     if (!openBubble) openBubble = appendLine("assistant", "");
@@ -124,20 +145,20 @@ function listen() {
     streamed = false;
     setWorking(false);
   };
-  events.addEventListener("turn-started", () => {
+  on("turn-started", () => {
     streamed = false;
     setWorking(true);
   });
-  events.addEventListener("content-delta", (e) => {
+  on("content-delta", (e) => {
     streamed = true;
     said(JSON.parse(e.data).text);
   });
-  events.addEventListener("thinking-delta", (e) => {
+  on("thinking-delta", (e) => {
     if (!openThinking) openThinking = appendLine("thinking", "");
     openThinking.textContent += JSON.parse(e.data).text;
     log.scrollTop = log.scrollHeight;
   });
-  events.addEventListener("commentary", (e) => {
+  on("commentary", (e) => {
     if (!streamed) said(JSON.parse(e.data).text);
   });
   // A request names each call and its tool; what happens to a call is told later without
@@ -145,7 +166,7 @@ function listen() {
   // edit to the request's line, which is what the story shows too.
   const toolOf = new Map();
   const named = (e) => toolOf.get(JSON.parse(e.data).callId) ?? "call";
-  events.addEventListener("actions-requested", (e) => {
+  on("actions-requested", (e) => {
     openThinking = null;
     openBubble = null;
     streamed = false;
@@ -156,48 +177,49 @@ function listen() {
   });
   // An approval was deferred, or a call was settled: what is waiting for a person has changed, so
   // the cards are read again.
-  events.addEventListener("approval-deferred", () => refreshCards());
-  events.addEventListener("call-approved", (e) => {
+  on("approval-deferred", () => refreshCards());
+  on("call-approved", (e) => {
     appendLine("tool", named(e) + " approved");
     refreshCards();
   });
-  events.addEventListener("call-denied", (e) => {
+  on("call-denied", (e) => {
     appendLine("tool", named(e) + " denied: " + JSON.parse(e.data).reason);
     refreshCards();
   });
-  events.addEventListener("call-finished", (e) => {
+  on("call-finished", (e) => {
     appendLine("tool", named(e) + " done");
     refreshCards();
   });
-  events.addEventListener("call-failed", (e) => {
+  on("call-failed", (e) => {
     appendLine("tool", named(e) + " failed: " + JSON.parse(e.data).message);
     refreshCards();
   });
   // Says that an answer happened and which turn it ended, and carries no words. A streaming
   // provider has already shown them as deltas; one that does not stream has shown nothing, so the
   // answer is read from the story and drawn here.
-  events.addEventListener("answered", async (e) => {
+  on("answered", async (e) => {
     const wasStreamed = streamed;
+    const turn = JSON.parse(e.data).turn;
     idle();
-    if (!wasStreamed) await drawAnswer(JSON.parse(e.data).turn);
+    if (wasStreamed) drawnTurns.add(turn);
+    else await drawAnswer(turn);
   });
-  events.addEventListener("turn-failed", () => {
+  on("turn-failed", () => {
     appendLine("system", "the agent could not answer");
     idle();
   });
-  events.addEventListener("turn-refused", () => {
+  on("turn-refused", () => {
     appendLine("system", "the agent declined to answer");
     idle();
   });
-  events.addEventListener("turn-stopped", (e) => {
+  on("turn-stopped", (e) => {
     appendLine("system", "the agent stopped the turn: " + JSON.parse(e.data).reason);
     idle();
   });
-  events.addEventListener("terminated", idle);
+  on("terminated", idle);
   events.onerror = () => {
-    // EventSource reconnects on its own; a turn that ended while it was away is not announced
-    // again, so do not claim the agent is still working.
-    setWorking(false);
+    // EventSource reconnects on its own and resumes from the last event it saw, so the working
+    // line is left as it is.
   };
 }
 
@@ -205,8 +227,12 @@ function listen() {
 // apart by their id, because the story may already hold the next turn's lines.
 async function drawAnswer(turn) {
   const state = await readState();
+  if (drawnTurns.has(turn)) return;
   const mine = state.transcript.filter((line) => line.turn === turn && line.role === "assistant");
-  if (mine.length > 0) appendLine("assistant", mine[mine.length - 1].text);
+  if (mine.length > 0) {
+    drawnTurns.add(turn);
+    appendLine("assistant", mine[mine.length - 1].text);
+  }
 }
 
 async function send(event) {
@@ -231,14 +257,24 @@ async function send(event) {
 }
 
 async function load() {
+  drawnTurns = new Set();
   log.innerHTML = "";
   approvalsSection.innerHTML = "";
   openBubble = null;
   openThinking = null;
   const state = await readState();
   for (const line of state.transcript) appendLine(line.role, line.text);
+  // A turn that has an assistant line has been drawn, except the one in progress, which is the
+  // last, and whose lines so far are commentary rather than its answer.
+  drawnTurns = new Set();
+  const last = state.transcript.length > 0 ? state.transcript[state.transcript.length - 1].turn : 0;
+  for (const line of state.transcript) {
+    if (line.role === "assistant" && !(state.working && line.turn === last)) {
+      drawnTurns.add(line.turn);
+    }
+  }
   drawCards(state.approvals);
-  setWorking(false);
+  setWorking(state.working);
 }
 
 form.addEventListener("submit", send);
