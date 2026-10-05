@@ -28,9 +28,13 @@ package org.jwcarman.nessy.api;
 public sealed interface TellOutcome {
 
   /**
-   * The agent took the input: it was handed to the agent type's backlog policy, or it started a
-   * turn at once. Says that the agent took input, not what the policy then did with it -- a policy
-   * may append it, merge it with what waits, replace what waits, or drop it to hold a bound.
+   * The agent took the input. Every accepted input is handed to the agent type's backlog policy,
+   * and a turn starts at once when the agent is idle. The policy decides what waits: it may keep
+   * the input, merge it with what waits, replace what waits, drop older inputs to hold a bound, or
+   * discard the arrival itself as a repeat. So an accepted input is not a promise that it will run
+   * by itself, or at all. An input that is still waiting when the agent is terminated is abandoned.
+   *
+   * <p>Inside a caller's transaction, {@code Accepted} is only as durable as the caller's commit.
    */
   record Accepted() implements TellOutcome {}
 
@@ -39,7 +43,7 @@ public sealed interface TellOutcome {
    * stored, nothing was written to the story, and no turn will run for it.
    *
    * <p>An agent terminated while its last turn is still in progress answers this at once, though
-   * its status reads as working until that turn ends.
+   * its status does not read as terminated until that turn ends.
    */
   record Terminated() implements TellOutcome {}
 }
