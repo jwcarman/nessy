@@ -19,11 +19,12 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Function;
+import java.util.Set;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentStatus;
 import org.jwcarman.nessy.api.AgentStatus.Activity;
@@ -184,7 +185,9 @@ public final class StoredAgentWork implements AgentWork {
               waiting(live, now) ? Activity.WAITING : Activity.WORKING,
               queued,
               Optional.of(awaiting.turn()),
-              rebuilt(live.stream().filter(row -> row.parkedNow(now)).toList(), _ -> lastTurn),
+              rebuilt(
+                  live.stream().filter(row -> row.parkedNow(now)).toList(),
+                  new Stories(type, id, lastTurn)),
               waitingToolCalls(live, now));
     };
   }
@@ -202,19 +205,14 @@ public final class StoredAgentWork implements AgentWork {
 
   private List<ApprovalRequest> waiting(Optional<AgentType> type) {
     Instant now = clock.instant();
-    Map<String, List<AgentEvent>> stories = new HashMap<>();
-    Function<LiveEffect, List<AgentEvent>> story =
-        row ->
-            stories.computeIfAbsent(
-                row.agentType().value() + '\u0000' + row.agentId().value(),
-                _ -> events.sinceLastTurnStarted(row.agentType(), row.agentId()));
+    Stories stories = new Stories();
     List<ApprovalRequest> requests = new ArrayList<>();
     Optional<LiveEffect> after = Optional.empty();
     while (requests.size() < maximumWaiting) {
       List<LiveEffect> page = rows.parkedNow(type, now, after, maximumWaiting);
       for (LiveEffect row : page) {
         if (requests.size() < maximumWaiting) {
-          rebuiltOne(row, story).ifPresent(requests::add);
+          rebuiltOne(row, stories).ifPresent(requests::add);
         }
       }
       if (page.size() < maximumWaiting) {
@@ -229,18 +227,31 @@ public final class StoredAgentWork implements AgentWork {
    * The request the approver was shown for each row, rebuilt from stored values. A row whose
    * request cannot be rebuilt is logged and left out, and never fails the read.
    */
-  private List<ApprovalRequest> rebuilt(
-      List<LiveEffect> parked, Function<LiveEffect, List<AgentEvent>> story) {
-    return parked.stream().map(row -> rebuiltOne(row, story)).flatMap(Optional::stream).toList();
+  private List<ApprovalRequest> rebuilt(List<LiveEffect> parked, Stories stories) {
+    return parked.stream().map(row -> rebuiltOne(row, stories)).flatMap(Optional::stream).toList();
   }
 
-  private Optional<ApprovalRequest> rebuiltOne(
-      LiveEffect row, Function<LiveEffect, List<AgentEvent>> story) {
+  /**
+   * One row's request. A row parked now that the story read does not hold is a request written
+   * after that read, so the story is read once more for that agent and the row rebuilt from the
+   * fresh read; only a row the fresh read does not hold either is skipped.
+   */
+  private Optional<ApprovalRequest> rebuiltOne(LiveEffect row, Stories stories) {
     if (!(row.effect() instanceof AgentEffect.Approve approve)) {
       return Optional.empty();
     }
     try {
-      return rebuild(row, approve, story.apply(row));
+      Optional<ApprovalRequest> request = rebuild(row, approve, stories.of(row));
+      if (request.isEmpty()) {
+        Optional<List<AgentEvent>> fresh = stories.readAgain(row);
+        if (fresh.isPresent()) {
+          request = rebuild(row, approve, fresh.get());
+        }
+      }
+      if (request.isEmpty()) {
+        skipped(row, approve);
+      }
+      return request;
     } catch (RuntimeException e) {
       log.warn(
           "[{}] agent {}: waiting approval {} skipped",
@@ -249,6 +260,44 @@ public final class StoredAgentWork implements AgentWork {
           approve.idempotencyKey(),
           e);
       return Optional.empty();
+    }
+  }
+
+  /**
+   * The stories read in one call, one per agent, and at most one more read per agent when a row
+   * turns out to be newer than the story.
+   */
+  private final class Stories {
+
+    private final Map<String, List<AgentEvent>> read = new HashMap<>();
+    private final Set<String> readAgain = new HashSet<>();
+
+    private Stories() {}
+
+    /** An agent whose story is already in hand, as the status read has it. */
+    private Stories(AgentType type, AgentId id, List<AgentEvent> story) {
+      read.put(keyOf(type, id), story);
+    }
+
+    private static String keyOf(AgentType type, AgentId id) {
+      return type.value() + '\u0000' + id.value();
+    }
+
+    List<AgentEvent> of(LiveEffect row) {
+      return read.computeIfAbsent(
+          keyOf(row.agentType(), row.agentId()),
+          _ -> events.sinceLastTurnStarted(row.agentType(), row.agentId()));
+    }
+
+    /** The story read again, the first time that is asked for this agent in this call. */
+    Optional<List<AgentEvent>> readAgain(LiveEffect row) {
+      String key = keyOf(row.agentType(), row.agentId());
+      if (!readAgain.add(key)) {
+        return Optional.empty();
+      }
+      List<AgentEvent> fresh = events.sinceLastTurnStarted(row.agentType(), row.agentId());
+      read.put(key, fresh);
+      return Optional.of(fresh);
     }
   }
 
@@ -268,7 +317,6 @@ public final class StoredAgentWork implements AgentWork {
                         asked,
                         entry -> entry.idempotencyKey().equals(key)));
     if (call.isEmpty()) {
-      skipped(row, approve);
       return Optional.empty();
     }
     ObjectNode facts =

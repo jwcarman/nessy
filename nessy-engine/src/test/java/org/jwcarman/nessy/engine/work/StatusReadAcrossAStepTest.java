@@ -22,7 +22,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
@@ -179,9 +181,17 @@ class StatusReadAcrossAStepTest {
         .isPositive();
   }
 
-  /** A backend whose story read returns what it held before the latest step was written. */
-  private record StoryReadEarlier(QueuedBackend backend, List<AgentEvent> earlier)
+  /**
+   * A backend whose first story read of an agent returns what it held before the latest step was
+   * written, and whose later reads are the real ones: a read that is one step old.
+   */
+  private record StoryReadEarlier(
+      QueuedBackend backend, List<AgentEvent> earlier, Set<AgentId> served)
       implements QueuedBackend {
+
+    StoryReadEarlier(QueuedBackend backend, List<AgentEvent> earlier) {
+      this(backend, earlier, ConcurrentHashMap.newKeySet());
+    }
 
     @Override
     public AgentEvents events() {
@@ -205,7 +215,7 @@ class StatusReadAcrossAStepTest {
 
         @Override
         public List<AgentEvent> sinceLastTurnStarted(AgentType type, AgentId agent) {
-          return earlier;
+          return served.add(agent) ? earlier : real.sinceLastTurnStarted(type, agent);
         }
 
         @Override
