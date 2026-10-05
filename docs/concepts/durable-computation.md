@@ -118,8 +118,9 @@ On the queued door, a tool or an approver that returns `Awaited.deferred()`
 has parked the call, and the deferral is recorded when it happens. One locked
 step has the fold write the event, `ApprovalDeferred` or `ToolDeferred`, with
 the moment the question or the call stands until, and marks the effect row
-parked. Both are in one transaction, so there is never a deferral in the story
-without a marked row, or a marked row without a deferral. The event is told as
+parked. Both are in one transaction, so a marked row always has a deferral in
+the story. If the row has moved on by the time the deferral is recorded (another
+attempt re-claimed it), the deferral stands and no row is marked. The event is told as
 the narration `ApprovalDeferred` or `CallDeferred` once that step commits. See
 [Events](events.md) and [Narration](../guides/narration.md).
 

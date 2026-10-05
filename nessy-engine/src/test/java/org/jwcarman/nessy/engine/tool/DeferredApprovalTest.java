@@ -401,6 +401,9 @@ class DeferredApprovalTest {
                   assertThat(refusing.stateOf(type, agentId)).isInstanceOf(AgentState.Idle.class));
       assertThat(ran).containsExactly("loch ness");
       assertThat(handed).as("and was never asked again").hasSize(1);
+      assertThat(deferralsIn(refusing.story(type, agentId)))
+          .as("the finished story holds no deferral")
+          .isEmpty();
     }
   }
 

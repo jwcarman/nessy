@@ -93,7 +93,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instant the question or the call stands until, and marks the effect row parked, in one locked
   step. `AgentEffectCallback` gains `park(attempt, effect, question)`; a custom implementation
   must add it. A deferral that cannot be recorded is logged and changes nothing else: the call
-  stands, and is not asked again.
+  is not failed or retried because of it, and an unmarked row is left exactly as it was
+  claimed.
 - **`AgentStory.content()` reads what a story refers to:** a turn's input, what the model wrote and its answer; a call's result by its `IdempotencyKey`; and an agent's successful results, paged.
 - **`AgentStory.project` folds an agent's story with a `StoryProjection`; `UsageReports` is one.**
 - **`AgentStories` replays an agent's story:** the stored events, as the `Narrated` a live

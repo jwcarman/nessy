@@ -282,6 +282,7 @@ class DeferredToolTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
+    assertThat(engine.story(type, agentId).get(3)).isInstanceOf(AgentEvent.ToolDeferred.class);
     assertThat(engine.story(type, agentId).get(4))
         .asInstanceOf(type(AgentEvent.ToolSucceeded.class))
         .extracting(AgentEvent.ToolSucceeded::rendered)
@@ -306,6 +307,7 @@ class DeferredToolTest {
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
+    assertThat(engine.story(type, agentId).get(3)).isInstanceOf(AgentEvent.ToolDeferred.class);
     assertThat(engine.story(type, agentId).get(4))
         .asInstanceOf(type(AgentEvent.ToolFailed.class))
         .satisfies(
@@ -368,6 +370,7 @@ class DeferredToolTest {
               assertThat(outstandingEffects(agentId)).isZero();
             });
 
+    assertThat(engine.story(type, agentId).get(3)).isInstanceOf(AgentEvent.ToolDeferred.class);
     assertThat(engine.story(type, agentId).get(4))
         .asInstanceOf(type(AgentEvent.ToolFailed.class))
         .satisfies(
@@ -490,6 +493,9 @@ class DeferredToolTest {
               () ->
                   assertThat(refusing.stateOf(type, agentId)).isInstanceOf(AgentState.Idle.class));
       assertThat(handed).as("and was never started again").hasSize(1);
+      assertThat(deferralsIn(refusing.story(type, agentId)))
+          .as("the finished story holds no deferral")
+          .isEmpty();
     }
   }
 

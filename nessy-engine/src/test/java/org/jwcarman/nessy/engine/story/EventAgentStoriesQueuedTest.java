@@ -19,8 +19,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Tag;
@@ -36,11 +40,15 @@ import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
+import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
+import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -312,6 +320,10 @@ class EventAgentStoriesQueuedTest {
           .extracting(event -> ((Narration.CallFailed) event).kind())
           .isEqualTo(CallFailure.PAST_DEADLINE);
       assertThat(replayed(engine, type, agent)).isEqualTo(story);
+      assertTheCallDeferralCarriesTheRequestedKeyAndTheStoredDeadline(engine, type, agent, story);
+      assertThat(story)
+          .extracting(narrated -> narrated.event().getClass().getSimpleName())
+          .containsSubsequence("ActionsRequested", "CallApproved", "CallDeferred", "CallFailed");
       assertTheFailedCallCarriesTheRequestedKey(story);
       assertTheFailedCallCarriesTheRequestedKey(replayed(engine, type, agent));
     }
@@ -353,6 +365,236 @@ class EventAgentStoriesQueuedTest {
       assertTheDenialCarriesTheRequestedKey(story);
       assertTheDenialCarriesTheRequestedKey(replayed(engine, type, agent));
     }
+  }
+
+  /** A lookup whose call hands the work off, keeps the address, and reports back later. */
+  private static Tool<StoryTurn.Query> lookupThatReportsLater(
+      ConcurrentLinkedQueue<ReplyToken> handed) {
+    return new Tool<>() {
+      @Override
+      public Class<StoryTurn.Query> inputType() {
+        return StoryTurn.Query.class;
+      }
+
+      @Override
+      public ToolName name() {
+        return new ToolName("lookup");
+      }
+
+      @Override
+      public String description() {
+        return "looks a thing up, eventually";
+      }
+
+      @Override
+      public Awaited<ToolResult> call(ToolCallRequest<StoryTurn.Query> request) {
+        handed.add(request.replyToken());
+        return Awaited.deferred();
+      }
+    };
+  }
+
+  /** An approver that keeps the address and says nothing: the whole of a deferring approver. */
+  private static Approver defersAndKeepsTheAddress(ConcurrentLinkedQueue<ReplyToken> handed) {
+    return request -> {
+      handed.add(request.replyToken());
+      return Awaited.deferred();
+    };
+  }
+
+  private static Instant deadlineOfTheOneRow(EngineFixture engine, AgentType type) {
+    return engine
+        .jdbc()
+        .sql("SELECT deadline FROM nessy_agent_effect WHERE agent_type = ?")
+        .params(type.value())
+        .query(OffsetDateTime.class)
+        .single()
+        .toInstant()
+        .truncatedTo(ChronoUnit.MICROS);
+  }
+
+  private List<Narrated> heardStory() {
+    return heard.stream().filter(narrated -> narrated.event() instanceof Narration.Story).toList();
+  }
+
+  private void awaitHeard(Class<? extends Narration> kind) {
+    await()
+        .atMost(Duration.ofSeconds(30))
+        .until(() -> heard.stream().anyMatch(narrated -> kind.isInstance(narrated.event())));
+  }
+
+  @Test
+  void a_deferred_approval_reads_the_same_heard_live_and_replayed() {
+    AgentType type = new AgentType("queued-approval-deferred");
+    AgentId agent = AgentId.random();
+    NarrationListener recording = heard::add;
+    ConcurrentLinkedQueue<ReplyToken> handed = new ConcurrentLinkedQueue<>();
+
+    try (EngineFixture engine = new EngineFixture(callsThenAnswers(), recording)) {
+      engine
+          .harnesses()
+          .<String>create(
+              type,
+              String.class,
+              config ->
+                  config
+                      .systemPrompt("You are a test assistant.")
+                      .tool(
+                          StoryTurn.lookup(),
+                          t ->
+                              t.action(query -> "looked up " + query.q())
+                                  .approver(
+                                      defersAndKeepsTheAddress(handed),
+                                      a -> a.timeout(Duration.ofMinutes(30))))
+                      .inference(in -> in.model("a-model"))
+                      .effects(e -> e.pollInterval(Duration.ofMillis(50))))
+          .tell(agent, "how deep is Loch Ness?");
+      awaitHeard(Narration.ApprovalDeferred.class);
+      Instant rowDeadline = deadlineOfTheOneRow(engine, type);
+      assertThat(handed).hasSize(1);
+      engine.replies().approve(handed.peek(), ApprovalResult.approvedBy(StoryTurn.DECIDER));
+      awaitHeard(Narration.Answered.class);
+
+      List<Narrated> story = heardStory();
+      assertThat(replayed(engine, type, agent)).isEqualTo(story);
+      assertThat(story)
+          .extracting(narrated -> narrated.event().getClass().getSimpleName())
+          .containsSubsequence(
+              "ActionsRequested", "ApprovalDeferred", "CallApproved", "CallFinished", "Answered");
+      assertThat(story)
+          .map(Narrated::event)
+          .filteredOn(Narration.ApprovalDeferred.class::isInstance)
+          .singleElement()
+          .satisfies(
+              event -> {
+                Narration.ApprovalDeferred deferred = (Narration.ApprovalDeferred) event;
+                assertThat(deferred.idempotencyKey()).isEqualTo(StoryTurn.requestedKey(story));
+                assertThat(deferred.until().truncatedTo(ChronoUnit.MICROS)).isEqualTo(rowDeadline);
+              });
+    }
+  }
+
+  @Test
+  void a_deferred_tool_call_reads_the_same_heard_live_and_replayed() {
+    AgentType type = new AgentType("queued-call-deferred");
+    AgentId agent = AgentId.random();
+    NarrationListener recording = heard::add;
+    ConcurrentLinkedQueue<ReplyToken> handed = new ConcurrentLinkedQueue<>();
+
+    try (EngineFixture engine = new EngineFixture(callsThenAnswers(), recording)) {
+      engine
+          .harnesses()
+          .<String>create(
+              type,
+              String.class,
+              config ->
+                  config
+                      .systemPrompt("You are a test assistant.")
+                      .tool(
+                          lookupThatReportsLater(handed),
+                          t ->
+                              t.timeout(Duration.ofMinutes(30))
+                                  .action(query -> "looked up " + query.q())
+                                  .approver(StoryTurn.decidesAsCarol()))
+                      .inference(in -> in.model("a-model"))
+                      .effects(e -> e.pollInterval(Duration.ofMillis(50))))
+          .tell(agent, "how deep is Loch Ness?");
+      awaitHeard(Narration.CallDeferred.class);
+      Instant rowDeadline = deadlineOfTheOneRow(engine, type);
+      assertThat(handed).hasSize(1);
+      engine.replies().complete(handed.peek(), ToolResult.ok(new Block.Text("1412 metres")));
+      awaitHeard(Narration.Answered.class);
+
+      List<Narrated> story = heardStory();
+      assertThat(replayed(engine, type, agent)).isEqualTo(story);
+      assertThat(story)
+          .extracting(narrated -> narrated.event().getClass().getSimpleName())
+          .containsSubsequence(
+              "ActionsRequested", "CallApproved", "CallDeferred", "CallFinished", "Answered");
+      assertThat(story)
+          .map(Narrated::event)
+          .filteredOn(Narration.CallDeferred.class::isInstance)
+          .singleElement()
+          .satisfies(
+              event -> {
+                Narration.CallDeferred deferred = (Narration.CallDeferred) event;
+                assertThat(deferred.idempotencyKey()).isEqualTo(StoryTurn.requestedKey(story));
+                assertThat(deferred.until().truncatedTo(ChronoUnit.MICROS)).isEqualTo(rowDeadline);
+              });
+    }
+  }
+
+  @Test
+  void
+      a_turn_with_a_retry_a_gated_call_a_deferral_and_an_answer_reads_the_same_heard_live_and_replayed() {
+    AgentType type = new AgentType("queued-scripted-turn");
+    AgentId agent = AgentId.random();
+    NarrationListener recording = heard::add;
+    ConcurrentLinkedQueue<ReplyToken> handed = new ConcurrentLinkedQueue<>();
+
+    try (EngineFixture engine = new EngineFixture(busyOnceThenCallsAndAnswers(), recording)) {
+      engine
+          .harnesses()
+          .<String>create(
+              type,
+              String.class,
+              config ->
+                  config
+                      .systemPrompt("You are a test assistant.")
+                      .tool(
+                          StoryTurn.lookup(),
+                          t ->
+                              t.action(query -> "looked up " + query.q())
+                                  .approver(
+                                      defersAndKeepsTheAddress(handed),
+                                      a -> a.timeout(Duration.ofMinutes(30))))
+                      .inference(
+                          in ->
+                              in.model("a-model")
+                                  .retryPolicy(
+                                      new RetryPolicy.FixedDelay(
+                                          2, Duration.ofMillis(100), Duration.ZERO)))
+                      .effects(e -> e.pollInterval(Duration.ofMillis(50))))
+          .tell(agent, "how deep is Loch Ness?");
+      awaitHeard(Narration.ApprovalDeferred.class);
+      assertThat(handed).hasSize(1);
+      engine.replies().approve(handed.peek(), ApprovalResult.approvedBy(StoryTurn.DECIDER));
+      awaitHeard(Narration.Answered.class);
+
+      List<Narrated> story = heardStory();
+      assertThat(story)
+          .extracting(narrated -> narrated.event().getClass().getSimpleName())
+          .containsSubsequence(
+              "TurnStarted",
+              "InferenceRetried",
+              "ActionsRequested",
+              "ApprovalDeferred",
+              "CallApproved",
+              "CallFinished",
+              "Answered");
+      assertThat(replayed(engine, type, agent)).isEqualTo(story);
+    }
+  }
+
+  /** The one call deferral told carries the request's key and the deadline the story stored. */
+  private static void assertTheCallDeferralCarriesTheRequestedKeyAndTheStoredDeadline(
+      EngineFixture engine, AgentType type, AgentId agent, List<Narrated> story) {
+    List<AgentEvent.ToolDeferred> stored =
+        engine.story(type, agent).stream()
+            .filter(AgentEvent.ToolDeferred.class::isInstance)
+            .map(AgentEvent.ToolDeferred.class::cast)
+            .toList();
+    assertThat(stored).hasSize(1);
+    assertThat(story)
+        .map(Narrated::event)
+        .filteredOn(Narration.CallDeferred.class::isInstance)
+        .singleElement()
+        .satisfies(
+            event -> {
+              Narration.CallDeferred deferred = (Narration.CallDeferred) event;
+              assertThat(deferred.idempotencyKey()).isEqualTo(StoryTurn.requestedKey(story));
+              assertThat(deferred.until()).isEqualTo(stored.getFirst().until());
+            });
   }
 
   /** Every call event told, live or replayed, carries the key its request gave the call. */
