@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+- **Stored events and stored effect attempts changed shape.** The five model-call events gain a
+  `request` field (`manifest` on `actions-requested`), and a failed attempt kept on an effect row
+  gains `request`. Recreate the database.
 - **`nessy_payload` gained a `kind` column.** A payload holds message blocks or a JSON document,
   and `kind` says which: `BLOCKS` or `DOCUMENT`. `Payloads` gains two abstract methods, so a
   custom implementation must add them. Recreate the database.
@@ -68,6 +71,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Every model-call event records what its request was made of, by reference.**
+  `InferenceAnswered`, `InferenceRefused`, `InferenceFailed`, `InferenceAttempted` and
+  `ActionsRequested` each hold the prompt, the tools and the choice, the answer shape, the
+  options, the summaries and turns shown, and each memory, state and ambient section. A part
+  that did not change from one call to the next is stored once. A failure recorded with no
+  request in hand has none. The record is not part of the public story or narration.
 - `Payloads.putDocument(JsonNode)` and `Payloads.getDocument(PayloadRef)` keep and read JSON
   documents beside message blocks. The same document is one reference and one row. Reading a
   payload as the wrong kind, or a document that is not there, throws an `IllegalStateException`

@@ -91,7 +91,12 @@ class StoryContentTest {
   private AgentEvent.ActionsRequested requested(
       long seq, long turn, PayloadRef request, ActionRequest... actions) {
     return new AgentEvent.ActionsRequested(
-        new Seq(seq), new TurnId(turn), request, List.of(actions), Usage.unreported());
+        new Seq(seq),
+        new TurnId(turn),
+        request,
+        List.of(actions),
+        Usage.unreported(),
+        Optional.empty());
   }
 
   private static AgentEvent.ToolSucceeded succeeded(
@@ -108,7 +113,7 @@ class StoryContentTest {
 
   private static AgentEvent.InferenceAnswered answered(long seq, long turn, PayloadRef answer) {
     return new AgentEvent.InferenceAnswered(
-        new Seq(seq), new TurnId(turn), answer, false, Usage.unreported());
+        new Seq(seq), new TurnId(turn), answer, false, Usage.unreported(), Optional.empty());
   }
 
   private static Block.ToolCall toolCall(String id) {

@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -89,7 +90,7 @@ class EventUsageReportsJdbcTest {
                 Instant.EPOCH,
                 Instant.EPOCH),
             new AgentEvent.InferenceAnswered(
-                new Seq(2), new TurnId(1), new PayloadRef("a"), false, spent)),
+                new Seq(2), new TurnId(1), new PayloadRef("a"), false, spent, Optional.empty())),
         Seq.NONE,
         Instant.EPOCH);
 

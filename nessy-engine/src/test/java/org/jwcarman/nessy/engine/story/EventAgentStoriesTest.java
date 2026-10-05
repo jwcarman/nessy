@@ -82,7 +82,12 @@ class EventAgentStoriesTest {
 
   private static AgentEvent answered(long seq, long turn) {
     return new AgentEvent.InferenceAnswered(
-        new Seq(seq), new TurnId(turn), new PayloadRef("a"), false, Usage.unreported());
+        new Seq(seq),
+        new TurnId(turn),
+        new PayloadRef("a"),
+        false,
+        Usage.unreported(),
+        Optional.empty());
   }
 
   private void threeEvents() {

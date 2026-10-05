@@ -47,6 +47,8 @@ import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
+import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.engine.inference.Manifests;
 import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
 import org.jwcarman.nessy.inference.Failure;
@@ -319,7 +321,9 @@ class DispatcherFailureTest {
     effects.due = List.of(attempt(NOW.plusSeconds(600), 1));
     EffectOutcome.InferenceFailed failed =
         new EffectOutcome.InferenceFailed(
-            new Failure.Transient("the model was busy"), Usage.of("a-model", 11, 0));
+            new Failure.Transient("the model was busy"),
+            Usage.of("a-model", 11, 0),
+            Optional.empty());
 
     dispatcherFor(effects, failingOnceWith(failed)).dispatch();
 
@@ -351,7 +355,8 @@ class DispatcherFailureTest {
         .untilAsserted(() -> assertThat(delivered.outcomes).hasSize(1));
     assertThat(delivered.outcomes.getFirst())
         .as("the terms say what a thrown attempt amounts to")
-        .isEqualTo(new EffectOutcome.InferenceRefused("failed", Usage.unreported()));
+        .isEqualTo(
+            new EffectOutcome.InferenceRefused("failed", Usage.unreported(), Optional.empty()));
   }
 
   /**
@@ -372,6 +377,42 @@ class DispatcherFailureTest {
     assertThat(delivered.outcomes).as("the turn has not been told anything yet").isEmpty();
   }
 
+  /** The attempt written down for the retry says what its request was made of. */
+  @Test
+  void a_failed_attempt_keeps_the_manifest_of_its_request() {
+    Effects effects = new Effects();
+    effects.due = List.of(attempt(NOW.plusSeconds(600), 1));
+    Failure busy = new Failure.Transient("the model was busy");
+    Usage spent = Usage.of("a-model", 11, 0);
+    RequestManifest manifest = Manifests.numbered(2);
+    EffectOutcome failed = new EffectOutcome.InferenceFailed(busy, spent, Optional.of(manifest));
+
+    dispatcherFor(effects, new Failing(failed, new Terms())).dispatch();
+
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(() -> assertThat(effects.rescheduledWith).hasSize(1));
+    assertThat(effects.rescheduledWith.getFirst())
+        .containsExactly(new FailedAttempt(busy, spent, Optional.of(manifest)));
+  }
+
+  /** A throw is the engine's own account of a call it never heard back from: no request in hand. */
+  @Test
+  void an_attempt_that_threw_keeps_none() {
+    Effects effects = new Effects();
+    effects.due = List.of(attempt(NOW.plusSeconds(600), 1));
+
+    dispatcherFor(effects, new ThrowingWithTheEnginesTerms()).dispatch();
+
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(() -> assertThat(effects.rescheduledWith).hasSize(1));
+    assertThat(effects.rescheduledWith.getFirst())
+        .singleElement()
+        .extracting(FailedAttempt::request)
+        .isEqualTo(Optional.empty());
+  }
+
   /** With its attempts spent, an unknown failure reaches the fold as the provider reported it. */
   @Test
   void an_unknown_failure_that_runs_out_of_attempts_reaches_the_fold_with_what_it_learned() {
@@ -379,7 +420,7 @@ class DispatcherFailureTest {
     effects.due = List.of(attempt(NOW.plusSeconds(600), 1));
     EffectOutcome.InferenceFailed failed =
         new EffectOutcome.InferenceFailed(
-            new Failure.Unknown("no answer from the model"), Usage.unreported());
+            new Failure.Unknown("no answer from the model"), Usage.unreported(), Optional.empty());
 
     dispatcherFor(effects, failingOnceWith(failed)).dispatch();
 
@@ -485,7 +526,8 @@ class DispatcherFailureTest {
     @Override
     public Awaited<EffectOutcome> handle(
         AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
-      return new Awaited.Ready<>(new EffectOutcome.InferenceRefused("stop", Usage.unreported()));
+      return new Awaited.Ready<>(
+          new EffectOutcome.InferenceRefused("stop", Usage.unreported(), Optional.empty()));
     }
   }
 
@@ -508,9 +550,54 @@ class DispatcherFailureTest {
     }
   }
 
+  /** Throws, and answers for the throw the way the engine's own inference terms do. */
+  private static final class ThrowingWithTheEnginesTerms
+      implements EffectHandler<AgentEffect.Infer> {
+
+    @Override
+    public EffectTerms termsFor(AgentEffect.Infer effect) {
+      return new ThrownTerms();
+    }
+
+    @Override
+    public Awaited<EffectOutcome> handle(
+        AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
+      throw new IllegalStateException("the model call failed");
+    }
+  }
+
+  private record ThrownTerms() implements EffectTerms {
+
+    @Override
+    public Duration timeout() {
+      return Duration.ofMinutes(1);
+    }
+
+    @Override
+    public RetryPolicy retryPolicy() {
+      return new RetryPolicy.FixedDelay(10, Duration.ofSeconds(1), Duration.ZERO);
+    }
+
+    @Override
+    public EffectOutcome undispatchable() {
+      return new EffectOutcome.InferenceFailed(
+          new Failure.Unknown("not dispatchable"), Usage.unreported(), Optional.empty());
+    }
+
+    @Override
+    public EffectOutcome failed(RuntimeException cause) {
+      return new EffectOutcome.InferenceFailed(
+          new Failure.Unknown(String.valueOf(cause.getMessage())),
+          Usage.unreported(),
+          Optional.empty());
+    }
+  }
+
   /** A handler that fails the way a real model call does: by returning a classified failure. */
   private static EffectHandler<AgentEffect.Infer> failingWith(Failure failure) {
-    return new Failing(new EffectOutcome.InferenceFailed(failure, Usage.unreported()), new Terms());
+    return new Failing(
+        new EffectOutcome.InferenceFailed(failure, Usage.unreported(), Optional.empty()),
+        new Terms());
   }
 
   /** The same, with one attempt allowed, so the give-up path is what gets measured. */
@@ -585,12 +672,13 @@ class DispatcherFailureTest {
 
     @Override
     public EffectOutcome undispatchable() {
-      return new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported());
+      return new EffectOutcome.InferenceRefused(
+          "undispatchable", Usage.unreported(), Optional.empty());
     }
 
     @Override
     public EffectOutcome failed(RuntimeException cause) {
-      return new EffectOutcome.InferenceRefused("failed", Usage.unreported());
+      return new EffectOutcome.InferenceRefused("failed", Usage.unreported(), Optional.empty());
     }
   }
 
@@ -609,12 +697,13 @@ class DispatcherFailureTest {
 
     @Override
     public EffectOutcome undispatchable() {
-      return new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported());
+      return new EffectOutcome.InferenceRefused(
+          "undispatchable", Usage.unreported(), Optional.empty());
     }
 
     @Override
     public EffectOutcome failed(RuntimeException cause) {
-      return new EffectOutcome.InferenceRefused("failed", Usage.unreported());
+      return new EffectOutcome.InferenceRefused("failed", Usage.unreported(), Optional.empty());
     }
   }
 
@@ -635,6 +724,7 @@ class DispatcherFailureTest {
     private final List<UUID> retired = new CopyOnWriteArrayList<>();
     private final List<UUID> rescheduled = new CopyOnWriteArrayList<>();
     private final List<Instant> rescheduledAt = new CopyOnWriteArrayList<>();
+    private final List<List<FailedAttempt>> rescheduledWith = new CopyOnWriteArrayList<>();
 
     private Effects() {
       super(TYPE, null, null);
@@ -679,6 +769,7 @@ class DispatcherFailureTest {
         UUID effectId, int attemptsMade, Instant at, List<FailedAttempt> failedAttempts) {
       rescheduled.add(effectId);
       rescheduledAt.add(at);
+      rescheduledWith.add(failedAttempts);
       return rescheduleWins;
     }
 

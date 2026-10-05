@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -106,7 +107,8 @@ class JdbcEffectClaimTest {
               agent,
               new AgentEffect.Infer(new TurnId(1)),
               Duration.ofMinutes(1),
-              new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported()),
+              new EffectOutcome.InferenceRefused(
+                  "undispatchable", Usage.unreported(), Optional.empty()),
               now.plus(Duration.ofHours(1)),
               null,
               now);
@@ -165,7 +167,8 @@ class JdbcEffectClaimTest {
               agent,
               new AgentEffect.Infer(new TurnId(1)),
               Duration.ofMinutes(1),
-              new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported()),
+              new EffectOutcome.InferenceRefused(
+                  "undispatchable", Usage.unreported(), Optional.empty()),
               now.plus(Duration.ofHours(1)),
               null,
               now.minusSeconds(i));

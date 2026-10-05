@@ -17,6 +17,7 @@ package org.jwcarman.nessy.engine.effect;
 
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Usage;
@@ -202,7 +203,9 @@ public final class EffectTermsSource {
       // Unreported rather than zero, and with no model: this failure is the engine's own account
       // of a call it never heard back from, so there is no vendor's count and nothing to price.
       return new EffectOutcome.InferenceFailed(
-          new Failure.Unknown(String.valueOf(cause.getMessage())), Usage.unreported());
+          new Failure.Unknown(String.valueOf(cause.getMessage())),
+          Usage.unreported(),
+          Optional.empty());
     }
 
     @Override
@@ -210,7 +213,8 @@ public final class EffectTermsSource {
       return new EffectOutcome.InferenceFailed(
           new Failure.Unknown(
               "the inference did not complete before its deadline; whether it ran is not known"),
-          Usage.unreported());
+          Usage.unreported(),
+          Optional.empty());
     }
   }
 }

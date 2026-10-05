@@ -19,6 +19,7 @@ import com.fasterxml.uuid.Generators;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
@@ -30,9 +31,11 @@ import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.event.ActionRequest;
+import org.jwcarman.nessy.backend.event.RequestManifest;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.inference.InferenceInvocation;
 import org.jwcarman.nessy.engine.inference.InferenceService;
+import org.jwcarman.nessy.engine.inference.Inferred;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -101,10 +104,11 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
   @Override
   public Awaited<EffectOutcome> handle(
       AgentId agentId, AgentEffect.Infer effect, Instant deadline) {
-    InferenceResult result =
-        inference
-            .infer(new InferenceInvocation(agentType, agentId, options, effect.answerOnly()))
-            .result();
+    Inferred inferred =
+        inference.infer(new InferenceInvocation(agentType, agentId, options, effect.answerOnly()));
+    InferenceResult result = inferred.result();
+    // The request was sent, whatever came back, so every arm records what it was made of.
+    Optional<RequestManifest> request = Optional.of(inferred.request());
     // Always ready. A provider call blocks until it answers or fails, and there is nobody who
     // could come back about it afterwards -- so the one thing this cannot return is the one
     // thing the wrapper makes explicit.
@@ -115,7 +119,7 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
             // Put away here, where the content exists and there is somewhere to put it. What
             // reaches the fold is where it went.
             yield new EffectOutcome.InferenceAnswered(
-                payloads.forAgent(agentId).put(blocks), false, usage);
+                payloads.forAgent(agentId).put(blocks), false, usage, request);
           }
           case InferenceResult.Truncated(var blocks, var usage) -> {
             log.warn(
@@ -125,11 +129,11 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
             // Delivered as the answer it is, marked truncated: the fold copies the mark onto the
             // stored event and decides nothing by it.
             yield new EffectOutcome.InferenceAnswered(
-                payloads.forAgent(agentId).put(blocks), true, usage);
+                payloads.forAgent(agentId).put(blocks), true, usage, request);
           }
           case InferenceResult.Refusal(var category, var usage) -> {
             log.info("model declined for agent {} ({})", agentId.value(), category);
-            yield new EffectOutcome.InferenceRefused(category, usage);
+            yield new EffectOutcome.InferenceRefused(category, usage, request);
           }
           case InferenceResult.Actions(var blocks, var usage) -> {
             log.debug("model asked agent {} for {} action(s)", agentId.value(), blocks.size());
@@ -137,11 +141,11 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
             // thing about a request the fold cannot take on trust from a claim check.
             commentary(agentId, blocks);
             yield new EffectOutcome.InferenceRequestedActions(
-                payloads.forAgent(agentId).put(blocks), requested(blocks), usage);
+                payloads.forAgent(agentId).put(blocks), requested(blocks), usage, request);
           }
           case InferenceResult.Fault(var failure, var usage) -> {
             log.warn("inference failed for agent {}: {}", agentId.value(), failure.reason());
-            yield new EffectOutcome.InferenceFailed(failure, usage);
+            yield new EffectOutcome.InferenceFailed(failure, usage, request);
           }
         });
   }

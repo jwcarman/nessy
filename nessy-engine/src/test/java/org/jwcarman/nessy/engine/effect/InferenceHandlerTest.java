@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Nested;
@@ -48,11 +49,13 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.event.ActionRequest;
+import org.jwcarman.nessy.backend.event.RequestManifest;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.inference.Inferred;
 import org.jwcarman.nessy.engine.inference.Manifests;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
+import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceResult;
 import tools.jackson.databind.JsonNode;
@@ -70,6 +73,9 @@ class InferenceHandlerTest {
   private final Deque<InferenceResult> script = new ArrayDeque<>();
 
   private final List<List<? extends Block>> stored = new ArrayList<>();
+
+  /** What the service says the request it sent was made of. */
+  private final RequestManifest served = Manifests.numbered(7);
 
   private final InferenceHandler handler;
   private final InferenceHandler handlerWithTools;
@@ -118,7 +124,7 @@ class InferenceHandlerTest {
   private InferenceHandler handlerOver(Tools tools, Payloads payloads) {
     return new InferenceHandler(
         TYPE,
-        invocation -> new Inferred(script.removeFirst(), Manifests.any()),
+        invocation -> new Inferred(script.removeFirst(), served),
         InferenceOptions.of("model"),
         new EffectTermsSource(
             tools,
@@ -191,7 +197,8 @@ class InferenceHandlerTest {
       assertThat(outcome)
           .isEqualTo(
               Awaited.ready(
-                  new EffectOutcome.InferenceAnswered(PayloadRef.of("p"), true, reading(0))));
+                  new EffectOutcome.InferenceAnswered(
+                      PayloadRef.of("p"), true, reading(0), Optional.of(served))));
       assertThat(stored).containsExactly(written);
     }
 
@@ -206,8 +213,51 @@ class InferenceHandlerTest {
       assertThat(outcome)
           .isEqualTo(
               Awaited.ready(
-                  new EffectOutcome.InferenceAnswered(PayloadRef.of("p"), false, reading(0))));
+                  new EffectOutcome.InferenceAnswered(
+                      PayloadRef.of("p"), false, reading(0), Optional.of(served))));
       assertThat(stored).containsExactly(written);
+    }
+  }
+
+  @Nested
+  class Recording_what_each_request_was_made_of {
+
+    private EffectOutcome outcomeOf(InferenceHandler under) {
+      Awaited<EffectOutcome> outcome =
+          under.handle(AGENT, new AgentEffect.Infer(TurnId.of(1)), DEADLINE);
+      assertThat(outcome).isInstanceOf(Awaited.Ready.class);
+      return ((Awaited.Ready<EffectOutcome>) outcome).value();
+    }
+
+    @Test
+    void a_refusal_carries_the_manifest_the_service_returned() {
+      script.add(new InferenceResult.Refusal("safety", reading(0)));
+
+      assertThat(outcomeOf(handler))
+          .isEqualTo(new EffectOutcome.InferenceRefused("safety", reading(0), Optional.of(served)));
+    }
+
+    @Test
+    void requested_actions_carry_the_manifest_the_service_returned() {
+      script.add(
+          new InferenceResult.Actions(
+              List.of(new Block.ToolCall(CallId.of("c1"), ToolName.of("search"), "{}")),
+              reading(0)));
+
+      assertThat(outcomeOf(handlerWithTools))
+          .asInstanceOf(
+              InstanceOfAssertFactories.type(EffectOutcome.InferenceRequestedActions.class))
+          .extracting(EffectOutcome.InferenceRequestedActions::manifest)
+          .isEqualTo(Optional.of(served));
+    }
+
+    @Test
+    void a_failure_the_provider_reported_carries_the_manifest_because_a_request_was_sent() {
+      Failure failure = new Failure.Transient("busy");
+      script.add(new InferenceResult.Fault(failure, reading(0)));
+
+      assertThat(outcomeOf(handler))
+          .isEqualTo(new EffectOutcome.InferenceFailed(failure, reading(0), Optional.of(served)));
     }
   }
 

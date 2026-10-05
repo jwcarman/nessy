@@ -239,7 +239,8 @@ public sealed interface AgentState {
       for (FailedAttempt attempt : done.priorAttempts()) {
         at = at.next();
         attempts.add(
-            new AgentEvent.InferenceAttempted(at, turn, attempt.failure(), attempt.usage()));
+            new AgentEvent.InferenceAttempted(
+                at, turn, attempt.failure(), attempt.usage(), attempt.request()));
       }
       return closing(done, at.next()).prepend(attempts);
     }
@@ -250,22 +251,35 @@ public sealed interface AgentState {
             Decision.of(
                 List.of(
                     new AgentEvent.InferenceAnswered(
-                        at, turn, answered.answer(), answered.truncated(), answered.usage())),
+                        at,
+                        turn,
+                        answered.answer(),
+                        answered.truncated(),
+                        answered.usage(),
+                        answered.request())),
                 List.of());
         case AgentCommand.InferenceOutcome.Refused refused ->
             Decision.of(
                 List.of(
-                    new AgentEvent.InferenceRefused(at, turn, refused.category(), refused.usage())),
+                    new AgentEvent.InferenceRefused(
+                        at, turn, refused.category(), refused.usage(), refused.request())),
                 List.of());
         case AgentCommand.InferenceOutcome.Failed failed ->
             Decision.of(
-                List.of(new AgentEvent.InferenceFailed(at, turn, failed.failure(), failed.usage())),
+                List.of(
+                    new AgentEvent.InferenceFailed(
+                        at, turn, failed.failure(), failed.usage(), failed.request())),
                 List.of());
         case AgentCommand.InferenceOutcome.RequestedActions asked ->
             Decision.of(
                 List.of(
                     new AgentEvent.ActionsRequested(
-                        at, turn, asked.request(), asked.actions(), asked.usage())),
+                        at,
+                        turn,
+                        asked.request(),
+                        asked.actions(),
+                        asked.usage(),
+                        asked.manifest())),
                 asked.actions().stream().map(action -> approving(turn, at, action)).toList());
       };
     }

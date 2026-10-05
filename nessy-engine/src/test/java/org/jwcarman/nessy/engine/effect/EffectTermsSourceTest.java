@@ -283,6 +283,20 @@ class EffectTermsSourceTest {
     }
 
     @Test
+    void anInferenceThatNeverCompletedHasNoRequestToRecord() {
+      EffectTerms terms = source(Tools.none()).termsFor(new AgentEffect.Infer(new TurnId(1)));
+
+      assertThat(terms.undispatchable())
+          .isInstanceOfSatisfying(
+              EffectOutcome.InferenceFailed.class,
+              failed -> assertThat(failed.request()).isEmpty());
+      assertThat(terms.failed(new IllegalStateException("boom")))
+          .isInstanceOfSatisfying(
+              EffectOutcome.InferenceFailed.class,
+              failed -> assertThat(failed.request()).isEmpty());
+    }
+
+    @Test
     void aThrowThatEscapedIsAnUnknownFailureRatherThanAPermanentOne() {
       EffectOutcome outcome =
           source(Tools.none())

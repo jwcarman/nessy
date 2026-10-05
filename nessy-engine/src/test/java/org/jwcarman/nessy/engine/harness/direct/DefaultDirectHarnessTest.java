@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -1058,6 +1059,39 @@ class DefaultDirectHarnessTest {
         .isEqualTo(new Outcome.Answered<>("the second call was never made to wait", ANY_STATS));
   }
 
+  @Test
+  @DisplayName("a call that timed out is stored as a failure with no request: none came back")
+  void a_provider_that_never_answers_stores_a_failure_with_no_manifest() {
+    AgentId agent = AgentId.random();
+    DirectHarness<String, String> harness =
+        DefaultDirectHarnessFactory.of(
+                f ->
+                    f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
+                        .provider(ProviderId.of("test"), new HangsOnce())
+                        .schemas(SCHEMAS)
+                        .mapper(MAPPER)
+                        .clock(clock))
+            .<String>create(
+                TYPE,
+                c ->
+                    c.systemPrompt("You are terse.")
+                        .inputRenderer(said -> List.of(new Block.Text(said)))
+                        .inference(
+                            in ->
+                                in.provider("test")
+                                    .model("a-model")
+                                    .timeout(Duration.ofMillis(50))));
+
+    harness.ask(agent, "are you there?");
+
+    assertThat(events.readAll(TYPE, agent))
+        .filteredOn(AgentEvent.InferenceFailed.class::isInstance)
+        .singleElement()
+        .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.InferenceFailed.class))
+        .extracting(AgentEvent.InferenceFailed::request)
+        .isEqualTo(Optional.empty());
+  }
+
   /** A tool that hangs until interrupted, the way a hung downstream call does. */
   private static Tool<Lookup> hangingTool() {
     return new Tool<Lookup>() {
@@ -1349,7 +1383,8 @@ class DefaultDirectHarnessTest {
                 new AgentCommand.InferenceOutcome.Answered(
                     payloads.forAgent(agent).put(List.of(new Block.Text("too late"))),
                     false,
-                    Usage.unreported())));
+                    Usage.unreported(),
+                    Optional.empty())));
 
     assertThat(belated.events())
         .as(
@@ -1384,7 +1419,8 @@ class DefaultDirectHarnessTest {
                 new TurnId(1),
                 abandonedRequest,
                 List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup", KEY)),
-                Usage.unreported())),
+                Usage.unreported(),
+                Optional.empty())),
         Seq.NONE,
         clock.instant());
 
@@ -1467,7 +1503,8 @@ class DefaultDirectHarnessTest {
                 new TurnId(1),
                 abandonedRequest,
                 List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup", KEY)),
-                Usage.unreported())),
+                Usage.unreported(),
+                Optional.empty())),
         Seq.NONE,
         clock.instant());
 
@@ -1691,7 +1728,8 @@ class DefaultDirectHarnessTest {
                   opening.opensTurn(),
                   payloads.forAgent(agent).put(List.of(new Block.Text("somebody else's answer"))),
                   false,
-                  Usage.unreported())),
+                  Usage.unreported(),
+                  Optional.empty())),
           last,
           Instant.EPOCH);
     }

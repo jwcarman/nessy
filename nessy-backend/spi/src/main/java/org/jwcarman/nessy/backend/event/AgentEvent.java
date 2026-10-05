@@ -105,11 +105,20 @@ public sealed interface AgentEvent {
    * reading, because neither counted.
    *
    * @param truncated whether the model was cut off at its output limit, so the answer stops short
+   * @param request what the request was made of, by reference; empty for an entry written before
+   *     this was recorded
    */
-  record InferenceAnswered(Seq seq, TurnId turn, PayloadRef answer, boolean truncated, Usage usage)
+  record InferenceAnswered(
+      Seq seq,
+      TurnId turn,
+      PayloadRef answer,
+      boolean truncated,
+      Usage usage,
+      Optional<RequestManifest> request)
       implements AgentEvent {
     public InferenceAnswered {
       usage = usage == null ? Usage.unreported() : usage;
+      request = request == null ? Optional.empty() : request;
     }
   }
 
@@ -118,10 +127,12 @@ public sealed interface AgentEvent {
    *
    * <p>A refusal still costs: the model read the input before deciding not to answer it.
    */
-  record InferenceRefused(Seq seq, TurnId turn, String category, Usage usage)
+  record InferenceRefused(
+      Seq seq, TurnId turn, String category, Usage usage, Optional<RequestManifest> request)
       implements AgentEvent {
     public InferenceRefused {
       usage = usage == null ? Usage.unreported() : usage;
+      request = request == null ? Optional.empty() : request;
     }
   }
 
@@ -135,9 +146,12 @@ public sealed interface AgentEvent {
    * transcript is billed for reading it -- and often nothing was counted at all, because a call
    * that never reached a vendor has no vendor's count.
    */
-  record InferenceFailed(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {
+  record InferenceFailed(
+      Seq seq, TurnId turn, Failure failure, Usage usage, Optional<RequestManifest> request)
+      implements AgentEvent {
     public InferenceFailed {
       usage = usage == null ? Usage.unreported() : usage;
+      request = request == null ? Optional.empty() : request;
     }
   }
 
@@ -180,10 +194,12 @@ public sealed interface AgentEvent {
    * throw has no vendor's count, so its usage is unreported; a returned one carries what the
    * provider reported. The rest never appear: they end the work rather than repeat it.
    */
-  record InferenceAttempted(Seq seq, TurnId turn, Failure failure, Usage usage)
+  record InferenceAttempted(
+      Seq seq, TurnId turn, Failure failure, Usage usage, Optional<RequestManifest> request)
       implements AgentEvent {
     public InferenceAttempted {
       usage = usage == null ? Usage.unreported() : usage;
+      request = request == null ? Optional.empty() : request;
     }
   }
 
@@ -198,11 +214,17 @@ public sealed interface AgentEvent {
    * would miss most of what a tool-using agent spends.
    */
   record ActionsRequested(
-      Seq seq, TurnId turn, PayloadRef request, List<ActionRequest> actions, Usage usage)
+      Seq seq,
+      TurnId turn,
+      PayloadRef request,
+      List<ActionRequest> actions,
+      Usage usage,
+      Optional<RequestManifest> manifest)
       implements AgentEvent {
     public ActionsRequested {
       actions = List.copyOf(actions);
       usage = usage == null ? Usage.unreported() : usage;
+      manifest = manifest == null ? Optional.empty() : manifest;
     }
   }
 

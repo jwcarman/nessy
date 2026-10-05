@@ -214,6 +214,12 @@ payload rows one statement over one table, with nothing shared out from
 under another agent. Identical content in two agents is stored twice, and
 that is the trade.
 
+Each model call also puts the parts of its request into `nessy_payload`: the prompt,
+the tools offered, the options, the summaries, and each memory, state and ambient section,
+and its event holds the references. A part that is the same as on the last call is the same
+reference, so the insert changes nothing and no second row is written. What a call costs the
+store is those inserts, one statement for each part, and most of them find their row already there.
+
 The reference depends on the content as the value codec writes it, and not on the storage
 transform. A transform that never writes the same bytes twice, such as AES-GCM with a fresh
 nonce, still gives the same content one reference and one row. The stores that take the value

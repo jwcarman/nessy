@@ -265,14 +265,30 @@ public final class EngineFixture implements AutoCloseable {
         .build();
   }
 
-  /** The event recording an answer of {@code said}, as the fold would have written it. */
+  /**
+   * {@link #ignoringWhenItStarted()}, and also what a model call's request was made of. A real
+   * engine stores that with the call; this factory cannot say what it was, and the manifests have
+   * tests of their own. For the events whose {@code request} is that record, which is not an
+   * actions request: that one's {@code request} is what the model wrote, and is compared.
+   */
+  public static RecursiveComparisonConfiguration ignoringWhatTheRequestWasMadeOf() {
+    return RecursiveComparisonConfiguration.builder()
+        .withIgnoredFields("startedAt", "arrivedAt", "request")
+        .build();
+  }
+
+  /**
+   * The event recording an answer of {@code said}, as the fold would have written it, with no
+   * request recorded: compare with {@link #ignoringWhatTheRequestWasMadeOf()}.
+   */
   public AgentEvent.InferenceAnswered answered(AgentId agent, long seq, long turn, String said) {
     return new AgentEvent.InferenceAnswered(
         new Seq(seq),
         new TurnId(turn),
         ref(agent, List.of(new Block.Text(said))),
         false,
-        Usage.unreported());
+        Usage.unreported(),
+        Optional.empty());
   }
 
   /** The text of what a reference stands for, joined, for the common assertion. */

@@ -287,10 +287,10 @@ signal, so the decision can be replayed from the history alone. The first
 open turn is never a boundary, since nothing precedes it to close.
 `maxChapterLength` still applies.
 
-## Ambient: true now, never written down
+## Ambient: true now
 
-An `AmbientSource` is asked afresh on every call and its answer is never
-appended to the story:
+An `AmbientSource` is asked afresh on every call. Its answer is not part of the
+story's content and is not shown to later calls:
 
 ```java
 public interface AmbientSource {
@@ -306,6 +306,11 @@ plan or nothing. Each source names a `kind`, two ambient sources may not
 claim the same one, and each provider adapter renders the kinds the way its
 vendor prefers. See [Providers](../guides/providers.md#where-each-stratum-goes). Memory and
 state sources are on the [Memory](memory.md#memory-and-state) page.
+
+What the model was shown on a call is recorded, by reference, with that
+call's event, and that includes each ambient section as it was on that call.
+The record is for looking back at what a call was made of. A later call does
+not read it: it asks the sources again.
 
 `AmbientSource.of(...)` makes a small one inline. The date, as
 `nessy-examples/chat-cli` gives it to the model:

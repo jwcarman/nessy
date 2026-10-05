@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.DisplayName;
@@ -50,7 +51,7 @@ class InlineRunnerTest {
   private static InlineRunner.Model answering(InlineRunner runner, String answer) {
     return _ ->
         new AgentCommand.InferenceOutcome.Answered(
-            runner.claimCheck(answer), false, Usage.unreported());
+            runner.claimCheck(answer), false, Usage.unreported(), Optional.empty());
   }
 
   @Test
@@ -78,11 +79,15 @@ class InlineRunnerTest {
           boolean toolHasRun = events.stream().anyMatch(AgentEvent.ToolSucceeded.class::isInstance);
           return toolHasRun
               ? new AgentCommand.InferenceOutcome.Answered(
-                  holder[0].claimCheck("refunded 42.00"), false, Usage.unreported())
+                  holder[0].claimCheck("refunded 42.00"),
+                  false,
+                  Usage.unreported(),
+                  Optional.empty())
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("please look it up"),
                   List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup", KEY)),
-                  Usage.unreported());
+                  Usage.unreported(),
+                  Optional.empty());
         };
     holder[0] = new InlineRunner(model, tools, _ -> true);
 
@@ -118,11 +123,12 @@ class InlineRunnerTest {
           boolean asked = events.stream().anyMatch(AgentEvent.ActionsRequested.class::isInstance);
           return asked
               ? new AgentCommand.InferenceOutcome.Answered(
-                  holder[0].claimCheck("cannot help"), false, Usage.unreported())
+                  holder[0].claimCheck("cannot help"), false, Usage.unreported(), Optional.empty())
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("please look it up"),
                   List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup", KEY)),
-                  Usage.unreported());
+                  Usage.unreported(),
+                  Optional.empty());
         };
     holder[0] = new InlineRunner(model, tools, _ -> false);
 
@@ -141,7 +147,10 @@ class InlineRunnerTest {
     InlineRunner.Model model =
         events ->
             new AgentCommand.InferenceOutcome.Answered(
-                holder[0].claimCheck("the answer itself"), false, Usage.unreported());
+                holder[0].claimCheck("the answer itself"),
+                false,
+                Usage.unreported(),
+                Optional.empty());
     holder[0] = new InlineRunner(model, Map.of(), _ -> true);
 
     InlineRunner.Ran ran = holder[0].run("a question with content in it");
@@ -159,7 +168,7 @@ class InlineRunnerTest {
     InlineRunner.Model model =
         events ->
             new AgentCommand.InferenceOutcome.Answered(
-                holder[0].claimCheck("done"), false, Usage.unreported());
+                holder[0].claimCheck("done"), false, Usage.unreported(), Optional.empty());
     holder[0] = new InlineRunner(model, Map.of(), _ -> true);
 
     InlineRunner.Ran ran = holder[0].run("anything");
@@ -185,11 +194,12 @@ class InlineRunnerTest {
           boolean failed = events.stream().anyMatch(AgentEvent.ToolFailed.class::isInstance);
           return failed
               ? new AgentCommand.InferenceOutcome.Answered(
-                  holder[0].claimCheck("sorry"), false, Usage.unreported())
+                  holder[0].claimCheck("sorry"), false, Usage.unreported(), Optional.empty())
               : new AgentCommand.InferenceOutcome.RequestedActions(
                   holder[0].claimCheck("look it up"),
                   List.of(new ActionRequest.ToolCall(CALL, LOOKUP, "lookup", KEY)),
-                  Usage.unreported());
+                  Usage.unreported(),
+                  Optional.empty());
         };
     holder[0] = new InlineRunner(model, tools, _ -> true);
 

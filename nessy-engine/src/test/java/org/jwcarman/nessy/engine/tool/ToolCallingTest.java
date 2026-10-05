@@ -201,7 +201,7 @@ class ToolCallingTest {
     assertThat(story.get(1))
         .as("the key is made when the call is recorded, so which one it got is not the point")
         .usingRecursiveComparison()
-        .ignoringFields("actions.idempotencyKey")
+        .ignoringFields("actions.idempotencyKey", "manifest")
         .isEqualTo(
             new AgentEvent.ActionsRequested(
                 new Seq(2),
@@ -214,7 +214,8 @@ class ToolCallingTest {
                 List.of(
                     new ActionRequest.ToolCall(
                         new CallId("call_1"), new ToolName("lookup"), "Query[q=loch ness]", KEY)),
-                Usage.unreported()));
+                Usage.unreported(),
+                Optional.empty()));
     assertThat(story.get(2))
         .as("the grant, written before the call was dispatched")
         .isEqualTo(
@@ -234,13 +235,16 @@ class ToolCallingTest {
                 "the answer to loch ness",
                 requestedKey(story)));
     assertThat(story.get(4))
+        .usingRecursiveComparison()
+        .ignoringFields("request")
         .isEqualTo(
             new AgentEvent.InferenceAnswered(
                 new Seq(5),
                 new TurnId(1),
                 engine.ref(agentId, List.of(new Block.Text("It is Loch Ness."))),
                 false,
-                Usage.unreported()));
+                Usage.unreported(),
+                Optional.empty()));
   }
 
   /**
@@ -353,13 +357,16 @@ class ToolCallingTest {
                 requestedKey(story)));
     assertThat(story).noneMatch(AgentEvent.ToolApproved.class::isInstance);
     assertThat(story.get(3))
+        .usingRecursiveComparison()
+        .ignoringFields("request")
         .isEqualTo(
             new AgentEvent.InferenceAnswered(
                 new Seq(4),
                 new TurnId(1),
                 engine.ref(agentId, List.of(new Block.Text("I was not allowed to look."))),
                 false,
-                Usage.unreported()));
+                Usage.unreported(),
+                Optional.empty()));
   }
 
   /** What an application configures per tool is what the tool is actually told. */

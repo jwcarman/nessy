@@ -28,6 +28,7 @@ import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import org.jwcarman.nessy.backend.event.RequestManifest;
 import org.jwcarman.nessy.inference.Failure;
 
 /**
@@ -147,25 +148,33 @@ public sealed interface AgentCommand {
     /** What this inference cost, as the vendor counted it. */
     Usage usage();
 
-    record Answered(PayloadRef answer, boolean truncated, Usage usage) implements InferenceOutcome {
+    record Answered(
+        PayloadRef answer, boolean truncated, Usage usage, Optional<RequestManifest> request)
+        implements InferenceOutcome {
       public Answered {
         Objects.requireNonNull(usage, USAGE_MUST_NOT_BE_NULL);
       }
     }
 
-    record Refused(String category, Usage usage) implements InferenceOutcome {
+    record Refused(String category, Usage usage, Optional<RequestManifest> request)
+        implements InferenceOutcome {
       public Refused {
         Objects.requireNonNull(usage, USAGE_MUST_NOT_BE_NULL);
       }
     }
 
-    record Failed(Failure failure, Usage usage) implements InferenceOutcome {
+    record Failed(Failure failure, Usage usage, Optional<RequestManifest> request)
+        implements InferenceOutcome {
       public Failed {
         Objects.requireNonNull(usage, USAGE_MUST_NOT_BE_NULL);
       }
     }
 
-    record RequestedActions(PayloadRef request, List<ActionRequest> actions, Usage usage)
+    record RequestedActions(
+        PayloadRef request,
+        List<ActionRequest> actions,
+        Usage usage,
+        Optional<RequestManifest> manifest)
         implements InferenceOutcome {
       public RequestedActions {
         actions = List.copyOf(actions);

@@ -107,6 +107,8 @@ class ConcurrentDispatchTest {
                         assertThat(story(CHAT, agentId))
                             .hasSize(2)
                             .last()
+                            .usingRecursiveComparison(
+                                EngineFixture.ignoringWhatTheRequestWasMadeOf())
                             .isEqualTo(engine.answered(agentId, 2, 1, "all here"))));
 
     assertThat(model.everyoneArrived())

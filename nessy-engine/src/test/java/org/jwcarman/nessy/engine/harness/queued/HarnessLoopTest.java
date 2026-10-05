@@ -143,7 +143,7 @@ class HarnessLoopTest {
             () ->
                 assertThat(story(CHAT, agentId))
                     .usingRecursiveFieldByFieldElementComparator(
-                        EngineFixture.ignoringWhenItStarted())
+                        EngineFixture.ignoringWhatTheRequestWasMadeOf())
                     .containsExactly(
                         observed(agentId, 1, "what is nessy?"),
                         engine.answered(agentId, 2, 1, "a lake monster")));
@@ -184,7 +184,7 @@ class HarnessLoopTest {
             () ->
                 assertThat(story(CHAT, agentId))
                     .usingRecursiveFieldByFieldElementComparator(
-                        EngineFixture.ignoringWhenItStarted())
+                        EngineFixture.ignoringWhatTheRequestWasMadeOf())
                     .containsExactly(
                         observed(agentId, 1, "first"),
                         engine.answered(agentId, 2, 1, "a lake monster"),

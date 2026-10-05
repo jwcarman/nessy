@@ -27,6 +27,22 @@ public final class Manifests {
 
   private Manifests() {}
 
+  /** A manifest that differs from every other number's: {@code n} is 0 to 9. */
+  public static RequestManifest numbered(int n) {
+    PayloadRef ref = new PayloadRef(Integer.toString(n).repeat(64));
+    return new RequestManifest(
+        "0.0.0",
+        ref,
+        ref,
+        Optional.empty(),
+        ref,
+        List.of(),
+        Optional.empty(),
+        List.of(),
+        List.of(),
+        List.of());
+  }
+
   public static RequestManifest any() {
     PayloadRef ref = new PayloadRef("0".repeat(64));
     return new RequestManifest(
