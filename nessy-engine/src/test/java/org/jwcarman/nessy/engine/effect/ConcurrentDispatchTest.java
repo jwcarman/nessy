@@ -103,13 +103,16 @@ class ConcurrentDispatchTest {
             await()
                 .atMost(Duration.ofSeconds(20))
                 .untilAsserted(
-                    () ->
-                        assertThat(story(CHAT, agentId))
-                            .hasSize(2)
-                            .last()
-                            .usingRecursiveComparison(
-                                EngineFixture.ignoringWhatTheRequestWasMadeOf())
-                            .isEqualTo(engine.answered(agentId, 2, 1, "all here"))));
+                    () -> {
+                      List<AgentEvent> story = story(CHAT, agentId);
+                      assertThat(story).hasSize(2);
+                      assertThat(EngineFixture.withoutManifest(story.getLast()))
+                          .isEqualTo(engine.answered(agentId, 2, 1, "all here"));
+                      assertThat(story.getLast())
+                          .isInstanceOfSatisfying(
+                              AgentEvent.InferenceAnswered.class,
+                              answered -> assertThat(answered.request()).isPresent());
+                    }));
 
     assertThat(model.everyoneArrived())
         .as("the rendezvous is the proof; without it the answers could not have been given")

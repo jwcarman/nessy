@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
@@ -90,7 +91,7 @@ class DefaultInferenceServiceTest {
         return new InferenceResult.Answer(List.of(new Block.Text("ok")), Usage.unreported());
       };
 
-  /** Not alphabetical, so that a store that sorted them would be caught. */
+  /** Not alphabetical: the stored document must put them in order whatever order they came in. */
   private static Map<String, String> properties() {
     Map<String, String> ordered = new LinkedHashMap<>();
     ordered.put("vendor.zeta", "1");
@@ -183,14 +184,10 @@ class DefaultInferenceServiceTest {
     assertThat(document(manifest.options()))
         .isEqualTo(
             "{\"model\":\"a-model\",\"maxTokens\":4096,"
-                + "\"properties\":{\"vendor.zeta\":\"1\",\"vendor.alpha\":\"2\"}}");
-    assertThat(manifest.summaries()).hasSameSizeAs(sent.context().summaries());
-    for (int i = 0; i < manifest.summaries().size(); i++) {
-      assertThat(manifest.summaries().get(i).chapter())
-          .isEqualTo(sent.context().summaries().get(i).chapter());
-      assertThat(text(manifest.summaries().get(i).text()))
-          .isEqualTo(sent.context().summaries().get(i).text());
-    }
+                + "\"properties\":{\"vendor.alpha\":\"2\",\"vendor.zeta\":\"1\"}}");
+    assertThat(sent.context().summaries()).isNotEmpty();
+    assertThat(manifest.summarizedThrough())
+        .hasValue(sent.context().summaries().getLast().chapter().through());
     assertThat(manifest.tail())
         .hasValue(new RequestManifest.TurnRange(new TurnId(5), new TurnId(6)));
     assertThat(manifest.memory()).hasSameSizeAs(sent.context().memory());
@@ -235,6 +232,27 @@ class DefaultInferenceServiceTest {
   }
 
   @Test
+  void the_options_document_does_not_depend_on_the_order_properties_were_given() {
+    Map<String, String> reversed = new LinkedHashMap<>();
+    reversed.put("vendor.alpha", "2");
+    reversed.put("vendor.zeta", "1");
+    DefaultInferenceService service = service(everything(), recording, Optional.empty());
+
+    RequestManifest given =
+        service.infer(new InferenceInvocation(TYPE, AGENT, OPTIONS, false)).request();
+    RequestManifest other =
+        service
+            .infer(
+                new InferenceInvocation(
+                    TYPE, AGENT, new InferenceOptions("a-model", 4096, reversed), false))
+            .request();
+
+    assertThat(other.options()).isEqualTo(given.options());
+    assertThat(document(given.options()))
+        .contains("\"properties\":{\"vendor.alpha\":\"2\",\"vendor.zeta\":\"1\"}");
+  }
+
+  @Test
   void a_request_with_no_tail_no_summaries_and_no_sections_has_an_empty_manifest_for_them() {
     InferenceContext bare = InferenceContext.of(List.of(turn(1)));
 
@@ -242,7 +260,7 @@ class DefaultInferenceServiceTest {
         service(bare, recording, Optional.empty()).infer(invocation(false)).request();
 
     assertThat(manifest.tail()).isEmpty();
-    assertThat(manifest.summaries()).isEmpty();
+    assertThat(manifest.summarizedThrough()).isEmpty();
     assertThat(manifest.memory()).isEmpty();
     assertThat(manifest.state()).isEmpty();
     assertThat(manifest.ambient()).isEmpty();
@@ -273,13 +291,21 @@ class DefaultInferenceServiceTest {
   @Test
   void a_provider_that_throws_returns_no_manifest() {
     IllegalStateException boom = new IllegalStateException("the wire is down");
+    AtomicBoolean instructionsWereStored = new AtomicBoolean();
+    PayloadRef instructions =
+        new InMemoryPayloads(new JacksonCodecFactory(MAPPER))
+            .forAgent(AGENT)
+            .put(List.of(new Block.Text("You are terse.")));
     InferenceProvider failing =
         (request, narrator) -> {
+          instructionsWereStored.set(
+              payloads.forAgent(AGENT).get(instructions) instanceof Payloads.Resolved.Found);
           throw boom;
         };
     DefaultInferenceService service = service(everything(), failing, Optional.empty());
     InferenceInvocation invocation = invocation(false);
 
     assertThatThrownBy(() -> service.infer(invocation)).isSameAs(boom);
+    assertThat(instructionsWereStored).isTrue();
   }
 }

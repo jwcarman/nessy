@@ -105,8 +105,7 @@ public sealed interface AgentEvent {
    * reading, because neither counted.
    *
    * @param truncated whether the model was cut off at its output limit, so the answer stops short
-   * @param request what the request was made of, by reference; empty for an entry written before
-   *     this was recorded
+   * @param request what the request was made of, by reference; empty when no request was in hand
    */
   record InferenceAnswered(
       Seq seq,

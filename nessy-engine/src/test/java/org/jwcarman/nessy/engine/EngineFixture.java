@@ -266,20 +266,36 @@ public final class EngineFixture implements AutoCloseable {
   }
 
   /**
-   * {@link #ignoringWhenItStarted()}, and also what a model call's request was made of. A real
-   * engine stores that with the call; this factory cannot say what it was, and the manifests have
-   * tests of their own. For the events whose {@code request} is that record, which is not an
-   * actions request: that one's {@code request} is what the model wrote, and is compared.
+   * The event as it would read if no request had been recorded with it. A real engine stores what
+   * each model call's request was made of; this factory cannot say what that was, and the manifests
+   * have tests of their own. Applies to the five model-call events and returns any other event
+   * unchanged.
    */
-  public static RecursiveComparisonConfiguration ignoringWhatTheRequestWasMadeOf() {
-    return RecursiveComparisonConfiguration.builder()
-        .withIgnoredFields("startedAt", "arrivedAt", "request")
-        .build();
+  public static AgentEvent withoutManifest(AgentEvent event) {
+    return switch (event) {
+      case AgentEvent.InferenceAnswered e ->
+          new AgentEvent.InferenceAnswered(
+              e.seq(), e.turn(), e.answer(), e.truncated(), e.usage(), Optional.empty());
+      case AgentEvent.InferenceRefused e ->
+          new AgentEvent.InferenceRefused(
+              e.seq(), e.turn(), e.category(), e.usage(), Optional.empty());
+      case AgentEvent.InferenceFailed e ->
+          new AgentEvent.InferenceFailed(
+              e.seq(), e.turn(), e.failure(), e.usage(), Optional.empty());
+      case AgentEvent.InferenceAttempted e ->
+          new AgentEvent.InferenceAttempted(
+              e.seq(), e.turn(), e.failure(), e.usage(), Optional.empty());
+      case AgentEvent.ActionsRequested e ->
+          new AgentEvent.ActionsRequested(
+              e.seq(), e.turn(), e.request(), e.actions(), e.usage(), Optional.empty());
+      default -> event;
+    };
   }
 
   /**
    * The event recording an answer of {@code said}, as the fold would have written it, with no
-   * request recorded: compare with {@link #ignoringWhatTheRequestWasMadeOf()}.
+   * request recorded: compare with the actual event passed through {@link
+   * #withoutManifest(AgentEvent)}.
    */
   public AgentEvent.InferenceAnswered answered(AgentId agent, long seq, long turn, String said) {
     return new AgentEvent.InferenceAnswered(

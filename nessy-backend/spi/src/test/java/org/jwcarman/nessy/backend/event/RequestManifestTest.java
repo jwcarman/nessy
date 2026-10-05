@@ -21,18 +21,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.turn.Chapter;
 import org.jwcarman.nessy.backend.event.RequestManifest.Section;
-import org.jwcarman.nessy.backend.event.RequestManifest.SummarySection;
 import org.jwcarman.nessy.backend.event.RequestManifest.TurnRange;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
@@ -47,7 +42,7 @@ class RequestManifestTest {
         REF,
         Optional.empty(),
         REF,
-        List.of(),
+        Optional.empty(),
         Optional.empty(),
         List.of(),
         List.of(),
@@ -67,7 +62,7 @@ class RequestManifestTest {
                       REF,
                       Optional.empty(),
                       REF,
-                      List.of(),
+                      Optional.empty(),
                       Optional.empty(),
                       List.of(),
                       List.of(),
@@ -86,7 +81,7 @@ class RequestManifestTest {
                       REF,
                       Optional.empty(),
                       REF,
-                      List.of(),
+                      Optional.empty(),
                       Optional.empty(),
                       List.of(),
                       List.of(),
@@ -105,7 +100,7 @@ class RequestManifestTest {
                       null,
                       Optional.empty(),
                       REF,
-                      List.of(),
+                      Optional.empty(),
                       Optional.empty(),
                       List.of(),
                       List.of(),
@@ -124,7 +119,7 @@ class RequestManifestTest {
                       REF,
                       Optional.empty(),
                       null,
-                      List.of(),
+                      Optional.empty(),
                       Optional.empty(),
                       List.of(),
                       List.of(),
@@ -140,7 +135,7 @@ class RequestManifestTest {
 
       assertThat(manifest.answerShape()).isEmpty();
       assertThat(manifest.tail()).isEmpty();
-      assertThat(manifest.summaries()).isEmpty();
+      assertThat(manifest.summarizedThrough()).isEmpty();
       assertThat(manifest.memory()).isEmpty();
       assertThat(manifest.state()).isEmpty();
       assertThat(manifest.ambient()).isEmpty();
@@ -156,7 +151,7 @@ class RequestManifestTest {
               REF,
               Optional.empty(),
               REF,
-              List.of(),
+              Optional.empty(),
               Optional.empty(),
               memory,
               List.of(),
@@ -191,7 +186,9 @@ class RequestManifestTest {
 
     @Test
     void refuses_a_blank_kind() {
-      assertThatThrownBy(() -> new Section("  ", REF)).isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(() -> new Section("  ", REF))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("a section's kind must name something");
     }
 
     @Test
@@ -199,31 +196,6 @@ class RequestManifestTest {
       assertThatThrownBy(() -> new Section("facts", null))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("content must not be null");
-    }
-  }
-
-  @Nested
-  class A_summary_section {
-
-    private final Chapter chapter =
-        new Chapter(
-            new AgentType("t"),
-            new AgentId(UUID.fromString("01999999-0000-7000-8000-000000000001")),
-            new TurnId(1),
-            new TurnId(3));
-
-    @Test
-    void refuses_a_missing_chapter() {
-      assertThatThrownBy(() -> new SummarySection(null, REF))
-          .isInstanceOf(NullPointerException.class)
-          .hasMessage("chapter must not be null");
-    }
-
-    @Test
-    void refuses_missing_text() {
-      assertThatThrownBy(() -> new SummarySection(chapter, null))
-          .isInstanceOf(NullPointerException.class)
-          .hasMessage("text must not be null");
     }
   }
 
@@ -250,7 +222,8 @@ class RequestManifestTest {
       TurnId through = new TurnId(4);
 
       assertThatThrownBy(() -> new TurnRange(from, through))
-          .isInstanceOf(IllegalArgumentException.class);
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("a range must run forwards: from %s through %s".formatted(from, through));
     }
 
     @Test

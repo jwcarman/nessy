@@ -24,7 +24,7 @@ import java.util.Properties;
  * missing, or has no version, or still holds the placeholder, is a fault at first use: a version of
  * "unknown" written into every stored request would be worse than a failure.
  */
-public final class EngineVersion {
+final class EngineVersion {
 
   private static final String RESOURCE = "/org/jwcarman/nessy/engine/version.properties";
   private static final String PLACEHOLDER_MARK = "${";
@@ -34,7 +34,7 @@ public final class EngineVersion {
   private EngineVersion() {}
 
   /** The version of this engine, such as {@code 0.5.0-SNAPSHOT}. */
-  public static String current() {
+  static String current() {
     String known = version;
     if (known == null) {
       // A fault is thrown as itself each time it is asked; only a good read is kept.

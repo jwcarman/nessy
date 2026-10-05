@@ -192,16 +192,23 @@ class ToolCallingTest {
                     .containsExactly(new ToolName("lookup")));
 
     List<AgentEvent> story = engine.story(type, agentId);
+    List<AgentEvent> shown = story.stream().map(EngineFixture::withoutManifest).toList();
     assertThat(story).hasSize(5);
+    assertThat(story.get(1))
+        .isInstanceOfSatisfying(
+            AgentEvent.ActionsRequested.class, event -> assertThat(event.manifest()).isPresent());
+    assertThat(story.get(4))
+        .isInstanceOfSatisfying(
+            AgentEvent.InferenceAnswered.class, event -> assertThat(event.request()).isPresent());
     assertThat(story.get(0))
         .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.TurnStarted.class))
         .extracting(AgentEvent.TurnStarted::turn)
         .as("one turn throughout: asking for work does not start a new one")
         .isEqualTo(new TurnId(1));
-    assertThat(story.get(1))
+    assertThat(shown.get(1))
         .as("the key is made when the call is recorded, so which one it got is not the point")
         .usingRecursiveComparison()
-        .ignoringFields("actions.idempotencyKey", "manifest")
+        .ignoringFields("actions.idempotencyKey")
         .isEqualTo(
             new AgentEvent.ActionsRequested(
                 new Seq(2),
@@ -234,9 +241,7 @@ class ToolCallingTest {
                 engine.ref(agentId, List.of(new Block.Text("the answer to loch ness"))),
                 "the answer to loch ness",
                 requestedKey(story)));
-    assertThat(story.get(4))
-        .usingRecursiveComparison()
-        .ignoringFields("request")
+    assertThat(shown.get(4))
         .isEqualTo(
             new AgentEvent.InferenceAnswered(
                 new Seq(5),
@@ -357,8 +362,9 @@ class ToolCallingTest {
                 requestedKey(story)));
     assertThat(story).noneMatch(AgentEvent.ToolApproved.class::isInstance);
     assertThat(story.get(3))
-        .usingRecursiveComparison()
-        .ignoringFields("request")
+        .isInstanceOfSatisfying(
+            AgentEvent.InferenceAnswered.class, event -> assertThat(event.request()).isPresent());
+    assertThat(EngineFixture.withoutManifest(story.get(3)))
         .isEqualTo(
             new AgentEvent.InferenceAnswered(
                 new Seq(4),

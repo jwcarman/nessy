@@ -140,7 +140,7 @@ public class Chat {
                   .systemPrompt(SYSTEM_PROMPT)
                   .agent(TYPE)
                   // Two sources of background: the notebook's index and the current plan. Both
-                  // are ambient, so they are asked afresh every call and never written to the
+                  // are ambient, so they are asked afresh every call and never part of the
                   // story -- the model sees the notes and the plan as they stand NOW.
                   .harness(
                       h ->

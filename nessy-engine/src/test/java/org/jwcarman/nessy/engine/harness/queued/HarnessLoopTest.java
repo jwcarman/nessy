@@ -141,12 +141,13 @@ class HarnessLoopTest {
         .atMost(Duration.ofSeconds(10))
         .untilAsserted(
             () ->
-                assertThat(story(CHAT, agentId))
+                assertThat(withoutManifests(story(CHAT, agentId)))
                     .usingRecursiveFieldByFieldElementComparator(
-                        EngineFixture.ignoringWhatTheRequestWasMadeOf())
+                        EngineFixture.ignoringWhenItStarted())
                     .containsExactly(
                         observed(agentId, 1, "what is nessy?"),
                         engine.answered(agentId, 2, 1, "a lake monster")));
+    assertEveryAnswerCarriesItsRequest(story(CHAT, agentId));
 
     assertThat(model.asked())
         .as("the call is built from the story: one turn, still open, carrying the question")
@@ -182,14 +183,29 @@ class HarnessLoopTest {
         .atMost(Duration.ofSeconds(10))
         .untilAsserted(
             () ->
-                assertThat(story(CHAT, agentId))
+                assertThat(withoutManifests(story(CHAT, agentId)))
                     .usingRecursiveFieldByFieldElementComparator(
-                        EngineFixture.ignoringWhatTheRequestWasMadeOf())
+                        EngineFixture.ignoringWhenItStarted())
                     .containsExactly(
                         observed(agentId, 1, "first"),
                         engine.answered(agentId, 2, 1, "a lake monster"),
                         observed(agentId, 3, "second"),
                         engine.answered(agentId, 4, 3, "a lake monster")));
+    assertEveryAnswerCarriesItsRequest(story(CHAT, agentId));
+  }
+
+  private static List<AgentEvent> withoutManifests(List<AgentEvent> story) {
+    return story.stream().map(EngineFixture::withoutManifest).toList();
+  }
+
+  private static void assertEveryAnswerCarriesItsRequest(List<AgentEvent> story) {
+    List<AgentEvent.InferenceAnswered> answers =
+        story.stream()
+            .filter(AgentEvent.InferenceAnswered.class::isInstance)
+            .map(AgentEvent.InferenceAnswered.class::cast)
+            .toList();
+    assertThat(answers).isNotEmpty();
+    assertThat(answers).allSatisfy(answer -> assertThat(answer.request()).isPresent());
   }
 
   /** A model that always answers the same thing, and remembers what it was asked. */

@@ -74,9 +74,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Every model-call event records what its request was made of, by reference.**
   `InferenceAnswered`, `InferenceRefused`, `InferenceFailed`, `InferenceAttempted` and
   `ActionsRequested` each hold the prompt, the tools and the choice, the answer shape, the
-  options, the summaries and turns shown, and each memory, state and ambient section. A part
-  that did not change from one call to the next is stored once. A failure recorded with no
-  request in hand has none. The record is not part of the public story or narration.
+  options, the last turn the summaries shown cover, the turns shown, and each memory, state and
+  ambient section. A part that did not change from one call to the next is stored once. A failure
+  recorded with no request in hand has none. The record is not part of the public story or
+  narration. Every part a model was shown is kept until the agent is removed, and there is no
+  per-source opt-out: whatever a memory, state or ambient source returns, and the values of vendor
+  properties, are stored, so an application that must not keep some data must not return it from
+  a source.
 - `Payloads.putDocument(JsonNode)` and `Payloads.getDocument(PayloadRef)` keep and read JSON
   documents beside message blocks. The same document is one reference and one row. Reading a
   payload as the wrong kind, or a document that is not there, throws an `IllegalStateException`

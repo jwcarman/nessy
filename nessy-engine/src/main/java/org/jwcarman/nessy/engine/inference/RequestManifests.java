@@ -17,15 +17,17 @@ package org.jwcarman.nessy.engine.inference;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.function.Function;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.Memory;
 import org.jwcarman.nessy.api.State;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.backend.event.RequestManifest;
 import org.jwcarman.nessy.backend.event.RequestManifest.Section;
-import org.jwcarman.nessy.backend.event.RequestManifest.SummarySection;
 import org.jwcarman.nessy.backend.event.RequestManifest.TurnRange;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -62,12 +64,7 @@ final class RequestManifests {
         payloads.putDocument(tools(request.toolset())),
         request.outputSchema().map(schema -> payloads.putDocument(parse(schema.json()))),
         payloads.putDocument(options(request.options())),
-        request.context().summaries().stream()
-            .map(
-                summary ->
-                    new SummarySection(
-                        summary.chapter(), payloads.put(List.of(new Block.Text(summary.text())))))
-            .toList(),
+        summarizedThrough(request.context().summaries()),
         tail(request.context().tail()),
         sections(request.context().memory(), Memory::kind, Memory::content, payloads),
         sections(request.context().state(), State::kind, State::content, payloads),
@@ -89,13 +86,26 @@ final class RequestManifests {
     return document;
   }
 
+  /**
+   * The model, the limits and the vendor properties. The properties are written with their keys in
+   * sorted order, so a caller's {@code Map.of(...)} cannot change the reference between JVM runs.
+   */
   private static JsonNode options(InferenceOptions options) {
     ObjectNode document = MAPPER.createObjectNode();
     document.put("model", options.modelName());
     document.put("maxTokens", options.maxTokens());
     ObjectNode properties = document.putObject("properties");
-    options.properties().forEach(properties::put);
+    // Sorted by key, so the order a caller's map happens to iterate in cannot change the reference.
+    new TreeMap<>(options.properties()).forEach(properties::put);
     return document;
+  }
+
+  /** The last turn the summaries shown cover: they are written once, so it names them all. */
+  private static Optional<TurnId> summarizedThrough(List<Summary> summaries) {
+    if (summaries.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(summaries.getLast().chapter().through());
   }
 
   private static Optional<TurnRange> tail(List<Turn> tail) {

@@ -89,22 +89,25 @@ public interface HarnessConfig<SELF extends HarnessConfig<SELF>> {
   /**
    * What was recalled because it bears on the turn being answered, asked afresh on every call.
    *
-   * <p>Never written into the story.
+   * <p>Never part of the story. What a call was shown is kept on that call's record, and no later
+   * call reads it back.
    */
   SELF memory(MemorySource source);
 
   /**
    * The agent's standing situation, asked afresh on every call with the turn being answered.
    *
-   * <p>Never written into the story.
+   * <p>Never part of the story. What a call was shown is kept on that call's record, and no later
+   * call reads it back.
    */
   SELF state(StateSource source);
 
   /**
    * Something the model is shown every turn, asked afresh each time.
    *
-   * <p>Never written into the story, so what it returns is what is true now rather than what was
-   * true when a turn began.
+   * <p>Never part of the story, so what it returns is what is true now rather than what was true
+   * when a turn began. What a call was shown is kept on that call's record, and no later call reads
+   * it back.
    */
   SELF ambient(AmbientSource source);
 

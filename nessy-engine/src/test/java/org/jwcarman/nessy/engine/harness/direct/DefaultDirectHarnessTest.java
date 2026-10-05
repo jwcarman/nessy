@@ -677,6 +677,22 @@ class DefaultDirectHarnessTest {
   }
 
   @Test
+  @DisplayName("an answered turn records what its request was made of, the system prompt included")
+  void an_answered_turn_carries_the_manifest_of_its_request() {
+    AgentId agent = AgentId.random();
+    Scripted model = new Scripted().then(answering("done"));
+
+    harness(model).ask(agent, "hello");
+
+    List<AgentEvent> stream = events.readAll(TYPE, agent);
+    assertThat(stream).last().isInstanceOf(AgentEvent.InferenceAnswered.class);
+    AgentEvent.InferenceAnswered answered = (AgentEvent.InferenceAnswered) stream.getLast();
+    assertThat(answered.request()).isPresent();
+    assertThat(payloads.forAgent(agent).get(answered.request().orElseThrow().instructions()))
+        .isEqualTo(new Payloads.Resolved.Found(List.of(new Block.Text("You are terse."))));
+  }
+
+  @Test
   @DisplayName("what the model is shown is rebuilt from the stream, not remembered")
   void the_transcript_is_projected_from_events() {
     AgentId agent = AgentId.random();

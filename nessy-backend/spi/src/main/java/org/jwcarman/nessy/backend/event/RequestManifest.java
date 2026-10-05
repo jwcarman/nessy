@@ -20,7 +20,6 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.api.turn.Chapter;
 
 /**
  * What a request to the model was made of: the engine that built it, and a reference for each part
@@ -38,7 +37,9 @@ import org.jwcarman.nessy.api.turn.Chapter;
  * @param tools the tools offered, and the choice made for this call
  * @param answerShape the shape of the answer asked for, when one was asked for
  * @param options the model, the limits and the vendor properties of the call
- * @param summaries the closed chapters shown in place of their turns, oldest first
+ * @param summarizedThrough the last turn the summaries shown cover, when any were shown. The
+ *     summaries shown are all those of the chapters up to and including this turn; summaries are
+ *     written once and never changed, which is what makes one turn id enough to name them.
  * @param tail the turns shown whole, when any were
  * @param memory the sections that came from memory, in the order they were bound
  * @param state the sections that came from state, in the order they were bound
@@ -50,7 +51,7 @@ public record RequestManifest(
     PayloadRef tools,
     Optional<PayloadRef> answerShape,
     PayloadRef options,
-    List<SummarySection> summaries,
+    Optional<TurnId> summarizedThrough,
     Optional<TurnRange> tail,
     List<Section> memory,
     List<Section> state,
@@ -63,7 +64,7 @@ public record RequestManifest(
     Objects.requireNonNull(options, "options must not be null");
     answerShape = answerShape == null ? Optional.empty() : answerShape;
     tail = tail == null ? Optional.empty() : tail;
-    summaries = summaries == null ? List.of() : List.copyOf(summaries);
+    summarizedThrough = summarizedThrough == null ? Optional.empty() : summarizedThrough;
     memory = memory == null ? List.of() : List.copyOf(memory);
     state = state == null ? List.of() : List.copyOf(state);
     ambient = ambient == null ? List.of() : List.copyOf(ambient);
@@ -84,20 +85,6 @@ public record RequestManifest(
         throw new IllegalArgumentException("a section's kind must name something");
       }
       Objects.requireNonNull(content, "content must not be null");
-    }
-  }
-
-  /**
-   * A closed chapter, shown in place of its turns.
-   *
-   * @param chapter the chapter
-   * @param text the summary shown, as blocks
-   */
-  public record SummarySection(Chapter chapter, PayloadRef text) {
-
-    public SummarySection {
-      Objects.requireNonNull(chapter, "chapter must not be null");
-      Objects.requireNonNull(text, "text must not be null");
     }
   }
 

@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -41,6 +42,7 @@ import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -243,18 +245,46 @@ class NotebookPatternTest {
         .isNotEmpty()
         .allSatisfy(turn -> assertThat(turn.toString()).doesNotContain("it is Tuesday"));
 
-    Long rows =
+    List<byte[]> holding =
         engine
             .jdbc()
             .sql(
-                "SELECT count(*) FROM nessy_payload "
+                "SELECT hash FROM nessy_payload "
                     + "WHERE agent_id = ? AND position('it is Tuesday' in convert_from(content,'UTF8')) > 0")
             .params(agentId.value())
-            .query(Long.class)
-            .single();
-    assertThat(rows)
+            .query(byte[].class)
+            .list();
+    assertThat(holding)
         .as("exactly one payload holds it: the ambient section the request's manifest recorded")
-        .isEqualTo(1L);
+        .hasSize(1);
+    AgentEvent.InferenceAnswered answered =
+        engine.story(type, agentId).stream()
+            .filter(AgentEvent.InferenceAnswered.class::isInstance)
+            .map(AgentEvent.InferenceAnswered.class::cast)
+            .findFirst()
+            .orElseThrow();
+    assertThat(answered.request().orElseThrow().ambient())
+        .singleElement()
+        .satisfies(
+            section -> {
+              assertThat(section.kind()).isEqualTo("clock");
+              assertThat(section.content().value())
+                  .as("the stored event's manifest names that very payload")
+                  .isEqualTo(HexFormat.of().formatHex(holding.getFirst()));
+            });
+
+    String payloadContent =
+        engine
+            .jdbc()
+            .sql(
+                "SELECT string_agg(convert_from(content,'UTF8'), ' ') "
+                    + "FROM nessy_payload WHERE agent_id = ?")
+            .params(agentId.value())
+            .query(String.class)
+            .single();
+    assertThat(payloadContent)
+        .as("the kind label is in no payload: it is on the manifest, not in what was shown")
+        .doesNotContain("clock");
   }
 
   /** Two sections under one label is a contradiction, refused where it is configured. */

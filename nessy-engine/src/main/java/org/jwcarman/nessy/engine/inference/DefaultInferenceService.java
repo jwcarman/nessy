@@ -71,6 +71,9 @@ public class DefaultInferenceService implements InferenceService {
     this.narrator = narrator;
     this.outputSchema = Objects.requireNonNull(outputSchema, "outputSchema must not be null");
     this.payloads = Objects.requireNonNull(payloads, "payloads must not be null");
+    // Read when the harness is built, so a build whose version resource was never filled in fails
+    // at startup with its clear message, not at the first model call.
+    EngineVersion.current();
   }
 
   /** The same offer, asked to produce prose. */

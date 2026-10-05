@@ -222,4 +222,45 @@ class RequestManifestRowsTest {
     assertThat(second.ambient()).isNotEqualTo(first.ambient());
     assertThat(second).usingRecursiveComparison().ignoringFields("ambient").isEqualTo(first);
   }
+
+  @Test
+  void the_same_context_inferred_twice_stores_nothing_new_and_names_the_same_things() {
+    AgentId agent = AgentId.random();
+    InferenceContext context =
+        new InferenceContext(
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of(),
+            new Turn(
+                new TurnId(1),
+                new Input(new Seq(1), List.of(new Block.Text("q"))),
+                List.of(),
+                null),
+            List.of(Ambient.text("clock", "noon")));
+    DefaultInferenceService service =
+        new DefaultInferenceService(
+            invocation -> context,
+            (request, narrator) ->
+                new InferenceResult.Answer(List.of(new Block.Text("ok")), Usage.unreported()),
+            new SystemPrompt("You are terse."),
+            List.of(
+                new ToolOffer(
+                    new ToolName("lookup"),
+                    "looks a thing up",
+                    new JsonSchema("{\"type\":\"object\"}"))),
+            Narrator.silent(),
+            Optional.empty(),
+            engine.payloads());
+    InferenceInvocation invocation =
+        new InferenceInvocation(TYPE, agent, InferenceOptions.of("a-model"));
+
+    RequestManifest first = service.infer(invocation).request();
+    long afterFirst = rows(agent);
+    RequestManifest second = service.infer(invocation).request();
+
+    assertThat(afterFirst).isPositive();
+    assertThat(rows(agent)).isEqualTo(afterFirst);
+    assertThat(second).isEqualTo(first);
+  }
 }

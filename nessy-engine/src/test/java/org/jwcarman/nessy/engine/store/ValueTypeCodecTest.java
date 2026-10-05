@@ -28,8 +28,6 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
-import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
@@ -38,7 +36,6 @@ import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
-import org.jwcarman.nessy.api.turn.Chapter;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
@@ -490,8 +487,6 @@ class ValueTypeCodecTest {
 
   // ---- the request manifest ------------------------------------------------------------
 
-  private static final String AGENT_A = "01999999-0000-7000-8000-0000000000a1";
-
   private final Codec<RequestManifest> manifests =
       new JacksonCodecFactory(JsonMapper.builder().build()).create(RequestManifest.class);
 
@@ -502,16 +497,11 @@ class ValueTypeCodecTest {
        "tools":"2222bbbb",
        "answerShape":"3333cccc",
        "options":"4444dddd",
-       "summaries":[
-         {"chapter":{"agentType":{"value":"support"},"agentId":{"value":"%1$s"},"from":1,"through":4},
-          "text":"5555eeee"},
-         {"chapter":{"agentType":{"value":"support"},"agentId":{"value":"%1$s"},"from":6,"through":9},
-          "text":"6666ffff"}],
+       "summarizedThrough":9,
        "tail":{"from":11,"through":13},
        "memory":[{"kind":"facts","content":"7777aaaa"}],
        "state":[{"kind":"notebook","content":"8888bbbb"}],
-       "ambient":[{"kind":"clock","content":"9999cccc"}]}"""
-          .formatted(AGENT_A);
+       "ambient":[{"kind":"clock","content":"9999cccc"}]}""";
 
   private static final String MINIMAL_MANIFEST =
       """
@@ -520,27 +510,20 @@ class ValueTypeCodecTest {
        "tools":"2222bbbb",
        "answerShape":null,
        "options":"4444dddd",
-       "summaries":[],
+       "summarizedThrough":null,
        "tail":null,
        "memory":[],
        "state":[],
        "ambient":[]}""";
 
   private static RequestManifest wholeManifest() {
-    AgentType type = new AgentType("support");
-    AgentId agent = new AgentId(UUID.fromString(AGENT_A));
     return new RequestManifest(
         "0.5.0-SNAPSHOT",
         new PayloadRef("1111aaaa"),
         new PayloadRef("2222bbbb"),
         Optional.of(new PayloadRef("3333cccc")),
         new PayloadRef("4444dddd"),
-        List.of(
-            new RequestManifest.SummarySection(
-                new Chapter(type, agent, new TurnId(1), new TurnId(4)), new PayloadRef("5555eeee")),
-            new RequestManifest.SummarySection(
-                new Chapter(type, agent, new TurnId(6), new TurnId(9)),
-                new PayloadRef("6666ffff"))),
+        Optional.of(new TurnId(9)),
         Optional.of(new RequestManifest.TurnRange(new TurnId(11), new TurnId(13))),
         List.of(new RequestManifest.Section("facts", new PayloadRef("7777aaaa"))),
         List.of(new RequestManifest.Section("notebook", new PayloadRef("8888bbbb"))),
@@ -554,7 +537,7 @@ class ValueTypeCodecTest {
         new PayloadRef("2222bbbb"),
         Optional.empty(),
         new PayloadRef("4444dddd"),
-        List.of(),
+        Optional.empty(),
         Optional.empty(),
         List.of(),
         List.of(),

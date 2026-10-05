@@ -20,12 +20,16 @@ import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Ambient;
+import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Usage;
@@ -68,6 +72,17 @@ class ModelCallManifestsTest {
     };
   }
 
+  /** Says "call 1", "call 2", "call 3" on the way into each model call. */
+  private static AmbientSource ambientThatDiffersEveryCall() {
+    AtomicInteger asked = new AtomicInteger();
+    return AmbientSource.of(
+        source ->
+            source
+                .kind("clock")
+                .offering(
+                    _ -> Optional.of(Ambient.text("clock", "call " + asked.incrementAndGet()))));
+  }
+
   private static RequestManifest manifestOf(AgentEvent event) {
     return switch (event) {
       case AgentEvent.InferenceAttempted attempted -> attempted.request().orElseThrow();
@@ -91,6 +106,7 @@ class ModelCallManifestsTest {
               config ->
                   config
                       .systemPrompt(PROMPT)
+                      .ambient(ambientThatDiffersEveryCall())
                       .tool(
                           StoryTurn.lookup(),
                           t ->
@@ -139,6 +155,15 @@ class ModelCallManifestsTest {
                     .asString())
             .as("the options document names the model")
             .isEqualTo("a-model");
+      }
+      for (int i = 0; i < manifests.size(); i++) {
+        List<Ambient> sent = received.get(i).context().ambient();
+        assertThat(sent).as("call %d was shown its ambient section", i + 1).hasSize(1);
+        assertThat(manifests.get(i).ambient()).hasSize(1);
+        assertThat(engine.content(agent, manifests.get(i).ambient().getFirst().content()))
+            .as("call %d's manifest resolves to what call %d was shown", i + 1, i + 1)
+            .isEqualTo(List.copyOf(sent.getFirst().content()))
+            .isEqualTo(List.of(new Block.Text("call " + (i + 1))));
       }
       assertThat(manifests)
           .extracting(RequestManifest::tools)
