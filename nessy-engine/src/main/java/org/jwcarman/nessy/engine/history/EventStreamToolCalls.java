@@ -16,15 +16,12 @@
 
 package org.jwcarman.nessy.engine.history;
 
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Seq;
-import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.payload.Payloads;
@@ -56,35 +53,9 @@ public final class EventStreamToolCalls implements ToolCalls {
         .map(AgentEvent.ActionsRequested.class::cast)
         .filter(asked -> asked.seq().equals(requestSeq))
         .findFirst()
-        .flatMap(asked -> callIn(agentId, asked, callId));
-  }
-
-  private Optional<ResolvedCall> callIn(
-      AgentId agentId, AgentEvent.ActionsRequested asked, CallId callId) {
-    return switch (payloads.forAgent(agentId).get(asked.request())) {
-      case Payloads.Resolved.Found(List<Block> blocks) ->
-          blocks.stream()
-              .filter(Block.ToolCall.class::isInstance)
-              .map(Block.ToolCall.class::cast)
-              .filter(call -> call.id().equals(callId))
-              .findFirst()
-              .flatMap(
-                  call ->
-                      actionOf(asked, callId)
-                          .map(action -> new ResolvedCall(asked.turn(), call, action)));
-      // A request whose content is gone is not a call that can be performed, and saying so is
-      // better than performing one with arguments nobody can see.
-      case Payloads.Resolved.Missing _ -> Optional.empty();
-    };
-  }
-
-  /** The sentence stored beside the call in the same event, where it was fixed when requested. */
-  private static Optional<String> actionOf(AgentEvent.ActionsRequested asked, CallId callId) {
-    return asked.actions().stream()
-        .filter(ActionRequest.ToolCall.class::isInstance)
-        .map(ActionRequest.ToolCall.class::cast)
-        .filter(stored -> stored.id().equals(callId))
-        .map(ActionRequest.ToolCall::action)
-        .findFirst();
+        .flatMap(
+            asked ->
+                RequestedCalls.resolve(
+                    payloads.forAgent(agentId), asked, entry -> entry.id().equals(callId)));
   }
 }

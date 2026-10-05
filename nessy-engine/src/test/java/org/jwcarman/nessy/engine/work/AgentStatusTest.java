@@ -46,6 +46,9 @@ import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
+import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -67,6 +70,7 @@ class AgentStatusTest {
   private static final Duration PATIENT = Duration.ofSeconds(20);
   private static final Map<String, CountDownLatch> RELEASES = new ConcurrentHashMap<>();
   private static final Map<String, CountDownLatch> ENTERED = new ConcurrentHashMap<>();
+  private static final Map<String, ApprovalRequest> HANDED = new ConcurrentHashMap<>();
 
   record Job(String what) {}
 
@@ -91,6 +95,9 @@ class AgentStatusTest {
                   List.of(
                       new Block.ToolCall("call_1", "start_job", "{\"what\":\"reindex\"}"),
                       new Block.ToolCall("call_2", "start_job", "{\"what\":\"backup\"}")));
+          case "approval-then-terminate" ->
+              new InferenceResult.Actions(
+                  List.of(new Block.ToolCall("call_1", "sign", "{\"what\":\"contract\"}")));
           case "one-parked" ->
               new InferenceResult.Actions(
                   List.of(new Block.ToolCall("call_1", "start_job", "{\"what\":\"reindex\"}")));
@@ -198,6 +205,16 @@ class AgentStatusTest {
                     .systemPrompt(story)
                     .tool(startJob(), t -> t.timeout(Duration.ofMinutes(30)))
                     .tool(hold(), t -> t.timeout(Duration.ofMinutes(30)))
+                    .tool(
+                        tool("sign", _ -> Awaited.ready(ToolResult.ok(new Block.Text("signed")))),
+                        t ->
+                            t.action(job -> "sign " + job.what())
+                                .approver(
+                                    request -> {
+                                      HANDED.put(request.agentType().value(), request);
+                                      return Awaited.deferred();
+                                    },
+                                    a -> a.timeout(Duration.ofMinutes(30))))
                     .inference(in -> in.model("a-model"))
                     .effects(e -> e.pollInterval(Duration.ofMillis(50))));
   }
@@ -400,6 +417,36 @@ class AgentStatusTest {
 
       assertThat(status.queued()).as("ending is not an input, and a later one is refused").isZero();
       assertThat(status.turn()).contains(new TurnId(1));
+    }
+  }
+
+  @Nested
+  @DisplayName("An agent told to terminate while it waits on a person")
+  class An_agent_told_to_terminate_while_it_waits_on_a_person {
+
+    @Test
+    void an_agent_told_to_terminate_while_waiting_ends_when_its_turn_does() {
+      String story = "approval-then-terminate";
+      AgentId agent = AgentId.random();
+      QueuedHarness<String> harness = harness(story);
+      harness.tell(agent, "go");
+      await().atMost(PATIENT).untilAsserted(() -> assertThat(HANDED).containsKey(story));
+      awaitStatus(story, agent, Activity.WAITING);
+      harness.terminate(agent);
+      ApprovalRequest request = HANDED.get(story);
+
+      assertThat(status(story, agent).activity()).isEqualTo(Activity.WAITING);
+      ReplyOutcome outcome =
+          engine
+              .replies()
+              .approve(
+                  request.agentType(),
+                  request.agentId(),
+                  request.idempotencyKey(),
+                  ApprovalResult.approvedBy("u_carol"));
+
+      assertThat(outcome).isInstanceOf(ReplyOutcome.Applied.class);
+      awaitStatus(story, agent, Activity.ENDED);
     }
   }
 

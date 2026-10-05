@@ -17,9 +17,13 @@ package org.jwcarman.nessy.engine.work;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentStatus;
 import org.jwcarman.nessy.api.AgentStatus.Activity;
@@ -28,12 +32,20 @@ import org.jwcarman.nessy.api.AgentWork;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.LiveEffect;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
+import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.core.AgentState;
+import org.jwcarman.nessy.engine.history.RequestedCalls;
+import org.jwcarman.nessy.engine.tool.ToolCalls;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * What an agent is doing, read from what is stored about it.
@@ -51,26 +63,43 @@ import org.jwcarman.nessy.engine.core.AgentState;
  */
 public final class StoredAgentWork implements AgentWork {
 
+  /** The most waiting approvals one read returns, and the size of the pages it reads them in. */
+  public static final int MAXIMUM_WAITING = 500;
+
+  private static final Logger log = LoggerFactory.getLogger(StoredAgentWork.class);
+
   /** What is read besides the events: the one thing the two doors do not share. */
   private interface Rows {
 
     int queued(AgentType type, AgentId id);
 
     List<LiveEffect> live(AgentType type, AgentId id);
+
+    List<LiveEffect> parkedNow(
+        Optional<AgentType> type, Instant now, Optional<LiveEffect> after, int limit);
+
+    Payloads payloads(AgentId id);
   }
 
   private final AgentEvents events;
   private final Rows rows;
   private final Clock clock;
+  private final int maximumWaiting;
 
-  private StoredAgentWork(AgentEvents events, Rows rows, Clock clock) {
+  private StoredAgentWork(AgentEvents events, Rows rows, Clock clock, int maximumWaiting) {
     this.events = Objects.requireNonNull(events, "events must not be null");
     this.rows = rows;
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
+    this.maximumWaiting = maximumWaiting;
   }
 
   /** The queued door: events, effect rows and a queue to read. */
   public static StoredAgentWork queued(QueuedBackend backend, Clock clock) {
+    return queued(backend, clock, MAXIMUM_WAITING);
+  }
+
+  /** The queued door with a smaller maximum, so a test can reach the cap with few approvals. */
+  static StoredAgentWork queued(QueuedBackend backend, Clock clock, int maximumWaiting) {
     Objects.requireNonNull(backend, "backend must not be null");
     return new StoredAgentWork(
         backend.events(),
@@ -84,8 +113,20 @@ public final class StoredAgentWork implements AgentWork {
           public List<LiveEffect> live(AgentType type, AgentId id) {
             return backend.effects().liveFor(type, id);
           }
+
+          @Override
+          public List<LiveEffect> parkedNow(
+              Optional<AgentType> type, Instant now, Optional<LiveEffect> after, int limit) {
+            return backend.effects().parkedNow(type, now, after, limit);
+          }
+
+          @Override
+          public Payloads payloads(AgentId id) {
+            return backend.payloads().forAgent(id);
+          }
         },
-        clock);
+        clock,
+        maximumWaiting);
   }
 
   /** The direct door: events only. It has no queue and no effect rows, so it reports none. */
@@ -102,50 +143,165 @@ public final class StoredAgentWork implements AgentWork {
           public List<LiveEffect> live(AgentType type, AgentId id) {
             return List.of();
           }
+
+          @Override
+          public List<LiveEffect> parkedNow(
+              Optional<AgentType> type, Instant now, Optional<LiveEffect> after, int limit) {
+            return List.of();
+          }
+
+          @Override
+          public Payloads payloads(AgentId id) {
+            throw new IllegalStateException("the direct door has no waiting approvals to read");
+          }
         },
-        clock);
+        clock,
+        MAXIMUM_WAITING);
   }
 
   @Override
   public AgentStatus status(AgentType type, AgentId id) {
     Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(id, "id must not be null");
-    AgentState state = reconstitute(type, id);
+    List<AgentEvent> lastTurn = events.sinceLastTurnStarted(type, id);
+    AgentState state = reconstitute(lastTurn);
     List<LiveEffect> live = rows.live(type, id);
     int queued = rows.queued(type, id);
     Instant now = clock.instant();
     return switch (state) {
-      case AgentState.Terminal _ -> status(Activity.ENDED, queued, Optional.empty(), 0);
+      case AgentState.Terminal _ -> status(Activity.ENDED, queued, Optional.empty(), List.of(), 0);
       case AgentState.Idle _ ->
-          status(queued == 0 ? Activity.IDLE : Activity.WORKING, queued, Optional.empty(), 0);
+          status(
+              queued == 0 ? Activity.IDLE : Activity.WORKING,
+              queued,
+              Optional.empty(),
+              List.of(),
+              0);
       case AgentState.Inferring inferring ->
-          status(Activity.WORKING, queued, Optional.of(inferring.turn()), 0);
+          status(Activity.WORKING, queued, Optional.of(inferring.turn()), List.of(), 0);
       case AgentState.AwaitingActions awaiting ->
           status(
               waiting(live, now) ? Activity.WAITING : Activity.WORKING,
               queued,
               Optional.of(awaiting.turn()),
+              rebuilt(live.stream().filter(row -> row.parkedNow(now)).toList(), _ -> lastTurn),
               waitingToolCalls(live, now));
     };
   }
 
-  // Task 6 fills these two in from the parked approval rows; until then nothing is reported.
   @Override
   public List<ApprovalRequest> waitingApprovals() {
-    return List.of();
+    return waiting(Optional.empty());
   }
 
-  // Task 6 fills this in with the one above.
   @Override
   public List<ApprovalRequest> waitingApprovals(AgentType type) {
     Objects.requireNonNull(type, "type must not be null");
-    return List.of();
+    return waiting(Optional.of(type));
+  }
+
+  private List<ApprovalRequest> waiting(Optional<AgentType> type) {
+    Instant now = clock.instant();
+    List<LiveEffect> approvals = new ArrayList<>();
+    Optional<LiveEffect> after = Optional.empty();
+    while (approvals.size() < maximumWaiting) {
+      List<LiveEffect> page = rows.parkedNow(type, now, after, maximumWaiting);
+      for (LiveEffect row : page) {
+        if (row.effect() instanceof AgentEffect.Approve && approvals.size() < maximumWaiting) {
+          approvals.add(row);
+        }
+      }
+      if (page.size() < maximumWaiting) {
+        break;
+      }
+      after = Optional.of(page.getLast());
+    }
+    Map<String, List<AgentEvent>> stories = new HashMap<>();
+    return rebuilt(
+        approvals,
+        row ->
+            stories.computeIfAbsent(
+                row.agentType().value() + '\u0000' + row.agentId().value(),
+                _ -> events.sinceLastTurnStarted(row.agentType(), row.agentId())));
+  }
+
+  /**
+   * The request the approver was shown for each row, rebuilt from stored values. A row whose
+   * request cannot be rebuilt is logged and left out, and never fails the read.
+   */
+  private List<ApprovalRequest> rebuilt(
+      List<LiveEffect> parked, Function<LiveEffect, List<AgentEvent>> story) {
+    List<ApprovalRequest> requests = new ArrayList<>();
+    for (LiveEffect row : parked) {
+      if (row.effect() instanceof AgentEffect.Approve approve) {
+        try {
+          rebuild(row, approve, story.apply(row)).ifPresent(requests::add);
+        } catch (RuntimeException e) {
+          skipped(row, approve, e.toString());
+        }
+      }
+    }
+    return List.copyOf(requests);
+  }
+
+  private Optional<ApprovalRequest> rebuild(
+      LiveEffect row, AgentEffect.Approve approve, List<AgentEvent> story) {
+    IdempotencyKey key = approve.idempotencyKey();
+    Optional<ToolCalls.ResolvedCall> call =
+        story.stream()
+            .filter(AgentEvent.ActionsRequested.class::isInstance)
+            .map(AgentEvent.ActionsRequested.class::cast)
+            .filter(asked -> asked.seq().equals(approve.requestSeq()))
+            .findFirst()
+            .flatMap(
+                asked ->
+                    RequestedCalls.resolve(
+                        rows.payloads(row.agentId()),
+                        asked,
+                        entry -> entry.idempotencyKey().equals(key)));
+    if (call.isEmpty()) {
+      skipped(row, approve, "the story does not hold the request");
+      return Optional.empty();
+    }
+    ObjectNode facts =
+        story.stream()
+            .filter(AgentEvent.ApprovalDeferred.class::isInstance)
+            .map(AgentEvent.ApprovalDeferred.class::cast)
+            .filter(deferred -> deferred.idempotencyKey().equals(key))
+            .reduce((_, later) -> later)
+            .map(deferred -> deferred.facts().deepCopy())
+            .orElseGet(JsonNodeFactory.instance::objectNode);
+    return Optional.of(
+        new ApprovalRequest(
+            row.agentType(),
+            row.agentId(),
+            approve.turn(),
+            approve.callId(),
+            key,
+            approve.toolName(),
+            call.get().call().arguments(),
+            call.get().action(),
+            row.parkedAt().orElseThrow(),
+            row.deadline(),
+            facts));
+  }
+
+  private static void skipped(LiveEffect row, AgentEffect.Approve approve, String why) {
+    log.warn(
+        "[{}] agent {}: waiting approval {} skipped: {}",
+        row.agentType().value(),
+        row.agentId().value(),
+        approve.idempotencyKey(),
+        why);
   }
 
   private static AgentStatus status(
-      Activity activity, int queued, Optional<TurnId> turn, int waitingToolCalls) {
-    // Task 6 passes the agent's waiting approval requests here instead of an empty list.
-    return new AgentStatus(activity, queued, turn, List.of(), waitingToolCalls);
+      Activity activity,
+      int queued,
+      Optional<TurnId> turn,
+      List<ApprovalRequest> approvals,
+      int waitingToolCalls) {
+    return new AgentStatus(activity, queued, turn, approvals, waitingToolCalls);
   }
 
   private static boolean waiting(List<LiveEffect> live, Instant now) {
@@ -161,8 +317,7 @@ public final class StoredAgentWork implements AgentWork {
   }
 
   /** The agent as it stands: the last turn that started, replayed onto idle. */
-  private AgentState reconstitute(AgentType type, AgentId id) {
-    List<AgentEvent> lastTurn = events.sinceLastTurnStarted(type, id);
+  private static AgentState reconstitute(List<AgentEvent> lastTurn) {
     Seq from =
         lastTurn.isEmpty() ? Seq.NONE : new Seq(Math.max(0, lastTurn.getFirst().seq().value() - 1));
     return AgentState.idle(from).applyAll(lastTurn);
