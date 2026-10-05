@@ -31,15 +31,19 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentStatus;
 import org.jwcarman.nessy.api.AgentStatus.Activity;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.AgentWork;
+import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.ProviderId;
-import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TerminationOutcome;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.Approver;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.chapter.Chapters;
-import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.inmemory.InMemoryAgentEvents;
 import org.jwcarman.nessy.backend.inmemory.InMemoryChapters;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLeases;
@@ -151,14 +155,75 @@ class AgentStatusDirectTest {
   @Test
   void a_terminated_agent_has_ended() {
     try (DefaultDirectHarnessFactory factory = factory(ANSWERING)) {
-      harness(factory).ask(agent, "go");
-      Seq last = events.readAll(TYPE, agent).getLast().seq();
-      events.append(TYPE, agent, List.of(new AgentEvent.Terminated(last.next())), last, NOW);
+      DirectHarness<String, String> harness = harness(factory);
+      harness.ask(agent, "go");
 
-      AgentWork work = factory.work();
+      TerminationOutcome outcome = harness.terminate(agent);
 
-      assertThat(work.status(TYPE, agent))
+      assertThat(outcome).isInstanceOf(TerminationOutcome.Ended.class);
+      assertThat(factory.work().status(TYPE, agent))
           .isEqualTo(new AgentStatus(Activity.ENDED, 0, Optional.empty(), List.of(), 0));
+    }
+  }
+
+  record Job(String what) {}
+
+  @Test
+  void an_agent_with_a_tool_running_is_working_and_waits_on_nothing() throws InterruptedException {
+    CountDownLatch inTool = new CountDownLatch(1);
+    Tool<Job> hold =
+        new Tool<>() {
+          @Override
+          public Class<Job> inputType() {
+            return Job.class;
+          }
+
+          @Override
+          public ToolName name() {
+            return new ToolName("hold");
+          }
+
+          @Override
+          public String description() {
+            return "holds until released";
+          }
+
+          @Override
+          public Awaited<ToolResult> call(ToolCallRequest<Job> request) {
+            inTool.countDown();
+            try {
+              release.await(30, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+            }
+            return Awaited.ready(ToolResult.ok(new Block.Text("held")));
+          }
+        };
+    InferenceProvider model =
+        (request, _) ->
+            request.context().turns().stream().anyMatch(turn -> !turn.exchanges().isEmpty())
+                ? new InferenceResult.Answer(List.of(new Block.Text("ok")))
+                : new InferenceResult.Actions(
+                    List.of(new Block.ToolCall("call_1", "hold", "{\"what\":\"x\"}")));
+    try (DefaultDirectHarnessFactory factory = factory(model)) {
+      DirectHarness<String, String> harness =
+          factory.<String>create(
+              TYPE,
+              c -> {
+                c.inputRenderer(text -> List.of(new Block.Text(text)))
+                    .inference(in -> in.provider("test").model("a-model"));
+                c.tool(hold, t -> t.approver(Approver.allow()));
+              });
+      Thread asking = Thread.ofVirtual().start(() -> harness.ask(agent, "go"));
+      assertThat(inTool.await(20, TimeUnit.SECONDS)).isTrue();
+
+      AgentStatus status = factory.work().status(TYPE, agent);
+      release.countDown();
+      asking.join();
+
+      assertThat(status)
+          .isEqualTo(
+              new AgentStatus(Activity.WORKING, 0, Optional.of(new TurnId(1)), List.of(), 0));
     }
   }
 }

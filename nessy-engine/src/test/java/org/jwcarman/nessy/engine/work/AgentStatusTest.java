@@ -35,12 +35,14 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentStatus;
 import org.jwcarman.nessy.api.AgentStatus.Activity;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AgentWork;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.BacklogItem;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
@@ -240,6 +242,29 @@ class AgentStatusTest {
   }
 
   @Nested
+  @DisplayName("An idle agent with input in its backlog")
+  class An_idle_agent_with_input_in_its_backlog {
+
+    @Test
+    void an_idle_agent_with_input_queued_is_working() {
+      String story = "queued-without-tell";
+      AgentId agent = AgentId.random();
+      harness(story);
+      engine.backend().agents().ensure(typeOf(story), agent);
+      engine
+          .backend()
+          .backlogs(TypeRef.of(String.class))
+          .forAgent(typeOf(story), agent)
+          .append(new BacklogItem<>("waiting", Instant.now()));
+
+      AgentStatus status = status(story, agent);
+
+      assertThat(status)
+          .isEqualTo(new AgentStatus(Activity.WORKING, 1, Optional.empty(), List.of(), 0));
+    }
+  }
+
+  @Nested
   @DisplayName("An agent in a model call")
   class An_agent_in_a_model_call {
 
@@ -365,10 +390,16 @@ class AgentStatusTest {
       harness.tell(agent, "go");
       awaitDeferrals(story, agent, 2);
       harness.terminate(agent);
+      harness.tell(agent, "too late");
 
+      assertThat(engine.backend().agents().terminated(typeOf(story), agent))
+          .as("the termination was taken")
+          .isTrue();
       awaitStatus(story, agent, Activity.WAITING);
+      AgentStatus status = status(story, agent);
 
-      assertThat(status(story, agent).queued()).as("ending is not an input").isZero();
+      assertThat(status.queued()).as("ending is not an input, and a later one is refused").isZero();
+      assertThat(status.turn()).contains(new TurnId(1));
     }
   }
 

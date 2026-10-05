@@ -357,6 +357,11 @@ public final class EngineFixture implements AutoCloseable {
     return harnesses.replies();
   }
 
+  /** The backend the engine runs on, for a test that stores something without telling an agent. */
+  public QueuedBackend backend() {
+    return backend;
+  }
+
   /** What the factory says its agents are doing. */
   public AgentWork work() {
     return harnesses.work();
