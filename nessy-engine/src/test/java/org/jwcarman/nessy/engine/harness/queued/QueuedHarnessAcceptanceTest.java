@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -66,14 +67,17 @@ class QueuedHarnessAcceptanceTest {
   /** How many calls the model asks for on its first pass; none means it simply answers. */
   private volatile int calls = 0;
 
-  /** When set, the model waits here before it answers, so an agent stays mid-inference. */
-  private volatile CountDownLatch gate;
+  /**
+   * The latches the model waits on before it answers, so an agent stays mid-inference. Every one is
+   * kept and released in teardown, so no model thread stays blocked behind a test that took two.
+   */
+  private final List<CountDownLatch> gates = new CopyOnWriteArrayList<>();
 
   private final AtomicInteger nudges = new AtomicInteger();
 
   private final InferenceProvider model =
       (request, _) -> {
-        if (gate != null) {
+        for (CountDownLatch gate : gates) {
           hold(gate);
         }
         boolean answeredCalls =
@@ -94,9 +98,7 @@ class QueuedHarnessAcceptanceTest {
 
   @AfterEach
   void stop() {
-    if (gate != null) {
-      gate.countDown();
-    }
+    gates.forEach(CountDownLatch::countDown);
     engine.close();
   }
 
@@ -246,7 +248,7 @@ class QueuedHarnessAcceptanceTest {
   /** An agent mid-inference: the model has been asked and is held. */
   private Placed inferring() {
     calls = 0;
-    gate = new CountDownLatch(1);
+    gates.add(new CountDownLatch(1));
     Placed placed = new Placed();
     placed.harness.tell(placed.agent, "what lake?");
     assertThat(placed.shape()).containsExactly("TurnStarted");
@@ -351,6 +353,18 @@ class QueuedHarnessAcceptanceTest {
     List<AgentEvent> before = placed.story();
 
     boolean accepted = placed.deliver(Optional.empty(), Optional.empty(), denied("c1"));
+
+    assertThat(accepted).isFalse();
+    assertThat(placed.story()).isEqualTo(before);
+  }
+
+  /** On a turn but waiting on no request, an outcome that names none has no call to settle. */
+  @Test
+  void an_answer_that_names_no_request_to_an_agent_waiting_on_none_is_not_accepted() {
+    Placed placed = inferring();
+    List<AgentEvent> before = placed.story();
+
+    boolean accepted = placed.deliver(TURN_ONE, Optional.empty(), denied("c1"));
 
     assertThat(accepted).isFalse();
     assertThat(placed.story()).isEqualTo(before);

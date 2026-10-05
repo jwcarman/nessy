@@ -65,10 +65,11 @@ public interface AgentEffectCallback {
    *     here rather than inside the outcome so that the four inference arms -- already a published
    *     grammar -- did not each have to grow a field for it.
    * @return whether the fold wrote at least one event for this outcome. False when the fold ignored
-   *     it -- a second answer for a call, an answer for another turn or request -- and when the
-   *     outcome named no turn and the agent was on none, so it was dropped before the fold. True
-   *     does not mean anything was asked of the dispatcher: an accepted denial can leave other
-   *     calls outstanding and emit no effect.
+   *     it -- a second answer for a call, an answer for another turn or request -- when the outcome
+   *     named no turn and the agent was on none, and when the outcome named no request and the
+   *     agent was waiting on none, so it was dropped before the fold. True does not mean anything
+   *     was asked of the dispatcher: an accepted denial can leave other calls outstanding and emit
+   *     no effect.
    */
   boolean deliverOutcome(
       AgentId agentId,
