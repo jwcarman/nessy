@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -163,5 +164,44 @@ class ApprovalQuestionsTest {
 
     assertThat(back.toString()).isEqualTo(document.toString());
     assertThat(back.get("arguments").isObject()).isTrue();
+  }
+
+  /** Written from the builder's documented field order, so a reordered or renamed field is red. */
+  @Test
+  void the_document_is_written_out_field_by_field() {
+    ApprovalRequest request =
+        request("{\"q\":\"loch ness\",\"limit\":3}")
+            .fact("risk", "low")
+            .fact("depth", JsonNodeFactory.instance.numberNode(230));
+
+    JsonNode document = ApprovalQuestions.document(request);
+
+    assertThat(document.toString())
+        .isEqualTo(
+            "{\"agentType\":\"gated\","
+                + "\"agentId\":\"01999999-0000-7000-8000-0000000000aa\","
+                + "\"turn\":3,"
+                + "\"callId\":\"c1\","
+                + "\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\","
+                + "\"toolName\":\"lookup\","
+                + "\"arguments\":{\"q\":\"loch ness\",\"limit\":3},"
+                + "\"action\":\"look up loch ness\","
+                + "\"askedAt\":\"2026-09-08T12:00:00Z\","
+                + "\"deadline\":\"2026-09-08T12:10:00Z\","
+                + "\"facts\":{\"risk\":\"low\",\"depth\":230}}");
+  }
+
+  @Test
+  void the_same_question_is_the_same_reference() {
+    Payloads payloads = new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
+    JsonNode first =
+        ApprovalQuestions.document(request("{\"q\":\"loch ness\"}").fact("risk", "low"));
+    JsonNode second =
+        ApprovalQuestions.document(request("{\"q\":\"loch ness\"}").fact("risk", "low"));
+
+    PayloadRef one = payloads.putDocument(first);
+    PayloadRef two = payloads.putDocument(second);
+
+    assertThat(two).isEqualTo(one);
   }
 }
