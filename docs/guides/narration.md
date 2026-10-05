@@ -323,7 +323,10 @@ a day of inactivity and a day per entry by default, an hour once a stream
 is completed.
 
 `nessy-examples/chat-web` streams the conversation this way, on one stream
-per agent. The answer arrives there, not in the response to the message. The
+per agent. The stream says what the agent is doing and when a turn has answered. A
+streaming provider's words arrive on it as they are written, and the page
+reads the finished answer from the agent's state. None of it is in the
+response to the message. The
 approval cards are not on it: the page reads them from the agent's state.
 It reads the state when the stream opens, and again each time the stream
 reopens. It reads the cards again when the stream reports an approval

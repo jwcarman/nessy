@@ -121,12 +121,14 @@ ambient background, gated on a tool that asks at the prompt:
 ```
 
 **`chat-web`**: the same agent as a page, on the queued door. A message
-is told and the request returns; the answer arrives on a resumable SSE
-stream. The email tool's approval waits in Nessy, so the page lists it as a
+is told and the request returns. A resumable SSE stream says what the agent
+is doing and when the turn has answered, and the page reads the answer from
+the agent's state. The email tool's approval waits in Nessy, so the page lists it as a
 card and it survives a closed tab or a restart.
 
 ```bash
-cd nessy-examples/chat-web && ../../mvnw spring-boot:run
+./mvnw -q -pl :nessy-example-chat-web -am install -DskipTests
+./mvnw -q -pl :nessy-example-chat-web spring-boot:run
 ```
 
 **`mcp`**: a terminal agent whose tools come from somebody else's server.

@@ -45,7 +45,6 @@ chat:
   approval-term: ${CHAT_APPROVAL_TERM:PT5M}
 
 nessy:
-  type: chat
   # Which registered InferenceProvider answers. lmstudio is a preset the starter lights below;
   # nessy.provider names the one this agent type uses.
   provider: ${CHAT_PROVIDER:lmstudio}

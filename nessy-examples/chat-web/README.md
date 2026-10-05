@@ -12,12 +12,18 @@ person, and where that person is asked.
 
 **The queued door.** `POST /api/agents/{id}/messages` tells the agent
 and returns `202` with an empty body. The turn runs on the engine's own
-threads, so no request is held while the model works. A conversation that
-has ended answers another message with `409`.
+threads, so no request is held while the model works. A message with no
+text, or only blanks, is a `400`. Once an ended conversation's last turn
+is over, a message is a `409`. While that last turn is still in progress,
+it can wait on an approval card for the whole approval term, and a message
+is answered `202` and dropped: Nessy takes no more input for an ended
+agent and does not report it.
 
-**One stream carries the rest.** The answer, the deltas as the model writes
-them, and every step the agent takes arrive on `GET /api/agents/{id}/events`.
-The stream is journaled. A browser that reconnects with `Last-Event-ID`
+**One stream carries the rest.** It says what the agent is doing, and when a
+turn has answered. A streaming provider's words arrive on it as
+`content-delta` events while they are written; the `answered` event carries
+no words, and the page reads the finished answer from the agent's state. The
+stream is `GET /api/agents/{id}/events`. It is journaled. A browser that reconnects with `Last-Event-ID`
 catches up on what it missed.
 
 **Messages sent while the agent is working are batched.** They wait in the
@@ -57,15 +63,20 @@ it again on every reconnect. A stream joined without an event id replays
 nothing, so what happened before the page joined is found in the state. A
 turn the page joined in the middle has only its later words on screen; when it
 ends, the page draws the whole answer from the state. A reconnect adds
-answers for turns that ended while the stream was down and leaves what is
-already on screen.
+answers for turns that ended while the stream was down, including a turn
+that failed, was refused or was stopped, and leaves what is already on
+screen. If the browser closes the stream for good, because the server
+answered with something other than an event stream, the page opens it again
+after three seconds.
 
 **The endpoint decides who may answer.** Nessy does not check who is
 answering. This example puts no login in front of the page's endpoint, so
 an application that copies it must guard it.
 
 Other endpoint: `DELETE /api/agents/{id}` ends the conversation. The story
-is kept; the agent takes no more input.
+is kept; the agent takes no more input. A message sent after that is a `409`
+once the last turn is over (see the queued door above). The page then says
+the conversation has ended.
 
 `send_email` sends nothing. It is the right *shape* — outward-facing and
 irreversible — without being something you could point at a stranger.

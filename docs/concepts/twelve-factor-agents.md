@@ -405,12 +405,14 @@ on the same channel.
 
 Nessy has two entry points and both are plain Java calls, so anything that
 can run Java can be a trigger. `ask` is for a caller standing there for the
-answer. `tell` is for work nobody is waiting on. The repository shows four
-uses:
+answer. `tell` returns before the work is done, so whoever wants the result
+watches for it: a stream, a status read, or a listener. The repository shows
+four uses:
 
 - A console loop (`nessy-console`, used by `nessy-examples/chat-cli`).
-- An HTTP endpoint that calls `tell` and returns `202`; the answer arrives
-  on a resumable event stream (`nessy-examples/chat-web`).
+- An HTTP endpoint that calls `tell` and returns `202`; a resumable event
+  stream says what the agent is doing and when the turn has answered, and the
+  page reads the answer from the agent's state (`nessy-examples/chat-web`).
 - A schedule that calls `tell` (`nessy-examples/watchman`, with Spring's
   `@Scheduled`).
 - An HTTP endpoint that answers a parked approval (`watchman` and

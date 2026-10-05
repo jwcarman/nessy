@@ -174,7 +174,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **chat-web runs on the queued door.** A message is told and the request returns `202`; the
-  answer arrives on the journaled event stream. Messages sent while the agent is working are given
+  journaled event stream says what the agent is doing and when the turn has answered, a streaming
+  provider's words arrive on it as `content-delta` events, and the page reads the finished answer
+  from the agent's state. Messages sent while the agent is working are given
   to it together, as one. The email approval is deferred and read from Nessy (`AgentWork`,
   `Replies`) where the example held it in memory, and `chat.approval-term` sets how long a person
   has to answer it.
