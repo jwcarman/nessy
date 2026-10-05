@@ -50,8 +50,9 @@ import org.springframework.context.annotation.Configuration;
  * The chat agent: a notebook, a plan, a date tool, and an email tool a person has to approve.
  *
  * <p>The starter supplies the factory, the provider (from {@code nessy.provider}) and the model
- * (from {@code nessy.model}); this class declares the harness itself because the starter's free one
- * binds tool beans with defaults, and an email needs an approver.
+ * (from {@code nessy.model}), but no harness: a harness is the agent's definition (its tools, their
+ * approvers and its prompt), which only the application knows. This class declares it, and the
+ * email tool needs an approver.
  */
 @Configuration(proxyBeanMethods = false)
 public class ChatConfiguration {

@@ -110,16 +110,24 @@ public class ChatController {
 
   /**
    * Says something. It is accepted at once and the answer comes on the stream and in the
-   * transcript.
+   * transcript. A message with no text, or only blanks, is a {@code 400}, before anything else.
    *
    * <p>A message told while a turn is in progress waits its turn and runs after it. The one thing
-   * that refuses a message is an agent that has been ended: {@code tell} does not report that, it
-   * drops the input, so the status is read first and an ended agent is a {@code 409}. An end that
-   * lands between the read and the tell is dropped silently, as {@code tell} drops it.
+   * that refuses a message is an agent that has been ended, and {@code tell} does not report that:
+   * it drops the input. So the status is read first. An ended agent whose last turn is over reads
+   * {@code ENDED} and is a {@code 409}. An ended agent whose last turn is still in progress (up to
+   * the approval term, when that turn is parked on a card) still reads {@code WORKING} or {@code
+   * WAITING}, so a message sent then is answered {@code 202} and dropped: nothing is queued and no
+   * further turn runs. Nothing in the example's reach says that an end was requested, so the two
+   * cases cannot be told apart here. The same holds for an end that lands between the read and the
+   * tell.
    */
   @PostMapping("/{id}/messages")
-  public ResponseEntity<Map<String, String>> say(
+  public ResponseEntity<Object> say(
       @PathVariable("id") String id, @RequestBody MessageRequest body) {
+    if (body.text() == null || body.text().isBlank()) {
+      return ResponseEntity.badRequest().body(Map.of("error", "a message needs some text"));
+    }
     AgentId agentId = agent(id);
     if (work.status(ChatConfiguration.TYPE, agentId).activity() == Activity.ENDED) {
       return ResponseEntity.status(HttpStatus.CONFLICT)
@@ -140,9 +148,9 @@ public class ChatController {
   }
 
   /**
-   * The agent's stream. A browser that reconnects hands back the id of the last event it saw, and
-   * gets everything since -- the journal is what makes a page that was closed catch up rather than
-   * rebuild.
+   * The agent's stream. A connection that drops and reconnects hands back the id of the last event
+   * it saw, and gets everything since from the journal. A page that is closed and reopened sends no
+   * id: it rebuilds from the state, and the stream carries what happens from then on.
    */
   @GetMapping("/{id}/events")
   public SseEmitter events(

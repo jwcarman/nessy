@@ -175,4 +175,13 @@ class ChatTurnsIntegrationTest {
 
     assertThat(status).isEqualTo(400);
   }
+
+  @Test
+  void a_message_of_only_blanks_is_a_400() {
+    ChatClient chat = chat();
+
+    int status = chat.say(UUID.randomUUID().toString(), "   ");
+
+    assertThat(status).isEqualTo(400);
+  }
 }
