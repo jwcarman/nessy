@@ -18,7 +18,7 @@ package org.jwcarman.nessy.backend.effect;
 import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.Usage;
-import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest;
 import org.jwcarman.nessy.inference.Failure;
 
 /**
@@ -37,14 +37,15 @@ import org.jwcarman.nessy.inference.Failure;
  * <p>Only a failure worth repeating ever becomes one of these. An attempt that ended the work has
  * nothing to accumulate: it is the outcome.
  *
- * @param request what the request of that attempt was made of, when one was in hand: a call the
+ * @param manifest what the request of that attempt was made of, when one was in hand: a call the
  *     provider answered with a failure has one, an attempt that threw has none
  */
-public record FailedAttempt(Failure failure, Usage usage, Optional<RequestManifest> request) {
+public record FailedAttempt(
+    Failure failure, Usage usage, Optional<InferenceRequestManifest> manifest) {
 
   public FailedAttempt {
     Objects.requireNonNull(failure, "failure must not be null");
     usage = usage == null ? Usage.unreported() : usage;
-    request = request == null ? Optional.empty() : request;
+    manifest = manifest == null ? Optional.empty() : manifest;
   }
 }

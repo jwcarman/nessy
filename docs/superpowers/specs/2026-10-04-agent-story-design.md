@@ -207,8 +207,8 @@ All of this changes stored shapes. Existing databases are recreated; there is no
 | Stored event | Change |
 |---|---|
 | `TurnStarted` | gains `String label` and `Instant arrivedAt` |
-| `InferenceAnswered` | gains `boolean truncated` and `RequestManifest request` |
-| `InferenceRefused`, `InferenceFailed`, `InferenceAttempted`, `ActionsRequested` | gain `RequestManifest request` |
+| `InferenceAnswered` | gains `boolean truncated` and `InferenceRequestManifest manifest` |
+| `InferenceRefused`, `InferenceFailed`, `InferenceAttempted`, `ActionsRequested` | gain `InferenceRequestManifest manifest` |
 | `ToolApproved` | `reference` is replaced by `Optional<String> decidedBy`; gains `ObjectNode facts` |
 | `ToolDenied` | the same two changes |
 | `ToolFailed` | gains `CallFailure kind` and `ObjectNode facts` |
@@ -374,7 +374,7 @@ content is one reference whatever the transform does.
 behaviour goes: sources return what is current and nothing is driven from a saved copy. What
 changes is that what was sent is now **recorded**, by section.
 
-Every stored model-call event carries a `RequestManifest`: what the request was made of, each
+Every stored model-call event carries an `InferenceRequestManifest`: what the request was made of, each
 part named by reference and none copied. An event recorded with no request in hand (the handler
 threw, the row could not be read, or the deadline passed first) carries none.
 
@@ -385,7 +385,7 @@ still moving. Recording it from the start means that a later record can open it,
 made since will have one.
 
 ```java
-public record RequestManifest(
+public record InferenceRequestManifest(
     String engineVersion,
     PayloadRef instructions,                 // the system prompt
     PayloadRef tools,                        // the offers and the choice, a document
@@ -565,7 +565,7 @@ them:
 | Event | Fields | From |
 |---|---|---|
 | `TurnStarted` | `label`, `arrivedAt` | `StartTurn` |
-| every model-call event | `request` | `CompleteInference`; for `InferenceAttempted`, the failed attempt |
+| every model-call event | `manifest` | `CompleteInference`; for `InferenceAttempted`, the failed attempt |
 | `InferenceAnswered` | `truncated` | `CompleteInference` |
 | `ToolApproved`, `ToolDenied` | `decidedBy`, `facts` | `CompleteApproval` |
 | `ToolFailed` | `kind`, `facts` | `CompleteToolCall` |
@@ -681,6 +681,9 @@ Each is a decision the conversation did not reach. James approved them with the 
 7. **A decision made after a deferral does not repeat the deferral's facts.** The read
    (`StoryContent.approvalFacts`) takes them from the deferral (§8a). This keeps the fold from
    having to remember them.
+8. **The type is `InferenceRequestManifest` and the field is `manifest` everywhere.** It records
+   an `InferenceRequest`, and `request` already names what the model wrote on the tool-calls
+   event (James, 2026-10-04).
 
 ## 14. What this record leaves to the next
 

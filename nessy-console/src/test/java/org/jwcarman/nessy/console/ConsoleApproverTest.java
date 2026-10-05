@@ -96,7 +96,7 @@ class ConsoleApproverTest {
 
   @Test
   @DisplayName("it shows what it is asking about, not just that it is asking")
-  void the_question_names_the_action() {
+  void the_approval_request_names_the_action() {
     FakeConsole console = new FakeConsole("y");
     answerOf(console);
     assertThat(console.written()).contains("Send an email to jim@example.com").contains("[y/N]");

@@ -47,7 +47,7 @@ import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.InferenceContext;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -61,7 +61,7 @@ import org.jwcarman.nessy.inference.ToolOffer;
  */
 @Tag("container")
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
-class RequestManifestRowsTest {
+class InferenceRequestManifestRowsTest {
 
   private static final AgentType TYPE = new AgentType("manifest");
   private static final Duration PATIENCE = Duration.ofSeconds(30);
@@ -214,9 +214,9 @@ class RequestManifestRowsTest {
     InferenceInvocation invocation =
         new InferenceInvocation(TYPE, agent, InferenceOptions.of("a-model"));
 
-    RequestManifest first = service.infer(invocation).request();
+    InferenceRequestManifest first = service.infer(invocation).manifest();
     long afterFirst = rows(agent);
-    RequestManifest second = service.infer(invocation).request();
+    InferenceRequestManifest second = service.infer(invocation).manifest();
 
     assertThat(rows(agent)).isEqualTo(afterFirst + 1);
     assertThat(second.ambient()).isNotEqualTo(first.ambient());
@@ -255,9 +255,9 @@ class RequestManifestRowsTest {
     InferenceInvocation invocation =
         new InferenceInvocation(TYPE, agent, InferenceOptions.of("a-model"));
 
-    RequestManifest first = service.infer(invocation).request();
+    InferenceRequestManifest first = service.infer(invocation).manifest();
     long afterFirst = rows(agent);
-    RequestManifest second = service.infer(invocation).request();
+    InferenceRequestManifest second = service.infer(invocation).manifest();
 
     assertThat(afterFirst).isPositive();
     assertThat(rows(agent)).isEqualTo(afterFirst);

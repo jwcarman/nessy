@@ -96,7 +96,7 @@ class WatchmanRiskTest {
   }
 
   @Test
-  @DisplayName("the question a person is shown names the command they are consenting to")
+  @DisplayName("the approval request a person is shown names the command they are consenting to")
   void the_description_is_the_command() {
     assertThat(pruning().action()).isEqualTo("docker image prune -af");
   }

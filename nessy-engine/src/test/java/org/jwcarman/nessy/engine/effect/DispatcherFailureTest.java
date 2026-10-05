@@ -47,7 +47,7 @@ import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
-import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest;
 import org.jwcarman.nessy.engine.inference.Manifests;
 import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.trace.Traces;
@@ -386,7 +386,7 @@ class DispatcherFailureTest {
     effects.due = List.of(attempt(NOW.plusSeconds(600), 1));
     Failure busy = new Failure.Transient("the model was busy");
     Usage spent = Usage.of("a-model", 11, 0);
-    RequestManifest manifest = Manifests.numbered(2);
+    InferenceRequestManifest manifest = Manifests.numbered(2);
     EffectOutcome failed = new EffectOutcome.InferenceFailed(busy, spent, Optional.of(manifest));
 
     dispatcherFor(effects, new Failing(failed, new Terms())).dispatch();
@@ -411,7 +411,7 @@ class DispatcherFailureTest {
         .untilAsserted(() -> assertThat(effects.rescheduledWith).hasSize(1));
     assertThat(effects.rescheduledWith.getFirst())
         .singleElement()
-        .extracting(FailedAttempt::request)
+        .extracting(FailedAttempt::manifest)
         .isEqualTo(Optional.empty());
   }
 

@@ -54,7 +54,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
-import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.engine.story.EventAgentStories;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -239,13 +239,13 @@ class ApprovalFactsTest {
   private static Set<String> manifestDocuments(List<AgentEvent> story) {
     Set<String> refs = new HashSet<>();
     for (AgentEvent event : story) {
-      Optional<RequestManifest> manifest =
+      Optional<InferenceRequestManifest> manifest =
           switch (event) {
             case AgentEvent.ActionsRequested requested -> requested.manifest();
-            case AgentEvent.InferenceAnswered answered -> answered.request();
-            case AgentEvent.InferenceRefused refused -> refused.request();
-            case AgentEvent.InferenceFailed failed -> failed.request();
-            case AgentEvent.InferenceAttempted attempted -> attempted.request();
+            case AgentEvent.InferenceAnswered answered -> answered.manifest();
+            case AgentEvent.InferenceRefused refused -> refused.manifest();
+            case AgentEvent.InferenceFailed failed -> failed.manifest();
+            case AgentEvent.InferenceAttempted attempted -> attempted.manifest();
             default -> Optional.empty();
           };
       manifest.ifPresent(

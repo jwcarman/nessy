@@ -209,8 +209,8 @@ public class ApprovalsController {
 
   /**
    * Written here as well as by the desk when the engine narrates the decision, because the redirect
-   * lands before the narration does, and the person who just clicked must not be shown the question
-   * they have already answered. Whichever writer arrives second changes nothing.
+   * lands before the narration does, and the person who just clicked must not be shown the approval
+   * request they have already answered. Whichever writer arrives second changes nothing.
    */
   void recordLocally(IdempotencyKey key, ApprovalResult result) {
     approvals.answered(

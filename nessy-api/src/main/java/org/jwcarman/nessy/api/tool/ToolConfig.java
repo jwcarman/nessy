@@ -125,8 +125,8 @@ public interface ToolConfig<I> {
   }
 
   /**
-   * Adds something to the question before the approver sees it. May be called more than once; they
-   * run in the order they were added.
+   * Adds something to the approval request before the approver sees it. May be called more than
+   * once; they run in the order they were added.
    *
    * <p>Separate from {@link #approver} because gathering and deciding are separate jobs: an
    * enricher never says no, it only makes a fact available. So a risk score, a resolved principal

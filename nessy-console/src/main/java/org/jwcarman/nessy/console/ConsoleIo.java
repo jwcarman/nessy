@@ -40,7 +40,7 @@ interface ConsoleIo {
    * <p>Shared rather than built per caller because {@code System.in} is a single stream and a
    * {@link BufferedReader} reads ahead of what it hands back. Two readers over it do not take turns
    * — the first to read swallows everything buffered, and the second sees end of input. That is not
-   * a theoretical race: the loop reads a line, the approver asks a question, and the approver gets
+   * a theoretical race: the loop reads a line, the approver asks the person, and the approver gets
    * EOF and denies, because the loop's reader had already drained the pipe.
    */
   static ConsoleIo standard() {

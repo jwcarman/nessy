@@ -472,11 +472,11 @@ public class EffectDispatcher {
   private List<FailedAttempt> accumulated(Attempt attempt, Supplier<EffectOutcome> discharge) {
     List<FailedAttempt> soFar = effects.attemptsOf(attempt);
     if (!(discharge.get()
-        instanceof EffectOutcome.InferenceFailed(Failure failure, Usage usage, var request))) {
+        instanceof EffectOutcome.InferenceFailed(Failure failure, Usage usage, var manifest))) {
       return soFar;
     }
     List<FailedAttempt> all = new ArrayList<>(soFar);
-    all.add(new FailedAttempt(failure, usage, request));
+    all.add(new FailedAttempt(failure, usage, manifest));
     return all;
   }
 

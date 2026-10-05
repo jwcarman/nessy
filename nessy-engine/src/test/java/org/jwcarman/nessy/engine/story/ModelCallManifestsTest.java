@@ -35,7 +35,7 @@ import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.event.AgentEvent;
-import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest;
 import org.jwcarman.nessy.engine.EngineFixture;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -83,11 +83,11 @@ class ModelCallManifestsTest {
                     _ -> Optional.of(Ambient.text("clock", "call " + asked.incrementAndGet()))));
   }
 
-  private static RequestManifest manifestOf(AgentEvent event) {
+  private static InferenceRequestManifest manifestOf(AgentEvent event) {
     return switch (event) {
-      case AgentEvent.InferenceAttempted attempted -> attempted.request().orElseThrow();
+      case AgentEvent.InferenceAttempted attempted -> attempted.manifest().orElseThrow();
       case AgentEvent.ActionsRequested requested -> requested.manifest().orElseThrow();
-      case AgentEvent.InferenceAnswered answered -> answered.request().orElseThrow();
+      case AgentEvent.InferenceAnswered answered -> answered.manifest().orElseThrow();
       default -> throw new AssertionError("not a model-call event: " + event);
     };
   }
@@ -140,9 +140,9 @@ class ModelCallManifestsTest {
           .containsExactly("InferenceAttempted", "ActionsRequested", "InferenceAnswered");
       assertThat(received).as("one request for each of the three calls").hasSize(3);
 
-      List<RequestManifest> manifests =
+      List<InferenceRequestManifest> manifests =
           modelCalls.stream().map(ModelCallManifestsTest::manifestOf).toList();
-      for (RequestManifest manifest : manifests) {
+      for (InferenceRequestManifest manifest : manifests) {
         assertThat(engine.content(agent, manifest.instructions()))
             .as("the instructions reference resolves to the system prompt")
             .contains(new Block.Text(PROMPT));
@@ -166,7 +166,7 @@ class ModelCallManifestsTest {
             .isEqualTo(List.of(new Block.Text("call " + (i + 1))));
       }
       assertThat(manifests)
-          .extracting(RequestManifest::tools)
+          .extracting(InferenceRequestManifest::tools)
           .as("the toolset and the choice did not change, so the reference did not")
           .containsOnly(manifests.getFirst().tools());
       PayloadRef toolsDocument = manifests.getFirst().tools();

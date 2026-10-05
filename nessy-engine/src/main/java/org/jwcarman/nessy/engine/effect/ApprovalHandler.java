@@ -146,7 +146,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
     ApprovalRequest request;
     try {
       request =
-          binding.question(
+          binding.approvalRequest(
               agentType,
               agentId,
               resolved.turn(),

@@ -162,7 +162,7 @@ function listen() {
     setBusy(false);
   };
 
-  // The desk's questions are a second stream: the engine's stream carries the engine's events
+  // The desk's approval requests are a second stream: the engine's stream carries the engine's events
   // and nothing else. Both resume on reconnect the same way.
   if (approvalEvents) approvalEvents.close();
   approvalEvents = new EventSource(`/api/agents/${agentId}/approvals/events`);

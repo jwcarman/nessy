@@ -268,7 +268,7 @@ class NarrationTest {
     List<Narration> events = heard.stream().map(Narrated::event).toList();
     int sought = indexOfFirst(events, Narration.ApprovalSought.class);
     int deferred = indexOfFirst(events, Narration.ApprovalDeferred.class);
-    assertThat(sought).as("the question was heard being asked").isNotNegative();
+    assertThat(sought).as("the approval request was heard being made").isNotNegative();
     assertThat(sought).as("before it was heard being deferred").isLessThan(deferred);
     List<Optional<Position>> askingPositions =
         heard.stream()

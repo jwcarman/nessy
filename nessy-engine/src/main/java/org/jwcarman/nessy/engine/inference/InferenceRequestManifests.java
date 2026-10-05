@@ -26,9 +26,9 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
-import org.jwcarman.nessy.backend.event.RequestManifest;
-import org.jwcarman.nessy.backend.event.RequestManifest.Section;
-import org.jwcarman.nessy.backend.event.RequestManifest.TurnRange;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest.Section;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest.TurnRange;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -51,14 +51,14 @@ import tools.jackson.databind.node.ObjectNode;
  * always yields the same references. The bytes that are hashed are the payload store's own: the
  * mapper here only builds the trees.
  */
-final class RequestManifests {
+final class InferenceRequestManifests {
 
   private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
-  private RequestManifests() {}
+  private InferenceRequestManifests() {}
 
-  static RequestManifest of(InferenceRequest request, Payloads payloads) {
-    return new RequestManifest(
+  static InferenceRequestManifest of(InferenceRequest request, Payloads payloads) {
+    return new InferenceRequestManifest(
         EngineVersion.current(),
         payloads.put(List.of(new Block.Text(request.systemPrompt().value()))),
         payloads.putDocument(tools(request.toolset())),

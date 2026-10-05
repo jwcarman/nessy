@@ -19,9 +19,9 @@ package org.jwcarman.nessy.api.tool;
  * Where an answer arrives when it did not come back from the call that asked for it.
  *
  * <p>The other half of {@link org.jwcarman.nessy.api.Awaited.Deferred}: that says "later", and this
- * is where later happens. An approver posted a question to a person and returned; a tool queued a
- * job and returned. Hours or days on, something has the answer, and this is the door it comes
- * through.
+ * is where later happens. An approver posted an approval request to a person and returned; a tool
+ * queued a job and returned. Hours or days on, something has the answer, and this is the door it
+ * comes through.
  *
  * <p><b>Not on a harness, and not because of tidiness.</b> A {@link ReplyToken} is opaque, so
  * whoever holds one cannot tell which kind of agent it belongs to -- which means they could never

@@ -263,7 +263,7 @@ class NotebookPatternTest {
             .map(AgentEvent.InferenceAnswered.class::cast)
             .findFirst()
             .orElseThrow();
-    assertThat(answered.request().orElseThrow().ambient())
+    assertThat(answered.manifest().orElseThrow().ambient())
         .singleElement()
         .satisfies(
             section -> {

@@ -65,8 +65,8 @@ class ChatApprovalIntegrationTest {
 
     // Sent without waiting for the reply, which is what a browser does and what this door
     // requires of anything that gates a tool on a person: the request is held open for the whole
-    // turn, so the answer to the question it raises has to come in on a different one. A test that
-    // blocked here would be waiting for a turn that is waiting for the test.
+    // turn, so the answer to the approval request it raises has to come in on a different one. A
+    // test that blocked here would be waiting for a turn that is waiting for the test.
     CompletableFuture<Void> said =
         CompletableFuture.runAsync(
             () ->
@@ -76,7 +76,7 @@ class ChatApprovalIntegrationTest {
                     .retrieve()
                     .toBodilessEntity());
 
-    // The question reaches the page...
+    // The approval request reaches the page...
     await()
         .atMost(Duration.ofSeconds(20))
         .untilAsserted(() -> assertThat(approvals(http, agentId)).isNotEmpty());
@@ -100,7 +100,7 @@ class ChatApprovalIntegrationTest {
               assertThat(email.sent()).isNotEmpty();
               assertThat(email.sent().getFirst().to()).isEqualTo("jim@example.com");
             });
-    // The desk hands out each question once: answering it takes it off the page.
+    // The desk hands out each approval request once: answering it takes it off the page.
     assertThat(approvals(http, agentId)).isEmpty();
     // And the turn that was held open across all of that can now finish, which is the proof that
     // a person answering hours later would have released it too.

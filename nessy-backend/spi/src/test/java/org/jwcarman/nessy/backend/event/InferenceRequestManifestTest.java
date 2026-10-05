@@ -27,16 +27,16 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.TurnId;
-import org.jwcarman.nessy.backend.event.RequestManifest.Section;
-import org.jwcarman.nessy.backend.event.RequestManifest.TurnRange;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest.Section;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest.TurnRange;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
-class RequestManifestTest {
+class InferenceRequestManifestTest {
 
   private static final PayloadRef REF = new PayloadRef("a1b2");
 
-  private static RequestManifest minimal() {
-    return new RequestManifest(
+  private static InferenceRequestManifest minimal() {
+    return new InferenceRequestManifest(
         "0.5.0",
         REF,
         REF,
@@ -56,7 +56,7 @@ class RequestManifestTest {
     void refuses_a_missing_engine_version() {
       assertThatThrownBy(
               () ->
-                  new RequestManifest(
+                  new InferenceRequestManifest(
                       null,
                       REF,
                       REF,
@@ -75,7 +75,7 @@ class RequestManifestTest {
     void refuses_missing_instructions() {
       assertThatThrownBy(
               () ->
-                  new RequestManifest(
+                  new InferenceRequestManifest(
                       "0.5.0",
                       null,
                       REF,
@@ -94,7 +94,7 @@ class RequestManifestTest {
     void refuses_a_missing_tools_reference() {
       assertThatThrownBy(
               () ->
-                  new RequestManifest(
+                  new InferenceRequestManifest(
                       "0.5.0",
                       REF,
                       null,
@@ -113,7 +113,7 @@ class RequestManifestTest {
     void refuses_missing_options() {
       assertThatThrownBy(
               () ->
-                  new RequestManifest(
+                  new InferenceRequestManifest(
                       "0.5.0",
                       REF,
                       REF,
@@ -130,8 +130,8 @@ class RequestManifestTest {
 
     @Test
     void reads_absent_optionals_and_lists_as_empty() {
-      RequestManifest manifest =
-          new RequestManifest("0.5.0", REF, REF, null, REF, null, null, null, null, null);
+      InferenceRequestManifest manifest =
+          new InferenceRequestManifest("0.5.0", REF, REF, null, REF, null, null, null, null, null);
 
       assertThat(manifest.answerShape()).isEmpty();
       assertThat(manifest.tail()).isEmpty();
@@ -144,8 +144,8 @@ class RequestManifestTest {
     @Test
     void copies_its_lists() {
       List<Section> memory = new ArrayList<>(List.of(new Section("facts", REF)));
-      RequestManifest manifest =
-          new RequestManifest(
+      InferenceRequestManifest manifest =
+          new InferenceRequestManifest(
               "0.5.0",
               REF,
               REF,
@@ -165,7 +165,7 @@ class RequestManifestTest {
 
     @Test
     void holds_lists_that_cannot_be_changed() {
-      RequestManifest manifest = minimal();
+      InferenceRequestManifest manifest = minimal();
       Section section = new Section("facts", REF);
       List<Section> state = manifest.state();
 

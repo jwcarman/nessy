@@ -689,8 +689,8 @@ class DefaultDirectHarnessTest {
     List<AgentEvent> stream = events.readAll(TYPE, agent);
     assertThat(stream).last().isInstanceOf(AgentEvent.InferenceAnswered.class);
     AgentEvent.InferenceAnswered answered = (AgentEvent.InferenceAnswered) stream.getLast();
-    assertThat(answered.request()).isPresent();
-    assertThat(payloads.forAgent(agent).get(answered.request().orElseThrow().instructions()))
+    assertThat(answered.manifest()).isPresent();
+    assertThat(payloads.forAgent(agent).get(answered.manifest().orElseThrow().instructions()))
         .isEqualTo(new Payloads.Resolved.Found(List.of(new Block.Text("You are terse."))));
   }
 
@@ -1106,7 +1106,7 @@ class DefaultDirectHarnessTest {
         .filteredOn(AgentEvent.InferenceFailed.class::isInstance)
         .singleElement()
         .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.InferenceFailed.class))
-        .extracting(AgentEvent.InferenceFailed::request)
+        .extracting(AgentEvent.InferenceFailed::manifest)
         .isEqualTo(Optional.empty());
   }
 

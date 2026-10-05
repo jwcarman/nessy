@@ -27,7 +27,7 @@ import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.backend.event.ActionRequest;
-import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest;
 import org.jwcarman.nessy.inference.Failure;
 import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
@@ -80,11 +80,14 @@ public sealed interface EffectOutcome {
    * @param truncated whether the model was cut off at its output limit, so the answer stops short
    */
   record InferenceAnswered(
-      PayloadRef answer, boolean truncated, Usage usage, Optional<RequestManifest> request)
+      PayloadRef answer,
+      boolean truncated,
+      Usage usage,
+      Optional<InferenceRequestManifest> manifest)
       implements EffectOutcome {
     public InferenceAnswered {
       usage = usage == null ? Usage.unreported() : usage;
-      request = request == null ? Optional.empty() : request;
+      manifest = manifest == null ? Optional.empty() : manifest;
     }
   }
 
@@ -96,11 +99,11 @@ public sealed interface EffectOutcome {
    * working perfectly; recording it as an answer would put words in the model's mouth, since a
    * refusal was measured to carry no content at all.
    */
-  record InferenceRefused(String category, Usage usage, Optional<RequestManifest> request)
+  record InferenceRefused(String category, Usage usage, Optional<InferenceRequestManifest> manifest)
       implements EffectOutcome {
     public InferenceRefused {
       usage = usage == null ? Usage.unreported() : usage;
-      request = request == null ? Optional.empty() : request;
+      manifest = manifest == null ? Optional.empty() : manifest;
     }
   }
 
@@ -116,11 +119,11 @@ public sealed interface EffectOutcome {
    * had a blip and one that can never speak again -- today those are indistinguishable, so an agent
    * whose every future turn will fail returns to idle looking perfectly healthy.
    */
-  record InferenceFailed(Failure failure, Usage usage, Optional<RequestManifest> request)
+  record InferenceFailed(Failure failure, Usage usage, Optional<InferenceRequestManifest> manifest)
       implements EffectOutcome {
     public InferenceFailed {
       usage = usage == null ? Usage.unreported() : usage;
-      request = request == null ? Optional.empty() : request;
+      manifest = manifest == null ? Optional.empty() : manifest;
     }
   }
 
@@ -135,7 +138,7 @@ public sealed interface EffectOutcome {
       PayloadRef request,
       List<ActionRequest> actions,
       Usage usage,
-      Optional<RequestManifest> manifest)
+      Optional<InferenceRequestManifest> manifest)
       implements EffectOutcome {
     public InferenceRequestedActions {
       usage = usage == null ? Usage.unreported() : usage;

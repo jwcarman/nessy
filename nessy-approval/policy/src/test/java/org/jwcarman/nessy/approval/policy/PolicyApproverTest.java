@@ -95,7 +95,7 @@ class PolicyApproverTest {
     }
 
     @Test
-    @DisplayName("delegate hands the question to the named approver, whose answer stands")
+    @DisplayName("delegate hands the approval request to the named approver, whose answer stands")
     void delegate_defers_to_whoever_was_named() {
       Approver desk = request -> Awaited.deferred();
       var gate =

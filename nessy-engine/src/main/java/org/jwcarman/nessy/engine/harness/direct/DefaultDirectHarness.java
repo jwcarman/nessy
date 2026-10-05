@@ -201,7 +201,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   /**
    * What performs an effect once the fold has decided one is owed -- the model call, the approval
-   * question, the tool call -- and what each is worth. Built by the factory exactly as the queued
+   * request, the tool call -- and what each is worth. Built by the factory exactly as the queued
    * door's is, so the two doors cannot describe a call, an approval or an inference differently.
    */
   private final EffectHandlers handlers;

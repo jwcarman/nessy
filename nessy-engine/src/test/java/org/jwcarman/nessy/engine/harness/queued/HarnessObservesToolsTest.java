@@ -192,7 +192,7 @@ class HarnessObservesToolsTest {
   @Test
   void an_approval_through_the_binding_is_a_nessy_approval_span() {
     ToolBinding<?> binding = bound();
-    ApprovalRequest question =
+    ApprovalRequest request =
         new ApprovalRequest(
             new AgentType("chat"),
             new AgentId(UUID.randomUUID()),
@@ -206,7 +206,7 @@ class HarnessObservesToolsTest {
             Instant.EPOCH.plusSeconds(3600),
             new ReplyToken("unused"));
 
-    Awaited<ApprovalResult> answer = binding.approve(question);
+    Awaited<ApprovalResult> answer = binding.approve(request);
 
     assertThat(answer).isInstanceOf(Awaited.Ready.class);
     assertThat(tag("nessy.approval", "nessy.approval.answer")).isEqualTo("approved");

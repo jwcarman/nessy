@@ -164,8 +164,8 @@ public class ChatConfiguration {
   }
 
   /**
-   * Hands the question to the desk and tells the page, on the desk's own stream beside the one the
-   * engine narrates on. The engine narrates that an approval was sought BEFORE it asks the
+   * Hands the approval request to the desk and tells the page, on the desk's own stream beside the
+   * one the engine narrates on. The engine narrates that an approval was sought BEFORE it asks the
    * approver, so the page cannot be told from that event -- it would find a desk that has not heard
    * yet. Told here, the card is complete when it arrives, and journaled, so a page opened later
    * still sees it.
@@ -175,17 +175,17 @@ public class ChatConfiguration {
    *
    * <p>Generous, because somebody reading a message before sending it is not being slow. Bounded,
    * because a thread waiting forever on a closed tab is one nobody gets back -- and an unanswered
-   * question is a no, which is the direction a gate should fail in.
+   * approval request is a no, which is the direction a gate should fail in.
    */
   private static final Duration PATIENCE = Duration.ofMinutes(5);
 
   /**
    * Asks the page, and waits.
    *
-   * <p>On the queued door this wrote the question down and returned {@code deferred}, and the
-   * engine came back for the answer whenever it arrived. Here the turn is on a request thread, so
-   * the answer has to reach it there: the card goes out on the desk's own stream and this blocks
-   * until somebody clicks or the patience runs out.
+   * <p>On the queued door this returned {@code deferred}, and the engine came back for the answer
+   * whenever it arrived. Here the turn is on a request thread, so the answer has to reach it there:
+   * the card goes out on the desk's own stream and this blocks until somebody clicks or the
+   * patience runs out.
    */
   @Bean
   public Approver desk(ApprovalDesk desk, ApprovalStreams streams) {

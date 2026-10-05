@@ -16,7 +16,7 @@
 package org.jwcarman.nessy.engine.inference;
 
 import java.util.Objects;
-import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest;
 import org.jwcarman.nessy.inference.InferenceResult;
 
 /**
@@ -24,12 +24,12 @@ import org.jwcarman.nessy.inference.InferenceResult;
  * get it.
  *
  * @param result what the model said
- * @param request what the request was made of, each part stored and named by reference
+ * @param manifest what the request was made of, each part stored and named by reference
  */
-public record Inferred(InferenceResult result, RequestManifest request) {
+public record Inferred(InferenceResult result, InferenceRequestManifest manifest) {
 
   public Inferred {
     Objects.requireNonNull(result, "result must not be null");
-    Objects.requireNonNull(request, "request must not be null");
+    Objects.requireNonNull(manifest, "manifest must not be null");
   }
 }

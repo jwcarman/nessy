@@ -205,7 +205,7 @@ class HarnessLoopTest {
             .map(AgentEvent.InferenceAnswered.class::cast)
             .toList();
     assertThat(answers).isNotEmpty();
-    assertThat(answers).allSatisfy(answer -> assertThat(answer.request()).isPresent());
+    assertThat(answers).allSatisfy(answer -> assertThat(answer.manifest()).isPresent());
   }
 
   /** A model that always answers the same thing, and remembers what it was asked. */

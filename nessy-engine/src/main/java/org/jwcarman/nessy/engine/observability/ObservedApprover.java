@@ -23,8 +23,8 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 
 /**
- * An approver whose every question is a {@code nessy.approval} span: which call was asked about,
- * whose it was, and what the answer came to -- approved, denied, or put to a person.
+ * An approver whose every approval request is a {@code nessy.approval} span: which call was asked
+ * about, whose it was, and what the answer came to -- approved, denied, or put to a person.
  */
 public final class ObservedApprover {
 

@@ -49,7 +49,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.event.ActionRequest;
-import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.inference.Inferred;
 import org.jwcarman.nessy.engine.inference.Manifests;
@@ -75,7 +75,7 @@ class InferenceHandlerTest {
   private final List<List<? extends Block>> stored = new ArrayList<>();
 
   /** What the service says the request it sent was made of. */
-  private final RequestManifest served = Manifests.numbered(7);
+  private final InferenceRequestManifest served = Manifests.numbered(7);
 
   private final InferenceHandler handler;
   private final InferenceHandler handlerWithTools;
