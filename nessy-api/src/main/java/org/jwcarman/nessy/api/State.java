@@ -27,11 +27,11 @@ import org.jwcarman.nessy.api.block.Block;
  * from one turn to the next. It changes rarely, and only between turns: whatever a source says
  * about it, it says as of the start of the turn being answered, so that the situation holds still
  * for the whole of the turn. It is never part of the story: it is assembled when the model is
- * called, shown, and thrown away.
+ * called and asked afresh on every call.
  *
- * <p>A source returns what is current each time it is asked, and nothing holds an earlier answer
- * for it. A source that wants to hold still for a turn answers as of the start of the turn it is
- * handed.
+ * <p>A source returns what is current each time it is asked, and no later call reads an earlier
+ * answer back. What a call was shown is kept on that call's record, beside the story and not in it.
+ * A source that wants to hold still for a turn answers as of the start of the turn it is handed.
  *
  * <p><b>Where it lands, and how it is labelled, is the provider's business.</b> This says what the
  * state IS and leaves the rendering to the adapter that knows the vendor.

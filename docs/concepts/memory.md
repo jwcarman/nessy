@@ -152,7 +152,7 @@ A `MemorySource` and a `StateSource` are each one method, and both may do
 I/O. They are asked on the dispatcher's thread, outside the lock that
 serialises the agent. A vector store behind a memory source, or a retrieval
 step over the story: the engine cannot tell, and does not ask. The
-[ambient source](context.md#ambient-true-now-never-written-down), the chapter
+[ambient source](context.md#ambient-true-now), the chapter
 policy and the summariser are written the same way; see
 [Context](context.md).
 

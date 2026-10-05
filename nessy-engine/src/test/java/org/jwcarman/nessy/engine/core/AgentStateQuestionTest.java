@@ -71,7 +71,8 @@ class AgentStateQuestionTest {
             new AgentCommand.InferenceOutcome.RequestedActions(
                 MAIL,
                 List.of(new ActionRequest.ToolCall(CALL, TOOL, "tool", KEY)),
-                Usage.unreported())));
+                Usage.unreported(),
+                Optional.empty())));
   }
 
   private static AgentCommand.CompleteApproval approve(Optional<PayloadRef> question) {

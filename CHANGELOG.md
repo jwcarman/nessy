@@ -18,7 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its last component (the three-argument constructor stays, and gives none), and
   `AgentCommand.ToolOutcome.Failed` gains it too. The stored `tool-failed` event and the stored
   failure response on an effect row change shape; recreate the database.
-
+- **Stored events and stored effect attempts changed shape.** The five model-call events gain a
+  `request` field (`manifest` on `actions-requested`), and a failed attempt kept on an effect row
+  gains `request`. Recreate the database.
 - **`nessy_agent_effect` gained a nullable `parked_at` column,** and `Effects` gains
   `park(effectId, attemptsMade, at)`, so a custom implementation must add it. Recreate the
   database.
@@ -102,6 +104,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A retried ask stores a new question each time, and the failure names the last one. The message
   the model is told, and the retry, do not change. A failure from an expired deferral carries no
   question.
+- **Every model-call event records what its request was made of, by reference.**
+  `InferenceAnswered`, `InferenceRefused`, `InferenceFailed`, `InferenceAttempted` and
+  `ActionsRequested` each hold the prompt, the tools and the choice, the answer shape, the
+  options, the last turn the summaries shown cover, the turns shown, and each memory, state and
+  ambient section. A part that did not change from one call to the next is stored once. A failure
+  recorded with no request in hand has none. The record is not part of the public story or
+  narration. Every part a model was shown is kept, and nothing in the engine deletes it. There is no
+  per-source opt-out: whatever a memory, state or ambient source returns, and the values of vendor
+  properties, are stored, so an application that must not keep some data must not return it from
+  a source.
 - `Payloads.putDocument(JsonNode)` and `Payloads.getDocument(PayloadRef)` keep and read JSON
   documents beside message blocks. The same document is one reference and one row. Reading a
   payload as the wrong kind, or a document that is not there, throws an `IllegalStateException`

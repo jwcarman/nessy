@@ -24,9 +24,10 @@ import org.jwcarman.nessy.api.block.Block;
  * Background the model should have in mind, which nobody said.
  *
  * <p>Saved notes, a standing plan, what time it is, what the current deployment looks like. Not a
- * turn of the conversation and never part of one: it is assembled when the model is called, shown
- * once, and thrown away. There is deliberately no door through which it could reach the story -- it
- * is a view of the world as it stands now, and a view recorded forever stops being one.
+ * turn of the conversation and never part of one: it is assembled when the model is called and
+ * shown on that call. There is deliberately no door through which it could reach the story, and no
+ * later call reads it back -- it is a view of the world as it stands now. What a call was shown is
+ * kept on that call's record, beside the story and not in it.
  *
  * <p>That is also why it is not an input. An input is something that <em>happened</em> and is
  * written down: the second time the model is called it is still there, in the same words, because

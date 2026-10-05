@@ -47,10 +47,11 @@ import org.jwcarman.nessy.api.turn.Turn;
  *       every call.
  * </ol>
  *
- * <p>Memory, state and ambient are none of them part of the story. They are derived per call and
- * discarded, and a view of the world recorded forever stops being one. <b>Where each stratum lands
- * on the wire, and how it is labelled, is the adapter's.</b> This says what each one IS and leaves
- * the placement to the adapter that knows the vendor.
+ * <p>Memory, state and ambient are none of them part of the story. They are asked afresh on every
+ * call, and no later call reads an earlier answer back. What a call was shown is kept on that
+ * call's record, beside the story and not in it. <b>Where each stratum lands on the wire, and how
+ * it is labelled, is the adapter's.</b> This says what each one IS and leaves the placement to the
+ * adapter that knows the vendor.
  *
  * <p><b>Turns rather than a flat list of messages</b>, because a flat list is already a wire shape
  * and it is one particular provider's. The same fact is encoded differently by each of them -- a
@@ -65,7 +66,7 @@ import org.jwcarman.nessy.api.turn.Turn;
  * the model, or what a failed one says in its place, is a decision taken here, once, rather than
  * reinvented in prose by every adapter that has to render it.
  *
- * <p>Derived per call and discarded. Nothing here is stored.
+ * <p>Derived per call. Nothing here is part of the story.
  *
  * @param summaries what stands in for the closed chapters, oldest first -- usually empty
  * @param tail the completed turns after the summaries, oldest first

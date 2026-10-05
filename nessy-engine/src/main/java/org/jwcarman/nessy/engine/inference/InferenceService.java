@@ -16,7 +16,6 @@
 package org.jwcarman.nessy.engine.inference;
 
 import org.jwcarman.nessy.inference.InferenceProvider;
-import org.jwcarman.nessy.inference.InferenceResult;
 
 /**
  * One inference on an agent's behalf: read its story, choose what to send, send it.
@@ -28,5 +27,8 @@ import org.jwcarman.nessy.inference.InferenceResult;
 @FunctionalInterface
 public interface InferenceService {
 
-  InferenceResult infer(InferenceInvocation invocation);
+  /**
+   * @return what the model said, and what the request to it was made of
+   */
+  Inferred infer(InferenceInvocation invocation);
 }

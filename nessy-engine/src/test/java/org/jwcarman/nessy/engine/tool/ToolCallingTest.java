@@ -193,13 +193,20 @@ class ToolCallingTest {
                     .containsExactly(new ToolName("lookup")));
 
     List<AgentEvent> story = engine.story(type, agentId);
+    List<AgentEvent> shown = story.stream().map(EngineFixture::withoutManifest).toList();
     assertThat(story).hasSize(5);
+    assertThat(story.get(1))
+        .isInstanceOfSatisfying(
+            AgentEvent.ActionsRequested.class, event -> assertThat(event.manifest()).isPresent());
+    assertThat(story.get(4))
+        .isInstanceOfSatisfying(
+            AgentEvent.InferenceAnswered.class, event -> assertThat(event.request()).isPresent());
     assertThat(story.get(0))
         .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.TurnStarted.class))
         .extracting(AgentEvent.TurnStarted::turn)
         .as("one turn throughout: asking for work does not start a new one")
         .isEqualTo(new TurnId(1));
-    assertThat(story.get(1))
+    assertThat(shown.get(1))
         .as("the key is made when the call is recorded, so which one it got is not the point")
         .usingRecursiveComparison()
         .ignoringFields("actions.idempotencyKey")
@@ -215,7 +222,8 @@ class ToolCallingTest {
                 List.of(
                     new ActionRequest.ToolCall(
                         new CallId("call_1"), new ToolName("lookup"), "Query[q=loch ness]", KEY)),
-                Usage.unreported()));
+                Usage.unreported(),
+                Optional.empty()));
     Optional<PayloadRef> kept = ((AgentEvent.ToolApproved) story.get(2)).question();
     assertThat(kept).as("the question the approver was shown is kept").isPresent();
     assertThat(story.get(2))
@@ -237,14 +245,15 @@ class ToolCallingTest {
                 engine.ref(agentId, List.of(new Block.Text("the answer to loch ness"))),
                 "the answer to loch ness",
                 requestedKey(story)));
-    assertThat(story.get(4))
+    assertThat(shown.get(4))
         .isEqualTo(
             new AgentEvent.InferenceAnswered(
                 new Seq(5),
                 new TurnId(1),
                 engine.ref(agentId, List.of(new Block.Text("It is Loch Ness."))),
                 false,
-                Usage.unreported()));
+                Usage.unreported(),
+                Optional.empty()));
   }
 
   /**
@@ -360,13 +369,17 @@ class ToolCallingTest {
                 requestedKey(story)));
     assertThat(story).noneMatch(AgentEvent.ToolApproved.class::isInstance);
     assertThat(story.get(3))
+        .isInstanceOfSatisfying(
+            AgentEvent.InferenceAnswered.class, event -> assertThat(event.request()).isPresent());
+    assertThat(EngineFixture.withoutManifest(story.get(3)))
         .isEqualTo(
             new AgentEvent.InferenceAnswered(
                 new Seq(4),
                 new TurnId(1),
                 engine.ref(agentId, List.of(new Block.Text("I was not allowed to look."))),
                 false,
-                Usage.unreported()));
+                Usage.unreported(),
+                Optional.empty()));
   }
 
   /** What an application configures per tool is what the tool is actually told. */

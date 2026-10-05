@@ -73,7 +73,8 @@ class AgentStateRepeatedCallIdTest {
                 new AgentCommand.InferenceOutcome.RequestedActions(
                     MAIL,
                     List.of(new ActionRequest.ToolCall(C, TOOL, "tool", KEY)),
-                    Usage.unreported()))));
+                    Usage.unreported(),
+                    Optional.empty()))));
   }
 
   private static AgentState approved(AgentState awaiting, Seq request) {

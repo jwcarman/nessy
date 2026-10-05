@@ -27,6 +27,7 @@ import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.backend.event.ActionRequest;
+import org.jwcarman.nessy.backend.event.RequestManifest;
 import org.jwcarman.nessy.inference.Failure;
 
 /**
@@ -76,10 +77,12 @@ public sealed interface EffectOutcome {
    *
    * @param truncated whether the model was cut off at its output limit, so the answer stops short
    */
-  record InferenceAnswered(PayloadRef answer, boolean truncated, Usage usage)
+  record InferenceAnswered(
+      PayloadRef answer, boolean truncated, Usage usage, Optional<RequestManifest> request)
       implements EffectOutcome {
     public InferenceAnswered {
       usage = usage == null ? Usage.unreported() : usage;
+      request = request == null ? Optional.empty() : request;
     }
   }
 
@@ -91,9 +94,11 @@ public sealed interface EffectOutcome {
    * working perfectly; recording it as an answer would put words in the model's mouth, since a
    * refusal was measured to carry no content at all.
    */
-  record InferenceRefused(String category, Usage usage) implements EffectOutcome {
+  record InferenceRefused(String category, Usage usage, Optional<RequestManifest> request)
+      implements EffectOutcome {
     public InferenceRefused {
       usage = usage == null ? Usage.unreported() : usage;
+      request = request == null ? Optional.empty() : request;
     }
   }
 
@@ -109,9 +114,11 @@ public sealed interface EffectOutcome {
    * had a blip and one that can never speak again -- today those are indistinguishable, so an agent
    * whose every future turn will fail returns to idle looking perfectly healthy.
    */
-  record InferenceFailed(Failure failure, Usage usage) implements EffectOutcome {
+  record InferenceFailed(Failure failure, Usage usage, Optional<RequestManifest> request)
+      implements EffectOutcome {
     public InferenceFailed {
       usage = usage == null ? Usage.unreported() : usage;
+      request = request == null ? Optional.empty() : request;
     }
   }
 
@@ -122,10 +129,15 @@ public sealed interface EffectOutcome {
    * the whole of what came back rather than just the calls, because the prose and the vendor state
    * around them are part of the same message and are re-sent with it.
    */
-  record InferenceRequestedActions(PayloadRef request, List<ActionRequest> actions, Usage usage)
+  record InferenceRequestedActions(
+      PayloadRef request,
+      List<ActionRequest> actions,
+      Usage usage,
+      Optional<RequestManifest> manifest)
       implements EffectOutcome {
     public InferenceRequestedActions {
       usage = usage == null ? Usage.unreported() : usage;
+      manifest = manifest == null ? Optional.empty() : manifest;
     }
   }
 

@@ -22,10 +22,11 @@ import org.jwcarman.nessy.api.TurnId;
  * The text shown to a model in place of one chapter's turns.
  *
  * <p><b>Not ambient.</b> Ambient is a view of the world as it stands -- a note, a plan, the time --
- * regenerated on every call and never written down. A summary is the opposite on every count: it is
- * derived from what was actually said, it is durable, and it names exactly which turns it replaces.
- * Letting one stand in for the other would let a summary be quietly dropped like a note, or a note
- * be treated as the record of a conversation.
+ * regenerated on every call and never part of the story: a call's record keeps what it was shown,
+ * but no later call reads it back. A summary is the opposite on every count: it is derived from
+ * what was actually said, it is durable, and it names exactly which turns it replaces. Letting one
+ * stand in for the other would let a summary be quietly dropped like a note, or a note be treated
+ * as the record of a conversation.
  *
  * <p>It is written once and never replaced. Several of them cover a long story in successive
  * chapters: the next stretch of turns becomes the next summary, and nothing already written is

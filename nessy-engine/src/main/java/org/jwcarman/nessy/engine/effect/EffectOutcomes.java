@@ -96,21 +96,25 @@ public final class EffectOutcomes {
           "%s answers a request and none was named".formatted(outcome.getClass().getSimpleName()));
     }
     return switch (outcome) {
-      case EffectOutcome.InferenceAnswered(var answer, var truncated, var usage) ->
+      case EffectOutcome.InferenceAnswered(var answer, var truncated, var usage, var manifest) ->
           new AgentCommand.CompleteInference(
               turn,
-              new AgentCommand.InferenceOutcome.Answered(answer, truncated, usage),
+              new AgentCommand.InferenceOutcome.Answered(answer, truncated, usage, manifest),
               priorAttempts);
-      case EffectOutcome.InferenceRefused(String category, var usage) ->
-          new AgentCommand.CompleteInference(
-              turn, new AgentCommand.InferenceOutcome.Refused(category, usage), priorAttempts);
-      case EffectOutcome.InferenceFailed(var failure, var usage) ->
-          new AgentCommand.CompleteInference(
-              turn, new AgentCommand.InferenceOutcome.Failed(failure, usage), priorAttempts);
-      case EffectOutcome.InferenceRequestedActions(var asked, var calls, var usage) ->
+      case EffectOutcome.InferenceRefused(String category, var usage, var manifest) ->
           new AgentCommand.CompleteInference(
               turn,
-              new AgentCommand.InferenceOutcome.RequestedActions(asked, calls, usage),
+              new AgentCommand.InferenceOutcome.Refused(category, usage, manifest),
+              priorAttempts);
+      case EffectOutcome.InferenceFailed(var failure, var usage, var manifest) ->
+          new AgentCommand.CompleteInference(
+              turn,
+              new AgentCommand.InferenceOutcome.Failed(failure, usage, manifest),
+              priorAttempts);
+      case EffectOutcome.InferenceRequestedActions(var asked, var calls, var usage, var manifest) ->
+          new AgentCommand.CompleteInference(
+              turn,
+              new AgentCommand.InferenceOutcome.RequestedActions(asked, calls, usage, manifest),
               priorAttempts);
       case EffectOutcome.ToolSucceeded(var callId, var result, var rendered) ->
           new AgentCommand.CompleteToolCall(

@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
@@ -165,7 +166,8 @@ class FirstStoreHoldingStoriesTest {
                 request,
                 List.of(
                     new ActionRequest.ToolCall(CallId.of("a"), new ToolName("lookup"), "x", key)),
-                Usage.unreported()),
+                Usage.unreported(),
+                Optional.empty()),
             new AgentEvent.ToolSucceeded(
                 new Seq(3), new TurnId(1), CallId.of("a"), result, "done", key)),
         Seq.NONE,

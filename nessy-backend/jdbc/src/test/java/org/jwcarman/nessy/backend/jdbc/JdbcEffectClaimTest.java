@@ -116,7 +116,8 @@ class JdbcEffectClaimTest {
               agent,
               new AgentEffect.Infer(new TurnId(1)),
               Duration.ofMinutes(1),
-              new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported()),
+              new EffectOutcome.InferenceRefused(
+                  "undispatchable", Usage.unreported(), Optional.empty()),
               now.plus(Duration.ofHours(1)),
               null,
               now);
@@ -175,7 +176,8 @@ class JdbcEffectClaimTest {
               agent,
               new AgentEffect.Infer(new TurnId(1)),
               Duration.ofMinutes(1),
-              new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported()),
+              new EffectOutcome.InferenceRefused(
+                  "undispatchable", Usage.unreported(), Optional.empty()),
               now.plus(Duration.ofHours(1)),
               null,
               now.minusSeconds(i));
@@ -232,7 +234,7 @@ class JdbcEffectClaimTest {
         agent,
         new AgentEffect.Infer(new TurnId(1)),
         TIMEOUT,
-        new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported()),
+        new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported(), Optional.empty()),
         DEADLINE,
         null,
         START);
@@ -380,7 +382,7 @@ class JdbcEffectClaimTest {
         agent,
         new AgentEffect.Infer(new TurnId(1)),
         TIMEOUT,
-        new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported()),
+        new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported(), Optional.empty()),
         DEADLINE,
         null,
         START);

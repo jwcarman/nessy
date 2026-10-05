@@ -21,9 +21,10 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.SystemPrompt;
+import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
-import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.ToolChoice;
 import org.jwcarman.nessy.inference.ToolOffer;
 import org.jwcarman.nessy.inference.Toolset;
@@ -52,19 +53,27 @@ public class DefaultInferenceService implements InferenceService {
    */
   private final Optional<JsonSchema> outputSchema;
 
+  /** Where the parts of each request's manifest are kept, scoped to the agent for each call. */
+  private final Payloads payloads;
+
   public DefaultInferenceService(
       InferenceContextAssembler assembler,
       InferenceProvider provider,
       SystemPrompt systemPrompt,
       List<ToolOffer> tools,
       Narrator narrator,
-      Optional<JsonSchema> outputSchema) {
+      Optional<JsonSchema> outputSchema,
+      Payloads payloads) {
     this.assembler = assembler;
     this.provider = provider;
     this.systemPrompt = systemPrompt;
     this.toolset = Toolset.of(tools);
     this.narrator = narrator;
     this.outputSchema = Objects.requireNonNull(outputSchema, "outputSchema must not be null");
+    this.payloads = Objects.requireNonNull(payloads, "payloads must not be null");
+    // Read when the harness is built, so a build whose version resource was never filled in fails
+    // at startup with its clear message, not at the first model call.
+    EngineVersion.current();
   }
 
   /** The same offer, asked to produce prose. */
@@ -73,7 +82,7 @@ public class DefaultInferenceService implements InferenceService {
   }
 
   @Override
-  public InferenceResult infer(InferenceInvocation invocation) {
+  public Inferred infer(InferenceInvocation invocation) {
     InferenceRequest request =
         new InferenceRequest(
             systemPrompt,
@@ -84,11 +93,18 @@ public class DefaultInferenceService implements InferenceService {
             invocation.answerOnly() ? answering() : toolset,
             invocation.options(),
             outputSchema);
+    // Built from the very request that is sent, before it is sent: a record of what the model
+    // was shown cannot disagree with what it was shown. A provider that throws still leaves the
+    // parts stored; they are content-addressed, so the retry reuses them rather than adding more.
+    RequestManifest manifest =
+        RequestManifests.of(request, payloads.forAgent(invocation.agentId()));
     // Bound here, which is the only place that knows both who is being served and where the
     // narration goes. The provider is handed something that can say what is arriving -- text, or
     // thinking -- and cannot say whose it is, or that an agent is involved at all.
-    return provider.infer(
-        request,
-        InferenceNarrators.of(narrator.forAgent(invocation.agentType(), invocation.agentId())));
+    return new Inferred(
+        provider.infer(
+            request,
+            InferenceNarrators.of(narrator.forAgent(invocation.agentType(), invocation.agentId()))),
+        manifest);
   }
 }

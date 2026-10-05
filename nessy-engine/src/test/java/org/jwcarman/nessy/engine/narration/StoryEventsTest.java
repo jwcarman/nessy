@@ -69,7 +69,8 @@ class StoryEventsTest {
 
     assertThat(
             StoryEvents.of(
-                new AgentEvent.InferenceAnswered(SEQ, TURN, PayloadRef.of("p"), true, usage)))
+                new AgentEvent.InferenceAnswered(
+                    SEQ, TURN, PayloadRef.of("p"), true, usage, Optional.empty())))
         .isEqualTo(new Narration.Answered(TURN, true, usage));
   }
 
@@ -80,7 +81,7 @@ class StoryEventsTest {
     assertThat(
             StoryEvents.of(
                 new AgentEvent.InferenceAttempted(
-                    SEQ, TURN, new Failure.Unknown("no answer"), usage)))
+                    SEQ, TURN, new Failure.Unknown("no answer"), usage, Optional.empty())))
         .isEqualTo(new Narration.InferenceRetried(TURN, FailureKind.UNKNOWN, "no answer", usage));
   }
 
@@ -93,7 +94,8 @@ class StoryEventsTest {
             TURN,
             PayloadRef.of("p"),
             List.of(new ActionRequest.ToolCall(CALL, new ToolName("lookup"), "look it up", KEY)),
-            usage);
+            usage,
+            Optional.empty());
 
     assertThat(StoryEvents.of(asked))
         .isEqualTo(
@@ -109,7 +111,9 @@ class StoryEventsTest {
   void a_refused_turn_is_told_with_the_category_and_cost() {
     Usage usage = Usage.of("a-model", 7, 0);
 
-    assertThat(StoryEvents.of(new AgentEvent.InferenceRefused(SEQ, TURN, "policy", usage)))
+    assertThat(
+            StoryEvents.of(
+                new AgentEvent.InferenceRefused(SEQ, TURN, "policy", usage, Optional.empty())))
         .isEqualTo(new Narration.TurnRefused(TURN, "policy", usage));
   }
 
@@ -160,12 +164,16 @@ class StoryEventsTest {
     return Stream.of(
         new AgentEvent.TurnStarted(
             SEQ, TURN, PayloadRef.of("p"), "Invoice", Instant.EPOCH, Instant.EPOCH),
-        new AgentEvent.InferenceAnswered(SEQ, TURN, PayloadRef.of("p"), false, usage),
-        new AgentEvent.InferenceRefused(SEQ, TURN, "policy", usage),
-        new AgentEvent.InferenceFailed(SEQ, TURN, new Failure.Permanent("x"), usage),
-        new AgentEvent.InferenceAttempted(SEQ, TURN, new Failure.Transient("x"), usage),
+        new AgentEvent.InferenceAnswered(
+            SEQ, TURN, PayloadRef.of("p"), false, usage, Optional.empty()),
+        new AgentEvent.InferenceRefused(SEQ, TURN, "policy", usage, Optional.empty()),
+        new AgentEvent.InferenceFailed(
+            SEQ, TURN, new Failure.Permanent("x"), usage, Optional.empty()),
+        new AgentEvent.InferenceAttempted(
+            SEQ, TURN, new Failure.Transient("x"), usage, Optional.empty()),
         new AgentEvent.TurnStopped(SEQ, TURN, "x"),
-        new AgentEvent.ActionsRequested(SEQ, TURN, PayloadRef.of("p"), List.of(), usage),
+        new AgentEvent.ActionsRequested(
+            SEQ, TURN, PayloadRef.of("p"), List.of(), usage, Optional.empty()),
         new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), Optional.empty(), KEY),
         new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty(), Optional.empty(), KEY),
         new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok", KEY),
@@ -179,7 +187,9 @@ class StoryEventsTest {
   private static void assertFailureTold(Failure failure, FailureKind kind, String reason) {
     Usage usage = Usage.of("a-model", 1, 1);
 
-    assertThat(StoryEvents.of(new AgentEvent.InferenceFailed(SEQ, TURN, failure, usage)))
+    assertThat(
+            StoryEvents.of(
+                new AgentEvent.InferenceFailed(SEQ, TURN, failure, usage, Optional.empty())))
         .isEqualTo(new Narration.TurnFailed(TURN, kind, reason, usage));
   }
 
