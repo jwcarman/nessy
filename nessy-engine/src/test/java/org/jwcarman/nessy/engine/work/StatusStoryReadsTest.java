@@ -234,6 +234,29 @@ class StatusStoryReadsTest {
         .contains(status.waitingApprovals().getFirst().turn());
   }
 
+  /**
+   * A status whose first story read is older than a parked row reads the story once more, and the
+   * approvals it then rebuilds come from that second read -- not from a third.
+   */
+  @Test
+  void a_status_that_reads_again_reads_the_story_twice_and_no_more() {
+    AgentType type = new AgentType("status-reads-twice-" + UUID.randomUUID());
+    AgentId agent = new AgentId(UUID.randomUUID());
+    harness(type).tell(agent, "what lake?");
+    parked(type, agent, 1);
+    List<AgentEvent> beforeTheDeferral = withoutTheDeferral(engine.story(type, agent));
+    AtomicInteger reads = new AtomicInteger();
+
+    AgentStatus status =
+        StoredAgentWork.queued(
+                new Reading(engine.backend(), Optional.of(beforeTheDeferral), reads),
+                Clock.systemUTC())
+            .status(type, agent);
+
+    assertThat(status.waitingApprovals()).hasSize(1);
+    assertThat(reads.get()).as("one read, and one more for the agent").isEqualTo(2);
+  }
+
   /** The story as it stood just before the step that recorded the (only) deferral. */
   private static List<AgentEvent> withoutTheDeferral(List<AgentEvent> story) {
     List<AgentEvent> sinceTurn =
