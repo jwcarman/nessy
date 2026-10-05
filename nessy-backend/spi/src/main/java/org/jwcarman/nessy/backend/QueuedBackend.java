@@ -69,7 +69,8 @@ public interface QueuedBackend {
 
   /**
    * The number of inputs this agent has been told and has not started: what its backlogs hold, of
-   * whatever input type. Zero for an agent it has never heard of.
+   * whatever input type. Zero for an agent it has never heard of. It is a moment's count and may be
+   * a step old by the time the caller uses it.
    */
   int queued(AgentType type, AgentId agent);
 }

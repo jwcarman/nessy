@@ -180,10 +180,10 @@ class JdbcEffectLiveTest {
 
       assertThat(spoiled).isOne();
       assertThat(claimed).hasSize(2);
+      assertThat(live).hasSize(1);
       assertThat(live)
           .extracting(LiveEffect::effectId)
           .doesNotContain(claimed.getLast().effectId());
-      assertThat(live).hasSize(1);
       assertThat(parked)
           .extracting(LiveEffect::effectId)
           .containsExactly(live.getFirst().effectId());
@@ -222,6 +222,25 @@ class JdbcEffectLiveTest {
 
       assertThat(live.parkedNow(past)).isFalse();
       assertThat(effects.parkedNow(Optional.empty(), past, Optional.empty(), 10)).isEmpty();
+    }
+
+    @Test
+    void a_row_marked_parked_that_is_pending_is_not_parked_now() {
+      insert(TYPE, agent, 1, START);
+      Attempt attempt = claimed(TYPE, START);
+      effects.park(attempt.effectId(), attempt.attemptsMade(), START);
+      int reset =
+          JdbcClient.create(dataSource)
+              .sql("UPDATE nessy_agent_effect SET status = 'PENDING' WHERE effect_id = ?")
+              .params(attempt.effectId())
+              .update();
+
+      LiveEffect live = effects.liveFor(TYPE, agent).getFirst();
+
+      assertThat(reset).isOne();
+      assertThat(live.running()).isFalse();
+      assertThat(live.parkedAt()).isPresent();
+      assertThat(effects.parkedNow(Optional.empty(), START, Optional.empty(), 10)).isEmpty();
     }
 
     @Test
@@ -293,6 +312,9 @@ class JdbcEffectLiveTest {
         page = effects.parkedNow(Optional.of(TYPE), now, after, 2);
         paged.addAll(page);
         after = page.isEmpty() ? after : Optional.of(page.getLast());
+        assertThat(paged)
+            .as("a wrong cursor would repeat rows forever")
+            .hasSizeLessThanOrEqualTo(5);
       } while (!page.isEmpty());
 
       assertThat(whole).hasSize(5);

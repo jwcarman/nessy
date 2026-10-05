@@ -206,6 +206,22 @@ class InMemoryEffectsLiveTest {
     }
 
     @Test
+    void a_row_marked_parked_that_is_pending_again_is_not_parked_now() {
+      insert(TYPE, agent, 1, START);
+      Attempt attempt = claimed(TYPE, START);
+      effects.park(attempt.effectId(), attempt.attemptsMade(), START);
+      boolean rescheduled =
+          effects.reschedule(attempt.effectId(), attempt.attemptsMade(), START, List.of());
+
+      LiveEffect live = effects.liveFor(TYPE, agent).getFirst();
+
+      assertThat(rescheduled).isTrue();
+      assertThat(live.running()).isFalse();
+      assertThat(live.parkedAt()).as("the mark outlives the reschedule").isPresent();
+      assertThat(effects.parkedNow(Optional.empty(), START, Optional.empty(), 10)).isEmpty();
+    }
+
+    @Test
     void a_parked_row_claimed_again_at_its_deadline_is_not_parked_now() {
       insert(TYPE, agent, 1, START);
       Attempt attempt = claimed(TYPE, START);
@@ -219,6 +235,22 @@ class InMemoryEffectsLiveTest {
       assertThat(live.parkedAt()).as("still marked until the row is deleted").isPresent();
       assertThat(live.parkedNow(DEADLINE)).isFalse();
       assertThat(effects.parkedNow(Optional.empty(), DEADLINE, Optional.empty(), 10)).isEmpty();
+    }
+
+    @Test
+    void a_row_that_cannot_be_decoded_does_not_end_a_page() {
+      insert(TYPE, agent, UNREADABLE.value(), START);
+      insert(TYPE, AgentId.random(), 1, START.plusSeconds(1));
+      insert(TYPE, AgentId.random(), 2, START.plusSeconds(2));
+      List<Attempt> claimed = effects.markRunning(TYPE, START.plusSeconds(3), 10);
+      claimed.forEach(a -> effects.park(a.effectId(), a.attemptsMade(), START.plusSeconds(3)));
+      Instant now = START.plusSeconds(4);
+
+      List<LiveEffect> page = effects.parkedNow(Optional.of(TYPE), now, Optional.empty(), 1);
+
+      assertThat(claimed).hasSize(3);
+      assertThat(page).hasSize(1);
+      assertThat(page.getFirst().effect()).isEqualTo(new AgentEffect.Infer(new TurnId(1)));
     }
 
     @Test
@@ -256,6 +288,9 @@ class InMemoryEffectsLiveTest {
         page = effects.parkedNow(Optional.of(TYPE), now, after, 2);
         paged.addAll(page);
         after = page.isEmpty() ? after : Optional.of(page.getLast());
+        assertThat(paged)
+            .as("a wrong cursor would repeat rows forever")
+            .hasSizeLessThanOrEqualTo(5);
       } while (!page.isEmpty());
 
       assertThat(whole).hasSize(5);
