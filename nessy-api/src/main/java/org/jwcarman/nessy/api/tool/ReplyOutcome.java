@@ -35,9 +35,9 @@ public sealed interface ReplyOutcome {
    * The answer changed nothing.
    *
    * <p>Deliberately does not say why -- answered already, expired at its deadline, settled by
-   * something else a moment sooner, never issued here, or for an agent type this process does not
-   * serve. They mean the same thing to a caller, and telling them apart would need a record of
-   * settled calls that nothing else wants and somebody would have to sweep.
+   * something else a moment sooner, a key this engine does not know, or for an agent type this
+   * process does not serve. They mean the same thing to a caller, and telling them apart would need
+   * a record of settled calls that nothing else wants and somebody would have to sweep.
    */
   record Ignored() implements ReplyOutcome {}
 }

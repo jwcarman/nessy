@@ -16,10 +16,8 @@
 package org.jwcarman.nessy.spring.boot;
 
 import io.micrometer.observation.ObservationRegistry;
-import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.Tool;
-import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.engine.observability.ObservedApprover;
 import org.jwcarman.nessy.engine.observability.ObservedTool;
 
@@ -42,12 +40,14 @@ import org.jwcarman.nessy.engine.observability.ObservedTool;
  * <p>Token counts are a HISTOGRAM, never tags. A tag whose value is 606 makes a new time series per
  * distinct token count, which is how a metrics bill becomes a story.
  *
- * <p><b>What this cannot do, and why.</b> Nothing here can say which agent or turn a model call
- * belongs to: an {@code InferenceRequest} carries a context, a prompt, tools and a toolset, and no
- * identity; {@link ToolCallRequest} carries a reply address and nothing else. So model and tool
- * spans are correctly timed and correctly attributed, and they are ROOTS — they do not nest under a
- * turn, because there is nothing to nest them under. Approvals are the exception: {@link
- * ApprovalRequest} knows its agent and its call.
+ * <p><b>Whose call a span is.</b> A tool span and an approval span tag themselves with the agent
+ * type, the agent id and the turn, read off the request they are given. A model span copies the
+ * agent name and the conversation id from the observation that is current when the call starts, and
+ * takes its turn from the request's active turn, so a model call made outside any agent's span
+ * carries no agent name. On both doors each of the three opens under the {@code nessy.effect} span
+ * of the attempt that performs it. On the direct door that span is under the {@code invoke_agent}
+ * span of the {@code ask}; on the queued door it is parented to the trace context stored with the
+ * effect.
  */
 public final class Observed {
 

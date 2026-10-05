@@ -175,8 +175,9 @@ public final class DefaultReplies implements Replies {
 
     Optional<Awaiting> found = find(bound, agentId, key, expected);
     if (found.isEmpty()) {
-      // Answered already, expired at its deadline, never issued, or settled a moment sooner by
-      // something else. One answer for a caller, because they are the same news.
+      // Nothing awaits this answer: the call was answered already, its deadline passed, the key
+      // is not one this engine knows, or something else settled it a moment sooner. A caller is
+      // told the same thing in each case, because it is the same news.
       log.info(
           "[{}] a reply for key {} of agent {} found nothing awaiting it",
           type.value(),
@@ -248,7 +249,7 @@ public final class DefaultReplies implements Replies {
    */
   private record Awaiting(Attempt attempt, AgentEffect effect) {}
 
-  /** Whether an effect is for the call this key was issued for. */
+  /** Whether an effect is for the call this key names. */
   private static boolean names(AgentEffect effect, IdempotencyKey key) {
     return switch (effect) {
       case AgentEffect.Approve(_, _, _, _, IdempotencyKey own) -> own.equals(key);

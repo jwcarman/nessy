@@ -429,6 +429,7 @@ class RepliesByKeyTest {
             throws Exception {
       AgentType type = newType();
       CountDownLatch release = new CountDownLatch(1);
+      CountDownLatch returned = new CountDownLatch(1);
       held.add(release);
       toolBehaviour =
           _ -> {
@@ -437,6 +438,7 @@ class RepliesByKeyTest {
             } catch (InterruptedException _) {
               Thread.currentThread().interrupt();
             }
+            returned.countDown();
             return Awaited.ready(ToolResult.ok(new Block.Text("the tool's own")));
           };
       harness(type, _ -> Awaited.ready(ApprovalResult.approved()), Duration.ofMinutes(30));
@@ -450,14 +452,20 @@ class RepliesByKeyTest {
       assertThat(outcome).isEqualTo(new ReplyOutcome.Applied());
       assertThat(count(type, agent, AgentEvent.ToolSucceeded.class)).isOne();
       release.countDown();
-      idle(type, agent);
+      assertThat(returned.await(20, TimeUnit.SECONDS)).as("the tool returned").isTrue();
+      // Closing the factory closes every dispatcher's workers, and that waits for the tool's
+      // attempt to finish, outcome handling included. The story is read after it, from the
+      // store, which is still open.
+      engine.harnesses().close();
       List<AgentEvent.ToolSucceeded> results =
           engine.story(type, agent).stream()
               .filter(AgentEvent.ToolSucceeded.class::isInstance)
               .map(AgentEvent.ToolSucceeded.class::cast)
               .toList();
       assertThat(results).as("the tool's own result wrote nothing").hasSize(1);
-      assertThat(results.getFirst().rendered()).contains("the reply's own");
+      assertThat(results.getFirst().rendered())
+          .contains("the reply's own")
+          .doesNotContain("the tool's own");
     }
 
     @Test
