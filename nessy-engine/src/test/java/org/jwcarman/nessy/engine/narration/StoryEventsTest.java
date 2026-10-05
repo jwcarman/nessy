@@ -166,8 +166,8 @@ class StoryEventsTest {
         new AgentEvent.InferenceAttempted(SEQ, TURN, new Failure.Transient("x"), usage),
         new AgentEvent.TurnStopped(SEQ, TURN, "x"),
         new AgentEvent.ActionsRequested(SEQ, TURN, PayloadRef.of("p"), List.of(), usage),
-        new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), KEY),
-        new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty(), KEY),
+        new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), Optional.empty(), KEY),
+        new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty(), Optional.empty(), KEY),
         new AgentEvent.ToolSucceeded(SEQ, TURN, CALL, PayloadRef.of("r"), "ok", KEY),
         new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", KEY),
         new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, Instant.EPOCH, PayloadRef.of("q"), KEY),
@@ -186,7 +186,8 @@ class StoryEventsTest {
   void an_approved_call_is_told_as_approved() {
     assertThat(
             StoryEvents.of(
-                new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.of("u_carol"), KEY)))
+                new AgentEvent.ToolApproved(
+                    SEQ, TURN, CALL, Optional.of("u_carol"), Optional.empty(), KEY)))
         .isEqualTo(new Narration.CallApproved(CALL, KEY, Optional.of("u_carol")));
   }
 
@@ -213,7 +214,7 @@ class StoryEventsTest {
     assertThat(
             StoryEvents.of(
                 new AgentEvent.ToolDenied(
-                    SEQ, TURN, CALL, "not allowed", Optional.of("u_dave"), KEY)))
+                    SEQ, TURN, CALL, "not allowed", Optional.of("u_dave"), Optional.empty(), KEY)))
         .isEqualTo(new Narration.CallDenied(CALL, KEY, "not allowed", Optional.of("u_dave")));
   }
 

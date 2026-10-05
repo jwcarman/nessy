@@ -253,6 +253,7 @@ class DeferredApprovalTest {
                 new TurnId(1),
                 new CallId("call_1"),
                 Optional.of("u_carol"),
+                Optional.empty(),
                 requestedKey(story)));
     assertThat(story.get(4)).isInstanceOf(AgentEvent.ToolSucceeded.class);
     assertThat(story.get(5)).isInstanceOf(AgentEvent.InferenceAnswered.class);

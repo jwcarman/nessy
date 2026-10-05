@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -215,6 +216,8 @@ class ToolCallingTest {
                     new ActionRequest.ToolCall(
                         new CallId("call_1"), new ToolName("lookup"), "Query[q=loch ness]", KEY)),
                 Usage.unreported()));
+    Optional<PayloadRef> kept = ((AgentEvent.ToolApproved) story.get(2)).question();
+    assertThat(kept).as("the question the approver was shown is kept").isPresent();
     assertThat(story.get(2))
         .as("the grant, written before the call was dispatched")
         .isEqualTo(
@@ -223,6 +226,7 @@ class ToolCallingTest {
                 new TurnId(1),
                 new CallId("call_1"),
                 Optional.empty(),
+                kept,
                 requestedKey(story)));
     assertThat(story.get(3))
         .isEqualTo(
@@ -341,6 +345,8 @@ class ToolCallingTest {
         .as("the approver was shown what the call would do, not what the tool is")
         .containsExactly("look up loch ness in the register");
     List<AgentEvent> story = engine.story(type, agentId);
+    Optional<PayloadRef> kept = ((AgentEvent.ToolDenied) story.get(2)).question();
+    assertThat(kept).as("the question the approver was shown is kept").isPresent();
     assertThat(story.get(2))
         .as("a denial is written and no grant ever was")
         .isEqualTo(
@@ -350,6 +356,7 @@ class ToolCallingTest {
                 new CallId("call_1"),
                 "out of hours",
                 Optional.empty(),
+                kept,
                 requestedKey(story)));
     assertThat(story).noneMatch(AgentEvent.ToolApproved.class::isInstance);
     assertThat(story.get(3))

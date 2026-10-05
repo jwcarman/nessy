@@ -321,7 +321,12 @@ class ValueTypeCodecTest {
         new String(
             entries.encode(
                 new AgentEvent.ToolApproved(
-                    new Seq(3), new TurnId(1), new CallId("c1"), Optional.of("jcarman"), KEY)),
+                    new Seq(3),
+                    new TurnId(1),
+                    new CallId("c1"),
+                    Optional.of("jcarman"),
+                    Optional.empty(),
+                    KEY)),
             StandardCharsets.UTF_8);
 
     assertThat(written).contains("\"callId\":\"c1\"").contains("\"decidedBy\":\"jcarman\"");
@@ -452,7 +457,12 @@ class ValueTypeCodecTest {
         "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
     AgentEvent.ToolApproved written =
         new AgentEvent.ToolApproved(
-            new Seq(3), new TurnId(1), new CallId("c1"), Optional.of("jcarman"), KEY);
+            new Seq(3),
+            new TurnId(1),
+            new CallId("c1"),
+            Optional.of("jcarman"),
+            Optional.empty(),
+            KEY);
 
     assertThat(readStored(stored)).isEqualTo(written);
     assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
@@ -467,12 +477,84 @@ class ValueTypeCodecTest {
         "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
     AgentEvent.ToolDenied written =
         new AgentEvent.ToolDenied(
-            new Seq(3), new TurnId(1), new CallId("c1"), "no", Optional.of("u_dave"), KEY);
+            new Seq(3),
+            new TurnId(1),
+            new CallId("c1"),
+            "no",
+            Optional.of("u_dave"),
+            Optional.empty(),
+            KEY);
 
     assertThat(readStored(stored)).isEqualTo(written);
     assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
         .contains("\"decidedBy\":\"u_dave\"")
         .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"");
+  }
+
+  @Test
+  void aGrantIsStoredWithTheQuestionItWasDecidedOn() {
+    String stored =
+        """
+        {"type":"tool-approved","seq":3,"turn":1,"callId":"c1","decidedBy":"jcarman",\
+        "question":"b81e0c47","idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+    AgentEvent.ToolApproved written =
+        new AgentEvent.ToolApproved(
+            new Seq(3),
+            new TurnId(1),
+            new CallId("c1"),
+            Optional.of("jcarman"),
+            Optional.of(PayloadRef.of("b81e0c47")),
+            KEY);
+
+    assertThat(readStored(stored)).isEqualTo(written);
+    assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
+        .contains("\"question\":\"b81e0c47\"");
+  }
+
+  @Test
+  void aDenialIsStoredWithTheQuestionItWasDecidedOn() {
+    String stored =
+        """
+        {"type":"tool-denied","seq":3,"turn":1,"callId":"c1","reason":"no","decidedBy":"u_dave",\
+        "question":"b81e0c47","idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+    AgentEvent.ToolDenied written =
+        new AgentEvent.ToolDenied(
+            new Seq(3),
+            new TurnId(1),
+            new CallId("c1"),
+            "no",
+            Optional.of("u_dave"),
+            Optional.of(PayloadRef.of("b81e0c47")),
+            KEY);
+
+    assertThat(readStored(stored)).isEqualTo(written);
+    assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
+        .contains("\"question\":\"b81e0c47\"");
+  }
+
+  /** A row written before the field existed has no key for it, and reads as no question. */
+  @Test
+  void aGrantStoredWithoutAQuestionReadsAsHavingNone() {
+    String stored =
+        """
+        {"type":"tool-approved","seq":3,"turn":1,"callId":"c1",\
+        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+
+    AgentEvent.ToolApproved read = (AgentEvent.ToolApproved) readStored(stored);
+
+    assertThat(read.question()).isEmpty();
+  }
+
+  @Test
+  void aDenialStoredWithoutAQuestionReadsAsHavingNone() {
+    String stored =
+        """
+        {"type":"tool-denied","seq":3,"turn":1,"callId":"c1","reason":"no",\
+        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+
+    AgentEvent.ToolDenied read = (AgentEvent.ToolDenied) readStored(stored);
+
+    assertThat(read.question()).isEmpty();
   }
 
   @Test

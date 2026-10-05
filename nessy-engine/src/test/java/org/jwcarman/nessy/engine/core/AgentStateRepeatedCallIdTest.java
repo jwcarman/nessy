@@ -81,7 +81,10 @@ class AgentStateRepeatedCallIdTest {
         awaiting,
         awaiting.execute(
             new AgentCommand.CompleteApproval(
-                TURN, request, C, new AgentCommand.ApprovalOutcome.Approved(Optional.empty()))));
+                TURN,
+                request,
+                C,
+                new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), Optional.empty()))));
   }
 
   /** Request 1 asked for c, it was approved and succeeded; the model is inferring again. */

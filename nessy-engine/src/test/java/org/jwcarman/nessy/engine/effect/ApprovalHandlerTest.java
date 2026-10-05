@@ -58,6 +58,7 @@ import org.jwcarman.nessy.engine.tool.ToolCalls;
 import org.jwcarman.nessy.engine.tool.Tools;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 /**
  * The gate, on its own.
@@ -210,23 +211,72 @@ class ApprovalHandlerTest {
     return ((Handled.Settled) handled).outcome();
   }
 
+  /** The question an outcome carries, whichever way the decision went. */
+  private static Optional<PayloadRef> questionOf(EffectOutcome outcome) {
+    return switch (outcome) {
+      case EffectOutcome.ToolApproved approved -> approved.question();
+      case EffectOutcome.ToolDenied denied -> denied.question();
+      default -> throw new AssertionError("not a decision: " + outcome);
+    };
+  }
+
+  /** A store that cannot keep a document: the only way it is used here is to fail. */
+  private static Payloads storeThatCannotKeepADocument() {
+    return new Payloads() {
+      @Override
+      public PayloadRef put(List<? extends Block> content) {
+        throw new IllegalStateException("not used");
+      }
+
+      @Override
+      public PayloadRef putDocument(JsonNode document) {
+        throw new IllegalStateException("the store is down");
+      }
+
+      @Override
+      public Resolved get(PayloadRef ref) {
+        throw new IllegalStateException("not used");
+      }
+
+      @Override
+      public JsonNode getDocument(PayloadRef ref) {
+        throw new IllegalStateException("not used");
+      }
+    };
+  }
+
   @Test
   void anApprovedCallComesBackAsPermissionRatherThanAResult() {
-    assertThat(ask(bound(_ -> Awaited.ready(ApprovalResult.approved()))))
-        .isEqualTo(new EffectOutcome.ToolApproved(new CallId("c1")));
+    EffectOutcome outcome = ask(bound(_ -> Awaited.ready(ApprovalResult.approved())));
+
+    assertThat(outcome)
+        .isEqualTo(
+            new EffectOutcome.ToolApproved(
+                new CallId("c1"), Optional.empty(), questionOf(outcome)));
+    assertThat(questionOf(outcome)).as("the question is kept").isPresent();
   }
 
   @Test
   void aDeniedCallComesBackAsADenialCarryingTheReason() {
-    assertThat(ask(bound(_ -> Awaited.ready(ApprovalResult.denied("out of hours")))))
-        .isEqualTo(new EffectOutcome.ToolDenied(new CallId("c1"), "out of hours"));
+    EffectOutcome outcome = ask(bound(_ -> Awaited.ready(ApprovalResult.denied("out of hours"))));
+
+    assertThat(outcome)
+        .isEqualTo(
+            new EffectOutcome.ToolDenied(
+                new CallId("c1"), "out of hours", Optional.empty(), questionOf(outcome)));
+    assertThat(questionOf(outcome)).as("the question is kept").isPresent();
   }
 
   /** The default is a real approver that says yes, not an absence to check for. */
   @Test
   void aToolWithNothingGatingItIsStillAsked() {
-    assertThat(ask(bound(Approver.allow())))
-        .isEqualTo(new EffectOutcome.ToolApproved(new CallId("c1")));
+    EffectOutcome outcome = ask(bound(Approver.allow()));
+
+    assertThat(outcome)
+        .isEqualTo(
+            new EffectOutcome.ToolApproved(
+                new CallId("c1"), Optional.empty(), questionOf(outcome)));
+    assertThat(questionOf(outcome)).as("the question is kept").isPresent();
   }
 
   /**
@@ -354,6 +404,120 @@ class ApprovalHandlerTest {
 
     assertThat(handled).isEqualTo(Handled.deferred());
     assertThat(asks[0]).isEqualTo(1);
+  }
+
+  // ---- a decision made at once names its question ----------------------------------------
+
+  @Test
+  void an_approval_made_at_once_carries_the_question_the_approver_saw() {
+    ApprovalRequest[] seen = new ApprovalRequest[1];
+
+    EffectOutcome outcome =
+        ask(
+            bound(
+                request -> {
+                  seen[0] = request;
+                  return Awaited.ready(new ApprovalResult.Approved(Optional.of("u_carol")));
+                }));
+
+    assertThat(outcome)
+        .asInstanceOf(type(EffectOutcome.ToolApproved.class))
+        .satisfies(
+            approved -> {
+              assertThat(approved.callId()).isEqualTo(new CallId("c1"));
+              assertThat(approved.decidedBy()).contains("u_carol");
+              assertThat(approved.question()).isPresent();
+              JsonNode stored = PAYLOADS.forAgent(AGENT).getDocument(approved.question().get());
+              assertThat(stored.toString())
+                  .isEqualTo(ApprovalQuestions.document(seen[0]).toString());
+            });
+  }
+
+  @Test
+  void a_denial_made_at_once_carries_the_question_the_approver_saw() {
+    ApprovalRequest[] seen = new ApprovalRequest[1];
+
+    EffectOutcome outcome =
+        ask(
+            bound(
+                request -> {
+                  seen[0] = request;
+                  return Awaited.ready(
+                      new ApprovalResult.Denied("out of hours", Optional.of("u_dave")));
+                }));
+
+    assertThat(outcome)
+        .asInstanceOf(type(EffectOutcome.ToolDenied.class))
+        .satisfies(
+            denied -> {
+              assertThat(denied.callId()).isEqualTo(new CallId("c1"));
+              assertThat(denied.reason()).isEqualTo("out of hours");
+              assertThat(denied.decidedBy()).contains("u_dave");
+              assertThat(denied.question()).isPresent();
+              JsonNode stored = PAYLOADS.forAgent(AGENT).getDocument(denied.question().get());
+              assertThat(stored.toString())
+                  .isEqualTo(ApprovalQuestions.document(seen[0]).toString());
+            });
+  }
+
+  /**
+   * The question is kept after the approver returns, so what an approver added while deciding is
+   * part of what it was shown when it said yes.
+   */
+  @Test
+  void a_fact_the_approver_added_while_deciding_is_in_the_stored_question() {
+    EffectOutcome outcome =
+        ask(
+            bound(
+                request -> {
+                  request.fact("depth", JsonNodeFactory.instance.numberNode(230));
+                  return Awaited.ready(ApprovalResult.approved());
+                }));
+
+    Optional<PayloadRef> question = questionOf(outcome);
+    assertThat(question).isPresent();
+    JsonNode stored = PAYLOADS.forAgent(AGENT).getDocument(question.get());
+    assertThat(stored.get("facts").get("depth").asInt()).isEqualTo(230);
+  }
+
+  /**
+   * The approver has answered and may have told a person; failing to keep what it was shown must
+   * not undo that, and must not make the ask look failed, which the retry policy would repeat.
+   */
+  @Test
+  void a_decision_still_stands_when_its_question_cannot_be_stored() {
+    int[] asks = {0};
+    Approver approving =
+        _ -> {
+          asks[0]++;
+          return Awaited.ready(new ApprovalResult.Approved(Optional.of("u_carol")));
+        };
+    Approver denying =
+        _ -> {
+          asks[0]++;
+          return Awaited.ready(new ApprovalResult.Denied("out of hours", Optional.of("u_dave")));
+        };
+
+    Handled approved =
+        asked(
+            handler(bound(approving), story(), Narrator.silent(), storeThatCannotKeepADocument()),
+            WRITTEN_DEADLINE);
+    Handled denied =
+        asked(
+            handler(bound(denying), story(), Narrator.silent(), storeThatCannotKeepADocument()),
+            WRITTEN_DEADLINE);
+
+    assertThat(approved)
+        .isEqualTo(
+            Handled.settled(
+                new EffectOutcome.ToolApproved(
+                    new CallId("c1"), Optional.of("u_carol"), Optional.empty())));
+    assertThat(denied)
+        .isEqualTo(
+            Handled.settled(
+                new EffectOutcome.ToolDenied(
+                    new CallId("c1"), "out of hours", Optional.of("u_dave"), Optional.empty())));
+    assertThat(asks[0]).as("one ask per decision, never a second").isEqualTo(2);
   }
 
   /** The reply token settles the call, and a stored document is read by far more than the reply. */
@@ -586,7 +750,11 @@ class ApprovalHandlerTest {
             story("{\"q\":\"loch ness\"}", "lookup"));
 
     assertThat(seen[0]).isEqualTo("lookup");
-    assertThat(outcome).isEqualTo(new EffectOutcome.ToolApproved(new CallId("c1")));
+    assertThat(outcome)
+        .isEqualTo(
+            new EffectOutcome.ToolApproved(
+                new CallId("c1"), Optional.empty(), questionOf(outcome)));
+    assertThat(questionOf(outcome)).as("the question is kept").isPresent();
   }
 
   /** The story and an effect row disagreeing is unrepairable, but the call is still owed one. */

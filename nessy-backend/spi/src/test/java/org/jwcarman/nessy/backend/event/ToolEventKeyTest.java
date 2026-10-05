@@ -39,7 +39,10 @@ class ToolEventKeyTest {
 
   @Test
   void an_approval_refuses_a_null_key() {
-    assertThatThrownBy(() -> new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), null))
+    assertThatThrownBy(
+            () ->
+                new AgentEvent.ToolApproved(
+                    SEQ, TURN, CALL, Optional.empty(), Optional.empty(), null))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("idempotencyKey must not be null");
   }
@@ -47,7 +50,9 @@ class ToolEventKeyTest {
   @Test
   void a_denial_refuses_a_null_key() {
     assertThatThrownBy(
-            () -> new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty(), null))
+            () ->
+                new AgentEvent.ToolDenied(
+                    SEQ, TURN, CALL, "no", Optional.empty(), Optional.empty(), null))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("idempotencyKey must not be null");
   }

@@ -310,7 +310,13 @@ class StoryContentTest {
     private static AgentEvent.ToolDenied denied(
         long seq, long turn, String callId, IdempotencyKey key) {
       return new AgentEvent.ToolDenied(
-          new Seq(seq), new TurnId(turn), CallId.of(callId), "no", Optional.empty(), key);
+          new Seq(seq),
+          new TurnId(turn),
+          CallId.of(callId),
+          "no",
+          Optional.empty(),
+          Optional.empty(),
+          key);
     }
 
     /** Fills the story after the call's own events with more than two pages of other calls. */

@@ -24,8 +24,8 @@ public sealed interface AgentEvent {
   record InferenceAttempted(Seq seq, TurnId turn, Failure failure, Usage usage) implements AgentEvent {}
   record TurnStopped(Seq seq, TurnId turn, String reason) implements AgentEvent {}
   record ActionsRequested(Seq seq, TurnId turn, PayloadRef request, List<ActionRequest> actions, Usage usage) implements AgentEvent {}
-  record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> decidedBy, IdempotencyKey idempotencyKey) implements AgentEvent {}
-  record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> decidedBy, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> decidedBy, Optional<PayloadRef> question, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> decidedBy, Optional<PayloadRef> question, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, String rendered, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ToolFailed(Seq seq, TurnId turn, CallId callId, CallFailure kind, String message, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ApprovalDeferred(Seq seq, TurnId turn, CallId callId, Instant until, PayloadRef question, IdempotencyKey idempotencyKey) implements AgentEvent {}
@@ -57,6 +57,12 @@ fixed when it is written and never worked out again. See
 Each of the four call events (`ToolApproved`, `ToolDenied`, `ToolSucceeded`, `ToolFailed`)
 carries the `IdempotencyKey` its call was requested with, copied from the call the agent is
 waiting for. A reader joins a call's events by that key.
+
+`ToolApproved.question` and `ToolDenied.question` are a `PayloadRef` to the JSON document the
+approver was shown, present when the decision was made at once and the document could be stored.
+An answer that arrives after a deferral has none; the `ApprovalDeferred` before it holds the
+question. Like the deferral's, it is not message content, so nothing that reads a turn's messages
+fetches it.
 
 `ApprovalDeferred` and `ToolDeferred` are the two events for a call that was put aside: nobody
 has answered yet, or the tool will report back later, and the call stands until `until`. Each

@@ -88,7 +88,10 @@ class AgentStateDeferralTest {
 
   private static AgentCommand.CompleteApproval approve(CallId call) {
     return new AgentCommand.CompleteApproval(
-        TURN, REQUEST, call, new AgentCommand.ApprovalOutcome.Approved(Optional.empty()));
+        TURN,
+        REQUEST,
+        call,
+        new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), Optional.empty()));
   }
 
   private static AgentCommand.CompleteApproval deny(CallId call) {
@@ -96,7 +99,7 @@ class AgentStateDeferralTest {
         TURN,
         REQUEST,
         call,
-        new AgentCommand.ApprovalOutcome.Denied("not today", Optional.of("ann")));
+        new AgentCommand.ApprovalOutcome.Denied("not today", Optional.of("ann"), Optional.empty()));
   }
 
   private static AgentCommand.CompleteToolCall succeed(CallId call) {
@@ -332,13 +335,15 @@ class AgentStateDeferralTest {
           .isEqualTo(
               Decision.of(
                   List.of(
-                      new AgentEvent.ToolApproved(Seq.of(3), TURN, CALL, Optional.empty(), KEY)),
+                      new AgentEvent.ToolApproved(
+                          Seq.of(3), TURN, CALL, Optional.empty(), Optional.empty(), KEY)),
                   List.of(callTool)));
       assertThat(with)
           .isEqualTo(
               Decision.of(
                   List.of(
-                      new AgentEvent.ToolApproved(Seq.of(4), TURN, CALL, Optional.empty(), KEY)),
+                      new AgentEvent.ToolApproved(
+                          Seq.of(4), TURN, CALL, Optional.empty(), Optional.empty(), KEY)),
                   List.of(callTool)));
     }
 
@@ -355,14 +360,26 @@ class AgentStateDeferralTest {
               Decision.of(
                   List.of(
                       new AgentEvent.ToolDenied(
-                          Seq.of(3), TURN, CALL, "not today", Optional.of("ann"), KEY)),
+                          Seq.of(3),
+                          TURN,
+                          CALL,
+                          "not today",
+                          Optional.of("ann"),
+                          Optional.empty(),
+                          KEY)),
                   List.of(new AgentEffect.Infer(TURN))));
       assertThat(with)
           .isEqualTo(
               Decision.of(
                   List.of(
                       new AgentEvent.ToolDenied(
-                          Seq.of(4), TURN, CALL, "not today", Optional.of("ann"), KEY)),
+                          Seq.of(4),
+                          TURN,
+                          CALL,
+                          "not today",
+                          Optional.of("ann"),
+                          Optional.empty(),
+                          KEY)),
                   List.of(new AgentEffect.Infer(TURN))));
     }
 

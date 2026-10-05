@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+- **`ToolApproved` and `ToolDenied` carry the question they were decided on.** `AgentEvent.ToolApproved`
+  and `AgentEvent.ToolDenied` gain `Optional<PayloadRef> question` before `idempotencyKey`, and
+  `EffectOutcome.ToolApproved` and `EffectOutcome.ToolDenied` gain it as their last component. The
+  stored events change shape; recreate the database.
+
 - **`nessy_agent_effect` gained a nullable `parked_at` column,** and `Effects` gains
   `park(effectId, attemptsMade, at)`, so a custom implementation must add it. Recreate the
   database.
@@ -77,6 +82,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A decision made at once keeps its question.** When an approver approves or denies without
+  deferring, the document it was shown is stored after it returns, so facts it added while
+  deciding are in it, and its reference is on the `ToolApproved` or `ToolDenied` event. A decision
+  that arrives after a deferral carries none: the `ApprovalDeferred` before it holds the question.
+  If the question cannot be stored, the decision stands without it.
 - `Payloads.putDocument(JsonNode)` and `Payloads.getDocument(PayloadRef)` keep and read JSON
   documents beside message blocks. The same document is one reference and one row. Reading a
   payload as the wrong kind, or a document that is not there, throws an `IllegalStateException`

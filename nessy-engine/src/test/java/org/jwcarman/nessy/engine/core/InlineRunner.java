@@ -115,8 +115,9 @@ final class InlineRunner {
               approve.requestSeq(),
               approve.callId(),
               approves.test(approve.toolName())
-                  ? new AgentCommand.ApprovalOutcome.Approved(Optional.empty())
-                  : new AgentCommand.ApprovalOutcome.Denied("not allowed here", Optional.empty()));
+                  ? new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), Optional.empty())
+                  : new AgentCommand.ApprovalOutcome.Denied(
+                      "not allowed here", Optional.empty(), Optional.empty()));
 
       case AgentEffect.CallTool call -> {
         UnaryOperator<Object> tool = tools.get(call.toolName());

@@ -42,6 +42,12 @@ Approver desk = request -> {
 };
 ```
 
+The question the approver was shown is kept for every decision. A decision made at
+once stores it after the approver returns, so facts the approver added while deciding are in it,
+and puts its reference on the `ToolApproved` or `ToolDenied` event. A decision that arrives after
+a deferral carries no question of its own: the question stored with the deferral is its question.
+If the question cannot be stored, the decision stands without it.
+
 How long the question stands is the binding's term, not the approver's:
 
 ```java

@@ -208,29 +208,43 @@ public sealed interface AgentEvent {
     }
   }
 
-  /** A call was allowed to run. {@code idempotencyKey} is the key the call was requested with. */
+  /**
+   * A call was allowed to run. {@code idempotencyKey} is the key the call was requested with.
+   *
+   * <p>{@code question} is the document the approver was shown, when the decision was made at once
+   * and the document could be kept. It is empty for an answer that arrived after a deferral, whose
+   * question is on the {@link ApprovalDeferred} before it, and for a row written before the field
+   * existed.
+   */
   record ToolApproved(
       Seq seq,
       TurnId turn,
       CallId callId,
       Optional<String> decidedBy,
+      Optional<PayloadRef> question,
       IdempotencyKey idempotencyKey)
       implements AgentEvent {
     public ToolApproved {
+      question = question == null ? Optional.empty() : question;
       Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
     }
   }
 
-  /** A call was refused and never ran. */
+  /**
+   * A call was refused and never ran. {@code question} is as for {@link ToolApproved}: the document
+   * the approver was shown, when the decision was made at once and it could be kept.
+   */
   record ToolDenied(
       Seq seq,
       TurnId turn,
       CallId callId,
       String reason,
       Optional<String> decidedBy,
+      Optional<PayloadRef> question,
       IdempotencyKey idempotencyKey)
       implements AgentEvent {
     public ToolDenied {
+      question = question == null ? Optional.empty() : question;
       Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
     }
   }

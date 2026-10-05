@@ -20,6 +20,7 @@ import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -201,6 +203,8 @@ class ApprovalEnrichmentTest {
             });
     assertThat(ran).as("denied on what the enrichers found").isEmpty();
     List<AgentEvent> story = engine.story(type, agentId);
+    Optional<PayloadRef> kept = ((AgentEvent.ToolDenied) story.get(2)).question();
+    assertThat(kept).as("the question the approver was shown is kept").isPresent();
     assertThat(story.get(2))
         .isEqualTo(
             new AgentEvent.ToolDenied(
@@ -208,7 +212,8 @@ class ApprovalEnrichmentTest {
                 new TurnId(1),
                 new CallId("call_1"),
                 "risk 90 is too high",
-                java.util.Optional.empty(),
+                Optional.empty(),
+                kept,
                 requestedKey(story)));
   }
 

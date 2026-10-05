@@ -172,12 +172,27 @@ public sealed interface EffectOutcome {
     }
   }
 
-  /** A call was never run, because an approver said no. */
-  record ToolDenied(CallId callId, String reason, Optional<String> decidedBy)
+  /**
+   * A call was never run, because an approver said no.
+   *
+   * <p>{@code question} is the document the approver was shown, kept when the decision was made at
+   * once; empty when it could not be kept, and for an answer that arrived after a deferral, whose
+   * question was kept when it was deferred.
+   */
+  record ToolDenied(
+      CallId callId, String reason, Optional<String> decidedBy, Optional<PayloadRef> question)
       implements EffectOutcome {
 
+    public ToolDenied {
+      question = question == null ? Optional.empty() : question;
+    }
+
+    public ToolDenied(CallId callId, String reason, Optional<String> decidedBy) {
+      this(callId, reason, decidedBy, Optional.empty());
+    }
+
     public ToolDenied(CallId callId, String reason) {
-      this(callId, reason, Optional.empty());
+      this(callId, reason, Optional.empty(), Optional.empty());
     }
   }
 
@@ -189,14 +204,23 @@ public sealed interface EffectOutcome {
    * fold checks the call's phase rather than merely its presence -- a redelivered approval must not
    * dispatch a second attempt at a tool that is already running.
    */
-  record ToolApproved(CallId callId, Optional<String> decidedBy) implements EffectOutcome {
+  record ToolApproved(CallId callId, Optional<String> decidedBy, Optional<PayloadRef> question)
+      implements EffectOutcome {
+
+    public ToolApproved {
+      question = question == null ? Optional.empty() : question;
+    }
+
+    public ToolApproved(CallId callId, Optional<String> decidedBy) {
+      this(callId, decidedBy, Optional.empty());
+    }
 
     /**
      * Allowed, with nothing standing behind it -- an ungated tool, or a rule that is its own
      * evidence.
      */
     public ToolApproved(CallId callId) {
-      this(callId, Optional.empty());
+      this(callId, Optional.empty(), Optional.empty());
     }
   }
 }

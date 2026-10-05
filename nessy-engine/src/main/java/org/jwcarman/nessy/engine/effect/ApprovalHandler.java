@@ -189,21 +189,26 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
         Narrated.live(agentType, agentId, new Narration.ApprovalSought(callId, question.action())));
 
     return switch (binding.approve(question)) {
-      case Awaited.Ready<ApprovalResult>(ApprovalResult result) ->
-          Handled.settled(
-              switch (result) {
-                case ApprovalResult.Approved(var decidedBy) ->
-                    new EffectOutcome.ToolApproved(callId, decidedBy);
-                case ApprovalResult.Denied(String reason, var decidedBy) -> {
-                  log.info(
-                      "[{}] agent {}: {} was denied ({})",
-                      agentType.value(),
-                      agentId.value(),
-                      question.action(),
-                      reason);
-                  yield new EffectOutcome.ToolDenied(callId, reason, decidedBy);
-                }
-              });
+      case Awaited.Ready<ApprovalResult>(ApprovalResult result) -> {
+        // Kept after the approver has answered, so a fact it added while deciding is in what it
+        // was shown, and never inside the approver call: that call's exceptions are a failed ask.
+        Optional<PayloadRef> kept =
+            storedQuestion(agentId, callId, question, "the decision is recorded without it");
+        yield Handled.settled(
+            switch (result) {
+              case ApprovalResult.Approved(var decidedBy) ->
+                  new EffectOutcome.ToolApproved(callId, decidedBy, kept);
+              case ApprovalResult.Denied(String reason, var decidedBy) -> {
+                log.info(
+                    "[{}] agent {}: {} was denied ({})",
+                    agentType.value(),
+                    agentId.value(),
+                    question.action(),
+                    reason);
+                yield new EffectOutcome.ToolDenied(callId, reason, decidedBy, kept);
+              }
+            });
+      }
       // The ordinary case for a person, not an exotic one. The approver has the reply
       // address and will come back against it; until then the effect row stays where it is,
       // due at its own deadline, and nothing here says anything to the agent. Silence is
@@ -216,7 +221,12 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
             agentId.value(),
             question.action(),
             question.deadline());
-        yield new Handled.Deferred(storedQuestion(agentId, callId, question));
+        yield new Handled.Deferred(
+            storedQuestion(
+                agentId,
+                callId,
+                question,
+                "the call stays parked on its row, but its deferral will not be recorded"));
       }
     };
   }
@@ -224,21 +234,22 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
   /**
    * What the approver was shown, kept where somebody reading the story later can find it.
    *
-   * <p>Failing to keep it must not fail the deferral: the approver has already been asked and may
-   * have told a person, so an exception here would be read as a failed ask and the retry policy
-   * might ask again. The call stays parked on its row, but its deferral will not be recorded.
+   * <p>Failing to keep it must not fail the decision or the deferral: the approver has already been
+   * asked and may have told a person, so an exception here would be read as a failed ask and the
+   * retry policy might ask again. {@code consequence} says what the failure costs, for the log.
    */
   private Optional<PayloadRef> storedQuestion(
-      AgentId agentId, CallId callId, ApprovalRequest question) {
+      AgentId agentId, CallId callId, ApprovalRequest question, String consequence) {
     try {
       return Optional.of(
           payloads.forAgent(agentId).putDocument(ApprovalQuestions.document(question)));
     } catch (RuntimeException e) {
       log.warn(
-          "[{}] agent {}: the question for call {} could not be stored; the call stays parked on its row, but its deferral will not be recorded",
+          "[{}] agent {}: the question for call {} could not be stored; {}",
           agentType.value(),
           agentId.value(),
           callId,
+          consequence,
           e);
       return Optional.empty();
     }
