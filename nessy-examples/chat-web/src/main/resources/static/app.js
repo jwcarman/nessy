@@ -1,7 +1,10 @@
 // The page. It does three things: draw what has been said, post what you type, and listen.
 //
 // A message is accepted at once (202, empty body) and answered later: the agent works on its own
-// threads, and what it says and does arrives on the stream. A message sent while the agent is
+// threads, and what it does arrives on the stream as events: the words of a provider that streams,
+// the tools it calls, how each call went. The answer's words are not an event of their own; the
+// "answered" event only says which turn it ended, and the page reads the words from the state when
+// it did not see them stream. A message sent while the agent is
 // still working is accepted too; the agent is given everything that arrived meanwhile together,
 // as one message. What is waiting for a person is never kept here: the approval cards are read
 // from the server's state, and read again whenever the stream says something about a call.
@@ -12,9 +15,12 @@
 //
 // The page subscribes FIRST and reads the state once the stream is open, and again every time it
 // reopens. A stream joined with no event id starts from now and replays nothing, so what happened
-// before the subscription, or while it was down, is found in the state, never assumed. Everything
-// the stream and those reads draw runs on one chain, in order, and drawing is idempotent: per
-// turn for answers, per key for cards.
+// before the subscription, or while it was down, is found in the state, never assumed. A
+// connection that drops and comes back hands the browser's last event id to the server, and what it
+// missed is replayed from the journal; a stream the server refused (anything but an event stream)
+// is closed for good by the browser, so the page reopens it itself. Everything the stream and
+// those reads draw runs on one chain, in order, and drawing is idempotent: per turn for answers
+// and endings, per key for cards.
 
 const log = document.getElementById("log");
 const approvalsSection = document.getElementById("approvals");
@@ -44,6 +50,17 @@ let generation = 0;
 // only its later words on screen, so its answer is drawn whole from the state when it ends.
 let watching = false;
 let joined = false;
+// The turn the lines being drawn belong to, once the page knows it: from the turn's start or from
+// its first request for actions. Each line carries its turn, so a turn that ended unseen can be
+// drawn whole without repeating what the page already shows of it.
+let currentTurn = null;
+// The lines this page typed that no turn has started on yet. A turn's start tags them with it.
+let pendingTyped = [];
+// The tool of each call, by call id and by the key the call runs under. A request names them;
+// what happens to a call is told later without its tool, so a page opened after the request learns
+// the tool from the approval card that is waiting.
+let toolByCall = new Map();
+let toolByKey = new Map();
 
 function queue(work) {
   const mine = generation;
@@ -68,10 +85,17 @@ function waitingFor(cards) {
   working.textContent = cards.length > 0 ? "waiting for you…" : "working…";
 }
 
-function appendLine(role, text) {
+function makeLine(role, text, turn) {
   const div = document.createElement("div");
   div.className = "line " + role;
   div.textContent = text;
+  if (turn !== null && turn !== undefined) div.dataset.turn = String(turn);
+  return div;
+}
+
+// Draws a line at the end of the log, tagged with the turn it belongs to.
+function appendLine(role, text, turn = currentTurn) {
+  const div = makeLine(role, text, turn);
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
   return div;
@@ -85,7 +109,10 @@ function drawCards(cards) {
   for (const shown of approvalsSection.querySelectorAll("[data-call]")) {
     if (!waiting.has(shown.dataset.call)) shown.remove();
   }
-  for (const card of cards) renderApproval(card);
+  for (const card of cards) {
+    toolByKey.set(card.id, card.tool);
+    renderApproval(card);
+  }
   waitingFor(cards);
 }
 
@@ -102,20 +129,25 @@ async function refreshCards() {
 }
 
 // The last line of a turn, when it is an assistant line: that is the turn's answer. A turn that
-// failed or was refused ends in a system line, and one still going ends in whatever it said last.
+// failed or was refused ends in a system line, and one still going ends in a tool line: whatever
+// it said before a call is followed by that call.
 function answerOf(transcript, turn) {
   const lines = transcript.filter((line) => line.turn === turn);
   const last = lines[lines.length - 1];
   return last && last.role === "assistant" ? last.text : null;
 }
 
-// The turn in progress is the last one in the story, when the agent is working.
+// The turns that have ended, in order: those whose last line is an answer or a system ending. A
+// turn in progress never ends in one (what it says before a call is followed by the call's lines),
+// and an agent that is working may have input queued and no turn started, so "working" says
+// nothing about which turn is the last.
 function finishedTurns(state) {
+  const last = new Map();
+  for (const line of state.transcript) last.set(line.turn, line);
   const turns = [];
-  for (const line of state.transcript) {
-    if (!turns.includes(line.turn)) turns.push(line.turn);
+  for (const [turn, line] of last) {
+    if (line.role === "assistant" || line.role === "system") turns.push(turn);
   }
-  if (state.working) turns.pop();
   return turns;
 }
 
@@ -184,21 +216,32 @@ async function decide(key, decision, card) {
 // Opens the stream for the current conversation. The first time it opens, the whole conversation
 // is read and drawn. Every later open is a reconnect, and then the state is only reconciled: the
 // log is not wiped, because a bubble may be mid-stream and a line typed may not be in the story
-// yet.
-function listen() {
+// yet. A reopen after the browser gave up on a stream is a reconnect too, so it reconciles.
+//
+// Whether this stream has heard an event decides what a reconnect does. The browser hands the
+// server the id of the last event it heard, and the server replays what came after: when this
+// stream has heard one, the replay will draw the turns that ended meanwhile, in order, and the
+// state read only refreshes the cards and the working line. When it has heard none there is no id
+// to hand back and nothing is replayed, so the state read draws what ended meanwhile.
+function listen(reconnecting = false) {
   if (events) events.close();
   const source = new EventSource(`/api/agents/${agentId}/events`);
   events = source;
-  let firstOpen = true;
+  let firstOpen = !reconnecting;
+  let heard = false;
   source.onopen = () => {
     const full = firstOpen;
     firstOpen = false;
-    queue(full ? load : reconcile);
+    const replaying = heard;
+    queue(full ? load : () => reconcile(!replaying));
   };
 
   // The event names are the engine's own, as the Odyssey narrator journals them.
   const on = (name, handler) =>
-    source.addEventListener(name, (e) => queue(() => handler(e)));
+    source.addEventListener(name, (e) => {
+      heard = true;
+      queue(() => handler(e));
+    });
   const said = (text) => {
     openThinking = null;
     if (!openBubble) openBubble = appendLine("assistant", "");
@@ -211,9 +254,13 @@ function listen() {
     streamed = false;
     watching = false;
     joined = false;
+    currentTurn = null;
     setWorking(false);
   };
-  on("turn-started", () => {
+  on("turn-started", (e) => {
+    currentTurn = JSON.parse(e.data).turn;
+    for (const typed of pendingTyped) typed.dataset.turn = String(currentTurn);
+    pendingTyped = [];
     streamed = false;
     watching = true;
     joined = false;
@@ -231,17 +278,23 @@ function listen() {
   on("commentary", (e) => {
     if (!streamed) said(JSON.parse(e.data).text);
   });
-  // A request names each call and its tool; what happens to a call is told later without
-  // its tool, so the page remembers which tool each id is. Each is a line of its own rather than an
-  // edit to the request's line, which is what the story shows too.
-  const toolOf = new Map();
-  const named = (e) => toolOf.get(JSON.parse(e.data).callId) ?? "call";
+  // A request names each call and its tool; what happens to a call is told later without its
+  // tool, so the page remembers which tool each id is, and falls back to the tool on the approval
+  // card with the same key when it was opened after the request. Each is a line of its own rather
+  // than an edit to the request's line, which is what the story shows too.
+  const named = (e) => {
+    const call = JSON.parse(e.data);
+    return toolByCall.get(call.callId) ?? toolByKey.get(call.idempotencyKey) ?? "call";
+  };
   on("actions-requested", (e) => {
+    const request = JSON.parse(e.data);
+    currentTurn = request.turn;
     openThinking = null;
     openBubble = null;
     streamed = false;
-    for (const call of JSON.parse(e.data).calls) {
-      toolOf.set(call.callId, call.toolName);
+    for (const call of request.calls) {
+      toolByCall.set(call.callId, call.toolName);
+      toolByKey.set(call.idempotencyKey, call.toolName);
       appendLine("tool", "🔧 " + call.toolName + ": " + call.action);
     }
   });
@@ -264,9 +317,9 @@ function listen() {
     appendLine("tool", named(e) + " failed: " + JSON.parse(e.data).message);
     refreshCards();
   });
-  // Says that an answer happened and which turn it ended, and carries no words. A streaming
-  // provider has already shown them as deltas; one that does not stream has shown nothing, so the
-  // answer is read from the story and drawn here. So is the answer of a turn this page joined in
+  // Says that an answer happened and which turn it ended, and carries no words, on any provider.
+  // A streaming provider has already shown them as deltas; one that does not stream has shown
+  // nothing, so the answer is read from the story and drawn here. So is the answer of a turn this page joined in
   // the middle: it has only the later deltas, a bubble that starts mid-sentence, which is removed
   // for the whole answer.
   on("answered", async (e) => {
@@ -284,22 +337,38 @@ function listen() {
       partial.remove();
     }
   });
-  on("turn-failed", () => {
-    appendLine("system", "the agent could not answer");
-    idle();
+  // A retried call starts over: whatever the failed attempt streamed is removed, so the bubble
+  // does not hold both attempts' words.
+  on("inference-retried", () => {
+    if (openBubble) openBubble.remove();
+    openBubble = null;
+    openThinking = null;
+    streamed = false;
   });
-  on("turn-refused", () => {
-    appendLine("system", "the agent declined to answer");
+  // A turn that ends without an answer says so in a line of its own, and is recorded as drawn so
+  // a later read of the state does not draw its ending a second time.
+  const ended = (e, text) => {
+    const ending = JSON.parse(e.data);
+    currentTurn = ending.turn;
+    drawnTurns.add(ending.turn);
+    appendLine("system", text(ending));
     idle();
-  });
-  on("turn-stopped", (e) => {
-    appendLine("system", "the agent stopped the turn: " + JSON.parse(e.data).reason);
-    idle();
-  });
+  };
+  on("turn-failed", (e) => ended(e, () => "the agent could not answer"));
+  on("turn-refused", (e) => ended(e, () => "the agent declined to answer"));
+  on("turn-stopped", (e) => ended(e, (stop) => "the agent stopped the turn: " + stop.reason));
   on("terminated", idle);
   source.onerror = () => {
-    // EventSource reconnects on its own, and onopen reconciles when it does. The working line is
-    // left as it is until the state says otherwise.
+    // While the stream is connecting the browser reconnects on its own, and onopen reconciles when
+    // it does; the working line is left as it is until the state says otherwise. A response that is
+    // not an event stream (a proxy's 502 or 503, a 500 while the database is down) closes the
+    // stream for good, and nothing would reopen it: so the page reopens it after 3 seconds, if this
+    // is still the stream it is listening to, and the reopen reconciles rather than wipes.
+    if (source.readyState === EventSource.CLOSED) {
+      setTimeout(() => {
+        if (events === source) listen(true);
+      }, 3000);
+    }
   };
 }
 
@@ -322,7 +391,7 @@ async function send(event) {
   textInput.value = "";
   // Drawn as typed. After a reload the story shows what the agent was given, and messages sent
   // while it was busy are one line there, joined.
-  appendLine("user", text);
+  pendingTyped.push(appendLine("user", text, null));
   // 202 and an empty body: the line is now the agent's problem, and everything it says about it
   // arrives on the stream this page is already listening to. Sent while a turn is in progress, it
   // is accepted all the same and answered with whatever else arrived meanwhile.
@@ -351,48 +420,74 @@ function clearScreen() {
   streamed = false;
   watching = false;
   joined = false;
+  currentTurn = null;
+  pendingTyped = [];
+  toolByCall = new Map();
+  toolByKey = new Map();
   drawnTurns = new Set();
   setWorking(false);
 }
 
 // The whole conversation, drawn from the story: the first read after the stream opens, and a new
-// chat. The turn in progress has only commentary in the story so far, so its answer is not marked
-// drawn, and the page remembers it joined that turn in the middle.
+// chat. Every turn that has ended is marked drawn. A turn in progress is not, and the page
+// remembers it joined in the middle when the agent is working.
 async function load() {
   const state = await readState();
   clearScreen();
-  for (const line of state.transcript) appendLine(line.role, line.text);
-  for (const turn of finishedTurns(state)) {
-    if (answerOf(state.transcript, turn) !== null) drawnTurns.add(turn);
-  }
+  for (const line of state.transcript) appendLine(line.role, line.text, line.turn);
+  for (const turn of finishedTurns(state)) drawnTurns.add(turn);
   joined = state.working;
   drawCards(state.approvals);
   setWorking(state.working);
 }
 
+// A turn that ended while the stream was down and was never drawn: all of its lines, from the
+// story, in order. Lines of the turn the page already shows (words it streamed, calls it heard
+// about) are replaced by the story's, so nothing shows twice, and the line the person typed is kept
+// where it is. When no turn has started on a line this page typed, that line is taken to be this
+// turn's.
+function drawTurn(transcript, turn) {
+  const shown = [...log.children].filter((line) => line.dataset.turn === String(turn));
+  const hasUser = shown.some((line) => line.classList.contains("user")) || pendingTyped.length > 0;
+  let before = null;
+  if (shown.length > 0) {
+    before = shown[shown.length - 1].nextSibling;
+    for (const line of shown) if (!line.classList.contains("user")) line.remove();
+  }
+  for (const line of transcript.filter((l) => l.turn === turn)) {
+    if (line.role === "user" && hasUser) continue;
+    log.insertBefore(makeLine(line.role, line.text, turn), before);
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
 // A reconnect: the state is read again and only reconciled with the screen. The indication and the
-// cards are set from it, and the answer of any turn that ended while the stream was down is drawn,
-// in turn order, if it is not on screen. A bubble left over from a turn that ended unannounced is
-// replaced by its answer. Nothing already on screen is wiped, so lines typed and not yet in the
-// story stay.
-async function reconcile() {
+// cards are set from it. When this stream has heard no event there is nothing to replay, so the
+// turns that ended while it was down are drawn here, in turn order, whole, unless they are on
+// screen: their answer, or the system line of a turn that failed, was refused or was stopped, with
+// the tool lines between. A bubble left over from a turn that ended unannounced is replaced by its
+// answer. When it has heard one, the replay draws those turns in order and none are drawn here,
+// which keeps their endings from landing below their answer. Nothing already on screen is wiped, so
+// lines typed and not yet in the story stay.
+async function reconcile(drawEnded) {
   const state = await readState();
-  if (!state.working && openBubble) {
-    openBubble.remove();
-    openBubble = null;
-  }
-  for (const turn of finishedTurns(state)) {
-    const answer = answerOf(state.transcript, turn);
-    if (answer !== null && !drawnTurns.has(turn)) {
-      drawnTurns.add(turn);
-      appendLine("assistant", answer);
+  if (drawEnded) {
+    if (!state.working && openBubble) {
+      openBubble.remove();
+      openBubble = null;
     }
-  }
-  if (state.working && !watching) joined = true;
-  if (!state.working) {
-    watching = false;
-    joined = false;
-    streamed = false;
+    for (const turn of finishedTurns(state)) {
+      if (!drawnTurns.has(turn)) {
+        drawnTurns.add(turn);
+        drawTurn(state.transcript, turn);
+      }
+    }
+    if (state.working && !watching) joined = true;
+    if (!state.working) {
+      watching = false;
+      joined = false;
+      streamed = false;
+    }
   }
   drawCards(state.approvals);
   setWorking(state.working);
