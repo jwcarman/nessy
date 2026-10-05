@@ -44,7 +44,7 @@ public class PendingApprovalsRepository {
 
   private static final String COLUMNS =
       "idempotency_key, call_id, agent_type, agent_id, tool, action, asked_at, expires_at,"
-          + " reply_token, answer, note, answered_at";
+          + " answer, note, answered_at";
 
   private static final String PENDING =
       "SELECT "
@@ -56,12 +56,12 @@ public class PendingApprovalsRepository {
 
   private static final String INSERT =
       "INSERT INTO watchman_pending_approval (idempotency_key, agent_type, agent_id, call_id, tool,"
-          + " action, asked_at, expires_at, reply_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+          + " action, asked_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
-  // A recovered turn asks again, with a fresh token and deadline: the row it wrote before is
-  // brought up to date rather than duplicated, and one already answered is left alone.
+  // A recovered turn asks again, with a fresh deadline: the row it wrote before is brought up to
+  // date rather than duplicated, and one already answered is left alone.
   private static final String REFRESH =
-      "UPDATE watchman_pending_approval SET reply_token = ?, expires_at = ?"
+      "UPDATE watchman_pending_approval SET expires_at = ?"
           + " WHERE idempotency_key = ? AND answer IS NULL";
 
   private static final String EXISTS =
@@ -99,9 +99,7 @@ public class PendingApprovalsRepository {
 
   public void asked(PendingApproval row) {
     int refreshed =
-        jdbc.sql(REFRESH)
-            .params(row.replyToken(), utc(row.expiresAt()), text(row.idempotencyKey()))
-            .update();
+        jdbc.sql(REFRESH).params(utc(row.expiresAt()), text(row.idempotencyKey())).update();
     if (refreshed > 0 || alreadyDecided(row.idempotencyKey())) {
       return;
     }
@@ -114,8 +112,7 @@ public class PendingApprovalsRepository {
             row.tool(),
             row.action(),
             utc(row.askedAt()),
-            utc(row.expiresAt()),
-            row.replyToken())
+            utc(row.expiresAt()))
         .update();
   }
 
@@ -152,7 +149,6 @@ public class PendingApprovalsRepository {
         row.getString("action"),
         row.getObject("asked_at", OffsetDateTime.class).toInstant(),
         row.getObject("expires_at", OffsetDateTime.class).toInstant(),
-        row.getString("reply_token"),
         Optional.ofNullable(row.getString("answer")),
         Optional.ofNullable(row.getString("note")),
         Optional.ofNullable(row.getObject("answered_at", OffsetDateTime.class))

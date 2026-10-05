@@ -36,7 +36,6 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
@@ -51,14 +50,14 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * An answer that is authentic but is not for anything still waiting.
+ * An answer that names a call but is not for anything still waiting.
  *
- * <p>A token is only proof of what it says: this agent type, this agent, this call. It is not proof
- * that the call is still outstanding, that this process serves that agent type, or that the row it
- * names is the row the answer is allowed to settle. Every one of those is checked separately, and
- * the interesting thing about all of them is that they are indistinguishable to the caller -- one
- * answer, {@code NotAwaiting}, because "answered a moment ago", "expired" and "never existed here"
- * are the same news to whoever is holding the token.
+ * <p>An agent type, an agent and a key say which call an answer is for. They do not say that the
+ * call is still outstanding, that this process serves that agent type, or that the row they find is
+ * the row the answer is allowed to settle. Every one of those is checked separately, and the
+ * interesting thing about all of them is that they are indistinguishable to the caller -- one
+ * answer, {@code Ignored}, because "answered a moment ago", "expired" and "never existed here" are
+ * the same news to whoever is answering.
  *
  * <p>The one that has to be checked rather than assumed is the kind: a verdict may not settle a
  * call that is already running, and a result may not settle one still awaiting permission. Either
@@ -70,6 +69,9 @@ class MisroutedReplyTest {
   private static final IdempotencyKey KEY =
       IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
+  private static final IdempotencyKey OTHER_KEY =
+      IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000002"));
+
   private static final AgentType TYPE = new AgentType("replying");
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
   private static final Seq REQUEST = new Seq(42);
@@ -77,26 +79,21 @@ class MisroutedReplyTest {
   private static final CallId CALL = new CallId("c1");
   private static final ToolName TOOL = new ToolName("lookup");
 
-  private final ReplyTokens tokens = ReplyTokens.withKeys(new byte[32]);
   private final Rows rows = new Rows();
   private final Deliveries delivered = new Deliveries();
   private final Payloads payloads =
       new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
-  private final DefaultReplies replies = new DefaultReplies(tokens);
-
-  private ReplyToken token() {
-    return tokens.mint(TYPE, AGENT, REQUEST, CALL);
-  }
+  private final DefaultReplies replies = new DefaultReplies();
 
   private void serving() {
     replies.register(TYPE, rows, delivered, payloads, Tools.none());
   }
 
-  /** A token minted before a rename, or a deployment that no longer builds that harness. */
+  /** An agent type renamed, or a deployment that no longer builds that harness. */
   @Test
-  void anAnswerForAnAgentTypeThisProcessDoesNotServeIsNotAwaiting() {
-    assertThat(replies.approve(token(), ApprovalResult.approved()))
-        .isInstanceOf(ReplyOutcome.NotAwaiting.class);
+  void anAnswerForAnAgentTypeThisProcessDoesNotServeIsIgnored() {
+    assertThat(replies.approve(TYPE, AGENT, KEY, ApprovalResult.approved()))
+        .isInstanceOf(ReplyOutcome.Ignored.class);
     assertThat(delivered.outcomes).isEmpty();
   }
 
@@ -106,38 +103,55 @@ class MisroutedReplyTest {
    * ignoring what it delivers.
    */
   @Test
-  void anAnswerDeliveredAsItsRowWasTakenOverIsStillSettled() {
+  void anAnswerDeliveredAsItsRowWasTakenOverIsStillApplied() {
     serving();
     rows.running = List.of(attempt());
     rows.effect = new AgentEffect.Approve(TURN, REQUEST, CALL, TOOL, KEY);
     rows.completeWins = false;
 
-    assertThat(replies.approve(token(), ApprovalResult.approved()))
-        .isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(replies.approve(TYPE, AGENT, KEY, ApprovalResult.approved()))
+        .isInstanceOf(ReplyOutcome.Applied.class);
     assertThat(delivered.outcomes).as("the agent was told before the row was let go").hasSize(1);
   }
 
-  /** Right kind, right agent, different call. */
+  /**
+   * The fold took nothing -- a second answer, or one racing the deadline. The caller is told so,
+   * and the row is still let go of: its call is discharged either way.
+   */
+  @Test
+  void anAnswerTheFoldDoesNotTakeIsIgnoredAndItsRowIsStillLetGo() {
+    serving();
+    rows.running = List.of(attempt());
+    rows.effect = new AgentEffect.Approve(TURN, REQUEST, CALL, TOOL, KEY);
+    delivered.takes = false;
+
+    assertThat(replies.approve(TYPE, AGENT, KEY, ApprovalResult.approved()))
+        .isInstanceOf(ReplyOutcome.Ignored.class);
+    assertThat(delivered.outcomes).as("the fold was asked").hasSize(1);
+    assertThat(rows.completed).as("and the row was let go of").isEqualTo(1);
+  }
+
+  /** Right kind, right agent, a call with another key. */
   @Test
   void anAnswerForAnotherCallOfTheSameRequestMatchesNothing() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.Approve(TURN, REQUEST, new CallId("c2"), TOOL, KEY);
+    rows.effect = new AgentEffect.Approve(TURN, REQUEST, new CallId("c2"), TOOL, OTHER_KEY);
 
-    assertThat(replies.approve(token(), ApprovalResult.approved()))
-        .isInstanceOf(ReplyOutcome.NotAwaiting.class);
+    assertThat(replies.approve(TYPE, AGENT, KEY, ApprovalResult.approved()))
+        .isInstanceOf(ReplyOutcome.Ignored.class);
     assertThat(delivered.outcomes).isEmpty();
   }
 
-  /** Same call id, but from a request two turns ago -- ids are only unique within a request. */
+  /** Same call id, but from a request two turns ago -- only the key tells the two calls apart. */
   @Test
   void anAnswerForTheSameCallOfAnEarlierRequestMatchesNothing() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.Approve(TURN, new Seq(7), CALL, TOOL, KEY);
+    rows.effect = new AgentEffect.Approve(TURN, new Seq(7), CALL, TOOL, OTHER_KEY);
 
-    assertThat(replies.approve(token(), ApprovalResult.approved()))
-        .isInstanceOf(ReplyOutcome.NotAwaiting.class);
+    assertThat(replies.approve(TYPE, AGENT, KEY, ApprovalResult.approved()))
+        .isInstanceOf(ReplyOutcome.Ignored.class);
     assertThat(delivered.outcomes).isEmpty();
   }
 
@@ -146,20 +160,20 @@ class MisroutedReplyTest {
   void aResultForAnotherCallOfTheSameRequestMatchesNothing() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, new CallId("c2"), TOOL, KEY);
+    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, new CallId("c2"), TOOL, OTHER_KEY);
 
-    assertThat(replies.complete(token(), ToolResult.ok(new Block.Text("done"))))
-        .isInstanceOf(ReplyOutcome.NotAwaiting.class);
+    assertThat(replies.complete(TYPE, AGENT, KEY, ToolResult.ok(new Block.Text("done"))))
+        .isInstanceOf(ReplyOutcome.Ignored.class);
   }
 
   @Test
   void aResultForTheSameCallOfAnEarlierRequestMatchesNothing() {
     serving();
     rows.running = List.of(attempt());
-    rows.effect = new AgentEffect.CallTool(TURN, new Seq(7), CALL, TOOL, KEY);
+    rows.effect = new AgentEffect.CallTool(TURN, new Seq(7), CALL, TOOL, OTHER_KEY);
 
-    assertThat(replies.complete(token(), ToolResult.ok(new Block.Text("done"))))
-        .isInstanceOf(ReplyOutcome.NotAwaiting.class);
+    assertThat(replies.complete(TYPE, AGENT, KEY, ToolResult.ok(new Block.Text("done"))))
+        .isInstanceOf(ReplyOutcome.Ignored.class);
   }
 
   @Test
@@ -169,8 +183,8 @@ class MisroutedReplyTest {
     rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL, KEY);
     PayloadRef ref = payloads.put(List.of(new Block.Text("done")));
 
-    assertThat(replies.complete(token(), ToolResult.ok(new Block.Text("done"))))
-        .isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(replies.complete(TYPE, AGENT, KEY, ToolResult.ok(new Block.Text("done"))))
+        .isInstanceOf(ReplyOutcome.Applied.class);
     assertThat(delivered.outcomes)
         .containsExactly(new EffectOutcome.ToolSucceeded(CALL, ref, "done"));
   }
@@ -181,8 +195,8 @@ class MisroutedReplyTest {
     rows.running = List.of(attempt());
     rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL, KEY);
 
-    assertThat(replies.complete(token(), ToolResult.ok(new Block.Text("done"))))
-        .isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(replies.complete(TYPE, AGENT, KEY, ToolResult.ok(new Block.Text("done"))))
+        .isInstanceOf(ReplyOutcome.Applied.class);
     assertThat(delivered.requests).containsExactly(Optional.of(REQUEST));
   }
 
@@ -192,8 +206,8 @@ class MisroutedReplyTest {
     rows.running = List.of(attempt());
     rows.effect = new AgentEffect.Approve(TURN, REQUEST, CALL, TOOL, KEY);
 
-    assertThat(replies.approve(token(), ApprovalResult.approved()))
-        .isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(replies.approve(TYPE, AGENT, KEY, ApprovalResult.approved()))
+        .isInstanceOf(ReplyOutcome.Applied.class);
     assertThat(delivered.requests).containsExactly(Optional.of(REQUEST));
   }
 
@@ -203,8 +217,8 @@ class MisroutedReplyTest {
     rows.running = List.of(attempt());
     rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL, KEY);
 
-    assertThat(replies.complete(token(), new ToolResult.Failure(null)))
-        .isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(replies.complete(TYPE, AGENT, KEY, new ToolResult.Failure(null)))
+        .isInstanceOf(ReplyOutcome.Applied.class);
     assertThat(delivered.outcomes)
         .containsExactly(
             new EffectOutcome.ToolFailed(
@@ -217,8 +231,8 @@ class MisroutedReplyTest {
     rows.running = List.of(attempt());
     rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL, KEY);
 
-    assertThat(replies.complete(token(), new ToolResult.Failure("the index is locked")))
-        .isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(replies.complete(TYPE, AGENT, KEY, new ToolResult.Failure("the index is locked")))
+        .isInstanceOf(ReplyOutcome.Applied.class);
     assertThat(delivered.outcomes)
         .singleElement()
         .asInstanceOf(InstanceOfAssertFactories.type(EffectOutcome.ToolFailed.class))
@@ -236,8 +250,8 @@ class MisroutedReplyTest {
     rows.running = List.of(attempt());
     rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL, KEY);
 
-    assertThat(replies.approve(token(), ApprovalResult.approved()))
-        .isInstanceOf(ReplyOutcome.NotAwaiting.class);
+    assertThat(replies.approve(TYPE, AGENT, KEY, ApprovalResult.approved()))
+        .isInstanceOf(ReplyOutcome.Ignored.class);
     assertThat(delivered.outcomes).isEmpty();
   }
 
@@ -251,8 +265,8 @@ class MisroutedReplyTest {
     rows.running = List.of(attempt());
     rows.effectFails = new IllegalStateException("an effect from a build that was rolled back");
 
-    assertThat(replies.approve(token(), ApprovalResult.approved()))
-        .isInstanceOf(ReplyOutcome.NotAwaiting.class);
+    assertThat(replies.approve(TYPE, AGENT, KEY, ApprovalResult.approved()))
+        .isInstanceOf(ReplyOutcome.Ignored.class);
     assertThat(delivered.outcomes).isEmpty();
   }
 
@@ -275,6 +289,7 @@ class MisroutedReplyTest {
     private AgentEffect effect = new AgentEffect.Infer(TURN);
     private RuntimeException effectFails;
     private boolean completeWins = true;
+    private int completed;
 
     private Rows() {
       super(TYPE, null, null);
@@ -295,6 +310,7 @@ class MisroutedReplyTest {
 
     @Override
     public boolean complete(UUID effectId, int attemptsMade) {
+      completed++;
       return completeWins;
     }
 
@@ -308,6 +324,7 @@ class MisroutedReplyTest {
 
     private final List<EffectOutcome> outcomes = new CopyOnWriteArrayList<>();
     private final List<Optional<Seq>> requests = new CopyOnWriteArrayList<>();
+    private boolean takes = true;
 
     @Override
     public boolean deliverOutcome(
@@ -319,7 +336,7 @@ class MisroutedReplyTest {
         List<FailedAttempt> priorAttempts) {
       outcomes.add(outcome);
       requests.add(request);
-      return true;
+      return takes;
     }
 
     @Override

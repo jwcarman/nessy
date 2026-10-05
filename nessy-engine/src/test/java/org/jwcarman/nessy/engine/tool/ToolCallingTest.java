@@ -34,10 +34,10 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -526,7 +526,7 @@ class ToolCallingTest {
     AgentType type = new AgentType("tool-deferred");
     AgentId agentId = new AgentId(UUID.randomUUID());
     ConcurrentLinkedQueue<String> seen = new ConcurrentLinkedQueue<>();
-    ConcurrentLinkedQueue<ReplyToken> handed = new ConcurrentLinkedQueue<>();
+    ConcurrentLinkedQueue<ApprovalRequest> handed = new ConcurrentLinkedQueue<>();
     ScriptedModel model =
         new ScriptedModel(
             new InferenceResult.Actions(
@@ -550,7 +550,7 @@ class ToolCallingTest {
                                     request -> {
                                       // What a real one does: keep the address, go and ask
                                       // somebody, say nothing.
-                                      handed.add(request.replyToken());
+                                      handed.add(request);
                                       return new Awaited.Deferred<>();
                                     },
                                     a -> a.timeout(Duration.ofSeconds(3))))
@@ -619,7 +619,7 @@ class ToolCallingTest {
     AgentType type = new AgentType("tool-parked-capacity");
     AgentId waiting = new AgentId(UUID.randomUUID());
     AgentId working = new AgentId(UUID.randomUUID());
-    ConcurrentLinkedQueue<ReplyToken> handed = new ConcurrentLinkedQueue<>();
+    ConcurrentLinkedQueue<ApprovalRequest> handed = new ConcurrentLinkedQueue<>();
 
     // Every inference asks for the one tool; whether the call parks is the approver's doing.
     InferenceProvider model =
@@ -649,7 +649,7 @@ class ToolCallingTest {
                                       // answered on the spot, so the two share one permit and one
                                       // poller.
                                       if (request.agentId().equals(waiting)) {
-                                        handed.add(request.replyToken());
+                                        handed.add(request);
                                         return new Awaited.Deferred<>();
                                       }
                                       return Awaited.ready(ApprovalResult.approved());

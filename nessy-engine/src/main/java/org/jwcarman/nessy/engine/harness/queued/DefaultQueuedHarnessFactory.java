@@ -150,7 +150,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     this.backend = config.requiredBackend();
     listeners.addAll(config.listeners());
     this.replyTokens = config.replyTokens();
-    this.replies = new DefaultReplies(replyTokens);
+    this.replies = new DefaultReplies();
     // A timer, and only a timer: it never performs an effect (each dispatcher has its own
     // virtual-thread executor for that), it only says when to look for due work. One virtual
     // thread for the whole engine, and the engine's to stop -- see close().

@@ -5,9 +5,8 @@
 -- PROJECTION, and it rebuilds itself: a recovered turn asks its approver again, and the approver
 -- writes the row again. Losing it loses nothing that will not come back as the agent recovers.
 --
--- reply_token is stored deliberately, and it is a CREDENTIAL. It is how a page answers a call days
--- after the process that asked has forgotten, and it is sealed with the application's own key.
--- Anyone who can read this table can approve anything still waiting.
+-- The agent type, the agent id and the idempotency key are stored deliberately: they are how a page
+-- answers a call days after the process that asked has forgotten.
 --
 -- Keyed on the call's idempotency key, which Nessy makes once per call and hands to every ask of
 -- it. Not on the call id: a model's call id is unique within one of its replies and no further, so
@@ -22,7 +21,6 @@ CREATE TABLE IF NOT EXISTS watchman_pending_approval (
   action      TEXT        NOT NULL,
   asked_at    TIMESTAMPTZ NOT NULL,
   expires_at  TIMESTAMPTZ NOT NULL,
-  reply_token TEXT        NOT NULL,
   answer      TEXT,
   note        TEXT,
   answered_at TIMESTAMPTZ

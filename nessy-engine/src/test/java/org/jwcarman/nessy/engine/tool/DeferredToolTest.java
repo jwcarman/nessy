@@ -45,7 +45,6 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolConfig;
@@ -100,7 +99,7 @@ class DeferredToolTest {
 
   record Job(String what) {}
 
-  private final ConcurrentLinkedQueue<ReplyToken> handed = new ConcurrentLinkedQueue<>();
+  private final ConcurrentLinkedQueue<ToolCallRequest<?>> handed = new ConcurrentLinkedQueue<>();
 
   /** Starts something and says it will report back -- a queue, a build, a long HTTP call. */
   private Tool<Job> slowJob() {
@@ -108,7 +107,7 @@ class DeferredToolTest {
         request -> {
           // Whatever actually does the work is handed the address. Keeping it is the tool's
           // obligation exactly as it is an approver's: nothing else can settle this call.
-          handed.add(request.replyToken());
+          handed.add(request);
           return Awaited.deferred();
         });
   }
@@ -237,8 +236,14 @@ class DeferredToolTest {
         .anyMatch(AgentEvent.ToolApproved.class::isInstance);
 
     assertThat(
-            engine.replies().complete(handed.peek(), ToolResult.ok(new Block.Text("reindexed 91"))))
-        .isInstanceOf(ReplyOutcome.Settled.class);
+            engine
+                .replies()
+                .complete(
+                    handed.peek().agentType(),
+                    handed.peek().agentId(),
+                    handed.peek().idempotencyKey(),
+                    ToolResult.ok(new Block.Text("reindexed 91"))))
+        .isInstanceOf(ReplyOutcome.Applied.class);
 
     await()
         .atMost(Duration.ofSeconds(20))
@@ -276,8 +281,15 @@ class DeferredToolTest {
     AgentId agentId = park(type, Duration.ofMinutes(30), t -> t.result(line));
 
     ToolResult.Success reported = new ToolResult.Success(List.of(new Block.Text("reindexed 91")));
-    assertThat(engine.replies().complete(handed.peek(), reported))
-        .isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(
+            engine
+                .replies()
+                .complete(
+                    handed.peek().agentType(),
+                    handed.peek().agentId(),
+                    handed.peek().idempotencyKey(),
+                    reported))
+        .isInstanceOf(ReplyOutcome.Applied.class);
 
     await()
         .atMost(Duration.ofSeconds(20))
@@ -301,8 +313,11 @@ class DeferredToolTest {
             engine
                 .replies()
                 .complete(
-                    handed.peek(), new ToolResult.Failure("the index is locked by another job")))
-        .isInstanceOf(ReplyOutcome.Settled.class);
+                    handed.peek().agentType(),
+                    handed.peek().agentId(),
+                    handed.peek().idempotencyKey(),
+                    new ToolResult.Failure("the index is locked by another job")))
+        .isInstanceOf(ReplyOutcome.Applied.class);
 
     await()
         .atMost(Duration.ofSeconds(20))
@@ -324,11 +339,24 @@ class DeferredToolTest {
     AgentType type = new AgentType("deferred-tool-twice");
     park(type, Duration.ofMinutes(30));
 
-    assertThat(engine.replies().complete(handed.peek(), ToolResult.ok(new Block.Text("done"))))
-        .isInstanceOf(ReplyOutcome.Settled.class);
     assertThat(
-            engine.replies().complete(handed.peek(), ToolResult.ok(new Block.Text("done again"))))
-        .isInstanceOf(ReplyOutcome.NotAwaiting.class);
+            engine
+                .replies()
+                .complete(
+                    handed.peek().agentType(),
+                    handed.peek().agentId(),
+                    handed.peek().idempotencyKey(),
+                    ToolResult.ok(new Block.Text("done"))))
+        .isInstanceOf(ReplyOutcome.Applied.class);
+    assertThat(
+            engine
+                .replies()
+                .complete(
+                    handed.peek().agentType(),
+                    handed.peek().agentId(),
+                    handed.peek().idempotencyKey(),
+                    ToolResult.ok(new Block.Text("done again"))))
+        .isInstanceOf(ReplyOutcome.Ignored.class);
   }
 
   /**
@@ -344,12 +372,26 @@ class DeferredToolTest {
     AgentType type = new AgentType("deferred-tool-wrong-kind");
     park(type, Duration.ofMinutes(30));
 
-    assertThat(engine.replies().approve(handed.peek(), ApprovalResult.approved()))
+    assertThat(
+            engine
+                .replies()
+                .approve(
+                    handed.peek().agentType(),
+                    handed.peek().agentId(),
+                    handed.peek().idempotencyKey(),
+                    ApprovalResult.approved()))
         .as("permission was settled before this call ever started")
-        .isInstanceOf(ReplyOutcome.NotAwaiting.class);
-    assertThat(engine.replies().complete(handed.peek(), ToolResult.ok(new Block.Text("done"))))
+        .isInstanceOf(ReplyOutcome.Ignored.class);
+    assertThat(
+            engine
+                .replies()
+                .complete(
+                    handed.peek().agentType(),
+                    handed.peek().agentId(),
+                    handed.peek().idempotencyKey(),
+                    ToolResult.ok(new Block.Text("done"))))
         .as("and the right kind of answer still works")
-        .isInstanceOf(ReplyOutcome.Settled.class);
+        .isInstanceOf(ReplyOutcome.Applied.class);
   }
 
   /**
@@ -396,8 +438,15 @@ class DeferredToolTest {
         .atMost(Duration.ofSeconds(25))
         .untilAsserted(() -> assertThat(agentStateOf(type, agentId)).isEqualTo("Idle"));
 
-    assertThat(engine.replies().complete(handed.peek(), ToolResult.ok(new Block.Text("too late"))))
-        .isInstanceOf(ReplyOutcome.NotAwaiting.class);
+    assertThat(
+            engine
+                .replies()
+                .complete(
+                    handed.peek().agentType(),
+                    handed.peek().agentId(),
+                    handed.peek().idempotencyKey(),
+                    ToolResult.ok(new Block.Text("too late"))))
+        .isInstanceOf(ReplyOutcome.Ignored.class);
   }
 
   // ---- the deferral is on the record -------------------------------------------------------
@@ -485,9 +534,16 @@ class DeferredToolTest {
           .noneMatch(Narration.CallDeferred.class::isInstance);
       assertThat(handed).as("the tool was started once").hasSize(1);
 
-      assertThat(refusing.replies().complete(handed.peek(), ToolResult.ok(new Block.Text("done"))))
+      assertThat(
+              refusing
+                  .replies()
+                  .complete(
+                      handed.peek().agentType(),
+                      handed.peek().agentId(),
+                      handed.peek().idempotencyKey(),
+                      ToolResult.ok(new Block.Text("done"))))
           .as("the call still waits for its report")
-          .isInstanceOf(ReplyOutcome.Settled.class);
+          .isInstanceOf(ReplyOutcome.Applied.class);
       await()
           .atMost(Duration.ofSeconds(20))
           .untilAsserted(
@@ -516,7 +572,11 @@ class DeferredToolTest {
               outcomes.add(
                   engine
                       .replies()
-                      .complete(request.replyToken(), ToolResult.ok(new Block.Text("done"))));
+                      .complete(
+                          request.agentType(),
+                          request.agentId(),
+                          request.idempotencyKey(),
+                          ToolResult.ok(new Block.Text("done"))));
               return Awaited.deferred();
             });
 
@@ -528,7 +588,7 @@ class DeferredToolTest {
         .untilAsserted(
             () -> assertThat(engine.stateOf(type, agentId)).isInstanceOf(AgentState.Idle.class));
     List<AgentEvent> story = engine.story(type, agentId);
-    assertThat(outcomes).singleElement().isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(outcomes).singleElement().isInstanceOf(ReplyOutcome.Applied.class);
     assertThat(story)
         .as("the result is on the record")
         .anyMatch(AgentEvent.ToolSucceeded.class::isInstance);

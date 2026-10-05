@@ -59,7 +59,6 @@ public class ApprovalsDesk implements Approver, NarrationListener {
             request.action(),
             request.askedAt(),
             request.deadline(),
-            request.replyToken().value(),
             Optional.empty(),
             Optional.empty(),
             Optional.empty()));
