@@ -489,13 +489,14 @@ final class DefaultQueuedHarness<I>
   }
 
   /**
-   * What just became true, handed to the step that wrote it, to be told to whoever is watching once
-   * that step has committed.
+   * What just became true, handed to the step that wrote it, to be told to whoever is watching when
+   * the locked step returns.
    *
-   * <p>Not told here: the step holds it until {@code withLock} returns, which is after the commit,
-   * and drops it if the step fails. A watcher told about a fold a rollback could still undo would
-   * be told something untrue, and one told before the commit could not read what it was told about;
-   * one told a moment late has only been told late.
+   * <p>Not told here: the step holds it until {@code withLock} returns, and drops it if the step
+   * fails. The nudge to the dispatcher is sent at the same moment. When the step opened its own
+   * transaction, that is after the commit. When a reply or a {@code tell} joined a caller's
+   * transaction, it is before the caller commits, so a watcher can be told of a write that the
+   * caller's later rollback undoes.
    */
   private void narrate(Step step, AgentEvent event, Instant at) {
     // Some of these mean resolving what a reference stands for, which is real work: skipped

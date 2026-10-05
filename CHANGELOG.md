@@ -30,6 +30,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`nessy_agent_effect` gained a nullable `parked_at` column,** and `Effects` gains
   `park(effectId, attemptsMade, at)`, so a custom implementation must add it. Recreate the
   database.
+- **A custom `Effects` must add `liveFor` and `parkedNow`.** `Effects.liveFor(type, agent)` lists
+  one agent's live effect rows and `Effects.parkedNow(type, now, after, limit)` pages the rows that
+  are waiting on an answer at `now`, both as the new `LiveEffect`. A row that is parked, claimed
+  and not yet at its deadline is the one `LiveEffect.parkedNow` calls waiting.
+- **A custom `QueuedBackend` must add `queued(type, agent)`,** the number of inputs waiting in the
+  agent's queue.
+- **A custom `QueuedHarnessFactory` and `DirectHarnessFactory` must add `work()`,** which returns
+  the factory's `AgentWork`.
+- **A model response that repeats a call id is a failed inference.** Two tool calls in one
+  response with the same call id make the response invalid. The turn fails as it does for any
+  failed inference, with a permanent failure that names the repeated id, and the response's usage
+  is on the record. Nothing of the response is stored, narrated or requested, and no approver is
+  asked and no tool runs. The engine logs one error naming the agent, the turn and the id.
 - **`nessy_payload` gained a `kind` column.** A payload holds message blocks or a JSON document,
   and `kind` says which: `BLOCKS` or `DOCUMENT`. `Payloads` gains two abstract methods, so a
   custom implementation must add them. Recreate the database.
@@ -95,6 +108,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`AgentWork` says what an agent is doing and what waits on a person.** `status(type, id)`
+  returns an `AgentStatus`: an `Activity` (`IDLE`, `WORKING`, `WAITING` or `ENDED`), the number
+  queued, the current turn, the approvals waiting, and the number of waiting tool calls.
+  `waitingApprovals()` and `waitingApprovals(type)` list the approvals parked on people, each as
+  the `ApprovalRequest` its approver was shown. Both read stored data on every call. An agent is
+  `WAITING` only when every live effect row is parked and not yet at its deadline.
+  `QueuedHarnessFactory.work()` and `DirectHarnessFactory.work()` return one.
+- **`LiveEffect` is one effect row as a status read sees it:** the agent, the effect, when it was
+  written, when it was parked, its deadline, its attempts and whether it is running.
 - **The starter offers an `AgentWork` bean.** `AgentWorkAutoConfiguration` registers one
   `AgentWork` over whichever backends the application has, replaceable by a bean of its own. An
   agent is read from the first door, queued before direct, whose store holds an event for it. With
@@ -151,11 +173,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **A model response that repeats a call id is a failed inference.** Two tool calls in one
-  response with the same call id make the response invalid. The turn fails as it does for any
-  failed inference, with a permanent failure that names the repeated id, and the response's usage
-  is on the record. Nothing of the response is stored, narrated or requested, and no approver is
-  asked and no tool runs. The engine logs one error naming the agent, the turn and the id.
 - **An approval's `decidedBy` and a denial's `reason` are cut, never refused.** Nessy keeps what
   the application gives and cuts one longer than 1,000 characters to that length.
 - **A payload's reference is a hash of its content before the storage transform.** The reference
@@ -169,6 +186,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An answer that arrives after a call's deadline is ignored.** `Replies.approve` and
+  `Replies.complete` return `Ignored` for a call whose deadline is not after now, including the
+  moment between the deadline and the dispatcher recording the expiry. Before, the answer was
+  `Applied` and the call ran. The row is left for the dispatcher to expire.
 - **The deadline an approver and a tool are shown is the deadline the call is held to.** The
   `deadline` on an `ApprovalRequest` and the `deadline` on a `ToolCallRequest` were worked out
   again when the call was handled, so a call that waited in the queue showed a later instant than

@@ -29,9 +29,11 @@ package org.jwcarman.nessy.api;
  * and the request's idempotency key. Repeating the request would ask twice, which for a person is
  * pestering and for a tool may be worse.
  *
- * <p>Deferring carries an obligation: whatever defers must keep those three values, because they
- * are the only address that can settle that call. An answer that arrives after the request's
- * deadline has passed is ignored -- the agent stopped waiting, and was told so.
+ * <p>A deferring tool carries an obligation: it must keep those three values, because they are the
+ * only address that can settle the call, and the engine only counts waiting tool calls and never
+ * lists them. An approver has no such obligation, because the approvals waiting on a person can be
+ * read from {@link org.jwcarman.nessy.api.AgentWork#waitingApprovals()}. An answer that arrives
+ * after the request's deadline has passed is ignored -- the agent stopped waiting, and was told so.
  *
  * @param <T> what the answer will be, when there is one
  */

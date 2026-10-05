@@ -69,8 +69,9 @@ import tools.jackson.databind.node.ObjectNode;
  *     trusted
  * @param action what will actually happen if this is approved, in words a person can consent to;
  *     the binding's action stringifier ({@link ToolConfig#action}) produced it
- * @param askedAt when the approval request was raised -- dwell time on an approvals page, and the
- *     fixed point the deadline was measured from, so a restart cannot silently extend one
+ * @param askedAt when the approver was asked, for dwell time on an approvals page: on the request
+ *     the approver is handed, the instant it was asked on this attempt; on one rebuilt from stored
+ *     values by {@link org.jwcarman.nessy.api.AgentWork}, when the approver deferred
  * @param deadline when the approval request stops standing
  * @param facts whatever enrichers have added; empty when the engine first builds it
  */

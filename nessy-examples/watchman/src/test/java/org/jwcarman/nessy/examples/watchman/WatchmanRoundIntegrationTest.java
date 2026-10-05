@@ -25,9 +25,11 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentWork;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
@@ -58,17 +60,17 @@ class WatchmanRoundIntegrationTest {
   }
 
   @Autowired private AgentWork work;
-  @Autowired private org.jwcarman.nessy.engine.store.TurnHistories histories;
-  @org.springframework.boot.test.web.server.LocalServerPort private int port;
+  @Autowired private TurnHistories histories;
+  @LocalServerPort private int port;
 
   /**
    * Sixty seconds rather than twenty, because of what is being waited for.
    *
    * <p>A round begins on ApplicationReadyEvent and has to get a proposal through a model stand-in,
    * an approval gate and a wait before it shows on the page -- in a module that starts two Spring
-   * contexts against one Postgres container, on a shared runner. Twenty seconds was enough on a
-   * laptop and lost on CI. Raising the ceiling of a wait does not weaken what it asserts: the
-   * condition is the same, and a passing run still stops the moment it is met.
+   * contexts, each with a Postgres container of its own, on a shared runner. Twenty seconds was
+   * enough on a laptop and lost on CI. Raising the ceiling of a wait does not weaken what it
+   * asserts: the condition is the same, and a passing run still stops the moment it is met.
    */
   @Test
   void a_proposed_prune_waits_for_a_person_until_a_person_approves_it() {
@@ -108,9 +110,8 @@ class WatchmanRoundIntegrationTest {
   }
 
   /**
-   * What Nessy says the watchman is waiting on, filtered to the agent this test owns: this module
-   * runs two Spring contexts against one Postgres container, so another context's agents are
-   * visible here.
+   * What Nessy says the watchman is waiting on, filtered to the agent this test owns. This module
+   * runs two Spring contexts, and each has a Postgres container of its own.
    */
   private List<ApprovalRequest> ours() {
     return work.waitingApprovals(Watchman.TYPE).stream()

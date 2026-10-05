@@ -48,6 +48,9 @@ import org.jwcarman.nessy.api.AgentType;
  * <p><b>The caller is rarely the approver or the tool.</b> It is a webhook controller, a queue
  * consumer, an admin page -- code somewhere else entirely. That is why this is injected.
  *
+ * <p>An answer that arrives at or after its call's deadline is {@link ReplyOutcome.Ignored}, even
+ * when the engine has not yet recorded the expiry: the agent has stopped waiting.
+ *
  * <p>Every argument is required; a null is refused with a {@link NullPointerException}. Answering
  * is idempotent in the only way that matters: a second answer for the same call is {@link
  * ReplyOutcome.Ignored}, never folded twice. The caller is told {@link ReplyOutcome.Applied} only
