@@ -21,7 +21,6 @@ import static org.awaitility.Awaitility.await;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentWork;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
@@ -45,7 +44,6 @@ import org.springframework.web.client.RestClient;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {"watchman.round-interval=PT1H", "nessy.provider=scripted"})
 @Import(PostgresBacked.Connection.class)
-@Order(1)
 @DisplayName("A round of the scripted watchman")
 class WatchmanRoundIntegrationTest {
 

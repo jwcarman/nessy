@@ -21,16 +21,14 @@ import org.springframework.context.annotation.Bean;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
- * A real PostgreSQL, once, for every test that touches a table: the engine's schema is
- * PostgreSQL's. A Boot test imports {@link Connection} and gets it as a service connection.
+ * A real PostgreSQL for every test that touches a table: the engine's schema is PostgreSQL's. A
+ * Boot test imports {@link Connection} and gets it as a service connection.
+ *
+ * <p>One container per Spring context, started and stopped with it. The tests that use it share an
+ * agent id, so a database shared between their contexts would let one test's rounds show up in
+ * another's.
  */
 final class PostgresBacked {
-
-  private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
-
-  static {
-    POSTGRES.start();
-  }
 
   private PostgresBacked() {}
 
@@ -39,7 +37,7 @@ final class PostgresBacked {
     @Bean
     @ServiceConnection
     PostgreSQLContainer postgres() {
-      return POSTGRES;
+      return new PostgreSQLContainer("postgres:18-alpine");
     }
   }
 }

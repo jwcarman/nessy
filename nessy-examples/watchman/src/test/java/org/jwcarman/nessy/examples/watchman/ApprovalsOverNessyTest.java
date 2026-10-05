@@ -26,8 +26,8 @@ import java.net.http.HttpResponse.BodyHandlers;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentWork;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
@@ -47,7 +47,6 @@ import org.springframework.context.annotation.Primary;
       "watchman.approval-term=PT4S"
     })
 @Import(PostgresBacked.Connection.class)
-@Order(2)
 @DisplayName("Review: the page over the real Nessy")
 class ApprovalsOverNessyTest {
 
@@ -131,8 +130,7 @@ class ApprovalsOverNessyTest {
     assertThat(get(null).body()).doesNotContain("docker image prune -af");
 
     // a late answer is told it was no longer waiting, and the page shows the notice once
-    java.util.concurrent.atomic.AtomicReference<String> cookieRef =
-        new java.util.concurrent.atomic.AtomicReference<>();
+    AtomicReference<String> cookieRef = new AtomicReference<>();
     await()
         .atMost(Duration.ofSeconds(30))
         .untilAsserted(
