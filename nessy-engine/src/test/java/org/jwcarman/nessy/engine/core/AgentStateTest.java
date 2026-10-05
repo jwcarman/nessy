@@ -47,6 +47,8 @@ import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.agent.OutstandingAction;
 import org.jwcarman.nessy.inference.Failure;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * The pure core, on its own: no provider, no database, no clock.
@@ -56,6 +58,10 @@ import org.jwcarman.nessy.inference.Failure;
  * rather than with the test.
  */
 class AgentStateTest {
+
+  private static ObjectNode none() {
+    return JsonNodeFactory.instance.objectNode();
+  }
 
   /** Any key: the tests here are not about which one a call gets. */
   private static final IdempotencyKey KEY =
@@ -109,7 +115,7 @@ class AgentStateTest {
                     TURN,
                     REQUEST,
                     CALL,
-                    new AgentCommand.ApprovalOutcome.Approved(Optional.empty())))
+                    new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none())))
             .events());
   }
 
@@ -273,7 +279,7 @@ class AgentStateTest {
                       TURN,
                       REQUEST,
                       CALL,
-                      new AgentCommand.ApprovalOutcome.Approved(Optional.empty())))
+                      new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none())))
               .events());
     }
 
@@ -610,7 +616,7 @@ class AgentStateTest {
                   TURN,
                   REQUEST,
                   CALL,
-                  new AgentCommand.ApprovalOutcome.Approved(Optional.empty())));
+                  new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none())));
 
       assertThat(decision.effects()).singleElement().isInstanceOf(AgentEffect.CallTool.class);
     }
@@ -934,7 +940,7 @@ class AgentStateTest {
                   new TurnId(99),
                   REQUEST,
                   CALL,
-                  new AgentCommand.ApprovalOutcome.Approved(Optional.empty())));
+                  new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none())));
 
       assertThat(decision).isInstanceOf(Decision.Ignore.class);
       assertThat(decision.events()).isEmpty();
@@ -996,7 +1002,7 @@ class AgentStateTest {
                   TURN,
                   Seq.of(1),
                   CALL,
-                  new AgentCommand.ApprovalOutcome.Approved(Optional.empty())));
+                  new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none())));
 
       assertThat(decision).isInstanceOf(Decision.Ignore.class);
       assertThat(decision.events()).isEmpty();
@@ -1032,7 +1038,7 @@ class AgentStateTest {
                           TURN,
                           REQUEST,
                           CALL,
-                          new AgentCommand.ApprovalOutcome.Approved(Optional.empty())))
+                          new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none())))
                   .events())
           .as("an approval")
           .singleElement()
@@ -1044,7 +1050,7 @@ class AgentStateTest {
                           TURN,
                           REQUEST,
                           CALL,
-                          new AgentCommand.ApprovalOutcome.Denied("no", Optional.empty())))
+                          new AgentCommand.ApprovalOutcome.Denied("no", Optional.empty(), none())))
                   .events())
           .as("a denial")
           .first()
@@ -1068,7 +1074,7 @@ class AgentStateTest {
                           TURN,
                           REQUEST,
                           CALL,
-                          new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "broke")))
+                          new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "broke", none())))
                   .events())
           .as("a failure")
           .first()
@@ -1177,7 +1183,7 @@ class AgentStateTest {
                             TURN,
                             REQUEST,
                             call,
-                            new AgentCommand.ApprovalOutcome.Approved(Optional.empty())))
+                            new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none())))
                     .events());
       }
       return state;
@@ -1258,7 +1264,7 @@ class AgentStateTest {
                   TURN,
                   REQUEST,
                   B,
-                  new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "nope")));
+                  new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "nope", none())));
 
       assertThat(last.effects()).singleElement().isInstanceOf(AgentEffect.Infer.class);
     }
@@ -1292,7 +1298,7 @@ class AgentStateTest {
                   TURN,
                   REQUEST,
                   A,
-                  new AgentCommand.ApprovalOutcome.Denied("policy", Optional.empty())));
+                  new AgentCommand.ApprovalOutcome.Denied("policy", Optional.empty(), none())));
 
       assertThat(denied.effects()).singleElement().isInstanceOf(AgentEffect.Infer.class);
       assertThat(state.applyAll(denied.events())).isInstanceOf(AgentState.Inferring.class);
@@ -1506,7 +1512,7 @@ class AgentStateTest {
                       TURN,
                       REQUEST,
                       call,
-                      new AgentCommand.ApprovalOutcome.Approved(Optional.empty())))
+                      new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none())))
               .events());
     }
 
@@ -1519,7 +1525,7 @@ class AgentStateTest {
                       TURN,
                       REQUEST,
                       SECOND,
-                      new AgentCommand.ApprovalOutcome.Approved(Optional.empty())));
+                      new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none())));
 
       assertThat(decision.events())
           .singleElement()
@@ -1537,7 +1543,7 @@ class AgentStateTest {
                       TURN,
                       REQUEST,
                       FIRST,
-                      new AgentCommand.ApprovalOutcome.Denied("no", Optional.empty())));
+                      new AgentCommand.ApprovalOutcome.Denied("no", Optional.empty(), none())));
 
       assertThat(decision.events())
           .first()
@@ -1555,7 +1561,7 @@ class AgentStateTest {
                       TURN,
                       REQUEST,
                       SECOND,
-                      new AgentCommand.ApprovalOutcome.Approved(Optional.of("u_carol"))));
+                      new AgentCommand.ApprovalOutcome.Approved(Optional.of("u_carol"), none())));
 
       assertThat(decision.events())
           .singleElement()
@@ -1573,7 +1579,8 @@ class AgentStateTest {
                       TURN,
                       REQUEST,
                       FIRST,
-                      new AgentCommand.ApprovalOutcome.Denied("no", Optional.of("u_dave"))));
+                      new AgentCommand.ApprovalOutcome.Denied(
+                          "no", Optional.of("u_dave"), none())));
 
       assertThat(decision.events())
           .first()
@@ -1591,7 +1598,7 @@ class AgentStateTest {
                       TURN,
                       REQUEST,
                       SECOND,
-                      new AgentCommand.ApprovalOutcome.Approved(Optional.empty())));
+                      new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none())));
 
       assertThat(decision.events())
           .singleElement()
@@ -1629,7 +1636,7 @@ class AgentStateTest {
                   TURN,
                   REQUEST,
                   FIRST,
-                  new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "broke")));
+                  new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "broke", none())));
 
       assertThat(decision.events())
           .first()
@@ -1647,7 +1654,7 @@ class AgentStateTest {
                       TURN,
                       REQUEST,
                       SECOND,
-                      new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "expired")));
+                      new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "expired", none())));
 
       assertThat(decision.events())
           .first()
@@ -1666,7 +1673,7 @@ class AgentStateTest {
                   TURN,
                   REQUEST,
                   FIRST,
-                  new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "one")));
+                  new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "one", none())));
       Decision second =
           both.execute(
               new AgentCommand.CompleteToolCall(
@@ -1692,7 +1699,7 @@ class AgentStateTest {
                   TURN,
                   Seq.of(1),
                   FIRST,
-                  new AgentCommand.ApprovalOutcome.Approved(Optional.empty())));
+                  new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none())));
 
       assertThat(decision).isEqualTo(Decision.ignore());
     }
@@ -1739,13 +1746,16 @@ class AgentStateTest {
                               TURN,
                               REQUEST,
                               ASKED,
-                              new AgentCommand.ApprovalOutcome.Approved(Optional.empty())))
+                              new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none())))
                       .events());
 
       Decision decision =
           running.execute(
               new AgentCommand.CompleteToolCall(
-                  TURN, REQUEST, ASKED, new AgentCommand.ToolOutcome.Failed(kind, "broke")));
+                  TURN,
+                  REQUEST,
+                  ASKED,
+                  new AgentCommand.ToolOutcome.Failed(kind, "broke", none())));
 
       assertThat(decision.events())
           .singleElement()
@@ -1764,7 +1774,7 @@ class AgentStateTest {
                       REQUEST,
                       ASKED,
                       new AgentCommand.ToolOutcome.Failed(
-                          CallFailure.NOT_AUTHORISED, "the approval expired")));
+                          CallFailure.NOT_AUTHORISED, "the approval expired", none())));
 
       assertThat(decision.events())
           .singleElement()

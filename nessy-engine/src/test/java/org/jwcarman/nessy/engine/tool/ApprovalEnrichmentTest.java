@@ -20,6 +20,7 @@ import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -48,17 +49,19 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Gathering and judging, kept apart.
  *
  * <p>An enricher never decides; it makes something available. That separation is what lets a risk
  * score, a resolved principal and a quota check be added independently of each other and of
- * whatever eventually weighs them -- and what lets one approver serve agents whose questions are
+ * whatever eventually weighs them -- and what lets one approver serve agents whose requests are
  * enriched differently.
  *
- * <p>The second reader matters as much as the first. A deferred question is read by a person hours
- * later, so what an enricher writes is evidence for a human as much as input for a rule.
+ * <p>The second reader matters as much as the first. A deferred request is read by a person hours
+ * later, so what an enricher writes is evidence for a human as much as input for a rule. The facts
+ * are written on the event that records the decision, exactly as they stood.
  */
 class ApprovalEnrichmentTest {
 
@@ -201,6 +204,8 @@ class ApprovalEnrichmentTest {
             });
     assertThat(ran).as("denied on what the enrichers found").isEmpty();
     List<AgentEvent> story = engine.story(type, agentId);
+    ObjectNode gathered =
+        JsonNodeFactory.instance.objectNode().put(RISK, 90).put(PRINCIPAL, "svc-deployer");
     assertThat(story.get(2))
         .isEqualTo(
             new AgentEvent.ToolDenied(
@@ -208,7 +213,8 @@ class ApprovalEnrichmentTest {
                 new TurnId(1),
                 new CallId("call_1"),
                 "risk 90 is too high",
-                java.util.Optional.empty(),
+                Optional.empty(),
+                gathered,
                 requestedKey(story)));
   }
 
@@ -347,9 +353,9 @@ class ApprovalEnrichmentTest {
     assertThat(engine.story(type, agentId)).noneMatch(AgentEvent.ToolApproved.class::isInstance);
   }
 
-  /** Nothing gathers by default, and a question with no facts is an ordinary one. */
+  /** Nothing gathers by default, and a request with no facts is an ordinary one. */
   @Test
-  void aQuestionWithNoEnrichersCarriesNoFacts() {
+  void aRequestWithNoEnrichersCarriesNoFacts() {
     running(asksToWipe("/tmp/x"));
     AgentType type = new AgentType("enriched-none");
     AgentId agentId = new AgentId(UUID.randomUUID());

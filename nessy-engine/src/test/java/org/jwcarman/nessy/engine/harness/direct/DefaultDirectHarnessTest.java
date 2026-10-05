@@ -75,6 +75,7 @@ import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.VendorProperty;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
@@ -112,6 +113,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 /**
  * A whole turn, on one thread, with a map for storage.
@@ -1973,6 +1975,45 @@ class DefaultDirectHarnessTest {
         .contains("ToolDenied");
   }
 
+  @Test
+  @DisplayName(
+      "an approver that throws fails the call as not authorised, and the story keeps the facts")
+  void an_approver_that_throws_fails_the_call_and_the_story_keeps_the_facts() {
+    AgentId agent = AgentId.random();
+    Scripted model = new Scripted().then(asking("lookup")).then(answering("noted, moving on"));
+    List<ApprovalRequest> shown = new ArrayList<>();
+    Approver throwing =
+        request -> {
+          shown.add(request);
+          request.fact("risk", "low");
+          throw new IllegalStateException("approval service down");
+        };
+
+    Outcome<String> outcome =
+        harness(model, tool("should never run"), throwing).ask(agent, "look it up");
+
+    assertThat(outcome)
+        .usingRecursiveComparison()
+        .ignoringFields("stats")
+        .isEqualTo(new Outcome.Answered<>("noted, moving on", ANY_STATS));
+    assertThat(shown).as("asked once: this door does not retry").hasSize(1);
+    List<AgentEvent.ToolFailed> failures =
+        events.readAll(TYPE, agent).stream()
+            .filter(AgentEvent.ToolFailed.class::isInstance)
+            .map(AgentEvent.ToolFailed.class::cast)
+            .toList();
+    assertThat(failures)
+        .singleElement()
+        .satisfies(
+            failed -> {
+              assertThat(failed.kind()).isEqualTo(CallFailure.NOT_AUTHORISED);
+              assertThat(failed.message())
+                  .isEqualTo("the call could not be authorised: approval service down");
+              assertThat(failed.facts())
+                  .isEqualTo(JsonNodeFactory.instance.objectNode().put("risk", "low"));
+            });
+  }
+
   /**
    * The one thing that genuinely cannot cross to this door: an approver that answers later. There
    * is nowhere to put the waiting, so it discharges as a failure -- nobody said no, which is what
@@ -2022,6 +2063,14 @@ class DefaultDirectHarnessTest {
         .extracting(e -> e.getClass().getSimpleName())
         .contains("ToolFailed")
         .doesNotContain("ApprovalDeferred", "ToolDeferred");
+    assertThat(
+            events.readAll(TYPE, agent).stream()
+                .filter(AgentEvent.ToolFailed.class::isInstance)
+                .map(AgentEvent.ToolFailed.class::cast)
+                .map(AgentEvent.ToolFailed::facts)
+                .toList())
+        .as("a deferral is a failed call here, and the failure holds no facts")
+        .containsExactly(JsonNodeFactory.instance.objectNode());
     await().atMost(Duration.ofSeconds(10)).until(() -> heard.kindsFor(agent).contains("Answered"));
     assertThat(heard.kindsFor(agent))
         .contains("CallFailed")

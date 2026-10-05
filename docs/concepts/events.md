@@ -24,11 +24,11 @@ public sealed interface AgentEvent {
   record InferenceAttempted(Seq seq, TurnId turn, Failure failure, Usage usage, Optional<RequestManifest> request) implements AgentEvent {}
   record TurnStopped(Seq seq, TurnId turn, String reason) implements AgentEvent {}
   record ActionsRequested(Seq seq, TurnId turn, PayloadRef request, List<ActionRequest> actions, Usage usage, Optional<RequestManifest> manifest) implements AgentEvent {}
-  record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> decidedBy, IdempotencyKey idempotencyKey) implements AgentEvent {}
-  record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> decidedBy, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolApproved(Seq seq, TurnId turn, CallId callId, Optional<String> decidedBy, ObjectNode facts, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolDenied(Seq seq, TurnId turn, CallId callId, String reason, Optional<String> decidedBy, ObjectNode facts, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ToolSucceeded(Seq seq, TurnId turn, CallId callId, PayloadRef result, String rendered, IdempotencyKey idempotencyKey) implements AgentEvent {}
-  record ToolFailed(Seq seq, TurnId turn, CallId callId, CallFailure kind, String message, IdempotencyKey idempotencyKey) implements AgentEvent {}
-  record ApprovalDeferred(Seq seq, TurnId turn, CallId callId, Instant until, PayloadRef question, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ToolFailed(Seq seq, TurnId turn, CallId callId, CallFailure kind, String message, ObjectNode facts, IdempotencyKey idempotencyKey) implements AgentEvent {}
+  record ApprovalDeferred(Seq seq, TurnId turn, CallId callId, Instant until, ObjectNode facts, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record ToolDeferred(Seq seq, TurnId turn, CallId callId, Instant until, IdempotencyKey idempotencyKey) implements AgentEvent {}
   record Terminated(Seq seq) implements AgentEvent {}
 }
@@ -58,11 +58,15 @@ Each of the four call events (`ToolApproved`, `ToolDenied`, `ToolSucceeded`, `To
 carries the `IdempotencyKey` its call was requested with, copied from the call the agent is
 waiting for. A reader joins a call's events by that key.
 
+`ToolApproved.facts` and `ToolDenied.facts` are the facts the approver was shown, as they stood
+when it decided: a JSON object, empty when there were none. An answer that arrives after a deferral
+has none; the `ApprovalDeferred` before it holds the facts. Each event keeps its own copy.
+
 `ApprovalDeferred` and `ToolDeferred` are the two events for a call that was put aside: nobody
 has answered yet, or the tool will report back later, and the call stands until `until`. Each
-carries the call's `IdempotencyKey`. `ApprovalDeferred.question` is a `PayloadRef` to a JSON
-document, the question the approver left for whoever answers; it is not message content, so
-nothing that reads a turn's messages fetches it. A deferral adds nothing to a turn's exchanges,
+carries the call's `IdempotencyKey`. `ApprovalDeferred.facts` is the facts the approver was
+shown when it put the call aside, a JSON object that is empty when there were none; the deferral is
+recorded either way. A deferral adds nothing to a turn's exchanges,
 its tally or its usage, and the model is shown nothing of it.
 
 `ToolFailed.kind` is a `CallFailure` and says why the call did not produce a result when nobody
@@ -70,6 +74,11 @@ refused it: `FAILED`, the tool ran and failed or could not be run; `PAST_DEADLIN
 not finish before its deadline and whether it ran is not known; `NOT_AUTHORISED`, permission was
 never given because the approval's deadline passed or the approver itself failed. A refusal is
 `ToolDenied`, not a `ToolFailed`.
+
+`ToolFailed.facts` is the facts the approver was shown, present when the approver itself failed.
+If the ask was retried, they are the facts of the last ask. It is an empty object for every other
+failure, including one from an expired deferral, whose facts are on the `ApprovalDeferred` before
+it.
 
 Events hold other text too. A failed call's message is at most 1,000
 characters; a longer one has its middle dropped and `...` in the gap, and the

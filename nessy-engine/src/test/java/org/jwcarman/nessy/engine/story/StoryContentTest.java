@@ -50,7 +50,10 @@ import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.inmemory.InMemoryAgentEvents;
 import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class StoryContentTest {
@@ -72,6 +75,10 @@ class StoryContentTest {
 
   private PayloadRef keep(Block... blocks) {
     return payloads.forAgent(agent).put(List.of(blocks));
+  }
+
+  private static ObjectNode none() {
+    return JsonNodeFactory.instance.objectNode();
   }
 
   private static ActionRequest call(String id, IdempotencyKey key) {
@@ -108,7 +115,13 @@ class StoryContentTest {
   private static AgentEvent.ToolFailed failed(
       long seq, long turn, String callId, IdempotencyKey key) {
     return new AgentEvent.ToolFailed(
-        new Seq(seq), new TurnId(turn), CallId.of(callId), CallFailure.FAILED, "broke", key);
+        new Seq(seq),
+        new TurnId(turn),
+        CallId.of(callId),
+        CallFailure.FAILED,
+        "broke",
+        JsonNodeFactory.instance.objectNode(),
+        key);
   }
 
   private static AgentEvent.InferenceAnswered answered(long seq, long turn, PayloadRef answer) {
@@ -315,7 +328,7 @@ class StoryContentTest {
     private static AgentEvent.ToolDenied denied(
         long seq, long turn, String callId, IdempotencyKey key) {
       return new AgentEvent.ToolDenied(
-          new Seq(seq), new TurnId(turn), CallId.of(callId), "no", Optional.empty(), key);
+          new Seq(seq), new TurnId(turn), CallId.of(callId), "no", Optional.empty(), none(), key);
     }
 
     /** Fills the story after the call's own events with more than two pages of other calls. */
@@ -453,7 +466,7 @@ class StoryContentTest {
               new TurnId(1),
               CallId.of("a"),
               AT,
-              payloads.forAgent(agent).putDocument(JsonMapper.builder().build().createObjectNode()),
+              JsonNodeFactory.instance.objectNode(),
               key),
           succeeded(4, 1, "a", key, keep(new Block.Text("42"))));
 
@@ -540,6 +553,295 @@ class StoryContentTest {
       assertThatThrownBy(() -> content.results(null, 10))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("after must not be null");
+    }
+  }
+
+  @Nested
+  class The_facts_a_calls_approver_was_shown {
+
+    private final CountingEvents counting = new CountingEvents(events);
+    private final StoryContent counted =
+        new EventAgentStories(counting, payloads).of(TYPE, agent).content();
+
+    private final IdempotencyKey first = IdempotencyKey.of(UUID.randomUUID());
+    private final IdempotencyKey second = IdempotencyKey.of(UUID.randomUUID());
+
+    private static ObjectNode facts(String action) {
+      return JsonNodeFactory.instance.objectNode().put("action", action).put("count", 3);
+    }
+
+    /** Compared as text: a number that went through storage reads back in its narrowest type. */
+    private String text(Optional<JsonNode> read) {
+      assertThat(read).isPresent();
+      return read.get().toString();
+    }
+
+    private AgentEvent.ToolApproved approved(
+        long seq, String callId, IdempotencyKey key, ObjectNode facts) {
+      return new AgentEvent.ToolApproved(
+          new Seq(seq), new TurnId(1), CallId.of(callId), Optional.of("u_carol"), facts, key);
+    }
+
+    private AgentEvent.ToolDenied denied(
+        long seq, String callId, IdempotencyKey key, ObjectNode facts) {
+      return new AgentEvent.ToolDenied(
+          new Seq(seq), new TurnId(1), CallId.of(callId), "no", Optional.of("u_dave"), facts, key);
+    }
+
+    private AgentEvent.ApprovalDeferred deferred(
+        long seq, String callId, IdempotencyKey key, ObjectNode facts) {
+      return new AgentEvent.ApprovalDeferred(
+          new Seq(seq), new TurnId(1), CallId.of(callId), AT.plusSeconds(60), facts, key);
+    }
+
+    private AgentEvent.ToolFailed failedWith(
+        long seq, String callId, IdempotencyKey key, ObjectNode facts) {
+      return new AgentEvent.ToolFailed(
+          new Seq(seq),
+          new TurnId(1),
+          CallId.of(callId),
+          CallFailure.NOT_AUTHORISED,
+          "broke",
+          facts,
+          key);
+    }
+
+    private AgentEvent.TurnStarted opening() {
+      return started(keep(new Block.Text("go")));
+    }
+
+    private AgentEvent.ActionsRequested asking(ActionRequest... actions) {
+      return requested(2, 1, keep(toolCall("a")), actions);
+    }
+
+    private void laterCalls(int calls) {
+      PayloadRef request = keep(toolCall("c1"));
+      PayloadRef result = keep(new Block.Text("r"));
+      for (int i = 0; i < calls; i++) {
+        IdempotencyKey key = IdempotencyKey.of(UUID.randomUUID());
+        write(
+            requested(last + 1, 1, request, call("c1", key)),
+            succeeded(last + 2, 1, "c1", key, result));
+      }
+    }
+
+    @Test
+    void are_the_approvals_own_when_the_call_was_approved_at_once() {
+      write(opening(), asking(call("a", first)), approved(3, "a", first, facts("approve me")));
+
+      assertThat(text(content.approvalFacts(first))).isEqualTo(facts("approve me").toString());
+    }
+
+    @Test
+    void are_the_denials_own_when_the_call_was_denied_at_once() {
+      write(opening(), asking(call("a", first)), denied(3, "a", first, facts("deny me")));
+
+      assertThat(text(content.approvalFacts(first))).isEqualTo(facts("deny me").toString());
+    }
+
+    @Test
+    void are_an_empty_object_when_the_call_was_decided_at_once_with_none() {
+      write(opening(), asking(call("a", first)), approved(3, "a", first, none()));
+
+      assertThat(content.approvalFacts(first)).contains(none());
+    }
+
+    @Test
+    void are_the_deferrals_while_the_call_is_still_waiting() {
+      write(opening(), asking(call("a", first)), deferred(3, "a", first, facts("wait for me")));
+
+      assertThat(text(content.approvalFacts(first))).isEqualTo(facts("wait for me").toString());
+    }
+
+    @Test
+    void are_an_empty_object_while_the_call_waits_on_a_deferral_that_had_none() {
+      write(opening(), asking(call("a", first)), deferred(3, "a", first, none()));
+
+      assertThat(content.approvalFacts(first)).contains(none());
+    }
+
+    @Test
+    void are_the_deferrals_when_the_call_was_approved_later_with_none_of_its_own() {
+      write(
+          opening(),
+          asking(call("a", first)),
+          deferred(3, "a", first, facts("later yes")),
+          approved(4, "a", first, none()));
+
+      assertThat(text(content.approvalFacts(first))).isEqualTo(facts("later yes").toString());
+    }
+
+    @Test
+    void are_the_deferrals_when_the_call_was_denied_later_with_none_of_its_own() {
+      write(
+          opening(),
+          asking(call("a", first)),
+          deferred(3, "a", first, facts("later no")),
+          denied(4, "a", first, none()));
+
+      assertThat(text(content.approvalFacts(first))).isEqualTo(facts("later no").toString());
+    }
+
+    @Test
+    void are_the_deferrals_when_the_call_expired_with_a_failure_that_has_none() {
+      write(
+          opening(),
+          asking(call("a", first)),
+          deferred(3, "a", first, facts("never answered")),
+          failedWith(4, "a", first, none()));
+
+      assertThat(text(content.approvalFacts(first))).isEqualTo(facts("never answered").toString());
+    }
+
+    @Test
+    void are_the_failures_own_when_the_approver_threw() {
+      write(
+          opening(),
+          asking(call("a", first)),
+          failedWith(3, "a", first, facts("asked and failed")));
+
+      assertThat(text(content.approvalFacts(first)))
+          .isEqualTo(facts("asked and failed").toString());
+    }
+
+    @Test
+    void are_the_failures_own_when_the_approver_threw_after_an_earlier_deferral() {
+      write(
+          opening(),
+          asking(call("a", first)),
+          deferred(3, "a", first, facts("asked early")),
+          failedWith(4, "a", first, facts("asked again and failed")));
+
+      assertThat(text(content.approvalFacts(first)))
+          .isEqualTo(facts("asked again and failed").toString());
+    }
+
+    @Test
+    void stay_the_approvals_when_the_tool_then_failed_with_none() {
+      write(
+          opening(),
+          asking(call("a", first)),
+          approved(3, "a", first, facts("approved then ran")),
+          failedWith(4, "a", first, none()));
+
+      assertThat(text(content.approvalFacts(first)))
+          .isEqualTo(facts("approved then ran").toString());
+    }
+
+    @Test
+    void stay_the_approvals_when_the_tool_then_succeeded() {
+      write(
+          opening(),
+          asking(call("a", first)),
+          approved(3, "a", first, facts("approved then succeeded")),
+          succeeded(4, 1, "a", first, keep(new Block.Text("done"))));
+
+      assertThat(text(content.approvalFacts(first)))
+          .isEqualTo(facts("approved then succeeded").toString());
+    }
+
+    @Test
+    void are_the_last_deferrals_when_the_call_was_asked_again() {
+      write(
+          opening(),
+          asking(call("a", first)),
+          deferred(3, "a", first, facts("asked early")),
+          deferred(4, "a", first, facts("asked again")),
+          approved(5, "a", first, none()));
+
+      assertThat(text(content.approvalFacts(first))).isEqualTo(facts("asked again").toString());
+    }
+
+    @Test
+    void are_each_calls_own_when_two_calls_were_made_in_one_request() {
+      write(
+          opening(),
+          asking(call("a", first), call("b", second)),
+          approved(3, "a", first, facts("the first call")),
+          deferred(4, "b", second, facts("the second call")));
+
+      assertThat(text(content.approvalFacts(first))).isEqualTo(facts("the first call").toString());
+      assertThat(text(content.approvalFacts(second)))
+          .isEqualTo(facts("the second call").toString());
+    }
+
+    @Test
+    void are_the_ones_an_ungated_call_was_shown_because_every_call_goes_to_an_approver() {
+      write(
+          opening(),
+          asking(call("a", first)),
+          approved(3, "a", first, facts("allowed by default")),
+          succeeded(4, 1, "a", first, keep(new Block.Text("done"))));
+
+      assertThat(text(content.approvalFacts(first)))
+          .isEqualTo(facts("allowed by default").toString());
+    }
+
+    @Test
+    void are_unknown_when_the_key_is_not_in_the_story() {
+      write(opening(), asking(call("a", first)), approved(3, "a", first, facts("someone else's")));
+
+      assertThat(content.approvalFacts(second)).isEmpty();
+    }
+
+    @Test
+    void are_an_empty_object_when_the_call_was_discharged_without_being_asked() {
+      write(opening(), asking(call("a", first)), failedWith(3, "a", first, none()));
+
+      assertThat(content.approvalFacts(first)).contains(none());
+    }
+
+    @Test
+    void are_unknown_when_the_call_has_not_yet_been_put_to_its_approver() {
+      write(opening(), asking(call("a", first)));
+
+      assertThat(content.approvalFacts(first)).isEmpty();
+    }
+
+    @Test
+    void are_unknown_for_an_agent_with_no_story() {
+      assertThat(content.approvalFacts(first)).isEmpty();
+    }
+
+    @Test
+    void are_refused_for_a_null_key() {
+      assertThatThrownBy(() -> content.approvalFacts(null))
+          .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void are_read_without_reading_past_the_decision() {
+      write(
+          opening(), asking(call("a", first)), approved(3, "a", first, facts("decided long ago")));
+      laterCalls(1_200);
+
+      assertThat(counted.approvalFacts(first)).isPresent();
+      assertThat(counting.pagesAfter).isNotEmpty();
+      assertThat(counting.pagesAfter).allMatch(read -> read.value() == 0);
+    }
+
+    @Test
+    void are_read_without_reading_past_a_failure_of_the_ask() {
+      write(
+          opening(),
+          asking(call("a", first)),
+          deferred(3, "a", first, facts("asked")),
+          failedWith(4, "a", first, none()));
+      laterCalls(1_200);
+
+      assertThat(counted.approvalFacts(first)).isPresent();
+      assertThat(counting.pagesAfter).isNotEmpty();
+      assertThat(counting.pagesAfter).allMatch(read -> read.value() == 0);
+    }
+
+    @Test
+    void are_read_to_the_end_of_the_story_while_the_call_is_waiting() {
+      write(opening(), asking(call("a", first)), deferred(3, "a", first, facts("still waiting")));
+      laterCalls(1_200);
+
+      assertThat(counted.approvalFacts(first)).isPresent();
+      assertThat(counting.pagesAfter).isNotEmpty();
+      assertThat(counting.pagesAfter).anyMatch(read -> read.value() >= 2_000);
     }
   }
 

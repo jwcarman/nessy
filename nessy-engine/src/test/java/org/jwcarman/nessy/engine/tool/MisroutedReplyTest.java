@@ -48,6 +48,7 @@ import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
 import org.jwcarman.nessy.engine.store.Outbox;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * An answer that is authentic but is not for anything still waiting.
@@ -321,7 +322,7 @@ class MisroutedReplyTest {
     }
 
     @Override
-    public void park(Attempt attempt, AgentEffect effect, Optional<PayloadRef> question) {
+    public void park(Attempt attempt, AgentEffect effect, ObjectNode facts) {
       // These tests never defer.
     }
   }

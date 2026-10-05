@@ -18,13 +18,13 @@ package org.jwcarman.nessy.engine.effect;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * How a performed effect gets back into the agent it was performed for.
@@ -88,7 +88,8 @@ public interface AgentEffectCallback {
    *
    * @param attempt the attempt that deferred; its deadline is the instant the deferral stands until
    * @param effect what the attempt was performing
-   * @param question the stored question somebody is being asked, present when an approver deferred
+   * @param facts the facts the approver was shown, written on the deferral; an empty object when
+   *     there were none, and for a tool's deferral
    */
-  void park(Attempt attempt, AgentEffect effect, Optional<PayloadRef> question);
+  void park(Attempt attempt, AgentEffect effect, ObjectNode facts);
 }

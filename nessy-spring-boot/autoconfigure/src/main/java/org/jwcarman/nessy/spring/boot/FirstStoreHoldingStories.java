@@ -35,6 +35,7 @@ import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.story.EventAgentStories;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Stories over several event stores, each agent read from the one store that holds it.
@@ -116,6 +117,12 @@ final class FirstStoreHoldingStories implements AgentStories {
 
     @Override
     public Optional<List<Block.ToolResultContent>> result(IdempotencyKey key) {
+      Objects.requireNonNull(key, "key must not be null");
+      return Optional.empty();
+    }
+
+    @Override
+    public Optional<JsonNode> approvalFacts(IdempotencyKey key) {
       Objects.requireNonNull(key, "key must not be null");
       return Optional.empty();
     }

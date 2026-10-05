@@ -30,6 +30,7 @@ import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.RequestManifest;
 import org.jwcarman.nessy.inference.Failure;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * What the harness asks of an {@link AgentState}. Seven of them, and the same seven whatever the
@@ -135,7 +136,7 @@ public sealed interface AgentCommand {
       implements AgentCommand {}
 
   /**
-   * An approver put a decision aside: the question is open until {@code until}, and the call keeps
+   * An approver put a decision aside: the request is open until {@code until}, and the call keeps
    * awaiting approval.
    *
    * <p>Guarded as {@link CompleteApproval} is: one for another turn, or for another request of the
@@ -144,10 +145,9 @@ public sealed interface AgentCommand {
    *
    * @param requestSeq where the request that asked for this call sits, as the effect that asked for
    *     the decision named it
-   * @param question what was put to the approver, kept for whoever answers later
+   * @param facts the facts the approver was shown, written on the deferral
    */
-  record DeferApproval(
-      TurnId turn, Seq requestSeq, CallId callId, Instant until, PayloadRef question)
+  record DeferApproval(TurnId turn, Seq requestSeq, CallId callId, Instant until, ObjectNode facts)
       implements AgentCommand {}
 
   /**
@@ -215,9 +215,10 @@ public sealed interface AgentCommand {
 
   /** What an approver decided. */
   sealed interface ApprovalOutcome {
-    record Approved(Optional<String> decidedBy) implements ApprovalOutcome {}
+    record Approved(Optional<String> decidedBy, ObjectNode facts) implements ApprovalOutcome {}
 
-    record Denied(String reason, Optional<String> decidedBy) implements ApprovalOutcome {}
+    record Denied(String reason, Optional<String> decidedBy, ObjectNode facts)
+        implements ApprovalOutcome {}
   }
 
   /** What a tool produced. */
@@ -229,6 +230,6 @@ public sealed interface AgentCommand {
     }
 
     /** Names what went wrong, never the values involved. See {@link AgentEvent.ToolFailed}. */
-    record Failed(CallFailure kind, String message) implements ToolOutcome {}
+    record Failed(CallFailure kind, String message, ObjectNode facts) implements ToolOutcome {}
   }
 }

@@ -29,6 +29,8 @@ import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.RequestManifest;
 import org.jwcarman.nessy.inference.Failure;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * What performing an effect came to.
@@ -174,22 +176,45 @@ public sealed interface EffectOutcome {
    * has its middle dropped and {@code ...} in the gap, whitespace untouched, and the shortened text
    * is what is stored and what the model reads back for the call. Every failure is made here, so
    * every failure is bounded wherever it was built.
+   *
+   * <p>{@code facts} is the facts the approver was shown, as they stood, when the approver itself
+   * failed; an empty object for every other failure. The record holds its own copy.
    */
-  record ToolFailed(CallId callId, CallFailure kind, String message) implements EffectOutcome {
+  record ToolFailed(CallId callId, CallFailure kind, String message, ObjectNode facts)
+      implements EffectOutcome {
     public ToolFailed {
       Objects.requireNonNull(callId, "callId must not be null");
       Objects.requireNonNull(kind, "kind must not be null");
       Objects.requireNonNull(message, "message must not be null");
       message = Truncator.dropMiddle().truncate(message, ToolConfig.LINE_CAP);
+      facts = facts == null ? JsonNodeFactory.instance.objectNode() : facts.deepCopy();
+    }
+
+    public ToolFailed(CallId callId, CallFailure kind, String message) {
+      this(callId, kind, message, JsonNodeFactory.instance.objectNode());
     }
   }
 
-  /** A call was never run, because an approver said no. */
-  record ToolDenied(CallId callId, String reason, Optional<String> decidedBy)
+  /**
+   * A call was never run, because an approver said no.
+   *
+   * <p>{@code facts} is the facts the approver was shown, as they stood when it decided; an empty
+   * object when there were none, and for an answer that arrived after a deferral, whose facts are
+   * on the deferral. The record holds its own copy.
+   */
+  record ToolDenied(CallId callId, String reason, Optional<String> decidedBy, ObjectNode facts)
       implements EffectOutcome {
 
+    public ToolDenied {
+      facts = facts == null ? JsonNodeFactory.instance.objectNode() : facts.deepCopy();
+    }
+
+    public ToolDenied(CallId callId, String reason, Optional<String> decidedBy) {
+      this(callId, reason, decidedBy, JsonNodeFactory.instance.objectNode());
+    }
+
     public ToolDenied(CallId callId, String reason) {
-      this(callId, reason, Optional.empty());
+      this(callId, reason, Optional.empty(), JsonNodeFactory.instance.objectNode());
     }
   }
 
@@ -200,15 +225,25 @@ public sealed interface EffectOutcome {
    * obligation; this one advances it, and the call it names is still owed a result. That is why the
    * fold checks the call's phase rather than merely its presence -- a redelivered approval must not
    * dispatch a second attempt at a tool that is already running.
+   *
+   * <p>{@code facts} is the facts the approver was shown, as they stood when it decided; an empty
+   * object when there were none, and for an answer that arrived after a deferral, whose facts are
+   * on the deferral. The record holds its own copy.
    */
-  record ToolApproved(CallId callId, Optional<String> decidedBy) implements EffectOutcome {
+  record ToolApproved(CallId callId, Optional<String> decidedBy, ObjectNode facts)
+      implements EffectOutcome {
 
-    /**
-     * Allowed, with nothing standing behind it -- an ungated tool, or a rule that is its own
-     * evidence.
-     */
+    public ToolApproved {
+      facts = facts == null ? JsonNodeFactory.instance.objectNode() : facts.deepCopy();
+    }
+
+    public ToolApproved(CallId callId, Optional<String> decidedBy) {
+      this(callId, decidedBy, JsonNodeFactory.instance.objectNode());
+    }
+
+    /** Allowed, for a decision that carries no decider and no facts. */
     public ToolApproved(CallId callId) {
-      this(callId, Optional.empty());
+      this(callId, Optional.empty(), JsonNodeFactory.instance.objectNode());
     }
   }
 }

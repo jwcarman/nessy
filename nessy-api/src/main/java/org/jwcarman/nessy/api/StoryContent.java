@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
+import tools.jackson.databind.JsonNode;
 
 /**
  * What an agent's story refers to but does not carry: the words said, and what tools returned.
@@ -81,4 +82,26 @@ public interface StoryContent {
    *     page holding it is read
    */
   Stream<CallResult> allResults(Seq after);
+
+  /**
+   * The facts the call's approver was shown, as they stood when it decided or deferred; an empty
+   * object when there were none.
+   *
+   * <p>A decision's own facts win when it has any. A decision made after a deferral carries none,
+   * and a call that expired while waiting carries none, so for those the facts the call was
+   * deferred with answer; when a call was asked again, they are the last ones before the decision.
+   * While the call is still waiting they are the last deferral's.
+   *
+   * <p>Empty (the {@code Optional}) when the key is not in this agent's story or nothing has been
+   * recorded for the call's approval yet. A call discharged before it was put to its approver, or
+   * whose request expired unasked, reads as an empty object. Facts are read back from storage,
+   * where a number reads in the narrowest type, so compare them by their text or field by field,
+   * not with {@code equals}.
+   *
+   * <p>Reads the story from its start until the call is decided, a page at a time, so its cost
+   * grows with the story.
+   *
+   * @throws NullPointerException if {@code key} is null
+   */
+  Optional<JsonNode> approvalFacts(IdempotencyKey key);
 }

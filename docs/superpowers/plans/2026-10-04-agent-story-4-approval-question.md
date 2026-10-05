@@ -10,6 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-04-agent-story-design.md`. Read §8a, §9c and all of §10 before any task.
 
+> **Superseded in part (2026-10-04).** Part A stands as built. Part B was built as written and then
+> reworked on the owner's ruling: an approval stores only its **facts**, directly on the event
+> (`facts` on `ToolApproved`, `ToolDenied`, `ToolFailed`, `ApprovalDeferred`), nothing is written
+> to `Payloads` for an approval, and the public read is `StoryContent.approvalFacts(key)`. The
+> word "question" below is the old name for the approval request. The spec's §8a is the record.
+
 ## Order of execution (plans 3, 4 and 5)
 
 Speed comes from running independent work side by side, never from fewer gates or fewer reviews.

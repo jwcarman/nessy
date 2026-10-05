@@ -122,18 +122,24 @@ public final class EffectOutcomes {
               request.get(),
               callId,
               new AgentCommand.ToolOutcome.Succeeded(result, rendered));
-      case EffectOutcome.ToolFailed(var callId, var kind, String message) ->
+      case EffectOutcome.ToolFailed(var callId, var kind, String message, var facts) ->
           new AgentCommand.CompleteToolCall(
-              turn, request.get(), callId, new AgentCommand.ToolOutcome.Failed(kind, message));
-      case EffectOutcome.ToolApproved(var callId, var decidedBy) ->
-          new AgentCommand.CompleteApproval(
-              turn, request.get(), callId, new AgentCommand.ApprovalOutcome.Approved(decidedBy));
-      case EffectOutcome.ToolDenied(var callId, String reason, var decidedBy) ->
+              turn,
+              request.get(),
+              callId,
+              new AgentCommand.ToolOutcome.Failed(kind, message, facts));
+      case EffectOutcome.ToolApproved(var callId, var decidedBy, var facts) ->
           new AgentCommand.CompleteApproval(
               turn,
               request.get(),
               callId,
-              new AgentCommand.ApprovalOutcome.Denied(reason, decidedBy));
+              new AgentCommand.ApprovalOutcome.Approved(decidedBy, facts));
+      case EffectOutcome.ToolDenied(var callId, String reason, var decidedBy, var facts) ->
+          new AgentCommand.CompleteApproval(
+              turn,
+              request.get(),
+              callId,
+              new AgentCommand.ApprovalOutcome.Denied(reason, decidedBy, facts));
     };
   }
 }

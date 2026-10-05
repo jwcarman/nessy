@@ -32,6 +32,8 @@ import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * A proof of concept: the whole of a turn, driven on one thread, with nothing written down.
@@ -46,6 +48,10 @@ import org.jwcarman.nessy.backend.event.AgentEvent;
  * could produce them.
  */
 final class InlineRunner {
+
+  private static ObjectNode none() {
+    return JsonNodeFactory.instance.objectNode();
+  }
 
   /** Stands in for the model. A POC, so the script is a list rather than a provider. */
   interface Model {
@@ -115,8 +121,9 @@ final class InlineRunner {
               approve.requestSeq(),
               approve.callId(),
               approves.test(approve.toolName())
-                  ? new AgentCommand.ApprovalOutcome.Approved(Optional.empty())
-                  : new AgentCommand.ApprovalOutcome.Denied("not allowed here", Optional.empty()));
+                  ? new AgentCommand.ApprovalOutcome.Approved(Optional.empty(), none())
+                  : new AgentCommand.ApprovalOutcome.Denied(
+                      "not allowed here", Optional.empty(), none()));
 
       case AgentEffect.CallTool call -> {
         UnaryOperator<Object> tool = tools.get(call.toolName());
@@ -125,7 +132,7 @@ final class InlineRunner {
               call.turn(),
               call.requestSeq(),
               call.callId(),
-              new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "no such tool"));
+              new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, "no such tool", none()));
         }
         try {
           // Rendered and claim-checked on the way back, exactly as the durable harness would:
@@ -141,7 +148,7 @@ final class InlineRunner {
               call.turn(),
               call.requestSeq(),
               call.callId(),
-              new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, broken.getMessage()));
+              new AgentCommand.ToolOutcome.Failed(CallFailure.FAILED, broken.getMessage(), none()));
         }
       }
     };

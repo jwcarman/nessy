@@ -147,6 +147,16 @@ class FirstStoreHoldingStoriesTest {
 
     assertThat(content.results(Seq.NONE, 10)).isEmpty();
     assertThat(content.result(IdempotencyKey.of(UUID.randomUUID()))).isEmpty();
+    assertThat(content.approvalFacts(IdempotencyKey.of(UUID.randomUUID()))).isEmpty();
+  }
+
+  @Test
+  void approval_facts_of_an_agent_no_store_holds_are_refused_for_a_null_key() {
+    StoryContent content = stories.of(TYPE, agent).content();
+
+    assertThatThrownBy(() -> content.approvalFacts(null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("key must not be null");
   }
 
   @Test

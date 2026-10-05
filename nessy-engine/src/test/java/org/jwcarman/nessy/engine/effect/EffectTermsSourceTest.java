@@ -44,6 +44,8 @@ import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.Failure;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * What this resolves is exactly what the three handlers used to resolve themselves, and this is the
@@ -252,6 +254,78 @@ class EffectTermsSourceTest {
           .asInstanceOf(InstanceOfAssertFactories.type(EffectOutcome.ToolFailed.class))
           .extracting(EffectOutcome.ToolFailed::kind)
           .isEqualTo(CallFailure.NOT_AUTHORISED);
+    }
+
+    private static EffectTerms askingTerms() {
+      return source(Tools.none())
+          .termsFor(
+              new AgentEffect.Approve(
+                  new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone"), KEY));
+    }
+
+    private static ObjectNode facts() {
+      return JsonNodeFactory.instance.objectNode().put("risk", "low").put("depth", 2);
+    }
+
+    @Test
+    void a_failed_ask_names_the_facts_the_approver_was_shown() {
+      ApproverFailed failure =
+          new ApproverFailed(new IllegalStateException("approval service down"), facts());
+
+      EffectOutcome outcome = askingTerms().failed(failure);
+
+      assertThat(outcome)
+          .isEqualTo(
+              new EffectOutcome.ToolFailed(
+                  new CallId("c1"),
+                  CallFailure.NOT_AUTHORISED,
+                  "the call could not be authorised: approval service down",
+                  facts()));
+    }
+
+    @Test
+    void a_failed_ask_with_no_facts_records_an_empty_object() {
+      ApproverFailed failure =
+          new ApproverFailed(
+              new IllegalStateException("approval service down"),
+              JsonNodeFactory.instance.objectNode());
+
+      EffectOutcome outcome = askingTerms().failed(failure);
+
+      assertThat(outcome)
+          .isEqualTo(
+              new EffectOutcome.ToolFailed(
+                  new CallId("c1"),
+                  CallFailure.NOT_AUTHORISED,
+                  "the call could not be authorised: approval service down",
+                  JsonNodeFactory.instance.objectNode()));
+    }
+
+    @Test
+    void any_other_exception_gives_the_same_message_and_no_facts() {
+      EffectOutcome outcome =
+          askingTerms().failed(new IllegalStateException("approval service down"));
+
+      assertThat(outcome)
+          .isEqualTo(
+              new EffectOutcome.ToolFailed(
+                  new CallId("c1"),
+                  CallFailure.NOT_AUTHORISED,
+                  "the call could not be authorised: approval service down",
+                  JsonNodeFactory.instance.objectNode()));
+    }
+
+    @Test
+    void an_approval_that_ran_past_its_deadline_names_no_facts() {
+      EffectOutcome outcome = askingTerms().undispatchable();
+
+      assertThat(outcome)
+          .isEqualTo(
+              new EffectOutcome.ToolFailed(
+                  new CallId("c1"),
+                  CallFailure.NOT_AUTHORISED,
+                  "the call could not be authorised, so it was not run",
+                  JsonNodeFactory.instance.objectNode()));
     }
   }
 

@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.effect;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.InstanceOfAssertFactories.type;
 
 import java.time.Clock;
@@ -26,14 +27,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Narrator;
-import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.Stringifier;
@@ -50,14 +49,13 @@ import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
-import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
-import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
 import org.jwcarman.nessy.engine.tool.Tools;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * The gate, on its own.
@@ -66,7 +64,7 @@ import tools.jackson.databind.json.JsonMapper;
  * nothing is gating -- one path into a running tool rather than two, of which the unexercised one
  * is what a misconfiguration would take. And <b>a verdict is never retried</b>: a denial is an
  * answer, and re-asking until somebody relents would eventually produce the answer the engine
- * wanted. Only the question failing to arrive is worth another attempt.
+ * wanted. Only the ask failing to arrive is worth another attempt.
  */
 class ApprovalHandlerTest {
 
@@ -84,9 +82,6 @@ class ApprovalHandlerTest {
    * When the effect's row says the call stands until, whatever the clock reads when it is handled.
    */
   private static final Instant WRITTEN_DEADLINE = Instant.parse("2026-09-08T12:07:30Z");
-
-  private static final Payloads PAYLOADS =
-      new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
 
   record Query(String q) {}
 
@@ -170,11 +165,6 @@ class ApprovalHandlerTest {
   }
 
   private ApprovalHandler handler(Tools tools, ToolCalls calls, Narrator narrator) {
-    return handler(tools, calls, narrator, PAYLOADS);
-  }
-
-  private ApprovalHandler handler(
-      Tools tools, ToolCalls calls, Narrator narrator, Payloads payloads) {
     EffectTermsSource terms =
         new EffectTermsSource(
             tools,
@@ -184,7 +174,7 @@ class ApprovalHandlerTest {
             new RetryPolicy.Never(),
             Duration.ofMinutes(5),
             new RetryPolicy.Never());
-    return new ApprovalHandler(TYPE, tools, calls, TOKENS, narrator, terms, CLOCK, payloads);
+    return new ApprovalHandler(TYPE, tools, calls, TOKENS, narrator, terms, CLOCK);
   }
 
   private EffectOutcome ask(Tools tools) {
@@ -210,23 +200,44 @@ class ApprovalHandlerTest {
     return ((Handled.Settled) handled).outcome();
   }
 
+  private static ObjectNode none() {
+    return JsonNodeFactory.instance.objectNode();
+  }
+
+  /** The facts an outcome carries, whichever way the decision went. */
+  private static ObjectNode factsOf(EffectOutcome outcome) {
+    return switch (outcome) {
+      case EffectOutcome.ToolApproved approved -> approved.facts();
+      case EffectOutcome.ToolDenied denied -> denied.facts();
+      default -> throw new AssertionError("not a decision: " + outcome);
+    };
+  }
+
   @Test
   void anApprovedCallComesBackAsPermissionRatherThanAResult() {
-    assertThat(ask(bound(_ -> Awaited.ready(ApprovalResult.approved()))))
-        .isEqualTo(new EffectOutcome.ToolApproved(new CallId("c1")));
+    EffectOutcome outcome = ask(bound(_ -> Awaited.ready(ApprovalResult.approved())));
+
+    assertThat(outcome)
+        .isEqualTo(new EffectOutcome.ToolApproved(new CallId("c1"), Optional.empty(), none()));
   }
 
   @Test
   void aDeniedCallComesBackAsADenialCarryingTheReason() {
-    assertThat(ask(bound(_ -> Awaited.ready(ApprovalResult.denied("out of hours")))))
-        .isEqualTo(new EffectOutcome.ToolDenied(new CallId("c1"), "out of hours"));
+    EffectOutcome outcome = ask(bound(_ -> Awaited.ready(ApprovalResult.denied("out of hours"))));
+
+    assertThat(outcome)
+        .isEqualTo(
+            new EffectOutcome.ToolDenied(
+                new CallId("c1"), "out of hours", Optional.empty(), none()));
   }
 
   /** The default is a real approver that says yes, not an absence to check for. */
   @Test
   void aToolWithNothingGatingItIsStillAsked() {
-    assertThat(ask(bound(Approver.allow())))
-        .isEqualTo(new EffectOutcome.ToolApproved(new CallId("c1")));
+    EffectOutcome outcome = ask(bound(Approver.allow()));
+
+    assertThat(outcome)
+        .isEqualTo(new EffectOutcome.ToolApproved(new CallId("c1"), Optional.empty(), none()));
   }
 
   /**
@@ -278,107 +289,214 @@ class ApprovalHandlerTest {
   }
 
   /**
-   * What the approver was shown, kept: the deferral hands back where. The deadline in it is the one
-   * the effect was written with, the same one the approver saw.
+   * What the approver was shown, handed back with the deferral: it is written on the event that
+   * records the deferral.
    */
   @Test
-  void a_deferred_approval_hands_back_the_question_it_stored() {
-    ApprovalRequest[] seen = new ApprovalRequest[1];
+  void a_deferred_approval_hands_back_the_facts_it_was_shown() {
     ApprovalHandler handler =
         handler(
             bound(
                 request -> {
-                  seen[0] = request;
+                  request.fact("risk", "low").fact("depth", JsonNodeFactory.instance.numberNode(2));
                   return new Awaited.Deferred<>();
                 }),
             story());
 
     Handled handled = asked(handler, WRITTEN_DEADLINE);
 
-    assertThat(handled).isInstanceOf(Handled.Deferred.class);
-    Optional<PayloadRef> question = ((Handled.Deferred) handled).question();
-    assertThat(question).isPresent();
-    JsonNode stored = PAYLOADS.forAgent(AGENT).getDocument(question.orElseThrow());
-    // Compared as text: a number that went through storage comes back as an int where it was a
-    // long, which JsonNode equality tells apart and a reader does not.
-    assertThat(stored.toString()).isEqualTo(ApprovalQuestions.document(seen[0]).toString());
-    assertThat(stored.get("deadline").asString()).isEqualTo(WRITTEN_DEADLINE.toString());
-    assertThat(stored.get("action").asString()).isEqualTo("Query[q=loch ness]");
-    assertThat(stored.get("callId").asString()).isEqualTo("c1");
-    assertThat(stored.get("toolName").asString()).isEqualTo("lookup");
-    assertThat(stored.get("idempotencyKey").asString()).isEqualTo(KEY.value().toString());
+    assertThat(handled)
+        .isEqualTo(
+            new Handled.Deferred(
+                JsonNodeFactory.instance.objectNode().put("risk", "low").put("depth", 2)));
+  }
+
+  @Test
+  void a_deferral_with_no_facts_hands_back_an_empty_object() {
+    ApprovalHandler handler = handler(bound(_ -> new Awaited.Deferred<>()), story());
+
+    Handled handled = asked(handler, WRITTEN_DEADLINE);
+
+    assertThat(handled).isEqualTo(new Handled.Deferred(none())).isEqualTo(Handled.deferred());
+  }
+
+  /** The handler holds a copy: what happens to the request afterwards changes nothing it gave. */
+  @Test
+  void a_fact_added_after_the_deferral_is_not_in_what_it_handed_back() {
+    ApprovalRequest[] seen = new ApprovalRequest[1];
+    ApprovalHandler handler =
+        handler(
+            bound(
+                request -> {
+                  seen[0] = request;
+                  request.fact("risk", "low");
+                  return new Awaited.Deferred<>();
+                }),
+            story());
+
+    Handled handled = asked(handler, WRITTEN_DEADLINE);
+    seen[0].fact("late", "yes");
+
+    assertThat(handled)
+        .isEqualTo(new Handled.Deferred(JsonNodeFactory.instance.objectNode().put("risk", "low")));
+  }
+
+  // ---- a decision made at once carries the facts ------------------------------------------
+
+  @Test
+  void an_approval_made_at_once_carries_the_facts_the_approver_saw() {
+    ApprovalRequest[] seen = new ApprovalRequest[1];
+
+    EffectOutcome outcome =
+        ask(
+            bound(
+                request -> {
+                  seen[0] = request;
+                  request.fact("risk", "low");
+                  return Awaited.ready(new ApprovalResult.Approved(Optional.of("u_carol")));
+                }));
+
+    assertThat(outcome)
+        .asInstanceOf(type(EffectOutcome.ToolApproved.class))
+        .satisfies(
+            approved -> {
+              assertThat(approved.callId()).isEqualTo(new CallId("c1"));
+              assertThat(approved.decidedBy()).contains("u_carol");
+              assertThat(approved.facts()).isNotEmpty();
+              assertThat(approved.facts().toString()).isEqualTo(seen[0].facts().toString());
+            });
+  }
+
+  @Test
+  void a_denial_made_at_once_carries_the_facts_the_approver_saw() {
+    ApprovalRequest[] seen = new ApprovalRequest[1];
+
+    EffectOutcome outcome =
+        ask(
+            bound(
+                request -> {
+                  seen[0] = request;
+                  request.fact("risk", "high");
+                  return Awaited.ready(
+                      new ApprovalResult.Denied("out of hours", Optional.of("u_dave")));
+                }));
+
+    assertThat(outcome)
+        .asInstanceOf(type(EffectOutcome.ToolDenied.class))
+        .satisfies(
+            denied -> {
+              assertThat(denied.callId()).isEqualTo(new CallId("c1"));
+              assertThat(denied.reason()).isEqualTo("out of hours");
+              assertThat(denied.decidedBy()).contains("u_dave");
+              assertThat(denied.facts()).isNotEmpty();
+              assertThat(denied.facts().toString()).isEqualTo(seen[0].facts().toString());
+            });
   }
 
   /**
-   * The approver was asked and said "later", and may already have told a person. Failing to keep
-   * the question must not turn that into a failed ask, which the retry policy would answer by
-   * asking again.
+   * The facts are taken after the approver returns, so what an approver added while deciding is
+   * part of what it was shown when it said yes.
    */
   @Test
-  void a_deferral_still_stands_when_its_question_cannot_be_stored() {
-    int[] asks = {0};
-    Payloads failing =
-        new Payloads() {
-          @Override
-          public PayloadRef put(List<? extends Block> content) {
-            throw new IllegalStateException("not used");
-          }
-
-          @Override
-          public PayloadRef putDocument(JsonNode document) {
-            throw new IllegalStateException("the store is down");
-          }
-
-          @Override
-          public Resolved get(PayloadRef ref) {
-            throw new IllegalStateException("not used");
-          }
-
-          @Override
-          public JsonNode getDocument(PayloadRef ref) {
-            throw new IllegalStateException("not used");
-          }
-        };
-    ApprovalHandler handler =
-        handler(
-            bound(
-                _ -> {
-                  asks[0]++;
-                  return new Awaited.Deferred<>();
-                }),
-            story(),
-            Narrator.silent(),
-            failing);
-
-    Handled handled = asked(handler, WRITTEN_DEADLINE);
-
-    assertThat(handled).isEqualTo(Handled.deferred());
-    assertThat(asks[0]).isEqualTo(1);
-  }
-
-  /** The reply token settles the call, and a stored document is read by far more than the reply. */
-  @Test
-  void the_stored_question_does_not_hold_the_reply_token() {
-    ApprovalRequest[] seen = new ApprovalRequest[1];
-    ApprovalHandler handler =
-        handler(
+  void a_fact_the_approver_added_while_deciding_is_in_the_facts() {
+    EffectOutcome outcome =
+        ask(
             bound(
                 request -> {
-                  seen[0] = request;
-                  return new Awaited.Deferred<>();
-                }),
-            story());
+                  request.fact("depth", JsonNodeFactory.instance.numberNode(230));
+                  return Awaited.ready(ApprovalResult.approved());
+                }));
 
-    Handled handled = asked(handler, WRITTEN_DEADLINE);
-
-    Optional<PayloadRef> question = ((Handled.Deferred) handled).question();
-    assertThat(question).isPresent();
-    JsonNode stored = PAYLOADS.forAgent(AGENT).getDocument(question.orElseThrow());
-    assertThat(seen[0].replyToken().value()).isNotBlank();
-    assertThat(stored.toString()).doesNotContain(seen[0].replyToken().value());
+    assertThat(factsOf(outcome)).isEqualTo(JsonNodeFactory.instance.objectNode().put("depth", 230));
   }
 
-  // ---- the question ----------------------------------------------------------------------
+  /** The outcome holds a copy: a fact added to the request afterwards is not in it. */
+  @Test
+  void a_fact_added_after_the_handler_returned_is_not_in_the_outcome() {
+    ApprovalRequest[] seenApproving = new ApprovalRequest[1];
+    ApprovalRequest[] seenDenying = new ApprovalRequest[1];
+    EffectOutcome approved =
+        ask(
+            bound(
+                request -> {
+                  seenApproving[0] = request;
+                  request.fact("risk", "low");
+                  return Awaited.ready(ApprovalResult.approved());
+                }));
+    EffectOutcome denied =
+        ask(
+            bound(
+                request -> {
+                  request.fact("risk", "low");
+                  seenDenying[0] = request;
+                  return Awaited.ready(ApprovalResult.denied("no"));
+                }));
+
+    seenApproving[0].fact("late", "yes");
+    seenDenying[0].fact("late", "yes");
+
+    assertThat(factsOf(approved))
+        .isEqualTo(JsonNodeFactory.instance.objectNode().put("risk", "low"));
+    assertThat(factsOf(denied)).isEqualTo(JsonNodeFactory.instance.objectNode().put("risk", "low"));
+  }
+
+  // ---- an approver that threw keeps the facts it was shown --------------------------------
+
+  /**
+   * The handler still throws, so the dispatcher's retry sees the same failed ask it always saw; the
+   * exception it throws holds what the approver was shown, including what it added before it threw.
+   */
+  @Test
+  void an_approver_that_throws_leaves_its_facts_on_the_failure() {
+    IllegalStateException broken = new IllegalStateException("approval service down");
+    Approver throwing =
+        request -> {
+          request.fact("risk", "low");
+          request.fact("depth", JsonNodeFactory.instance.numberNode(230));
+          throw broken;
+        };
+    ApprovalHandler handler = handler(bound(throwing));
+
+    assertThatThrownBy(() -> asked(handler, WRITTEN_DEADLINE))
+        .isInstanceOfSatisfying(
+            ApproverFailed.class,
+            thrown -> {
+              assertThat(thrown).hasCause(broken).hasMessage("approval service down");
+              assertThat(thrown.facts())
+                  .isEqualTo(
+                      JsonNodeFactory.instance.objectNode().put("risk", "low").put("depth", 230));
+            });
+  }
+
+  @Test
+  void an_approver_that_throws_before_adding_any_fact_leaves_an_empty_object() {
+    IllegalStateException broken = new IllegalStateException("approval service down");
+    Approver throwing =
+        _ -> {
+          throw broken;
+        };
+    ApprovalHandler handler = handler(bound(throwing));
+
+    assertThatThrownBy(() -> asked(handler, WRITTEN_DEADLINE))
+        .isInstanceOfSatisfying(
+            ApproverFailed.class, thrown -> assertThat(thrown.facts()).isEqualTo(none()));
+  }
+
+  /** A failure before the approver is asked is not an approver's failure and is not wrapped. */
+  @Test
+  void a_failure_that_is_not_the_approvers_is_not_wrapped() {
+    Narrator broken =
+        _ -> {
+          throw new IllegalStateException("narrator down");
+        };
+    ApprovalHandler handler = handler(bound(Approver.allow()), story(), broken);
+
+    assertThatThrownBy(() -> asked(handler, WRITTEN_DEADLINE))
+        .isExactlyInstanceOf(IllegalStateException.class)
+        .hasMessage("narrator down");
+  }
+
+  // ---- the request ------------------------------------------------------------------------
 
   /**
    * An approver that could not see what it was approving could only make a blanket yes or no.
@@ -410,7 +528,7 @@ class ApprovalHandlerTest {
    * point.
    */
   @Test
-  void the_question_carries_the_action_stored_with_the_call() {
+  void the_request_carries_the_action_stored_with_the_call() {
     String[] seen = new String[1];
     ask(
         bound(
@@ -426,7 +544,7 @@ class ApprovalHandlerTest {
     assertThat(seen[0]).isEqualTo("stored at request time");
   }
 
-  /** An enricher runs after the question is built, so it reads the stored sentence. */
+  /** An enricher runs after the request is built, so it reads the stored sentence. */
   @Test
   void an_enricher_reads_the_stored_action() {
     String[] seen = new String[1];
@@ -586,7 +704,8 @@ class ApprovalHandlerTest {
             story("{\"q\":\"loch ness\"}", "lookup"));
 
     assertThat(seen[0]).isEqualTo("lookup");
-    assertThat(outcome).isEqualTo(new EffectOutcome.ToolApproved(new CallId("c1")));
+    assertThat(outcome)
+        .isEqualTo(new EffectOutcome.ToolApproved(new CallId("c1"), Optional.empty(), none()));
   }
 
   /** The story and an effect row disagreeing is unrepairable, but the call is still owed one. */
@@ -614,11 +733,11 @@ class ApprovalHandlerTest {
   }
 
   /**
-   * The key was made when the call was recorded, and the question carries it unchanged, so the tool
+   * The key was made when the call was recorded, and the request carries it unchanged, so the tool
    * that later runs the call can be matched to what was decided about it.
    */
   @Test
-  void theQuestionCarriesTheCallsIdempotencyKey() {
+  void theRequestCarriesTheCallsIdempotencyKey() {
     ApprovalRequest[] seen = new ApprovalRequest[1];
     ask(
         bound(
@@ -635,7 +754,7 @@ class ApprovalHandlerTest {
   /**
    * Asking has its own budget and its own policy, both separate from the tool's. A build that takes
    * five minutes may be waved through instantly; a one-second lookup may wait an hour for somebody
-   * to read the question.
+   * to read the request.
    */
   @Test
   void askingIsGovernedSeparatelyFromCalling() {
@@ -660,10 +779,10 @@ class ApprovalHandlerTest {
   /**
    * Both stored failures say the call could not be <em>authorised</em>, never that it was denied.
    * Nobody said no -- claiming otherwise would tell the model it was refused by someone who never
-   * saw the question.
+   * saw the request.
    */
   @Test
-  void aQuestionThatNeverArrivedIsAFailureAndNotADenial() {
+  void aRequestThatNeverArrivedIsAFailureAndNotADenial() {
     EffectTerms terms =
         handler(bound(Approver.allow()))
             .termsFor(

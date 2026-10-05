@@ -117,18 +117,19 @@ waiting and has nowhere for a late answer to arrive.
 On the queued door, a tool or an approver that returns `Awaited.deferred()`
 has parked the call, and the deferral is recorded when it happens. One locked
 step has the fold write the event, `ApprovalDeferred` or `ToolDeferred`, with
-the moment the question or the call stands until, and marks the effect row
+the moment the request or the call stands until, and marks the effect row
 parked. Both are in one transaction, so a marked row always has a deferral in
 the story. If the row has moved on by the time the deferral is recorded (another
 attempt re-claimed it), the deferral stands and no row is marked. The event is told as
 the narration `ApprovalDeferred` or `CallDeferred` once that step commits. See
 [Events](events.md) and [Narration](../guides/narration.md).
 
-An approval's event also holds the stored question the approver was shown.
+An approval's deferral also holds the facts the approver was shown, and is recorded whether or
+not there were any.
 
 The row stays running and is due at its deadline, and nothing takes it before
 then. The agent moves on to whatever else its turn is waiting for. Nothing holds
-a thread, and the question is not asked again while it stands. The fold
+a thread, and the approver is not asked again while the request stands. The fold
 deliberately cannot tell a tool that takes three days from one that takes 200
 milliseconds and should not learn; the story records only that the call is
 waiting, and until when.

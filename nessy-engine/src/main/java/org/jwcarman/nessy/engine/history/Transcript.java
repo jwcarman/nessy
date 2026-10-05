@@ -147,8 +147,8 @@ public final class Transcript {
             AgentEvent.InferenceAttempted _,
             AgentEvent.TurnStopped _,
             AgentEvent.Terminated _ -> {
-          // Nothing behind these but the words already in them. An approval deferral's question
-          // is a JSON document, not message content, so a batch read of blocks must not fetch it.
+          // Nothing behind these but the words already in them. An approval's facts are on the
+          // event itself, so there is nothing for a batch read of blocks to fetch.
         }
       }
     }

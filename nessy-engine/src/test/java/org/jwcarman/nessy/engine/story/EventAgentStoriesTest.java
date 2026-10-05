@@ -57,9 +57,15 @@ import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.narration.StoryEvents;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class EventAgentStoriesTest {
+
+  private static ObjectNode none() {
+    return JsonNodeFactory.instance.objectNode();
+  }
 
   private static final AgentType TYPE = new AgentType("desk");
   private static final Instant AT = Instant.parse("2026-01-01T00:00:00Z");
@@ -195,6 +201,7 @@ class EventAgentStoriesTest {
                   new CallId("c1"),
                   CallFailure.PAST_DEADLINE,
                   "the call did not complete before its deadline",
+                  none(),
                   key)),
           Seq.NONE,
           AT);

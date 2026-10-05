@@ -46,6 +46,8 @@ import org.jwcarman.nessy.inference.Failure;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * What a value type looks like once it is written down.
@@ -67,6 +69,14 @@ class ValueTypeCodecTest {
   /** Any key: the tests here are not about which one a call gets. */
   private static final IdempotencyKey KEY =
       IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
+
+  private static ObjectNode facts() {
+    return JsonNodeFactory.instance.objectNode().put("risk", "low").put("depth", 2);
+  }
+
+  private static ObjectNode none() {
+    return JsonNodeFactory.instance.objectNode();
+  }
 
   private final JsonMapper mapper = JsonMapper.builder().build();
   private final Codec<AgentEvent> entries =
@@ -228,10 +238,10 @@ class ValueTypeCodecTest {
   }
 
   @Test
-  void anApprovalDeferralIsStoredWithItsDeadlineItsQuestionAndItsKey() {
+  void anApprovalDeferralIsStoredWithItsDeadlineItsFactsAndItsKey() {
     byte[] literal =
         ("{\"type\":\"approval-deferred\",\"seq\":4,\"turn\":1,\"callId\":\"c1\","
-                + "\"until\":\"2026-10-05T09:30:00Z\",\"question\":\"b81e0c47\","
+                + "\"until\":\"2026-10-05T09:30:00Z\",\"facts\":{\"risk\":\"low\",\"depth\":2},"
                 + "\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"}")
             .getBytes(StandardCharsets.UTF_8);
     AgentEvent.ApprovalDeferred expected =
@@ -240,20 +250,35 @@ class ValueTypeCodecTest {
             new TurnId(1),
             new CallId("c1"),
             Instant.parse("2026-10-05T09:30:00Z"),
-            PayloadRef.of("b81e0c47"),
+            facts(),
             KEY);
 
     AgentEvent read = entries.decode(literal);
     String written = new String(entries.encode(expected), StandardCharsets.UTF_8);
 
     assertThat(read).isEqualTo(expected);
+    assertThat(((AgentEvent.ApprovalDeferred) read).facts().toString())
+        .isEqualTo("{\"risk\":\"low\",\"depth\":2}");
     assertThat(written)
         .contains("\"type\":\"approval-deferred\"")
         .contains("\"callId\":\"c1\"")
         .contains("\"until\":\"2026-10-05T09:30:00Z\"")
-        .contains("\"question\":\"b81e0c47\"")
+        .contains("\"facts\":{\"risk\":\"low\",\"depth\":2}")
         .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"")
         .doesNotContain("\"value\"");
+  }
+
+  @Test
+  void anApprovalDeferralStoredWithoutFactsReadsAsHavingAnEmptyObject() {
+    byte[] literal =
+        ("{\"type\":\"approval-deferred\",\"seq\":4,\"turn\":1,\"callId\":\"c1\","
+                + "\"until\":\"2026-10-05T09:30:00Z\","
+                + "\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"}")
+            .getBytes(StandardCharsets.UTF_8);
+
+    AgentEvent.ApprovalDeferred read = (AgentEvent.ApprovalDeferred) entries.decode(literal);
+
+    assertThat(read.facts()).isEqualTo(JsonNodeFactory.instance.objectNode());
   }
 
   @Test
@@ -328,7 +353,12 @@ class ValueTypeCodecTest {
         new String(
             entries.encode(
                 new AgentEvent.ToolApproved(
-                    new Seq(3), new TurnId(1), new CallId("c1"), Optional.of("jcarman"), KEY)),
+                    new Seq(3),
+                    new TurnId(1),
+                    new CallId("c1"),
+                    Optional.of("jcarman"),
+                    none(),
+                    KEY)),
             StandardCharsets.UTF_8);
 
     assertThat(written).contains("\"callId\":\"c1\"").contains("\"decidedBy\":\"jcarman\"");
@@ -431,6 +461,43 @@ class ValueTypeCodecTest {
 
   // ---- the key every call event carries ---------------------------------------------------
 
+  /** Strings, ints and booleans read back as the same nodes, so a record compares equal. */
+  @Test
+  void facts_of_strings_ints_and_booleans_survive_a_round_trip_on_every_event_that_holds_them() {
+    ObjectNode mixed =
+        JsonNodeFactory.instance
+            .objectNode()
+            .put("risk", "low")
+            .put("depth", 2)
+            .put("flagged", true);
+    List<AgentEvent> written =
+        List.of(
+            new AgentEvent.ToolApproved(
+                new Seq(3), new TurnId(1), new CallId("c1"), Optional.of("ann"), mixed, KEY),
+            new AgentEvent.ToolDenied(
+                new Seq(3), new TurnId(1), new CallId("c1"), "no", Optional.empty(), mixed, KEY),
+            new AgentEvent.ToolFailed(
+                new Seq(4),
+                new TurnId(1),
+                new CallId("c1"),
+                CallFailure.NOT_AUTHORISED,
+                "down",
+                mixed,
+                KEY),
+            new AgentEvent.ApprovalDeferred(
+                new Seq(4),
+                new TurnId(1),
+                new CallId("c1"),
+                Instant.parse("2026-10-05T09:30:00Z"),
+                mixed,
+                KEY));
+
+    assertThat(written).hasSize(4);
+    for (AgentEvent event : written) {
+      assertThat(entries.decode(entries.encode(event))).isEqualTo(event);
+    }
+  }
+
   private AgentEvent readStored(String json) {
     return entries.decode(json.getBytes(StandardCharsets.UTF_8));
   }
@@ -465,7 +532,7 @@ class ValueTypeCodecTest {
         "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
     AgentEvent.ToolApproved written =
         new AgentEvent.ToolApproved(
-            new Seq(3), new TurnId(1), new CallId("c1"), Optional.of("jcarman"), KEY);
+            new Seq(3), new TurnId(1), new CallId("c1"), Optional.of("jcarman"), none(), KEY);
 
     assertThat(readStored(stored)).isEqualTo(written);
     assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
@@ -480,12 +547,66 @@ class ValueTypeCodecTest {
         "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
     AgentEvent.ToolDenied written =
         new AgentEvent.ToolDenied(
-            new Seq(3), new TurnId(1), new CallId("c1"), "no", Optional.of("u_dave"), KEY);
+            new Seq(3), new TurnId(1), new CallId("c1"), "no", Optional.of("u_dave"), none(), KEY);
 
     assertThat(readStored(stored)).isEqualTo(written);
     assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
         .contains("\"decidedBy\":\"u_dave\"")
         .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"");
+  }
+
+  @Test
+  void aGrantIsStoredWithTheFactsItWasDecidedOn() {
+    String stored =
+        """
+        {"type":"tool-approved","seq":3,"turn":1,"callId":"c1","decidedBy":"jcarman",\
+        "facts":{"risk":"low","depth":2},"idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+    AgentEvent.ToolApproved written =
+        new AgentEvent.ToolApproved(
+            new Seq(3), new TurnId(1), new CallId("c1"), Optional.of("jcarman"), facts(), KEY);
+
+    assertThat(readStored(stored)).isEqualTo(written);
+    assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
+        .contains("\"facts\":{\"risk\":\"low\",\"depth\":2}");
+  }
+
+  @Test
+  void aDenialIsStoredWithTheFactsItWasDecidedOn() {
+    String stored =
+        """
+        {"type":"tool-denied","seq":3,"turn":1,"callId":"c1","reason":"no","decidedBy":"u_dave",\
+        "facts":{"risk":"low","depth":2},"idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+    AgentEvent.ToolDenied written =
+        new AgentEvent.ToolDenied(
+            new Seq(3), new TurnId(1), new CallId("c1"), "no", Optional.of("u_dave"), facts(), KEY);
+
+    assertThat(readStored(stored)).isEqualTo(written);
+    assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
+        .contains("\"facts\":{\"risk\":\"low\",\"depth\":2}");
+  }
+
+  @Test
+  void aGrantStoredWithoutFactsReadsAsHavingAnEmptyObject() {
+    String stored =
+        """
+        {"type":"tool-approved","seq":3,"turn":1,"callId":"c1",\
+        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+
+    AgentEvent.ToolApproved read = (AgentEvent.ToolApproved) readStored(stored);
+
+    assertThat(read.facts()).isEqualTo(JsonNodeFactory.instance.objectNode());
+  }
+
+  @Test
+  void aDenialStoredWithoutFactsReadsAsHavingAnEmptyObject() {
+    String stored =
+        """
+        {"type":"tool-denied","seq":3,"turn":1,"callId":"c1","reason":"no",\
+        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+
+    AgentEvent.ToolDenied read = (AgentEvent.ToolDenied) readStored(stored);
+
+    assertThat(read.facts()).isEqualTo(JsonNodeFactory.instance.objectNode());
   }
 
   @Test
@@ -511,12 +632,89 @@ class ValueTypeCodecTest {
         "message":"boom","idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
     AgentEvent.ToolFailed written =
         new AgentEvent.ToolFailed(
-            new Seq(4), new TurnId(1), new CallId("c1"), CallFailure.PAST_DEADLINE, "boom", KEY);
+            new Seq(4),
+            new TurnId(1),
+            new CallId("c1"),
+            CallFailure.PAST_DEADLINE,
+            "boom",
+            none(),
+            KEY);
 
     assertThat(readStored(stored)).isEqualTo(written);
     assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
         .contains("\"idempotencyKey\":\"01999999-0000-7000-8000-000000000001\"")
         .contains("\"kind\":\"PAST_DEADLINE\"");
+  }
+
+  @Test
+  void aFailureIsStoredWithTheFactsTheApproverWasShown() {
+    String stored =
+        """
+        {"type":"tool-failed","seq":4,"turn":1,"callId":"c1","kind":"NOT_AUTHORISED",\
+        "message":"the call could not be authorised: down","facts":{"risk":"low","depth":2},\
+        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+    AgentEvent.ToolFailed written =
+        new AgentEvent.ToolFailed(
+            new Seq(4),
+            new TurnId(1),
+            new CallId("c1"),
+            CallFailure.NOT_AUTHORISED,
+            "the call could not be authorised: down",
+            facts(),
+            KEY);
+
+    assertThat(readStored(stored)).isEqualTo(written);
+    assertThat(new String(entries.encode(written), StandardCharsets.UTF_8))
+        .contains("\"facts\":{\"risk\":\"low\",\"depth\":2}");
+  }
+
+  @Test
+  void aFailureStoredWithoutFactsReadsAsHavingAnEmptyObject() {
+    String stored =
+        """
+        {"type":"tool-failed","seq":4,"turn":1,"callId":"c1","kind":"FAILED",\
+        "message":"boom","idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+
+    AgentEvent.ToolFailed read = (AgentEvent.ToolFailed) readStored(stored);
+
+    assertThat(read.facts()).isEqualTo(JsonNodeFactory.instance.objectNode());
+  }
+
+  /** The stored failure response on an effect row is the same shape. */
+  @Test
+  void a_tool_failed_outcome_keeps_its_facts_through_its_codec() {
+    Codec<EffectOutcome> outcomes =
+        new JacksonCodecFactory(JsonMapper.builder().build()).create(EffectOutcome.class);
+    EffectOutcome.ToolFailed withFacts =
+        new EffectOutcome.ToolFailed(
+            new CallId("c1"),
+            CallFailure.NOT_AUTHORISED,
+            "the call could not be authorised: down",
+            facts());
+    EffectOutcome.ToolFailed without =
+        new EffectOutcome.ToolFailed(new CallId("c1"), CallFailure.FAILED, "boom");
+
+    byte[] withBytes = outcomes.encode(withFacts);
+    byte[] withoutBytes = outcomes.encode(without);
+
+    assertThat(new String(withBytes, StandardCharsets.UTF_8))
+        .contains("\"facts\":{\"risk\":\"low\",\"depth\":2}");
+    assertThat(outcomes.decode(withBytes)).isEqualTo(withFacts);
+    assertThat(outcomes.decode(withoutBytes)).isEqualTo(without);
+  }
+
+  @Test
+  void a_tool_failed_outcome_stored_without_facts_reads_as_an_empty_object() {
+    Codec<EffectOutcome> outcomes =
+        new JacksonCodecFactory(JsonMapper.builder().build()).create(EffectOutcome.class);
+    byte[] stored =
+        """
+        {"type":"tool-failed","callId":"c1","kind":"FAILED","message":"boom"}"""
+            .getBytes(StandardCharsets.UTF_8);
+
+    EffectOutcome.ToolFailed read = (EffectOutcome.ToolFailed) outcomes.decode(stored);
+
+    assertThat(read.facts()).isEqualTo(JsonNodeFactory.instance.objectNode());
   }
 
   @Test

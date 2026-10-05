@@ -42,6 +42,8 @@ import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * The content one agent's story refers to, read from its stored events and payloads.
@@ -51,6 +53,9 @@ import org.jwcarman.nessy.backend.payload.Payloads;
  * success carrying that key: a model may repeat a call id in a later request of one turn, so only
  * the key says which call is meant. A call that failed or was denied has no result, and the read
  * for its key ends at that event.
+ *
+ * <p>The read of a call's approval facts ends at the call's first decision: nothing after it can
+ * change which facts the decision was made on.
  */
 final class StoredContent implements StoryContent {
 
@@ -131,6 +136,41 @@ final class StoredContent implements StoryContent {
       return Optional.empty();
     }
     return Optional.of(narrow(blocks(found[0]), Block.ToolResultContent.class));
+  }
+
+  @Override
+  public Optional<JsonNode> approvalFacts(IdempotencyKey key) {
+    Objects.requireNonNull(key, "key must not be null");
+    ObjectNode[] deferred = new ObjectNode[1];
+    ObjectNode[] decided = new ObjectNode[1];
+    scan(
+        Seq.NONE,
+        event ->
+            switch (event) {
+              case AgentEvent.ApprovalDeferred asked when asked.idempotencyKey().equals(key) -> {
+                deferred[0] = asked.facts();
+                yield true;
+              }
+              case AgentEvent.ToolApproved approved when approved.idempotencyKey().equals(key) -> {
+                decided[0] = approved.facts();
+                yield false;
+              }
+              case AgentEvent.ToolDenied denied when denied.idempotencyKey().equals(key) -> {
+                decided[0] = denied.facts();
+                yield false;
+              }
+              case AgentEvent.ToolFailed failed when failed.idempotencyKey().equals(key) -> {
+                decided[0] = failed.facts();
+                yield false;
+              }
+              case AgentEvent.ToolSucceeded done when done.idempotencyKey().equals(key) -> false;
+              default -> true;
+            });
+    ObjectNode answer = decided[0] != null && !decided[0].isEmpty() ? decided[0] : deferred[0];
+    if (answer == null) {
+      answer = decided[0];
+    }
+    return answer == null ? Optional.empty() : Optional.of(answer.deepCopy());
   }
 
   @Override

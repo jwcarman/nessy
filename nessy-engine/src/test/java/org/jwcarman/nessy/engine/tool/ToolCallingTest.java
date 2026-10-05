@@ -50,6 +50,8 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.jwcarman.nessy.inference.ToolOffer;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * A whole round, through real Postgres: the model asks for work, the work is dispatched as its own
@@ -61,6 +63,10 @@ import org.jwcarman.nessy.inference.ToolOffer;
  * never speak again.
  */
 class ToolCallingTest {
+
+  private static ObjectNode none() {
+    return JsonNodeFactory.instance.objectNode();
+  }
 
   /** Any key: the tests here are not about which one a call gets. */
   private static final IdempotencyKey KEY =
@@ -231,6 +237,7 @@ class ToolCallingTest {
                 new TurnId(1),
                 new CallId("call_1"),
                 Optional.empty(),
+                none(),
                 requestedKey(story)));
     assertThat(story.get(3))
         .isEqualTo(
@@ -359,6 +366,7 @@ class ToolCallingTest {
                 new CallId("call_1"),
                 "out of hours",
                 Optional.empty(),
+                none(),
                 requestedKey(story)));
     assertThat(story).noneMatch(AgentEvent.ToolApproved.class::isInstance);
     assertThat(story.get(3))
@@ -581,7 +589,7 @@ class ToolCallingTest {
     List<AgentEvent> story = engine.story(type, agentId);
     assertThat(story).noneMatch(AgentEvent.ToolApproved.class::isInstance);
     assertThat(story.get(2))
-        .as("the question standing is on the record, once")
+        .as("the deferral standing is on the record, once")
         .isInstanceOf(AgentEvent.ApprovalDeferred.class);
     assertThat(story.get(3))
         .asInstanceOf(

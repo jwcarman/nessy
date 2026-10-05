@@ -15,9 +15,11 @@
  */
 package org.jwcarman.nessy.backend.event;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayNameGeneration;
@@ -29,6 +31,8 @@ import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class ToolEventKeyTest {
@@ -39,7 +43,8 @@ class ToolEventKeyTest {
 
   @Test
   void an_approval_refuses_a_null_key() {
-    assertThatThrownBy(() -> new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), null))
+    assertThatThrownBy(
+            () -> new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), NONE, null))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("idempotencyKey must not be null");
   }
@@ -47,7 +52,7 @@ class ToolEventKeyTest {
   @Test
   void a_denial_refuses_a_null_key() {
     assertThatThrownBy(
-            () -> new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty(), null))
+            () -> new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty(), NONE, null))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("idempotencyKey must not be null");
   }
@@ -64,7 +69,8 @@ class ToolEventKeyTest {
   @Test
   void a_failure_refuses_a_null_key() {
     assertThatThrownBy(
-            () -> new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", null))
+            () ->
+                new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", NONE, null))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("idempotencyKey must not be null");
   }
@@ -73,39 +79,60 @@ class ToolEventKeyTest {
   void a_failure_refuses_a_null_kind() {
     IdempotencyKey key = IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
-    assertThatThrownBy(() -> new AgentEvent.ToolFailed(SEQ, TURN, CALL, null, "boom", key))
+    assertThatThrownBy(() -> new AgentEvent.ToolFailed(SEQ, TURN, CALL, null, "boom", NONE, key))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("kind must not be null");
   }
 
+  private static final ObjectNode NONE = JsonNodeFactory.instance.objectNode();
   private static final Instant UNTIL = Instant.parse("2026-10-05T09:30:00Z");
   private static final IdempotencyKey KEY =
       IdempotencyKey.of(UUID.fromString("01999999-0000-7000-8000-000000000001"));
 
   @Test
   void an_approval_deferral_refuses_a_null_key() {
-    PayloadRef question = PayloadRef.of("a3d9f0b1");
-
-    assertThatThrownBy(
-            () -> new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, UNTIL, question, null))
+    assertThatThrownBy(() -> new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, UNTIL, NONE, null))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("idempotencyKey must not be null");
   }
 
   @Test
   void an_approval_deferral_refuses_a_null_deadline() {
-    PayloadRef question = PayloadRef.of("a3d9f0b1");
-
-    assertThatThrownBy(() -> new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, null, question, KEY))
+    assertThatThrownBy(() -> new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, null, NONE, KEY))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("until must not be null");
   }
 
   @Test
-  void an_approval_deferral_refuses_a_null_question() {
-    assertThatThrownBy(() -> new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, UNTIL, null, KEY))
-        .isInstanceOf(NullPointerException.class)
-        .hasMessage("question must not be null");
+  void every_event_that_holds_facts_reads_null_facts_as_an_empty_object() {
+    List<ObjectNode> held =
+        List.of(
+            new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), null, KEY).facts(),
+            new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty(), null, KEY).facts(),
+            new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", null, KEY)
+                .facts(),
+            new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, UNTIL, null, KEY).facts());
+
+    assertThat(held).hasSize(4);
+    assertThat(held).allMatch(facts -> facts.equals(NONE));
+  }
+
+  @Test
+  void every_event_that_holds_facts_keeps_its_own_copy() {
+    ObjectNode facts = JsonNodeFactory.instance.objectNode().put("risk", "low");
+    List<ObjectNode> held =
+        List.of(
+            new AgentEvent.ToolApproved(SEQ, TURN, CALL, Optional.empty(), facts, KEY).facts(),
+            new AgentEvent.ToolDenied(SEQ, TURN, CALL, "no", Optional.empty(), facts, KEY).facts(),
+            new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", facts, KEY)
+                .facts(),
+            new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, UNTIL, facts, KEY).facts());
+
+    facts.put("late", "yes");
+
+    assertThat(held).hasSize(4);
+    assertThat(held)
+        .allMatch(kept -> kept.equals(JsonNodeFactory.instance.objectNode().put("risk", "low")));
   }
 
   @Test

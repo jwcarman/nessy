@@ -45,9 +45,15 @@ import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.inmemory.InMemoryAgentEvents;
 import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class EventStreamHistoryTest {
+
+  private static ObjectNode none() {
+    return JsonNodeFactory.instance.objectNode();
+  }
 
   /** Any key: the tests here are not about which one a call gets. */
   private static final IdempotencyKey KEY =
@@ -220,7 +226,7 @@ class EventStreamHistoryTest {
               Optional.empty()),
           new AgentEvent.ToolSucceeded(new Seq(3), new TurnId(1), refund, result, "refunded", KEY),
           new AgentEvent.ToolFailed(
-              new Seq(4), new TurnId(1), audit, CallFailure.FAILED, "no such buyer", KEY));
+              new Seq(4), new TurnId(1), audit, CallFailure.FAILED, "no such buyer", none(), KEY));
 
       List<Turn> found = history().turnsBetween(new TurnId(1), new TurnId(1));
 
@@ -259,7 +265,7 @@ class EventStreamHistoryTest {
               Usage.unreported(),
               Optional.empty()),
           new AgentEvent.ToolFailed(
-              new Seq(5), new TurnId(1), id, CallFailure.FAILED, "no such buyer", KEY),
+              new Seq(5), new TurnId(1), id, CallFailure.FAILED, "no such buyer", none(), KEY),
           new AgentEvent.InferenceAnswered(
               new Seq(6), new TurnId(1), answer, false, Usage.unreported(), Optional.empty()),
           new AgentEvent.TurnStarted(
@@ -301,8 +307,7 @@ class EventStreamHistoryTest {
       PayloadRef request = payloads.put(List.of(new Block.ToolCall(id, tool, "{}")));
       PayloadRef result = payloads.put(List.of(new Block.Text("done")));
       PayloadRef answer = payloads.put(List.of(new Block.Text("a1")));
-      PayloadRef question =
-          payloads.putDocument(JsonMapper.builder().build().createObjectNode().put("ask", "ok?"));
+      ObjectNode facts = none().put("ask", "ok?");
       List<AgentEvent> story = new ArrayList<>();
       story.add(
           new AgentEvent.TurnStarted(
@@ -319,7 +324,7 @@ class EventStreamHistoryTest {
       if (deferred) {
         story.add(
             new AgentEvent.ApprovalDeferred(
-                new Seq(next++), new TurnId(1), id, Instant.EPOCH, question, KEY));
+                new Seq(next++), new TurnId(1), id, Instant.EPOCH, facts, KEY));
         story.add(
             new AgentEvent.ToolDeferred(new Seq(next++), new TurnId(1), id, Instant.EPOCH, KEY));
       }
@@ -335,7 +340,7 @@ class EventStreamHistoryTest {
     }
 
     @Test
-    void reads_even_though_the_deferred_question_is_a_document_and_not_message_content() {
+    void reads_with_the_facts_of_a_deferral_on_the_event() {
       List<Turn> found = turnRead(AGENT, true);
 
       assertThat(found).hasSize(1);
@@ -353,6 +358,55 @@ class EventStreamHistoryTest {
       assertThat(exchange.resultOf(id)).contains("refunded");
       assertThat(with.getFirst().input()).isEqualTo(without.getFirst().input());
       assertThat(with.getFirst().exchanges()).isEqualTo(without.getFirst().exchanges());
+    }
+  }
+
+  @Nested
+  class A_turn_with_a_failure_that_holds_its_facts {
+
+    private final CallId id = new CallId("call-1");
+    private final ToolName tool = new ToolName("refund");
+
+    @Test
+    void reads_with_the_facts_of_a_failure_on_the_event() {
+      PayloadRef input = payloads.put(List.of(new Block.Text("q1")));
+      PayloadRef request = payloads.put(List.of(new Block.ToolCall(id, tool, "{}")));
+      PayloadRef answer = payloads.put(List.of(new Block.Text("a1")));
+      ObjectNode facts = none().put("ask", "ok?");
+      AgentId agent = new AgentId(UUID.randomUUID());
+      events.append(
+          TYPE,
+          agent,
+          List.of(
+              new AgentEvent.TurnStarted(
+                  new Seq(1), new TurnId(1), input, "Question", Instant.EPOCH, Instant.EPOCH),
+              new AgentEvent.ActionsRequested(
+                  new Seq(2),
+                  new TurnId(1),
+                  request,
+                  List.of(new ActionRequest.ToolCall(id, tool, "refund forty dollars", KEY)),
+                  Usage.unreported(),
+                  Optional.empty()),
+              new AgentEvent.ToolFailed(
+                  new Seq(3),
+                  new TurnId(1),
+                  id,
+                  CallFailure.NOT_AUTHORISED,
+                  "the call could not be authorised: down",
+                  facts,
+                  KEY),
+              new AgentEvent.InferenceAnswered(
+                  new Seq(4), new TurnId(1), answer, false, Usage.unreported(), Optional.empty())),
+          Seq.NONE,
+          Instant.EPOCH);
+
+      List<Turn> found =
+          new EventStreamHistory(events, new Transcript(payloads), TYPE, agent)
+              .turnsBetween(new TurnId(1), new TurnId(1));
+
+      assertThat(found).hasSize(1);
+      assertThat(found.getFirst().complete()).isTrue();
+      assertThat(found.getFirst().exchanges().getFirst().resultOf(id)).isEmpty();
     }
   }
 }

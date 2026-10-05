@@ -35,9 +35,15 @@ import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class TurnTallyTest {
+
+  private static ObjectNode none() {
+    return JsonNodeFactory.instance.objectNode();
+  }
 
   private static final TurnId TURN = new TurnId(1);
   private static final CallId CALL = new CallId("c1");
@@ -60,8 +66,7 @@ class TurnTallyTest {
             Optional.empty()));
     if (withDeferrals) {
       story.add(
-          new AgentEvent.ApprovalDeferred(
-              new Seq(3), TURN, CALL, Instant.EPOCH, PayloadRef.of("q"), KEY));
+          new AgentEvent.ApprovalDeferred(new Seq(3), TURN, CALL, Instant.EPOCH, none(), KEY));
       story.add(new AgentEvent.ToolDeferred(new Seq(4), TURN, CALL, Instant.EPOCH, KEY));
     }
     story.add(
@@ -88,7 +93,7 @@ class TurnTallyTest {
             TurnTally.after(
                 before,
                 new AgentEvent.ApprovalDeferred(
-                    new Seq(3), TURN, CALL, Instant.EPOCH, PayloadRef.of("q"), KEY)))
+                    new Seq(3), TURN, CALL, Instant.EPOCH, none(), KEY)))
         .isEqualTo(before);
     assertThat(
             TurnTally.after(
