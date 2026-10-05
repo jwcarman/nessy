@@ -35,9 +35,9 @@ model sees and what stands in for the rest. See [Storage](storage.md).
 | Ambient | The clock, a plan the agent edits, a notebook index | Whenever it likes, including mid-turn |
 
 Memory, state and ambient are none of them part of the story. Each source
-is asked again on every call, what it returns is shown and thrown away, and
-nothing holds an earlier answer for it. A view of the world that was
-recorded forever would stop being one.
+is asked again on every call, and no later call reads an earlier answer back.
+What a call was shown is kept on that call's record, beside the story and not
+in it, so a view of the world does not become something that was said.
 
 ## Which stratum something belongs in
 

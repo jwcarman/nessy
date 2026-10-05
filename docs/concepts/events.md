@@ -111,9 +111,10 @@ recorded as `Unknown` too, with its usage unreported.
 `ActionsRequested`, the last under the name `manifest` because its `request`
 is what the model wrote. Each holds, by reference, the prompt, the tools
 offered and the choice made, the shape of the answer asked for, the options,
-the last turn the summaries shown cover, the turns shown, and each memory, state
-and ambient section.
-The parts are payloads, so a part that did not change from one call to the next
+and each memory, state and ambient section. The summaries shown are named by
+the last turn they cover, and the turns shown by the range of turns, so neither
+is stored again.
+The stored parts are payloads, so a part that did not change from one call to the next
 is the same reference and is stored once. A failure recorded with no request in
 hand, such as a call that timed out or whose handler threw, has none. This
 record is stored with the event; it is not part of the public story and

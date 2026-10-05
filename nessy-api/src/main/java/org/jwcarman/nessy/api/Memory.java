@@ -26,11 +26,12 @@ import org.jwcarman.nessy.api.block.Block;
  * <p>Saved notes that match the question, an earlier conversation that touches the same subject, a
  * fact looked up for the request at hand. Chosen for the turn being answered, so it is the stratum
  * that changes most from one turn to the next, and it is never part of the story: it is assembled
- * when the model is called, shown, and thrown away.
+ * when the model is called and asked afresh on every call.
  *
- * <p>A source returns what is current each time it is asked, and nothing holds an earlier answer
- * for it. A recollection recorded forever would stop being a view of what bears on the question and
- * become something that was said.
+ * <p>A source returns what is current each time it is asked, and no later call reads an earlier
+ * answer back. What a call was shown is kept on that call's record, beside the story and not in it,
+ * so a recollection stays a view of what bears on the question and does not become something that
+ * was said.
  *
  * <p><b>Where it lands, and how it is labelled, is the provider's business.</b> This says what the
  * memory IS and leaves the rendering to the adapter that knows the vendor.

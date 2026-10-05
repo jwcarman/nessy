@@ -28,9 +28,9 @@ import org.jwcarman.nessy.inference.InferenceOptions;
  * only ever discard, which is the least useful thing it can do.
  *
  * <p>It returns a context rather than a list of messages so that history is one ingredient among
- * several. A system prompt, ambient background assembled for this call and thrown away, and a tool
- * catalog once there is one all belong to whoever builds the box -- and they have no owner at all
- * if the only seam hands back messages.
+ * several. A system prompt, ambient background assembled afresh for this call, and a tool catalog
+ * once there is one all belong to whoever builds the box -- and they have no owner at all if the
+ * only seam hands back messages.
  *
  * <p>It owns the token budget, because the budget is an assembly decision -- how much to spend, and
  * on what -- rather than a property of the agent or the model. Two assemblers over the same history

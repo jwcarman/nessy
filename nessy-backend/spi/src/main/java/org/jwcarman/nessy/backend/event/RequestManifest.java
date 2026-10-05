@@ -22,8 +22,9 @@ import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.TurnId;
 
 /**
- * What a request to the model was made of: the engine that built it, and a reference for each part
- * of it. The parts themselves are in the payload store; the manifest names them.
+ * What a request to the model was made of: the engine that built it, and a reference for each
+ * stored part, with the summaries and the turns shown named by the turns they cover. The stored
+ * parts themselves are in the payload store; the manifest names them.
  *
  * <p>It is stored with the event that records the model's reply, and nothing in {@code nessy-api}
  * reads it. It is not public API: an application author never sees it, and its shape can change

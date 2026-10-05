@@ -221,8 +221,10 @@ A part that is the same as on an earlier call is the same
 reference, so the insert changes nothing and no second row is written. What a call costs the
 store is those inserts, one statement for each part, and most of them find their row already there.
 
-Every part a model was shown is kept, by reference, with the call. A part is stored once per
-agent for each distinct content, and the rows are kept until the agent is removed. A source whose
+Every part a model was shown, other than the summaries and the turns, is kept, by reference,
+with the call; the summaries and the turns shown are named by the turns they cover and are not
+stored again. A part is stored once per agent for each distinct content, and the rows are kept:
+nothing in the engine deletes them (see [Retention](#retention)). A source whose
 output differs on every call, such as a retrieval result or a clock with second resolution, adds
 one row per model call, about the size of that section. The in-memory store keeps these parts on
 the heap. Whatever a memory, state or ambient source returns, and the values of vendor
