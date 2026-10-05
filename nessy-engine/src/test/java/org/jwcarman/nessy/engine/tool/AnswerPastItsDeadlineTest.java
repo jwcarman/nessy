@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
@@ -41,6 +42,7 @@ import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.engine.EngineFixture;
+import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
 
@@ -162,5 +164,82 @@ class AnswerPastItsDeadlineTest {
                 .count())
         .as("an expired request authorises nothing")
         .isZero();
+  }
+
+  /**
+   * The ignored answer leaves the row exactly as it was, so the call ends as it would have with no
+   * answer at all: the dispatcher expires it, the agent is told it was not authorised, and the turn
+   * goes on to its answer.
+   */
+  @Test
+  void an_ignored_late_answer_leaves_the_call_to_expire_and_the_turn_goes_on() {
+    AgentType type = new AgentType("past-deadline-expires-" + UUID.randomUUID());
+    Approver deferring =
+        request -> {
+          asks.add(request);
+          return Awaited.deferred();
+        };
+    var harness =
+        engine
+            .harnesses()
+            .create(
+                type,
+                String.class,
+                config ->
+                    config
+                        .systemPrompt("You are a test assistant.")
+                        .tool(
+                            lookup(),
+                            t ->
+                                t.action(query -> "look up " + query.q())
+                                    .approver(deferring, a -> a.timeout(Duration.ofSeconds(2))))
+                        .inference(in -> in.model("a-model"))
+                        // Nothing polls during the test: the expiry runs only when nudged.
+                        .effects(e -> e.pollInterval(Duration.ofMinutes(10))));
+    AgentId agent = new AgentId(UUID.randomUUID());
+    harness.tell(agent, "what lake?");
+    await()
+        .atMost(Duration.ofSeconds(20))
+        .until(
+            () ->
+                engine.story(type, agent).stream()
+                    .anyMatch(AgentEvent.ApprovalDeferred.class::isInstance));
+    ApprovalRequest request = asks.peek();
+    await()
+        .atMost(Duration.ofSeconds(10))
+        .until(() -> Instant.now().isAfter(request.deadline().plusMillis(200)));
+
+    ReplyOutcome outcome =
+        engine
+            .replies()
+            .approve(
+                request.agentType(),
+                request.agentId(),
+                request.idempotencyKey(),
+                ApprovalResult.approved());
+    // Another agent's first input nudges the type's dispatcher, which finds the row due at its
+    // deadline. Telling this agent again would only queue, and nudge nothing.
+    harness.tell(new AgentId(UUID.randomUUID()), "what loch?");
+
+    assertThat(outcome).isEqualTo(new ReplyOutcome.Ignored());
+    await()
+        .atMost(Duration.ofSeconds(20))
+        .untilAsserted(
+            () ->
+                assertThat(engine.story(type, agent))
+                    .filteredOn(AgentEvent.ToolFailed.class::isInstance)
+                    .map(AgentEvent.ToolFailed.class::cast)
+                    .extracting(AgentEvent.ToolFailed::kind)
+                    .containsExactly(CallFailure.NOT_AUTHORISED));
+    assertThat(engine.stateOf(type, agent))
+        .as("the turn goes on past the call")
+        .isNotInstanceOf(AgentState.AwaitingActions.class);
+    assertThat(
+            engine.story(type, agent).stream()
+                .filter(AgentEvent.ToolApproved.class::isInstance)
+                .count())
+        .as("an expired request authorises nothing")
+        .isZero();
+    assertThat(ran).as("the tool never ran").isEmpty();
   }
 }
