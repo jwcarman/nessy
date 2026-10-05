@@ -15,12 +15,16 @@
  */
 package org.jwcarman.nessy.backend.jdbc;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
@@ -32,6 +36,9 @@ import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.Effects;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
+import org.jwcarman.nessy.backend.effect.LiveEffect;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
@@ -62,6 +69,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * same job.
  */
 public class JdbcEffects implements Effects {
+
+  private static final Logger LOG = LoggerFactory.getLogger(JdbcEffects.class);
 
   public static final String PENDING = "PENDING";
   public static final String RUNNING = "RUNNING";
@@ -137,6 +146,29 @@ public class JdbcEffects implements Effects {
       "UPDATE nessy_agent_effect"
           + " SET parked_at = ?, actionable_at = deadline, updated_at = ?"
           + " WHERE effect_id = ? AND status = ? AND attempts_made = ?";
+
+  /**
+   * What a read of live work needs of a row, and nothing it does not: the failure blob and the
+   * trace are for performing a row, which a read never does.
+   */
+  private static final String LIVE_SELECT =
+      "SELECT effect_id, agent_type, agent_id, payload, created_at, parked_at, deadline,"
+          + " attempts_made, status FROM nessy_agent_effect";
+
+  /** Every row of one agent: few by construction, so no limit. */
+  private static final String LIVE_FOR =
+      LIVE_SELECT + " WHERE agent_type = ? AND agent_id = ? ORDER BY created_at, effect_id";
+
+  /**
+   * The rows waiting on an answer. A row claimed again at its deadline keeps {@code parked_at}
+   * until it is deleted, which is why the deadline is compared and not the mark alone.
+   */
+  private static final String PARKED_NOW =
+      LIVE_SELECT + " WHERE parked_at IS NOT NULL AND status = ? AND deadline > ?";
+
+  private static final String OF_TYPE = " AND agent_type = ?";
+  private static final String AFTER = " AND (created_at, effect_id) > (?, ?)";
+  private static final String PARKED_NOW_PAGE = " ORDER BY created_at, effect_id LIMIT ?";
 
   private final JdbcClient jdbc;
   private final Codec<AgentEffect> effectCodec;
@@ -319,6 +351,112 @@ public class JdbcEffects implements Effects {
   @Override
   public boolean park(UUID effectId, int attemptsMade, Instant at) {
     return jdbc.sql(PARK).params(utc(at), utc(at), effectId, RUNNING, attemptsMade).update() == 1;
+  }
+
+  /**
+   * Every live row of one agent, read without claiming any of it.
+   *
+   * <p>A row whose payload this build cannot decode is left out and logged. A read for display must
+   * not fail because of one row, and the dispatcher has its own way of settling such a row.
+   */
+  @Override
+  public List<LiveEffect> liveFor(AgentType agentType, AgentId agentId) {
+    Objects.requireNonNull(agentType, "agentType must not be null");
+    Objects.requireNonNull(agentId, "agentId must not be null");
+    return jdbc
+        .sql(LIVE_FOR)
+        .params(agentType.value(), agentId.value())
+        .query((rs, n) -> read(rs).effect())
+        .list()
+        .stream()
+        .flatMap(Optional::stream)
+        .toList();
+  }
+
+  /**
+   * The rows waiting on an answer, a page at a time.
+   *
+   * <p>Keyed on {@code (created_at, effect_id)} rather than an offset: rows can finish between
+   * pages, and an offset would then skip the row that slid into the place of the one that left. The
+   * cursor is the last row the caller got, so a row is never repeated and never missed.
+   *
+   * <p>A row that cannot be decoded is passed over and the read goes on past it, so a page is full
+   * unless the rows ran out: an empty page means there is nothing more, however many unreadable
+   * rows sat in the way.
+   */
+  @Override
+  public List<LiveEffect> parkedNow(
+      Optional<AgentType> agentType, Instant now, Optional<LiveEffect> after, int limit) {
+    Objects.requireNonNull(agentType, "agentType must not be null");
+    Objects.requireNonNull(now, "now must not be null");
+    Objects.requireNonNull(after, "after must not be null");
+    if (limit <= 0) {
+      throw new IllegalArgumentException("limit must be positive, was " + limit);
+    }
+    List<LiveEffect> found = new ArrayList<>();
+    Optional<Cursor> cursor = after.map(last -> new Cursor(last.createdAt(), last.effectId()));
+    while (found.size() < limit) {
+      int wanted = limit - found.size();
+      List<Read> rows = parkedPage(agentType, now, cursor, wanted);
+      rows.forEach(row -> row.effect().ifPresent(found::add));
+      if (rows.size() < wanted) {
+        break;
+      }
+      cursor = Optional.of(rows.getLast().cursor());
+    }
+    return List.copyOf(found);
+  }
+
+  private List<Read> parkedPage(
+      Optional<AgentType> agentType, Instant now, Optional<Cursor> after, int limit) {
+    StringBuilder sql = new StringBuilder(PARKED_NOW);
+    List<Object> params = new ArrayList<>(List.of(RUNNING, utc(now)));
+    agentType.ifPresent(
+        type -> {
+          sql.append(OF_TYPE);
+          params.add(type.value());
+        });
+    after.ifPresent(
+        last -> {
+          sql.append(AFTER);
+          params.add(utc(last.createdAt()));
+          params.add(last.effectId());
+        });
+    sql.append(PARKED_NOW_PAGE);
+    params.add(limit);
+    return jdbc.sql(sql.toString()).params(params).query((rs, n) -> read(rs)).list();
+  }
+
+  /** Where a page stopped: the order's own key, so the next one starts strictly after it. */
+  private record Cursor(Instant createdAt, UUID effectId) {}
+
+  /** A row as read, kept even when it cannot be decoded so that the cursor can pass over it. */
+  private record Read(Cursor cursor, Optional<LiveEffect> effect) {}
+
+  private Read read(ResultSet rs) throws SQLException {
+    UUID effectId = rs.getObject("effect_id", UUID.class);
+    Instant createdAt = rs.getObject("created_at", OffsetDateTime.class).toInstant();
+    AgentEffect effect;
+    try {
+      effect = effectCodec.decode(rs.getBytes("payload"));
+    } catch (RuntimeException e) {
+      LOG.warn("Skipping effect {}: its payload cannot be decoded", effectId, e);
+      return new Read(new Cursor(createdAt, effectId), Optional.empty());
+    }
+    OffsetDateTime parkedAt = rs.getObject("parked_at", OffsetDateTime.class);
+    return new Read(
+        new Cursor(createdAt, effectId),
+        Optional.of(
+            new LiveEffect(
+                effectId,
+                new AgentType(rs.getString("agent_type")),
+                new AgentId(rs.getObject("agent_id", UUID.class)),
+                effect,
+                createdAt,
+                Optional.ofNullable(parkedAt).map(OffsetDateTime::toInstant),
+                rs.getObject("deadline", OffsetDateTime.class).toInstant(),
+                rs.getInt("attempts_made"),
+                RUNNING.equals(rs.getString("status")))));
   }
 
   /**

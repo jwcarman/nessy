@@ -20,6 +20,8 @@ import javax.sql.DataSource;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.TypeRef;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.IdentityCodec;
 import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.agent.Agents;
@@ -158,5 +160,11 @@ public final class JdbcQueuedBackend implements QueuedBackend {
     Objects.requireNonNull(inputType, "inputType must not be null");
     Codec<I> codec = codecs.create(inputType);
     return (type, agent) -> new JdbcBacklog<>(jdbc, codec, agents, type, agent);
+  }
+
+  /** The rows of every typed backlog of this agent, counted without decoding any of them. */
+  @Override
+  public int queued(AgentType type, AgentId agent) {
+    return Math.toIntExact(JdbcBacklog.size(jdbc, type, agent));
   }
 }

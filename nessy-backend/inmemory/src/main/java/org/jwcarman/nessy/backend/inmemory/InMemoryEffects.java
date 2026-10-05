@@ -22,6 +22,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.codec.Codec;
@@ -33,6 +34,9 @@ import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.Effects;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
+import org.jwcarman.nessy.backend.effect.LiveEffect;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The work queue as a map, for a door with no database.
@@ -54,6 +58,16 @@ import org.jwcarman.nessy.backend.effect.FailedAttempt;
  */
 public final class InMemoryEffects implements Effects {
 
+  private static final Logger LOG = LoggerFactory.getLogger(InMemoryEffects.class);
+
+  /**
+   * The durable table's order: creation time, then id. The id compares as unsigned bytes, as the
+   * database's uuid type does, which is not what {@link UUID#compareTo} does.
+   */
+  private static final Comparator<Row> LIVE_ORDER =
+      Comparator.<Row, Instant>comparing(row -> row.createdAt)
+          .thenComparing(row -> row.effectId, InMemoryEffects::byUnsignedBytes);
+
   private static final String TYPE_REQUIRED = "type must not be null";
 
   /** Two meanings for one moment, decided by status -- exactly as the durable row has it. */
@@ -71,6 +85,8 @@ public final class InMemoryEffects implements Effects {
     private final Duration timeout;
     private final Instant deadline;
     private final String traceContext;
+    private final Instant createdAt;
+    private Instant parkedAt;
     private Status status = Status.PENDING;
     private int attemptsMade;
     private Instant actionableAt;
@@ -94,6 +110,7 @@ public final class InMemoryEffects implements Effects {
       this.deadline = deadline;
       this.traceContext = traceContext;
       this.actionableAt = at;
+      this.createdAt = at;
     }
 
     private List<FailedAttempt> failedAttempts = List.of();
@@ -223,7 +240,80 @@ public final class InMemoryEffects implements Effects {
       return false;
     }
     row.actionableAt = row.deadline;
+    row.parkedAt = at;
     return true;
+  }
+
+  /** Oldest first, and every live row there is: a finished row is no longer held at all. */
+  @Override
+  public synchronized List<LiveEffect> liveFor(AgentType type, AgentId agent) {
+    Objects.requireNonNull(type, TYPE_REQUIRED);
+    Objects.requireNonNull(agent, "agent must not be null");
+    return rows.values().stream()
+        .filter(row -> row.type.equals(type) && row.agent.equals(agent))
+        .sorted(LIVE_ORDER)
+        .map(this::live)
+        .flatMap(Optional::stream)
+        .toList();
+  }
+
+  /**
+   * Parked, running and short of the deadline, which is what the durable query says. A row claimed
+   * again at its deadline keeps its mark but its deadline is not after {@code now}.
+   */
+  @Override
+  public synchronized List<LiveEffect> parkedNow(
+      Optional<AgentType> type, Instant now, Optional<LiveEffect> after, int limit) {
+    Objects.requireNonNull(type, TYPE_REQUIRED);
+    Objects.requireNonNull(now, "now must not be null");
+    Objects.requireNonNull(after, "after must not be null");
+    if (limit <= 0) {
+      throw new IllegalArgumentException("limit must be positive, was " + limit);
+    }
+    return rows.values().stream()
+        .filter(row -> row.parkedAt != null && row.status == Status.RUNNING)
+        .filter(row -> row.deadline.isAfter(now))
+        .filter(row -> type.isEmpty() || row.type.equals(type.get()))
+        .filter(row -> after.isEmpty() || isAfter(row, after.get()))
+        .sorted(LIVE_ORDER)
+        .map(this::live)
+        .flatMap(Optional::stream)
+        .limit(limit)
+        .toList();
+  }
+
+  private static boolean isAfter(Row row, LiveEffect last) {
+    int byTime = row.createdAt.compareTo(last.createdAt());
+    return byTime > 0 || (byTime == 0 && byUnsignedBytes(row.effectId, last.effectId()) > 0);
+  }
+
+  private static int byUnsignedBytes(UUID a, UUID b) {
+    int high = Long.compareUnsigned(a.getMostSignificantBits(), b.getMostSignificantBits());
+    return high != 0
+        ? high
+        : Long.compareUnsigned(a.getLeastSignificantBits(), b.getLeastSignificantBits());
+  }
+
+  /** Empty for a row whose payload cannot be decoded, which is logged and passed over. */
+  private Optional<LiveEffect> live(Row row) {
+    AgentEffect effect;
+    try {
+      effect = effects.decode(row.payload);
+    } catch (RuntimeException e) {
+      LOG.warn("Skipping effect {}: its payload cannot be decoded", row.effectId, e);
+      return Optional.empty();
+    }
+    return Optional.of(
+        new LiveEffect(
+            row.effectId,
+            row.type,
+            row.agent,
+            effect,
+            row.createdAt,
+            Optional.ofNullable(row.parkedAt),
+            row.deadline,
+            row.attemptsMade,
+            row.status == Status.RUNNING));
   }
 
   /**
