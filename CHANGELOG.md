@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+- **The reply token is removed.** `ReplyToken`, `ApprovalRequest.replyToken()` and its record
+  component, `ToolCallRequest.replyToken()`, the engine's `ReplyTokens`,
+  `QueuedHarnessFactoryConfig.replyTokens(...)` and the `nessy.reply-token-encryption-keys`
+  property are gone. `ApprovalRequest`'s constructors lose the `replyToken` argument. Nessy does
+  not check who is answering: an application guards the endpoint that calls `Replies`.
 - **A late answer is addressed by agent type, agent id and the call's key.** `Replies.approve` and
   `Replies.complete` take an `AgentType`, an `AgentId` and an `IdempotencyKey`, all required,
   where they took a `ReplyToken`. `ReplyOutcome` is `Applied` or `Ignored`: `Applied` means the

@@ -35,11 +35,11 @@ import org.jwcarman.nessy.api.tool.Approver;
  * }</pre>
  *
  * <p><b>It answers immediately, and that is the whole difference from a web desk.</b> An approver
- * that defers hands the approval request to the outside world and takes a {@code ReplyToken} to be
- * answered later — the right shape when the person is elsewhere, might be asleep, and the answer
- * must survive a restart. Here the person is at the keyboard with the agent's own output still on
- * their screen, so there is nothing to park, nothing to persist, and nobody to notify. It prompts,
- * waits for a line, and returns {@link Awaited.Ready}.
+ * that defers hands the approval request to the outside world and is answered later through {@code
+ * Replies} — the right shape when the person is elsewhere, might be asleep, and the answer must
+ * survive a restart. Here the person is at the keyboard with the agent's own output still on their
+ * screen, so there is nothing to park, nothing to persist, and nobody to notify. It prompts, waits
+ * for a line, and returns {@link Awaited.Ready}.
  *
  * <p><b>Why reading the console here is safe.</b> Two things, and the second is easy to get wrong.
  * This runs on the engine's blocking executor while the REPL thread is parked waiting for the turn

@@ -49,7 +49,6 @@ import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.backend.payload.Payloads;
-import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
 import org.jwcarman.nessy.engine.tool.Tools;
@@ -74,7 +73,6 @@ class ToolCallHandlerTest {
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
   private static final Payloads PAYLOADS =
       new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
-  private static final ReplyTokens TOKENS = ReplyTokens.ephemeral();
 
   /**
    * When the effect's row says the call stands until, whatever the clock reads when it is handled.
@@ -165,7 +163,7 @@ class ToolCallHandlerTest {
   }
 
   private Handled handled(Tools tools, ToolCalls calls, Instant deadline) {
-    return new ToolCallHandler(TYPE, tools, calls, TOKENS, terms(tools), PAYLOADS)
+    return new ToolCallHandler(TYPE, tools, calls, terms(tools), PAYLOADS)
         .handle(
             AGENT,
             new AgentEffect.CallTool(
@@ -439,7 +437,7 @@ class ToolCallHandlerTest {
                     new RetryPolicy.Never())));
 
     EffectTerms resolved =
-        new ToolCallHandler(TYPE, tools, nothing(), TOKENS, terms(tools), PAYLOADS)
+        new ToolCallHandler(TYPE, tools, nothing(), terms(tools), PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(
                     new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));
@@ -455,7 +453,7 @@ class ToolCallHandlerTest {
   @Test
   void anUnboundToolFallsBackToTheHarnessTerms() {
     EffectTerms resolved =
-        new ToolCallHandler(TYPE, Tools.none(), nothing(), TOKENS, terms(Tools.none()), PAYLOADS)
+        new ToolCallHandler(TYPE, Tools.none(), nothing(), terms(Tools.none()), PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(
                     new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("gone"), KEY));
@@ -471,7 +469,7 @@ class ToolCallHandlerTest {
   @Test
   void bothStoredFailuresNameTheCallTheyDischarge() {
     EffectTerms resolved =
-        new ToolCallHandler(TYPE, Tools.none(), nothing(), TOKENS, terms(Tools.none()), PAYLOADS)
+        new ToolCallHandler(TYPE, Tools.none(), nothing(), terms(Tools.none()), PAYLOADS)
             .termsFor(
                 new AgentEffect.CallTool(
                     new TurnId(1), new Seq(2), new CallId("c1"), new ToolName("lookup"), KEY));

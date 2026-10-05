@@ -40,7 +40,6 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -178,8 +177,7 @@ class HarnessObservesToolsTest {
             IdempotencyKey.of(UUID.randomUUID()),
             new ToolName("echo"),
             "\"hi\"",
-            Instant.now().plusSeconds(30),
-            new ReplyToken("unused"));
+            Instant.now().plusSeconds(30));
 
     assertThat(answer).isInstanceOf(Awaited.Ready.class);
     assertThat(tag("gen_ai.client.operation.duration", "gen_ai.operation.name"))
@@ -203,8 +201,7 @@ class HarnessObservesToolsTest {
             "{}",
             "echo hi",
             Instant.EPOCH,
-            Instant.EPOCH.plusSeconds(3600),
-            new ReplyToken("unused"));
+            Instant.EPOCH.plusSeconds(3600));
 
     Awaited<ApprovalResult> answer = binding.approve(request);
 
@@ -229,8 +226,7 @@ class HarnessObservesToolsTest {
             "{}",
             "ungated hi",
             Instant.EPOCH,
-            Instant.EPOCH.plusSeconds(3600),
-            new ReplyToken("unused")));
+            Instant.EPOCH.plusSeconds(3600)));
 
     assertThat(stopped).noneMatch(c -> c.getName().equals("nessy.approval"));
   }

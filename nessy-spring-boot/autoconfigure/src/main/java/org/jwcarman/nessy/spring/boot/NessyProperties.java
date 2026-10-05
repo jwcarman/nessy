@@ -39,12 +39,6 @@ import org.springframework.util.FileCopyUtils;
  * @param model which model the agents talk to, on whichever registered {@code InferenceProvider}
  *     {@link #provider} names
  * @param maxTokens the longest answer to allow
- * @param replyTokenEncryptionKeys the AES keys a {@code ReplyToken}'s coordinates are sealed with,
- *     newest first — base64, and 16, 24 or 32 bytes each (use 32). Named for what they ARE: "reply
- *     keys" read as an address book rather than as secrets, and nobody could tell from the property
- *     what to put in it. Absent means an EPHEMERAL key, which is fine for a single process that
- *     never restarts mid-approval and wrong for anything else: a token minted before a restart
- *     cannot be read after one, so every parked call becomes unanswerable.
  * @param embedder the embedding provider a store's embedder is minted over when the store names
  *     none. Set with {@link #embeddingModel}, or not at all; blank is unset
  * @param embeddingModel the model a store's embedder asks for when the store names none, on
@@ -60,7 +54,6 @@ public record NessyProperties(
     Resource systemPromptFile,
     String model,
     Integer maxTokens,
-    java.util.List<String> replyTokenEncryptionKeys,
     Boolean initializeSchema,
     String embedder,
     String embeddingModel,
@@ -69,10 +62,6 @@ public record NessyProperties(
   public NessyProperties {
     type = type == null || type.isBlank() ? "agent" : type;
     maxTokens = maxTokens == null ? 4096 : maxTokens;
-    replyTokenEncryptionKeys =
-        replyTokenEncryptionKeys == null
-            ? java.util.List.of()
-            : java.util.List.copyOf(replyTokenEncryptionKeys);
     // On by default: an application that added the starter wants the tables. An application that
     // manages its own migrations turns it off, and nothing runs a DDL file behind its back.
     initializeSchema = initializeSchema == null || initializeSchema;

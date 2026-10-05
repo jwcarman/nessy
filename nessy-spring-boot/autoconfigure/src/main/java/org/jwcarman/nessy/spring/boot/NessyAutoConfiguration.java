@@ -16,18 +16,13 @@
 package org.jwcarman.nessy.spring.boot;
 
 import io.micrometer.core.instrument.MeterRegistry;
-import java.util.Base64;
-import java.util.List;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.IdentityCodec;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.StorageCodecConfigurer;
-import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.inference.InferenceProvider;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -79,24 +74,6 @@ import tools.jackson.databind.ObjectMapper;
     })
 @EnableConfigurationProperties(NessyProperties.class)
 public class NessyAutoConfiguration {
-
-  private static final Logger log = LoggerFactory.getLogger(NessyAutoConfiguration.class);
-
-  @Bean
-  @ConditionalOnMissingBean
-  public ReplyTokens nessyReplyTokens(NessyProperties properties) {
-    List<String> keys = properties.replyTokenEncryptionKeys();
-    if (keys.isEmpty()) {
-      log.warn(
-          "NESSY REPLY TOKENS ARE EPHEMERAL: no nessy.reply-token-encryption-keys configured, so"
-              + " any approval parked on a person becomes unanswerable after a restart. Configure"
-              + " a base64 32-byte AES key for anything that is not a test:"
-              + " openssl rand -base64 32");
-      return ReplyTokens.ephemeral();
-    }
-    return ReplyTokens.withKeys(
-        keys.stream().map(key -> Base64.getDecoder().decode(key)).toArray(byte[][]::new));
-  }
 
   /**
    * The one way to build a {@link Codec} in this engine: Jackson, over the context's {@link

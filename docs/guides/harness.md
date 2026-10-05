@@ -334,7 +334,7 @@ or later:
 
 ```java
 Approver desk = request -> {
-    pending.save(request, request.replyToken());
+    pending.save(request);   // keep the agent type, agent id and idempotency key
     return Awaited.deferred();
 };
 ```
@@ -354,11 +354,11 @@ the binding's decision, not the approver's:
         .approver(desk, terms -> terms.timeout(Duration.ofDays(3))))
 ```
 
-Days later, whoever holds the token answers, through the queued factory's
+Days later, whoever has the agent type, the agent id and the key answers, through the queued factory's
 `Replies`:
 
 ```java
-factory.replies().approve(token, ApprovalResult.denied("not this time"));
+factory.replies().approve(agentType, agentId, key, ApprovalResult.denied("not this time"));
 ```
 
 **A denial is an answer, not an absence.** The model is told the call was

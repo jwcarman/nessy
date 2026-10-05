@@ -30,7 +30,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentType;
-import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
@@ -64,7 +63,6 @@ import org.jwcarman.nessy.engine.observability.ObservedMemorySource;
 import org.jwcarman.nessy.engine.observability.ObservedStateSource;
 import org.jwcarman.nessy.engine.observability.ObservedTurnHistories;
 import org.jwcarman.nessy.engine.store.TurnHistories;
-import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -131,16 +129,6 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
   private final ObservationRegistry observations;
   private final List<Customizer<HarnessConfig<?>>> features;
   private final List<Customizer<DirectHarnessConfig<?>>> harnesses;
-
-  /**
-   * Where a deferring approver or tool would leave a reply address, if this door had somewhere to
-   * put one waiting on it. It never does -- {@link EffectHandlers#perform} always sees {@link
-   * Awaited.Deferred} become an immediate failure here -- so a token minted for this door never
-   * outlives the call it was minted for, and one that does not survive a restart loses nothing. One
-   * per factory rather than per harness: an address is opaque, so nothing about it is tied to a
-   * particular agent type.
-   */
-  private final ReplyTokens replyTokens = ReplyTokens.ephemeral();
 
   /**
    * One virtual thread per effect, for every harness this factory makes -- see the class javadoc
@@ -330,9 +318,8 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
                 payloads,
                 narrator,
                 tools),
-            new ApprovalHandler(
-                config.agentType(), tools, calls, replyTokens, narrator, terms, clock),
-            new ToolCallHandler(config.agentType(), tools, calls, replyTokens, terms, payloads));
+            new ApprovalHandler(config.agentType(), tools, calls, narrator, terms, clock),
+            new ToolCallHandler(config.agentType(), tools, calls, terms, payloads));
     return new DefaultDirectHarness<>(
         backend,
         config.agentType(),

@@ -36,9 +36,17 @@ import org.jwcarman.nessy.api.AgentType;
  * this resolves it. It is also nothing to do with an application's input type, and a webhook
  * answering an approval should not have to name one.
  *
+ * <p><b>Nessy does not check who is answering.</b> Anyone who has the three values and can reach
+ * the code that calls this can answer the call. Guarding that code is the application's job: it
+ * sends the values only to the party who should answer, and its endpoint checks that the caller is
+ * that party.
+ *
+ * <p>A reply writes on the calling thread. On a JDBC backend it joins a transaction the caller has
+ * open, and narration and the dispatcher's nudge happen when the answer returns, which can be
+ * before the caller commits.
+ *
  * <p><b>The caller is rarely the approver or the tool.</b> It is a webhook controller, a queue
- * consumer, an admin page -- code somewhere else entirely. That is why this is injected rather than
- * handed out at the point of deferral.
+ * consumer, an admin page -- code somewhere else entirely. That is why this is injected.
  *
  * <p>Every argument is required; a null is refused with a {@link NullPointerException}. Answering
  * is idempotent in the only way that matters: a second answer for the same call is {@link
@@ -54,8 +62,8 @@ public interface Replies {
    * dispatch the call as its own piece of durable work. So this returns as soon as the agent has
    * been told, not when the tool has finished, and a slow tool never holds a webhook open.
    *
-   * <p>Joins a transaction the caller has open, so the answer commits or rolls back with the
-   * caller's own writes.
+   * <p>On a JDBC backend this joins a transaction the caller has open, so the answer commits or
+   * rolls back with the caller's own writes. The in-memory backend has no transaction to join.
    *
    * @param type the agent type of the call's agent
    * @param id the call's agent
@@ -71,7 +79,7 @@ public interface Replies {
    * awaiting permission cannot be settled with a result, which would run past the gate rather than
    * through it, and a call already running cannot be given a verdict.
    *
-   * <p>Joins a transaction the caller has open, as {@link #approve} does.
+   * <p>Joins a transaction the caller has open on a JDBC backend, as {@link #approve} does.
    *
    * @param type the agent type of the call's agent
    * @param id the call's agent

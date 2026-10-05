@@ -21,12 +21,11 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 
 /**
- * What a tool is handed: its arguments, its deadline, and where a late answer goes.
+ * What a tool is handed: its arguments, and its deadline.
  *
  * <p>The engine's own implementation of the API's interface, so the API surface stays a set of
  * shapes an application reads and the record that satisfies them is not something it can build.
@@ -39,6 +38,5 @@ record CallRequest<I>(
     IdempotencyKey idempotencyKey,
     ToolName toolName,
     I input,
-    Instant deadline,
-    ReplyToken replyToken)
+    Instant deadline)
     implements ToolCallRequest<I> {}

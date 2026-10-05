@@ -33,7 +33,6 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolName;
 import tools.jackson.databind.JsonNode;
 
@@ -61,8 +60,7 @@ class RiskTest {
         "{}",
         "docker image prune -af",
         Instant.EPOCH,
-        Instant.EPOCH.plusSeconds(3600),
-        new ReplyToken("nowhere"));
+        Instant.EPOCH.plusSeconds(3600));
   }
 
   /** An approver that records whether it was consulted at all. */

@@ -33,7 +33,6 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -204,8 +203,7 @@ public final class ToolBinding<I> {
       String arguments,
       String action,
       Instant askedAt,
-      Instant deadline,
-      ReplyToken replyToken) {
+      Instant deadline) {
     mapper.readValue(arguments, tool.inputType());
     ApprovalRequest request =
         new ApprovalRequest(
@@ -218,8 +216,7 @@ public final class ToolBinding<I> {
             arguments,
             action,
             askedAt,
-            deadline,
-            replyToken);
+            deadline);
     // After the approval request is built, so an enricher can read the sentence a person will be
     // shown; before the approver, which is the whole ordering there is. Anything thrown here
     // reaches the handler and discharges the call as one that could not be authorised --
@@ -355,8 +352,7 @@ public final class ToolBinding<I> {
       IdempotencyKey idempotencyKey,
       ToolName toolName,
       String json,
-      Instant deadline,
-      ReplyToken replyToken) {
+      Instant deadline) {
     I input;
     try {
       input = mapper.readValue(json, tool.inputType());
@@ -366,14 +362,6 @@ public final class ToolBinding<I> {
     }
     return tool.call(
         new CallRequest<>(
-            agentType,
-            agentId,
-            turn,
-            callId,
-            idempotencyKey,
-            toolName,
-            input,
-            deadline,
-            replyToken));
+            agentType, agentId, turn, callId, idempotencyKey, toolName, input, deadline));
   }
 }

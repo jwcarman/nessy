@@ -44,7 +44,6 @@ import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -207,8 +206,7 @@ class ToolInputSchemaTest {
               IdempotencyKey.of(UUID.randomUUID()),
               new ToolName("rounds"),
               "{}",
-              Instant.now().plusSeconds(30),
-              new ReplyToken("unused"));
+              Instant.now().plusSeconds(30));
 
       assertThat(answer).isInstanceOf(Awaited.Ready.class);
       assertThat(received.get()).isEqualTo(new EmptyInput());

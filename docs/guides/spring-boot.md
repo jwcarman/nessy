@@ -100,7 +100,6 @@ Everything below is read from `nessy.*`, bound by `NessyProperties`.
 | `nessy.system-prompt-file` | none; a `Resource`. **Setting both is an error** | the same places as `nessy.system-prompt` |
 | `nessy.type` | `agent` | ignored: nothing reads it. An agent's type is named when you call `factory.create(agentType, ...)`, not from a property |
 | `nessy.initialize-schema` | `true`: apply every module's `nessy-schema.sql` at startup | `JdbcBackendAutoConfiguration`'s schema bean |
-| `nessy.reply-token-encryption-keys` | ephemeral; see below | the `ReplyTokens` bean, which only the queued door's factory is given |
 | `nessy.prompt.engine` | `spring`, or `mustache` | `PromptEngineAutoConfiguration` |
 | `nessy.narration.odyssey.inactivity-ttl`, `entry-ttl`, `retention-ttl` | a day, a day, an hour | `OdysseyNarrationAutoConfiguration`, when Odyssey is present |
 | `anthropic.api-key`, `openai.api-key`, `openai.base-url`, `xai.api-key`, `gemini.api-key`, `google.api-key`, `openrouter.api-key`, `nvidia.api-key`, `groq.api-key`, `mistral.api-key`, `cerebras.api-key`, `voyage.api-key` | light the matching inference or embedding preset; see [Providers](providers.md#boot-auto-configuration) |
@@ -157,7 +156,6 @@ a reader can find it.
 
 | Bean | What it is |
 |---|---|
-| `ReplyTokens` | from the configured keys, or ephemeral, loudly |
 | `CodecFactory` | Jackson over the context's `ObjectMapper`, with the `StorageCodecConfigurer` bean's transform appended |
 | `StorageCodecConfigurer` | nothing appended, unless you declare one |
 | `InferenceReport` | logs every registered provider once, at startup |
@@ -183,7 +181,7 @@ started, so a listener may depend on the factory without a cycle.
 
 | Bean | What it is |
 |---|---|
-| `DefaultQueuedHarnessFactory` | against the `QueuedHarnessFactory` interface; built from the backend, every registered provider, `nessy.provider`, `nessy.model` and `nessy.max-tokens`, and the `ReplyTokens` bean |
+| `DefaultQueuedHarnessFactory` | against the `QueuedHarnessFactory` interface; built from the backend, every registered provider, `nessy.provider`, `nessy.model` and `nessy.max-tokens` |
 | `TurnHistories` | the story, read-only |
 | `Replies` | the door a deferred answer comes back through |
 
@@ -259,48 +257,6 @@ See [Storage](../concepts/storage.md).
 The bean this produces, `JdbcBackendAutoConfiguration.NessySchema`, is a
 marker record: nothing queries it, and everything that needs the tables to
 exist first depends on it, so Spring builds it before them.
-
-## Reply tokens, and where they do and don't reach
-
-A `ReplyToken` is the address a parked call is answered at, and it is
-**encrypted**: the coordinates inside it are sealed with AES-GCM so the
-holder cannot read them, and cannot forge one either.
-
-`nessy.reply-token-encryption-keys` are those keys, base64-encoded; secrets,
-handled like any other. AES accepts 16, 24 or 32 bytes; **use 32**.
-
-```bash
-openssl rand -base64 32
-```
-
-The output is 44 characters ending in `=`. A key of some other length is
-refused **at startup**, naming which one, rather than the first time a call
-parks on a person.
-
-```yaml
-nessy:
-  reply-token-encryption-keys:
-    - ${NESSY_REPLY_KEY_CURRENT}        # base64 of 32 random bytes
-    - ${NESSY_REPLY_KEY_PREVIOUS}       # the one before it, kept to read old tokens
-```
-
-**Configure none and they are ephemeral**: a fresh key at startup, so every
-token minted before a restart becomes unreadable and every approval parked
-on a person silently becomes unanswerable. The starter says so loudly.
-
-**Rotating.** Tokens are minted with the **first** key and read by trying
-**every** one, so putting a new key at the front and keeping the old one
-below it means a token already sitting in somebody's inbox still works.
-
-This bean reaches the **queued** door's factory only, and the direct door's
-factory mints its own with an ephemeral key regardless of what
-`nessy.reply-token-encryption-keys` says. That costs nothing, because the
-direct door cannot park a call in the first place: a caller is standing there
-waiting, so an approver or tool that tries to defer fails immediately rather
-than handing back an address. A token minted behind the direct door never
-outlives the call it was minted for, and one that does not survive a restart
-loses nothing. Set the keys for the queued door, which is the one that can
-leave a call parked on a person.
 
 ## A worked example
 

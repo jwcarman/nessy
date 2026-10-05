@@ -28,7 +28,6 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.payload.Payloads;
-import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
 import org.jwcarman.nessy.engine.tool.Tools;
@@ -58,21 +57,18 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
 
   private final Tools tools;
   private final ToolCalls calls;
-  private final ReplyTokens replyTokens;
   private final EffectTermsSource terms;
 
   public ToolCallHandler(
       AgentType agentType,
       Tools tools,
       ToolCalls calls,
-      ReplyTokens replyTokens,
       EffectTermsSource terms,
       Payloads payloads) {
     this.agentType = agentType;
     this.payloads = payloads;
     this.tools = tools;
     this.calls = calls;
-    this.replyTokens = replyTokens;
     this.terms = terms;
   }
 
@@ -130,8 +126,7 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
             effect.idempotencyKey(),
             call.name(),
             call.arguments(),
-            deadline,
-            replyTokens.mint(agentType, agentId, effect.requestSeq(), callId)));
+            deadline));
   }
 
   /**

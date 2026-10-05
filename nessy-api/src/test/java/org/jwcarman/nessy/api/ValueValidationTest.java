@@ -27,7 +27,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.TurnResult;
@@ -45,7 +44,6 @@ class ValueValidationTest {
     assertThatThrownBy(() -> new Seq(-1)).isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> new AgentType(" ")).isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> new SystemPrompt("")).isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new ReplyToken(" ")).isInstanceOf(IllegalArgumentException.class);
     assertThat(AgentId.random().value()).isInstanceOf(UUID.class);
   }
 
