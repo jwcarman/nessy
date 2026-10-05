@@ -101,4 +101,10 @@ public interface DirectHarnessFactory {
    */
   <I> DirectHarness<I, String> create(
       AgentType agentType, Customizer<DirectHarnessConfig<I>> customizer);
+
+  /**
+   * What the agents of this factory are doing, read from what is stored about them. This door keeps
+   * no queue and no effect rows, so nothing is ever queued or waiting here.
+   */
+  AgentWork work();
 }

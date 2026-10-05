@@ -30,6 +30,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AgentWork;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
@@ -67,6 +68,7 @@ import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
+import org.jwcarman.nessy.engine.work.StoredAgentWork;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.slf4j.Logger;
@@ -346,6 +348,12 @@ public final class DefaultDirectHarnessFactory implements DirectHarnessFactory, 
         config.maxInFlight(),
         observations,
         config.turnPolicy());
+  }
+
+  /** What every agent of this factory is doing, read from the events on each call. */
+  @Override
+  public AgentWork work() {
+    return StoredAgentWork.direct(backend.events(), clock);
   }
 
   /**

@@ -60,6 +60,9 @@ public interface QueuedHarnessFactory extends AutoCloseable {
    */
   Replies replies();
 
+  /** What the agents of this factory are doing, read from what is stored about them. */
+  AgentWork work();
+
   /**
    * Stops looking for work.
    *
