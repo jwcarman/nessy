@@ -32,6 +32,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentStatus.Activity;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Narrated;
@@ -422,6 +423,30 @@ class DeferredApprovalTest {
       assertThat(deferralsIn(refusing.story(type, agentId)))
           .as("the finished story holds no deferral")
           .isEmpty();
+    }
+  }
+
+  /**
+   * When the mark is refused, the approver has deferred and a person holds the request, but the row
+   * is unmarked: the reads of what is waiting do not show it, and the agent reads as working, until
+   * the row's deadline. An application that keeps nothing of its own, as the watchman does, has no
+   * way to answer it in that time.
+   */
+  @Test
+  void a_deferral_whose_mark_was_refused_is_not_listed_and_the_agent_reads_as_working() {
+    AgentType type = new AgentType("deferred-mark-refused-unlisted");
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    AtomicInteger refusals = new AtomicInteger();
+    try (EngineFixture refusing =
+        new EngineFixture(MODEL, _ -> {}, backend -> new ParkRefusingBackend(backend, refusals))) {
+      harness(refusing, type, Duration.ofMinutes(30), deferring()).tell(agentId, "what lake?");
+      await()
+          .atMost(Duration.ofSeconds(15))
+          .untilAsserted(() -> assertThat(refusals.get()).isEqualTo(1));
+      assertThat(handed).as("the approver was asked and deferred").hasSize(1);
+
+      assertThat(refusing.work().waitingApprovals(type)).isEmpty();
+      assertThat(refusing.work().status(type, agentId).activity()).isEqualTo(Activity.WORKING);
     }
   }
 
