@@ -28,7 +28,6 @@ import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
@@ -187,20 +186,14 @@ public class ApprovalsController {
     }
     CallId callId = row.callId();
     LOG.info("[watchman] {} answered {} with {}", SOMEBODY, callId.value(), result);
-    switch (replies.approve(new ReplyToken(row.replyToken()), result)) {
-      case ReplyOutcome.Settled _ -> recordLocally(key, result);
+    switch (replies.approve(row.agentType(), row.agentId(), key, result)) {
+      case ReplyOutcome.Applied _ -> recordLocally(key, result);
       // The agent gets the last word on whether an answer landed, and it can refuse: a call whose
       // term expired seconds ago has already been denied on this person's behalf. Recording
       // regardless is how the board came to show decisions that never reached the agent.
-      case ReplyOutcome.NotAwaiting _ ->
+      case ReplyOutcome.Ignored _ ->
           LOG.warn(
               "[watchman] {} answered {}, but the agent had already moved on",
-              SOMEBODY,
-              callId.value());
-      case ReplyOutcome.Unreadable _ ->
-          LOG.warn(
-              "[watchman] {} answered {} with a token this application cannot read; was the"
-                  + " reply key changed?",
               SOMEBODY,
               callId.value());
     }

@@ -46,7 +46,6 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -131,7 +130,7 @@ class ApprovalFactsTest {
 
   record Query(String q) {}
 
-  private final ConcurrentLinkedQueue<ReplyToken> handed = new ConcurrentLinkedQueue<>();
+  private final ConcurrentLinkedQueue<ApprovalRequest> handed = new ConcurrentLinkedQueue<>();
 
   private static Tool<Query> lookup() {
     return new Tool<>() {
@@ -230,7 +229,7 @@ class ApprovalFactsTest {
   private Approver deferringWithFacts() {
     return request -> {
       request.fact("risk", "low").fact("depth", JsonNodeFactory.instance.numberNode(2));
-      handed.add(request.replyToken());
+      handed.add(request);
       return Awaited.deferred();
     };
   }
@@ -316,8 +315,15 @@ class ApprovalFactsTest {
     harness(type, deferringWithFacts()).tell(agentId, "what lake?");
     await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(handed).hasSize(1));
 
-    assertThat(engine.replies().approve(handed.peek(), ApprovalResult.approvedBy("u_carol")))
-        .isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(
+            engine
+                .replies()
+                .approve(
+                    handed.peek().agentType(),
+                    handed.peek().agentId(),
+                    handed.peek().idempotencyKey(),
+                    ApprovalResult.approvedBy("u_carol")))
+        .isInstanceOf(ReplyOutcome.Applied.class);
     settled(type, agentId);
 
     List<AgentEvent> story = engine.story(type, agentId);
@@ -338,7 +344,7 @@ class ApprovalFactsTest {
     harness(
             type,
             request -> {
-              handed.add(request.replyToken());
+              handed.add(request);
               return Awaited.deferred();
             })
         .tell(agentId, "what lake?");
@@ -456,8 +462,15 @@ class ApprovalFactsTest {
 
     assertThat(waiting).isPresent();
     assertThat(waiting.get().toString()).isEqualTo(facts().toString());
-    assertThat(engine.replies().approve(handed.peek(), ApprovalResult.approvedBy("u_carol")))
-        .isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(
+            engine
+                .replies()
+                .approve(
+                    handed.peek().agentType(),
+                    handed.peek().agentId(),
+                    handed.peek().idempotencyKey(),
+                    ApprovalResult.approvedBy("u_carol")))
+        .isInstanceOf(ReplyOutcome.Applied.class);
     settled(type, agentId);
     Optional<JsonNode> answered = content.approvalFacts(key);
     assertThat(answered).isPresent();

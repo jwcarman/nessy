@@ -28,7 +28,6 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.approval.risk.Impact;
 import org.jwcarman.nessy.approval.risk.Likelihood;
@@ -57,8 +56,7 @@ class WatchmanRiskTest {
         "{}",
         "docker image prune -af",
         Instant.EPOCH,
-        Instant.EPOCH.plusSeconds(3600),
-        new ReplyToken("nowhere"));
+        Instant.EPOCH.plusSeconds(3600));
   }
 
   @Test

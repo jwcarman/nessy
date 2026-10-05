@@ -25,12 +25,13 @@ package org.jwcarman.nessy.api;
  *
  * <p><b>{@link Deferred} is not "try again later".</b> It says the work is genuinely under way
  * somewhere else -- a person has been asked, a job is queued -- and that the answer will arrive
- * against the {@link org.jwcarman.nessy.api.tool.ReplyToken} that came with the request. Repeating
- * the request would ask twice, which for a person is pestering and for a tool may be worse.
+ * through {@link org.jwcarman.nessy.api.tool.Replies}, addressed by the agent type, the agent id
+ * and the request's idempotency key. Repeating the request would ask twice, which for a person is
+ * pestering and for a tool may be worse.
  *
- * <p>Deferring carries an obligation: whatever defers must keep the reply address, because it is
- * the only thing that can settle that call. An answer that arrives after the request's deadline has
- * passed is refused -- the agent stopped waiting, and was told so.
+ * <p>Deferring carries an obligation: whatever defers must keep those three values, because they
+ * are the only address that can settle that call. An answer that arrives after the request's
+ * deadline has passed is ignored -- the agent stopped waiting, and was told so.
  *
  * @param <T> what the answer will be, when there is one
  */
@@ -52,7 +53,10 @@ public sealed interface Awaited<T> {
     return new Ready<>(value);
   }
 
-  /** Somebody else will answer. Keep the reply address; nothing else can settle the call. */
+  /**
+   * Somebody else will answer. Keep the agent type, the agent id and the idempotency key; nothing
+   * else addresses the call.
+   */
   static <T> Awaited<T> deferred() {
     return new Deferred<>();
   }

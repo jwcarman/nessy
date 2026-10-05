@@ -45,7 +45,6 @@ import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -248,11 +247,6 @@ class DeclaredChaptersTest {
         @Override
         public Instant deadline() {
           return Instant.now().plusSeconds(30);
-        }
-
-        @Override
-        public ReplyToken replyToken() {
-          return new ReplyToken("unused");
         }
       };
     }

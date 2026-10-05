@@ -58,8 +58,8 @@ public interface EffectHandler<E extends AgentEffect> {
    * out whether the work happened.
    *
    * <p><b>{@link Handled.Deferred} means the work is genuinely elsewhere</b> -- a person has been
-   * asked, a queue has the job -- and an answer will arrive later against a {@link
-   * org.jwcarman.nessy.api.tool.ReplyToken}. It is not "try again later": the effect has been
+   * asked, a queue has the job -- and an answer will arrive later through {@link
+   * org.jwcarman.nessy.api.tool.Replies}. It is not "try again later": the effect has been
    * performed, in the only sense that matters, and repeating it would ask twice.
    *
    * <p>Uniform even for effects that can never defer. An inference either answers or does not, and

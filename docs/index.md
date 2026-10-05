@@ -96,7 +96,7 @@ late answer to arrive:
 
 ```java
 Approver desk = request -> {
-    pending.save(request, request.replyToken());        // hand out the address
+    pending.save(request);        // keep the agent type, agent id and idempotency key
     return Awaited.deferred();
 };
 
@@ -107,15 +107,17 @@ QueuedHarness<String> harness = factory.create(new AgentType("ops"), config -> c
                 .action(input -> "restart " + input.host())));
 ```
 
-Deferring parks the call and frees the agent. The `ReplyToken` is the
-address the answer comes back to, through the queued factory's `Replies`:
+Deferring parks the call and frees the agent. The agent type, the agent id
+and the call's idempotency key are the address the answer comes back to,
+through the queued factory's `Replies`:
 
 ```java
-factory.replies().approve(token, ApprovalResult.approved());
+factory.replies().approve(agentType, agentId, key, ApprovalResult.approved());
 ```
 
-That works after a restart, because the deadline is a row and the token
-names logical coordinates rather than an object.
+That works after a restart, because the deadline is a row and the three values
+name the call rather than an object. Nessy does not check who is answering, so
+guard the endpoint that calls `Replies`.
 
 When "which tool is it" is too blunt a question, gate on how bad the call
 would be instead:

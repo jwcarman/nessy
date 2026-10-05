@@ -32,7 +32,6 @@ public record PendingApproval(
     String action,
     Instant askedAt,
     Instant expiresAt,
-    String replyToken,
     Optional<String> answer,
     Optional<String> note,
     Optional<Instant> answeredAt) {

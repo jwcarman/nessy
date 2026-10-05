@@ -211,7 +211,7 @@ add `nessy-inference-spi`; an application building an agent depends on
 | Agent as scope: one lock per id, durable state instead of a live instance | [Agent as Scope](https://jwcarman.github.io/nessy/concepts/agent-as-scope/) |
 | Durable computation: effects as rows, deadlines as columns, recovery without a sweep | [Durable Computation](https://jwcarman.github.io/nessy/concepts/durable-computation/) |
 | Tools: structured calls, typed inputs, and deferring to the world | [Tools](https://jwcarman.github.io/nessy/concepts/tools/) |
-| Authorization: approvers, reply tokens, and describing what a person is consenting to | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/) |
+| Authorization: approvers, answering a waiting call, and describing what a person is consenting to | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/) |
 | Risk: an assessment over the NIST SP 800-30 matrix, and two thresholds with a person in between | [Authorization](https://jwcarman.github.io/nessy/concepts/authorization/#gating-on-risk) |
 | Context: six strata, from instructions to ambient, history cut into summarised chapters, and keeping the cache | [Context](https://jwcarman.github.io/nessy/concepts/context/) |
 | Memory: what an agent recalls, memory and state sources, notes, and embeddings | [Memory](https://jwcarman.github.io/nessy/concepts/memory/) |

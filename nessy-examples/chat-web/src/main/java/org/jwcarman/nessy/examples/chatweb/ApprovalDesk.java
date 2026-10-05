@@ -26,10 +26,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
-import org.jwcarman.nessy.api.tool.ReplyToken;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
@@ -38,8 +39,8 @@ import tools.jackson.databind.json.JsonMapper;
  * The approval requests waiting for a person, in memory.
  *
  * <p>In memory because this is an example: a restart loses the cards, though not the calls -- the
- * engine still holds each call open until its deadline, and a real desk would keep the token
- * somewhere durable. The reply token is held here and never rendered; it is the credential that
+ * engine still holds each call open until its deadline, and a real desk would keep the agent type,
+ * the agent id and the key somewhere durable. They are held here and never rendered; they are what
  * answers the approval request, not a fact about it.
  */
 @Component
@@ -59,13 +60,14 @@ public class ApprovalDesk {
   }
 
   public record Waiting(
+      AgentType agentType,
       AgentId agentId,
       CallId callId,
       String tool,
       String arguments,
       String description,
       Instant askedAt,
-      ReplyToken replyToken) {}
+      IdempotencyKey idempotencyKey) {}
 
   private final ConcurrentMap<CallId, Waiting> waiting = new ConcurrentHashMap<>();
 
@@ -83,18 +85,17 @@ public class ApprovalDesk {
     waiting.put(
         request.callId(),
         new Waiting(
+            request.agentType(),
             request.agentId(),
             request.callId(),
             request.toolName().value(),
             evidenceOf(request.arguments()),
             request.action(),
             request.askedAt(),
-            request.replyToken()));
+            request.idempotencyKey()));
   }
 
-  /**
-   * An approval request as the page draws it. The token is not on it; a card is not a credential.
-   */
+  /** An approval request as the page draws it. The key is not on it; a card is not an address. */
   public record Card(String id, String tool, String args, String what, Instant askedAt) {}
 
   public List<Card> pending(AgentId agentId) {

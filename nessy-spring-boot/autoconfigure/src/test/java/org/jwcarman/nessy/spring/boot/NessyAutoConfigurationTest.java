@@ -40,7 +40,6 @@ import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
 import org.jwcarman.nessy.backend.inmemory.InMemoryQueuedBackend;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
-import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.usage.EventUsageReports;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
@@ -104,7 +103,6 @@ class NessyAutoConfigurationTest {
           assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class);
           assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class);
           assertThat(context).hasSingleBean(Replies.class);
-          assertThat(context).hasSingleBean(ReplyTokens.class);
         });
   }
 
@@ -416,12 +414,15 @@ class NessyAutoConfigurationTest {
         .run(context -> assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class));
   }
 
+  /** Answering needs no key: a call is addressed by its agent type, its agent and its key. */
   @Test
-  void configured_reply_keys_are_used_instead_of_the_ephemeral_default() {
-    runner
-        .withPropertyValues(
-            "nessy.reply-token-encryption-keys[0]=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
-        .run(context -> assertThat(context).hasSingleBean(ReplyTokens.class));
+  void a_queued_harness_factory_starts_with_no_key_configured_for_answers() {
+    runner.run(
+        context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class);
+          assertThat(context).hasSingleBean(Replies.class);
+        });
   }
 
   @Test

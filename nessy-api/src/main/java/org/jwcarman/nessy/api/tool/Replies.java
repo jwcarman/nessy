@@ -15,6 +15,9 @@
  */
 package org.jwcarman.nessy.api.tool;
 
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+
 /**
  * Where an answer arrives when it did not come back from the call that asked for it.
  *
@@ -23,18 +26,32 @@ package org.jwcarman.nessy.api.tool;
  * queued a job and returned. Hours or days on, something has the answer, and this is the door it
  * comes through.
  *
- * <p><b>Not on a harness, and not because of tidiness.</b> A {@link ReplyToken} is opaque, so
- * whoever holds one cannot tell which kind of agent it belongs to -- which means they could never
- * choose a harness to call. The token names the agent type, and this resolves it. It is also
- * nothing to do with an application's input type, and a webhook answering an approval should not
- * have to name one.
+ * <p><b>A call is addressed by its agent and its key.</b> The agent is an agent type and an agent
+ * id, and the key is the call's {@link IdempotencyKey}, which an {@link ApprovalRequest} and a
+ * {@link ToolCallRequest} both carry. Nothing else is needed, and nothing needs to be kept apart
+ * from those three values. The key, not the call id, finds the call: a model may repeat a call id
+ * in a later request of the same turn, and the key is what tells the two calls apart.
+ *
+ * <p><b>Not on a harness, and not because of tidiness.</b> The agent type names the harness, and
+ * this resolves it. It is also nothing to do with an application's input type, and a webhook
+ * answering an approval should not have to name one.
+ *
+ * <p><b>Nessy does not check who is answering.</b> Anyone who has the three values and can reach
+ * the code that calls this can answer the call. Guarding that code is the application's job: it
+ * sends the values only to the party who should answer, and its endpoint checks that the caller is
+ * that party.
+ *
+ * <p>A reply writes on the calling thread. On a JDBC backend it joins a transaction the caller has
+ * open, and narration and the dispatcher's nudge happen when the answer returns, which can be
+ * before the caller commits.
  *
  * <p><b>The caller is rarely the approver or the tool.</b> It is a webhook controller, a queue
- * consumer, an admin page -- code somewhere else entirely that holds nothing but the token. That is
- * why this is injected rather than handed out at the point of deferral.
+ * consumer, an admin page -- code somewhere else entirely. That is why this is injected.
  *
- * <p>Answering is idempotent in the only way that matters: a second answer for the same call is
- * refused with {@link ReplyOutcome.NotAwaiting} rather than folded twice.
+ * <p>Every argument is required; a null is refused with a {@link NullPointerException}. Answering
+ * is idempotent in the only way that matters: a second answer for the same call is {@link
+ * ReplyOutcome.Ignored}, never folded twice. The caller is told {@link ReplyOutcome.Applied} only
+ * when the answer changed the agent's state.
  */
 public interface Replies {
 
@@ -45,17 +62,29 @@ public interface Replies {
    * dispatch the call as its own piece of durable work. So this returns as soon as the agent has
    * been told, not when the tool has finished, and a slow tool never holds a webhook open.
    *
-   * @param token the address the approver was given
+   * <p>On a JDBC backend this joins a transaction the caller has open, so the answer commits or
+   * rolls back with the caller's own writes. The in-memory backend has no transaction to join.
+   *
+   * @param type the agent type of the call's agent
+   * @param id the call's agent
+   * @param key the call's idempotency key
    * @param result approved or denied, optionally naming who or what decided
    */
-  ReplyOutcome approve(ReplyToken token, ApprovalResult result);
+  ReplyOutcome approve(AgentType type, AgentId id, IdempotencyKey key, ApprovalResult result);
 
   /**
    * A result for a call whose tool deferred.
    *
-   * <p>Kept apart from {@link #approve} because the two answer different questions, and a token
-   * minted for one is refused by the other. A call still awaiting permission cannot be settled with
-   * a result -- that would run past the gate rather than through it.
+   * <p>Kept apart from {@link #approve} because the two answer different questions: a call still
+   * awaiting permission cannot be settled with a result, which would run past the gate rather than
+   * through it, and a call already running cannot be given a verdict.
+   *
+   * <p>Joins a transaction the caller has open on a JDBC backend, as {@link #approve} does.
+   *
+   * @param type the agent type of the call's agent
+   * @param id the call's agent
+   * @param key the call's idempotency key
+   * @param result what the tool produced
    */
-  ReplyOutcome complete(ReplyToken token, ToolResult result);
+  ReplyOutcome complete(AgentType type, AgentId id, IdempotencyKey key, ToolResult result);
 }

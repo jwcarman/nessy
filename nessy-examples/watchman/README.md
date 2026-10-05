@@ -36,9 +36,3 @@ WATCHMAN_PROVIDER=openai WATCHMAN_MODEL_ID=gpt-4o-mini \
 `WATCHMAN_PROVIDER` selects which registered provider answers (`nessy.provider`);
 `OPENAI_API_KEY` lights the `openai` preset the same way it does for any other
 Nessy application; `WATCHMAN_MODEL_ID` is the model name.
-
-## What it does not do
-
-The reply key IS fixed, in `application.yml` (`WATCHMAN_REPLY_KEY`), because
-ephemeral keys and parked approvals do not mix: a token minted before a
-restart cannot be read after one. It is a demo key. Generate your own.

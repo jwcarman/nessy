@@ -42,11 +42,6 @@ nessy:
     lmstudio:
       enabled: true
       base-url: ${WATCHMAN_MODEL_URL:http://localhost:1234/v1}
-  # A FIXED key, so a token minted before a restart can still be read after one. Without this the
-  # starter warns and falls back to an ephemeral key, and every parked approval becomes
-  # unanswerable the moment the process bounces.
-  reply-token-encryption-keys:
-    - ${WATCHMAN_REPLY_KEY:c2hoLXRoaXMtaXMtYS1kZW1vLWtleS0zMi1ieXRlcyE=}
 
 watchman:
   # How often the watchman does its rounds. A fixed RATE, not a cron: rounds are "every so often",

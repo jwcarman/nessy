@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+- **The reply token is removed.** `ReplyToken`, `ApprovalRequest.replyToken()` and its record
+  component, `ToolCallRequest.replyToken()`, the engine's `ReplyTokens`,
+  `QueuedHarnessFactoryConfig.replyTokens(...)` and the `nessy.reply-token-encryption-keys`
+  property are gone. `ApprovalRequest`'s constructors lose the `replyToken` argument. Nessy does
+  not check who is answering: an application guards the endpoint that calls `Replies`.
+- **A late answer is addressed by agent type, agent id and the call's key.** `Replies.approve` and
+  `Replies.complete` take an `AgentType`, an `AgentId` and an `IdempotencyKey`, all required,
+  where they took a `ReplyToken`. `ReplyOutcome` is `Applied` or `Ignored`: `Applied` means the
+  answer changed the agent's state, and `Ignored` means it did not, whatever the reason. `Settled`,
+  `NotAwaiting` and `Unreadable` are gone. An approval request and a tool call request already
+  carry the three values; a desk that stored a token stores them instead.
 - **An approval's facts are stored on its events.** `ToolApproved`, `ToolDenied` and `ToolFailed`
   gain a `facts` field, a JSON object, before `idempotencyKey`, and the stored
   failure response on an effect row gains it too. Stored events and failure responses change

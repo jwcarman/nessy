@@ -28,7 +28,6 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -82,11 +81,6 @@ class DaysUntilToolTest {
       @Override
       public Instant deadline() {
         return Instant.now().plusSeconds(30);
-      }
-
-      @Override
-      public ReplyToken replyToken() {
-        return new ReplyToken("unused");
       }
     };
   }

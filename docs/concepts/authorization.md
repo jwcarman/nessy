@@ -38,7 +38,7 @@ facts, because a caller already waiting has nowhere for a late answer to arrive:
 
 ```java
 Approver desk = request -> {
-    pending.save(request, request.replyToken());
+    pending.save(request);
     return Awaited.deferred();
 };
 ```
@@ -85,7 +85,6 @@ public record ApprovalRequest(
     String action,         // the sentence the binding's stringifier wrote
     Instant askedAt,
     Instant deadline,
-    ReplyToken replyToken,
     ObjectNode facts) {
 
   Optional<JsonNode> fact(String name);
@@ -154,7 +153,7 @@ shown what it gates, it refuses.
 ## A denial is an answer
 
 ```java
-replies.approve(token, ApprovalResult.denied("not this time"));
+replies.approve(agentType, agentId, key, ApprovalResult.denied("not this time"));
 ```
 
 The model is told the call was refused, with the reason, and decides what to
@@ -175,47 +174,54 @@ with the application. Every event about a call carries the call's
 `IdempotencyKey`, and that key is the join from the story to the
 application's own record.
 
-## Reply tokens
+## Answering a waiting call
 
-`request.replyToken()` is the address an answer comes back to. The
-coordinates inside it, agent type, agent id, request and call, are
-**encrypted with AES-GCM**, so whoever holds it can neither read them nor
-forge a token for a different call. It is a credential: never render it,
-never log it, and never send it to a policy engine.
-
-Being authentic is not the same as being open: a token that reads cleanly
-says only that this engine issued it, **never** that the call is still
-waiting. Answering a call that already settled or expired comes back as
-`NotAwaiting` rather than silently changing nothing.
-
-The keys are AES keys of 16, 24 or 32 bytes; **use 32**, and any other
-length is refused when it is configured rather than at the first mint. Mint
-one with `openssl rand -base64 32`. Tokens are minted with the **first** key
-and read by trying **every** one, so a rotation does not invalidate a token
-already sitting in somebody's inbox:
+The agent type, the agent id and the call's idempotency key together are the address of a
+waiting call. An approval request carries all three, and so does the request a deferring tool
+is handed. A desk that defers keeps them:
 
 ```java
-DefaultQueuedHarnessFactory.of(engine -> engine
-        .replyTokens(ReplyTokens.withKeys(currentKey, previousKey))     // byte[32] each
-        .backend(backend)
-        .provider(providerId, provider)
-        .inference(providerId, options));
+Approver desk = request -> {
+    pending.save(request.agentType(), request.agentId(), request.idempotencyKey(), request.action());
+    return Awaited.deferred();
+};
 ```
 
-Only the queued door's factory takes a `ReplyTokens`: the direct door
-cannot park a call in the first place, so it mints its own with an
-ephemeral key regardless. See
-[Spring Boot](../guides/spring-boot.md#reply-tokens-and-where-they-do-and-dont-reach).
+When the person answers, the application hands the three values and the verdict to `Replies`:
 
-By default they are **ephemeral**, a fresh key per process, so tokens die
-with the JVM. That is right for a test and wrong for anything that parks
-work for days, because every approval waiting on a person becomes
-unanswerable after a restart.
+```java
+ReplyOutcome outcome = replies.approve(agentType, agentId, key, ApprovalResult.approvedBy("u_carol"));
+```
+
+`Replies` has two methods. `approve` gives a verdict to a call that is waiting for one.
+`complete` gives a result to a call whose tool deferred. A verdict cannot settle a call that is
+already running, and a result cannot settle a call that is still waiting for permission. The
+approval and the tool call of one call share the key, so the kind of answer is what tells them
+apart.
+
+The outcome is `Applied` or `Ignored`:
+
+- `Applied` means the agent took the answer and its story changed.
+- `Ignored` means nothing changed. The call was already decided, its term had passed, the answer
+  was the wrong kind for the call's stage, or this process serves no such agent or call. A caller
+  does the same thing in each case. The agent's story holds the detail.
+
+Two answers at once to one call give one `Applied` and one `Ignored`.
+
+**Nessy does not check who is answering.** Anyone who has the three values and can reach your
+endpoint can answer the call. Your endpoint checks who is calling it, not Nessy. Send the address
+only to the party who should answer.
+
+A reply runs on the calling thread. On a JDBC backend it joins a transaction the caller has open,
+so an application can record its own decision and answer the call in one commit, and if that
+transaction rolls back, the call is still waiting. The in-memory backend has no transaction to
+join. Narration and the dispatcher's nudge happen when the reply returns, which can be before the
+caller's transaction commits.
 
 ## Recovery leaves parked calls alone
 
 A call waiting on a person is **not** re-asked when its process restarts.
-The row is running until its term is up, and the token already issued stays
+The row is running until its term is up, and the address already handed out stays
 the one that settles it. See
 [Durable Computation](durable-computation.md#deferring).
 
@@ -300,7 +306,7 @@ changed without a release.
 
 Two seams shape the conversation with OPA. An `InputDocumentRenderer` builds
 the `input` document from the request (`standard(mapper)` is the
-field-by-field default that keeps the reply token out), and a
+field-by-field default), and a
 `DecisionInterpreter` reads
 the result back into a `Verdict` (`effectStyle()` understands the
 `{"effect": ...}` shape below). Replace either when your Rego is shaped
@@ -332,9 +338,9 @@ construction, and a chain of delegations is bounded by `maxDepth`.
 
 ### The rules a gate has to get right
 
-- **The reply token is not sent.** The document is built field by field
-  rather than serialized, and a test exists whose only job is to keep the
-  token out.
+- **Only what a rule needs is sent.** The document is built field by field
+  rather than serialized, so a field added to the request later cannot reach a
+  policy engine until somebody decides it should.
 - **A control that did not answer is not a control that said yes.** An
   engine that is down, a mistyped decision path, an unknown effect: each
   denies **and** logs an `error`. With OPA that is sharper than it sounds: a
@@ -366,4 +372,4 @@ gets a `409`, because losing a race to another person is not an error.
 ## See also
 
 - [Tools](tools.md), `Awaited`, and how a tool defers
-- [Durable Computation](durable-computation.md), reply tokens and deadlines
+- [Durable Computation](durable-computation.md), answering and deadlines

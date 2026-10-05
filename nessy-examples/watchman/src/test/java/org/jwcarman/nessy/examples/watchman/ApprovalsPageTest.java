@@ -78,7 +78,6 @@ class ApprovalsPageTest {
             "docker image prune -af",
             NOW.minusSeconds(7200),
             NOW.plusSeconds(3600),
-            "token-1",
             Optional.empty(),
             Optional.empty(),
             Optional.empty()));
@@ -259,7 +258,6 @@ class ApprovalsPageTest {
               "docker image prune -af",
               NOW,
               NOW.plusSeconds(3600),
-              "token-2",
               Optional.empty(),
               Optional.empty(),
               Optional.empty()));
@@ -290,7 +288,6 @@ class ApprovalsPageTest {
               "docker image prune -af",
               NOW,
               NOW.plusSeconds(3600),
-              "token-3",
               Optional.empty(),
               Optional.empty(),
               Optional.empty()));

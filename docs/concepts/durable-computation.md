@@ -147,21 +147,21 @@ or the tool where it is testable.
 
 ## Answers go to an address, not an object
 
-A deferring tool or approver hands out the call's `ReplyToken`. Whoever
-holds it, a webhook, a person clicking Approve, answers through `Replies`:
+A deferring tool or approver keeps the call's address: the agent type, the agent id and the
+idempotency key, all on the request it was handed. Whoever has them, a webhook, a person clicking
+Approve, answers through `Replies`:
 
 ```java
-replies.complete(token, ToolResult.ok(new Block.Text("the vendor shipped it")));
-replies.approve(token, ApprovalResult.approved());
+replies.complete(agentType, agentId, key, ToolResult.ok(new Block.Text("the vendor shipped it")));
+replies.approve(agentType, agentId, key, ApprovalResult.approved());
 ```
 
-The token names logical coordinates, agent type, agent id, request and
-call, sealed with AES-GCM so the holder can neither read nor forge them. No
-process needs to still be waiting: an answer arriving is what takes the
-agent's lock and folds the outcome in, whichever process happens to receive
-it. Answering returns a `ReplyOutcome`: `Settled`, `NotAwaiting` for a call
-already settled or expired, or `Unreadable` for a token this engine did not
-issue. An HTTP handler can report each one honestly.
+No process needs to still be waiting: an answer arriving is what takes the agent's lock and folds
+the outcome in, whichever process happens to receive it. Answering returns a `ReplyOutcome`:
+`Applied` when the agent took the answer, or `Ignored` when nothing changed, whether the call was
+already settled, had expired, was answered the wrong way, or is not known here. Nessy does not
+check who is answering; guard the endpoint that calls `Replies`. See
+[Authorization](authorization.md#answering-a-waiting-call).
 
 ## What this costs
 
@@ -176,5 +176,5 @@ about a distributed system.
 ## See also
 
 - [Storage](storage.md), the tables
-- [Authorization](authorization.md), approvers, grants and reply tokens
+- [Authorization](authorization.md), approvers, grants and answering a waiting call
 - [Tools](tools.md), `Awaited`, and how a tool defers

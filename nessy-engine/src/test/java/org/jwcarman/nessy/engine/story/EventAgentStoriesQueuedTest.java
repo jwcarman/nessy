@@ -40,10 +40,10 @@ import org.jwcarman.nessy.api.RetryPolicy;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -369,7 +369,7 @@ class EventAgentStoriesQueuedTest {
 
   /** A lookup whose call hands the work off, keeps the address, and reports back later. */
   private static Tool<StoryTurn.Query> lookupThatReportsLater(
-      ConcurrentLinkedQueue<ReplyToken> handed) {
+      ConcurrentLinkedQueue<ToolCallRequest<StoryTurn.Query>> handed) {
     return new Tool<>() {
       @Override
       public Class<StoryTurn.Query> inputType() {
@@ -388,16 +388,16 @@ class EventAgentStoriesQueuedTest {
 
       @Override
       public Awaited<ToolResult> call(ToolCallRequest<StoryTurn.Query> request) {
-        handed.add(request.replyToken());
+        handed.add(request);
         return Awaited.deferred();
       }
     };
   }
 
   /** An approver that keeps the address and says nothing: the whole of a deferring approver. */
-  private static Approver defersAndKeepsTheAddress(ConcurrentLinkedQueue<ReplyToken> handed) {
+  private static Approver defersAndKeepsTheAddress(ConcurrentLinkedQueue<ApprovalRequest> handed) {
     return request -> {
-      handed.add(request.replyToken());
+      handed.add(request);
       return Awaited.deferred();
     };
   }
@@ -428,7 +428,7 @@ class EventAgentStoriesQueuedTest {
     AgentType type = new AgentType("queued-approval-deferred");
     AgentId agent = AgentId.random();
     NarrationListener recording = heard::add;
-    ConcurrentLinkedQueue<ReplyToken> handed = new ConcurrentLinkedQueue<>();
+    ConcurrentLinkedQueue<ApprovalRequest> handed = new ConcurrentLinkedQueue<>();
 
     try (EngineFixture engine = new EngineFixture(callsThenAnswers(), recording)) {
       engine
@@ -452,7 +452,13 @@ class EventAgentStoriesQueuedTest {
       awaitHeard(Narration.ApprovalDeferred.class);
       Instant rowDeadline = deadlineOfTheOneRow(engine, type);
       assertThat(handed).hasSize(1);
-      engine.replies().approve(handed.peek(), ApprovalResult.approvedBy(StoryTurn.DECIDER));
+      engine
+          .replies()
+          .approve(
+              handed.peek().agentType(),
+              handed.peek().agentId(),
+              handed.peek().idempotencyKey(),
+              ApprovalResult.approvedBy(StoryTurn.DECIDER));
       awaitHeard(Narration.Answered.class);
 
       List<Narrated> story = heardStory();
@@ -479,7 +485,7 @@ class EventAgentStoriesQueuedTest {
     AgentType type = new AgentType("queued-approval-expires");
     AgentId agent = AgentId.random();
     NarrationListener recording = heard::add;
-    ConcurrentLinkedQueue<ReplyToken> handed = new ConcurrentLinkedQueue<>();
+    ConcurrentLinkedQueue<ApprovalRequest> handed = new ConcurrentLinkedQueue<>();
 
     try (EngineFixture engine = new EngineFixture(callsThenAnswers(), recording)) {
       engine
@@ -525,7 +531,7 @@ class EventAgentStoriesQueuedTest {
     AgentType type = new AgentType("queued-call-deferred");
     AgentId agent = AgentId.random();
     NarrationListener recording = heard::add;
-    ConcurrentLinkedQueue<ReplyToken> handed = new ConcurrentLinkedQueue<>();
+    ConcurrentLinkedQueue<ToolCallRequest<StoryTurn.Query>> handed = new ConcurrentLinkedQueue<>();
 
     try (EngineFixture engine = new EngineFixture(callsThenAnswers(), recording)) {
       engine
@@ -548,7 +554,13 @@ class EventAgentStoriesQueuedTest {
       awaitHeard(Narration.CallDeferred.class);
       Instant rowDeadline = deadlineOfTheOneRow(engine, type);
       assertThat(handed).hasSize(1);
-      engine.replies().complete(handed.peek(), ToolResult.ok(new Block.Text("1412 metres")));
+      engine
+          .replies()
+          .complete(
+              handed.peek().agentType(),
+              handed.peek().agentId(),
+              handed.peek().idempotencyKey(),
+              ToolResult.ok(new Block.Text("1412 metres")));
       awaitHeard(Narration.Answered.class);
 
       List<Narrated> story = heardStory();
@@ -576,7 +588,7 @@ class EventAgentStoriesQueuedTest {
     AgentType type = new AgentType("queued-scripted-turn");
     AgentId agent = AgentId.random();
     NarrationListener recording = heard::add;
-    ConcurrentLinkedQueue<ReplyToken> handed = new ConcurrentLinkedQueue<>();
+    ConcurrentLinkedQueue<ApprovalRequest> handed = new ConcurrentLinkedQueue<>();
 
     try (EngineFixture engine = new EngineFixture(busyOnceThenCallsAndAnswers(), recording)) {
       engine
@@ -604,7 +616,13 @@ class EventAgentStoriesQueuedTest {
           .tell(agent, "how deep is Loch Ness?");
       awaitHeard(Narration.ApprovalDeferred.class);
       assertThat(handed).hasSize(1);
-      engine.replies().approve(handed.peek(), ApprovalResult.approvedBy(StoryTurn.DECIDER));
+      engine
+          .replies()
+          .approve(
+              handed.peek().agentType(),
+              handed.peek().agentId(),
+              handed.peek().idempotencyKey(),
+              ApprovalResult.approvedBy(StoryTurn.DECIDER));
       awaitHeard(Narration.Answered.class);
 
       List<Narrated> story = heardStory();

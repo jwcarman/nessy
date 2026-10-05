@@ -88,11 +88,13 @@ Deferral works only on the queued door. On a `DirectHarness` a deferred call
 becomes a failed call, because a caller already waiting has nowhere for a
 late answer to arrive. The direct door also never retries.
 
-Whoever will answer needs an address, and that is the `ReplyToken`:
+Whoever will answer needs an address: the agent type, the agent id and the call's idempotency
+key, all on the request:
 
 ```java
 public Awaited<ToolResult> call(ToolCallRequest<Order> request) {
-    vendor.placeOrder(request.input(), request.replyToken());   // hand it out
+    vendor.placeOrder(
+        request.input(), request.agentType(), request.agentId(), request.idempotencyKey());
     return Awaited.deferred();
 }
 ```
@@ -100,12 +102,13 @@ public Awaited<ToolResult> call(ToolCallRequest<Order> request) {
 Days later, from a completely different process:
 
 ```java
-replies.complete(token, ToolResult.ok(new Block.Text("the vendor shipped it")));
+replies.complete(agentType, agentId, key, ToolResult.ok(new Block.Text("the vendor shipped it")));
 ```
 
-The token names logical coordinates, agent type, agent id, request and call,
-so nothing that was waiting has to still exist. See
-[Durable Computation](durable-computation.md).
+The three values name the call, so nothing that was waiting has to still exist. Nessy does not
+check who is answering; guard the endpoint that calls `Replies`. See
+[Durable Computation](durable-computation.md) and
+[Authorization](authorization.md#answering-a-waiting-call).
 
 ## Results
 

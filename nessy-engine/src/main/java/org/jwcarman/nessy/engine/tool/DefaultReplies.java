@@ -23,12 +23,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.CallFailure;
-import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
@@ -43,14 +42,21 @@ import org.slf4j.LoggerFactory;
 /**
  * Turns a late answer into the settling of the call that was waiting for it.
  *
- * <p>Four steps, and the order of the last two is the only subtle thing here: read the token, find
- * the row it names, <b>tell the agent</b>, and only then let go of the row. Delivering before
- * settling is what every other path in the engine already does, and for the same reason -- if the
- * fold commits and this crashes, the row survives, comes due at its deadline, and the fold ignores
- * the redelivery because the call is already discharged. The other order loses the answer.
+ * <p>Four steps, and the order of the last two is the only subtle thing here: find the agent type's
+ * registration, find the row the key names, <b>tell the agent</b>, and only then let go of the row.
+ * Delivering before settling is what every other path in the engine already does, and for the same
+ * reason -- if the fold commits and this crashes, the row survives, comes due at its deadline, and
+ * the fold ignores the redelivery because the call is already discharged. The other order loses the
+ * answer.
  *
- * <p>Registered per agent type as harnesses are built, because a token names an agent type and a
- * caller holding one cannot read it.
+ * <p>The answer is {@link ReplyOutcome.Applied} exactly when the fold wrote an event for it, and
+ * {@link ReplyOutcome.Ignored} otherwise: no registration, no row, or a fold that took nothing -- a
+ * second answer, an answer racing the deadline, an answer for a turn that has closed. The row is
+ * let go of whether or not the fold took the answer, because a row whose call is already discharged
+ * has nothing left to wait for.
+ *
+ * <p>Registered per agent type as harnesses are built, because the caller names an agent type and
+ * holds no harness.
  */
 public final class DefaultReplies implements Replies {
 
@@ -77,12 +83,7 @@ public final class DefaultReplies implements Replies {
     EffectOutcome of(CallId callId, AgentEffect effect, Tools tools, Payloads payloads);
   }
 
-  private final ReplyTokens tokens;
   private final Map<String, Bound> byAgentType = new ConcurrentHashMap<>();
-
-  public DefaultReplies(ReplyTokens tokens) {
-    this.tokens = Objects.requireNonNull(tokens, "tokens must not be null");
-  }
 
   /** Called as each harness is built. An agent type answered before that is simply unknown. */
   public void register(
@@ -95,10 +96,13 @@ public final class DefaultReplies implements Replies {
   }
 
   @Override
-  public ReplyOutcome approve(ReplyToken token, ApprovalResult result) {
+  public ReplyOutcome approve(
+      AgentType type, AgentId id, IdempotencyKey key, ApprovalResult result) {
     Objects.requireNonNull(result, "result must not be null");
     return settle(
-        token,
+        type,
+        id,
+        key,
         AgentEffect.Approve.class,
         (callId, _, _, _) ->
             switch (result) {
@@ -110,10 +114,12 @@ public final class DefaultReplies implements Replies {
   }
 
   @Override
-  public ReplyOutcome complete(ReplyToken token, ToolResult result) {
+  public ReplyOutcome complete(AgentType type, AgentId id, IdempotencyKey key, ToolResult result) {
     Objects.requireNonNull(result, "result must not be null");
     return settle(
-        token,
+        type,
+        id,
+        key,
         AgentEffect.CallTool.class,
         (callId, effect, tools, payloads) ->
             switch (result) {
@@ -150,86 +156,75 @@ public final class DefaultReplies implements Replies {
    *     past the gate rather than through it.
    */
   private ReplyOutcome settle(
-      ReplyToken token, Class<? extends AgentEffect> expected, Settlement outcome) {
-    Objects.requireNonNull(token, "token must not be null");
+      AgentType type,
+      AgentId agentId,
+      IdempotencyKey key,
+      Class<? extends AgentEffect> expected,
+      Settlement outcome) {
+    Objects.requireNonNull(type, "type must not be null");
+    Objects.requireNonNull(agentId, "id must not be null");
+    Objects.requireNonNull(key, "key must not be null");
 
-    ReplyTokens.Coordinates where;
-    try {
-      where = tokens.read(token);
-    } catch (IllegalArgumentException _) {
-      // Forged, edited, or minted under a key since dropped. Nothing distinguishes those
-      // from here, and nothing should: all three mean this is not an address we honour.
-      log.warn("a reply arrived on an address this engine did not issue");
-      return new ReplyOutcome.Unreadable();
-    }
-
-    Bound bound = byAgentType.get(where.agentType());
+    Bound bound = byAgentType.get(type.value());
     if (bound == null) {
-      // Authentic, but for an agent type this process does not serve -- a token minted
-      // before a rename, or a deployment that no longer builds that harness.
-      log.warn(
-          "a reply arrived for agent type {}, which is not configured here", where.agentType());
-      return new ReplyOutcome.NotAwaiting();
+      // For an agent type this process does not serve -- a rename, or a deployment that no
+      // longer builds that harness.
+      log.warn("a reply arrived for agent type {}, which is not configured here", type.value());
+      return new ReplyOutcome.Ignored();
     }
 
-    AgentId agentId = new AgentId(where.agentId());
-    Optional<Awaiting> found = find(bound, agentId, where, expected);
+    Optional<Awaiting> found = find(bound, agentId, key, expected);
     if (found.isEmpty()) {
-      // Answered already, expired at its deadline, or settled a moment sooner by something
-      // else. One answer for a caller, because the three are the same news.
+      // Answered already, expired at its deadline, never issued, or settled a moment sooner by
+      // something else. One answer for a caller, because they are the same news.
       log.info(
-          "[{}] a reply for call {} of agent {} found nothing awaiting it",
-          where.agentType(),
-          where.callId(),
+          "[{}] a reply for key {} of agent {} found nothing awaiting it",
+          type.value(),
+          key.value(),
           agentId.value());
-      return new ReplyOutcome.NotAwaiting();
+      return new ReplyOutcome.Ignored();
     }
 
     Attempt attempt = found.get().attempt();
-    bound
-        .callback()
-        .deliverOutcome(
-            agentId,
-            // The turn the row itself named when it was written, so an answer that arrives after
-            // its turn has closed settles nothing rather than settling the current one.
-            Optional.of(found.get().effect().turn()),
-            // Likewise the request, which the token named and the row confirmed: a call id can
-            // repeat across requests of one turn, and the turn alone would not tell them apart.
-            EffectOutcomes.requestOf(found.get().effect()),
-            outcome.of(
-                where.callId(),
-                found.get().effect(),
-                bound.tools(),
-                bound.payloads().forAgent(agentId)),
-            attempt.traceContext(),
-            // Nothing to carry. Only a model call keeps what a failed attempt learned -- a tool
-            // knows it failed and nothing else -- and this is always a tool's answer.
-            List.of());
+    AgentEffect effect = found.get().effect();
+    CallId callId = callOf(effect);
+    boolean applied =
+        bound
+            .callback()
+            .deliverOutcome(
+                agentId,
+                // The turn the row itself named when it was written, so an answer that arrives
+                // after its turn has closed settles nothing rather than settling the current one.
+                Optional.of(effect.turn()),
+                // Likewise the request, which the row names: a call id can repeat across requests
+                // of one turn, and the turn alone would not tell them apart.
+                EffectOutcomes.requestOf(effect),
+                outcome.of(callId, effect, bound.tools(), bound.payloads().forAgent(agentId)),
+                attempt.traceContext(),
+                // Nothing to carry. Only a model call keeps what a failed attempt learned -- a
+                // tool knows it failed and nothing else -- and this is always a tool's answer.
+                List.of());
     if (!bound.effects().complete(attempt.effectId(), attempt.attemptsMade())) {
       // The fence: the row moved on while this answer was being folded, so it is not ours
       // to retire. Harmless -- the call is discharged either way, and whatever holds the row
       // now will find the fold already ignores what it delivers.
       log.debug(
           "[{}] effect {} was taken over while its answer was being delivered",
-          where.agentType(),
+          type.value(),
           attempt.effectId());
     }
-    return new ReplyOutcome.Settled();
+    return applied ? new ReplyOutcome.Applied() : new ReplyOutcome.Ignored();
   }
 
   /**
-   * The row holding this call, if one still is.
+   * The row holding the call this key names, if one still is.
    *
-   * <p>Read and matched rather than queried by id, because a token names a call and the engine
-   * keeps no index from calls to rows. The set is one agent's claimed effects -- a handful at the
-   * very most -- and an unreadable payload is simply not a match: a row nobody can decode is one
-   * its own deadline will deal with.
+   * <p>Read and matched rather than queried by key, because the engine keeps no index from keys to
+   * rows. The set is one agent's claimed effects -- a handful at the very most -- and an unreadable
+   * payload is simply not a match: a row nobody can decode is one its own deadline will deal with.
    */
   private Optional<Awaiting> find(
-      Bound bound,
-      AgentId agentId,
-      ReplyTokens.Coordinates where,
-      Class<? extends AgentEffect> expected) {
+      Bound bound, AgentId agentId, IdempotencyKey key, Class<? extends AgentEffect> expected) {
     List<Attempt> running = bound.effects().runningFor(agentId);
     for (Attempt attempt : running) {
       AgentEffect effect;
@@ -238,7 +233,7 @@ public final class DefaultReplies implements Replies {
       } catch (RuntimeException _) {
         continue;
       }
-      if (expected.isInstance(effect) && names(effect, where)) {
+      if (expected.isInstance(effect) && names(effect, key)) {
         return Optional.of(new Awaiting(attempt, effect));
       }
     }
@@ -253,15 +248,23 @@ public final class DefaultReplies implements Replies {
    */
   private record Awaiting(Attempt attempt, AgentEffect effect) {}
 
-  /** Whether an effect is for the call these coordinates name. */
-  private static boolean names(AgentEffect effect, ReplyTokens.Coordinates where) {
+  /** Whether an effect is for the call this key was issued for. */
+  private static boolean names(AgentEffect effect, IdempotencyKey key) {
     return switch (effect) {
-      case AgentEffect.Approve(_, Seq requestSeq, CallId callId, _, _) ->
-          requestSeq.equals(where.requestSeq()) && callId.equals(where.callId());
-      case AgentEffect.CallTool(_, Seq requestSeq, CallId callId, _, _) ->
-          requestSeq.equals(where.requestSeq()) && callId.equals(where.callId());
+      case AgentEffect.Approve(_, _, _, _, IdempotencyKey own) -> own.equals(key);
+      case AgentEffect.CallTool(_, _, _, _, IdempotencyKey own) -> own.equals(key);
       // Nothing else can be deferred, so nothing else can be answered late.
       case AgentEffect.Infer _ -> false;
+    };
+  }
+
+  /** The call an effect that can be answered late is for. */
+  private static CallId callOf(AgentEffect effect) {
+    return switch (effect) {
+      case AgentEffect.Approve(_, _, CallId callId, _, _) -> callId;
+      case AgentEffect.CallTool(_, _, CallId callId, _, _) -> callId;
+      case AgentEffect.Infer _ ->
+          throw new IllegalStateException("an inference is never answered late");
     };
   }
 }

@@ -34,7 +34,6 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.approval.policy.PolicyApprover;
 import org.jwcarman.nessy.approval.policy.PolicyEngine;
@@ -123,8 +122,7 @@ class RulesInJavaTest {
         "{\"target\":\"" + target + "\"}",
         tool + " on " + target,
         NOW,
-        NOW.plusSeconds(3600),
-        new ReplyToken("a-capability"));
+        NOW.plusSeconds(3600));
   }
 
   @Test
