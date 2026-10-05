@@ -8,7 +8,7 @@ stored but is not public (§8b), and `TurnStarted` carries when its input arrive
 Date: 2026-10-04. First of three records:
 
 1. **This record: the story.** Narration reshaped so that it can be replayed, with usage, the
-   approval question and the model request on the record, and a public API to read it.
+   facts an approval was decided on and the model request on the record, and a public API to read it.
 2. **Current state and the books** (next record): an agent's status, a paginated read of the work
    in flight, and settling a deferred call by its `IdempotencyKey`.
 3. **Later:** an opt-in Actuator endpoint and fleet metrics.
@@ -53,7 +53,7 @@ Verified in source and in the nessy-ap findings (F3, and its critique of 0.4.0):
   the notice that an approver is being asked. It is never stored and never replayed.
 - **Usage is first-class.** Every story event that records a model call carries what the call
   cost, a retried call included. Adding up the story gives the agent's cost.
-- **The story carries no content.** No message text, no tool result, no question. Content is a
+- **The story carries no content.** No message text, no tool result, no approval facts. Content is a
   separate, explicit read, addressed by where it sits in the story (§9c).
 - **A projection is a fold over the story.** `UsageReports` becomes one. Applications write their
   own.
@@ -209,12 +209,12 @@ All of this changes stored shapes. Existing databases are recreated; there is no
 | `TurnStarted` | gains `String label` and `Instant arrivedAt` |
 | `InferenceAnswered` | gains `boolean truncated` and `RequestManifest request` |
 | `InferenceRefused`, `InferenceFailed`, `InferenceAttempted`, `ActionsRequested` | gain `RequestManifest request` |
-| `ToolApproved` | `reference` is replaced by `Optional<String> decidedBy`; gains `Optional<PayloadRef> question` |
+| `ToolApproved` | `reference` is replaced by `Optional<String> decidedBy`; gains `ObjectNode facts` |
 | `ToolDenied` | the same two changes |
-| `ToolFailed` | gains `CallFailure kind` and `Optional<PayloadRef> question` |
+| `ToolFailed` | gains `CallFailure kind` and `ObjectNode facts` |
 | `ToolApproved`, `ToolDenied`, `ToolSucceeded`, `ToolFailed` | each gains the call's `IdempotencyKey` |
-| `ApprovalDeferred(seq, turn, callId, until, question)` | new |
-| `ToolDeferred(seq, turn, callId, until)` | new |
+| `ApprovalDeferred(seq, turn, callId, until, facts, idempotencyKey)` | new |
+| `ToolDeferred(seq, turn, callId, until, idempotencyKey)` | new |
 | `TurnFailed` (policy) | renamed `TurnStopped` (§13.1) |
 
 `EffectOutcome`, `AgentCommand` and `FailedAttempt` gain the matching fields, so each value
@@ -316,41 +316,57 @@ bookkeeping could not be written.
 
 The direct door cannot defer and is unchanged: a deferral there is a failed call.
 
-## 8. The approval question, and what the model was shown
+## 8. What an approval was decided on, and what the model was shown
 
-### 8a. The question behind every decision
+Both records are for **audit**, not replay. They keep what cannot be read back from what is
+already stored and immutable, and nothing else.
 
-Every approval decision is recorded with the question it was made on, whether it was decided at
-once or after a deferral. A call approved by a policy in a millisecond is the one no person
-looked at, and so the one an auditor most needs the evidence for.
+### 8a. The facts behind every decision
 
-The question is the `ApprovalRequest` as a JSON document: agent, turn, call, key, tool,
-arguments, action, when it was asked, its deadline and its facts. The reply token is never in it.
+Every approval is recorded with the facts it was decided on, whether it was decided at once,
+deferred, or failed because the approver itself failed. A call approved by a policy in a
+millisecond is the one no person looked at, and so the one an auditor most needs the evidence for.
 
-It is stored **after the approver returns**, because enrichers and the approver itself add facts
-while deciding, and what stands when the approver returns is what was decided on. The handler
-stores it and hands the reference on with the outcome:
+**Only the facts are stored** (James ruled this on 2026-10-04, in place of storing the whole
+`ApprovalRequest` as a document). Everything else in an approval request is already in the story
+and never changes: the call's id, key, tool name and action line are on the request the model
+made, its arguments are in what the model wrote, and a deferral's deadline is on its deferral
+event. The facts are what enrichers and the approver itself add, and they are in no other place.
 
-| Outcome | Where the reference is recorded |
+**They are stored on the event,** as a JSON object, in the same transaction as the decision.
+Nothing is written to `Payloads` for an approval, so there is no reference that can dangle and
+no case where the decision is recorded and its facts are not. A request with no facts records an
+empty object. Every tool has an approver (the default one allows), so this is one rule for every
+call. Facts are the application's own evidence and are not cut; they are read whenever the
+agent's events are read, so an application keeps them small. They are not part of narration.
+
+They are taken **after the approver returns**, because enrichers and the approver itself add
+facts while deciding, and what stands when the approver returns is what was decided on.
+
+| Outcome | Where the facts are recorded |
 |---|---|
-| approved or denied at once | `ToolApproved.question` / `ToolDenied.question` |
-| deferred | `ApprovalDeferred.question`; the later `ToolApproved` or `ToolDenied` carries none, and the deferral's question is the decision's |
-| the approver threw | `ToolFailed.question`, the question as it stood |
-| the deferral expired | none on `ToolFailed`; the deferral's stands |
+| approved or denied at once | `ToolApproved.facts` / `ToolDenied.facts` |
+| deferred | `ApprovalDeferred.facts`; the later `ToolApproved` or `ToolDenied` carries none, and the deferral's facts are the decision's |
+| the approver threw | `ToolFailed.facts`, the facts as they stood |
+| the deferral expired | none on `ToolFailed`; the deferral's stand |
 
-A retried ask stores a new question, since `askedAt` differs; the event names the one that was
-decided.
+A deferral is recorded whether or not it has facts. When an ask is retried, the failure that is
+finally recorded holds the facts of the last ask; a retried request that is not asked again
+before its deadline records none. `askedAt`, and the deadline of a request answered at once, are
+not recorded: the event's own time, who decided and the facts answer what an auditor asks.
 
-`Payloads` gains a second kind of content beside message blocks:
+`Payloads` gains a second kind of content beside message blocks, which the request manifest
+(§8b) uses:
 
 ```java
 PayloadRef putDocument(JsonNode document);
 JsonNode getDocument(PayloadRef ref);
 ```
 
-Same table, same content-hash references, same storage codec, so a configured encryption covers
-it. A stored payload says which kind it is; asking for a document as blocks, or the reverse,
-fails by name.
+Same table, same storage codec, so a configured encryption covers it. A stored payload says which
+kind it is in a `kind` column; asking for a document as blocks, or the reverse, fails by name. A
+payload's reference is a hash of its content taken before the storage transform, so the same
+content is one reference whatever the transform does.
 
 ### 8b. The request manifest
 
@@ -485,8 +501,8 @@ public interface StoryContent {
   /** The results of the agent's successful calls after {@code after}, oldest first. */
   List<CallResult> results(Seq after, int limit);
 
-  /** The question the call's approval was decided on, or is waiting on. */
-  Optional<JsonNode> question(IdempotencyKey key);
+  /** The facts the call's approver was shown, as they stood when it decided or deferred. */
+  Optional<JsonNode> approvalFacts(IdempotencyKey key);
 
 }
 
@@ -523,7 +539,7 @@ itself are listed in full, so that nothing reaches it that is not on this list.
 ### 10a. What changes
 
 **1. Two new commands, and the events they write.** `DeferApproval(turn, requestSeq, callId,
-until, question)` and `DeferToolCall(turn, requestSeq, callId, until)`.
+until, facts)` and `DeferToolCall(turn, requestSeq, callId, until)`.
 
 | State | `DeferApproval` | `DeferToolCall` |
 |---|---|---|
@@ -551,8 +567,8 @@ them:
 | `TurnStarted` | `label`, `arrivedAt` | `StartTurn` |
 | every model-call event | `request` | `CompleteInference`; for `InferenceAttempted`, the failed attempt |
 | `InferenceAnswered` | `truncated` | `CompleteInference` |
-| `ToolApproved`, `ToolDenied` | `decidedBy`, `question` | `CompleteApproval` |
-| `ToolFailed` | `kind`, `question` | `CompleteToolCall` |
+| `ToolApproved`, `ToolDenied` | `decidedBy`, `facts` | `CompleteApproval` |
+| `ToolFailed` | `kind`, `facts` | `CompleteToolCall` |
 | `ToolApproved`, `ToolDenied`, `ToolSucceeded`, `ToolFailed` | `idempotencyKey` | the call's own `OutstandingAction`, which has held it since the request was recorded |
 
 **3. A rename:** the stored policy event `TurnFailed` becomes `TurnStopped` (§13.1).
@@ -602,8 +618,9 @@ Beyond §10c:
   that lands first leaves the park step writing nothing. A park step that throws leaves the row
   as it was, fails no call and asks no approver again. A parked row is not claimed before its
   deadline when the claimer's clock runs behind the writer's.
-- **The question.** Stored for a decision made at once, for a deferral, and for an approver that
-  threw; facts the approver added are in it; the reply token is not.
+- **The facts.** On the event for a decision made at once, for a deferral (with or without
+  facts), and for an approver that threw; facts the approver added while deciding are in them;
+  nothing is written to `Payloads` for an approval.
 - **The manifest.** Two calls with unchanged sections store no new payloads; a changed ambient
   section stores one. The manifest's references resolve to exactly what the request held. No
   type in `nessy-api` names it.
@@ -624,7 +641,8 @@ Approved by James in conversation on 2026-10-04:
 - `decidedBy` in place of `reference`, as an opaque optional string
 - `ApprovalDeferred` and `CallDeferred` as stored story events
 - the `parked_at` column, and no new status
-- the approval question stored for every decision; `Payloads.putDocument` / `getDocument`
+- the facts of an approval stored on its event (`facts`), read with `StoryContent.approvalFacts`;
+  `Payloads.putDocument` / `getDocument` for the request manifest
 - the input label, configured with a `Stringifier`, defaulting to the simple class name
 - the request recorded by section, amending "no framework snapshot"; stored, not public
 
@@ -654,14 +672,15 @@ Each is a decision the conversation did not reach. James approved them with the 
    free of anything that is not a fact about what happened.
 4. **One label for each turn, written when the turn starts.** The conversation assumed a turn
    could take several inputs. It takes one (§6e).
-5. **The effect row gains only `parked_at`.** The review of the table proposed a question
-   reference on the row as well. With the deferral stored as an event, the question is in the
-   story, and the row does not need it.
+5. **The effect row gains only `parked_at`.** The review of the table proposed a reference to
+   the approval request on the row as well. With the deferral stored as an event, its facts are
+   in the story, and the row does not need it.
 6. **A park step that fails is silent to live listeners.** Today `ApprovalDeferred` is narrated
    whatever happens. As a story event it is heard only if it was stored. `ApprovalSought` is
    still heard first, live.
-7. **A decision made after a deferral does not repeat the question's reference.** The content
-   read resolves it from the deferral (§8a). This keeps the fold from having to remember it.
+7. **A decision made after a deferral does not repeat the deferral's facts.** The read
+   (`StoryContent.approvalFacts`) takes them from the deferral (§8a). This keeps the fold from
+   having to remember them.
 
 ## 14. What this record leaves to the next
 
