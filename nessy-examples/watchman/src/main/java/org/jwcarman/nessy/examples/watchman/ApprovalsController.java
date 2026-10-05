@@ -224,7 +224,8 @@ public class ApprovalsController {
     IdempotencyKey idempotencyKey = IdempotencyKey.of(UUID.fromString(key));
     LOG.info("[watchman] {} answered {} with {}", SOMEBODY, idempotencyKey, result);
     // Nessy has the last word on whether an answer landed. A call whose term expired seconds ago
-    // has already been denied on this person's behalf, and a second click finds nothing waiting.
+    // has already been recorded as a failed call, not as a denial, and a late click finds nothing
+    // waiting.
     switch (replies.approve(
         new AgentType(agentType), new AgentId(UUID.fromString(agentId)), idempotencyKey, result)) {
       case ReplyOutcome.Applied _ -> {
