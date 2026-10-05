@@ -359,7 +359,8 @@ behaviour goes: sources return what is current and nothing is driven from a save
 changes is that what was sent is now **recorded**, by section.
 
 Every stored model-call event carries a `RequestManifest`: what the request was made of, each
-part named by reference and none copied.
+part named by reference and none copied. An event recorded with no request in hand (the handler
+threw, the row could not be read, or the deadline passed first) carries none.
 
 **The manifest is stored, and it is not public.** It sits beside `AgentEvent` in the backend SPI,
 and nothing in `nessy-api` reads it. It shows how context is assembled (strata, chapters, content
@@ -374,14 +375,13 @@ public record RequestManifest(
     PayloadRef tools,                        // the offers and the choice, a document
     Optional<PayloadRef> answerShape,        // the output schema, a document
     PayloadRef options,                      // model, max tokens, vendor properties: a document
-    List<SummarySection> summaries,          // the chapter summaries shown
+    Optional<TurnId> summarizedThrough,      // the last turn the summaries shown cover
     Optional<TurnRange> tail,                // the completed turns shown verbatim
     List<Section> memory,
     List<Section> state,
     List<Section> ambient) {
 
   public record Section(String kind, PayloadRef content) {}
-  public record SummarySection(Chapter chapter, PayloadRef text) {}
   public record TurnRange(TurnId from, TurnId through) {}
 }
 ```
@@ -391,8 +391,20 @@ public record RequestManifest(
   stored once per agent and change only with configuration; memory, state and ambient sections
   are stored when their sources say something new.
 - History is never copied. The tail is a range of turns, and the active turn is "everything in
-  this turn before this event". Both are already in the story.
-- There is no opt-out per source. What the model was shown is on the record.
+  this turn before this event". Both are already in the story, and a completed turn never
+  changes.
+- Summaries are named by one turn: the last turn they cover. A chapter's bounds never change
+  once stored and its summary is written once, so the summaries shown are exactly those of the
+  chapters up to that turn. (James ruled this on 2026-10-04, in place of a list of chapters with
+  a reference each, which grew with every chapter on every event.)
+- The prompt, the tools, the answer shape and the options can change between deployments, so
+  each is named by a reference to what it was. Memory, state and ambient sections cannot be
+  rebuilt afterwards, so each is kept as it was shown.
+- The options document writes vendor properties with their keys sorted, so the same options are
+  the same reference whatever order they were given in.
+- There is no opt-out per source. What the model was shown is on the record, and nothing in
+  the engine deletes it: a source must not return what an application may not keep. A source
+  whose answer differs on every call adds one stored section for each model call.
 - The manifest is built by the same assembly that builds the request, and returned beside the
   result, so it cannot describe a request other than the one sent. It is not worked out
   afterwards.
@@ -402,7 +414,8 @@ public record RequestManifest(
 Not recorded: the requests of the engine's summariser. Those calls are not story events today,
 and that does not change here.
 
-**Cost.** A manifest is a dozen references on each model-call event. New content is stored only
+**Cost.** A manifest is a handful of references on each model-call event, and one more for
+each memory, state and ambient section. New content is stored only
 when a section changes. Payloads are scoped to an agent, so the system prompt is stored once for
 each agent, not once for all.
 
