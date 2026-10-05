@@ -34,6 +34,7 @@ const form = document.getElementById("send-form");
 const textInput = document.getElementById("text");
 const working = document.getElementById("working");
 const newChatButton = document.getElementById("new-chat");
+const confirmNew = document.getElementById("confirm-new");
 
 // Every event the narrator names. The page listens for all of them, including those it draws
 // nothing for, because the browser keeps the id of any event it receives and a reconnect then
@@ -77,6 +78,9 @@ let pendingTyped = [];
 // the tool from the approval card that is waiting.
 let toolByCall = new Map();
 let toolByKey = new Map();
+// While Up and Down are bringing back earlier messages: what they are, newest first, which one is in
+// the box (-1 for none yet), and the draft that was there before. Null otherwise.
+let recall = null;
 // The turn being narrated, and what the page has drawn of it so far: whether it saw the turn
 // start (and so every event of it since), whether the current model call streamed its words, the
 // bubble those words go into, and the thinking line. Reset in one place, follow().
@@ -346,6 +350,7 @@ async function ended(turn, ending, inStory) {
   const { watched, streamed, bubble } = live;
   follow(null);
   setWorking(false);
+  focusBox();
   if (watched && ending === null) {
     if (streamed) {
       drawnTurns.add(turn);
@@ -487,6 +492,10 @@ async function send(event) {
   const text = textInput.value.trim();
   if (!text) return;
   textInput.value = "";
+  recall = null;
+  saveDraft();
+  fitBox();
+  focusBox(form);
   const mine = generation;
   // Drawn as typed, and pending until a turn takes it up. After a reload the story shows what the
   // agent was given, and messages sent while it was busy are one line there, joined.
@@ -581,12 +590,13 @@ async function decide(card, decision, div) {
   // 202 or 409 (another tab answered first, or the term ran out), the cards are redrawn from what
   // is waiting now rather than from the click.
   queue(refreshCards);
+  focusBox(div);
 }
 
 // Clears what is on screen: a new conversation starts from nothing.
 function clearScreen() {
-  log.innerHTML = "";
-  approvalsSection.innerHTML = "";
+  log.replaceChildren();
+  approvalsSection.replaceChildren();
   follow(null);
   pendingTyped = [];
   toolByCall = new Map();
@@ -595,15 +605,18 @@ function clearScreen() {
   setWorking(false);
 }
 
-form.addEventListener("submit", send);
 // "New chat" ends this conversation and starts another. The old agent is ended, so it takes no
 // more input and is not left waiting; what it said is kept. The old stream is closed first and its
-// queued work is dropped, so nothing of the old conversation draws into the new one.
-newChatButton.addEventListener("click", async () => {
+// queued work is dropped, so nothing of the old conversation draws into the new one. What is typed
+// in the box stays there, for the new conversation.
+async function startNewChat() {
   const finished = agentId;
   if (events) events.close();
   generation += 1;
+  forgetDraft();
   useAgent(crypto.randomUUID());
+  saveDraft();
+  recall = null;
   clearScreen();
   listen();
   // After the switch, deliberately: the new conversation should open even if this fails, and an
@@ -613,7 +626,164 @@ newChatButton.addEventListener("click", async () => {
   } catch (ignored) {
     // Nothing to tell the person: their new chat is already open and working.
   }
+}
+
+// The message box. Enter sends and Shift+Enter starts a new line. The box grows with what is typed,
+// up to the six lines the stylesheet allows, and then scrolls.
+
+// Puts the cursor in the message box. `from` is the control the person just used, if any: the box
+// takes the focus from it or from nothing, but never from another control the person has moved to,
+// and never while they are selecting text in the conversation.
+function focusBox(from = null) {
+  const active = document.activeElement;
+  const free =
+    !active ||
+    active === document.body ||
+    active === textInput ||
+    (from !== null && from.contains(active));
+  if (!free) return;
+  const selection = document.getSelection();
+  if (selection && !selection.isCollapsed && log.contains(selection.anchorNode)) return;
+  textInput.focus();
+}
+
+// Makes the box as tall as its text; the stylesheet's max-height caps it.
+function fitBox() {
+  textInput.style.height = "auto";
+  const border = textInput.offsetHeight - textInput.clientHeight;
+  textInput.style.height = textInput.scrollHeight + border + "px";
+}
+
+// What is typed and not sent yet is kept for this tab, per conversation, so a reload does not lose
+// it. Storage may be missing or refuse (a private window, blocked site data); the page works
+// without it, and the draft is then not kept.
+function draftKey() {
+  return "draft:" + agentId;
+}
+
+function saveDraft() {
+  try {
+    if (textInput.value) sessionStorage.setItem(draftKey(), textInput.value);
+    else sessionStorage.removeItem(draftKey());
+  } catch (unavailable) {
+    // Not kept.
+  }
+}
+
+function forgetDraft() {
+  try {
+    sessionStorage.removeItem(draftKey());
+  } catch (unavailable) {
+    // Nothing was kept.
+  }
+}
+
+function restoreDraft() {
+  try {
+    textInput.value = sessionStorage.getItem(draftKey()) ?? "";
+  } catch (unavailable) {
+    textInput.value = "";
+  }
+  fitBox();
+}
+
+// What the person said in this conversation, newest first, as the screen shows it. Lines sent
+// while the agent was busy are one line once the story joins them.
+function earlierMessages() {
+  const said = [];
+  for (const line of [...log.children].reverse()) {
+    if (line.classList.contains("user") && line.textContent !== said[said.length - 1]) {
+      said.push(line.textContent);
+    }
+  }
+  return said;
+}
+
+function showInBox(text) {
+  textInput.value = text;
+  textInput.setSelectionRange(text.length, text.length);
+  fitBox();
+}
+
+// One message further back; at the oldest, it stays there. False when there is nothing to recall.
+function recallOlder() {
+  if (recall === null) {
+    const said = earlierMessages();
+    if (said.length === 0) return false;
+    recall = { said, at: -1, draft: textInput.value };
+  }
+  if (recall.at + 1 < recall.said.length) {
+    recall.at += 1;
+    showInBox(recall.said[recall.at]);
+  }
+  return true;
+}
+
+// One message forward; past the newest, the draft that was in the box comes back.
+function recallNewer() {
+  recall.at -= 1;
+  if (recall.at >= 0) {
+    showInBox(recall.said[recall.at]);
+  } else {
+    const draft = recall.draft;
+    recall = null;
+    showInBox(draft);
+  }
+}
+
+function caretOnFirstLine() {
+  return !textInput.value.slice(0, textInput.selectionStart).includes("\n");
+}
+
+function caretOnLastLine() {
+  return !textInput.value.slice(textInput.selectionEnd).includes("\n");
+}
+
+textInput.addEventListener("keydown", (event) => {
+  // While an input method composes a word, Enter and the arrows belong to it.
+  if (event.isComposing || event.keyCode === 229) return;
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    form.requestSubmit();
+  } else if (event.key === "ArrowUp" && caretOnFirstLine()) {
+    if (recallOlder()) event.preventDefault();
+  } else if (event.key === "ArrowDown" && recall !== null && caretOnLastLine()) {
+    event.preventDefault();
+    recallNewer();
+  } else if (event.key === "Escape") {
+    recall = null;
+    showInBox("");
+    saveDraft();
+  }
+});
+
+// Typing ends a recall: what is in the box is now the person's draft.
+textInput.addEventListener("input", () => {
+  recall = null;
+  saveDraft();
+  fitBox();
+});
+
+form.addEventListener("submit", send);
+
+// A conversation with something in it is ended only once the person confirms. Either way the
+// cursor goes back to the box.
+newChatButton.addEventListener("click", () => {
+  if (log.children.length === 0) {
+    startNewChat();
+    focusBox(newChatButton);
+    return;
+  }
+  confirmNew.returnValue = "";
+  confirmNew.showModal();
+});
+
+confirmNew.addEventListener("close", () => {
+  if (confirmNew.returnValue === "new") startNewChat();
+  focusBox(newChatButton);
 });
 
 useAgent(agentId);
+restoreDraft();
 listen();
+focusBox();

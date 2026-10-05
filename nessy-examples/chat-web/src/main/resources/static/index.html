@@ -26,17 +26,42 @@
   <body>
     <header>
       <h1>Nessy Chat</h1>
-      <button id="new-chat" type="button">New chat</button>
     </header>
     <main id="log"></main>
     <section id="approvals"></section>
     <footer>
       <div id="working" hidden>working…</div>
       <form id="send-form">
-        <input id="text" type="text" placeholder="Say something…" autocomplete="off" />
-        <button id="send" type="submit">Send</button>
+        <button id="new-chat" type="button">New chat</button>
+        <label for="text" class="visually-hidden">Message</label>
+        <textarea
+          id="text"
+          rows="1"
+          placeholder="Write a message…"
+          autocomplete="off"
+          aria-describedby="keys"
+          autofocus
+        ></textarea>
+        <span id="keys" class="visually-hidden">
+          Enter sends. Shift and Enter starts a new line. Up and Down bring back earlier messages.
+        </span>
+        <button id="send" type="submit" aria-label="Send">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" />
+          </svg>
+        </button>
       </form>
     </footer>
+    <dialog id="confirm-new" aria-labelledby="confirm-new-title">
+      <form method="dialog">
+        <h2 id="confirm-new-title">Start a new chat?</h2>
+        <p>This conversation ends: the agent takes no more messages in it.</p>
+        <div class="dialog-actions">
+          <button value="cancel" autofocus>Cancel</button>
+          <button value="new" class="primary">Start a new chat</button>
+        </div>
+      </form>
+    </dialog>
     <script src="app.js"></script>
   </body>
 </html>

@@ -82,6 +82,28 @@ the conversation has ended.
 `send_email` sends nothing. It is the right *shape* — outward-facing and
 irreversible — without being something you could point at a stranger.
 
+## Using the page
+
+The page is three static files (`index.html`, `app.js` and `style.css`) with
+no build step and nothing fetched from the network.
+
+**The message box keeps the cursor.** The cursor is in the box when the page
+loads, after you send, after you answer a card and when a turn ends. It stays
+where it is when you are selecting text or using another control. The box
+grows with what you type, up to six lines, and then scrolls.
+
+| Key | What it does |
+|---|---|
+| Enter | Sends the message. An empty message is not sent. |
+| Shift+Enter | Starts a new line. |
+| Up, with the cursor on the first line | Brings back your earlier messages in this conversation, newest first. |
+| Down | Goes back toward the newest message, then to what you were typing before. |
+| Escape | Clears the box. |
+
+A message you have not sent is kept for the tab, per conversation, and is
+still in the box after a reload. **New chat** is beside the box. If the
+conversation has messages, it asks before it ends the conversation.
+
 ## Run it
 
 Run the example from the repository root. `spring-boot:run` starts the

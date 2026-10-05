@@ -127,22 +127,113 @@ footer {
   padding: 0.75rem 1rem;
 }
 
+/* Read by screen readers, not drawn. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 #send-form {
   display: flex;
+  align-items: flex-end;
   gap: 0.5rem;
 }
 
+/* One line to start; the script makes it as tall as its text, up to six lines, then it scrolls. */
 #text {
   flex: 1;
-  padding: 0.5rem;
+  min-width: 0;
+  resize: none;
+  font: inherit;
+  line-height: 1.4;
+  padding: 0.5rem 0.75rem;
+  max-height: calc(6 * 1.4em + 1rem + 2px);
+  overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: 1.1rem;
   background: var(--bg);
   color: var(--fg);
+}
+
+#new-chat {
+  flex: none;
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 1.1rem;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+/* A round button with an arrow drawn in the page's own SVG. */
+#send {
+  flex: none;
+  width: 2.35rem;
+  height: 2.35rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--fg);
+  color: var(--bg);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+#send svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 #working {
   font-size: 0.85rem;
   opacity: 0.7;
   padding: 0 0.75rem 0.25rem;
+}
+
+dialog {
+  max-width: min(26rem, calc(100vw - 2rem));
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+dialog h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.5rem;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.dialog-actions button {
+  font: inherit;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.dialog-actions button.primary {
+  background: var(--fg);
+  color: var(--bg);
+  border-color: var(--fg);
 }
