@@ -216,14 +216,31 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
             agentId.value(),
             question.action(),
             question.deadline());
-        yield new Handled.Deferred(storedQuestion(agentId, question));
+        yield new Handled.Deferred(storedQuestion(agentId, callId, question));
       }
     };
   }
 
-  /** What the approver was shown, kept where somebody reading the story later can find it. */
-  private Optional<PayloadRef> storedQuestion(AgentId agentId, ApprovalRequest question) {
-    return Optional.of(
-        payloads.forAgent(agentId).putDocument(ApprovalQuestions.document(question)));
+  /**
+   * What the approver was shown, kept where somebody reading the story later can find it.
+   *
+   * <p>Failing to keep it must not fail the deferral: the approver has already been asked and may
+   * have told a person, so an exception here would be read as a failed ask and the retry policy
+   * might ask again. The deferral stands without a question instead.
+   */
+  private Optional<PayloadRef> storedQuestion(
+      AgentId agentId, CallId callId, ApprovalRequest question) {
+    try {
+      return Optional.of(
+          payloads.forAgent(agentId).putDocument(ApprovalQuestions.document(question)));
+    } catch (RuntimeException e) {
+      log.warn(
+          "[{}] agent {}: the question for call {} could not be stored; the deferral stands without it",
+          agentType.value(),
+          agentId.value(),
+          callId,
+          e);
+      return Optional.empty();
+    }
   }
 }

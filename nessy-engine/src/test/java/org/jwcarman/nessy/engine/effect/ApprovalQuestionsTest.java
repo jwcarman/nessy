@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.TurnId;
@@ -29,7 +30,10 @@ import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
+import org.jwcarman.nessy.backend.payload.Payloads;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.JsonNodeFactory;
 
 /**
@@ -136,5 +140,28 @@ class ApprovalQuestionsTest {
                 "askedAt",
                 "deadline",
                 "facts"));
+  }
+
+  /** A missing node cannot be written or read back, so empty text becomes a real, empty object. */
+  @Test
+  void empty_arguments_are_an_empty_object() {
+    JsonNode empty = ApprovalQuestions.document(request("")).get("arguments");
+    JsonNode blank = ApprovalQuestions.document(request("  \n")).get("arguments");
+
+    assertThat(empty.isObject()).isTrue();
+    assertThat(empty.size()).isZero();
+    assertThat(blank.isObject()).isTrue();
+    assertThat(blank.size()).isZero();
+  }
+
+  @Test
+  void a_document_with_empty_arguments_round_trips_through_storage() {
+    Payloads payloads = new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
+    JsonNode document = ApprovalQuestions.document(request(""));
+
+    JsonNode back = payloads.getDocument(payloads.putDocument(document));
+
+    assertThat(back.toString()).isEqualTo(document.toString());
+    assertThat(back.get("arguments").isObject()).isTrue();
   }
 }

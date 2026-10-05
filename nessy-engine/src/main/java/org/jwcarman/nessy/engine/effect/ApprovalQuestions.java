@@ -43,6 +43,9 @@ final class ApprovalQuestions {
    * The arguments are parsed, so a reader walks a document rather than a string; by the time a
    * question exists they have been read into the tool's input type and do parse, and if they do not
    * the text the model wrote is kept as a string rather than losing the question.
+   *
+   * <p>A stored document reads numbers back in the narrowest type, so compare documents by
+   * serialized text or field by field, never by {@code JsonNode} equality.
    */
   static JsonNode document(ApprovalRequest request) {
     JsonNodeFactory nodes = JsonNodeFactory.instance;
@@ -63,7 +66,10 @@ final class ApprovalQuestions {
 
   private static JsonNode arguments(String text) {
     try {
-      return READER.readTree(text);
+      JsonNode parsed = READER.readTree(text);
+      // Empty or blank text parses to a missing node, which cannot be stored; it means no
+      // arguments, so it is an empty object.
+      return parsed.isMissingNode() ? JsonNodeFactory.instance.objectNode() : parsed;
     } catch (JacksonException _) {
       return JsonNodeFactory.instance.stringNode(text);
     }

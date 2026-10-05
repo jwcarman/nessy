@@ -170,6 +170,11 @@ class ApprovalHandlerTest {
   }
 
   private ApprovalHandler handler(Tools tools, ToolCalls calls, Narrator narrator) {
+    return handler(tools, calls, narrator, PAYLOADS);
+  }
+
+  private ApprovalHandler handler(
+      Tools tools, ToolCalls calls, Narrator narrator, Payloads payloads) {
     EffectTermsSource terms =
         new EffectTermsSource(
             tools,
@@ -179,7 +184,7 @@ class ApprovalHandlerTest {
             new RetryPolicy.Never(),
             Duration.ofMinutes(5),
             new RetryPolicy.Never());
-    return new ApprovalHandler(TYPE, tools, calls, TOKENS, narrator, terms, CLOCK, PAYLOADS);
+    return new ApprovalHandler(TYPE, tools, calls, TOKENS, narrator, terms, CLOCK, payloads);
   }
 
   private EffectOutcome ask(Tools tools) {
@@ -302,6 +307,53 @@ class ApprovalHandlerTest {
     assertThat(stored.get("callId").asString()).isEqualTo("c1");
     assertThat(stored.get("toolName").asString()).isEqualTo("lookup");
     assertThat(stored.get("idempotencyKey").asString()).isEqualTo(KEY.value().toString());
+  }
+
+  /**
+   * The approver was asked and said "later", and may already have told a person. Failing to keep
+   * the question must not turn that into a failed ask, which the retry policy would answer by
+   * asking again.
+   */
+  @Test
+  void a_deferral_still_stands_when_its_question_cannot_be_stored() {
+    int[] asks = {0};
+    Payloads failing =
+        new Payloads() {
+          @Override
+          public PayloadRef put(List<? extends Block> content) {
+            throw new IllegalStateException("not used");
+          }
+
+          @Override
+          public PayloadRef putDocument(JsonNode document) {
+            throw new IllegalStateException("the store is down");
+          }
+
+          @Override
+          public Resolved get(PayloadRef ref) {
+            throw new IllegalStateException("not used");
+          }
+
+          @Override
+          public JsonNode getDocument(PayloadRef ref) {
+            throw new IllegalStateException("not used");
+          }
+        };
+    ApprovalHandler handler =
+        handler(
+            bound(
+                _ -> {
+                  asks[0]++;
+                  return new Awaited.Deferred<>();
+                }),
+            story(),
+            Narrator.silent(),
+            failing);
+
+    Handled handled = asked(handler, WRITTEN_DEADLINE);
+
+    assertThat(handled).isEqualTo(Handled.deferred());
+    assertThat(asks[0]).isEqualTo(1);
   }
 
   /** The reply token settles the call, and a stored document is read by far more than the reply. */
