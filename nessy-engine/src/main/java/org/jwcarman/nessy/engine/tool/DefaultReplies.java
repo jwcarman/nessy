@@ -15,6 +15,8 @@
  */
 package org.jwcarman.nessy.engine.tool;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -51,9 +53,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The answer is {@link ReplyOutcome.Applied} exactly when the fold wrote an event for it, and
  * {@link ReplyOutcome.Ignored} otherwise: no registration, no row, or a fold that took nothing -- a
- * second answer, an answer racing the deadline, an answer for a turn that has closed. The row is
- * let go of whether or not the fold took the answer, because a row whose call is already discharged
- * has nothing left to wait for.
+ * second answer, an answer past the call's deadline, an answer for a turn that has closed. The row
+ * is let go of whether or not the fold took the answer, because a row whose call is already
+ * discharged has nothing left to wait for.
  *
  * <p>Registered per agent type as harnesses are built, because the caller names an agent type and
  * holds no harness.
@@ -84,6 +86,16 @@ public final class DefaultReplies implements Replies {
   }
 
   private final Map<String, Bound> byAgentType = new ConcurrentHashMap<>();
+  private final Clock clock;
+
+  /**
+   * @param clock what says whether a row's deadline has passed. A row whose deadline is not after
+   *     now is not waiting for an answer any more, whether or not the dispatcher has folded its
+   *     expiry yet.
+   */
+  public DefaultReplies(Clock clock) {
+    this.clock = Objects.requireNonNull(clock, "clock must not be null");
+  }
 
   /** Called as each harness is built. An agent type answered before that is simply unknown. */
   public void register(
@@ -173,7 +185,7 @@ public final class DefaultReplies implements Replies {
       return new ReplyOutcome.Ignored();
     }
 
-    Optional<Awaiting> found = find(bound, agentId, key, expected);
+    Optional<Awaiting> found = find(type, bound, agentId, key, expected);
     if (found.isEmpty()) {
       // Nothing awaits this answer: the call was answered already, its deadline passed, the key
       // is not one this engine knows, or something else settled it a moment sooner. A caller is
@@ -222,19 +234,42 @@ public final class DefaultReplies implements Replies {
    *
    * <p>Read and matched rather than queried by key, because the engine keeps no index from keys to
    * rows. The set is one agent's claimed effects -- a handful at the very most -- and an unreadable
-   * payload is simply not a match: a row nobody can decode is one its own deadline will deal with.
+   * payload is logged and is not a match: a row nobody can decode is one its own deadline will deal
+   * with. So is a row whose deadline is not after now: the answer is ignored and the row is left as
+   * it is for the dispatcher to expire.
    */
   private Optional<Awaiting> find(
-      Bound bound, AgentId agentId, IdempotencyKey key, Class<? extends AgentEffect> expected) {
+      AgentType type,
+      Bound bound,
+      AgentId agentId,
+      IdempotencyKey key,
+      Class<? extends AgentEffect> expected) {
     List<Attempt> running = bound.effects().runningFor(agentId);
+    Instant now = clock.instant();
     for (Attempt attempt : running) {
       AgentEffect effect;
       try {
         effect = bound.effects().effectOf(attempt);
-      } catch (RuntimeException _) {
+      } catch (RuntimeException e) {
+        log.warn(
+            "[{}] effect {} of agent {} could not be decoded and is not a match for a reply",
+            type.value(),
+            attempt.effectId(),
+            agentId.value(),
+            e);
         continue;
       }
       if (expected.isInstance(effect) && names(effect, key)) {
+        if (!attempt.deadline().isAfter(now)) {
+          // Past its deadline, the call is the dispatcher's to expire: the answer lost the race,
+          // and the row is left exactly as it is.
+          log.info(
+              "[{}] a reply for key {} of agent {} arrived after the call's deadline",
+              type.value(),
+              key.value(),
+              agentId.value());
+          return Optional.empty();
+        }
         return Optional.of(new Awaiting(attempt, effect));
       }
     }

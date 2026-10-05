@@ -17,7 +17,9 @@ package org.jwcarman.nessy.engine.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -83,7 +85,8 @@ class MisroutedReplyTest {
   private final Deliveries delivered = new Deliveries();
   private final Payloads payloads =
       new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
-  private final DefaultReplies replies = new DefaultReplies();
+  private static final Instant NOW = Instant.parse("2026-09-18T11:00:00Z");
+  private final DefaultReplies replies = new DefaultReplies(Clock.fixed(NOW, ZoneOffset.UTC));
 
   private void serving() {
     replies.register(TYPE, rows, delivered, payloads, Tools.none());
@@ -270,16 +273,49 @@ class MisroutedReplyTest {
     assertThat(delivered.outcomes).isEmpty();
   }
 
+  /** A deadline equal to now is past, the same rule a parked row is held to. */
+  @Test
+  void an_answer_at_the_very_instant_of_the_deadline_is_ignored_and_its_row_is_left_alone() {
+    serving();
+    rows.running = List.of(attemptDueAt(NOW));
+    rows.effect = new AgentEffect.Approve(TURN, REQUEST, CALL, TOOL, KEY);
+
+    assertThat(replies.approve(TYPE, AGENT, KEY, ApprovalResult.approved()))
+        .isInstanceOf(ReplyOutcome.Ignored.class);
+    assertThat(delivered.outcomes).as("the fold was never asked").isEmpty();
+    assertThat(rows.completed).as("and the row was not touched").isZero();
+  }
+
+  @Test
+  void a_result_after_the_deadline_is_ignored_and_its_row_is_left_alone() {
+    serving();
+    rows.running = List.of(attemptDueAt(NOW.minusSeconds(1)));
+    rows.effect = new AgentEffect.CallTool(TURN, REQUEST, CALL, TOOL, KEY);
+
+    assertThat(replies.complete(TYPE, AGENT, KEY, ToolResult.ok(new Block.Text("done"))))
+        .isInstanceOf(ReplyOutcome.Ignored.class);
+    assertThat(delivered.outcomes).isEmpty();
+    assertThat(rows.completed).isZero();
+  }
+
+  @Test
+  void an_answer_one_millisecond_before_the_deadline_is_delivered() {
+    serving();
+    rows.running = List.of(attemptDueAt(NOW.plusMillis(1)));
+    rows.effect = new AgentEffect.Approve(TURN, REQUEST, CALL, TOOL, KEY);
+
+    assertThat(replies.approve(TYPE, AGENT, KEY, ApprovalResult.approved()))
+        .isInstanceOf(ReplyOutcome.Applied.class);
+    assertThat(delivered.outcomes).hasSize(1);
+    assertThat(rows.completed).isEqualTo(1);
+  }
+
   private static Attempt attempt() {
-    return new Attempt(
-        UUID.randomUUID(),
-        AGENT,
-        new byte[0],
-        new byte[0],
-        1,
-        Instant.parse("2026-09-18T12:00:00Z"),
-        null,
-        null);
+    return attemptDueAt(Instant.parse("2026-09-18T12:00:00Z"));
+  }
+
+  private static Attempt attemptDueAt(Instant deadline) {
+    return new Attempt(UUID.randomUUID(), AGENT, new byte[0], new byte[0], 1, deadline, null, null);
   }
 
   /** One agent type's rows, said rather than stored. */

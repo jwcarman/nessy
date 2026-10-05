@@ -150,7 +150,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   DefaultQueuedHarnessFactory(QueuedHarnessFactoryConfig config) {
     this.backend = config.requiredBackend();
     listeners.addAll(config.listeners());
-    this.replies = new DefaultReplies();
+    this.replies = new DefaultReplies(clock);
     this.work = StoredAgentWork.queued(backend, clock);
     // A timer, and only a timer: it never performs an effect (each dispatcher has its own
     // virtual-thread executor for that), it only says when to look for due work. One virtual
