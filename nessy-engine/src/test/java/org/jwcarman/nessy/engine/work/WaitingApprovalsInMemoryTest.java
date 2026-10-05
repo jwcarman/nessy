@@ -17,12 +17,14 @@ package org.jwcarman.nessy.engine.work;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.DisplayName;
@@ -32,16 +34,24 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AgentWork;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
+import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.backend.effect.AgentEffect;
+import org.jwcarman.nessy.backend.effect.Attempt;
+import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.LiveEffect;
 import org.jwcarman.nessy.backend.inmemory.InMemoryQueuedBackend;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
@@ -329,5 +339,63 @@ class WaitingApprovalsInMemoryTest {
 
       assertThat(waiting).extracting(ApprovalRequest::agentId).containsExactly(approving);
     }
+  }
+
+  /**
+   * Parked approvals of agents with no story, so none of them can be rebuilt, older than anything a
+   * harness will write.
+   */
+  private void parkUnrebuildable(AgentType type, int count) {
+    Instant longAgo = Instant.now().minus(Duration.ofHours(1));
+    for (int i = 0; i < count; i++) {
+      CallId callId = new CallId("call_" + i);
+      memory
+          .effects()
+          .insert(
+              type,
+              AgentId.random(),
+              new AgentEffect.Approve(
+                  new TurnId(1),
+                  new Seq(2),
+                  callId,
+                  new ToolName("lookup"),
+                  IdempotencyKey.of(UUID.randomUUID())),
+              Duration.ofMinutes(30),
+              new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, "undispatchable"),
+              Instant.now().plus(Duration.ofDays(1)),
+              null,
+              longAgo.plusMillis(i));
+    }
+    List<Attempt> claimed = memory.effects().markRunning(type, Instant.now(), count);
+    assertThat(claimed).hasSize(count);
+    claimed.forEach(
+        attempt ->
+            memory.effects().park(attempt.effectId(), attempt.attemptsMade(), Instant.now()));
+  }
+
+  @Test
+  void approvals_that_cannot_be_rebuilt_do_not_use_up_the_cap() {
+    AgentType type = new AgentType("memory-unrebuildable-first");
+    try (DefaultQueuedHarnessFactory factory = factory()) {
+      parkUnrebuildable(type, 4);
+      AgentId approving = parkAnother(type, harness(factory, type));
+      AgentWork capped = StoredAgentWork.queued(memory, Clock.systemUTC(), 2);
+
+      List<ApprovalRequest> waiting = capped.waitingApprovals(type);
+
+      assertThat(waiting).extracting(ApprovalRequest::agentId).containsExactly(approving);
+    }
+  }
+
+  @Test
+  void a_read_where_no_approval_can_be_rebuilt_ends_with_none() {
+    AgentType type = new AgentType("memory-unrebuildable-only");
+    parkUnrebuildable(type, 4);
+    AgentWork capped = StoredAgentWork.queued(memory, Clock.systemUTC(), 2);
+
+    List<ApprovalRequest> waiting =
+        assertTimeoutPreemptively(Duration.ofSeconds(20), () -> capped.waitingApprovals(type));
+
+    assertThat(waiting).isEmpty();
   }
 }

@@ -124,4 +124,28 @@ class RequestedCallsTest {
 
     assertThat(resolve(otherCall, SECOND_KEY)).isEmpty();
   }
+
+  @Test
+  void nothing_is_guessed_when_the_block_at_the_position_names_another_tool() {
+    AgentEvent.ActionsRequested otherTool =
+        asked(
+            List.of(
+                block("{\"q\":\"one\"}"),
+                new Block.ToolCall(SAME_ID, new ToolName("ping"), "{\"q\":\"two\"}")),
+            List.of(entry(FIRST_KEY, "look up one"), entry(SECOND_KEY, "look up two")));
+
+    assertThat(resolve(otherTool, SECOND_KEY)).isEmpty();
+  }
+
+  @Test
+  void a_block_with_no_entry_before_the_entrys_own_block_leaves_the_entry_unresolved() {
+    AgentEvent.ActionsRequested unaligned =
+        asked(
+            List.of(
+                new Block.ToolCall(new CallId("call_0"), TOOL, "{\"q\":\"zero\"}"),
+                block("{\"q\":\"one\"}")),
+            List.of(entry(FIRST_KEY, "look up one")));
+
+    assertThat(resolve(unaligned, FIRST_KEY)).isEmpty();
+  }
 }

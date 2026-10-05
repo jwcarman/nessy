@@ -29,8 +29,10 @@ import org.jwcarman.nessy.engine.tool.ToolCalls;
  *
  * <p>The one place that knows how a call's arguments and action are stored: the call's entry in the
  * event holds the action sentence, and the event's request content holds the tool-use block with
- * the arguments. What an approver is handed and what a waiting approval is rebuilt from both come
- * from here, so they cannot differ.
+ * the arguments. What an approver is handed and what a waiting approval is rebuilt from are read
+ * from the same stored entry and the same stored block: the handler finds the entry by call id, the
+ * rebuild by idempotency key. A response that repeats a call id never reaches here, because the
+ * inference handler refuses it.
  */
 public final class RequestedCalls {
 
@@ -61,11 +63,9 @@ public final class RequestedCalls {
   }
 
   /**
-   * The entries were made one for each tool-use block, in order, so the entry at a position and the
-   * block at that position are the same call. The call id is no key: a response may repeat one.
-   * When there is no block at the position, or the block there is not the entry's call, nothing is
-   * guessed. (A request with more blocks than entries still resolves the entries it has: an entry
-   * is never recorded for a block that was not asked for, and the handlers rely on that leniency.)
+   * The engine records one entry for each tool-call block, in order, so an entry's position is its
+   * block's position. When the block at that position is missing, or names another call or tool,
+   * nothing is returned.
    */
   private static Optional<ToolCalls.ResolvedCall> blockAt(
       Payloads agentPayloads,

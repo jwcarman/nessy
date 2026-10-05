@@ -406,7 +406,7 @@ class InferenceHandlerTest {
           .contains(TYPE.value())
           .contains(String.valueOf(AGENT.value()))
           .contains(REPEATED)
-          .contains("4")
+          .contains("turn 4")
           .doesNotContain("SECRET");
     }
 
