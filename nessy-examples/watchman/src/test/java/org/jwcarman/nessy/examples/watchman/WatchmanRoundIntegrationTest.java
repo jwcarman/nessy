@@ -22,6 +22,8 @@ import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.nessy.api.AgentWork;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -30,11 +32,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
 /**
  * A whole round, end to end: the scripted watchman checks the disks and proposes a prune, the prune
- * lands on the board, a person approves it, it runs, and the round's notes are written.
+ * is waiting on the page, a person approves it, it runs, and the round's notes are written.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -53,7 +57,7 @@ class WatchmanRoundIntegrationTest {
     }
   }
 
-  @Autowired private PendingApprovalsRepository approvals;
+  @Autowired private AgentWork work;
   @Autowired private org.jwcarman.nessy.engine.store.TurnHistories histories;
   @org.springframework.boot.test.web.server.LocalServerPort private int port;
 
@@ -61,29 +65,34 @@ class WatchmanRoundIntegrationTest {
    * Sixty seconds rather than twenty, because of what is being waited for.
    *
    * <p>A round begins on ApplicationReadyEvent and has to get a proposal through a model stand-in,
-   * an approval gate and a row before it lands on the board -- in a module that starts two Spring
+   * an approval gate and a wait before it shows on the page -- in a module that starts two Spring
    * contexts against one Postgres container, on a shared runner. Twenty seconds was enough on a
    * laptop and lost on CI. Raising the ceiling of a wait does not weaken what it asserts: the
    * condition is the same, and a passing run still stops the moment it is met.
    */
   @Test
-  void a_proposed_prune_waits_on_the_board_until_a_person_approves_it() {
-    // The first round starts on ApplicationReadyEvent; the prune reaches the board...
+  void a_proposed_prune_waits_for_a_person_until_a_person_approves_it() {
+    // The first round starts on ApplicationReadyEvent; the prune is waiting...
     await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> assertThat(ours()).hasSize(1));
-    PendingApproval waiting = ours().getFirst();
+    ApprovalRequest waiting = ours().getFirst();
     assertThat(waiting.action()).isEqualTo("docker image prune -af");
     assertThat(waiting.agentId()).isEqualTo(Watchman.AGENT);
     assertThat(waiting.callId()).isEqualTo(new CallId("round-1-prune"));
 
     // ...a person approves it from the page...
+    // (the form posts the three values that address the call: agent type, agent id and key)
+    MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+    form.add("agentType", waiting.agentType().value());
+    form.add("agentId", waiting.agentId().value().toString());
     RestClient.create("http://localhost:" + port)
         .post()
         .uri("/approve/{key}", waiting.idempotencyKey().toString())
         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+        .body(form)
         .exchange((request, response) -> response.getStatusCode());
 
-    // ...which takes it off the board and lets the round finish with its notes.
-    assertThat(ours()).isEmpty();
+    // ...which clears the wait and lets the round finish with its notes.
+    await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> assertThat(ours()).isEmpty());
     await()
         .atMost(Duration.ofSeconds(60))
         .untilAsserted(
@@ -96,21 +105,15 @@ class WatchmanRoundIntegrationTest {
                   .anySatisfy(text -> assertThat(text).contains("Total reclaimed space: 4.2GB"))
                   .contains("Rounds complete. Nothing needs your attention.");
             });
-    assertThat(approvals.byIdempotencyKey(waiting.idempotencyKey()).orElseThrow().answer())
-        .contains("approved");
   }
 
   /**
-   * The board, filtered to the agent this test owns.
-   *
-   * <p>{@code approvals.pending()} is every row in the table, and this module runs two Spring
-   * contexts against one Postgres container -- so a sibling test's fixtures are visible here. A
-   * size assertion over all of them passes or fails on test ORDER rather than on what this test
-   * did, which is how it came to report "expected 1 but was 7" with its own row sitting correctly
-   * among six belonging to somebody else.
+   * What Nessy says the watchman is waiting on, filtered to the agent this test owns: this module
+   * runs two Spring contexts against one Postgres container, so another context's agents are
+   * visible here.
    */
-  private List<PendingApproval> ours() {
-    return approvals.pending().stream()
+  private List<ApprovalRequest> ours() {
+    return work.waitingApprovals(Watchman.TYPE).stream()
         .filter(pending -> pending.agentId().equals(Watchman.AGENT))
         .toList();
   }

@@ -18,10 +18,10 @@ package org.jwcarman.nessy.examples.watchman;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
-import javax.sql.DataSource;
+import org.jwcarman.nessy.api.AgentWork;
+import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.api.EmptyInput;
-import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.block.Block;
@@ -36,7 +36,6 @@ import org.jwcarman.nessy.approval.risk.RiskAssessor;
 import org.jwcarman.nessy.approval.risk.RiskFactors;
 import org.jwcarman.nessy.approval.risk.RiskLevel;
 import org.jwcarman.nessy.inference.InferenceProvider;
-import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -47,7 +46,7 @@ import tools.jackson.databind.JsonNode;
 @EnableConfigurationProperties(WatchmanProperties.class)
 public class WatchmanConfiguration {
 
-  /** The board's clock: how long an approval request has waited, and when it was answered. */
+  /** The page's clock: how long an approval request has waited. */
   @Bean
   public Clock clock() {
     return Clock.systemUTC();
@@ -68,31 +67,17 @@ public class WatchmanConfiguration {
     return new ScriptedWatchmanProvider(Duration.ofMillis(50));
   }
 
-  @Bean
-  public PendingApprovalsRepository pendingApprovals(DataSource dataSource) {
-    return new PendingApprovalsRepository(dataSource);
-  }
-
-  @Bean
-  public InitializingBean watchmanSchema(DataSource dataSource) {
-    return () -> PendingApprovalsRepository.initialize(dataSource);
-  }
-
   /**
-   * One bean, two roles: the approver the prune is bound to, and -- being the only {@link
-   * NarrationListener} declared -- the one the starter hands to the engine.
+   * The approver the prune is bound to: it defers and keeps nothing. Nessy holds the approval
+   * request open until its deadline, and the page reads what is waiting from {@link AgentWork}.
    */
-  @Bean
-  public ApprovalsDesk approvalsDesk(PendingApprovalsRepository repository, Clock clock) {
-    return new ApprovalsDesk(repository, clock);
+  static Approver deferring() {
+    return _ -> Awaited.deferred();
   }
 
   @Bean(name = "watchmanHarness")
   public QueuedHarness<EmptyInput> harness(
-      QueuedHarnessFactory factory,
-      WatchmanProperties properties,
-      CommandRunner runner,
-      ApprovalsDesk desk) {
+      QueuedHarnessFactory factory, WatchmanProperties properties, CommandRunner runner) {
     List<Tool<JsonNode>> tools = WatchmanTools.boundTo(runner);
     return factory.create(
         Watchman.TYPE,
@@ -116,7 +101,7 @@ public class WatchmanConfiguration {
                       binding ->
                           binding
                               .approver(
-                                  gatedOnRisk(tool.name(), desk),
+                                  gatedOnRisk(tool.name(), deferring()),
                                   approval -> approval.timeout(properties.getApprovalTerm()))
                               .action(args -> WatchmanTools.actionOf(tool.name())));
                 } else {

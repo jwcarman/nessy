@@ -38,23 +38,32 @@
 <h1>watchman — waiting for a human</h1>
 <nav><a th:href="@{/}">waiting</a><a th:href="@{/transcript}">the notes</a></nav>
 
+<p th:if="${notice}" th:text="${notice}">notice</p>
+
 <p th:if="${rows.isEmpty()}">Nothing is waiting.</p>
 
 <table th:unless="${rows.isEmpty()}">
   <thead>
-  <tr><th>what will run</th><th>agent</th><th>asked at</th><th>waiting</th><th>decide</th></tr>
+  <tr><th>tool</th><th>what will run</th><th>facts</th><th>agent</th><th>asked at</th><th>deadline</th><th>waiting</th><th>decide</th></tr>
   </thead>
   <tbody>
   <tr th:each="row : ${rows}">
+    <td th:text="${row.tool}">tool</td>
     <td><div class="action" th:text="${row.action}">the command</div></td>
+    <td><div th:each="fact : ${row.facts}" th:text="${fact.name} + ': ' + ${fact.value}">fact</div></td>
     <td th:text="${row.agentId}">agent</td>
     <td th:text="${row.askedAt}">when</td>
+    <td th:text="${row.deadline}">until</td>
     <td class="dwell" th:text="${row.dwell}">how long</td>
     <td>
       <form method="post" th:action="@{/approve/{k}(k=${row.idempotencyKey})}">
+        <input type="hidden" name="agentType" th:value="${row.agentType}">
+        <input type="hidden" name="agentId" th:value="${row.agentId}">
         <button type="submit">approve</button>
       </form>
       <form method="post" th:action="@{/deny/{k}(k=${row.idempotencyKey})}">
+        <input type="hidden" name="agentType" th:value="${row.agentType}">
+        <input type="hidden" name="agentId" th:value="${row.agentId}">
         <input type="text" name="reason" placeholder="reason">
         <button type="submit">deny</button>
       </form>

@@ -17,9 +17,13 @@ package org.jwcarman.nessy.examples.watchman;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.flash;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.lang.reflect.Method;
@@ -35,15 +39,24 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentStatus;
+import org.jwcarman.nessy.api.AgentStatus.Activity;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AgentWork;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
+import org.jwcarman.nessy.api.tool.Replies;
+import org.jwcarman.nessy.api.tool.ReplyOutcome;
+import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.api.tool.ToolResult;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -57,33 +70,85 @@ class ApprovalsPageTest {
   private static final Instant NOW = Instant.parse("2026-09-02T12:00:00Z");
   private static final Pattern INPUT_NAME = Pattern.compile("<input[^>]*name=\"([^\"]+)\"");
 
+  /**
+   * What Nessy knows, as the page sees it: the approval requests an agent is waiting on, and an
+   * answer that lands only while its request is still among them -- the one rule the real {@link
+   * Replies} keeps that the page depends on.
+   */
+  private static final class Books implements AgentWork, Replies {
+
+    private final List<ApprovalRequest> waiting = new ArrayList<>();
+    private final List<IdempotencyKey> answered = new ArrayList<>();
+    private ApprovalResult lastResult;
+    private AgentType lastType;
+    private AgentId lastId;
+
+    @Override
+    public AgentStatus status(AgentType type, AgentId id) {
+      return new AgentStatus(Activity.IDLE, 0, Optional.empty(), List.of(), 0);
+    }
+
+    @Override
+    public List<ApprovalRequest> waitingApprovals() {
+      return List.copyOf(waiting);
+    }
+
+    @Override
+    public List<ApprovalRequest> waitingApprovals(AgentType type) {
+      return waiting.stream().filter(request -> request.agentType().equals(type)).toList();
+    }
+
+    @Override
+    public ReplyOutcome approve(
+        AgentType type, AgentId id, IdempotencyKey key, ApprovalResult result) {
+      boolean removed =
+          waiting.removeIf(
+              request ->
+                  request.agentType().equals(type)
+                      && request.agentId().equals(id)
+                      && request.idempotencyKey().equals(key));
+      if (!removed) {
+        return new ReplyOutcome.Ignored();
+      }
+      answered.add(key);
+      lastResult = result;
+      lastType = type;
+      lastId = id;
+      return new ReplyOutcome.Applied();
+    }
+
+    @Override
+    public ReplyOutcome complete(
+        AgentType type, AgentId id, IdempotencyKey key, ToolResult result) {
+      throw new AssertionError("the page answers approvals, not tool calls");
+    }
+  }
+
   private final AgentId house = AgentId.random();
   private final IdempotencyKey first = IdempotencyKey.of(UUID.randomUUID());
+  private final Books books = new Books();
   private MockMvc mvc;
-  private PendingApprovalsRepository approvals;
-  private ApprovalsController controller;
+
+  private ApprovalRequest request(IdempotencyKey key, AgentId agent) {
+    return new ApprovalRequest(
+            Watchman.TYPE,
+            agent,
+            TurnId.of(1),
+            new CallId("call-1"),
+            key,
+            new ToolName("prune_images"),
+            "{}",
+            "docker image prune -af",
+            NOW.minusSeconds(7200),
+            NOW.plusSeconds(3600))
+        .fact("risk.level", "MODERATE");
+  }
 
   @BeforeEach
   void renderTheRealTemplates() {
-    DataSource database = PostgresBacked.dataSource();
-    PendingApprovalsRepository.initialize(database);
-    approvals = new PendingApprovalsRepository(database);
-    approvals.asked(
-        new PendingApproval(
-            first,
-            new CallId("call-1"),
-            Watchman.TYPE,
-            house,
-            "prune_images",
-            "docker image prune -af",
-            NOW.minusSeconds(7200),
-            NOW.plusSeconds(3600),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty()));
-    // Null for the two the read path never reaches: answering is the POST handlers' business, and
-    // both need a running engine. A null here fails loudly if that ever stops being true.
-    controller = new ApprovalsController(approvals, null, null, Clock.fixed(NOW, ZoneOffset.UTC));
+    books.waiting.add(request(first, house));
+    // Null for the transcript's history, which only the notes page reads.
+    var controller = new ApprovalsController(books, books, null, Clock.fixed(NOW, ZoneOffset.UTC));
     mvc = MockMvcBuilders.standaloneSetup(controller).setViewResolvers(thymeleaf()).build();
   }
 
@@ -101,13 +166,26 @@ class ApprovalsPageTest {
 
   @Test
   @DisplayName(
-      "a waiting approval request draws with the agent, the action, and how long it has waited")
+      "a waiting approval request draws with the tool, the action, the facts, the agent, when it"
+          + " was asked, its deadline and how long it has waited")
   void the_page_draws_a_waiting_approval_request() throws Exception {
     mvc.perform(get("/"))
         .andExpect(status().isOk())
+        .andExpect(content().string(containsString("prune_images")))
         .andExpect(content().string(containsString("docker image prune -af")))
+        .andExpect(content().string(containsString("risk.level")))
+        .andExpect(content().string(containsString("MODERATE")))
         .andExpect(content().string(containsString(house.value().toString())))
+        .andExpect(content().string(containsString(NOW.minusSeconds(7200).toString())))
+        .andExpect(content().string(containsString(NOW.plusSeconds(3600).toString())))
         .andExpect(content().string(containsString("2h 0m")));
+  }
+
+  @Test
+  @DisplayName("with nothing waiting the page says so")
+  void the_page_says_when_nothing_is_waiting() throws Exception {
+    books.waiting.clear();
+    mvc.perform(get("/")).andExpect(content().string(containsString("Nothing is waiting.")));
   }
 
   @Test
@@ -180,7 +258,8 @@ class ApprovalsPageTest {
   void a_malformed_id_in_the_address_bar_is_a_bad_request() throws Exception {
     // An agent id is a UUID. Without a handler this leaves the controller as an
     // IllegalArgumentException and reaches the operator as "the watchman is broken".
-    mvc.perform(post("/approve/not-a-uuid")).andExpect(status().isBadRequest());
+    mvc.perform(post("/approve/not-a-uuid").param("agentId", house.value().toString()))
+        .andExpect(status().isBadRequest());
   }
 
   @Test
@@ -192,51 +271,85 @@ class ApprovalsPageTest {
         .andExpect(content().string(containsString("/deny/" + first)));
   }
 
+  @Test
+  @DisplayName("the form posts the agent type and the agent id that address the call")
+  void the_form_names_the_agent() throws Exception {
+    mvc.perform(get("/"))
+        .andExpect(content().string(containsString("name=\"agentType\"")))
+        .andExpect(content().string(containsString("value=\"" + Watchman.TYPE.value() + "\"")))
+        .andExpect(content().string(containsString("name=\"agentId\"")))
+        .andExpect(content().string(containsString("value=\"" + house.value() + "\"")));
+  }
+
   @Nested
-  @DisplayName("the page a decision redirects to")
-  class ReadYourWrites {
+  @DisplayName("answering from the page")
+  class Answering {
 
-    // The board's other writer is the desk, which records a decision when the engine narrates it.
-    // The redirect lands inside that window, so the person who just clicked is the one guaranteed
-    // to see the approval request they have already answered still sitting on the board -- unless
-    // the controller writes too.
-    // The database is shared by every test in the class, so the board is read for THIS house.
-    private List<PendingApproval> waitingOnHouse() {
-      return approvals.pending().stream().filter(row -> row.agentId().equals(house)).toList();
+    private String approve(IdempotencyKey key) throws Exception {
+      return mvc.perform(
+              post("/approve/" + key)
+                  .param("agentType", Watchman.TYPE.value())
+                  .param("agentId", house.value().toString()))
+          .andReturn()
+          .getResponse()
+          .getRedirectedUrl();
     }
 
     @Test
-    @DisplayName("the row is gone from the board once the decision has been recorded")
-    void answering_takes_the_approval_request_off_the_board() {
-      assertThat(waitingOnHouse()).hasSize(1);
-      controller.recordLocally(first, ApprovalResult.denied("that seems dangerous"));
-      assertThat(waitingOnHouse()).isEmpty();
+    @DisplayName("approving answers the call Nessy is waiting on, by agent and key")
+    void approving_applies_the_answer() throws Exception {
+      mvc.perform(
+              post("/approve/" + first)
+                  .param("agentType", Watchman.TYPE.value())
+                  .param("agentId", house.value().toString()))
+          .andExpect(redirectedUrl("/"))
+          .andExpect(flash().attributeCount(0));
+
+      assertThat(books.answered).containsExactly(first);
+      assertThat(books.lastType).isEqualTo(Watchman.TYPE);
+      assertThat(books.lastId).isEqualTo(house);
+      assertThat(books.lastResult).isEqualTo(ApprovalResult.approved());
+      mvc.perform(get("/")).andExpect(model().attribute("rows", List.of()));
     }
 
     @Test
-    @DisplayName("the reason survives, so the two writers agree rather than race")
-    void the_recorded_answer_is_the_one_that_was_sent() {
-      controller.recordLocally(first, ApprovalResult.denied("that seems dangerous"));
-      var row = approvals.byIdempotencyKey(first).orElseThrow();
-      assertThat(row.answer()).contains("denied");
-      assertThat(row.note()).contains("that seems dangerous");
+    @DisplayName("a denial carries the reason the person typed")
+    void denying_carries_the_reason() throws Exception {
+      mvc.perform(
+              post("/deny/" + first)
+                  .param("agentType", Watchman.TYPE.value())
+                  .param("agentId", house.value().toString())
+                  .param("reason", "that seems dangerous"))
+          .andExpect(redirectedUrl("/"));
+
+      assertThat(books.lastResult).isEqualTo(ApprovalResult.denied("that seems dangerous"));
     }
 
     @Test
-    @DisplayName("the desk writing the same decision afterwards changes nothing")
-    void whichever_writer_arrives_second_is_a_no_op() {
-      controller.recordLocally(first, ApprovalResult.denied("that seems dangerous"));
-      // What the desk does when the engine narrates the denial a few milliseconds later.
-      approvals.answered(
-          Watchman.TYPE,
-          house,
-          new CallId("call-1"),
-          "denied",
-          "that seems dangerous",
-          NOW.plusSeconds(1));
-      var row = approvals.byIdempotencyKey(first).orElseThrow();
-      assertThat(row.answeredAt()).contains(NOW);
-      assertThat(waitingOnHouse()).isEmpty();
+    @DisplayName("a second answer is told the approval was no longer waiting")
+    void a_second_answer_is_told_it_was_not_waiting() throws Exception {
+      assertThat(approve(first)).isEqualTo("/");
+
+      mvc.perform(
+              post("/approve/" + first)
+                  .param("agentType", Watchman.TYPE.value())
+                  .param("agentId", house.value().toString()))
+          .andExpect(redirectedUrl("/"))
+          .andExpect(flash().attribute("notice", "That approval was no longer waiting."));
+      assertThat(books.answered).containsExactly(first);
+    }
+
+    @Test
+    @DisplayName("an answer for an agent that is not the one asking is ignored, not applied")
+    void an_answer_names_the_agent_that_asked() throws Exception {
+      mvc.perform(
+              post("/approve/" + first)
+                  .param("agentType", Watchman.TYPE.value())
+                  .param("agentId", UUID.randomUUID().toString()))
+          .andExpect(flash().attribute("notice", "That approval was no longer waiting."));
+
+      assertThat(books.answered).isEmpty();
+      assertThat(books.waitingApprovals()).hasSize(1);
     }
   }
 
@@ -245,57 +358,47 @@ class ApprovalsPageTest {
   class Identity {
 
     @Test
-    @DisplayName("two agents waiting on the same call id are two approval requests, not one")
-    void a_call_id_is_only_unique_within_one_response() {
+    @DisplayName("two agents waiting on the same call id are two rows, answered separately")
+    void a_call_id_is_only_unique_within_one_response() throws Exception {
       AgentId other = new AgentId(UUID.randomUUID());
-      approvals.asked(
-          new PendingApproval(
-              IdempotencyKey.of(UUID.randomUUID()),
-              new CallId("call-1"),
-              Watchman.TYPE,
-              other,
-              "prune_images",
-              "docker image prune -af",
-              NOW,
-              NOW.plusSeconds(3600),
-              Optional.empty(),
-              Optional.empty(),
-              Optional.empty()));
-      assertThat(approvals.pending())
-          .as("one row would mean one house's approval request silently replaced the other's")
-          .extracting(PendingApproval::agentId)
-          .contains(house, other);
-    }
-
-    /**
-     * A model's call id repeats: a later request in the same agent can be "call-1" again. Keyed on
-     * the call id, the answered row was found and the new approval request was never shown, so it
-     * timed out unanswered.
-     */
-    @Test
-    @DisplayName("a second call-1 from the same agent is shown after the first was answered")
-    void a_repeated_call_id_is_a_new_approval_request() {
-      controller.recordLocally(first, ApprovalResult.approved());
       IdempotencyKey second = IdempotencyKey.of(UUID.randomUUID());
+      books.waiting.add(request(second, other));
 
-      approvals.asked(
-          new PendingApproval(
-              second,
-              new CallId("call-1"),
-              Watchman.TYPE,
-              house,
-              "prune_images",
-              "docker image prune -af",
-              NOW,
-              NOW.plusSeconds(3600),
-              Optional.empty(),
-              Optional.empty(),
-              Optional.empty()));
+      mvc.perform(get("/"))
+          .andExpect(content().string(containsString("/approve/" + first)))
+          .andExpect(content().string(containsString("/approve/" + second)));
 
-      assertThat(approvals.pending())
-          .filteredOn(row -> row.agentId().equals(house))
-          .extracting(PendingApproval::idempotencyKey)
-          .containsExactly(second);
+      mvc.perform(
+          post("/approve/" + second)
+              .param("agentType", Watchman.TYPE.value())
+              .param("agentId", other.value().toString()));
+
+      assertThat(books.answered).containsExactly(second);
+      assertThat(books.waitingApprovals())
+          .extracting(ApprovalRequest::idempotencyKey)
+          .containsExactly(first);
     }
+  }
+
+  @Test
+  @DisplayName("the page lists what Nessy lists for the watchman's type only")
+  void the_page_lists_the_watchmans_own_approvals() throws Exception {
+    AgentId stranger = AgentId.random();
+    books.waiting.add(
+        new ApprovalRequest(
+            new AgentType("someone-else"),
+            stranger,
+            TurnId.of(1),
+            new CallId("call-9"),
+            IdempotencyKey.of(UUID.randomUUID()),
+            new ToolName("other_tool"),
+            "{}",
+            "something else entirely",
+            NOW,
+            NOW.plusSeconds(60)));
+
+    mvc.perform(get("/"))
+        .andExpect(content().string(containsString("docker image prune -af")))
+        .andExpect(content().string(not(containsString("something else entirely"))));
   }
 }
