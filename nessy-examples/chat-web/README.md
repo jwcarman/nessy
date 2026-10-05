@@ -62,12 +62,13 @@ opens the stream first, then reads the state when the stream opens, and reads
 it again on every reconnect. A stream joined without an event id replays
 nothing, so what happened before the page joined is found in the state. A
 turn the page joined in the middle has only its later words on screen; when it
-ends, the page draws the whole answer from the state. A reconnect that
-replays nothing redraws from the agent's state any turn that ended while the
-page was away, and the turn in progress, and keeps the rest of the screen. If
-the browser closes the stream for good, because the server answered with
-something other than an event stream, the page opens it again after three
-seconds.
+ends, the page draws the whole turn from the state. A reconnect that replays
+nothing redraws from the agent's state any turn that ended while the page was
+away, and the turn in progress, and keeps the rest of the screen. A turn
+stopped by a policy while the page was away is not shown: once the next turn
+starts, the state no longer holds it. If the browser closes the stream for
+good, because the server answered with something other than an event stream,
+or if the state read fails, the page opens a new stream after three seconds.
 
 **The endpoint decides who may answer.** Nessy does not check who is
 answering. This example puts no login in front of the page's endpoint, so

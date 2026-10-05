@@ -81,6 +81,9 @@ class ChatApprovalIntegrationTest {
     // The id is the call's idempotency key, which UUID.fromString accepts only if it is one.
     assertThat(UUID.fromString(card.id())).isNotNull();
     assertThat(card.tool()).isEqualTo("send_email");
+    // The turn the call was asked in: the one whose request line is the last in the transcript.
+    Object asking = chat.state(agentId).transcript().getLast().get("turn");
+    assertThat(card.turn()).isEqualTo(((Number) asking).longValue());
     assertThat(card.what())
         .isEqualTo("Send an email to jim@example.com, subject \"Dinner\": Are you free Thursday?");
     assertThat(card.args()).contains("jim@example.com").contains("\n");

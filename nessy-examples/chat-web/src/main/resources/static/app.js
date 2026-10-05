@@ -24,8 +24,9 @@
 // reads draw runs on one chain, in order.
 //
 // Every line on screen is tagged with its turn, except a line typed that no turn has taken up yet
-// and a notice the page writes itself. A turn the page did not watch from its start, start to end,
-// is drawn whole from the state when it ends, replacing whatever the page showed of it.
+// and a notice the page writes itself; its note on a decision is tagged with the card's turn. A
+// turn the page did not watch from its start is drawn whole from the state when it ends, in place
+// of whatever the page showed of it but its notes on decisions.
 
 const log = document.getElementById("log");
 const approvalsSection = document.getElementById("approvals");
@@ -229,26 +230,52 @@ function takeTyped(userText) {
   return taken;
 }
 
-// Draws one turn from the story, in place of whatever the page shows of it: its own lines and the
-// typed lines its user line now shows. A turn the story no longer holds (a stopped turn, once the
-// next one starts) keeps what is on screen. An ending the story does not hold is drawn after it.
+// Draws one turn from the story, in place of whatever the page shows of it: its own lines, and
+// the typed lines its user line now shows when that line is not on screen yet. The page's notes
+// on a decision stay, each directly after the story's request line for its tool. A turn the story
+// no longer holds (a stopped turn, once the next one starts) keeps what is on screen. An ending the
+// story does not hold is drawn after it.
 function drawTurn(turn, story, ending = null) {
   const shown = linesOf(turn);
+  const notes = shown.filter((line) => line.dataset.tool !== undefined);
+  const own = shown.filter((line) => !notes.includes(line));
   const user = story.find((line) => line.role === "user");
-  const replaced = story.length > 0 ? [...shown, ...(user ? takeTyped(user.text) : [])] : [];
+  const takes = user && !own.some((line) => line.classList.contains("user"));
+  const replaced = story.length > 0 ? [...own, ...(takes ? takeTyped(user.text) : [])] : [];
   let before;
   if (replaced.length > 0) {
-    before = [...log.children].find((line) => replaced.includes(line));
+    before = [...log.children].find((line) => replaced.includes(line) || notes.includes(line));
   } else if (shown.length > 0) {
     before = shown[shown.length - 1].nextSibling;
   } else {
     before = placeFor(turn);
   }
   const lines = story.map((line) => makeLine(line.role, line.text, turn));
+  if (story.length > 0) placeNotes(lines, notes);
   if (ending !== null) lines.push(makeLine("system", ending, turn));
-  for (const line of lines) log.insertBefore(line, before);
-  for (const line of replaced) line.remove();
+  // A marker holds the place, because the line it is taken from may itself move.
+  const marker = makeLine("marker", "", null);
+  log.insertBefore(marker, before);
+  for (const line of story.length > 0 ? [...replaced, ...notes] : []) line.remove();
+  for (const line of lines) log.insertBefore(line, marker);
+  marker.remove();
   log.scrollTop = log.scrollHeight;
+}
+
+// Puts each note on a decision after the request line for its tool, in the order the notes were
+// written; a second note for the same tool goes after the next such line. A note with no request
+// line to follow goes last.
+function placeNotes(lines, notes) {
+  const next = new Map();
+  for (const note of notes) {
+    const request = "🔧 " + note.dataset.tool;
+    const from = next.get(note.dataset.tool) ?? 0;
+    const at = lines.findIndex((line, i) => i >= from && line.textContent === request);
+    let index = at === -1 ? lines.length : at + 1;
+    while (index < lines.length && lines[index].dataset.tool !== undefined) index++;
+    lines.splice(index, 0, note);
+    next.set(note.dataset.tool, index + 1);
+  }
 }
 
 // A turn that ended without the page watching all of it, drawn whole from the state.
@@ -330,7 +357,6 @@ async function ended(turn, ending, inStory) {
     appendLine("system", ending, turn);
     drawnTurns.add(turn);
   } else {
-    if (bubble) bubble.remove();
     await redrawTurn(turn, inStory ? null : ending);
   }
 }
@@ -390,11 +416,12 @@ const handlers = {
     appendLine("tool", named(call) + " failed: " + call.message, live.turn);
     return refreshCards();
   },
-  // A retried call starts over: whatever the failed attempt streamed is removed, so the bubble
-  // does not hold both attempts' words.
+  // A retried call starts over: the words and the thinking the failed attempt streamed are removed,
+  // so neither line holds both attempts'.
   "inference-retried": ({ turn }) => {
     claim(turn);
     if (live.bubble) live.bubble.remove();
+    if (live.thinking) live.thinking.remove();
     live.bubble = null;
     live.thinking = null;
     live.streamed = false;
@@ -418,9 +445,17 @@ function listen() {
   // Whether this connection has received an event, and so whether the browser will hand its id
   // back, and the server replay what came after it, when the connection is restored.
   let heard = false;
+  // A read that fails leaves the screen unreconciled, so this stream is closed and a new one,
+  // which replays nothing, is opened after 3 seconds, and catches up when it opens. The error still
+  // reaches the chain, which logs it.
   source.onopen = () => {
     const replays = heard;
-    queue(() => reconcile(replays));
+    queue(() =>
+      reconcile(replays).catch((error) => {
+        if (events === source) reopenLater(source);
+        throw error;
+      }),
+    );
   };
   for (const name of EVENT_NAMES) {
     source.addEventListener(name, (e) => {
@@ -434,12 +469,17 @@ function listen() {
     // state when it does. A response that is not an event stream (a proxy's 502 or 503, a 500
     // while the database is down) closes the stream for good, and nothing would reopen it: so the
     // page opens a new one after 3 seconds, if this is still the stream it is listening to.
-    if (source.readyState === EventSource.CLOSED) {
-      setTimeout(() => {
-        if (events === source) listen();
-      }, 3000);
-    }
+    if (source.readyState === EventSource.CLOSED) reopenLater(source);
   };
+}
+
+// Closes this stream and opens a new one after 3 seconds, unless the page has moved on to another
+// stream by then: asked twice for one stream, the second asking finds it replaced already.
+function reopenLater(source) {
+  source.close();
+  setTimeout(() => {
+    if (events === source) listen();
+  }, 3000);
 }
 
 async function send(event) {
@@ -493,22 +533,22 @@ function renderApproval(card) {
   const allow = document.createElement("button");
   allow.type = "button";
   allow.textContent = "Approve";
-  allow.addEventListener("click", () => decide(card.id, "approve", div));
+  allow.addEventListener("click", () => decide(card, "approve", div));
   const deny = document.createElement("button");
   deny.type = "button";
   deny.textContent = "Deny";
-  deny.addEventListener("click", () => decide(card.id, "deny", div));
+  deny.addEventListener("click", () => decide(card, "deny", div));
   actions.append(allow, deny);
   div.append(title, args, actions);
   approvalsSection.appendChild(div);
 }
 
-async function decide(key, decision, card) {
+async function decide(card, decision, div) {
   const mine = generation;
-  card.querySelectorAll("button").forEach((b) => (b.disabled = true));
+  div.querySelectorAll("button").forEach((b) => (b.disabled = true));
   let response = null;
   try {
-    response = await fetch(`/api/agents/${agentId}/approvals/${key}`, {
+    response = await fetch(`/api/agents/${agentId}/approvals/${card.id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ decision, note: decision === "deny" ? "denied from the page" : "" }),
@@ -521,7 +561,7 @@ async function decide(key, decision, card) {
   if (response === null || (response.status !== 202 && response.status !== 409)) {
     // The answer did not go through and the card is still waiting, so the buttons come back. A
     // 400 is a refusal and trying again will not help; anything else may.
-    card.querySelectorAll("button").forEach((b) => (b.disabled = false));
+    div.querySelectorAll("button").forEach((b) => (b.disabled = false));
     appendLine(
       "system",
       response !== null && response.status === 400
@@ -532,7 +572,11 @@ async function decide(key, decision, card) {
     return;
   }
   if (response.status === 202) {
-    appendLine("system", decision === "approve" ? "you approved it" : "you denied it", null);
+    // A note on the turn the card was asked in, which stays after that turn's request line for
+    // the tool when the turn is drawn again from the state.
+    const said = decision === "approve" ? "you approved it" : "you denied it";
+    const note = appendLine("system", said, card.turn);
+    note.dataset.tool = card.tool;
   }
   // 202 or 409 (another tab answered first, or the term ran out), the cards are redrawn from what
   // is waiting now rather than from the click.
@@ -552,11 +596,9 @@ function clearScreen() {
 }
 
 form.addEventListener("submit", send);
-// "New chat" used to mint a new id and walk away from the old one, which left an agent behind
-// for every conversation anybody ever started, open and waiting. Ending the old one is the whole
-// difference between starting fresh and quietly littering; what it said is kept, it just takes
-// no more. The old stream is closed first and its queued work is dropped, so nothing of the old
-// conversation draws into the new one.
+// "New chat" ends this conversation and starts another. The old agent is ended, so it takes no
+// more input and is not left waiting; what it said is kept. The old stream is closed first and its
+// queued work is dropped, so nothing of the old conversation draws into the new one.
 newChatButton.addEventListener("click", async () => {
   const finished = agentId;
   if (events) events.close();

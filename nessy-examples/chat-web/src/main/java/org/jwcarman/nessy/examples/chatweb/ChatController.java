@@ -66,10 +66,17 @@ public class ChatController {
 
   /**
    * An approval request as the page draws it. The id is the call's idempotency key: it addresses
-   * the answer, and it is the same after a restart.
+   * the answer, and it is the same after a restart. {@code turn} is the turn the call was asked in,
+   * so the page can put what it says about a decision with that turn's lines.
    */
   public record Card(
-      String id, String tool, String args, String what, Instant askedAt, Instant deadline) {}
+      String id,
+      long turn,
+      String tool,
+      String args,
+      String what,
+      Instant askedAt,
+      Instant deadline) {}
 
   private static final JsonMapper EVIDENCE = JsonMapper.builder().build();
 
@@ -191,6 +198,7 @@ public class ChatController {
   private static Card card(ApprovalRequest request) {
     return new Card(
         request.idempotencyKey().toString(),
+        request.turn().value(),
         request.toolName().value(),
         evidenceOf(request.arguments()),
         request.action(),

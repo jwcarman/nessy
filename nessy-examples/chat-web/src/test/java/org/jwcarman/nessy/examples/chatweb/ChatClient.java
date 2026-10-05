@@ -27,7 +27,14 @@ import org.springframework.web.client.RestClient;
  */
 final class ChatClient {
 
-  record Card(String id, String tool, String args, String what, String askedAt, String deadline) {}
+  record Card(
+      String id,
+      Long turn,
+      String tool,
+      String args,
+      String what,
+      String askedAt,
+      String deadline) {}
 
   record PageState(List<Map<String, Object>> transcript, List<Card> approvals, boolean working) {
 
