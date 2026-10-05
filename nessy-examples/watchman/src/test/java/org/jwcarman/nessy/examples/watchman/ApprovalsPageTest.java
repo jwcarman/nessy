@@ -200,8 +200,7 @@ class ApprovalsPageTest {
     // The board's other writer is the desk, which records a decision when the engine narrates it.
     // The redirect lands inside that window, so the person who just clicked is the one guaranteed
     // to see the approval request they have already answered still sitting on the board -- unless
-    // the
-    // controller writes too.
+    // the controller writes too.
     // The database is shared by every test in the class, so the board is read for THIS house.
     private List<PendingApproval> waitingOnHouse() {
       return approvals.pending().stream().filter(row -> row.agentId().equals(house)).toList();

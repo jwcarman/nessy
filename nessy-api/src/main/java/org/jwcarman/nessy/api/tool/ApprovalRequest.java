@@ -33,9 +33,9 @@ import tools.jackson.databind.node.ObjectNode;
  * a person answers it -- possibly days later, in another process, on a page that never saw the
  * agent. The application may keep the request itself for that (an approvals page, a ticket), so
  * everything here must survive being written down and read back. Nessy does not keep the request:
- * it records the request's {@link #facts() facts} on the event that records the decision, the
- * deferral or the failure, and nothing else of the request, because the rest is already in the
- * story.
+ * it records the request's {@link #facts() facts} on the event that records the decision, or the
+ * deferral before it, or the failure, and nothing else of the request, because the rest is already
+ * in the story.
  *
  * <p><b>{@link #action()} is fixed here, at ask time, and never re-derived.</b> A person must be
  * answering the same sentence that was shown to them, not one recomputed later from arguments whose
@@ -167,9 +167,10 @@ public record ApprovalRequest(
   /**
    * Where a person's answer goes, if this approver defers.
    *
-   * <p>Kept apart from the rest in how it is read and logged, because it is not one of the
-   * request's facts: the facts are what is recorded and what an approvals page may render, and this
-   * is the authority to settle the call. A credential has no business in a projection.
+   * <p>Kept apart from the rest in how it is read and logged, because it is not part of what a
+   * person is shown: the rest of the request is what an approvals page renders, and only its facts
+   * are recorded. The token is the authority to settle the call. A credential has no business in a
+   * projection.
    */
   @Override
   public ReplyToken replyToken() {

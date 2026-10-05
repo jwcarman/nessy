@@ -109,8 +109,8 @@ public interface ToolCallRequest<I> {
    * worker died and makes it due again is the engine's own number, per attempt, and no business of
    * the tool.
    *
-   * <p>For a deferred answer this is when the question stops standing: the tool has told the
-   * outside world where to reply, and this is how long that reply is still wanted.
+   * <p>For a deferred answer this is when the call stops waiting: the tool has told the outside
+   * world where to reply, and this is how long that reply is still wanted.
    */
   Instant deadline();
 

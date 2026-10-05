@@ -519,7 +519,7 @@ class ToolCallingTest {
    * model reads, which is the only safe reading of silence.
    *
    * <p>What this pins is that the row is neither retired nor retried. Retiring would strand the
-   * agent; retrying would ask a person the same approval request twice.
+   * agent; retrying would put the same approval request to a person twice.
    */
   @Test
   void aDeferredApprovalParksTheCallAndExpiresIntoAFailure() {
@@ -662,8 +662,7 @@ class ToolCallingTest {
     await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(handed).hasSize(1));
 
     // The parked approval request stands for half an hour. If it held the only permit, or if its
-    // row
-    // were still claimable, nothing below would ever finish.
+    // row were still claimable, nothing below would ever finish.
     harness.tell(working, "and answer this one");
 
     await()

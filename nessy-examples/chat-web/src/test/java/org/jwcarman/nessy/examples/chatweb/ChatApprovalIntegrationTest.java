@@ -66,8 +66,7 @@ class ChatApprovalIntegrationTest {
     // Sent without waiting for the reply, which is what a browser does and what this door
     // requires of anything that gates a tool on a person: the request is held open for the whole
     // turn, so the answer to the approval request it raises has to come in on a different one. A
-    // test that
-    // blocked here would be waiting for a turn that is waiting for the test.
+    // test that blocked here would be waiting for a turn that is waiting for the test.
     CompletableFuture<Void> said =
         CompletableFuture.runAsync(
             () ->
