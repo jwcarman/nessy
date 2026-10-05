@@ -96,7 +96,7 @@ late answer to arrive:
 
 ```java
 Approver desk = request -> {
-    pending.save(request);        // keep the agent type, agent id and idempotency key
+    notifier.send("Approve: " + request.action());
     return Awaited.deferred();
 };
 
@@ -107,9 +107,10 @@ QueuedHarness<String> harness = factory.create(new AgentType("ops"), config -> c
                 .action(input -> "restart " + input.host())));
 ```
 
-Deferring parks the call and frees the agent. The agent type, the agent id
-and the call's idempotency key are the address the answer comes back to,
-through the queued factory's `Replies`:
+Deferring parks the call and frees the agent. The approver keeps nothing: the
+approvals waiting on a person are read from `AgentWork.waitingApprovals()`. The
+agent type, the agent id and the call's idempotency key are the address the
+answer comes back to, through the queued factory's `Replies`:
 
 ```java
 factory.replies().approve(agentType, agentId, key, ApprovalResult.approved());

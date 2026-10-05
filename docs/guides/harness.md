@@ -334,7 +334,7 @@ or later:
 
 ```java
 Approver desk = request -> {
-    pending.save(request);   // keep the agent type, agent id and idempotency key
+    notifier.send("Approve: " + request.action());
     return Awaited.deferred();
 };
 ```
@@ -354,8 +354,10 @@ the binding's decision, not the approver's:
         .approver(desk, terms -> terms.timeout(Duration.ofDays(3))))
 ```
 
-Days later, whoever has the agent type, the agent id and the key answers, through the queued factory's
-`Replies`:
+The approver keeps nothing: the approvals waiting on a person are read from
+`AgentWork`, as [below](#what-is-waiting-and-answering-it). Days later, whoever
+has the agent type, the agent id and the key answers, through the queued
+factory's `Replies`:
 
 ```java
 factory.replies().approve(agentType, agentId, key, ApprovalResult.denied("not this time"));
@@ -482,6 +484,9 @@ String told = switch (outcome) {
   had passed, the answer was the wrong kind for the call, or no waiting call
   matches the three values. A caller does the same thing in each case.
 
+An answer that arrives at or after the call's deadline is ignored, even if the
+engine has not yet recorded the expiry. It is never applied late.
+
 Nessy does not check who is answering. Your endpoint must check who is
 calling it. See
 [Authorization](../concepts/authorization.md#answering-a-waiting-call) for
@@ -495,7 +500,8 @@ who may answer, and for the transaction an answer joins.
   approver directly and hands it the request owns that request. Only approvals
   that Nessy is waiting on are listed.
 - **Deferred tool calls.** A status counts them in `waitingToolCalls`. It
-  does not list them.
+  does not list them, so a tool that defers must hand the agent type, the
+  agent id and the idempotency key to whatever will answer.
 
 ## The console: the whole application in one call
 

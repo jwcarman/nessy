@@ -38,10 +38,14 @@ facts, because a caller already waiting has nowhere for a late answer to arrive:
 
 ```java
 Approver desk = request -> {
-    pending.save(request);
+    notifier.send("Approve: " + request.action());
     return Awaited.deferred();
 };
 ```
+
+The approver keeps nothing. Nessy holds the call open until its deadline, and the approvals
+waiting on a person are read from `AgentWork`; see
+[Answering a waiting call](#answering-a-waiting-call).
 
 The facts of an approval request are kept on the event that records the decision or the
 deferral, as they stood for the approver. A decision made at once takes them after the approver
@@ -178,14 +182,16 @@ application's own record.
 
 The agent type, the agent id and the call's idempotency key together are the address of a
 waiting call. An approval request carries all three, and so does the request a deferring tool
-is handed. A desk that defers keeps them:
+is handed.
 
-```java
-Approver desk = request -> {
-    pending.save(request.agentType(), request.agentId(), request.idempotencyKey(), request.action());
-    return Awaited.deferred();
-};
-```
+An approver that defers may hand the three values to whatever will answer, such as a ticket or a
+chat message, or it may keep nothing. Nessy holds the call open, and the approvals waiting on a
+person can be read from `AgentWork.waitingApprovals()`, each as the `ApprovalRequest` the approver
+was shown. A page built on that read needs no table of its own. An application that keeps its own
+record of an approval, for its own workflow, may do so; Nessy does not need it.
+
+A tool that defers must hand the three values on. Waiting tool calls are only counted in an
+agent's status (`waitingToolCalls`) and are never listed, so nothing else can find them.
 
 When the person answers, the application hands the three values and the verdict to `Replies`:
 
@@ -202,9 +208,12 @@ apart.
 The outcome is `Applied` or `Ignored`:
 
 - `Applied` means the agent took the answer and its story changed.
-- `Ignored` means nothing changed. The call was already decided, its term had passed, the answer
-  was the wrong kind for the call's stage, or this process serves no such agent or call. A caller
-  does the same thing in each case. The agent's story holds the detail.
+- `Ignored` means nothing changed. The call was already decided, its deadline had passed, the
+  answer was the wrong kind for the call's stage, or this process serves no such agent or call.
+  A caller does the same thing in each case. The agent's story holds the detail.
+
+An answer that arrives at or after the call's deadline is ignored, even if the engine has not yet
+recorded the expiry. It is never applied late.
 
 Two answers at once to one call give one `Applied` and one `Ignored`.
 

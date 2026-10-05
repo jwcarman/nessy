@@ -13,7 +13,7 @@ watchman keeps no table of its own. Its approver defers, and the page reads the
 waiting approval requests from Nessy's `AgentWork` bean on every load. Approve
 and deny post the agent type, the agent id and the call's idempotency key to
 `Replies`; if the approval was no longer waiting (answered from another tab, or
-denied when its term ran out), the page says so. The page's endpoint is what
+failed when its deadline passed), the page says so. The page's endpoint is what
 decides who may answer: the example puts no login in front of it, so an
 application that copies it must guard it.
 
