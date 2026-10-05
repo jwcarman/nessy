@@ -25,7 +25,7 @@
 
 ## Review Focus
 
-1. **A second message while a turn is in progress.** It is accepted with `202` and runs after the turn; the page is not told "busy" and loses nothing.
+1. **Messages sent while a turn is in progress.** Each is accepted with `202` and loses nothing. Everything that arrived during the turn is given to the agent together, as one input joined with blank lines in the order it arrived, and answered in one turn (`BacklogPolicy.mergeBy` with one constant key). Ruled by James on 2026-10-05.
 2. **An approval that outlives the page.** The page is closed and reopened, or the application restarts: the card is still there, because it is read from Nessy, and it can still be answered.
 3. **Two tabs answer one card.** One is told it was applied; the other gets `409` and redraws.
 4. **An answer after the approval's deadline.** `409`, the card goes, the transcript shows the call failed.
@@ -59,7 +59,7 @@
 
 - [ ] **Step 1: Tests, red** (SpringBootTest over PostgreSQL with the scripted provider, as the example's tests are today; rewrite `ChatApprovalIntegrationTest` and `EndingIntegrationTest` for the new flow, keeping every behaviour they pin that still applies):
   - `a_message_is_accepted_at_once_and_answered_on_the_stream_and_in_the_transcript`;
-  - `a_second_message_during_a_turn_is_accepted_and_answered_after_it` (Review Focus 1);
+  - `messages_sent_during_a_turn_are_batched_into_one_turn_in_the_order_they_arrived` and `a_message_sent_to_an_idle_agent_starts_its_own_turn` (Review Focus 1);
   - `an_email_waits_for_a_person_and_the_state_lists_it_as_a_card` (the card's id is the idempotency key; tool, what, args, askedAt, deadline are right);
   - `a_waiting_card_is_still_there_for_a_second_application_context_on_the_same_database` (Review Focus 2: start a second context, or rebuild the controller's collaborators over the same database, and read the state);
   - `approving_a_card_sends_the_email_and_the_turn_answers`;

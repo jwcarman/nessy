@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.examples.chatweb;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.inference.InferenceNarrator;
@@ -54,6 +56,34 @@ final class ScriptedProvider implements InferenceProvider {
                   List.of(
                       new Block.Commentary("I will send that."),
                       new Block.ToolCall(callId, tool, arguments)));
+        });
+  }
+
+  /**
+   * Answers every turn with {@code text}, but holds any turn whose input contains {@code holdWord}
+   * until {@code release} opens, so a test can send more while a turn is in progress.
+   */
+  static InferenceProvider holdingOn(String holdWord, CountDownLatch release, String text) {
+    return new ScriptedProvider(
+        request -> {
+          boolean hold =
+              request.context().turns().stream()
+                  .filter(turn -> !turn.complete())
+                  .anyMatch(
+                      turn ->
+                          turn.input().blocks().stream()
+                              .anyMatch(
+                                  block ->
+                                      block instanceof Block.Text(String said)
+                                          && said.contains(holdWord)));
+          if (hold) {
+            try {
+              release.await(30, TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+              Thread.currentThread().interrupt();
+            }
+          }
+          return new InferenceResult.Answer(List.of(new Block.Text(text)));
         });
   }
 

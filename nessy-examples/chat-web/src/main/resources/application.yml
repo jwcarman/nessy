@@ -39,6 +39,10 @@ chat:
   chapter-turns: ${CHAT_CHAPTER_TURNS:20}
   # The model that writes a chapter's summary, on the same provider. Blank: the agent's own model.
   summary-model: ${CHAT_SUMMARY_MODEL_ID:}
+  # How long a person has to answer an email's approval request. Nessy holds the request open that
+  # long, across a closed tab or a restart; an answer after it is refused and the call is recorded
+  # as failed.
+  approval-term: ${CHAT_APPROVAL_TERM:PT5M}
 
 nessy:
   type: chat

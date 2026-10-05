@@ -1,5 +1,11 @@
 // The page. It does three things: draw what has been said, post what you type, and listen.
 //
+// A message is accepted at once (202, empty body) and answered later: the agent works on its own
+// threads, and what it says and does arrives on the stream. A message sent while the agent is
+// still working is accepted too; the agent is given everything that arrived meanwhile together,
+// as one message. What is waiting for a person is never kept here: the approval cards are read
+// from the server's state, and read again whenever the stream says something about a call.
+//
 // The listening is the part worth reading. The stream is NOT the response to the message you
 // sent -- it is a standing subscription to one agent, opened when the page loads and held for as
 // long as the tab is. A turn started in this tab is narrated to every tab, and because the
@@ -10,12 +16,11 @@ const log = document.getElementById("log");
 const approvalsSection = document.getElementById("approvals");
 const form = document.getElementById("send-form");
 const textInput = document.getElementById("text");
-const sendButton = document.getElementById("send");
+const working = document.getElementById("working");
 const newChatButton = document.getElementById("new-chat");
 
 let agentId = location.hash.slice(1) || localStorage.getItem("agentId") || crypto.randomUUID();
 let events = null;
-let approvalEvents = null;
 let openBubble = null;
 let openThinking = null;
 // Whether this inference call has streamed. A provider that streams says commentary delta by
@@ -29,9 +34,9 @@ function useAgent(id) {
   localStorage.setItem("agentId", id);
 }
 
-function setBusy(busy) {
-  textInput.disabled = busy;
-  sendButton.disabled = busy;
+// Shows whether the agent is in a turn. The input is never disabled: a message sent now is accepted.
+function setWorking(isWorking) {
+  working.hidden = !isWorking;
 }
 
 function appendLine(role, text) {
@@ -43,9 +48,26 @@ function appendLine(role, text) {
   return div;
 }
 
+// Draws the approval cards the server says are waiting: adds the new ones, removes the ones no
+// longer waiting, and leaves a card already on screen alone. A card's id is the call's
+// idempotency key, which is also what an answer is addressed with.
+function drawCards(cards) {
+  const waiting = new Set(cards.map((card) => card.id));
+  for (const shown of approvalsSection.querySelectorAll("[data-call]")) {
+    if (!waiting.has(shown.dataset.call)) shown.remove();
+  }
+  for (const card of cards) renderApproval(card);
+}
+
+async function readState() {
+  return await (await fetch(`/api/agents/${agentId}`)).json();
+}
+
+async function refreshCards() {
+  drawCards((await readState()).approvals);
+}
+
 function renderApproval(card) {
-  // At-least-once narration: a card already on screen -- from the live stream, from a page
-  // rebuild that raced it, or both -- draws nothing new.
   if (!card.id || approvalsSection.querySelector(`[data-call="${card.id}"]`)) return;
   const div = document.createElement("div");
   div.className = "approval-card";
@@ -70,20 +92,19 @@ function renderApproval(card) {
   approvalsSection.appendChild(div);
 }
 
-async function decide(callId, decision, card) {
+async function decide(key, decision, card) {
   card.querySelectorAll("button").forEach((b) => (b.disabled = true));
-  const response = await fetch(`/api/agents/${agentId}/approvals/${callId}`, {
+  const response = await fetch(`/api/agents/${agentId}/approvals/${key}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ decision, note: decision === "deny" ? "denied from the page" : "" }),
   });
-  card.remove();
-  if (response.status === 409) {
-    // Someone else answered it first. Redraw rather than trust the click that lost the race.
-    await load();
-    return;
+  if (response.status === 202) {
+    appendLine("system", decision === "approve" ? "you approved it" : "you denied it");
   }
-  appendLine("system", decision === "approve" ? "you approved it" : "you denied it");
+  // 202 or 409 (another tab answered first, or the term ran out), the cards are redrawn from what
+  // is waiting now rather than from the click.
+  await refreshCards();
 }
 
 function listen() {
@@ -101,11 +122,11 @@ function listen() {
     openBubble = null;
     openThinking = null;
     streamed = false;
-    setBusy(false);
+    setWorking(false);
   };
   events.addEventListener("turn-started", () => {
     streamed = false;
-    setBusy(true);
+    setWorking(true);
   });
   events.addEventListener("content-delta", (e) => {
     streamed = true;
@@ -133,17 +154,33 @@ function listen() {
       appendLine("tool", "🔧 " + call.toolName + ": " + call.action);
     }
   });
-  events.addEventListener("call-approved", (e) => appendLine("tool", named(e) + " approved"));
-  events.addEventListener("call-denied", (e) =>
-    appendLine("tool", named(e) + " denied: " + JSON.parse(e.data).reason),
-  );
-  events.addEventListener("call-finished", (e) => appendLine("tool", named(e) + " done"));
-  events.addEventListener("call-failed", (e) =>
-    appendLine("tool", named(e) + " failed: " + JSON.parse(e.data).message),
-  );
-  // Says only that an answer happened. The words arrive as the reply to the POST that asked,
-  // which this page already renders; a streaming provider has shown them as deltas besides.
-  events.addEventListener("answered", () => idle());
+  // An approval was deferred, or a call was settled: what is waiting for a person has changed, so
+  // the cards are read again.
+  events.addEventListener("approval-deferred", () => refreshCards());
+  events.addEventListener("call-approved", (e) => {
+    appendLine("tool", named(e) + " approved");
+    refreshCards();
+  });
+  events.addEventListener("call-denied", (e) => {
+    appendLine("tool", named(e) + " denied: " + JSON.parse(e.data).reason);
+    refreshCards();
+  });
+  events.addEventListener("call-finished", (e) => {
+    appendLine("tool", named(e) + " done");
+    refreshCards();
+  });
+  events.addEventListener("call-failed", (e) => {
+    appendLine("tool", named(e) + " failed: " + JSON.parse(e.data).message);
+    refreshCards();
+  });
+  // Says that an answer happened and which turn it ended, and carries no words. A streaming
+  // provider has already shown them as deltas; one that does not stream has shown nothing, so the
+  // answer is read from the story and drawn here.
+  events.addEventListener("answered", async (e) => {
+    const wasStreamed = streamed;
+    idle();
+    if (!wasStreamed) await drawAnswer(JSON.parse(e.data).turn);
+  });
   events.addEventListener("turn-failed", () => {
     appendLine("system", "the agent could not answer");
     idle();
@@ -158,15 +195,18 @@ function listen() {
   });
   events.addEventListener("terminated", idle);
   events.onerror = () => {
-    // EventSource reconnects on its own; the input must not stay disabled while it does.
-    setBusy(false);
+    // EventSource reconnects on its own; a turn that ended while it was away is not announced
+    // again, so do not claim the agent is still working.
+    setWorking(false);
   };
+}
 
-  // The desk's approval requests are a second stream: the engine's stream carries the engine's events
-  // and nothing else. Both resume on reconnect the same way.
-  if (approvalEvents) approvalEvents.close();
-  approvalEvents = new EventSource(`/api/agents/${agentId}/approvals/events`);
-  approvalEvents.addEventListener("approval", (e) => renderApproval(JSON.parse(e.data)));
+// The answer of one turn, drawn from the story: the turn's last assistant line. Turns are told
+// apart by their id, because the story may already hold the next turn's lines.
+async function drawAnswer(turn) {
+  const state = await readState();
+  const mine = state.transcript.filter((line) => line.turn === turn && line.role === "assistant");
+  if (mine.length > 0) appendLine("assistant", mine[mine.length - 1].text);
 }
 
 async function send(event) {
@@ -174,15 +214,20 @@ async function send(event) {
   const text = textInput.value.trim();
   if (!text) return;
   textInput.value = "";
+  // Drawn as typed. After a reload the story shows what the agent was given, and messages sent
+  // while it was busy are one line there, joined.
   appendLine("user", text);
-  setBusy(true);
   // 202 and an empty body: the line is now the agent's problem, and everything it says about it
-  // arrives on the stream this page is already listening to.
-  await fetch(`/api/agents/${agentId}/messages`, {
+  // arrives on the stream this page is already listening to. Sent while a turn is in progress, it
+  // is accepted all the same and answered with whatever else arrived meanwhile.
+  const response = await fetch(`/api/agents/${agentId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
   });
+  if (response.status === 409) {
+    appendLine("system", "that conversation has ended; start a new chat");
+  }
 }
 
 async function load() {
@@ -190,10 +235,10 @@ async function load() {
   approvalsSection.innerHTML = "";
   openBubble = null;
   openThinking = null;
-  const state = await (await fetch(`/api/agents/${agentId}`)).json();
+  const state = await readState();
   for (const line of state.transcript) appendLine(line.role, line.text);
-  for (const card of state.approvals) renderApproval(card);
-  setBusy(false);
+  drawCards(state.approvals);
+  setWorking(false);
 }
 
 form.addEventListener("submit", send);
