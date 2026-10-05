@@ -38,10 +38,14 @@ facts, because a caller already waiting has nowhere for a late answer to arrive:
 
 ```java
 Approver desk = request -> {
-    pending.save(request, request.replyToken());
+    notifier.send("Approve: " + request.action());
     return Awaited.deferred();
 };
 ```
+
+The approver keeps nothing. Nessy holds the call open until its deadline, and the approvals
+waiting on a person are read from `AgentWork`; see
+[Answering a waiting call](#answering-a-waiting-call).
 
 The facts of an approval request are kept on the event that records the decision or the
 deferral, as they stood for the approver. A decision made at once takes them after the approver
@@ -85,7 +89,6 @@ public record ApprovalRequest(
     String action,         // the sentence the binding's stringifier wrote
     Instant askedAt,
     Instant deadline,
-    ReplyToken replyToken,
     ObjectNode facts) {
 
   Optional<JsonNode> fact(String name);
@@ -154,7 +157,7 @@ shown what it gates, it refuses.
 ## A denial is an answer
 
 ```java
-replies.approve(token, ApprovalResult.denied("not this time"));
+replies.approve(agentType, agentId, key, ApprovalResult.denied("not this time"));
 ```
 
 The model is told the call was refused, with the reason, and decides what to
@@ -175,47 +178,63 @@ with the application. Every event about a call carries the call's
 `IdempotencyKey`, and that key is the join from the story to the
 application's own record.
 
-## Reply tokens
+## Answering a waiting call
 
-`request.replyToken()` is the address an answer comes back to. The
-coordinates inside it, agent type, agent id, request and call, are
-**encrypted with AES-GCM**, so whoever holds it can neither read them nor
-forge a token for a different call. It is a credential: never render it,
-never log it, and never send it to a policy engine.
+The agent type, the agent id and the call's idempotency key together are the address of a
+waiting call. An approval request carries all three, and so does the request a deferring tool
+is handed.
 
-Being authentic is not the same as being open: a token that reads cleanly
-says only that this engine issued it, **never** that the call is still
-waiting. Answering a call that already settled or expired comes back as
-`NotAwaiting` rather than silently changing nothing.
+An approver that defers may hand the three values to whatever will answer, such as a ticket or a
+chat message, or it may keep nothing. Nessy holds the call open, and the approvals waiting on a
+person can be read from `AgentWork.waitingApprovals()`, each as the `ApprovalRequest` the approver
+was shown. A page built on that read needs no table of its own. An application that keeps its own
+record of an approval, for its own workflow, may do so; Nessy does not need it.
 
-The keys are AES keys of 16, 24 or 32 bytes; **use 32**, and any other
-length is refused when it is configured rather than at the first mint. Mint
-one with `openssl rand -base64 32`. Tokens are minted with the **first** key
-and read by trying **every** one, so a rotation does not invalidate a token
-already sitting in somebody's inbox:
+A tool that defers must hand the three values on. Waiting tool calls are only counted in an
+agent's status (`waitingToolCalls`) and are never listed, so nothing else can find them.
+
+When the person answers, the application hands the three values and the verdict to `Replies`:
 
 ```java
-DefaultQueuedHarnessFactory.of(engine -> engine
-        .replyTokens(ReplyTokens.withKeys(currentKey, previousKey))     // byte[32] each
-        .backend(backend)
-        .provider(providerId, provider)
-        .inference(providerId, options));
+ReplyOutcome outcome = replies.approve(agentType, agentId, key, ApprovalResult.approvedBy("u_carol"));
 ```
 
-Only the queued door's factory takes a `ReplyTokens`: the direct door
-cannot park a call in the first place, so it mints its own with an
-ephemeral key regardless. See
-[Spring Boot](../guides/spring-boot.md#reply-tokens-and-where-they-do-and-dont-reach).
+`Replies` has two methods. `approve` gives a verdict to a call that is waiting for one.
+`complete` gives a result to a call whose tool deferred. A verdict cannot settle a call that is
+already running, and a result cannot settle a call that is still waiting for permission. The
+approval and the tool call of one call share the key, so the kind of answer is what tells them
+apart.
 
-By default they are **ephemeral**, a fresh key per process, so tokens die
-with the JVM. That is right for a test and wrong for anything that parks
-work for days, because every approval waiting on a person becomes
-unanswerable after a restart.
+The outcome is `Applied` or `Ignored`:
+
+- `Applied` means the agent took the answer and its story changed.
+- `Ignored` means nothing changed. The call was already decided, its deadline had passed, the
+  answer was the wrong kind for the call's stage, or this process serves no such agent or call.
+  A caller does the same thing in each case. The agent's story holds the detail.
+
+An answer that arrives at or after the call's deadline is ignored, even if the engine has not yet
+recorded the expiry. It is never applied late.
+
+Two answers at once to one call give one `Applied` and one `Ignored`.
+
+**Nessy does not check who is answering.** Anyone who has the three values and can reach your
+endpoint can answer the call. Your endpoint checks who is calling it, not Nessy. Send the address
+only to the party who should answer.
+
+To find which approval requests are waiting without a table of your own, read
+`AgentWork`; see
+[The Harness](../guides/harness.md#what-is-waiting-and-answering-it).
+
+A reply runs on the calling thread. On a JDBC backend it joins a transaction the caller has open,
+so an application can record its own decision and answer the call in one commit, and if that
+transaction rolls back, the call is still waiting. The in-memory backend has no transaction to
+join. Narration and the dispatcher's nudge happen when the reply returns, which can be before the
+caller's transaction commits.
 
 ## Recovery leaves parked calls alone
 
 A call waiting on a person is **not** re-asked when its process restarts.
-The row is running until its term is up, and the token already issued stays
+The row is running until its term is up, and the address already handed out stays
 the one that settles it. See
 [Durable Computation](durable-computation.md#deferring).
 
@@ -300,7 +319,7 @@ changed without a release.
 
 Two seams shape the conversation with OPA. An `InputDocumentRenderer` builds
 the `input` document from the request (`standard(mapper)` is the
-field-by-field default that keeps the reply token out), and a
+field-by-field default), and a
 `DecisionInterpreter` reads
 the result back into a `Verdict` (`effectStyle()` understands the
 `{"effect": ...}` shape below). Replace either when your Rego is shaped
@@ -332,9 +351,9 @@ construction, and a chain of delegations is bounded by `maxDepth`.
 
 ### The rules a gate has to get right
 
-- **The reply token is not sent.** The document is built field by field
-  rather than serialized, and a test exists whose only job is to keep the
-  token out.
+- **Only what a rule needs is sent.** The document is built field by field
+  rather than serialized, so a field added to the request later cannot reach a
+  policy engine until somebody decides it should.
 - **A control that did not answer is not a control that said yes.** An
   engine that is down, a mistyped decision path, an unknown effect: each
   denies **and** logs an `error`. With OPA that is sharper than it sounds: a
@@ -357,13 +376,20 @@ wires them.
 
 ## A desk on a page
 
-`nessy-examples/chat-web` is the worked desk: an approver that remembers the
-request and defers, a card pushed to the browser over the approvals event
-stream, and a `POST` that answers through `Replies` with `approvedBy` or
-`deniedBy` and the note the person typed. A second tab that answers first
-gets a `409`, because losing a race to another person is not an error.
+`nessy-examples/chat-web` is on the direct door. Its approver holds the turn
+while a card is pushed to the browser over the approvals event stream. It
+returns `Awaited.ready(...)` once a person answers, or a denial if nobody
+answers within five minutes.
+
+A `POST` answers through the desk, with `ApprovalResult.approved()` or
+`ApprovalResult.denied(note)`. A second tab that answers after the first gets
+a `409`, because losing a race to another person is not an error.
+
+`nessy-examples/watchman` is the other shape: an approver that returns
+`Awaited.deferred()`, and a page that lists `AgentWork.waitingApprovals()`
+and answers through `Replies`.
 
 ## See also
 
 - [Tools](tools.md), `Awaited`, and how a tool defers
-- [Durable Computation](durable-computation.md), reply tokens and deadlines
+- [Durable Computation](durable-computation.md), answering and deadlines

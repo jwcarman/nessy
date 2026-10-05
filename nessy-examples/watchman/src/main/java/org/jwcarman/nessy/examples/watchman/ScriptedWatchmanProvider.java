@@ -51,9 +51,9 @@ public final class ScriptedWatchmanProvider implements InferenceProvider {
       return new InferenceResult.Answer(
           List.of(new Block.Text("Rounds complete. Nothing needs your attention.")));
     }
-    // Call ids carry the round, as a real model's would be unique: the board is keyed on the
-    // call, and a prune proposed every round under the same id would be one
-    // approval request forever.
+    // Call ids carry the round, as a real model's would be unique: Nessy keys an approval request
+    // on the call, and a prune proposed every round under the same id would be one approval
+    // request forever.
     String prefix = "round-" + round.id().value();
     return new InferenceResult.Actions(
         List.of(

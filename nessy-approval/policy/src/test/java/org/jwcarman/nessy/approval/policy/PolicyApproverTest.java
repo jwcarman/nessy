@@ -33,7 +33,6 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolName;
 import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
@@ -64,8 +63,7 @@ class PolicyApproverTest {
         "{}",
         "docker image prune -af",
         NOW,
-        NOW.plusSeconds(3600),
-        new ReplyToken("a-capability"));
+        NOW.plusSeconds(3600));
   }
 
   private static String denialOf(Awaited<ApprovalResult> answer) {

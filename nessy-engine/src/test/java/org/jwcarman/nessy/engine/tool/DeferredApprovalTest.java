@@ -32,6 +32,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentStatus.Activity;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Narrated;
@@ -40,12 +41,12 @@ import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.Approver;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -97,7 +98,7 @@ class DeferredApprovalTest {
   record Query(String q) {}
 
   private final ConcurrentLinkedQueue<Instant> shownDeadlines = new ConcurrentLinkedQueue<>();
-  private final ConcurrentLinkedQueue<ReplyToken> handed = new ConcurrentLinkedQueue<>();
+  private final ConcurrentLinkedQueue<ApprovalRequest> handed = new ConcurrentLinkedQueue<>();
   private final ConcurrentLinkedQueue<String> ran = new ConcurrentLinkedQueue<>();
 
   private Tool<Query> lookup() {
@@ -132,7 +133,7 @@ class DeferredApprovalTest {
 
   private Approver deferring() {
     return request -> {
-      handed.add(request.replyToken());
+      handed.add(request);
       shownDeadlines.add(request.deadline());
       return Awaited.deferred();
     };
@@ -171,7 +172,7 @@ class DeferredApprovalTest {
         .single();
   }
 
-  private ReplyToken parkOne(AgentType type, Duration requestStands) {
+  private ApprovalRequest parkOne(AgentType type, Duration requestStands) {
     parkAgent(type, requestStands);
     return handed.peek();
   }
@@ -228,9 +229,16 @@ class DeferredApprovalTest {
     await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(handed).hasSize(1));
     assertThat(ran).as("nothing ran while permission was outstanding").isEmpty();
 
-    assertThat(engine.replies().approve(handed.peek(), ApprovalResult.approvedBy("u_carol")))
+    assertThat(
+            engine
+                .replies()
+                .approve(
+                    handed.peek().agentType(),
+                    handed.peek().agentId(),
+                    handed.peek().idempotencyKey(),
+                    ApprovalResult.approvedBy("u_carol")))
         .as("the agent has been told; the tool has not necessarily run yet")
-        .isInstanceOf(ReplyOutcome.Settled.class);
+        .isInstanceOf(ReplyOutcome.Applied.class);
 
     await()
         .atMost(Duration.ofSeconds(20))
@@ -286,10 +294,17 @@ class DeferredApprovalTest {
   @Test
   void aLateDenialStopsTheCallWithoutRunningIt() {
     AgentType type = new AgentType("deferred-denied");
-    ReplyToken token = parkOne(type, Duration.ofMinutes(30));
+    ApprovalRequest request = parkOne(type, Duration.ofMinutes(30));
 
-    assertThat(engine.replies().approve(token, ApprovalResult.deniedBy("out of hours", "u_dave")))
-        .isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(
+            engine
+                .replies()
+                .approve(
+                    request.agentType(),
+                    request.agentId(),
+                    request.idempotencyKey(),
+                    ApprovalResult.deniedBy("out of hours", "u_dave")))
+        .isInstanceOf(ReplyOutcome.Applied.class);
 
     await()
         .atMost(Duration.ofSeconds(20))
@@ -388,9 +403,16 @@ class DeferredApprovalTest {
           .noneMatch(Narration.ApprovalDeferred.class::isInstance);
       assertThat(handed).as("the approver was asked once").hasSize(1);
 
-      assertThat(refusing.replies().approve(handed.peek(), ApprovalResult.approved()))
+      assertThat(
+              refusing
+                  .replies()
+                  .approve(
+                      handed.peek().agentType(),
+                      handed.peek().agentId(),
+                      handed.peek().idempotencyKey(),
+                      ApprovalResult.approved()))
           .as("the call still waits for its answer")
-          .isInstanceOf(ReplyOutcome.Settled.class);
+          .isInstanceOf(ReplyOutcome.Applied.class);
       await()
           .atMost(Duration.ofSeconds(20))
           .untilAsserted(
@@ -401,6 +423,30 @@ class DeferredApprovalTest {
       assertThat(deferralsIn(refusing.story(type, agentId)))
           .as("the finished story holds no deferral")
           .isEmpty();
+    }
+  }
+
+  /**
+   * When the mark is refused, the approver has deferred and a person holds the request, but the row
+   * is unmarked: the reads of what is waiting do not show it, and the agent reads as working, until
+   * the row's deadline. An application that keeps nothing of its own, as the watchman does, has no
+   * way to answer it in that time.
+   */
+  @Test
+  void a_deferral_whose_mark_was_refused_is_not_listed_and_the_agent_reads_as_working() {
+    AgentType type = new AgentType("deferred-mark-refused-unlisted");
+    AgentId agentId = new AgentId(UUID.randomUUID());
+    AtomicInteger refusals = new AtomicInteger();
+    try (EngineFixture refusing =
+        new EngineFixture(MODEL, _ -> {}, backend -> new ParkRefusingBackend(backend, refusals))) {
+      harness(refusing, type, Duration.ofMinutes(30), deferring()).tell(agentId, "what lake?");
+      await()
+          .atMost(Duration.ofSeconds(15))
+          .untilAsserted(() -> assertThat(refusals.get()).isEqualTo(1));
+      assertThat(handed).as("the approver was asked and deferred").hasSize(1);
+
+      assertThat(refusing.work().waitingApprovals(type)).isEmpty();
+      assertThat(refusing.work().status(type, agentId).activity()).isEqualTo(Activity.WORKING);
     }
   }
 
@@ -416,7 +462,14 @@ class DeferredApprovalTest {
     ConcurrentLinkedQueue<ReplyOutcome> outcomes = new ConcurrentLinkedQueue<>();
     Approver answeringFirst =
         request -> {
-          outcomes.add(engine.replies().approve(request.replyToken(), ApprovalResult.approved()));
+          outcomes.add(
+              engine
+                  .replies()
+                  .approve(
+                      request.agentType(),
+                      request.agentId(),
+                      request.idempotencyKey(),
+                      ApprovalResult.approved()));
           return Awaited.deferred();
         };
 
@@ -427,7 +480,7 @@ class DeferredApprovalTest {
         .untilAsserted(
             () -> assertThat(engine.stateOf(type, agentId)).isInstanceOf(AgentState.Idle.class));
     List<AgentEvent> story = engine.story(type, agentId);
-    assertThat(outcomes).singleElement().isInstanceOf(ReplyOutcome.Settled.class);
+    assertThat(outcomes).singleElement().isInstanceOf(ReplyOutcome.Applied.class);
     assertThat(story)
         .as("the decision is on the record")
         .anyMatch(AgentEvent.ToolApproved.class::isInstance);
@@ -483,13 +536,27 @@ class DeferredApprovalTest {
   @Test
   void thesameAnswerTwiceIsRefusedTheSecondTime() {
     AgentType type = new AgentType("deferred-twice");
-    ReplyToken token = parkOne(type, Duration.ofMinutes(30));
+    ApprovalRequest request = parkOne(type, Duration.ofMinutes(30));
 
-    assertThat(engine.replies().approve(token, ApprovalResult.approved()))
-        .isInstanceOf(ReplyOutcome.Settled.class);
-    assertThat(engine.replies().approve(token, ApprovalResult.approved()))
+    assertThat(
+            engine
+                .replies()
+                .approve(
+                    request.agentType(),
+                    request.agentId(),
+                    request.idempotencyKey(),
+                    ApprovalResult.approved()))
+        .isInstanceOf(ReplyOutcome.Applied.class);
+    assertThat(
+            engine
+                .replies()
+                .approve(
+                    request.agentType(),
+                    request.agentId(),
+                    request.idempotencyKey(),
+                    ApprovalResult.approved()))
         .as("nothing is awaiting it any more, and saying so beats folding it twice")
-        .isInstanceOf(ReplyOutcome.NotAwaiting.class);
+        .isInstanceOf(ReplyOutcome.Ignored.class);
   }
 
   /**
@@ -504,7 +571,7 @@ class DeferredApprovalTest {
     harness(type, Duration.ofSeconds(2)).tell(agentId, "what lake?");
 
     await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(handed).hasSize(1));
-    ReplyToken token = handed.peek();
+    ApprovalRequest request = handed.peek();
 
     await()
         .atMost(Duration.ofSeconds(20))
@@ -514,48 +581,48 @@ class DeferredApprovalTest {
               assertThat(outstandingEffects(agentId)).isZero();
             });
 
-    assertThat(engine.replies().approve(token, ApprovalResult.approved()))
-        .isInstanceOf(ReplyOutcome.NotAwaiting.class);
-    assertThat(ran).as("an expired request cannot authorise anything").isEmpty();
-  }
-
-  /** A forged or edited address is refused, and told apart from a stale one. */
-  @Test
-  void anAddressThisEngineDidNotIssueIsRefused() {
     assertThat(
             engine
                 .replies()
-                .approve(new ReplyToken("clearly-not-a-token"), ApprovalResult.approved()))
-        .isInstanceOf(ReplyOutcome.Unreadable.class);
-
-    ReplyToken elsewhere =
-        ReplyTokens.ephemeral()
-            .mint(
-                new AgentType("chat"),
-                new AgentId(UUID.randomUUID()),
-                new Seq(2),
-                new CallId("call_1"));
-    assertThat(engine.replies().approve(elsewhere, ApprovalResult.approved()))
-        .as("authentic under somebody else's key is still not ours")
-        .isInstanceOf(ReplyOutcome.Unreadable.class);
+                .approve(
+                    request.agentType(),
+                    request.agentId(),
+                    request.idempotencyKey(),
+                    ApprovalResult.approved()))
+        .isInstanceOf(ReplyOutcome.Ignored.class);
+    assertThat(ran).as("an expired request cannot authorise anything").isEmpty();
   }
 
   /**
    * A verdict cannot settle a call that is past the gate, and a result cannot settle one still
-   * waiting at it. The token names which effect is parked, so answering the wrong kind finds
-   * nothing rather than running past the gate.
+   * waiting at it. The key names which effect is parked, so answering the wrong kind finds nothing
+   * rather than running past the gate.
    */
   @Test
   void aToolResultCannotAnswerARequestForPermission() {
     AgentType type = new AgentType("deferred-wrong-kind");
-    ReplyToken token = parkOne(type, Duration.ofMinutes(30));
+    ApprovalRequest request = parkOne(type, Duration.ofMinutes(30));
 
-    assertThat(engine.replies().complete(token, ToolResult.ok(new Block.Text("I said so"))))
-        .isInstanceOf(ReplyOutcome.NotAwaiting.class);
+    assertThat(
+            engine
+                .replies()
+                .complete(
+                    request.agentType(),
+                    request.agentId(),
+                    request.idempotencyKey(),
+                    ToolResult.ok(new Block.Text("I said so"))))
+        .isInstanceOf(ReplyOutcome.Ignored.class);
     assertThat(ran).isEmpty();
-    assertThat(engine.replies().approve(token, ApprovalResult.approved()))
+    assertThat(
+            engine
+                .replies()
+                .approve(
+                    request.agentType(),
+                    request.agentId(),
+                    request.idempotencyKey(),
+                    ApprovalResult.approved()))
         .as("and the real answer still works afterwards")
-        .isInstanceOf(ReplyOutcome.Settled.class);
+        .isInstanceOf(ReplyOutcome.Applied.class);
   }
 
   /** The key the story's one request gave its first call. */

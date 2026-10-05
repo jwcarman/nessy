@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jwcarman.codec.TypeRef;
@@ -32,6 +33,7 @@ import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.Effects;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
+import org.jwcarman.nessy.backend.effect.LiveEffect;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
@@ -96,6 +98,11 @@ public final class ParkRefusingBackend implements QueuedBackend {
     return backend.backlogs(inputType);
   }
 
+  @Override
+  public int queued(AgentType type, AgentId agent) {
+    return backend.queued(type, agent);
+  }
+
   private record RefusingToPark(Effects effects, AtomicInteger refusals) implements Effects {
 
     @Override
@@ -136,6 +143,17 @@ public final class ParkRefusingBackend implements QueuedBackend {
     public boolean park(UUID effectId, int attemptsMade, Instant at) {
       refusals.incrementAndGet();
       throw new IllegalStateException("the effect table refused to mark the row");
+    }
+
+    @Override
+    public List<LiveEffect> liveFor(AgentType type, AgentId agent) {
+      return effects.liveFor(type, agent);
+    }
+
+    @Override
+    public List<LiveEffect> parkedNow(
+        Optional<AgentType> type, Instant now, Optional<LiveEffect> after, int limit) {
+      return effects.parkedNow(type, now, after, limit);
     }
 
     @Override

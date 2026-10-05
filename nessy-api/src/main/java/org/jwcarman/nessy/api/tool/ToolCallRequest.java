@@ -113,13 +113,4 @@ public interface ToolCallRequest<I> {
    * world where to reply, and this is how long that reply is still wanted.
    */
   Instant deadline();
-
-  /**
-   * Where an answer goes when it does not come back from {@link Tool#call}.
-   *
-   * <p>Only meaningful to a tool that returns {@link org.jwcarman.nessy.api.Awaited .Deferred}: it
-   * hands this to whatever will eventually answer, and the engine matches the reply to the call
-   * that is waiting for it.
-   */
-  ReplyToken replyToken();
 }

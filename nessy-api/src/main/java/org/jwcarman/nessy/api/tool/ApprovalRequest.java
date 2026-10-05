@@ -69,8 +69,9 @@ import tools.jackson.databind.node.ObjectNode;
  *     trusted
  * @param action what will actually happen if this is approved, in words a person can consent to;
  *     the binding's action stringifier ({@link ToolConfig#action}) produced it
- * @param askedAt when the approval request was raised -- dwell time on an approvals page, and the
- *     fixed point the deadline was measured from, so a restart cannot silently extend one
+ * @param askedAt when the approver was asked, for dwell time on an approvals page: on the request
+ *     the approver is handed, the instant it was asked on this attempt; on one rebuilt from stored
+ *     values by {@link org.jwcarman.nessy.api.AgentWork}, when the deferral was recorded
  * @param deadline when the approval request stops standing
  * @param facts whatever enrichers have added; empty when the engine first builds it
  */
@@ -85,7 +86,6 @@ public record ApprovalRequest(
     String action,
     Instant askedAt,
     Instant deadline,
-    ReplyToken replyToken,
     ObjectNode facts) {
 
   /** The approval request as the engine first asks it: nothing has annotated it yet. */
@@ -99,8 +99,7 @@ public record ApprovalRequest(
       String arguments,
       String action,
       Instant askedAt,
-      Instant deadline,
-      ReplyToken replyToken) {
+      Instant deadline) {
     this(
         agentType,
         agentId,
@@ -112,7 +111,6 @@ public record ApprovalRequest(
         action,
         askedAt,
         deadline,
-        replyToken,
         JsonNodeFactory.instance.objectNode());
   }
 
@@ -126,7 +124,6 @@ public record ApprovalRequest(
     Objects.requireNonNull(action, "action must not be null");
     Objects.requireNonNull(askedAt, "askedAt must not be null");
     Objects.requireNonNull(deadline, "deadline must not be null");
-    Objects.requireNonNull(replyToken, "replyToken must not be null");
     Objects.requireNonNull(facts, "facts must not be null");
   }
 
@@ -164,20 +161,7 @@ public record ApprovalRequest(
     return Optional.ofNullable(facts.get(name));
   }
 
-  /**
-   * Where a person's answer goes, if this approver defers.
-   *
-   * <p>Kept apart from the rest in how it is read and logged, because it is not part of what a
-   * person is shown: the rest of the request is what an approvals page renders, and only its facts
-   * are recorded. The token is the authority to settle the call. A credential has no business in a
-   * projection.
-   */
-  @Override
-  public ReplyToken replyToken() {
-    return replyToken;
-  }
-
-  /** The reply address is absent: it is a credential, and this may reach a log. */
+  /** The arguments are left out, as this may reach a log. */
   @Override
   public String toString() {
     return ("ApprovalRequest[agentType=%s, agentId=%s, turn=%s, callId=%s, idempotencyKey=%s,"

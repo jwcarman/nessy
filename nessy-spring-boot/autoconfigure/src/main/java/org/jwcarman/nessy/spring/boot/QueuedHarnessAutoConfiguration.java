@@ -29,7 +29,6 @@ import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.engine.harness.queued.QueuedHarnessFactoryConfig;
 import org.jwcarman.nessy.engine.store.TurnHistories;
-import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.springframework.beans.factory.ListableBeanFactory;
@@ -67,7 +66,6 @@ public class QueuedHarnessAutoConfiguration {
   @ConditionalOnMissingBean(QueuedHarnessFactory.class)
   public DefaultQueuedHarnessFactory nessyHarnessFactory(
       QueuedBackend backend,
-      ReplyTokens replyTokens,
       ListableBeanFactory beans,
       NessyProperties properties,
       ObservationRegistry observations,
@@ -78,7 +76,7 @@ public class QueuedHarnessAutoConfiguration {
     List<Customizer<QueuedHarnessFactoryConfig>> all = new ArrayList<>();
     all.add(
         engine -> {
-          engine.backend(backend).observations(observations).replyTokens(replyTokens);
+          engine.backend(backend).observations(observations);
           beans
               .getBeansOfType(InferenceProvider.class)
               .forEach((name, provider) -> engine.provider(providerId(name), provider));

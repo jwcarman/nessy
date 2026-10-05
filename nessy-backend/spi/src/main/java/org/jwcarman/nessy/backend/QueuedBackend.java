@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.backend;
 
 import org.jwcarman.codec.TypeRef;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.backend.agent.Agents;
 import org.jwcarman.nessy.backend.backlog.Backlogs;
 import org.jwcarman.nessy.backend.chapter.Chapters;
@@ -64,4 +66,11 @@ public interface QueuedBackend {
    * hands it only the type.
    */
   <I> Backlogs<I> backlogs(TypeRef<I> inputType);
+
+  /**
+   * The number of inputs this agent has been told and has not started: what its backlogs hold, of
+   * whatever input type. Zero for an agent it has never heard of. It is a moment's count and may be
+   * a step old by the time the caller uses it.
+   */
+  int queued(AgentType type, AgentId agent);
 }

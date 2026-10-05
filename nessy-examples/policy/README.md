@@ -75,13 +75,13 @@ denies **everything, forever**, with nothing in any log. With a `default` the
 rule is always defined, so the presence of `result` becomes a health check —
 and its absence is reported as a broken gate instead of served as a denial.
 
-## The reply token is never sent
+## The document is built field by field
 
-`ApprovalRequest.replyToken()` is a capability: whoever holds it settles the
-call. A policy engine logs its input and is frequently somebody else's service,
-so `InputDocumentRenderer` builds the document field by field rather than serializing
-the record. There are tests whose only job is to keep it absent — one for the
-standard shape, one for AuthZEN's.
+A policy engine logs its input and is frequently somebody else's service, so
+`InputDocumentRenderer` builds the document field by field rather than
+serializing the `ApprovalRequest`. A field added to the request later cannot
+reach a policy engine until somebody decides it should. There are tests for the
+standard shape and for AuthZEN's.
 
 ## A broken control is not permission
 

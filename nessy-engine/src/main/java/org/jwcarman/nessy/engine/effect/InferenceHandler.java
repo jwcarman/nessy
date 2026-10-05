@@ -17,15 +17,19 @@ package org.jwcarman.nessy.engine.effect;
 
 import com.fasterxml.uuid.Generators;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.Narrator;
+import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
@@ -37,6 +41,7 @@ import org.jwcarman.nessy.engine.inference.InferenceService;
 import org.jwcarman.nessy.engine.inference.Inferred;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.Tools;
+import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceResult;
 import org.slf4j.Logger;
@@ -133,6 +138,10 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
             yield new EffectOutcome.InferenceRefused(category, usage, manifest);
           }
           case InferenceResult.Actions(var blocks, var usage) -> {
+            Optional<CallId> repeated = repeatedCallId(blocks);
+            if (repeated.isPresent()) {
+              yield refused(agentId, effect, repeated.get(), usage, manifest);
+            }
             log.debug("model asked agent {} for {} action(s)", agentId.value(), blocks.size());
             // The calls come out beside the reference: which calls are outstanding is the one
             // thing about a request the fold cannot take on trust from a claim check.
@@ -145,6 +154,46 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
             yield new EffectOutcome.InferenceFailed(failure, usage, manifest);
           }
         });
+  }
+
+  /**
+   * The first call id the response uses twice, if any.
+   *
+   * <p>A call id is how the model's own reply to a call is matched to the call, so a response that
+   * repeats one is not a valid response, whatever the arguments say.
+   */
+  private static Optional<CallId> repeatedCallId(List<Block.ActionRequestContent> blocks) {
+    Set<CallId> seen = new HashSet<>();
+    return blocks.stream()
+        .filter(Block.ToolCall.class::isInstance)
+        .map(Block.ToolCall.class::cast)
+        .map(Block.ToolCall::id)
+        .filter(id -> !seen.add(id))
+        .findFirst();
+  }
+
+  /**
+   * An invalid response is a failed inference, like one the provider reported: nothing of it is
+   * stored, narrated or requested. The tokens were spent, so the response's own usage stays.
+   *
+   * <p>Logged at ERROR with the id and not the arguments, which may hold what a person said.
+   */
+  private EffectOutcome refused(
+      AgentId agentId,
+      AgentEffect.Infer effect,
+      CallId repeated,
+      Usage usage,
+      Optional<InferenceRequestManifest> manifest) {
+    log.error(
+        "model response for agent {} {} turn {} repeated call id {}; the response is refused",
+        agentType.value(),
+        agentId.value(),
+        effect.turn().value(),
+        repeated.value());
+    return new EffectOutcome.InferenceFailed(
+        new Failure.Permanent("the model's response repeated a call id: " + repeated.value()),
+        usage,
+        manifest);
   }
 
   /**

@@ -55,10 +55,13 @@ public interface QueuedHarnessFactory extends AutoCloseable {
       AgentType agentType, TypeRef<I> inputType, Customizer<QueuedHarnessConfig<I>> customizer);
 
   /**
-   * Where a late answer comes back in. One for the whole factory rather than one per harness: a
-   * reply token is opaque, so whoever holds one cannot say which kind of agent it belongs to.
+   * Where a late answer comes back in. One for the whole factory rather than one per harness: an
+   * answer names its agent type, and the factory finds the harness that serves it.
    */
   Replies replies();
+
+  /** What the agents of this factory are doing, read from what is stored about them. */
+  AgentWork work();
 
   /**
    * Stops looking for work.

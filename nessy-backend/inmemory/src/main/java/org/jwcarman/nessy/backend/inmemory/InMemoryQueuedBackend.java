@@ -72,6 +72,9 @@ public final class InMemoryQueuedBackend implements QueuedBackend {
    */
   private final List<ToIntBiFunction<AgentType, AgentId>> clearers = new CopyOnWriteArrayList<>();
 
+  /** How to count what each set of backlogs this backend has handed out is holding for an agent. */
+  private final List<ToIntBiFunction<AgentType, AgentId>> sizers = new CopyOnWriteArrayList<>();
+
   /**
    * For a caller that builds its own codecs: the factory is used as given for every store, payloads
    * included, so a factory that already has a storage transform is hashed after it: a payload's
@@ -169,9 +172,23 @@ public final class InMemoryQueuedBackend implements QueuedBackend {
           InMemoryBacklog<I> backlog = mine.get(new Key(type, agent));
           return backlog == null ? 0 : backlog.clear();
         });
+    sizers.add(
+        (type, agent) -> {
+          InMemoryBacklog<I> backlog = mine.get(new Key(type, agent));
+          return backlog == null ? 0 : backlog.size();
+        });
     return (type, agent) ->
         mine.computeIfAbsent(
             new Key(type, agent),
             _ -> new InMemoryBacklog<>(List.of(), () -> agents.terminated(type, agent)));
+  }
+
+  @Override
+  public int queued(AgentType type, AgentId agent) {
+    int waiting = 0;
+    for (ToIntBiFunction<AgentType, AgentId> sizer : sizers) {
+      waiting += sizer.applyAsInt(type, agent);
+    }
+    return waiting;
   }
 }

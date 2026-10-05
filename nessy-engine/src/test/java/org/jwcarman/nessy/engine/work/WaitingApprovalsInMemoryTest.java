@@ -1,0 +1,401 @@
+/*
+ * Copyright © 2026 James Carman
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.jwcarman.nessy.engine.work;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.jackson.JacksonCodecFactory;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AgentWork;
+import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.CallFailure;
+import org.jwcarman.nessy.api.ProviderId;
+import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TurnId;
+import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
+import org.jwcarman.nessy.api.tool.ApprovalResult;
+import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
+import org.jwcarman.nessy.api.tool.ReplyOutcome;
+import org.jwcarman.nessy.api.tool.Tool;
+import org.jwcarman.nessy.api.tool.ToolCallRequest;
+import org.jwcarman.nessy.api.tool.ToolName;
+import org.jwcarman.nessy.api.tool.ToolResult;
+import org.jwcarman.nessy.backend.effect.AgentEffect;
+import org.jwcarman.nessy.backend.effect.Attempt;
+import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.LiveEffect;
+import org.jwcarman.nessy.backend.inmemory.InMemoryQueuedBackend;
+import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
+import org.jwcarman.nessy.inference.InferenceOptions;
+import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceResult;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.JsonNodeFactory;
+
+/**
+ * The waiting approvals through the in-memory queued backend: the rebuild, the order, the deadline,
+ * the answer and the cap, with no database. The reads of a row's own fields that Postgres rounds
+ * are not what this proves; the container test does that.
+ */
+@DisplayName("The approvals waiting on a person, in memory")
+class WaitingApprovalsInMemoryTest {
+
+  private static final Duration PATIENT = Duration.ofSeconds(20);
+
+  record Query(String q) {}
+
+  private static final InferenceProvider MODEL =
+      (request, _) ->
+          request.context().turns().stream().anyMatch(turn -> !turn.exchanges().isEmpty())
+              ? new InferenceResult.Answer(List.of(new Block.Text("all done")))
+              : new InferenceResult.Actions(
+                  List.of(new Block.ToolCall("call_1", "lookup", "{\"q\":\"loch ness\"}")));
+
+  private final InMemoryQueuedBackend memory =
+      new InMemoryQueuedBackend(new JacksonCodecFactory(JsonMapper.builder().build()));
+  private final ConcurrentLinkedQueue<ApprovalRequest> shown = new ConcurrentLinkedQueue<>();
+
+  private static ApprovalRequest copyOf(ApprovalRequest request) {
+    return new ApprovalRequest(
+        request.agentType(),
+        request.agentId(),
+        request.turn(),
+        request.callId(),
+        request.idempotencyKey(),
+        request.toolName(),
+        request.arguments(),
+        request.action(),
+        request.askedAt(),
+        request.deadline(),
+        request.facts().deepCopy());
+  }
+
+  private static Tool<Query> lookup() {
+    return tool("lookup", false);
+  }
+
+  private static Tool<Query> tool(String name, boolean deferred) {
+    return new Tool<>() {
+      @Override
+      public Class<Query> inputType() {
+        return Query.class;
+      }
+
+      @Override
+      public ToolName name() {
+        return new ToolName(name);
+      }
+
+      @Override
+      public String description() {
+        return "looks a thing up";
+      }
+
+      @Override
+      public Awaited<ToolResult> call(ToolCallRequest<Query> request) {
+        return deferred
+            ? Awaited.deferred()
+            : Awaited.ready(ToolResult.ok(new Block.Text("the answer to " + request.input().q())));
+      }
+    };
+  }
+
+  private DefaultQueuedHarnessFactory factory() {
+    return factory(MODEL);
+  }
+
+  private DefaultQueuedHarnessFactory factory(InferenceProvider model) {
+    return DefaultQueuedHarnessFactory.of(
+        engine ->
+            engine
+                .backend(memory)
+                .provider(ProviderId.of("test"), model)
+                .inference(ProviderId.of("test"), InferenceOptions.of("a-model")));
+  }
+
+  private QueuedHarness<String> harness(DefaultQueuedHarnessFactory factory, AgentType type) {
+    return factory.create(
+        type,
+        String.class,
+        config ->
+            config
+                .systemPrompt("You are a test assistant.")
+                .tool(
+                    lookup(),
+                    t ->
+                        t.action(query -> "look up " + query.q())
+                            .enrich(request -> request.fact("enricher", "found this"))
+                            .approver(
+                                request -> {
+                                  request.fact("approver", "added this");
+                                  shown.add(copyOf(request));
+                                  return Awaited.deferred();
+                                },
+                                a -> a.timeout(Duration.ofMinutes(30))))
+                .inference(in -> in.model("a-model"))
+                .effects(e -> e.pollInterval(Duration.ofMillis(20))));
+  }
+
+  private AgentId parkAnother(AgentType type, QueuedHarness<String> harness) {
+    int before = shown.size();
+    AgentId agent = AgentId.random();
+    harness.tell(agent, "go");
+    await().atMost(PATIENT).untilAsserted(() -> assertThat(shown).hasSize(before + 1));
+    await()
+        .atMost(PATIENT)
+        .untilAsserted(
+            () -> {
+              List<LiveEffect> live = memory.effects().liveFor(type, agent);
+              assertThat(live).isNotEmpty();
+              assertThat(live).allMatch(row -> row.parkedAt().isPresent());
+            });
+    return agent;
+  }
+
+  @Test
+  void a_waiting_approval_is_the_request_the_approver_was_shown_with_the_facts_it_left() {
+    AgentType type = new AgentType("memory-shown");
+    try (DefaultQueuedHarnessFactory factory = factory()) {
+      AgentId agent = parkAnother(type, harness(factory, type));
+      Instant parkedAt = memory.effects().liveFor(type, agent).getFirst().parkedAt().orElseThrow();
+
+      List<ApprovalRequest> waiting = factory.work().waitingApprovals(type);
+
+      ApprovalRequest given = shown.peek();
+      ApprovalRequest expected =
+          new ApprovalRequest(
+              given.agentType(),
+              given.agentId(),
+              given.turn(),
+              given.callId(),
+              given.idempotencyKey(),
+              given.toolName(),
+              given.arguments(),
+              given.action(),
+              parkedAt,
+              given.deadline(),
+              given.facts());
+      assertThat(given.facts())
+          .isEqualTo(
+              JsonNodeFactory.instance
+                  .objectNode()
+                  .put("enricher", "found this")
+                  .put("approver", "added this"));
+      assertThat(waiting).containsExactly(expected);
+    }
+  }
+
+  @Test
+  void waiting_approvals_come_oldest_first_and_one_type_can_be_named() {
+    AgentType wanted = new AgentType("memory-ordered-wanted");
+    AgentType other = new AgentType("memory-ordered-other");
+    try (DefaultQueuedHarnessFactory factory = factory()) {
+      QueuedHarness<String> wantedHarness = harness(factory, wanted);
+      QueuedHarness<String> otherHarness = harness(factory, other);
+      AgentId first = parkAnother(wanted, wantedHarness);
+      AgentId second = parkAnother(other, otherHarness);
+      AgentId third = parkAnother(wanted, wantedHarness);
+
+      List<ApprovalRequest> everything = factory.work().waitingApprovals();
+      List<ApprovalRequest> named = factory.work().waitingApprovals(wanted);
+
+      assertThat(everything)
+          .extracting(ApprovalRequest::agentId)
+          .containsExactly(first, second, third);
+      assertThat(named).extracting(ApprovalRequest::agentId).containsExactly(first, third);
+    }
+  }
+
+  @Test
+  void an_answered_approval_is_gone_and_a_late_clock_finds_none() {
+    AgentType type = new AgentType("memory-answered");
+    try (DefaultQueuedHarnessFactory factory = factory()) {
+      parkAnother(type, harness(factory, type));
+      AgentWork later =
+          StoredAgentWork.queued(
+              memory, Clock.fixed(Instant.now().plus(Duration.ofDays(1)), ZoneOffset.UTC));
+      ApprovalRequest request = factory.work().waitingApprovals(type).getFirst();
+      assertThat(later.waitingApprovals(type)).as("past the deadline").isEmpty();
+
+      ReplyOutcome outcome =
+          factory
+              .replies()
+              .approve(
+                  request.agentType(),
+                  request.agentId(),
+                  request.idempotencyKey(),
+                  ApprovalResult.approvedBy("u_carol"));
+
+      assertThat(outcome).isInstanceOf(ReplyOutcome.Applied.class);
+      await()
+          .atMost(PATIENT)
+          .untilAsserted(() -> assertThat(factory.work().waitingApprovals(type)).isEmpty());
+    }
+  }
+
+  @Test
+  void no_more_than_the_cap_come_back_and_an_agents_status_lists_its_own() {
+    AgentType type = new AgentType("memory-capped");
+    try (DefaultQueuedHarnessFactory factory = factory()) {
+      QueuedHarness<String> harness = harness(factory, type);
+      AgentId first = parkAnother(type, harness);
+      AgentId second = parkAnother(type, harness);
+      parkAnother(type, harness);
+      AgentWork capped = StoredAgentWork.queued(memory, Clock.systemUTC(), 2);
+
+      List<ApprovalRequest> waiting = capped.waitingApprovals(type);
+
+      assertThat(waiting).extracting(ApprovalRequest::agentId).containsExactly(first, second);
+      assertThat(factory.work().status(type, first).waitingApprovals())
+          .extracting(ApprovalRequest::agentId)
+          .containsExactly(first);
+    }
+  }
+
+  /**
+   * The first agent asks for a call that is put aside, the second for one that needs approval. With
+   * a cap of one, the first page holds only the older, non-approval row; the approval is on the
+   * next page.
+   */
+  @Test
+  void a_full_page_of_other_parked_work_does_not_hide_an_approval_behind_it() {
+    AgentType type = new AgentType("memory-paged");
+    AtomicInteger asked = new AtomicInteger();
+    InferenceProvider model =
+        (request, _) -> {
+          boolean fresh =
+              request.context().turns().stream().allMatch(turn -> turn.exchanges().isEmpty());
+          if (!fresh) {
+            return new InferenceResult.Answer(List.of(new Block.Text("all done")));
+          }
+          String tool = asked.getAndIncrement() == 0 ? "ping" : "lookup";
+          return new InferenceResult.Actions(
+              List.of(new Block.ToolCall("call_1", tool, "{\"q\":\"x\"}")));
+        };
+    try (DefaultQueuedHarnessFactory factory = factory(model)) {
+      QueuedHarness<String> harness =
+          factory.create(
+              type,
+              String.class,
+              config ->
+                  config
+                      .systemPrompt("You are a test assistant.")
+                      .tool(
+                          tool("ping", true),
+                          t ->
+                              t.action(query -> "ping " + query.q())
+                                  .timeout(Duration.ofMinutes(30)))
+                      .tool(
+                          lookup(),
+                          t ->
+                              t.action(query -> "look up " + query.q())
+                                  .approver(
+                                      request -> {
+                                        shown.add(copyOf(request));
+                                        return Awaited.deferred();
+                                      },
+                                      a -> a.timeout(Duration.ofMinutes(30))))
+                      .inference(in -> in.model("a-model"))
+                      .effects(e -> e.pollInterval(Duration.ofMillis(20))));
+      AgentId pinged = AgentId.random();
+      harness.tell(pinged, "go");
+      await()
+          .atMost(PATIENT)
+          .untilAsserted(
+              () -> assertThat(factory.work().status(type, pinged).waitingToolCalls()).isOne());
+      AgentId approving = parkAnother(type, harness);
+      AgentWork capped = StoredAgentWork.queued(memory, Clock.systemUTC(), 1);
+
+      List<ApprovalRequest> waiting = capped.waitingApprovals(type);
+
+      assertThat(waiting).extracting(ApprovalRequest::agentId).containsExactly(approving);
+    }
+  }
+
+  /**
+   * Parked approvals of agents with no story, so none of them can be rebuilt, older than anything a
+   * harness will write.
+   */
+  private void parkUnrebuildable(AgentType type, int count) {
+    Instant longAgo = Instant.now().minus(Duration.ofHours(1));
+    for (int i = 0; i < count; i++) {
+      CallId callId = new CallId("call_" + i);
+      memory
+          .effects()
+          .insert(
+              type,
+              AgentId.random(),
+              new AgentEffect.Approve(
+                  new TurnId(1),
+                  new Seq(2),
+                  callId,
+                  new ToolName("lookup"),
+                  IdempotencyKey.of(UUID.randomUUID())),
+              Duration.ofMinutes(30),
+              new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, "undispatchable"),
+              Instant.now().plus(Duration.ofDays(1)),
+              null,
+              longAgo.plusMillis(i));
+    }
+    List<Attempt> claimed = memory.effects().markRunning(type, Instant.now(), count);
+    assertThat(claimed).hasSize(count);
+    claimed.forEach(
+        attempt ->
+            memory.effects().park(attempt.effectId(), attempt.attemptsMade(), Instant.now()));
+  }
+
+  @Test
+  void approvals_that_cannot_be_rebuilt_do_not_use_up_the_cap() {
+    AgentType type = new AgentType("memory-unrebuildable-first");
+    try (DefaultQueuedHarnessFactory factory = factory()) {
+      parkUnrebuildable(type, 4);
+      AgentId approving = parkAnother(type, harness(factory, type));
+      AgentWork capped = StoredAgentWork.queued(memory, Clock.systemUTC(), 2);
+
+      List<ApprovalRequest> waiting = capped.waitingApprovals(type);
+
+      assertThat(waiting).extracting(ApprovalRequest::agentId).containsExactly(approving);
+    }
+  }
+
+  @Test
+  void a_read_where_no_approval_can_be_rebuilt_ends_with_none() {
+    AgentType type = new AgentType("memory-unrebuildable-only");
+    parkUnrebuildable(type, 4);
+    AgentWork capped = StoredAgentWork.queued(memory, Clock.systemUTC(), 2);
+
+    List<ApprovalRequest> waiting =
+        assertTimeoutPreemptively(Duration.ofSeconds(20), () -> capped.waitingApprovals(type));
+
+    assertThat(waiting).isEmpty();
+  }
+}

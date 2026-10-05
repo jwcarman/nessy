@@ -16,6 +16,8 @@
 package org.jwcarman.nessy.engine.narration;
 
 import org.jwcarman.codec.TypeRef;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.agent.Agents;
 import org.jwcarman.nessy.backend.backlog.Backlogs;
@@ -62,5 +64,10 @@ public record ProbedQueuedBackend(QueuedBackend backend, Locks locks) implements
   @Override
   public <I> Backlogs<I> backlogs(TypeRef<I> inputType) {
     return backend.backlogs(inputType);
+  }
+
+  @Override
+  public int queued(AgentType type, AgentId agent) {
+    return backend.queued(type, agent);
   }
 }

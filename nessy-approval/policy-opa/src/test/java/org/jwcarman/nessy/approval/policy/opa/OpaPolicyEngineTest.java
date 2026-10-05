@@ -30,7 +30,6 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.approval.policy.PolicyEngine;
 import org.jwcarman.nessy.approval.policy.Verdict;
@@ -96,8 +95,7 @@ class OpaPolicyEngineTest {
         "{\"target\":\"" + target + "\"}",
         tool + " on " + target,
         asked,
-        asked.plusSeconds(3600),
-        new ReplyToken("a-capability-no-policy-should-see"));
+        asked.plusSeconds(3600));
   }
 
   @Nested
@@ -182,30 +180,26 @@ class OpaPolicyEngineTest {
   class TheInput {
 
     @Test
-    @DisplayName("the reply token never leaves the process")
-    void the_document_carries_no_capability() {
+    @DisplayName("the standard document names the agent, the tool and its target")
+    void the_document_carries_what_a_rule_can_judge_on() {
       String document =
           InputDocumentRenderer.standard(MAPPER)
               .render(asking("watchman", "prune_images", "prod-eu-1"))
               .toString();
 
-      // The token settles the call. A policy engine logs its input and is often somebody else's
-      // service, so it is the one field that must not be there.
       assertThat(document)
-          .doesNotContain("a-capability-no-policy-should-see")
           .contains("prune_images", "prod-eu-1", "watchman", HOUSE_12.value().toString());
     }
 
     @Test
-    @DisplayName("the AuthZEN document keeps the token out too")
-    void the_authzen_document_carries_no_capability() {
+    @DisplayName("the AuthZEN document has a subject, a resource and an action")
+    void the_authzen_document_has_its_three_parts() {
       String document =
           InputDocumentRenderer.authzen(MAPPER)
               .render(asking("watchman", "prune_images", "prod-eu-1"))
               .toString();
 
       assertThat(document)
-          .doesNotContain("a-capability-no-policy-should-see")
           .contains("\"subject\"", "\"resource\"", "\"action\"", HOUSE_12.value().toString());
     }
 

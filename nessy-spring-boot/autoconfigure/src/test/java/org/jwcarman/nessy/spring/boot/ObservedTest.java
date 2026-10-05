@@ -40,7 +40,6 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
@@ -349,8 +348,7 @@ class ObservedTest {
         "{}",
         "restart prod-eu",
         Instant.EPOCH,
-        Instant.EPOCH.plusSeconds(3600),
-        new ReplyToken("nowhere"));
+        Instant.EPOCH.plusSeconds(3600));
   }
 
   private static ToolCallRequest<String> call(String input) {
@@ -394,11 +392,6 @@ class ObservedTest {
       @Override
       public Instant deadline() {
         return Instant.EPOCH.plusSeconds(3600);
-      }
-
-      @Override
-      public ReplyToken replyToken() {
-        return new ReplyToken("nowhere");
       }
     };
   }

@@ -18,6 +18,7 @@ package org.jwcarman.nessy.backend.effect;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
@@ -84,6 +85,30 @@ public interface Effects {
    * @return false when no such row is there: it was settled, or another attempt holds it
    */
   boolean park(UUID effectId, int attemptsMade, Instant at);
+
+  /**
+   * Every live row of one agent, pending and running, oldest first by creation time and then id.
+   *
+   * <p>A row whose effect cannot be decoded is left out and logged at WARN with its effect id. It
+   * never fails the read.
+   */
+  List<LiveEffect> liveFor(AgentType type, AgentId agent);
+
+  /**
+   * The rows waiting on an answer at {@code now}: parked, running, and not yet at their deadline. A
+   * row claimed again at its deadline keeps its parked mark but is not in this list.
+   *
+   * <p>Oldest first by creation time and then id, so a caller pages by handing back the last row it
+   * got. A row whose effect cannot be decoded is left out and logged at WARN with its effect id.
+   *
+   * @param type the one agent type to read, or empty for every type
+   * @param now the moment the deadline is compared with
+   * @param after the last row of the previous page, or empty for the first. Only rows strictly
+   *     after it in the order above are returned.
+   * @param limit the most rows to return; must be positive
+   */
+  List<LiveEffect> parkedNow(
+      Optional<AgentType> type, Instant now, Optional<LiveEffect> after, int limit);
 
   /**
    * What the attempts before this one learned, read back off the row.

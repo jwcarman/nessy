@@ -29,7 +29,6 @@ import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.tool.ToolName;
 
 @DisplayName("Asking the person at the terminal")
@@ -51,9 +50,7 @@ class ConsoleApproverTest {
           "{}",
           "Send an email to jim@example.com",
           ASKED,
-          ASKED.plusSeconds(3600),
-          // Never read: this approver answers on the spot, so nothing replies later.
-          new ReplyToken("unused"));
+          ASKED.plusSeconds(3600));
 
   private static ApprovalResult answerOf(FakeConsole console) {
     Awaited<ApprovalResult> answer = new ConsoleApprover(console).approve(SENDING_MAIL);

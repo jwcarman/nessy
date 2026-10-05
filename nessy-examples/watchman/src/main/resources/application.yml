@@ -42,17 +42,12 @@ nessy:
     lmstudio:
       enabled: true
       base-url: ${WATCHMAN_MODEL_URL:http://localhost:1234/v1}
-  # A FIXED key, so a token minted before a restart can still be read after one. Without this the
-  # starter warns and falls back to an ephemeral key, and every parked approval becomes
-  # unanswerable the moment the process bounces.
-  reply-token-encryption-keys:
-    - ${WATCHMAN_REPLY_KEY:c2hoLXRoaXMtaXMtYS1kZW1vLWtleS0zMi1ieXRlcyE=}
 
 watchman:
   # How often the watchman does its rounds. A fixed RATE, not a cron: rounds are "every so often",
   # and there is nothing about 3am that a watchman cares about.
   round-interval: ${WATCHMAN_ROUND_INTERVAL:PT30M}
-  # How long an approval request may wait on the board before the engine denies it on the person's behalf.
+  # How long an approval request may wait on the page before the engine denies it on the person's behalf.
   approval-term: 3d
 
 management:

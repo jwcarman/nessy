@@ -22,13 +22,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AgentWork;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
-import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.api.tool.ReplyOutcome;
-import org.jwcarman.nessy.api.tool.ReplyToken;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
@@ -44,6 +46,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 @Controller
 public class ApprovalsController {
@@ -60,49 +63,70 @@ public class ApprovalsController {
    */
   private static final String SOMEBODY = "someone";
 
-  /** A row as the page draws it: strings, because a template renders what toString says. */
+  /** The page's notice when an answer found nothing waiting. */
+  static final String NOT_WAITING = "That approval was no longer waiting.";
+
+  /** One fact an enricher recorded on an approval request, as text. */
+  public record Fact(String name, String value) {}
+
+  /** An approval request as the page draws it: strings, because a template renders toString. */
   public record Row(
       String idempotencyKey,
       String agentType,
       String agentId,
       String callId,
+      String tool,
       String action,
+      List<Fact> facts,
       Instant askedAt,
+      Instant deadline,
       String dwell) {}
 
   public record Note(String role, String text) {}
 
-  private final PendingApprovalsRepository approvals;
+  private final AgentWork work;
   private final Replies replies;
   private final TurnHistories histories;
   private final Clock clock;
 
-  ApprovalsController(
-      PendingApprovalsRepository approvals, Replies replies, TurnHistories histories, Clock clock) {
-    this.approvals = approvals;
+  ApprovalsController(AgentWork work, Replies replies, TurnHistories histories, Clock clock) {
+    this.work = work;
     this.replies = replies;
     this.histories = histories;
     this.clock = clock;
   }
 
   @GetMapping("/")
-  public String pending(Model model) {
+  public String waiting(Model model) {
     Instant now = clock.instant();
     List<Row> rows =
-        approvals.pending().stream()
-            .map(
-                row ->
-                    new Row(
-                        row.idempotencyKey().toString(),
-                        row.agentType().value(),
-                        row.agentId().value().toString(),
-                        row.callId().value(),
-                        row.action(),
-                        row.askedAt(),
-                        dwell(Duration.between(row.askedAt(), now))))
-            .toList();
+        work.waitingApprovals(Watchman.TYPE).stream().map(request -> row(request, now)).toList();
     model.addAttribute("rows", rows);
     return "index";
+  }
+
+  private static Row row(ApprovalRequest request, Instant now) {
+    List<Fact> facts =
+        request.facts().properties().stream()
+            .map(
+                entry ->
+                    new Fact(
+                        entry.getKey(),
+                        entry.getValue().isString()
+                            ? entry.getValue().asString()
+                            : entry.getValue().toString()))
+            .toList();
+    return new Row(
+        request.idempotencyKey().toString(),
+        request.agentType().value(),
+        request.agentId().value().toString(),
+        request.callId().value(),
+        request.toolName().value(),
+        request.action(),
+        facts,
+        request.askedAt(),
+        request.deadline(),
+        dwell(Duration.between(request.askedAt(), now)));
   }
 
   @GetMapping("/transcript")
@@ -161,63 +185,59 @@ public class ApprovalsController {
         .collect(Collectors.joining("\n"));
   }
 
-  // The call's idempotency key is the whole of the path: unique across every agent and every call,
-  // where a call id is unique only within one model reply.
+  // The agent type, the agent id and the call's idempotency key address the call: a key is unique
+  // across every call, where a call id is unique only within one model reply.
   @PostMapping("/approve/{key}")
-  public String approve(@PathVariable("key") String key) {
-    return answer(idempotencyKey(key), ApprovalResult.approved());
+  public String approve(
+      @PathVariable("key") String key,
+      @RequestParam(name = "agentType") String agentType,
+      @RequestParam(name = "agentId") String agentId,
+      RedirectAttributes redirect) {
+    return answer(agentType, agentId, key, ApprovalResult.approved(), redirect);
   }
 
   @PostMapping("/deny/{key}")
   public String deny(
       @PathVariable("key") String key,
+      @RequestParam(name = "agentType") String agentType,
+      @RequestParam(name = "agentId") String agentId,
       // "reason", the word the form uses and the word ApprovalResult.Denied uses. It read "note"
       // and the form has always sent "reason", so every denial a person typed was bound to
       // nothing and recorded as the literal "denied" -- the one thing a denial exists to carry,
       // dropped in silence.
-      @RequestParam(name = "reason", defaultValue = "") String reason) {
-    return answer(idempotencyKey(key), ApprovalResult.denied(reason.isBlank() ? "denied" : reason));
+      @RequestParam(name = "reason", defaultValue = "") String reason,
+      RedirectAttributes redirect) {
+    return answer(
+        agentType,
+        agentId,
+        key,
+        ApprovalResult.denied(reason.isBlank() ? "denied" : reason),
+        redirect);
   }
 
-  private String answer(IdempotencyKey key, ApprovalResult result) {
-    PendingApproval row = approvals.byIdempotencyKey(key).orElse(null);
-    if (row == null || !row.waiting()) {
-      LOG.info("[watchman] {} answered {}, which was not waiting", SOMEBODY, key);
-      return "redirect:/";
-    }
-    CallId callId = row.callId();
-    LOG.info("[watchman] {} answered {} with {}", SOMEBODY, callId.value(), result);
-    switch (replies.approve(new ReplyToken(row.replyToken()), result)) {
-      case ReplyOutcome.Settled _ -> recordLocally(key, result);
-      // The agent gets the last word on whether an answer landed, and it can refuse: a call whose
-      // term expired seconds ago has already been denied on this person's behalf. Recording
-      // regardless is how the board came to show decisions that never reached the agent.
-      case ReplyOutcome.NotAwaiting _ ->
-          LOG.warn(
-              "[watchman] {} answered {}, but the agent had already moved on",
-              SOMEBODY,
-              callId.value());
-      case ReplyOutcome.Unreadable _ ->
-          LOG.warn(
-              "[watchman] {} answered {} with a token this application cannot read; was the"
-                  + " reply key changed?",
-              SOMEBODY,
-              callId.value());
+  private String answer(
+      String agentType,
+      String agentId,
+      String key,
+      ApprovalResult result,
+      RedirectAttributes redirect) {
+    IdempotencyKey idempotencyKey = IdempotencyKey.of(UUID.fromString(key));
+    LOG.info("[watchman] {} answered {} with {}", SOMEBODY, idempotencyKey, result);
+    // Nessy has the last word on whether an answer landed. A call whose term expired seconds ago
+    // has already been recorded as a failed call, not as a denial, and a late click finds nothing
+    // waiting.
+    switch (replies.approve(
+        new AgentType(agentType), new AgentId(UUID.fromString(agentId)), idempotencyKey, result)) {
+      case ReplyOutcome.Applied _ -> {
+        // The page reads what is waiting from Nessy on its next load; there is nothing to record.
+      }
+      case ReplyOutcome.Ignored _ -> {
+        LOG.info(
+            "[watchman] {} answered {}, which was no longer waiting", SOMEBODY, idempotencyKey);
+        redirect.addFlashAttribute("notice", NOT_WAITING);
+      }
     }
     return "redirect:/";
-  }
-
-  /**
-   * Written here as well as by the desk when the engine narrates the decision, because the redirect
-   * lands before the narration does, and the person who just clicked must not be shown the approval
-   * request they have already answered. Whichever writer arrives second changes nothing.
-   */
-  void recordLocally(IdempotencyKey key, ApprovalResult result) {
-    approvals.answered(
-        key,
-        result instanceof ApprovalResult.Approved ? "approved" : "denied",
-        result instanceof ApprovalResult.Denied denied ? denied.reason() : null,
-        clock.instant());
   }
 
   static String dwell(Duration waited) {
@@ -230,11 +250,6 @@ public class ApprovalsController {
       return hours + "h " + (minutes % 60) + "m";
     }
     return (hours / 24) + "d " + (hours % 24) + "h";
-  }
-
-  /** A key from the address bar; UUID.fromString refuses what is not one, and that is a 400. */
-  private static IdempotencyKey idempotencyKey(String key) {
-    return IdempotencyKey.of(UUID.fromString(key));
   }
 
   @ExceptionHandler(IllegalArgumentException.class)

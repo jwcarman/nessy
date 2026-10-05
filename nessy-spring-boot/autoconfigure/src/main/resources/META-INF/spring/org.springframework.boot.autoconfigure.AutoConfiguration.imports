@@ -11,3 +11,4 @@ org.jwcarman.nessy.spring.boot.DirectHarnessAutoConfiguration
 org.jwcarman.nessy.spring.boot.QueuedHarnessAutoConfiguration
 org.jwcarman.nessy.spring.boot.UsageReportsAutoConfiguration
 org.jwcarman.nessy.spring.boot.AgentStoriesAutoConfiguration
+org.jwcarman.nessy.spring.boot.AgentWorkAutoConfiguration

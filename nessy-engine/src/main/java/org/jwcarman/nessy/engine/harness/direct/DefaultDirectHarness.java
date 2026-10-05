@@ -110,9 +110,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * <p><b>What performs an effect is {@link EffectHandlers}, the same one the queued door dispatches
  * through.</b> This door does not know how to call a model, ask an approver or run a tool -- it
  * knows how to wait for an answer with a deadline and what to do with {@link Awaited}. Everything
- * else -- assembling context, minting a reply address, resolving a call back out of the story -- is
- * the handlers' job, and doing it once means a span the queued door produces, this door produces
- * too.
+ * else -- assembling context, resolving a call back out of the story -- is the handlers' job, and
+ * doing it once means a span the queued door produces, this door produces too.
  *
  * <p><b>Every effect runs on a virtual thread and is waited for with its own deadline.</b> An
  * inference, a tool call and a blocking approver each advertise a timeout ({@link

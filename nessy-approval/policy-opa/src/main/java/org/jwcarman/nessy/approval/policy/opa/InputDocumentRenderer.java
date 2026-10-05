@@ -30,12 +30,10 @@ import tools.jackson.databind.node.ObjectNode;
  * one — matching the action stringifier on a tool's binding, which renders the sentence a person
  * consents to. One request, two audiences: a person reads the action, a policy engine reads this.
  *
- * <p><b>This is where a capability can leak.</b> {@link ApprovalRequest#replyToken()} settles the
- * call, and a policy engine logs its input and is frequently somebody else's service. Neither
- * renderer below emits one, and both build field by field rather than serializing the record — so a
- * field added to {@link ApprovalRequest} later cannot arrive in a policy engine without somebody
- * deciding it should. Minting is an explicit call, so a custom renderer only leaks a token by
- * choosing to.
+ * <p><b>This is where a field can leak.</b> A policy engine logs its input and is frequently
+ * somebody else's service. Both renderers below build field by field rather than serializing the
+ * record — so a field added to {@link ApprovalRequest} later cannot arrive in a policy engine
+ * without somebody deciding it should.
  */
 @FunctionalInterface
 public interface InputDocumentRenderer {
@@ -44,7 +42,7 @@ public interface InputDocumentRenderer {
 
   ObjectNode render(ApprovalRequest request);
 
-  /** Everything a rule could reasonably judge on, flat, and nothing that grants authority. */
+  /** Everything a rule could reasonably judge on, flat, and no more. */
   static InputDocumentRenderer standard(ObjectMapper mapper) {
     return request -> {
       ObjectNode input = mapper.createObjectNode();

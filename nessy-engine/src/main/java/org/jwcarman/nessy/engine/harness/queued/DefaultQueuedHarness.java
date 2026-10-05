@@ -224,9 +224,15 @@ final class DefaultQueuedHarness<I>
     }
   }
 
-  /** What an effect came to, folded under a lock of its own. */
+  /**
+   * What an effect came to, folded under a lock of its own.
+   *
+   * @return whether the fold wrote an event for this outcome. That is not the question the
+   *     dispatcher is nudged on, which is whether work was left for it: an accepted denial can
+   *     write an event while other calls are outstanding and ask for nothing.
+   */
   @Override
-  public void deliverOutcome(
+  public boolean deliverOutcome(
       AgentId agentId,
       Optional<TurnId> turn,
       Optional<Seq> request,
@@ -238,23 +244,40 @@ final class DefaultQueuedHarness<I>
         agentType.value(),
         outcome.getClass().getSimpleName(),
         agentId.value());
-    boolean nudge =
+    Delivered delivered =
         narrator.locked(
             backend.locks(),
             agentType,
             agentId,
             step -> {
               backend.agents().ensure(agentType, agentId);
-              boolean wrote =
+              Folded folded =
                   fold(step, agentId, turn, request, outcome, traceContext, priorAttempts);
               // A turn that ended leaves the agent idle, and the next thing waiting becomes
               // the next turn -- here, before this transaction commits.
-              return wrote
-                  | driveIfIdle(step, agentId, backlogs.forAgent(agentType, agentId), traceContext);
+              boolean driven =
+                  driveIfIdle(step, agentId, backlogs.forAgent(agentType, agentId), traceContext);
+              return new Delivered(folded.wrote(), folded.asked() | driven);
             });
-    if (nudge) {
+    if (delivered.nudge()) {
       dispatch();
     }
+    return delivered.accepted();
+  }
+
+  /**
+   * What delivering an outcome came to: whether the fold took it, and whether the dispatcher has
+   * something to look for. Two facts, because an outcome can be taken and leave nothing to do.
+   */
+  private record Delivered(boolean accepted, boolean nudge) {}
+
+  /**
+   * What folding one command did: whether it wrote an event, and whether it left work for the
+   * dispatcher -- an effect emitted, or a turn started.
+   */
+  private record Folded(boolean wrote, boolean asked) {
+
+    static final Folded NOTHING = new Folded(false, false);
   }
 
   /**
@@ -334,7 +357,7 @@ final class DefaultQueuedHarness<I>
    * or ended agent has no turn at all, so there is nothing such an outcome could settle, and an
    * agent not waiting on a request has no request for it to settle.
    */
-  private boolean fold(
+  private Folded fold(
       Step step,
       AgentId agentId,
       Optional<TurnId> turn,
@@ -352,7 +375,7 @@ final class DefaultQueuedHarness<I>
           agentType.value(),
           agentId.value(),
           outcome.getClass().getSimpleName());
-      return false;
+      return Folded.NOTHING;
     }
     if (needsRequest && answeredRequest.isEmpty()) {
       log.debug(
@@ -360,7 +383,7 @@ final class DefaultQueuedHarness<I>
           agentType.value(),
           agentId.value(),
           outcome.getClass().getSimpleName());
-      return false;
+      return Folded.NOTHING;
     }
     return apply(
         step,
@@ -395,8 +418,12 @@ final class DefaultQueuedHarness<I>
    * @return whether anything was written that an effect dispatcher should be told about
    */
   private boolean driveIfIdle(Step step, AgentId agentId, Backlog<I> backlog, String trace) {
+    return startNext(step, agentId, backlog, trace).asked();
+  }
+
+  private Folded startNext(Step step, AgentId agentId, Backlog<I> backlog, String trace) {
     if (!(reconstitute(agentId) instanceof AgentState.Idle)) {
-      return false;
+      return Folded.NOTHING;
     }
     return switch (backlog.take()) {
       // Claim-checked here, and this is the only place a harness does it by hand: an arrival is
@@ -412,12 +439,12 @@ final class DefaultQueuedHarness<I>
                   clock.instant()),
               trace);
       case Pull.Pill<I> _ -> apply(step, agentId, new AgentCommand.Terminate(), trace);
-      case Pull.Empty<I> _ -> false;
+      case Pull.Empty<I> _ -> Folded.NOTHING;
     };
   }
 
   /** Folds one command and writes what it decided. */
-  private boolean apply(Step step, AgentId agentId, AgentCommand command, String trace) {
+  private Folded apply(Step step, AgentId agentId, AgentCommand command, String trace) {
     Instant at = clock.instant().truncatedTo(ChronoUnit.MICROS);
     AgentState state = reconstitute(agentId);
     if (!(state.execute(command, turnPolicy, clock.instant())
@@ -429,7 +456,7 @@ final class DefaultQueuedHarness<I>
           agentType.value(),
           agentId.value(),
           command.getClass().getSimpleName());
-      return false;
+      return Folded.NOTHING;
     }
     backend.events().append(agentType, agentId, advance.events(), state.seq(), at);
     for (AgentEffect effect : advance.effects()) {
@@ -443,7 +470,7 @@ final class DefaultQueuedHarness<I>
     if (advance.effects().stream().anyMatch(AgentEffect.Infer.class::isInstance)) {
       step.narrate(new Narration.Thinking());
     }
-    return !advance.effects().isEmpty();
+    return new Folded(!advance.events().isEmpty(), !advance.effects().isEmpty());
   }
 
   /** The agent as it stands: the last turn that started, replayed onto idle. */
@@ -462,13 +489,14 @@ final class DefaultQueuedHarness<I>
   }
 
   /**
-   * What just became true, handed to the step that wrote it, to be told to whoever is watching once
-   * that step has committed.
+   * What just became true, handed to the step that wrote it, to be told to whoever is watching when
+   * the locked step returns.
    *
-   * <p>Not told here: the step holds it until {@code withLock} returns, which is after the commit,
-   * and drops it if the step fails. A watcher told about a fold a rollback could still undo would
-   * be told something untrue, and one told before the commit could not read what it was told about;
-   * one told a moment late has only been told late.
+   * <p>Not told here: the step holds it until {@code withLock} returns, and drops it if the step
+   * fails. The nudge to the dispatcher is sent at the same moment. When the step opened its own
+   * transaction, that is after the commit. When a reply or a {@code tell} joined a caller's
+   * transaction, it is before the caller commits, so a watcher can be told of a write that the
+   * caller's later rollback undoes.
    */
   private void narrate(Step step, AgentEvent event, Instant at) {
     // Some of these mean resolving what a reference stands for, which is real work: skipped

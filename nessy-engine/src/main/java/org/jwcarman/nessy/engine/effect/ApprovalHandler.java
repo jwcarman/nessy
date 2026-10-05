@@ -30,7 +30,6 @@ import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
-import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
 import org.jwcarman.nessy.engine.tool.Tools;
@@ -63,7 +62,6 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
   private final Tools tools;
   private final ToolCalls calls;
   private final Narrator narrator;
-  private final ReplyTokens replyTokens;
   private final EffectTermsSource terms;
   private final Clock clock;
 
@@ -71,14 +69,12 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
       AgentType agentType,
       Tools tools,
       ToolCalls calls,
-      ReplyTokens replyTokens,
       Narrator narrator,
       EffectTermsSource terms,
       Clock clock) {
     this.agentType = agentType;
     this.tools = tools;
     this.calls = calls;
-    this.replyTokens = replyTokens;
     this.narrator = narrator;
     this.terms = terms;
     this.clock = clock;
@@ -155,8 +151,7 @@ public class ApprovalHandler implements EffectHandler<AgentEffect.Approve> {
               resolved.call().arguments(),
               resolved.action(),
               clock.instant(),
-              deadline,
-              replyTokens.mint(agentType, agentId, effect.requestSeq(), callId));
+              deadline);
     } catch (RuntimeException e) {
       // A call whose arguments will not read into the tool's input type has no request to
       // make about it -- and could not run whatever anybody answered. Discharged without asking: a

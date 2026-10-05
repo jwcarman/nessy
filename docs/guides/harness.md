@@ -334,7 +334,7 @@ or later:
 
 ```java
 Approver desk = request -> {
-    pending.save(request, request.replyToken());
+    notifier.send("Approve: " + request.action());
     return Awaited.deferred();
 };
 ```
@@ -354,11 +354,13 @@ the binding's decision, not the approver's:
         .approver(desk, terms -> terms.timeout(Duration.ofDays(3))))
 ```
 
-Days later, whoever holds the token answers, through the queued factory's
-`Replies`:
+The approver keeps nothing: the approvals waiting on a person are read from
+`AgentWork`, as [below](#what-is-waiting-and-answering-it). Days later, whoever
+has the agent type, the agent id and the key answers, through the queued
+factory's `Replies`:
 
 ```java
-factory.replies().approve(token, ApprovalResult.denied("not this time"));
+factory.replies().approve(agentType, agentId, key, ApprovalResult.denied("not this time"));
 ```
 
 **A denial is an answer, not an absence.** The model is told the call was
@@ -383,6 +385,123 @@ that summarises a chapter reads it too. A stringifier that throws makes a
 gated call refused without asking the approver. See
 [Tools](../concepts/tools.md#what-a-call-leaves-behind) for the limits and for
 how to cut it.
+
+## What is waiting, and answering it
+
+`AgentWork` reads what an agent is doing now. Both factories offer one:
+`factory.work()`. It is read-only: it changes nothing and holds no state
+between calls.
+
+### Status
+
+```java
+AgentStatus status = work.status(agentType, agentId);
+```
+
+An `AgentStatus` has an `activity`, and four more values beside it:
+
+| Value | Means |
+|---|---|
+| `queued` | inputs told and not yet started |
+| `turn` | the turn in progress, if there is one |
+| `waitingApprovals` | the approval requests the agent is waiting on |
+| `waitingToolCalls` | how many deferred tool calls it is waiting on |
+
+The activity is one of four:
+
+| Activity | Means |
+|---|---|
+| `IDLE` | no turn in progress and nothing queued. An agent nobody has told anything is idle |
+| `WORKING` | something can make progress: a turn is in a model call, or has a call that is not parked, or no turn is in progress and input is queued |
+| `WAITING` | a turn is in progress and every call it has outstanding is parked, waiting for an answer from outside |
+| `ENDED` | the agent was terminated and its story ends |
+
+Some cases that are easy to get wrong:
+
+- An agent with input queued and no turn yet is `WORKING`. There is no
+  "queued" activity; read `queued` for the count.
+- An agent whose outstanding work is all parked is `WAITING`, even with input
+  queued behind it. That input cannot start until the turn ends.
+- A call that is running while another is parked is `WORKING`. The agent is
+  not held up yet.
+- A parked call whose deadline has passed is not waiting. An agent with only
+  such calls is `WORKING`.
+- An agent told to terminate during a turn is `WORKING` or `WAITING` until
+  that turn ends. Then it is `ENDED`.
+
+"Is this case finished?" is `IDLE`. "Is it waiting on a person?" is `WAITING`,
+and `waitingApprovals` says for what.
+
+A status is a moment's answer. It is read from what is stored, with nothing
+locked, so it can be a step old for an agent that is moving.
+
+### Waiting approvals
+
+```java
+List<ApprovalRequest> all = work.waitingApprovals();
+List<ApprovalRequest> ops = work.waitingApprovals(new AgentType("ops"));
+```
+
+Each item is the `ApprovalRequest` the approver was shown, rebuilt from what
+is stored. The agent type, agent id, turn, call id, idempotency key and tool
+name are the call's own. The `action` and `arguments` are the ones the
+request carried. The `facts` are the ones the approver left when it deferred.
+`askedAt` is when the approver deferred, and `deadline` is when the call
+stops waiting.
+
+The list is oldest first by when the call's work was written, which is the
+creation of its effect row. That can be earlier than `askedAt`. It holds at most 500. When more are waiting, the
+oldest 500 are returned, and the rest appear as those are answered. There is
+no paging.
+
+Only a call that is waiting now is listed. A call that was answered or whose
+deadline passed is gone from the next read. A waiting approval whose request
+cannot be rebuilt from the story is left out and logged at WARN. It does not
+fail the read.
+
+### Answering
+
+An approval request carries the three values that address its call. Show the
+request to a person, and answer with them:
+
+```java
+ApprovalRequest request = work.waitingApprovals().getFirst();
+
+ReplyOutcome outcome = replies.approve(
+        request.agentType(), request.agentId(), request.idempotencyKey(),
+        ApprovalResult.approvedBy("buyer:j.smith"));
+
+String told = switch (outcome) {
+    case ReplyOutcome.Applied _ -> "approved";
+    case ReplyOutcome.Ignored _ -> "nothing changed";
+};
+```
+
+`replies` is `factory.replies()` on the queued factory.
+
+- `Applied` means the agent took the answer and its story changed.
+- `Ignored` means nothing changed. The call was already decided, its deadline
+  had passed, the answer was the wrong kind for the call, or no waiting call
+  matches the three values. A caller does the same thing in each case.
+
+An answer that arrives at or after the call's deadline is ignored, even if the
+engine has not yet recorded the expiry. It is never applied late.
+
+Nessy does not check who is answering. Your endpoint must check who is
+calling it. See
+[Authorization](../concepts/authorization.md#answering-a-waiting-call) for
+who may answer, and for the transaction an answer joins.
+
+### What these reads do not hold
+
+- **The direct door.** An agent there has a status and never a waiting
+  approval. It does its work inline, and it cannot defer.
+- **A request an application makes itself.** An application that calls an
+  approver directly and hands it the request owns that request. Only approvals
+  that Nessy is waiting on are listed.
+- **Deferred tool calls.** A status counts them in `waitingToolCalls`. It
+  does not list them, so a tool that defers must hand the agent type, the
+  agent id and the idempotency key to whatever will answer.
 
 ## The console: the whole application in one call
 
@@ -432,7 +551,7 @@ plan and the date, given as ambient background, added.
 
 - [Getting Started](getting-started.md), the shortest path to a running agent
 - [Tools](../concepts/tools.md), writing tools, and deferring
-- [Authorization](../concepts/authorization.md), grants and approvers
+- [Authorization](../concepts/authorization.md), grants, approvers, and who may answer
 - [Context](../concepts/context.md), what a model call is built from
 - [Storage](../concepts/storage.md), the tables, and applying the schema
 - [Spring Boot](spring-boot.md), the starter

@@ -279,5 +279,5 @@ configuration surface.
 - [The Harness](harness.md), both doors and their full configuration surface
 - [Agent as Scope](../concepts/agent-as-scope.md), one lock per id, phases as data
 - [Tools](../concepts/tools.md), deferring, and answering from outside
-- [Authorization](../concepts/authorization.md), approvers and reply tokens
+- [Authorization](../concepts/authorization.md), approvers and answering a waiting call
 - [Spring Boot](spring-boot.md), the starter

@@ -24,7 +24,6 @@ import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.engine.harness.ProviderRegistry;
-import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.trace.TraceCarrier;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -35,9 +34,9 @@ import org.jwcarman.nessy.inference.InferenceProvider;
  * <p><b>One required thing: somewhere to keep agents.</b> Providers are registered here too, zero
  * or more of them ({@link #provider(ProviderId, InferenceProvider)}), so none is required at
  * construction -- only an agent type that actually needs one fails, and only when it is built. The
- * rest are application facts with defaults: who hears what agents do, where spans go, which keys
- * seal a reply token. Anything an agent type might tune -- timeouts, retries, the context it is
- * shown -- has its default in the engine and is overridden on the harness that wants otherwise.
+ * rest are application facts with defaults: who hears what agents do, where spans go. Anything an
+ * agent type might tune -- timeouts, retries, the context it is shown -- has its default in the
+ * engine and is overridden on the harness that wants otherwise.
  *
  * <p><b>Nothing here is the engine's own plumbing.</b> How rows are encoded, how tool arguments are
  * described to a model, how tokens are estimated and which thread looks for due work are all
@@ -56,7 +55,6 @@ public final class QueuedHarnessFactoryConfig {
   private final List<NarrationListener> listeners = new ArrayList<>();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
   private TraceCarrier traceCarrier;
-  private ReplyTokens replyTokens;
 
   QueuedHarnessFactoryConfig() {}
 
@@ -122,16 +120,6 @@ public final class QueuedHarnessFactoryConfig {
     return this;
   }
 
-  /**
-   * How a deferred answer finds its way back. Defaults to a key that dies with this process, so an
-   * approval parked on a person becomes unanswerable after a restart -- fine for a test, and the
-   * reason an application configures one.
-   */
-  public QueuedHarnessFactoryConfig replyTokens(ReplyTokens replyTokens) {
-    this.replyTokens = replyTokens;
-    return this;
-  }
-
   // ---- what the factory reads ------------------------------------------------------------
 
   QueuedBackend requiredBackend() {
@@ -163,9 +151,5 @@ public final class QueuedHarnessFactoryConfig {
 
   Optional<TraceCarrier> traceCarrier() {
     return Optional.ofNullable(traceCarrier);
-  }
-
-  ReplyTokens replyTokens() {
-    return replyTokens != null ? replyTokens : ReplyTokens.ephemeral();
   }
 }

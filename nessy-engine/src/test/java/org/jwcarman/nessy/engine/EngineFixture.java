@@ -18,6 +18,7 @@ package org.jwcarman.nessy.engine;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.observation.ObservationRegistry;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -30,6 +31,7 @@ import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AgentWork;
 import org.jwcarman.nessy.api.IdentityCodec;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.PayloadRef;
@@ -54,6 +56,7 @@ import org.jwcarman.nessy.engine.history.EventStreamHistory;
 import org.jwcarman.nessy.engine.history.Transcript;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.trace.TraceCarrier;
+import org.jwcarman.nessy.engine.work.StoredAgentWork;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -91,6 +94,7 @@ public final class EngineFixture implements AutoCloseable {
   private final AgentEvents events;
   private final Payloads payloads;
   private final Chapters chapters;
+  private final QueuedBackend backend;
   private final JdbcClient jdbc;
 
   public EngineFixture(InferenceProvider provider, NarrationListener listener) {
@@ -175,6 +179,7 @@ public final class EngineFixture implements AutoCloseable {
         new JdbcQueuedBackend(
             dataSource, new JdbcTransactionManager(dataSource), jackson, transform);
     this.chapters = backend.chapters();
+    this.backend = backend;
     this.harnesses =
         DefaultQueuedHarnessFactory.of(
             engine -> {
@@ -350,6 +355,24 @@ public final class EngineFixture implements AutoCloseable {
 
   public Replies replies() {
     return harnesses.replies();
+  }
+
+  /** The backend the engine runs on, for a test that stores something without telling an agent. */
+  public QueuedBackend backend() {
+    return backend;
+  }
+
+  /** What the factory says its agents are doing. */
+  public AgentWork work() {
+    return harnesses.work();
+  }
+
+  /**
+   * The same read against the same stores with a clock a test controls, for the moment a parked
+   * row's deadline passes without the dispatcher having a reason to claim it.
+   */
+  public AgentWork workAt(Clock clock) {
+    return StoredAgentWork.queued(backend, clock);
   }
 
   @Override

@@ -49,7 +49,6 @@ import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
-import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.ToolBinding;
 import org.jwcarman.nessy.engine.tool.ToolCalls;
 import org.jwcarman.nessy.engine.tool.Tools;
@@ -74,7 +73,6 @@ class ApprovalHandlerTest {
 
   private static final AgentType TYPE = new AgentType("gated");
   private static final AgentId AGENT = new AgentId(UUID.randomUUID());
-  private static final ReplyTokens TOKENS = ReplyTokens.ephemeral();
   private static final Clock CLOCK =
       Clock.fixed(Instant.parse("2026-09-08T12:00:00Z"), ZoneOffset.UTC);
 
@@ -174,7 +172,7 @@ class ApprovalHandlerTest {
             new RetryPolicy.Never(),
             Duration.ofMinutes(5),
             new RetryPolicy.Never());
-    return new ApprovalHandler(TYPE, tools, calls, TOKENS, narrator, terms, CLOCK);
+    return new ApprovalHandler(TYPE, tools, calls, narrator, terms, CLOCK);
   }
 
   private EffectOutcome ask(Tools tools) {
@@ -717,9 +715,9 @@ class ApprovalHandlerTest {
         .isEqualTo(new CallId("c1"));
   }
 
-  /** The reply address is a credential, and a log is not where one belongs. */
+  /** The arguments stay out of the request's own text, because that may reach a log. */
   @Test
-  void theReplyAddressIsNotInTheRequestsOwnToString() {
+  void theArgumentsAreNotInTheRequestsOwnToString() {
     ApprovalRequest[] seen = new ApprovalRequest[1];
     ask(
         bound(
@@ -728,8 +726,8 @@ class ApprovalHandlerTest {
               return Awaited.ready(ApprovalResult.approved());
             }));
 
-    assertThat(seen[0].replyToken()).isNotNull();
-    assertThat(seen[0].toString()).doesNotContain(seen[0].replyToken().value()).contains("lookup");
+    assertThat(seen[0].arguments()).isNotBlank();
+    assertThat(seen[0].toString()).doesNotContain(seen[0].arguments()).contains("lookup");
   }
 
   /**

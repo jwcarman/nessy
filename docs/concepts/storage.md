@@ -272,6 +272,15 @@ and beside the payload a second blob, `failure_payload`, saying what to
 tell the agent if the work can never be dispatched at all. See
 [Durable Computation](durable-computation.md).
 
+What an agent is waiting on is read from these rows, from the agent's story
+and from its payloads. Nothing extra is stored for it. A row that is parked
+now says a call is waiting. The story holds the model's request for the call,
+with its action line, and, once the approver defers, the facts the approver
+left on the deferral event. The payloads hold the call's arguments. Nessy does
+not store the approval request itself; it is rebuilt from the row, the story
+and the payloads. The table holds live work only: a finished call's row is deleted, so a read never lists finished
+work. See [The Harness](../guides/harness.md#what-is-waiting-and-answering-it).
+
 ## Chapters
 
 `nessy_chapter` has one row per closed chapter, keyed by agent type, agent id
@@ -301,4 +310,5 @@ is plain enough to do it in one statement per table.
 ## Where next
 
 - [Context](context.md), what a model call is built from
+- [The Harness](../guides/harness.md#what-is-waiting-and-answering-it), reading what an agent is waiting on
 - [Durable Computation](durable-computation.md), what survives a crash, and how

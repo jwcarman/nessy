@@ -26,6 +26,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.NonNull;
 import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AgentWork;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.NarrationListener;
@@ -62,9 +63,9 @@ import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.engine.store.Outbox;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.engine.tool.DefaultReplies;
-import org.jwcarman.nessy.engine.tool.ReplyTokens;
 import org.jwcarman.nessy.engine.tool.Tools;
 import org.jwcarman.nessy.engine.trace.Traces;
+import org.jwcarman.nessy.engine.work.StoredAgentWork;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.slf4j.Logger;
@@ -106,8 +107,8 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   private final QueuedBackend backend;
 
   private final List<NarrationListener> listeners = new CopyOnWriteArrayList<>();
-  private final ReplyTokens replyTokens;
   private final DefaultReplies replies;
+  private final StoredAgentWork work;
   private final ThreadPoolTaskScheduler scheduler;
   private final Traces traces;
   private final ObservationRegistry observations;
@@ -149,8 +150,8 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   DefaultQueuedHarnessFactory(QueuedHarnessFactoryConfig config) {
     this.backend = config.requiredBackend();
     listeners.addAll(config.listeners());
-    this.replyTokens = config.replyTokens();
-    this.replies = new DefaultReplies(replyTokens);
+    this.replies = new DefaultReplies(clock);
+    this.work = StoredAgentWork.queued(backend, clock);
     // A timer, and only a timer: it never performs an effect (each dispatcher has its own
     // virtual-thread executor for that), it only says when to look for due work. One virtual
     // thread for the whole engine, and the engine's to stop -- see close().
@@ -170,6 +171,12 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     // where a provider and a model are an application-wide fact rather than an agent's.
     this.defaults =
         new DefaultQueuedHarnessConfig.Defaults(config.defaultProvider(), config.defaultOptions());
+  }
+
+  /** What every agent of this factory is doing, read from the stores on each call. */
+  @Override
+  public AgentWork work() {
+    return work;
   }
 
   /**
@@ -323,7 +330,6 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
         agentType,
         tools,
         new EventStreamToolCalls(backend.events(), payloads, agentType),
-        replyTokens,
         terms,
         payloads);
   }
@@ -338,7 +344,6 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
         agentType,
         tools,
         new EventStreamToolCalls(backend.events(), payloads, agentType),
-        replyTokens,
         narrator,
         terms,
         clock);
@@ -410,9 +415,8 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   /**
    * Where a late answer comes back in.
    *
-   * <p>One for the whole factory rather than one per harness: a reply token is opaque, so whoever
-   * holds one cannot say which kind of agent it belongs to and could never pick a harness. This
-   * reads the agent type out of the token and routes on it.
+   * <p>One for the whole factory rather than one per harness: an answer names its agent type, and
+   * this routes on it.
    */
   @Override
   public Replies replies() {

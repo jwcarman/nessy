@@ -221,26 +221,26 @@ tool and running it.
   `QueuedHarness.tell(agent, input)` returns once the input is durable.
 - **Pause.** A tool or an approver returns `Awaited.deferred()`. The call is
   parked as a row, holds no thread, and survives a restart.
-- **Resume.** Whoever holds the call's `ReplyToken` answers through
-  `Replies`, from any process.
+- **Resume.** Whoever has the call's agent type, agent id and idempotency key
+  answers through `Replies`, from any process.
 - **Between selection and execution.** An approver is asked before a gated
   tool runs, and can defer for days.
 
 ```java
 harness.tell(agentId, "the porch light came on");
 
-// later, from any process that holds the token
-replies.approve(token, ApprovalResult.approved());
-replies.complete(token, ToolResult.ok(new Block.Text("the vendor shipped it")));
+// later, from any process that has the call's agent type, agent id and key
+replies.approve(agentType, agentId, key, ApprovalResult.approved());
+replies.complete(agentType, agentId, key, ToolResult.ok(new Block.Text("the vendor shipped it")));
 ```
 
 Things to know:
 
 - Only the queued door can park a call. Behind a `DirectHarness`, a deferral
   fails the call at once, because nothing is there to wait for the answer.
-- Reply tokens are sealed with a key. By default the key is minted fresh per
-  process, so a restart makes every parked call unanswerable. Configure keys
-  with `ReplyTokens.withKeys(...)` for anything that waits across a restart.
+- A parked call waits in storage, so an answer reaches it after a restart.
+  Nessy does not check who is answering; the application guards its answer
+  endpoint.
 - A deferred call still has a deadline: 30 seconds for a tool and 10 minutes
   for an approver by default, set on the binding. When it passes, the call is
   recorded as failed.
@@ -272,7 +272,8 @@ class AskHumanTool implements Tool<AskHuman> {
     public Class<AskHuman> inputType() { return AskHuman.class; }
 
     public Awaited<ToolResult> call(ToolCallRequest<AskHuman> request) {
-        inbox.post(request.input().question(), request.replyToken());   // inbox is yours
+        inbox.post(request.input().question(), request.agentType(), request.agentId(),
+                   request.idempotencyKey());   // inbox is yours
         return Awaited.deferred();
     }
 }
@@ -280,14 +281,15 @@ class AskHumanTool implements Tool<AskHuman> {
 config.tool(new AskHumanTool(), binding -> binding.timeout(Duration.ofDays(1)));
 
 // when the person answers, from any process
-replies.complete(token, ToolResult.ok(new Block.Text("Yes, go ahead")));
+replies.complete(agentType, agentId, key, ToolResult.ok(new Block.Text("Yes, go ahead")));
 ```
 
 What is missing: there is no built-in ask-a-human tool, no delivery to
 Slack, email or any channel, and no webhook receiver. The application
 supplies the `inbox` and the endpoint that calls `Replies`. In the examples,
-`nessy-examples/watchman` stores pending approvals in a table and answers
-them over HTTP, so they survive a restart. `nessy-examples/chat-web` holds
+`nessy-examples/watchman` lists the approvals Nessy is waiting on
+(`AgentWork`) and answers them over HTTP (`Replies`), so they survive a
+restart. `nessy-examples/chat-web` holds
 the request open while a card waits in the browser, so its approvals do not.
 
 A tool's default timeout is 30 seconds, so a human-facing tool needs a

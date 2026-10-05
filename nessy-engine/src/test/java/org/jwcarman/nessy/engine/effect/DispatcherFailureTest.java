@@ -906,7 +906,7 @@ class DispatcherFailureTest {
     }
 
     @Override
-    public void deliverOutcome(
+    public boolean deliverOutcome(
         AgentId agentId,
         Optional<TurnId> turn,
         Optional<Seq> request,
@@ -916,6 +916,7 @@ class DispatcherFailureTest {
       outcomes.add(outcome);
       turns.add(turn);
       requests.add(request);
+      return true;
     }
   }
 

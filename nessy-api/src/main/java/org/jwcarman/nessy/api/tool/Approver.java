@@ -28,13 +28,15 @@ import org.jwcarman.nessy.api.Awaited;
  * be slow -- an approver that needs a human returns {@link Awaited#deferred()} and answers later
  * through {@link Replies}.
  *
- * <p><b>Deferring is not free, and it is worth saying so plainly.</b> "Just return deferred" reads
- * easier than it is: an approver that defers takes on a ledger. It must keep the {@link
- * ApprovalRequest#replyToken()}, because nothing else can ever settle that call; and it usually
- * wants the deadline and whatever it sent -- a message id, a ticket -- so it can tidy up an
- * approval request that expires unanswered. The engine keeps none of that on its behalf,
- * deliberately: the thing that decided a person was needed is the only thing that knows which
- * person, and a second ledger in the engine could only ever drift from the real one.
+ * <p><b>Deferring hands the answer to somebody else.</b> The request carries the agent type, the
+ * agent id and the {@link ApprovalRequest#idempotencyKey()} that address the call. An approver may
+ * hand them to whatever will answer, or keep nothing, because the approvals waiting on a person can
+ * be read from {@link org.jwcarman.nessy.api.AgentWork#waitingApprovals()}. It usually still wants
+ * the deadline and whatever it sent -- a message id, a ticket -- so it can tidy up an approval
+ * request that expires unanswered: the thing that decided a person was needed is the only thing
+ * that knows which person. One case is the exception: when the engine could not record the
+ * deferral, the approval request is not listed, and the call expires at its deadline. An approver
+ * that kept nothing cannot be answered for that call.
  *
  * <p>Nothing tells an approver that its approval request expired. The deadline it was given is the
  * whole of what it knows, which is enough to sweep its own outstanding approval requests.
