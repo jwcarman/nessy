@@ -166,4 +166,13 @@ class ChatTurnsIntegrationTest {
   private static AgentId agentIdOf(String id) {
     return new AgentId(UUID.fromString(id));
   }
+
+  @Test
+  void a_message_with_no_text_is_a_400() {
+    ChatClient chat = chat();
+
+    int status = chat.say(UUID.randomUUID().toString(), null);
+
+    assertThat(status).isEqualTo(400);
+  }
 }

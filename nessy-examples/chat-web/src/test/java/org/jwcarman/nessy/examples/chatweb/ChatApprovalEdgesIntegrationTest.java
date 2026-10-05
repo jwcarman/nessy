@@ -194,26 +194,44 @@ class ChatApprovalEdgesIntegrationTest {
   }
 
   @Test
-  void a_tell_that_lands_after_the_end_is_accepted_and_dropped_without_a_word() {
+  void
+      a_message_sent_after_the_end_while_the_ended_conversations_last_turn_is_in_progress_is_accepted_and_dropped() {
     ChatClient chat = new ChatClient(port);
     String agentId = UUID.randomUUID().toString();
+    AgentId agent = new AgentId(UUID.fromString(agentId));
+    asked(chat, agentId);
+    assertThat(chat.end(agentId)).isEqualTo(202);
+
+    int status = chat.say(agentId, "are you still there?");
+
+    // The agent is sealed from the moment of the end, so tell drops the input; but its status reads
+    // working until the parked turn ends, so the page cannot be told 409 here. It is accepted with
+    // 202 and nothing is kept.
+    assertThat(status).isEqualTo(202);
+    assertThat(work.status(ChatConfiguration.TYPE, agent).queued()).isZero();
+    assertThat(chat.state(agentId).texts()).doesNotContain("are you still there?");
+  }
+
+  @Test
+  void a_tell_after_the_end_leaves_nothing_queued() {
+    ChatClient chat = new ChatClient(port);
+    String agentId = UUID.randomUUID().toString();
+    AgentId agent = new AgentId(UUID.fromString(agentId));
     assertThat(chat.say(agentId, "hello")).isEqualTo(202);
     await()
         .atMost(Duration.ofSeconds(30))
         .untilAsserted(() -> assertThat(chat.state(agentId).texts()).contains("Noted."));
-    harness.terminate(new AgentId(UUID.fromString(agentId)));
+    harness.terminate(agent);
     await()
         .atMost(Duration.ofSeconds(30))
         .untilAsserted(
             () ->
-                assertThat(
-                        work.status(ChatConfiguration.TYPE, new AgentId(UUID.fromString(agentId)))
-                            .activity())
+                assertThat(work.status(ChatConfiguration.TYPE, agent).activity())
                     .isEqualTo(Activity.ENDED));
-    List<String> before = chat.state(agentId).texts();
 
-    harness.tell(new AgentId(UUID.fromString(agentId)), "too late");
+    harness.tell(agent, "too late");
 
-    assertThat(chat.state(agentId).texts()).isEqualTo(before);
+    // tell returns after its locked step, so an input it kept would be counted here already.
+    assertThat(work.status(ChatConfiguration.TYPE, agent).queued()).isZero();
   }
 }

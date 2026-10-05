@@ -15,8 +15,11 @@
  */
 package org.jwcarman.nessy.examples.chatweb;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -36,7 +39,13 @@ final class ChatClient {
   private final RestClient http;
 
   ChatClient(int port) {
-    this.http = RestClient.create("http://localhost:" + port);
+    // Timeouts, so a stalled request fails with a stack trace rather than hanging the build.
+    JdkClientHttpRequestFactory factory =
+        new JdkClientHttpRequestFactory(
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build());
+    factory.setReadTimeout(Duration.ofSeconds(60));
+    this.http =
+        RestClient.builder().baseUrl("http://localhost:" + port).requestFactory(factory).build();
   }
 
   int say(String agentId, String text) {
