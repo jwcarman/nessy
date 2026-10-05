@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.nessy.api.IdentityCodec;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.payload.Payloads;
@@ -56,18 +57,37 @@ public final class InMemoryPayloads implements Payloads {
 
   private final Codec<Payloads.Content> blocksCodec;
   private final Codec<Payloads.Document> documentCodec;
+  private final Codec<byte[]> transform;
   private final Map<PayloadRef, Kept> content = new ConcurrentHashMap<>();
 
+  /**
+   * With no storage transform of its own: the reference is a hash of whatever {@code codecs}
+   * writes. A factory that already includes a transform is therefore hashed after it; use {@link
+   * #InMemoryPayloads(CodecFactory, Codec)} when there is a transform.
+   */
   public InMemoryPayloads(CodecFactory codecs) {
-    Objects.requireNonNull(codecs, "codecs must not be null");
-    this.blocksCodec = codecs.create(Payloads.Content.class);
-    this.documentCodec = codecs.create(Payloads.Document.class);
+    this(codecs, IdentityCodec.INSTANCE);
   }
 
   /**
-   * Addressed by content, exactly as the durable store is: the same blocks encode to the same bytes
-   * and hash to the same reference, so the two stores agree on what a reference IS rather than each
-   * deriving one its own way.
+   * With the value codec and the storage transform given apart, so the reference can be a hash of
+   * the content before the transform: the same content is one reference even when the transform
+   * never writes the same bytes twice. Use this one when there is a transform.
+   *
+   * @param values writes a value as bytes, with no transform applied
+   * @param transform applied to those bytes on the way in and undone on the way out
+   */
+  public InMemoryPayloads(CodecFactory values, Codec<byte[]> transform) {
+    Objects.requireNonNull(values, "values must not be null");
+    this.blocksCodec = values.create(Payloads.Content.class);
+    this.documentCodec = values.create(Payloads.Document.class);
+    this.transform = Objects.requireNonNull(transform, "transform must not be null");
+  }
+
+  /**
+   * Addressed by content, exactly as the durable store is: the same blocks hash to the same
+   * reference whatever the transform does to the stored bytes, so the two stores agree on what a
+   * reference IS rather than each deriving one its own way.
    */
   @Override
   public PayloadRef put(List<? extends Block> blocks) {
@@ -88,7 +108,7 @@ public final class InMemoryPayloads implements Payloads {
     if (found.kind() != Kind.BLOCKS) {
       throw new IllegalStateException("payload " + ref + " holds a document, not blocks");
     }
-    return new Resolved.Found(blocksCodec.decode(found.encoded()).blocks());
+    return new Resolved.Found(blocksCodec.decode(transform.decode(found.encoded())).blocks());
   }
 
   @Override
@@ -100,12 +120,12 @@ public final class InMemoryPayloads implements Payloads {
     if (found.kind() != Kind.DOCUMENT) {
       throw new IllegalStateException("payload " + ref + " holds blocks, not a document");
     }
-    return documentCodec.decode(found.encoded()).document();
+    return documentCodec.decode(transform.decode(found.encoded())).document();
   }
 
-  private PayloadRef keep(Kind kind, byte[] encoded) {
-    PayloadRef ref = Payloads.reference(encoded);
-    content.put(ref, new Kept(kind, encoded));
+  private PayloadRef keep(Kind kind, byte[] plain) {
+    PayloadRef ref = Payloads.reference(plain);
+    content.put(ref, new Kept(kind, transform.encode(plain)));
     return ref;
   }
 }

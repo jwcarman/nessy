@@ -27,6 +27,7 @@ import java.util.Set;
 import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.IdentityCodec;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.payload.Payloads;
@@ -42,9 +43,10 @@ import tools.jackson.databind.JsonNode;
  * The summaries of an agent's chapters are in {@code nessy_chapter}. So this table is where most of
  * what an agent said lives and not all of it.
  *
- * <p><b>Addressed, not minted.</b> The reference is the SHA-256 of the encoded content, so putting
- * the same content twice is one row and the same reference. An effect retried after a failure
- * cannot leave a second copy, and a reference proves what is behind it.
+ * <p><b>Addressed, not minted.</b> The reference is the SHA-256 of the content as the value codec
+ * writes it, before the storage transform, so putting the same content twice is one row and the
+ * same reference. An effect retried after a failure cannot leave a second copy, and a reference
+ * proves what is behind it.
  *
  * <p><b>Scoped, not shared.</b> Two agents that say the same thing store it twice. That is
  * deliberate: removing an agent's payload rows is then one statement over one table, with nothing
@@ -74,13 +76,32 @@ public final class JdbcPayloads implements Payloads {
 
   private final Codec<Payloads.Content> blocksCodec;
   private final Codec<Payloads.Document> documentCodec;
+  private final Codec<byte[]> transform;
   private final AgentId agent;
 
+  /**
+   * With no storage transform of its own: the reference is a hash of whatever {@code codecs}
+   * writes. A factory that already includes a transform is therefore hashed after it; use {@link
+   * #JdbcPayloads(JdbcClient, CodecFactory, Codec)} when there is a transform.
+   */
   public JdbcPayloads(JdbcClient jdbc, CodecFactory codecs) {
+    this(jdbc, codecs, IdentityCodec.INSTANCE);
+  }
+
+  /**
+   * With the value codec and the storage transform given apart, so the reference can be a hash of
+   * the content before the transform: the same content is one reference and one row even when the
+   * transform never writes the same bytes twice. Use this one when there is a transform.
+   *
+   * @param values writes a value as bytes, with no transform applied
+   * @param transform applied to those bytes on the way in and undone on the way out
+   */
+  public JdbcPayloads(JdbcClient jdbc, CodecFactory values, Codec<byte[]> transform) {
     this(
         jdbc,
-        Objects.requireNonNull(codecs, "codecs must not be null").create(Payloads.Content.class),
-        codecs.create(Payloads.Document.class),
+        Objects.requireNonNull(values, "values must not be null").create(Payloads.Content.class),
+        values.create(Payloads.Document.class),
+        Objects.requireNonNull(transform, "transform must not be null"),
         null);
   }
 
@@ -88,17 +109,23 @@ public final class JdbcPayloads implements Payloads {
       JdbcClient jdbc,
       Codec<Payloads.Content> blocksCodec,
       Codec<Payloads.Document> documentCodec,
+      Codec<byte[]> transform,
       AgentId agent) {
     this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
-    this.blocksCodec = Objects.requireNonNull(blocksCodec, "blocksCodec must not be null");
-    this.documentCodec = Objects.requireNonNull(documentCodec, "documentCodec must not be null");
+    this.blocksCodec = blocksCodec;
+    this.documentCodec = documentCodec;
+    this.transform = transform;
     this.agent = agent;
   }
 
   @Override
   public Payloads forAgent(AgentId agent) {
     return new JdbcPayloads(
-        jdbc, blocksCodec, documentCodec, Objects.requireNonNull(agent, "agent must not be null"));
+        jdbc,
+        blocksCodec,
+        documentCodec,
+        transform,
+        Objects.requireNonNull(agent, "agent must not be null"));
   }
 
   @Override
@@ -111,11 +138,11 @@ public final class JdbcPayloads implements Payloads {
     return keep(DOCUMENT, documentCodec.encode(new Payloads.Document(document)));
   }
 
-  private PayloadRef keep(String kind, byte[] encoded) {
+  private PayloadRef keep(String kind, byte[] plain) {
     AgentId scope = scoped();
-    PayloadRef ref = Payloads.reference(encoded);
+    PayloadRef ref = Payloads.reference(plain);
     jdbc.sql(PUT)
-        .params(scope.value(), HexFormat.of().parseHex(ref.value()), kind, encoded)
+        .params(scope.value(), HexFormat.of().parseHex(ref.value()), kind, transform.encode(plain))
         .update();
     return ref;
   }
@@ -132,7 +159,7 @@ public final class JdbcPayloads implements Payloads {
     }
     Stored row = rows.getFirst();
     return switch (row.kind()) {
-      case DOCUMENT -> documentCodec.decode(row.content()).document();
+      case DOCUMENT -> documentCodec.decode(transform.decode(row.content())).document();
       case BLOCKS ->
           throw new IllegalStateException("payload " + ref + " holds blocks, not a document");
       default -> throw unknownKind(ref, row.kind());
@@ -166,7 +193,8 @@ public final class JdbcPayloads implements Payloads {
                 case BLOCKS ->
                     found.put(
                         ref,
-                        new Resolved.Found(blocksCodec.decode(rs.getBytes("content")).blocks()));
+                        new Resolved.Found(
+                            blocksCodec.decode(transform.decode(rs.getBytes("content"))).blocks()));
                 case DOCUMENT ->
                     throw new IllegalStateException(
                         "payload " + ref + " holds a document, not blocks");

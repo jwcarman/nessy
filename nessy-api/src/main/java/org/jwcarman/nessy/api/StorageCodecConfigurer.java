@@ -31,6 +31,10 @@ import org.jwcarman.codec.Codec;
  * }
  * }</pre>
  *
+ * <p>A transform need not be deterministic. Encryption with a fresh nonce on every write is fine: a
+ * payload's reference is a hash of its content taken before this transform, so the same content is
+ * one reference and one copy whatever the transform writes.
+ *
  * <p>Take-and-return rather than append-only: {@link #configure(Codec)} is handed the transform
  * assembled so far and returns the transform to use from here on, composed with {@link
  * Codec#andThen}. That shape is what lets this be a plain lambda -- a method returning a fresh

@@ -107,6 +107,9 @@ public class JdbcBackendAutoConfiguration {
       PlatformTransactionManager transactions,
       CodecFactory codecs,
       NessySchema schema) {
+    if (codecs instanceof StorageLayers ours) {
+      return new JdbcDirectBackend(dataSource, transactions, ours.values(), ours.transform());
+    }
     return new JdbcDirectBackend(dataSource, transactions, codecs);
   }
 
@@ -117,6 +120,9 @@ public class JdbcBackendAutoConfiguration {
       PlatformTransactionManager transactions,
       CodecFactory codecs,
       NessySchema schema) {
+    if (codecs instanceof StorageLayers ours) {
+      return new JdbcQueuedBackend(dataSource, transactions, ours.values(), ours.transform());
+    }
     return new JdbcQueuedBackend(dataSource, transactions, codecs);
   }
 

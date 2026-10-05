@@ -64,8 +64,9 @@ public interface Payloads {
    * Keeps content, and says where it went.
    *
    * <p><b>Idempotent.</b> Putting the same content twice is the same reference and one copy, so an
-   * effect retried after a failure cannot leave a second one behind. That is what makes the
-   * reference worth deriving from the content rather than minting.
+   * effect retried after a failure cannot leave a second one behind. The reference is a SHA-256 of
+   * the content as the value codec writes it, before the storage transform, so the same content is
+   * one reference and one copy whatever the transform does.
    */
   PayloadRef put(List<? extends Block> content);
 
@@ -73,8 +74,10 @@ public interface Payloads {
    * Keeps a JSON document, and says where it went.
    *
    * <p>The same rules as {@link #put}: <b>idempotent</b>, so the same document is the same
-   * reference and one copy. The document is stored as given, its fields in the order it has them,
-   * so two callers that build the same document the same way get the same reference.
+   * reference and one copy, whatever the storage transform does -- the reference is a SHA-256 of
+   * the document as the value codec writes it, before the transform. The document is stored as
+   * given, its fields in the order it has them, so two callers that build the same document the
+   * same way get the same reference.
    *
    * @param document a JSON object, array or value; never null and never JSON {@code null}
    */
@@ -119,7 +122,7 @@ public interface Payloads {
    * The shape content takes once written down.
    *
    * <p>Here rather than in either store so both encode the SAME type: the reference is a hash of
-   * the encoded bytes, so a record declared twice -- once per backend -- would give the same
+   * the value codec's bytes, so a record declared twice -- once per backend -- would give the same
    * content two different references the day somebody renamed a component in one of them, and
    * nothing would fail until a reader compared the two.
    *
@@ -149,7 +152,8 @@ public interface Payloads {
   }
 
   /**
-   * The reference for content that encodes to {@code bytes}.
+   * The reference for content that the value codec wrote as {@code bytes}: their SHA-256, taken
+   * before the storage transform.
    *
    * <p>Derived rather than minted, which is what makes {@link #put} idempotent: the same content is
    * the same reference, so an effect retried after a failure cannot leave a second copy. Shared for

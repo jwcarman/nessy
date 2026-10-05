@@ -25,6 +25,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.block.Block;
@@ -151,5 +152,84 @@ class InMemoryPayloadsTest {
 
     assertThat(sparsePayloads.getDocument(document)).isEqualTo(empty);
     assertThat(sparsePayloads.get(blocks)).isEqualTo(new Payloads.Resolved.Found(List.of()));
+  }
+
+  private static final Codec<byte[]> REVERSED =
+      new Codec<>() {
+        @Override
+        public byte[] encode(byte[] bytes) {
+          return reverse(bytes);
+        }
+
+        @Override
+        public byte[] decode(byte[] bytes) {
+          return reverse(bytes);
+        }
+      };
+
+  private static byte[] reverse(byte[] bytes) {
+    byte[] out = new byte[bytes.length];
+    for (int i = 0; i < bytes.length; i++) {
+      out[i] = bytes[bytes.length - 1 - i];
+    }
+    return out;
+  }
+
+  private static Payloads under(Codec<byte[]> transform) {
+    return new InMemoryPayloads(new JacksonCodecFactory(MAPPER), transform);
+  }
+
+  @Test
+  void
+      the_same_content_is_one_reference_under_a_transform_that_never_writes_the_same_bytes_twice() {
+    Payloads nonced = under(new NeverTheSameBytes());
+    List<Block> blocks = List.of(new Block.Text("say it again"));
+
+    PayloadRef first = nonced.put(blocks);
+    PayloadRef again = nonced.put(blocks);
+
+    assertThat(again).isEqualTo(first);
+    assertThat(nonced.get(first)).isEqualTo(new Payloads.Resolved.Found(blocks));
+  }
+
+  @Test
+  void
+      the_same_document_is_one_reference_under_a_transform_that_never_writes_the_same_bytes_twice() {
+    Payloads nonced = under(new NeverTheSameBytes());
+
+    PayloadRef first = nonced.putDocument(document());
+    PayloadRef again = nonced.putDocument(document());
+
+    assertThat(again).isEqualTo(first);
+    assertThat(nonced.getDocument(first)).isEqualTo(document());
+  }
+
+  @Test
+  void a_reference_does_not_depend_on_the_storage_transform() {
+    Payloads transformed = under(REVERSED);
+    List<Block> blocks = List.of(new Block.Text("same words"));
+
+    assertThat(transformed.put(blocks)).isEqualTo(payloads.put(blocks));
+    assertThat(transformed.putDocument(document())).isEqualTo(payloads.putDocument(document()));
+  }
+
+  @Test
+  void the_stored_content_reads_back_through_the_transform() {
+    Payloads transformed = under(REVERSED);
+    List<Block> blocks = List.of(new Block.Text("same words"));
+
+    PayloadRef blocksRef = transformed.put(blocks);
+    PayloadRef documentRef = transformed.putDocument(document());
+
+    assertThat(transformed.get(blocksRef)).isEqualTo(new Payloads.Resolved.Found(blocks));
+    assertThat(transformed.getDocument(documentRef)).isEqualTo(document());
+  }
+
+  @Test
+  void blocks_and_a_document_never_share_a_reference() {
+    PayloadRef emptyBlocks = payloads.put(List.of());
+
+    assertThat(emptyBlocks).isNotEqualTo(payloads.putDocument(MAPPER.createObjectNode()));
+    assertThat(emptyBlocks).isNotEqualTo(payloads.putDocument(MAPPER.createArrayNode()));
   }
 }

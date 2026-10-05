@@ -30,6 +30,7 @@ import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.IdentityCodec;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.ProviderId;
@@ -161,16 +162,18 @@ public final class EngineFixture implements AutoCloseable {
     this.jdbc = JdbcClient.create(dataSource);
     CodecFactory jackson = new JacksonCodecFactory(JsonMapper.builder().build());
     CodecFactory codecs = storage.map(t -> andThen(jackson, t)).orElse(jackson);
+    Codec<byte[]> transform = storage.orElse(IdentityCodec.INSTANCE);
     // Readers over the same tables the engine writes, so a test asserts on what was written down
     // rather than on the engine's own objects.
     this.events = new JdbcAgentEvents(jdbc, codecs);
-    this.payloads = new JdbcPayloads(jdbc, codecs);
+    this.payloads = new JdbcPayloads(jdbc, jackson, transform);
     this.history =
         (type, id) ->
             new EventStreamHistory(events, new Transcript(payloads.forAgent(id)), type, id);
 
     JdbcQueuedBackend backend =
-        new JdbcQueuedBackend(dataSource, new JdbcTransactionManager(dataSource), codecs);
+        new JdbcQueuedBackend(
+            dataSource, new JdbcTransactionManager(dataSource), jackson, transform);
     this.chapters = backend.chapters();
     this.harnesses =
         DefaultQueuedHarnessFactory.of(

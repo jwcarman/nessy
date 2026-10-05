@@ -17,7 +17,9 @@ package org.jwcarman.nessy.backend.jdbc;
 
 import java.util.Objects;
 import javax.sql.DataSource;
+import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
+import org.jwcarman.nessy.api.IdentityCodec;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.chapter.Chapters;
 import org.jwcarman.nessy.backend.event.AgentEvents;
@@ -49,18 +51,54 @@ public final class JdbcDirectBackend implements DirectBackend {
   private final Leases leases;
 
   /**
-   * For a caller that already coordinates its own transactions and builds its own codecs -- a
-   * Spring application hands in the context's {@link CodecFactory} bean, which is Jackson with
-   * whatever storage transform the application declared already applied.
+   * For a caller that already coordinates its own transactions and builds its own codecs: the
+   * factory is used as given for every store, payloads included, so a factory that already has a
+   * storage transform is hashed after it: a payload's reference then depends on what the transform
+   * writes. Use the constructor that takes the value codec and the transform apart when there is a
+   * transform.
    */
   public JdbcDirectBackend(
       DataSource dataSource, PlatformTransactionManager transactions, CodecFactory codecs) {
+    this(dataSource, transactions, codecs, codecs, IdentityCodec.INSTANCE);
+  }
+
+  /**
+   * For a caller that has a storage transform and holds it apart from the value codec. Every store
+   * is built over the two composed, as the other constructor's factory would be, except the
+   * payloads, which get them apart so a payload's reference is a hash of its content before the
+   * transform. With the other constructor, a factory that already includes a transform is hashed
+   * after it.
+   *
+   * @param values the value codec, with no transform applied
+   * @param transform the storage transform
+   */
+  public JdbcDirectBackend(
+      DataSource dataSource,
+      PlatformTransactionManager transactions,
+      CodecFactory values,
+      Codec<byte[]> transform) {
+    this(
+        dataSource,
+        transactions,
+        StorageCodecs.compose(
+            Objects.requireNonNull(values, "values must not be null"),
+            Objects.requireNonNull(transform, "transform must not be null")),
+        values,
+        transform);
+  }
+
+  private JdbcDirectBackend(
+      DataSource dataSource,
+      PlatformTransactionManager transactions,
+      CodecFactory codecs,
+      CodecFactory values,
+      Codec<byte[]> transform) {
     Objects.requireNonNull(dataSource, "dataSource must not be null");
     Objects.requireNonNull(transactions, "transactions must not be null");
     Objects.requireNonNull(codecs, "codecs must not be null");
     JdbcClient jdbc = JdbcClient.create(dataSource);
     this.events = new JdbcAgentEvents(jdbc, codecs);
-    this.payloads = new JdbcPayloads(jdbc, codecs);
+    this.payloads = new JdbcPayloads(jdbc, values, transform);
     this.locks = new JdbcRowLocks(dataSource, transactions);
     this.chapters = new JdbcChapters(jdbc, codecs);
     this.leases = new JdbcLeases(jdbc);
