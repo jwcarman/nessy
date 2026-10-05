@@ -14,8 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failure response on an effect row gains it too. Stored events and failure responses change
   shape; recreate the database. A custom `StoryContent` must implement `approvalFacts`.
 - **Stored events and stored effect attempts changed shape.** The five model-call events gain a
-  `request` field (`manifest` on `actions-requested`), and a failed attempt kept on an effect row
-  gains `request`. Recreate the database.
+  `manifest` field, and a failed attempt kept on an effect row gains `manifest`. Recreate the
+  database.
 - **`nessy_agent_effect` gained a nullable `parked_at` column,** and `Effects` gains
   `park(effectId, attemptsMade, at)`, so a custom implementation must add it. Recreate the
   database.

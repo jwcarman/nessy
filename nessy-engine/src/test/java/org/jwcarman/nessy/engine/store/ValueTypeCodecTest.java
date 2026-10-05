@@ -41,7 +41,7 @@ import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
-import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest;
 import org.jwcarman.nessy.inference.Failure;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
@@ -741,8 +741,8 @@ class ValueTypeCodecTest {
 
   // ---- the request manifest ------------------------------------------------------------
 
-  private final Codec<RequestManifest> manifests =
-      new JacksonCodecFactory(JsonMapper.builder().build()).create(RequestManifest.class);
+  private final Codec<InferenceRequestManifest> manifests =
+      new JacksonCodecFactory(JsonMapper.builder().build()).create(InferenceRequestManifest.class);
 
   private static final String WHOLE_MANIFEST =
       """
@@ -770,22 +770,22 @@ class ValueTypeCodecTest {
        "state":[],
        "ambient":[]}""";
 
-  private static RequestManifest wholeManifest() {
-    return new RequestManifest(
+  private static InferenceRequestManifest wholeManifest() {
+    return new InferenceRequestManifest(
         "0.5.0-SNAPSHOT",
         new PayloadRef("1111aaaa"),
         new PayloadRef("2222bbbb"),
         Optional.of(new PayloadRef("3333cccc")),
         new PayloadRef("4444dddd"),
         Optional.of(new TurnId(9)),
-        Optional.of(new RequestManifest.TurnRange(new TurnId(11), new TurnId(13))),
-        List.of(new RequestManifest.Section("facts", new PayloadRef("7777aaaa"))),
-        List.of(new RequestManifest.Section("notebook", new PayloadRef("8888bbbb"))),
-        List.of(new RequestManifest.Section("clock", new PayloadRef("9999cccc"))));
+        Optional.of(new InferenceRequestManifest.TurnRange(new TurnId(11), new TurnId(13))),
+        List.of(new InferenceRequestManifest.Section("facts", new PayloadRef("7777aaaa"))),
+        List.of(new InferenceRequestManifest.Section("notebook", new PayloadRef("8888bbbb"))),
+        List.of(new InferenceRequestManifest.Section("clock", new PayloadRef("9999cccc"))));
   }
 
-  private static RequestManifest minimalManifest() {
-    return new RequestManifest(
+  private static InferenceRequestManifest minimalManifest() {
+    return new InferenceRequestManifest(
         "0.5.0-SNAPSHOT",
         new PayloadRef("1111aaaa"),
         new PayloadRef("2222bbbb"),
@@ -798,11 +798,11 @@ class ValueTypeCodecTest {
         List.of());
   }
 
-  private RequestManifest readManifest(String json) {
+  private InferenceRequestManifest readManifest(String json) {
     return manifests.decode(json.getBytes(StandardCharsets.UTF_8));
   }
 
-  private JsonNode writtenTree(RequestManifest manifest) {
+  private JsonNode writtenTree(InferenceRequestManifest manifest) {
     return mapper.readTree(new String(manifests.encode(manifest), StandardCharsets.UTF_8));
   }
 
@@ -850,7 +850,7 @@ class ValueTypeCodecTest {
         event(
             "inference-answered",
             "\"answer\":\"a3d9f0b1\",\"truncated\":false,",
-            "request",
+            "manifest",
             WHOLE_MANIFEST),
         new AgentEvent.InferenceAnswered(
             new Seq(3),
@@ -864,7 +864,7 @@ class ValueTypeCodecTest {
   @Test
   void aStoredRefusalCarriesWhatItsRequestWasMadeOf() {
     assertStoredBothWays(
-        event("inference-refused", "\"category\":\"safety\",", "request", WHOLE_MANIFEST),
+        event("inference-refused", "\"category\":\"safety\",", "manifest", WHOLE_MANIFEST),
         new AgentEvent.InferenceRefused(
             new Seq(3), new TurnId(1), "safety", Usage.unreported(), Optional.of(wholeManifest())));
   }
@@ -875,7 +875,7 @@ class ValueTypeCodecTest {
         event(
             "inference-failed",
             "\"failure\":{\"type\":\"permanent\",\"reason\":\"no\"},",
-            "request",
+            "manifest",
             WHOLE_MANIFEST),
         new AgentEvent.InferenceFailed(
             new Seq(3),
@@ -891,7 +891,7 @@ class ValueTypeCodecTest {
         event(
             "inference-attempted",
             "\"failure\":{\"type\":\"transient\",\"reason\":\"busy\"},",
-            "request",
+            "manifest",
             WHOLE_MANIFEST),
         new AgentEvent.InferenceAttempted(
             new Seq(3),
@@ -901,9 +901,9 @@ class ValueTypeCodecTest {
             Optional.of(wholeManifest())));
   }
 
-  /** The key is named {@code manifest} here because {@code request} is what the model wrote. */
+  /** Every model-call event keeps its manifest under the key {@code manifest}. */
   @Test
-  void storedRequestedActionsCarryWhatTheirRequestWasMadeOfUnderTheNameManifest() {
+  void storedRequestedActionsCarryWhatTheirRequestWasMadeOf() {
     assertStoredBothWays(
         event(
             "actions-requested",
@@ -948,7 +948,7 @@ class ValueTypeCodecTest {
 
     byte[] bytes = entries.encode(written);
 
-    assertThat(mapper.readTree(new String(bytes, StandardCharsets.UTF_8)).get("request").isNull())
+    assertThat(mapper.readTree(new String(bytes, StandardCharsets.UTF_8)).get("manifest").isNull())
         .isTrue();
     assertThat(entries.decode(bytes)).isEqualTo(written);
   }
@@ -979,7 +979,7 @@ class ValueTypeCodecTest {
   void aKeptAttemptCarriesWhatItsRequestWasMadeOf() {
     String stored =
         """
-        [{"failure":{"type":"transient","reason":"busy"},"usage":%s,"request":%s}]"""
+        [{"failure":{"type":"transient","reason":"busy"},"usage":%s,"manifest":%s}]"""
             .formatted(NO_USAGE, WHOLE_MANIFEST);
     List<FailedAttempt> expected =
         List.of(

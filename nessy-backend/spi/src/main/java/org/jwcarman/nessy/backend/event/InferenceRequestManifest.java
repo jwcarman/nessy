@@ -22,7 +22,7 @@ import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.TurnId;
 
 /**
- * What a request to the model was made of: the engine that built it, and a reference for each
+ * What an {@code InferenceRequest} was made of: the engine that built it, and a reference for each
  * stored part, with the summaries and the turns shown named by the turns they cover. The stored
  * parts themselves are in the payload store; the manifest names them.
  *
@@ -46,7 +46,7 @@ import org.jwcarman.nessy.api.TurnId;
  * @param state the sections that came from state, in the order they were bound
  * @param ambient the sections that came from the surroundings, in the order they were bound
  */
-public record RequestManifest(
+public record InferenceRequestManifest(
     String engineVersion,
     PayloadRef instructions,
     PayloadRef tools,
@@ -58,7 +58,7 @@ public record RequestManifest(
     List<Section> state,
     List<Section> ambient) {
 
-  public RequestManifest {
+  public InferenceRequestManifest {
     Objects.requireNonNull(engineVersion, "engineVersion must not be null");
     Objects.requireNonNull(instructions, "instructions must not be null");
     Objects.requireNonNull(tools, "tools must not be null");

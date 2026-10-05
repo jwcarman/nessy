@@ -109,7 +109,7 @@ public sealed interface AgentEvent {
    * reading, because neither counted.
    *
    * @param truncated whether the model was cut off at its output limit, so the answer stops short
-   * @param request what the request was made of, by reference; empty when no request was in hand
+   * @param manifest what the request was made of, by reference; empty when no request was in hand
    */
   record InferenceAnswered(
       Seq seq,
@@ -117,11 +117,11 @@ public sealed interface AgentEvent {
       PayloadRef answer,
       boolean truncated,
       Usage usage,
-      Optional<RequestManifest> request)
+      Optional<InferenceRequestManifest> manifest)
       implements AgentEvent {
     public InferenceAnswered {
       usage = usage == null ? Usage.unreported() : usage;
-      request = request == null ? Optional.empty() : request;
+      manifest = manifest == null ? Optional.empty() : manifest;
     }
   }
 
@@ -131,11 +131,15 @@ public sealed interface AgentEvent {
    * <p>A refusal still costs: the model read the input before deciding not to answer it.
    */
   record InferenceRefused(
-      Seq seq, TurnId turn, String category, Usage usage, Optional<RequestManifest> request)
+      Seq seq,
+      TurnId turn,
+      String category,
+      Usage usage,
+      Optional<InferenceRequestManifest> manifest)
       implements AgentEvent {
     public InferenceRefused {
       usage = usage == null ? Usage.unreported() : usage;
-      request = request == null ? Optional.empty() : request;
+      manifest = manifest == null ? Optional.empty() : manifest;
     }
   }
 
@@ -150,11 +154,15 @@ public sealed interface AgentEvent {
    * that never reached a vendor has no vendor's count.
    */
   record InferenceFailed(
-      Seq seq, TurnId turn, Failure failure, Usage usage, Optional<RequestManifest> request)
+      Seq seq,
+      TurnId turn,
+      Failure failure,
+      Usage usage,
+      Optional<InferenceRequestManifest> manifest)
       implements AgentEvent {
     public InferenceFailed {
       usage = usage == null ? Usage.unreported() : usage;
-      request = request == null ? Optional.empty() : request;
+      manifest = manifest == null ? Optional.empty() : manifest;
     }
   }
 
@@ -198,11 +206,15 @@ public sealed interface AgentEvent {
    * provider reported. The rest never appear: they end the work rather than repeat it.
    */
   record InferenceAttempted(
-      Seq seq, TurnId turn, Failure failure, Usage usage, Optional<RequestManifest> request)
+      Seq seq,
+      TurnId turn,
+      Failure failure,
+      Usage usage,
+      Optional<InferenceRequestManifest> manifest)
       implements AgentEvent {
     public InferenceAttempted {
       usage = usage == null ? Usage.unreported() : usage;
-      request = request == null ? Optional.empty() : request;
+      manifest = manifest == null ? Optional.empty() : manifest;
     }
   }
 
@@ -222,7 +234,7 @@ public sealed interface AgentEvent {
       PayloadRef request,
       List<ActionRequest> actions,
       Usage usage,
-      Optional<RequestManifest> manifest)
+      Optional<InferenceRequestManifest> manifest)
       implements AgentEvent {
     public ActionsRequested {
       actions = List.copyOf(actions);

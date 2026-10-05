@@ -111,7 +111,7 @@ class ConcurrentDispatchTest {
                       assertThat(story.getLast())
                           .isInstanceOfSatisfying(
                               AgentEvent.InferenceAnswered.class,
-                              answered -> assertThat(answered.request()).isPresent());
+                              answered -> assertThat(answered.manifest()).isPresent());
                     }));
 
     assertThat(model.everyoneArrived())

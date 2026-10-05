@@ -18,7 +18,7 @@ package org.jwcarman.nessy.engine.inference;
 import java.util.List;
 import java.util.Optional;
 import org.jwcarman.nessy.api.PayloadRef;
-import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest;
 
 /**
  * A small fixed manifest, for the tests that need an {@link Inferred} and care about nothing in it.
@@ -28,9 +28,9 @@ public final class Manifests {
   private Manifests() {}
 
   /** A manifest that differs from every other number's: {@code n} is 0 to 9. */
-  public static RequestManifest numbered(int n) {
+  public static InferenceRequestManifest numbered(int n) {
     PayloadRef ref = new PayloadRef(Integer.toString(n).repeat(64));
-    return new RequestManifest(
+    return new InferenceRequestManifest(
         "0.0.0",
         ref,
         ref,
@@ -43,9 +43,9 @@ public final class Manifests {
         List.of());
   }
 
-  public static RequestManifest any() {
+  public static InferenceRequestManifest any() {
     PayloadRef ref = new PayloadRef("0".repeat(64));
-    return new RequestManifest(
+    return new InferenceRequestManifest(
         "0.0.0",
         ref,
         ref,

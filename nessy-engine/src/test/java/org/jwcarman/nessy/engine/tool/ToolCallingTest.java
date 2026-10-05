@@ -205,7 +205,7 @@ class ToolCallingTest {
             AgentEvent.ActionsRequested.class, event -> assertThat(event.manifest()).isPresent());
     assertThat(story.get(4))
         .isInstanceOfSatisfying(
-            AgentEvent.InferenceAnswered.class, event -> assertThat(event.request()).isPresent());
+            AgentEvent.InferenceAnswered.class, event -> assertThat(event.manifest()).isPresent());
     assertThat(story.get(0))
         .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.TurnStarted.class))
         .extracting(AgentEvent.TurnStarted::turn)
@@ -371,7 +371,7 @@ class ToolCallingTest {
     assertThat(story).noneMatch(AgentEvent.ToolApproved.class::isInstance);
     assertThat(story.get(3))
         .isInstanceOfSatisfying(
-            AgentEvent.InferenceAnswered.class, event -> assertThat(event.request()).isPresent());
+            AgentEvent.InferenceAnswered.class, event -> assertThat(event.manifest()).isPresent());
     assertThat(EngineFixture.withoutManifest(story.get(3)))
         .isEqualTo(
             new AgentEvent.InferenceAnswered(

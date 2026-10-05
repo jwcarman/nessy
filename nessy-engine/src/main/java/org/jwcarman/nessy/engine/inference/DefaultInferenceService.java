@@ -21,7 +21,7 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.JsonSchema;
 import org.jwcarman.nessy.api.Narrator;
 import org.jwcarman.nessy.api.SystemPrompt;
-import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -96,8 +96,8 @@ public class DefaultInferenceService implements InferenceService {
     // Built from the very request that is sent, before it is sent: a record of what the model
     // was shown cannot disagree with what it was shown. A provider that throws still leaves the
     // parts stored; they are content-addressed, so the retry reuses them rather than adding more.
-    RequestManifest manifest =
-        RequestManifests.of(request, payloads.forAgent(invocation.agentId()));
+    InferenceRequestManifest manifest =
+        InferenceRequestManifests.of(request, payloads.forAgent(invocation.agentId()));
     // Bound here, which is the only place that knows both who is being served and where the
     // narration goes. The provider is handed something that can say what is arriving -- text, or
     // thinking -- and cannot say whose it is, or that an agent is involved at all.

@@ -241,7 +241,7 @@ public sealed interface AgentState {
         at = at.next();
         attempts.add(
             new AgentEvent.InferenceAttempted(
-                at, turn, attempt.failure(), attempt.usage(), attempt.request()));
+                at, turn, attempt.failure(), attempt.usage(), attempt.manifest()));
       }
       return closing(done, at.next()).prepend(attempts);
     }
@@ -257,19 +257,19 @@ public sealed interface AgentState {
                         answered.answer(),
                         answered.truncated(),
                         answered.usage(),
-                        answered.request())),
+                        answered.manifest())),
                 List.of());
         case AgentCommand.InferenceOutcome.Refused refused ->
             Decision.of(
                 List.of(
                     new AgentEvent.InferenceRefused(
-                        at, turn, refused.category(), refused.usage(), refused.request())),
+                        at, turn, refused.category(), refused.usage(), refused.manifest())),
                 List.of());
         case AgentCommand.InferenceOutcome.Failed failed ->
             Decision.of(
                 List.of(
                     new AgentEvent.InferenceFailed(
-                        at, turn, failed.failure(), failed.usage(), failed.request())),
+                        at, turn, failed.failure(), failed.usage(), failed.manifest())),
                 List.of());
         case AgentCommand.InferenceOutcome.RequestedActions asked ->
             Decision.of(

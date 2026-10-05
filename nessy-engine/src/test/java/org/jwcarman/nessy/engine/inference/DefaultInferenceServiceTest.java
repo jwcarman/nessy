@@ -48,7 +48,7 @@ import org.jwcarman.nessy.api.turn.Input;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.api.turn.TurnResult;
-import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest;
 import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.inference.InferenceContext;
@@ -175,7 +175,7 @@ class DefaultInferenceServiceTest {
     Inferred inferred =
         service(everything(), recording, Optional.of(ANSWER_SCHEMA)).infer(invocation(false));
     InferenceRequest sent = received.getFirst();
-    RequestManifest manifest = inferred.request();
+    InferenceRequestManifest manifest = inferred.manifest();
 
     assertThat(text(manifest.instructions())).isEqualTo(sent.systemPrompt().value());
     assertThat(document(manifest.tools())).isEqualTo(toolsDocumentOf(sent));
@@ -189,7 +189,7 @@ class DefaultInferenceServiceTest {
     assertThat(manifest.summarizedThrough())
         .hasValue(sent.context().summaries().getLast().chapter().through());
     assertThat(manifest.tail())
-        .hasValue(new RequestManifest.TurnRange(new TurnId(5), new TurnId(6)));
+        .hasValue(new InferenceRequestManifest.TurnRange(new TurnId(5), new TurnId(6)));
     assertThat(manifest.memory()).hasSameSizeAs(sent.context().memory());
     assertThat(manifest.state()).hasSameSizeAs(sent.context().state());
     assertThat(manifest.ambient()).hasSameSizeAs(sent.context().ambient());
@@ -212,8 +212,8 @@ class DefaultInferenceServiceTest {
         service(everything(), recording, Optional.of(ANSWER_SCHEMA)).infer(invocation(false));
 
     assertThat(received).hasSize(1);
-    assertThat(RequestManifests.of(received.getFirst(), payloads.forAgent(AGENT)))
-        .isEqualTo(inferred.request());
+    assertThat(InferenceRequestManifests.of(received.getFirst(), payloads.forAgent(AGENT)))
+        .isEqualTo(inferred.manifest());
     assertThat(inferred.result()).isInstanceOf(InferenceResult.Answer.class);
   }
 
@@ -221,8 +221,8 @@ class DefaultInferenceServiceTest {
   void an_answer_only_call_names_different_tools() {
     DefaultInferenceService service = service(everything(), recording, Optional.empty());
 
-    RequestManifest ordinary = service.infer(invocation(false)).request();
-    RequestManifest answering = service.infer(invocation(true)).request();
+    InferenceRequestManifest ordinary = service.infer(invocation(false)).manifest();
+    InferenceRequestManifest answering = service.infer(invocation(true)).manifest();
 
     assertThat(answering.tools()).isNotEqualTo(ordinary.tools());
     assertThat(document(answering.tools())).contains("\"choice\":{\"type\":\"answer\"}");
@@ -238,14 +238,14 @@ class DefaultInferenceServiceTest {
     reversed.put("vendor.zeta", "1");
     DefaultInferenceService service = service(everything(), recording, Optional.empty());
 
-    RequestManifest given =
-        service.infer(new InferenceInvocation(TYPE, AGENT, OPTIONS, false)).request();
-    RequestManifest other =
+    InferenceRequestManifest given =
+        service.infer(new InferenceInvocation(TYPE, AGENT, OPTIONS, false)).manifest();
+    InferenceRequestManifest other =
         service
             .infer(
                 new InferenceInvocation(
                     TYPE, AGENT, new InferenceOptions("a-model", 4096, reversed), false))
-            .request();
+            .manifest();
 
     assertThat(other.options()).isEqualTo(given.options());
     assertThat(document(given.options()))
@@ -256,8 +256,8 @@ class DefaultInferenceServiceTest {
   void a_request_with_no_tail_no_summaries_and_no_sections_has_an_empty_manifest_for_them() {
     InferenceContext bare = InferenceContext.of(List.of(turn(1)));
 
-    RequestManifest manifest =
-        service(bare, recording, Optional.empty()).infer(invocation(false)).request();
+    InferenceRequestManifest manifest =
+        service(bare, recording, Optional.empty()).infer(invocation(false)).manifest();
 
     assertThat(manifest.tail()).isEmpty();
     assertThat(manifest.summarizedThrough()).isEmpty();
@@ -269,12 +269,12 @@ class DefaultInferenceServiceTest {
 
   @Test
   void sections_are_listed_in_the_order_their_sources_were_bound() {
-    RequestManifest manifest =
-        service(everything(), recording, Optional.empty()).infer(invocation(false)).request();
+    InferenceRequestManifest manifest =
+        service(everything(), recording, Optional.empty()).infer(invocation(false)).manifest();
 
     assertThat(manifest.state()).hasSize(2);
     assertThat(manifest.state())
-        .extracting(RequestManifest.Section::kind)
+        .extracting(InferenceRequestManifest.Section::kind)
         .containsExactly("plan", "plan");
     assertThat(text(manifest.state().get(0).content())).isEqualTo("step one");
     assertThat(text(manifest.state().get(1).content())).isEqualTo("step two");
@@ -282,8 +282,8 @@ class DefaultInferenceServiceTest {
 
   @Test
   void the_manifest_names_the_engines_version() {
-    RequestManifest manifest =
-        service(everything(), recording, Optional.empty()).infer(invocation(false)).request();
+    InferenceRequestManifest manifest =
+        service(everything(), recording, Optional.empty()).infer(invocation(false)).manifest();
 
     assertThat(manifest.engineVersion()).isEqualTo(EngineVersion.current());
   }

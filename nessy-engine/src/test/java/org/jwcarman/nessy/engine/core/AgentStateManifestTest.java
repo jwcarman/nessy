@@ -40,7 +40,7 @@ import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.backend.event.ActionRequest;
 import org.jwcarman.nessy.backend.event.AgentEvent;
-import org.jwcarman.nessy.backend.event.RequestManifest;
+import org.jwcarman.nessy.backend.event.InferenceRequestManifest;
 import org.jwcarman.nessy.engine.inference.Manifests;
 import org.jwcarman.nessy.inference.Failure;
 
@@ -84,7 +84,7 @@ class AgentStateManifestTest {
     @DisplayName("an answer is recorded with what its request was made of")
     void an_answer_is_recorded_with_what_its_request_was_made_of() {
       AgentState inferring = inferring();
-      RequestManifest manifest = Manifests.numbered(1);
+      InferenceRequestManifest manifest = Manifests.numbered(1);
 
       Decision decision =
           inferring.execute(
@@ -102,7 +102,7 @@ class AgentStateManifestTest {
     @DisplayName("a refusal is recorded with what its request was made of")
     void a_refusal_is_recorded_with_what_its_request_was_made_of() {
       AgentState inferring = inferring();
-      RequestManifest manifest = Manifests.numbered(2);
+      InferenceRequestManifest manifest = Manifests.numbered(2);
 
       Decision decision =
           inferring.execute(
@@ -120,7 +120,7 @@ class AgentStateManifestTest {
     @DisplayName("a failure is recorded with what its request was made of")
     void a_failure_is_recorded_with_what_its_request_was_made_of() {
       AgentState inferring = inferring();
-      RequestManifest manifest = Manifests.numbered(3);
+      InferenceRequestManifest manifest = Manifests.numbered(3);
       Failure reason = new Failure.Transient("provider unreachable");
 
       Decision decision =
@@ -138,7 +138,7 @@ class AgentStateManifestTest {
     @DisplayName("requested actions are recorded with what their request was made of")
     void requested_actions_are_recorded_with_what_their_request_was_made_of() {
       AgentState inferring = inferring();
-      RequestManifest manifest = Manifests.numbered(4);
+      InferenceRequestManifest manifest = Manifests.numbered(4);
 
       Decision decision =
           inferring.execute(
@@ -186,9 +186,9 @@ class AgentStateManifestTest {
     void
         each_retried_attempt_is_recorded_with_its_own_manifest_and_the_closing_event_with_its_own() {
       AgentState inferring = inferring();
-      RequestManifest first = Manifests.numbered(1);
-      RequestManifest second = Manifests.numbered(2);
-      RequestManifest third = Manifests.numbered(3);
+      InferenceRequestManifest first = Manifests.numbered(1);
+      InferenceRequestManifest second = Manifests.numbered(2);
+      InferenceRequestManifest third = Manifests.numbered(3);
       Usage firstUsage = Usage.of("a-model", 1, 0);
       Usage secondUsage = Usage.of("a-model", 2, 0);
       Seq at = inferring.seq();
@@ -215,8 +215,8 @@ class AgentStateManifestTest {
     @DisplayName("an attempt that has none stays without one beside attempts that have")
     void an_attempt_that_has_none_stays_without_one_beside_attempts_that_have() {
       AgentState inferring = inferring();
-      RequestManifest first = Manifests.numbered(1);
-      RequestManifest third = Manifests.numbered(3);
+      InferenceRequestManifest first = Manifests.numbered(1);
+      InferenceRequestManifest third = Manifests.numbered(3);
       Seq at = inferring.seq();
 
       Decision decision =
@@ -245,21 +245,21 @@ class AgentStateManifestTest {
       return Stream.of(
           Arguments.of(
               "an answer",
-              (Function<Optional<RequestManifest>, AgentCommand.InferenceOutcome>)
+              (Function<Optional<InferenceRequestManifest>, AgentCommand.InferenceOutcome>)
                   m -> new AgentCommand.InferenceOutcome.Answered(ANSWER, false, USAGE, m)),
           Arguments.of(
               "a refusal",
-              (Function<Optional<RequestManifest>, AgentCommand.InferenceOutcome>)
+              (Function<Optional<InferenceRequestManifest>, AgentCommand.InferenceOutcome>)
                   m -> new AgentCommand.InferenceOutcome.Refused("safety", USAGE, m)),
           Arguments.of(
               "a failure",
-              (Function<Optional<RequestManifest>, AgentCommand.InferenceOutcome>)
+              (Function<Optional<InferenceRequestManifest>, AgentCommand.InferenceOutcome>)
                   m ->
                       new AgentCommand.InferenceOutcome.Failed(
                           new Failure.Transient("down"), USAGE, m)),
           Arguments.of(
               "requested actions",
-              (Function<Optional<RequestManifest>, AgentCommand.InferenceOutcome>)
+              (Function<Optional<InferenceRequestManifest>, AgentCommand.InferenceOutcome>)
                   m -> new AgentCommand.InferenceOutcome.RequestedActions(ASKED, CALLS, USAGE, m)));
     }
 
@@ -268,7 +268,8 @@ class AgentStateManifestTest {
     @DisplayName(
         "changes no decision: the effects and the next state are the same with or without it")
     void the_manifest_changes_no_decision(
-        String name, Function<Optional<RequestManifest>, AgentCommand.InferenceOutcome> outcome) {
+        String name,
+        Function<Optional<InferenceRequestManifest>, AgentCommand.InferenceOutcome> outcome) {
       AgentState inferring = inferring();
 
       Decision with =

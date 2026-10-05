@@ -363,11 +363,11 @@ class EffectTermsSourceTest {
       assertThat(terms.undispatchable())
           .isInstanceOfSatisfying(
               EffectOutcome.InferenceFailed.class,
-              failed -> assertThat(failed.request()).isEmpty());
+              failed -> assertThat(failed.manifest()).isEmpty());
       assertThat(terms.failed(new IllegalStateException("boom")))
           .isInstanceOfSatisfying(
               EffectOutcome.InferenceFailed.class,
-              failed -> assertThat(failed.request()).isEmpty());
+              failed -> assertThat(failed.manifest()).isEmpty());
     }
 
     @Test
