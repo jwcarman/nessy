@@ -32,9 +32,9 @@ import tools.jackson.databind.node.ObjectNode;
  * would have made humans a special case and stopped a policy naming any other kind of reviewer.
  *
  * <p>The consequence is worth saying out loud rather than discovering: <b>a policy cannot park a
- * call itself.</b> It can only name something that can. Parking hands out a capability, and a
- * policy engine — frequently somebody else's service, and one that logs its input — is not trusted
- * with one.
+ * call itself.</b> It can only name something that can. Parking means keeping the call's agent
+ * type, agent id and idempotency key until somebody answers, and a verdict is a statement about a
+ * request, not a holder of one.
  */
 public sealed interface Verdict {
 

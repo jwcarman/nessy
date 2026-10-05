@@ -44,9 +44,9 @@ import org.jwcarman.nessy.engine.observability.ObservedTool;
  *
  * <p><b>What this cannot do, and why.</b> Nothing here can say which agent or turn a model call
  * belongs to: an {@code InferenceRequest} carries a context, a prompt, tools and a toolset, and no
- * identity; {@link ToolCallRequest} carries a reply address and nothing else. So model and tool
- * spans are correctly timed and correctly attributed, and they are ROOTS — they do not nest under a
- * turn, because there is nothing to nest them under. Approvals are the exception: {@link
+ * identity; {@link ToolCallRequest} knows its agent, but this class does not read it. So model and
+ * tool spans are correctly timed and correctly attributed, and they are ROOTS — they do not nest
+ * under a turn, because there is nothing to nest them under. Approvals are the exception: {@link
  * ApprovalRequest} knows its agent and its call.
  */
 public final class Observed {

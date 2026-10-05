@@ -133,8 +133,9 @@ public class ToolCallHandler implements EffectHandler<AgentEffect.CallTool> {
    * A tool's answer, as the dispatcher reads it.
    *
    * <p>A deferral here means the same thing it means for an approval: the work is genuinely
-   * elsewhere and will be answered against the reply address. The effect row stays, due at its own
-   * deadline, and if nobody answers by then the stored failure discharges the call.
+   * elsewhere and will be answered through {@code Replies}, by the agent type, the agent id and the
+   * call's idempotency key. The effect row stays, due at its own deadline, and if nobody answers by
+   * then the stored failure discharges the call.
    */
   private Handled outcomeOf(
       AgentId agentId, CallId callId, ToolBinding<?> binding, Awaited<ToolResult> awaited) {

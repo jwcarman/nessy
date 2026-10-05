@@ -34,9 +34,9 @@ import tools.jackson.databind.node.JsonNodeFactory;
  *
  * <p>Pulled out of the three handlers because asking what an effect is worth and performing it are
  * different questions with different collaborators. Performing a tool call needs {@code ToolCalls},
- * a reply address to mint and somewhere to put the result; asking what it is worth needs only the
- * binding, if there is one, and a default if there is not. A door that only ever asks -- never
- * performs -- has no way to build the handlers, but it can build this.
+ * somewhere to put the result; asking what it is worth needs only the binding, if there is one, and
+ * a default if there is not. A door that only ever asks -- never performs -- has no way to build
+ * the handlers, but it can build this.
  *
  * <p>Held by each handler and delegated to for {@link EffectHandler#termsFor}, so the handlers stay
  * the one place {@link EffectTerms} is asked for while keeping the collaborators the work itself
