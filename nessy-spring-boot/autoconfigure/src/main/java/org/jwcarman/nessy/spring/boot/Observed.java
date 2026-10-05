@@ -44,9 +44,10 @@ import org.jwcarman.nessy.engine.observability.ObservedTool;
  * type, the agent id and the turn, read off the request they are given. A model span copies the
  * agent name and the conversation id from the observation that is current when the call starts, and
  * takes its turn from the request's active turn, so a model call made outside any agent's span
- * carries no agent name. Each of the three is opened under whichever observation is current on the
- * thread when it starts: on the direct door, the {@code invoke_agent} span of the {@code ask}; on
- * the queued door, the span of the effect being performed.
+ * carries no agent name. On both doors each of the three opens under the {@code nessy.effect} span
+ * of the attempt that performs it. On the direct door that span is under the {@code invoke_agent}
+ * span of the {@code ask}; on the queued door it is parented to the trace context stored with the
+ * effect.
  */
 public final class Observed {
 
