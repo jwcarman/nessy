@@ -18,9 +18,9 @@ package org.jwcarman.nessy.api;
 /**
  * One agent type's door, for work nobody is waiting on.
  *
- * <p><b>It always accepts.</b> Telling an agent something cannot fail and cannot be refused: what
- * arrives goes in the queue, and the queue is what makes the agent's own pace nobody else's
- * problem. Nothing comes back, because there is nothing a caller could do with it -- by the time
+ * <p><b>It accepts every input that has somewhere to go.</b> What arrives goes in the queue, and
+ * the queue is what makes the agent's own pace nobody else's problem. What comes back says only
+ * whether the agent took the input or has been terminated, and never how the turn went: by the time
  * the turn runs, whoever spoke has gone.
  *
  * <p>{@link DirectHarness} is the other door and the opposite bargain: its caller is standing there
@@ -46,8 +46,12 @@ public interface QueuedHarness<I> {
    * <p>An agent that has never been heard of comes into being here rather than through a separate
    * call: there is nothing to say about an agent before its first input, and a create step would
    * only be a way to get that wrong.
+   *
+   * @return {@link TellOutcome.Accepted} when the agent took the input, whatever its backlog policy
+   *     then did with it; {@link TellOutcome.Terminated} when the agent has been terminated, in
+   *     which case the input was dropped
    */
-  void tell(AgentId agentId, I input);
+  TellOutcome tell(AgentId agentId, I input);
 
   /**
    * Ends an agent.
