@@ -100,6 +100,7 @@ Everything below is read from `nessy.*`, bound by `NessyProperties`.
 | `nessy.system-prompt-file` | none; a `Resource`. **Setting both is an error** | the same places as `nessy.system-prompt` |
 | `nessy.type` | `agent` | ignored: nothing reads it. An agent's type is named when you call `factory.create(agentType, ...)`, not from a property |
 | `nessy.initialize-schema` | `true`: apply every module's `nessy-schema.sql` at startup | `JdbcBackendAutoConfiguration`'s schema bean |
+| `nessy.notebook.enabled` | `true`: the notebook installs its index and `remember`, `revise`, `recall` and `forget` on every agent of both doors when the JDBC backend is present; `false` turns it off | `NotebookAutoConfiguration` |
 | `nessy.prompt.engine` | `spring`, or `mustache` | `PromptEngineAutoConfiguration` |
 | `nessy.narration.odyssey.inactivity-ttl`, `entry-ttl`, `retention-ttl` | a day, a day, an hour | `OdysseyNarrationAutoConfiguration`, when Odyssey is present |
 | `anthropic.api-key`, `openai.api-key`, `openai.base-url`, `xai.api-key`, `gemini.api-key`, `google.api-key`, `openrouter.api-key`, `nvidia.api-key`, `groq.api-key`, `mistral.api-key`, `cerebras.api-key`, `voyage.api-key` | light the matching inference or embedding preset; see [Providers](providers.md#boot-auto-configuration) |
@@ -187,6 +188,16 @@ started, so a listener may depend on the factory without a cycle.
 
 Every `NarrationListener` bean is attached to it the same way.
 
+**With a `DataSource`, `CodecFactory` and `nessy-backend-jdbc`, unless `nessy.notebook.enabled=false`**
+(`NotebookAutoConfiguration`):
+
+| Bean | What it is |
+|---|---|
+| `nessyNotebookFeature` | a `Customizer<HarnessConfig<?>>` that installs the notebook index and its four tools on every agent, over a `JdbcNotebook` for that agent's type; backs off for `nessy.notebook.enabled=false`, for an application's own `Notebook` bean, and without the JDBC backend |
+
+Both factories collect every `Customizer<HarnessConfig<?>>` bean as a feature,
+applied to each harness before the caller's own customizer.
+
 **With either backend** (`UsageReportsAutoConfiguration`): a `UsageReports` bean, the usage of
 each agent by model, projected from the stored events of both doors.
 
@@ -258,6 +269,8 @@ classpath and runs them at startup, safe to repeat. An application using
 Flyway or Liquibase sets it to `false` and applies the same files through
 whichever migration tool it already runs — Boot looks for `schema.sql`,
 Nessy's file is named `nessy-schema.sql`, and that name is the whole opt-in.
+`nessy_note`, the notebook's table, is among the tables it must create; its
+DDL is the `nessy-schema.sql` in the notebook jar.
 See [Storage](../concepts/storage.md).
 
 The bean this produces, `JdbcBackendAutoConfiguration.NessySchema`, is a
@@ -268,11 +281,11 @@ exist first depends on it, so Spring builds it before them.
 
 `nessy-examples/chat-web` declares a `QueuedHarness<String>` bean. The
 starter provides the `QueuedHarnessFactory`, and the example calls its
-`create(...)`. The factory binds no tools, so the example binds its own: a
-date tool, the notebook and plan tools, and an email tool that needs an
-approver and an approval term. It also sets the ambient notebook index and
-current plan, and a backlog policy that joins messages sent while the agent
-works. The configuration reads `NessyProperties.model()`, `.maxTokens()` and
+`create(...)`. The factories bind the tools and ambient sources that features
+install, the notebook being one, so the example binds the rest: a date tool,
+the plan store and its tool, and an email tool that needs an approver and an
+approval term. It also sets the ambient current plan, and a backlog policy that
+joins messages sent while the agent works. The configuration reads `NessyProperties.model()`, `.maxTokens()` and
 `.resolveSystemPrompt()` itself and passes them to that call. `nessy-examples/watchman` is the same shape, doing
 rounds on a timer against a real host.
 

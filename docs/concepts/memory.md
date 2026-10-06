@@ -71,6 +71,10 @@ config.inference(in -> in.context(ctx -> ctx.ambient(NotebookTools.index(noteboo
       .tool(NotebookTools.forget(notebook));
 ```
 
+With the Spring Boot starter the notebook installs itself on every agent, so
+none of that is written; an application that declares its own `Notebook` bean
+keeps the starter out.
+
 `nessy-planning` gives it a plan it holds across turns; see
 [Planning](planning.md). The plan is ambient and the model resends the whole
 list on every update, so a replayed write stores the identical list.
