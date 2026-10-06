@@ -29,28 +29,11 @@ import org.jwcarman.nessy.api.IdentityCodec;
  * a payload's reference can be a hash of its content before the transform. When an application
  * declares a {@code CodecFactory} of its own, that bean is not one of these, and the backend uses
  * it as given.
+ *
+ * @param values the value codec, with no transform applied
+ * @param transform the storage transform, or {@link IdentityCodec#INSTANCE} for none
  */
-final class StorageLayers implements CodecFactory {
-
-  private final CodecFactory values;
-  private final Codec<byte[]> transform;
-
-  /**
-   * @param values the value codec, with no transform applied
-   * @param transform the storage transform, or {@link IdentityCodec#INSTANCE} for none
-   */
-  StorageLayers(CodecFactory values, Codec<byte[]> transform) {
-    this.values = values;
-    this.transform = transform;
-  }
-
-  CodecFactory values() {
-    return values;
-  }
-
-  Codec<byte[]> transform() {
-    return transform;
-  }
+record StorageLayers(CodecFactory values, Codec<byte[]> transform) implements CodecFactory {
 
   @Override
   public <T> Codec<T> create(TypeRef<T> type) {

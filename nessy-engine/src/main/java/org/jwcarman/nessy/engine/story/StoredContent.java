@@ -100,13 +100,14 @@ final class StoredContent implements StoryContent {
               case AgentEvent.InferenceAnswered answered -> answers.add(answered);
               default -> true;
             });
-    List<RequestContent> written = new ArrayList<>();
-    for (AgentEvent.ActionsRequested requested : requests) {
-      written.add(
-          new RequestContent(
-              requested.seq(),
-              narrow(blocks(requested.request()), Block.ActionRequestContent.class)));
-    }
+    List<RequestContent> written =
+        requests.stream()
+            .map(
+                requested ->
+                    new RequestContent(
+                        requested.seq(),
+                        narrow(blocks(requested.request()), Block.ActionRequestContent.class)))
+            .toList();
     Optional<List<Block.AnswerContent>> answer =
         answers.isEmpty()
             ? Optional.empty()
@@ -199,16 +200,16 @@ final class StoredContent implements StoryContent {
             });
     Map<PayloadRef, Payloads.Resolved> resolved =
         payloads.get(pending.stream().map(Pending::result).distinct().toList());
-    List<CallResult> results = new ArrayList<>();
-    for (Pending one : pending) {
-      results.add(
-          new CallResult(
-              one.seq(),
-              one.key(),
-              narrow(
-                  found(one.result(), resolved.get(one.result())), Block.ToolResultContent.class)));
-    }
-    return List.copyOf(results);
+    return pending.stream()
+        .map(
+            one ->
+                new CallResult(
+                    one.seq(),
+                    one.key(),
+                    narrow(
+                        found(one.result(), resolved.get(one.result())),
+                        Block.ToolResultContent.class)))
+        .toList();
   }
 
   @Override
@@ -285,7 +286,7 @@ final class StoredContent implements StoryContent {
           case AgentEvent.ToolFailed e -> before(e.turn());
           case AgentEvent.ApprovalDeferred e -> before(e.turn());
           case AgentEvent.ToolDeferred e -> before(e.turn());
-          case AgentEvent.Terminated e -> new Seq(e.seq().value() - 1);
+          case AgentEvent.Terminated(Seq seq) -> new Seq(seq.value() - 1);
         });
   }
 

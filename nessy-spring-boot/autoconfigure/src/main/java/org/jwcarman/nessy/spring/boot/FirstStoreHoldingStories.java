@@ -117,12 +117,15 @@ final class FirstStoreHoldingStories implements AgentStories {
 
     @Override
     public Optional<List<Block.ToolResultContent>> result(IdempotencyKey key) {
-      Objects.requireNonNull(key, "key must not be null");
-      return Optional.empty();
+      return nothingFor(key);
     }
 
     @Override
     public Optional<JsonNode> approvalFacts(IdempotencyKey key) {
+      return nothingFor(key);
+    }
+
+    private static <T> Optional<T> nothingFor(IdempotencyKey key) {
       Objects.requireNonNull(key, "key must not be null");
       return Optional.empty();
     }

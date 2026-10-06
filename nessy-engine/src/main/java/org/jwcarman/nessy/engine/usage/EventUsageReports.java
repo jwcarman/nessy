@@ -95,39 +95,39 @@ public final class EventUsageReports implements UsageReports {
               });
       return soFar;
     }
-  }
 
-  /** The usage a story event records, when it records an inference. */
-  private static Optional<Usage> spent(Narration event) {
-    return switch (event) {
-      case Narration.Answered e -> Optional.of(e.usage());
-      case Narration.ActionsRequested e -> Optional.of(e.usage());
-      case Narration.TurnRefused e -> Optional.of(e.usage());
-      case Narration.TurnFailed e -> Optional.of(e.usage());
-      case Narration.InferenceRetried e -> Optional.of(e.usage());
-      default -> Optional.empty();
-    };
-  }
+    /** The usage a story event records, when it records an inference. */
+    private static Optional<Usage> spent(Narration event) {
+      return switch (event) {
+        case Narration.Answered e -> Optional.of(e.usage());
+        case Narration.ActionsRequested e -> Optional.of(e.usage());
+        case Narration.TurnRefused e -> Optional.of(e.usage());
+        case Narration.TurnFailed e -> Optional.of(e.usage());
+        case Narration.InferenceRetried e -> Optional.of(e.usage());
+        default -> Optional.empty();
+      };
+    }
 
-  private static ModelUsage first(Usage usage) {
-    return new ModelUsage(
-        usage.model(),
-        1,
-        usage.inputTokens(),
-        usage.outputTokens(),
-        usage.cacheReadTokens(),
-        usage.cacheWriteTokens(),
-        usage.reasoningTokens());
-  }
+    private static ModelUsage first(Usage usage) {
+      return new ModelUsage(
+          usage.model(),
+          1,
+          usage.inputTokens(),
+          usage.outputTokens(),
+          usage.cacheReadTokens(),
+          usage.cacheWriteTokens(),
+          usage.reasoningTokens());
+    }
 
-  private static ModelUsage plus(ModelUsage sum, Usage usage) {
-    return new ModelUsage(
-        sum.model(),
-        sum.inferences() + 1,
-        sum.input().plus(usage.inputTokens()),
-        sum.output().plus(usage.outputTokens()),
-        sum.cacheRead().plus(usage.cacheReadTokens()),
-        sum.cacheWrite().plus(usage.cacheWriteTokens()),
-        sum.reasoning().plus(usage.reasoningTokens()));
+    private static ModelUsage plus(ModelUsage sum, Usage usage) {
+      return new ModelUsage(
+          sum.model(),
+          sum.inferences() + 1,
+          sum.input().plus(usage.inputTokens()),
+          sum.output().plus(usage.outputTokens()),
+          sum.cacheRead().plus(usage.cacheReadTokens()),
+          sum.cacheWrite().plus(usage.cacheWriteTokens()),
+          sum.reasoning().plus(usage.reasoningTokens()));
+    }
   }
 }

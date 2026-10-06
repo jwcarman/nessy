@@ -28,4 +28,11 @@ package org.jwcarman.nessy.api;
  * inputRenderer} on {@link DirectHarnessConfig} and {@link QueuedHarnessConfig}). It may also set
  * {@code inputLabel}, so the story says what started each turn.
  */
-public record EmptyInput() {}
+public record EmptyInput() {
+
+  /** Reads as what it is, so a log line or a default rendering says there was no input. */
+  @Override
+  public String toString() {
+    return "no input";
+  }
+}
