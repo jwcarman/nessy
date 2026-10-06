@@ -196,7 +196,9 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     DefaultQueuedHarnessConfig<I> config =
         new DefaultQueuedHarnessConfig<>(
             agentType, inputType, defaults, mapper, schemas, observations);
-    // What jars installed, then what this caller asked for -- the caller able to override.
+    // What jars installed, then what this caller asked for -- the caller's instructions and
+    // policies
+    // able to override; a tool or ambient kind a feature installed cannot be installed again.
     features.forEach(feature -> feature.customize(config));
     customizer.customize(config);
 

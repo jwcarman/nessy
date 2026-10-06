@@ -100,7 +100,7 @@ class StorageCodecWiringTest {
 
   @Test
   @DisplayName("a note's hook and body are stored through the codec")
-  void the_notebook_is_built_with_the_applications_codec() {
+  void a_notebook_over_the_applications_codec_stores_encoded_bytes() {
     AgentId agent = AgentId.random();
     Notebook notebook = new JdbcNotebook(dataSource, ChatConfiguration.TYPE, codecs);
 

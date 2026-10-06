@@ -209,7 +209,7 @@ public final class EngineFixture implements AutoCloseable {
 
   /**
    * With the factory's own settings added to after the fixture's, for what a test installs. The
-   * customizer comes first because a lambda there is otherwise ambiguous with the listener forms.
+   * customizer comes first so a lambda argument is not read as a listener by a reader.
    */
   public EngineFixture(
       Customizer<QueuedHarnessFactoryConfig> customizer, InferenceProvider provider) {

@@ -30,6 +30,7 @@ import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
+import org.jwcarman.nessy.spring.boot.JdbcBackendAutoConfiguration;
 import org.jwcarman.nessy.spring.boot.NessyAutoConfiguration;
 import org.jwcarman.nessy.spring.boot.notebook.NotebookFeatures.Recording;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -37,7 +38,9 @@ import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
@@ -66,6 +69,11 @@ class NotebookPerTypeTest {
       Schemas.initialize(database);
       return database;
     }
+
+    @Bean
+    PlatformTransactionManager transactions(DataSource dataSource) {
+      return new DataSourceTransactionManager(dataSource);
+    }
   }
 
   private final ApplicationContextRunner runner =
@@ -74,6 +82,7 @@ class NotebookPerTypeTest {
               AutoConfigurations.of(
                   JacksonAutoConfiguration.class,
                   NessyAutoConfiguration.class,
+                  JdbcBackendAutoConfiguration.class,
                   NotebookAutoConfiguration.class))
           .withUserConfiguration(ADatabase.class)
           .withPropertyValues("nessy.initialize-schema=false");

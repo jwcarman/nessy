@@ -20,7 +20,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
+import org.jwcarman.nessy.memory.notebook.Notebook;
+import org.jwcarman.nessy.spring.boot.JdbcBackendAutoConfiguration;
 import org.jwcarman.nessy.spring.boot.NessyAutoConfiguration;
 import org.jwcarman.nessy.spring.boot.notebook.NotebookFeatures.Recording;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -28,8 +32,10 @@ import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * The notebook on the classpath installs itself, unless told not to.
@@ -51,6 +57,20 @@ class NotebookAutoConfigurationTest {
           .generateUniqueName(true)
           .build();
     }
+
+    @Bean
+    PlatformTransactionManager transactions(DataSource dataSource) {
+      return new DataSourceTransactionManager(dataSource);
+    }
+  }
+
+  @Configuration(proxyBeanMethods = false)
+  static class ItsOwnNotebook {
+
+    @Bean
+    Notebook notebook(DataSource dataSource, CodecFactory codecs) {
+      return new JdbcNotebook(dataSource, new AgentType("chat"), codecs);
+    }
   }
 
   private final ApplicationContextRunner runner =
@@ -59,6 +79,7 @@ class NotebookAutoConfigurationTest {
               AutoConfigurations.of(
                   JacksonAutoConfiguration.class,
                   NessyAutoConfiguration.class,
+                  JdbcBackendAutoConfiguration.class,
                   NotebookAutoConfiguration.class))
           .withUserConfiguration(ADatabase.class)
           .withPropertyValues("nessy.initialize-schema=false");
@@ -72,6 +93,13 @@ class NotebookAutoConfigurationTest {
   void the_property_turns_it_off() {
     runner
         .withPropertyValues("nessy.notebook.enabled=false")
+        .run(context -> assertThat(context).doesNotHaveBean("nessyNotebookFeature"));
+  }
+
+  @Test
+  void an_application_with_its_own_notebook_bean_gets_no_feature() {
+    runner
+        .withUserConfiguration(ItsOwnNotebook.class)
         .run(context -> assertThat(context).doesNotHaveBean("nessyNotebookFeature"));
   }
 
