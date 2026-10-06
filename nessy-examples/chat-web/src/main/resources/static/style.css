@@ -28,7 +28,8 @@
   --fg: #0a3644;
   --muted: #4f6670;
   --border: #d3dddc;
-  --bubble-user: #d9ecea;
+  --bubble-user: #0a3644;
+  --bubble-user-fg: #ebe0c1;
   --code-bg: #edf3f2;
   /* Nessy Teal is display-only on light; buttons and links use a deeper cut of it that clears AA. */
   --accent: #2f7f82;
@@ -49,7 +50,8 @@
     --fg: #e6efee;
     --muted: #9fb8bb;
     --border: #26464f;
-    --bubble-user: #1e4d57;
+    --bubble-user: #2f7f82;
+    --bubble-user-fg: #f3f8f7;
     --code-bg: #0a1b21;
     --accent: #8cd0cd;
     --accent-fg: #0a3644;
@@ -228,6 +230,7 @@ main#log {
   margin: 0.55rem 0;
   align-self: flex-end;
   background: var(--bubble-user);
+  color: var(--bubble-user-fg);
   border-bottom-right-radius: 0.3rem;
   white-space: pre-wrap;
 }
