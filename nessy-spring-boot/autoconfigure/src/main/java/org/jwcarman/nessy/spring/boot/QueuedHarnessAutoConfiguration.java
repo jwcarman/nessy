@@ -21,6 +21,7 @@ import io.micrometer.tracing.propagation.Propagator;
 import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.QueuedHarnessFactory;
@@ -71,7 +72,8 @@ public class QueuedHarnessAutoConfiguration {
       ObservationRegistry observations,
       ObjectProvider<Tracer> tracers,
       ObjectProvider<Propagator> propagators,
-      ObjectProvider<Customizer<QueuedHarnessFactoryConfig>> customizers) {
+      ObjectProvider<Customizer<QueuedHarnessFactoryConfig>> customizers,
+      ObjectProvider<Customizer<HarnessConfig<?>>> features) {
 
     List<Customizer<QueuedHarnessFactoryConfig>> all = new ArrayList<>();
     all.add(
@@ -87,6 +89,8 @@ public class QueuedHarnessAutoConfiguration {
             engine.inference(
                 ProviderId.of(provider), new InferenceOptions(model, properties.maxTokens()));
           }
+          // Every feature bean -- a jar that equips every agent -- lands on this door too.
+          features.orderedStream().forEach(engine::feature);
           // With a tracer and its propagator the context is written straight into the effect
           // row; without them the engine opens a momentary span to have it written.
           Tracer tracer = tracers.getIfAvailable();

@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
+import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.ProviderId;
@@ -83,7 +84,8 @@ public class DirectHarnessAutoConfiguration {
       ObservationRegistry observations,
       JsonSchemaGenerator schemas,
       ObjectMapper mapper,
-      ObjectProvider<Customizer<DirectHarnessFactoryConfig>> customizers) {
+      ObjectProvider<Customizer<DirectHarnessFactoryConfig>> customizers,
+      ObjectProvider<Customizer<HarnessConfig<?>>> features) {
     // The starter says what it knows, then every customizer bean has its turn. An application
     // adds a lease, a listener or a store of its own without declaring the whole factory.
     List<Customizer<DirectHarnessFactoryConfig>> all = new ArrayList<>();
@@ -100,6 +102,8 @@ public class DirectHarnessAutoConfiguration {
             config.inference(
                 ProviderId.of(provider), new InferenceOptions(model, properties.maxTokens()));
           }
+          // Every feature bean -- a jar that equips every agent -- lands on this door too.
+          features.orderedStream().forEach(config::feature);
         });
     customizers.orderedStream().forEach(all::add);
     return DefaultDirectHarnessFactory.of(all);
