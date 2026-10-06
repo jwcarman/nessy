@@ -34,8 +34,8 @@ import org.springframework.context.annotation.Import;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = "nessy.provider=scriptedModels")
 @Import(PostgresBacked.class)
-@DisplayName("Ending a conversation")
-class EndingIntegrationTest {
+@DisplayName("Terminating a conversation")
+class TerminationIntegrationTest {
 
   @TestConfiguration(proxyBeanMethods = false)
   static class ScriptedModelConfiguration {
@@ -61,9 +61,9 @@ class EndingIntegrationTest {
         .untilAsserted(() -> assertThat(chat.state(agentId).texts()).contains("Noted."));
     List<String> before = chat.state(agentId).texts();
 
-    assertThat(chat.end(agentId)).isEqualTo(202);
+    assertThat(chat.terminate(agentId)).isEqualTo(202);
 
-    // The ending lands once the agent is idle; a message is refused from then on.
+    // The termination lands once the agent is idle; a message is refused from then on.
     await()
         .atMost(Duration.ofSeconds(30))
         .untilAsserted(() -> assertThat(chat.say(agentId, "and this")).isEqualTo(409));
@@ -72,22 +72,22 @@ class EndingIntegrationTest {
   }
 
   @Test
-  @DisplayName("ending one conversation leaves another alone")
+  @DisplayName("terminating one conversation leaves another alone")
   void ending_is_scoped_to_one_agent() {
     ChatClient chat = chat();
     String kept = UUID.randomUUID().toString();
-    String ended = UUID.randomUUID().toString();
+    String terminated = UUID.randomUUID().toString();
     assertThat(chat.say(kept, "something")).isEqualTo(202);
-    assertThat(chat.say(ended, "something")).isEqualTo(202);
+    assertThat(chat.say(terminated, "something")).isEqualTo(202);
     await()
         .atMost(Duration.ofSeconds(30))
         .untilAsserted(
             () -> {
               assertThat(chat.state(kept).transcript()).hasSize(2);
-              assertThat(chat.state(ended).transcript()).hasSize(2);
+              assertThat(chat.state(terminated).transcript()).hasSize(2);
             });
 
-    assertThat(chat.end(ended)).isEqualTo(202);
+    assertThat(chat.terminate(terminated)).isEqualTo(202);
 
     assertThat(chat.say(kept, "something else")).isEqualTo(202);
     await()
@@ -96,9 +96,9 @@ class EndingIntegrationTest {
   }
 
   @Test
-  @DisplayName("ending a conversation nobody ever had is accepted, not an error")
+  @DisplayName("terminating a conversation nobody ever had is accepted, not an error")
   void ending_a_stranger_is_silent() {
-    assertThat(chat().end(UUID.randomUUID().toString())).isEqualTo(202);
+    assertThat(chat().terminate(UUID.randomUUID().toString())).isEqualTo(202);
   }
 
   @Test

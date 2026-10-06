@@ -146,7 +146,7 @@ public class ChatController {
    * another word, not one that never spoke -- and the page moves on to a fresh id.
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<Void> end(@PathVariable("id") String id) {
+  public ResponseEntity<Void> terminate(@PathVariable("id") String id) {
     harness.terminate(agent(id));
     return ResponseEntity.accepted().build();
   }

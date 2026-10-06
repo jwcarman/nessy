@@ -24,26 +24,26 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.backend.agent.Agents;
 
 /**
- * Which agents exist and which have ended, held in this process and nowhere else.
+ * Which agents exist and which have been terminated, held in this process and nowhere else.
  *
  * <p>The durable one is a table with a {@code terminated_at} column. This is a set. Neither keeps
  * anything else about an agent, because there is nothing else to keep: an agent IS its stream of
- * events, and this answers the two questions that cannot be asked of a stream -- has it been told
- * to stop, and stop it.
+ * events, and this answers the two questions that cannot be asked of a stream -- has it been
+ * terminated, and terminate it.
  *
  * <p><b>Sealing clears the backlog, and that is not this type reaching past its own concern.</b>
  * The durable one does the same, in the same statement pair: mark the agent, then delete what was
- * waiting for it. Ending an agent means nothing is owed to it any more, and leaving inputs queued
- * for something that will never run them would be a slow leak of work nobody will do. The backlog
- * it clears is handed in rather than looked up, so this stays a thing that knows about agents and
- * not a thing that knows about queues.
+ * waiting for it. Terminating an agent means nothing is owed to it any more, and leaving inputs
+ * queued for something that will never run them would be a slow leak of work nobody will do. The
+ * backlog it clears is handed in rather than looked up, so this stays a thing that knows about
+ * agents and not a thing that knows about queues.
  */
 public final class InMemoryAgents implements Agents {
 
   private record Key(AgentType type, AgentId agent) {}
 
   private final Set<Key> known = ConcurrentHashMap.newKeySet();
-  private final Set<Key> ended = ConcurrentHashMap.newKeySet();
+  private final Set<Key> terminated = ConcurrentHashMap.newKeySet();
   private final ToIntBiFunction<AgentType, AgentId> clearBacklog;
 
   /** For a door with no backlog to clear, which is every direct one. */
@@ -65,19 +65,19 @@ public final class InMemoryAgents implements Agents {
 
   @Override
   public boolean terminated(AgentType type, AgentId agent) {
-    return ended.contains(key(type, agent));
+    return terminated.contains(key(type, agent));
   }
 
   /**
    * Idempotent, as the durable one is: its {@code COALESCE(terminated_at, now())} keeps the first
-   * ending rather than moving it, and sealing twice here abandons nothing the second time because
-   * the first already emptied the backlog.
+   * termination rather than moving it, and sealing twice here abandons nothing the second time
+   * because the first already emptied the backlog.
    */
   @Override
   public int seal(AgentType type, AgentId agent) {
     Key key = key(type, agent);
     known.add(key);
-    ended.add(key);
+    terminated.add(key);
     return clearBacklog.applyAsInt(type, agent);
   }
 

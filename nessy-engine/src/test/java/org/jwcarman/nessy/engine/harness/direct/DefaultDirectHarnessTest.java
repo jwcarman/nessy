@@ -741,10 +741,10 @@ class DefaultDirectHarnessTest {
   }
 
   /**
-   * The core refuses a command sent to a dead agent by throwing, and should: that is a programming
-   * error reaching the fold. A caller at this door is not a programming error, though -- they are
-   * owed an answer, and an exception out of a request thread becomes somebody's 500. So the door
-   * answers with the refusal rather than letting the fold's guard escape.
+   * The core refuses a command sent to a terminated agent by throwing, and should: that is a
+   * programming error reaching the fold. A caller at this door is not a programming error, though
+   * -- they are owed an answer, and an exception out of a request thread becomes somebody's 500. So
+   * the door answers with the refusal rather than letting the fold's guard escape.
    */
   @Test
   @DisplayName("a terminated agent refuses further work, as an answer rather than an exception")
@@ -797,15 +797,15 @@ class DefaultDirectHarnessTest {
   }
 
   /**
-   * <b>The case that used to be silent.</b> Ending is accepted only from idle, so a request that
-   * lands mid-turn writes nothing -- and while this returned void, a caller had no way to tell that
-   * from having succeeded. The agent must still answer the turn it was already running.
+   * <b>The case that used to be silent.</b> Terminating is accepted only from idle, so a request
+   * that lands mid-turn writes nothing -- and while this returned void, a caller had no way to tell
+   * that from having succeeded. The agent must still answer the turn it was already running.
    *
    * <p>Mid-turn is arranged by terminating from inside the tool the turn is waiting on: at that
    * moment the fold is holding an outstanding call, which is as busy as an agent gets.
    */
   @Test
-  @DisplayName("ending an agent mid-turn is refused, and says so")
+  @DisplayName("terminating an agent mid-turn is refused, and says so")
   void ending_a_busy_agent_reports_busy_rather_than_nothing() {
     AgentId agent = AgentId.random();
     AtomicReference<TerminationOutcome> whileRunning = new AtomicReference<>();
@@ -824,7 +824,7 @@ class DefaultDirectHarnessTest {
 
           @Override
           public String description() {
-            return "ends its own agent while the turn is still open";
+            return "terminates its own agent while the turn is still open";
           }
 
           @Override

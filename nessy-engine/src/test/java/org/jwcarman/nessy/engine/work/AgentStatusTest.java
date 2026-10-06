@@ -415,7 +415,9 @@ class AgentStatusTest {
       awaitStatus(story, agent, Activity.WAITING);
       AgentStatus status = status(story, agent);
 
-      assertThat(status.queued()).as("ending is not an input, and a later one is refused").isZero();
+      assertThat(status.queued())
+          .as("terminating is not an input, and a later one is refused")
+          .isZero();
       assertThat(status.turn()).contains(new TurnId(1));
     }
   }

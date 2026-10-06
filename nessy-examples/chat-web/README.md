@@ -11,12 +11,12 @@ person, and where that person is asked.
 ## What it shows
 
 **The queued door.** `POST /api/agents/{id}/messages` tells the agent
-and answers at once, with an empty body. The turn runs on the engine's own
+and answers at once: `202` with an empty body when the agent took the message, `409` when the
+conversation has been terminated. The turn runs on the engine's own
 threads, so no request is held while the model works. A message with no
-text, or only blanks, is a `400`. The harness says whether the agent took the
-message: `Accepted` is `202`, and `Terminated` is `409`, at once, even while
-the terminated conversation's last turn is still in progress. A message
-told to a terminated agent is dropped and nothing is queued.
+text, or only blanks, is a `400`. A `409` comes at once, even while the
+terminated conversation's last turn is still in progress. A message told to a
+terminated agent is dropped and nothing is queued.
 
 **One stream carries the rest.** It says what the agent is doing, and when a
 turn has answered. A streaming provider's words arrive on it as

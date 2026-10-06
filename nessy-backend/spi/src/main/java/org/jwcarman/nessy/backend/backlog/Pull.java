@@ -22,8 +22,8 @@ import org.jwcarman.nessy.api.BacklogItem;
  * What a backlog offers when asked for the next thing to work on.
  *
  * <p>Three answers, and they line up one-to-one with what a caller can do about them: something to
- * work on, the end of the agent's life, or nothing right now. That is what keeps the code that
- * drives an agent free of any terminated-agent special case -- it acts on whatever it is handed.
+ * work on, the agent's termination, or nothing right now. That is what keeps the code that drives
+ * an agent free of any terminated-agent special case -- it acts on whatever it is handed.
  *
  * @param <I> the application's input type
  */
@@ -33,13 +33,13 @@ public sealed interface Pull<I> {
   record Item<I>(BacklogItem<I> item) implements Pull<I> {}
 
   /**
-   * The agent has been ended and has nothing left to drain.
+   * The agent has been terminated and has nothing left to drain.
    *
    * <p><b>Why this is not simply an empty backlog.</b> Terminating cannot be delivered to an agent
    * in the middle of a turn -- the fold takes it only from idle -- so it has to survive until the
    * turn it interrupted is over. What happens instead is that the backlog is emptied and the agent
    * is marked, and this is what every read afterwards answers. The next time the agent is idle and
-   * asks for work, this is the work: end.
+   * asks for work, this is the work: terminate.
    *
    * <p>Offered forever, so a stray input arriving late cannot undo a termination.
    */

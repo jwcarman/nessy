@@ -194,7 +194,8 @@ listener instead (see [Narration](narration.md)).
 | `Terminated()` | The agent has been terminated; the input was dropped |
 
 `Accepted` means the input was handed to the agent type's backlog policy, and
-that a turn starts at once when the agent is idle. The policy decides what
+that a turn starts at once when the agent is idle and the policy left something
+waiting. The policy decides what
 waits: it may keep the input, merge it with what waits, replace what waits,
 drop older inputs to hold a bound, or discard the arrival as a repeat. So an
 accepted input is not a promise that it will run by itself, or at all, and an

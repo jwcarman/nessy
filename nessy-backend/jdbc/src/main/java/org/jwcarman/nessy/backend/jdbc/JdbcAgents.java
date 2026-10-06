@@ -33,10 +33,10 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * insert, and neither would have excluded the other. A row that always exists is the thing to
  * contend for -- {@link JdbcRowLocks} is what takes it.
  *
- * <p><b>Sealing takes the backlog with it.</b> Ending an agent and abandoning what it was waiting
- * on are the same fact from two tables, so {@link #seal} clears {@code nessy_agent_backlog} for
- * this agent in the same statement that marks {@code nessy_agent}, and reports how many rows that
- * emptied.
+ * <p><b>Sealing takes the backlog with it.</b> Terminating an agent and abandoning what it was
+ * waiting on are the same fact from two tables, so {@link #seal} clears {@code nessy_agent_backlog}
+ * for this agent in the same statement that marks {@code nessy_agent}, and reports how many rows
+ * that emptied.
  */
 public final class JdbcAgents implements Agents {
 

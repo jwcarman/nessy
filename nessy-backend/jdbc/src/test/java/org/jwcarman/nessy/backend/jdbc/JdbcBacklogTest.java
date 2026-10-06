@@ -241,17 +241,17 @@ class JdbcBacklogTest {
   /**
    * Termination cannot reach an agent mid-turn, so it waits here. Sealing (an {@link Agents}
    * statement, not a backlog one) empties the backlog and marks the agent; the next read here says
-   * end, and says it forever.
+   * terminated, and says it forever.
    */
   @Test
-  @DisplayName("sealing empties the backlog and every read afterwards says end")
+  @DisplayName("sealing empties the backlog and every read afterwards says terminated")
   void sealing_abandons_what_was_waiting() {
-    AgentId ending = AgentId.random();
-    Backlog<String> its = new JdbcBacklog<>(jdbc, codec, agents, TYPE, ending);
-    agents.ensure(TYPE, ending);
+    AgentId terminating = AgentId.random();
+    Backlog<String> its = new JdbcBacklog<>(jdbc, codec, agents, TYPE, terminating);
+    agents.ensure(TYPE, terminating);
     its.append(said("never going to happen"));
 
-    assertThat(agents.seal(TYPE, ending))
+    assertThat(agents.seal(TYPE, terminating))
         .as("work thrown away is counted, not vanished")
         .isEqualTo(1);
 
@@ -263,11 +263,12 @@ class JdbcBacklogTest {
   }
 
   /**
-   * An empty backlog and an ended one look the same in the rows; the agent row tells them apart.
+   * An empty backlog and a terminated one look the same in the rows; the agent row tells them
+   * apart.
    */
   @Test
-  @DisplayName("empty is not the same answer as ended")
-  void empty_is_not_ended() {
+  @DisplayName("empty is not the same answer as terminated")
+  void empty_is_not_terminated() {
     AgentId living = AgentId.random();
     Backlog<String> its = new JdbcBacklog<>(jdbc, codec, agents, TYPE, living);
     agents.ensure(TYPE, living);

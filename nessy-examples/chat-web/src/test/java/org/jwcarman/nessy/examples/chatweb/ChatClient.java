@@ -73,7 +73,7 @@ final class ChatClient {
         .exchange((request, response) -> response.getStatusCode().value());
   }
 
-  int end(String agentId) {
+  int terminate(String agentId) {
     return http.delete()
         .uri("/api/agents/{id}", agentId)
         .exchange((request, response) -> response.getStatusCode().value());

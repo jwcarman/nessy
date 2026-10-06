@@ -133,8 +133,9 @@ public final class JdbcBacklog<I> implements Backlog<I> {
     if (next.isPresent()) {
       return new Pull.Item<>(next.get());
     }
-    // Empty and ended look the same in this table, which is the whole reason the agent row carries
-    // the mark: an agent told to end while it was busy has nothing waiting, and must not be read
+    // Empty and terminated look the same in this table, which is the whole reason the agent row
+    // carries
+    // the mark: an agent terminated while it was busy has nothing waiting, and must not be read
     // as merely idle. Whether it carries that mark is Agents's question, not this table's.
     return agents.terminated(agentType, agent) ? new Pull.Pill<>() : new Pull.Empty<>();
   }

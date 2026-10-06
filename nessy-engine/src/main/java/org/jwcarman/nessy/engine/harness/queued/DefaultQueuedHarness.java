@@ -173,9 +173,8 @@ final class DefaultQueuedHarness<I>
                     backend.agents().ensure(agentType, agentId);
                     Backlog<I> backlog = backlogs.forAgent(agentType, agentId);
                     if (backend.agents().terminated(agentType, agentId)) {
-                      // Terminated. Coalescing now would put something into an emptied backlog and
-                      // be
-                      // read as work next time, undoing a termination that has happened.
+                      // Terminated. Coalescing now would put something into an emptied backlog
+                      // and be read as work next time, undoing a termination that has happened.
                       log.debug(
                           "[{}] agent {} has been terminated; the input is dropped",
                           agentType.value(),

@@ -84,14 +84,17 @@ public interface DirectHarness<I, O> {
    * turn in flight is owed its outcome -- abandoning it would leave effects with nobody to deliver
    * them to -- so termination is not delivered mid-turn. This door has nowhere to record that
    * somebody asked: unlike the queued door, which writes the termination down and honours it when
-   * the agent next falls idle, here a refused termination is simply refused. Returning false rather
-   * than nothing is the difference between a caller knowing that and a caller assuming.
+   * the agent next falls idle, here a refused termination is simply refused, and the answer is
+   * {@link TerminationOutcome.Busy}. Returning an outcome rather than nothing is the difference
+   * between a caller knowing that and a caller assuming.
    *
-   * <p>A caller driving its own turns rarely sees false: {@link #ask} returns when the turn is
-   * over, so an agent is idle by the time that caller asks to terminate it. False is what another
-   * thread gets for terminating an agent somebody else is still asking.
+   * <p>A caller driving its own turns rarely sees {@code Busy}: {@link #ask} returns when the turn
+   * is over, so an agent is idle by the time that caller asks to terminate it. {@code Busy} is what
+   * another thread gets for terminating an agent somebody else is still asking. {@link
+   * TerminationOutcome.Terminated} says this call terminated the agent, and {@link
+   * TerminationOutcome.AlreadyTerminated} says it had been terminated before.
    *
-   * @return which of the three happened; see {@link TerminationOutcome}
+   * @return which of the three arms happened; see {@link TerminationOutcome}
    */
   TerminationOutcome terminate(AgentId agent);
 }

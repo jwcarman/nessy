@@ -2,7 +2,7 @@
 -- column name wherever it appears, primary key or foreign key. That is what lets a
 -- query say USING (agent_id) rather than spelling out a join condition.
 
--- An agent, so there is something to point at and a place to record that it has ended.
+-- An agent, so there is something to point at and a place to record that it has been terminated.
 --
 -- The lock that serialises an agent is not taken on this row. It is a Postgres advisory
 -- transaction lock, pg_advisory_xact_lock, keyed by the agent's type and id. It holds for exactly
@@ -13,12 +13,12 @@ CREATE TABLE IF NOT EXISTS nessy_agent
     agent_type   VARCHAR(64) NOT NULL,
     agent_id     UUID        NOT NULL,
     created_at   TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-    -- When it was told to end, and null while it has not been.
+    -- When it was terminated, and null while it has not been.
     --
     -- Terminating cannot be delivered to an agent in the middle of a turn, because the fold takes
     -- it only from idle. So it is recorded here, the backlog is emptied, and every read of the
     -- backlog afterwards answers with the pill. The next time the agent is idle and asks for work,
-    -- ending IS the work.
+    -- terminating IS the work.
     terminated_at TIMESTAMP WITH TIME ZONE,
     PRIMARY KEY (agent_type, agent_id)
 );

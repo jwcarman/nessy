@@ -44,9 +44,9 @@ public interface QueuedHarness<I> {
    * Tells an agent something happened.
    *
    * <p>An accepted input is handed to the agent type's backlog policy, and a turn starts at once
-   * when the agent is idle. The policy decides what waits, so accepted is not a promise that the
-   * input will run; an input still waiting when the agent is terminated is abandoned. See {@link
-   * TellOutcome.Accepted}.
+   * when the agent is idle and the policy left something waiting. The policy decides what waits, so
+   * accepted is not a promise that the input will run; an input still waiting when the agent is
+   * terminated is abandoned. See {@link TellOutcome.Accepted}.
    *
    * <p>An agent that has never been heard of comes into being here rather than through a separate
    * call: there is nothing to say about an agent before its first input, and a create step would

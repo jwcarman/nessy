@@ -29,10 +29,11 @@ public sealed interface TellOutcome {
 
   /**
    * The agent took the input. Every accepted input is handed to the agent type's backlog policy,
-   * and a turn starts at once when the agent is idle. The policy decides what waits: it may keep
-   * the input, merge it with what waits, replace what waits, drop older inputs to hold a bound, or
-   * discard the arrival itself as a repeat. So an accepted input is not a promise that it will run
-   * by itself, or at all. An input that is still waiting when the agent is terminated is abandoned.
+   * and a turn starts at once when the agent is idle and the policy left something waiting. The
+   * policy decides what waits: it may keep the input, merge it with what waits, replace what waits,
+   * drop older inputs to hold a bound, or discard the arrival itself as a repeat. So an accepted
+   * input is not a promise that it will run by itself, or at all. An input that is still waiting
+   * when the agent is terminated is abandoned.
    *
    * <p>Inside a caller's transaction, {@code Accepted} is only as durable as the caller's commit.
    */

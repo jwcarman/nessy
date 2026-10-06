@@ -25,8 +25,8 @@ import org.jwcarman.nessy.api.Coalescing;
  * not on it, deliberately. A policy that could take would consume an input the harness never sees,
  * and the turn it should have started would never start.
  *
- * <p>So the one verb a harness needs and a policy must not have lives here. Ending an agent is not
- * one of them: that is a statement against the agent itself, not its backlog, and belongs to
+ * <p>So the one verb a harness needs and a policy must not have lives here. Terminating an agent is
+ * not one of them: that is a statement against the agent itself, not its backlog, and belongs to
  * whatever owns the agent's own row -- not to this type.
  *
  * @param <I> what a caller hands in

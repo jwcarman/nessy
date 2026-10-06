@@ -19,11 +19,11 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 
 /**
- * The row that says an agent exists, and whether it has been told to end.
+ * The row that says an agent exists, and whether it has been terminated.
  *
  * <p>What a backend implementer provides to be an agent's backend at all: an agent comes into being
- * the first time anything is said to it, may be told to end, and may be asked whether it already
- * has been. None of this is a backlog's business -- a backend that offers only a queue of waiting
+ * the first time anything is said to it, may be terminated, and may be asked whether it already has
+ * been. None of this is a backlog's business -- a backend that offers only a queue of waiting
  * inputs still has to answer these, because a harness needs the answer before it ever looks at what
  * is waiting.
  */
@@ -32,15 +32,15 @@ public interface Agents {
   /** Brings this agent into being if it is new. Idempotent -- safe to call every time. */
   void ensure(AgentType type, AgentId agent);
 
-  /** Whether this agent has been told to end, whether or not it has noticed yet. */
+  /** Whether this agent has been terminated, whether or not it has noticed yet. */
   boolean terminated(AgentType type, AgentId agent);
 
   /**
-   * Ends this agent, and abandons whatever it was waiting to do.
+   * Terminates this agent, and abandons whatever it was waiting to do.
    *
    * <p><b>Nothing may be coalesced into a sealed agent afterwards.</b> An arrival that got past
    * this would put something back into an emptied backlog, and the next read would answer with an
-   * item rather than end -- undoing a termination that had already happened.
+   * item rather than terminate -- undoing a termination that had already happened.
    *
    * @return how many were abandoned, so that work thrown away is counted rather than vanishing
    */

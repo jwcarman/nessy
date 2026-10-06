@@ -200,11 +200,12 @@ class ChatApprovalEdgesIntegrationTest {
     String agentId = UUID.randomUUID().toString();
     AgentId agent = new AgentId(UUID.fromString(agentId));
     asked(chat, agentId);
-    assertThat(chat.end(agentId)).isEqualTo(202);
+    assertThat(chat.terminate(agentId)).isEqualTo(202);
 
     int status = chat.say(agentId, "are you still there?");
 
-    // The agent is terminated from the moment of the end, and tell says so at once, though its
+    // The agent is terminated from the moment of the termination, and tell says so at once, though
+    // its
     // status does not read as terminated until the parked turn ends.
     assertThat(status).isEqualTo(409);
     assertThat(work.status(ChatConfiguration.TYPE, agent).queued()).isZero();

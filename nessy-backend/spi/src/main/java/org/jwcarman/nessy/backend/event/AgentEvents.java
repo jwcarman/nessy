@@ -129,9 +129,9 @@ public interface AgentEvents {
    *
    * <p>What a harness replays onto its state's idle fold to find out where an agent is, and the
    * answer is whatever state comes back: a turn that ended leaves it idle, one that did not leaves
-   * it where it stopped, and an agent that was ended comes back terminated. Nothing here has to
-   * know which of those happened -- that is the fold's job, and asking it is the whole of this
-   * method's purpose.
+   * it where it stopped, and a terminated agent comes back terminated. Nothing here has to know
+   * which of those happened -- that is the fold's job, and asking it is the whole of this method's
+   * purpose.
    *
    * <p>Empty for an agent nothing has happened to.
    */

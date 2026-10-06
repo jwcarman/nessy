@@ -52,10 +52,10 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 
-@DisplayName("Ending an agent, and the settings a harness takes")
+@DisplayName("Terminating an agent, and the settings a harness takes")
 class TerminationAndConfigurationTest {
 
-  private static final AgentType CHAT = new AgentType("chat-ends");
+  private static final AgentType CHAT = new AgentType("chat-terminates");
   private static final AgentType FAILING = new AgentType("chat-fails");
 
   private final List<Narration> events = new CopyOnWriteArrayList<>();

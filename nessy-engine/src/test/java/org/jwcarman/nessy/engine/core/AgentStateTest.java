@@ -325,7 +325,7 @@ class AgentStateTest {
 
       // The decision is only half of it. Everything that reads an agent afterwards -- another
       // ask, a terminate, any reconstitute at all -- gets there by replaying these events, so a
-      // decision the fold cannot apply leaves the agent unusable rather than merely ended.
+      // decision the fold cannot apply leaves the agent unusable rather than merely terminated.
       assertThat(awaiting.applyAll(decision.events()))
           .as("the turn is over, so the agent is between turns")
           .isInstanceOf(AgentState.Idle.class);
