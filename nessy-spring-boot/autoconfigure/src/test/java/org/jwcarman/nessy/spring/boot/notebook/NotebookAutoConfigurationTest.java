@@ -138,8 +138,8 @@ class NotebookAutoConfigurationTest {
 
   /**
    * The ordinary application declares no DataSource of its own: Boot makes it from
-   * spring.datasource.url. The feature is still there, because the condition on the data source is
-   * asked only after that auto-configuration has run.
+   * spring.datasource.url. A data source Boot makes, with none declared by the user, is enough for
+   * the feature to appear.
    */
   @Test
   void a_data_source_boot_makes_is_enough() {
@@ -157,5 +157,27 @@ class NotebookAutoConfigurationTest {
             "spring.datasource.type=org.springframework.jdbc.datasource.SimpleDriverDataSource",
             "spring.datasource.url=jdbc:h2:mem:notebook-ordering;DB_CLOSE_DELAY=-1")
         .run(context -> assertThat(context).hasBean("nessyNotebookFeature"));
+  }
+
+  /**
+   * The Spring Boot guide says an application that wants neither backend excludes both
+   * auto-configurations and nothing downstream demands one. With nessy-backend-jdbc still on the
+   * classpath and a DataSource of its own, that application must still start, and gets no feature:
+   * the table the feature writes to is created by the backend it excluded.
+   */
+  @Test
+  void an_application_that_excludes_the_jdbc_backend_still_starts() {
+    new ApplicationContextRunner()
+        .withConfiguration(
+            AutoConfigurations.of(
+                JacksonAutoConfiguration.class,
+                NessyAutoConfiguration.class,
+                NotebookAutoConfiguration.class))
+        .withUserConfiguration(ADatabase.class)
+        .run(
+            context -> {
+              assertThat(context).hasNotFailed();
+              assertThat(context).doesNotHaveBean("nessyNotebookFeature");
+            });
   }
 }

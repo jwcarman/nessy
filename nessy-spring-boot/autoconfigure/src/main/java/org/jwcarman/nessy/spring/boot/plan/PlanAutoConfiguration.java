@@ -37,7 +37,8 @@ import org.springframework.context.annotation.Bean;
  * The plan store, installed on every agent of both doors when it and the JDBC backend are on the
  * classpath. The plan keeps its tasks in {@code nessy_plan_task}, a table the planning module's
  * schema file creates when the JDBC backend initializes the schema, so without that backend there
- * is no feature.
+ * is no feature. The conditions are a {@code DataSource}, a {@code CodecFactory} and the JDBC
+ * backend's schema bean, so excluding the JDBC backend auto-configuration keeps the feature out.
  *
  * <p>Adding the starter adds the plan; an application that does not want its agents to keep one
  * says {@code nessy.plan.enabled=false}. An application that declares its own {@link Plans} bean
@@ -58,7 +59,7 @@ import org.springframework.context.annotation.Bean;
 @ConditionalOnClass(
     name = "org.jwcarman.nessy.backend.jdbc.JdbcDirectBackend",
     value = JdbcPlans.class)
-@ConditionalOnBean({DataSource.class, CodecFactory.class})
+@ConditionalOnBean({DataSource.class, CodecFactory.class, NessySchema.class})
 @ConditionalOnProperty(name = "nessy.plan.enabled", havingValue = "true", matchIfMissing = true)
 public class PlanAutoConfiguration {
 

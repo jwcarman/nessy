@@ -35,8 +35,11 @@ import org.springframework.context.annotation.Bean;
 
 /**
  * The notebook, installed on every agent of both doors when it and the JDBC backend are on the
- * classpath. The notebook keeps its notes in {@code nessy_note}, a table the JDBC backend's schema
- * creates, so without that backend there is no feature.
+ * classpath. The notebook keeps its notes in {@code nessy_note}, a table the memory module's own
+ * {@code nessy-schema.sql} creates when the JDBC backend initializes the schema, so without that
+ * backend there is no feature. The conditions are a {@code DataSource}, a {@code CodecFactory} and
+ * the JDBC backend's schema bean, so excluding the JDBC backend auto-configuration keeps the
+ * feature out.
  *
  * <p>Adding the starter adds the notebook; an application that does not want its agents to keep
  * notes says {@code nessy.notebook.enabled=false}. An application that declares its own {@link
@@ -56,7 +59,7 @@ import org.springframework.context.annotation.Bean;
 @ConditionalOnClass(
     name = "org.jwcarman.nessy.backend.jdbc.JdbcDirectBackend",
     value = JdbcNotebook.class)
-@ConditionalOnBean({DataSource.class, CodecFactory.class})
+@ConditionalOnBean({DataSource.class, CodecFactory.class, NessySchema.class})
 @ConditionalOnProperty(name = "nessy.notebook.enabled", havingValue = "true", matchIfMissing = true)
 public class NotebookAutoConfiguration {
 
