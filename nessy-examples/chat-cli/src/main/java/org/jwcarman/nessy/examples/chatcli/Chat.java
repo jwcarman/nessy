@@ -26,13 +26,9 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
-import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.Repl;
 import org.jwcarman.nessy.console.ReplConfig;
-import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
-import org.jwcarman.nessy.memory.notebook.Notebook;
-import org.jwcarman.nessy.memory.notebook.NotebookTools;
 import org.jwcarman.nessy.planning.JdbcPlans;
 import org.jwcarman.nessy.planning.PlanTools;
 import org.jwcarman.nessy.planning.Plans;
@@ -45,7 +41,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 
 /**
- * A terminal chat with a notebook, a plan, and one tool a person has to approve.
+ * A terminal chat with a plan and one tool a person has to approve.
  *
  * <p>An ordinary Spring Boot application on the Nessy starter: the provider is a bean the starter
  * registers from a preset, and the database comes up from {@code compose.yaml} when this runs and
@@ -99,12 +95,6 @@ public class Chat {
   }
 
   @Bean
-  public Notebook notebook(DataSource database, CodecFactory codecs) {
-    Schemas.initialize(database);
-    return new JdbcNotebook(database, TYPE, codecs);
-  }
-
-  @Bean
   public Plans plans(DataSource database, CodecFactory codecs) {
     return new JdbcPlans(database, TYPE, codecs);
   }
@@ -119,7 +109,6 @@ public class Chat {
       DirectHarnessFactory harnesses,
       @Value("${nessy.model}") String model,
       @Value("${nessy.console.agent:}") String resume,
-      Notebook notebook,
       Plans plans,
       Clock clock) {
     return _ -> {
@@ -139,9 +128,8 @@ public class Chat {
                   .farewell("bye.")
                   .systemPrompt(SYSTEM_PROMPT)
                   .agent(TYPE)
-                  // Two sources of background: the notebook's index and the current plan. Both
-                  // are ambient, so they are asked afresh every call and never part of the
-                  // story -- the model sees the notes and the plan as they stand NOW.
+                  // The current plan is background: ambient, so it is asked afresh every call and
+                  // never part of the story -- the model sees it as it stands NOW.
                   .harness(
                       h ->
                           h.inference(
@@ -149,13 +137,8 @@ public class Chat {
                                   in.context(
                                       ctx ->
                                           ctx.ambient(today(clock))
-                                              .ambient(NotebookTools.index(notebook))
                                               .ambient(PlanTools.plan(plans)))))
                   .tool(new DaysUntilTool())
-                  .tool(NotebookTools.remember(notebook))
-                  .tool(NotebookTools.revise(notebook))
-                  .tool(NotebookTools.recall(notebook))
-                  .tool(NotebookTools.forget(notebook))
                   .tool(PlanTools.updatePlan(plans))
                   // The only thing here that reaches outside the process, so the only thing a
                   // person is asked about. The action stringifier writes the sentence they consent
