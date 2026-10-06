@@ -79,6 +79,10 @@ import tools.jackson.databind.node.ObjectNode;
 })
 public sealed interface AgentEvent {
 
+  private static void requireKey(IdempotencyKey idempotencyKey) {
+    Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+  }
+
   /** Where this event sits. Strictly increasing, and what {@code apply} checks. */
   Seq seq();
 
@@ -121,7 +125,7 @@ public sealed interface AgentEvent {
       implements AgentEvent {
     public InferenceAnswered {
       usage = usage == null ? Usage.unreported() : usage;
-      manifest = manifest == null ? Optional.empty() : manifest;
+      Objects.requireNonNull(manifest, "manifest must not be null");
     }
   }
 
@@ -139,7 +143,7 @@ public sealed interface AgentEvent {
       implements AgentEvent {
     public InferenceRefused {
       usage = usage == null ? Usage.unreported() : usage;
-      manifest = manifest == null ? Optional.empty() : manifest;
+      Objects.requireNonNull(manifest, "manifest must not be null");
     }
   }
 
@@ -162,7 +166,7 @@ public sealed interface AgentEvent {
       implements AgentEvent {
     public InferenceFailed {
       usage = usage == null ? Usage.unreported() : usage;
-      manifest = manifest == null ? Optional.empty() : manifest;
+      Objects.requireNonNull(manifest, "manifest must not be null");
     }
   }
 
@@ -214,7 +218,7 @@ public sealed interface AgentEvent {
       implements AgentEvent {
     public InferenceAttempted {
       usage = usage == null ? Usage.unreported() : usage;
-      manifest = manifest == null ? Optional.empty() : manifest;
+      Objects.requireNonNull(manifest, "manifest must not be null");
     }
   }
 
@@ -239,7 +243,7 @@ public sealed interface AgentEvent {
     public ActionsRequested {
       actions = List.copyOf(actions);
       usage = usage == null ? Usage.unreported() : usage;
-      manifest = manifest == null ? Optional.empty() : manifest;
+      Objects.requireNonNull(manifest, "manifest must not be null");
     }
   }
 
@@ -260,7 +264,7 @@ public sealed interface AgentEvent {
       implements AgentEvent {
     public ToolApproved {
       facts = facts == null ? JsonNodeFactory.instance.objectNode() : facts.deepCopy();
-      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+      requireKey(idempotencyKey);
     }
   }
 
@@ -279,7 +283,7 @@ public sealed interface AgentEvent {
       implements AgentEvent {
     public ToolDenied {
       facts = facts == null ? JsonNodeFactory.instance.objectNode() : facts.deepCopy();
-      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+      requireKey(idempotencyKey);
     }
   }
 
@@ -300,7 +304,7 @@ public sealed interface AgentEvent {
       implements AgentEvent {
     public ToolSucceeded {
       Objects.requireNonNull(rendered, "rendered must not be null");
-      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+      requireKey(idempotencyKey);
     }
   }
 
@@ -335,7 +339,7 @@ public sealed interface AgentEvent {
     public ToolFailed {
       facts = facts == null ? JsonNodeFactory.instance.objectNode() : facts.deepCopy();
       Objects.requireNonNull(kind, "kind must not be null");
-      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+      requireKey(idempotencyKey);
     }
   }
 
@@ -358,7 +362,7 @@ public sealed interface AgentEvent {
     public ApprovalDeferred {
       Objects.requireNonNull(until, "until must not be null");
       facts = facts == null ? JsonNodeFactory.instance.objectNode() : facts.deepCopy();
-      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+      requireKey(idempotencyKey);
     }
   }
 
@@ -371,7 +375,7 @@ public sealed interface AgentEvent {
       implements AgentEvent {
     public ToolDeferred {
       Objects.requireNonNull(until, "until must not be null");
-      Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
+      requireKey(idempotencyKey);
     }
   }
 

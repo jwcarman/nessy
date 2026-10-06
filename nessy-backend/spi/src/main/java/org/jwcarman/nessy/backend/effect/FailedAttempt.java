@@ -46,6 +46,6 @@ public record FailedAttempt(
   public FailedAttempt {
     Objects.requireNonNull(failure, "failure must not be null");
     usage = usage == null ? Usage.unreported() : usage;
-    manifest = manifest == null ? Optional.empty() : manifest;
+    Objects.requireNonNull(manifest, "manifest must not be null");
   }
 }

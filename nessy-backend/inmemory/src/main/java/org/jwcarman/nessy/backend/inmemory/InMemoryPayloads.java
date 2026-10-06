@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.backend.inmemory;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -48,7 +49,24 @@ import tools.jackson.databind.JsonNode;
 public final class InMemoryPayloads implements Payloads {
 
   /** The encoded bytes and what they are, so a reader knows how to decode before it decodes. */
-  private record Kept(Kind kind, byte[] encoded) {}
+  private record Kept(Kind kind, byte[] encoded) {
+    @Override
+    public boolean equals(Object other) {
+      return other instanceof Kept(Kind otherKind, byte[] otherEncoded)
+          && kind == otherKind
+          && Arrays.equals(encoded, otherEncoded);
+    }
+
+    @Override
+    public int hashCode() {
+      return 31 * kind.hashCode() + Arrays.hashCode(encoded);
+    }
+
+    @Override
+    public String toString() {
+      return "Kept[kind=" + kind + ", encoded=" + Arrays.toString(encoded) + "]";
+    }
+  }
 
   private enum Kind {
     BLOCKS,

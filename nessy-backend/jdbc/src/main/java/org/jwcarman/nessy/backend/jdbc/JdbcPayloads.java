@@ -16,6 +16,7 @@
 
 package org.jwcarman.nessy.backend.jdbc;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -67,7 +68,24 @@ public final class JdbcPayloads implements Payloads {
   private static final String DOCUMENT = "DOCUMENT";
 
   /** One row as read: its kind, and the encoded bytes not yet decoded. */
-  private record Stored(String kind, byte[] content) {}
+  private record Stored(String kind, byte[] content) {
+    @Override
+    public boolean equals(Object other) {
+      return other instanceof Stored(String otherKind, byte[] otherContent)
+          && kind.equals(otherKind)
+          && Arrays.equals(content, otherContent);
+    }
+
+    @Override
+    public int hashCode() {
+      return 31 * kind.hashCode() + Arrays.hashCode(content);
+    }
+
+    @Override
+    public String toString() {
+      return "Stored[kind=" + kind + ", content=" + Arrays.toString(content) + "]";
+    }
+  }
 
   private static final String GET =
       "SELECT hash, kind, content FROM nessy_payload WHERE agent_id = ? AND hash = ANY (?)";

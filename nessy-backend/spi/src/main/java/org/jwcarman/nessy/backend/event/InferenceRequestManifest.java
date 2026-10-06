@@ -63,9 +63,9 @@ public record InferenceRequestManifest(
     Objects.requireNonNull(instructions, "instructions must not be null");
     Objects.requireNonNull(tools, "tools must not be null");
     Objects.requireNonNull(options, "options must not be null");
-    answerShape = answerShape == null ? Optional.empty() : answerShape;
-    tail = tail == null ? Optional.empty() : tail;
-    summarizedThrough = summarizedThrough == null ? Optional.empty() : summarizedThrough;
+    Objects.requireNonNull(answerShape, "answerShape must not be null");
+    Objects.requireNonNull(tail, "tail must not be null");
+    Objects.requireNonNull(summarizedThrough, "summarizedThrough must not be null");
     memory = memory == null ? List.of() : List.copyOf(memory);
     state = state == null ? List.of() : List.copyOf(state);
     ambient = ambient == null ? List.of() : List.copyOf(ambient);

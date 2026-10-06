@@ -87,7 +87,7 @@ public sealed interface EffectOutcome {
       implements EffectOutcome {
     public InferenceAnswered {
       usage = usage == null ? Usage.unreported() : usage;
-      manifest = manifest == null ? Optional.empty() : manifest;
+      Objects.requireNonNull(manifest, "manifest must not be null");
     }
   }
 
@@ -103,7 +103,7 @@ public sealed interface EffectOutcome {
       implements EffectOutcome {
     public InferenceRefused {
       usage = usage == null ? Usage.unreported() : usage;
-      manifest = manifest == null ? Optional.empty() : manifest;
+      Objects.requireNonNull(manifest, "manifest must not be null");
     }
   }
 
@@ -123,7 +123,7 @@ public sealed interface EffectOutcome {
       implements EffectOutcome {
     public InferenceFailed {
       usage = usage == null ? Usage.unreported() : usage;
-      manifest = manifest == null ? Optional.empty() : manifest;
+      Objects.requireNonNull(manifest, "manifest must not be null");
     }
   }
 
@@ -142,7 +142,7 @@ public sealed interface EffectOutcome {
       implements EffectOutcome {
     public InferenceRequestedActions {
       usage = usage == null ? Usage.unreported() : usage;
-      manifest = manifest == null ? Optional.empty() : manifest;
+      Objects.requireNonNull(manifest, "manifest must not be null");
     }
   }
 

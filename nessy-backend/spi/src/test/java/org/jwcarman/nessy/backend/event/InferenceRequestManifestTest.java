@@ -129,9 +129,19 @@ class InferenceRequestManifestTest {
     }
 
     @Test
-    void reads_absent_optionals_and_lists_as_empty() {
+    void reads_absent_lists_as_empty() {
       InferenceRequestManifest manifest =
-          new InferenceRequestManifest("0.5.0", REF, REF, null, REF, null, null, null, null, null);
+          new InferenceRequestManifest(
+              "0.5.0",
+              REF,
+              REF,
+              Optional.empty(),
+              REF,
+              Optional.empty(),
+              Optional.empty(),
+              null,
+              null,
+              null);
 
       assertThat(manifest.answerShape()).isEmpty();
       assertThat(manifest.tail()).isEmpty();
@@ -204,14 +214,18 @@ class InferenceRequestManifestTest {
 
     @Test
     void refuses_a_missing_start() {
-      assertThatThrownBy(() -> new TurnRange(null, new TurnId(2)))
+      TurnId end = new TurnId(2);
+
+      assertThatThrownBy(() -> new TurnRange(null, end))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("from must not be null");
     }
 
     @Test
     void refuses_a_missing_end() {
-      assertThatThrownBy(() -> new TurnRange(new TurnId(2), null))
+      TurnId start = new TurnId(2);
+
+      assertThatThrownBy(() -> new TurnRange(start, null))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("through must not be null");
     }
