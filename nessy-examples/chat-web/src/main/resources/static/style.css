@@ -13,39 +13,48 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* Colours, light and dark. The page follows the system's choice. */
+/* Colours, light and dark, from the Nessy brand palette (brand/palette/palette.css): Deep Teal for
+   type and the header, Nessy Teal as the accent, Nessy Aqua and Loch Mint for soft fills, Loch
+   Cream for type on deep teal, and a touch of Harness Brass. The page follows the system's choice. */
 :root {
   color-scheme: light dark;
-  --bg: #f6f6f4;
+  --deep-teal: #0a3644;
+  --nessy-teal: #46a1a4;
+  --nessy-aqua: #8cd0cd;
+  --loch-cream: #ebe0c1;
+  --harness-brass: #c99b5a;
+  --bg: #f3f5f4;
   --surface: #ffffff;
-  --fg: #1d1f21;
-  --muted: #5c6066;
-  --border: #d7d9dc;
-  --bubble-user: #dce9f8;
-  --code-bg: #eef0f2;
-  --accent: #2e5d8c;
+  --fg: #0a3644;
+  --muted: #4f6670;
+  --border: #d3dddc;
+  --bubble-user: #d9ecea;
+  --code-bg: #edf3f2;
+  /* Nessy Teal is display-only on light; buttons and links use a deeper cut of it that clears AA. */
+  --accent: #2f7f82;
   --accent-fg: #ffffff;
-  --link: #24589f;
-  --focus: #2f6fd0;
-  --shadow: 0 1px 2px rgb(0 0 0 / 8%);
+  --link: #2b7578;
+  --focus: #46a1a4;
+  --shadow: 0 1px 2px rgb(10 54 68 / 10%);
   --column: 46rem;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #17191c;
-    --surface: #202327;
-    --fg: #e6e7e9;
-    --muted: #a3a8ae;
-    --border: #363b42;
-    --bubble-user: #243a52;
-    --code-bg: #121417;
-    --accent: #8fb8e6;
-    --accent-fg: #11171e;
-    --link: #9cc4f2;
-    --focus: #8fb8e6;
+    --bg: #0d1f27;
+    --surface: #12303a;
+    --fg: #e6efee;
+    --muted: #9fb8bb;
+    --border: #26464f;
+    --bubble-user: #1e4d57;
+    --code-bg: #0a1b21;
+    --accent: #8cd0cd;
+    --accent-fg: #0a3644;
+    --link: #8cd0cd;
+    --focus: #8cd0cd;
     --shadow: 0 1px 2px rgb(0 0 0 / 40%);
   }
 }
@@ -92,17 +101,41 @@ button {
   white-space: nowrap;
 }
 
+/* The header: the mark and the wordmark, Loch Cream on Deep Teal, with a waterline along its
+   bottom edge that runs from teal to brass. */
 header {
   flex: none;
-  padding: 0.55rem 1rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem max(1rem, calc((100% - var(--column)) / 2));
+  background: var(--deep-teal);
+  color: var(--loch-cream);
+}
+
+header::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--nessy-teal), var(--nessy-aqua) 60%, var(--harness-brass));
+}
+
+header img {
+  width: 2.25rem;
+  height: 2.25rem;
 }
 
 header h1 {
-  font-size: 1rem;
-  font-weight: 600;
   margin: 0;
+  font: 700 1.35rem/1 var(--serif);
+  letter-spacing: -0.01em;
+}
+
+header span {
+  font-size: 0.8rem;
+  color: var(--nessy-aqua);
 }
 
 /* The conversation: a column of readable width, centred, that scrolls on its own. */
@@ -188,7 +221,9 @@ main#log {
   border-radius: 1rem;
 }
 
+/* A message from the person stands a little apart from the answers around it. */
 .line.user {
+  margin: 0.55rem 0;
   align-self: flex-end;
   background: var(--bubble-user);
   border-bottom-right-radius: 0.3rem;
@@ -231,15 +266,96 @@ main#log {
   max-width: 90%;
 }
 
+/* A tool line is the record of a call and is not drawn: the calls are chips along the bottom of
+   the answer that followed them. A person's answer to a card is folded the same way. */
+.line.tool,
+.line.system[data-tool] {
+  display: none;
+}
+
+/* The strip along the bottom of an answer: chips on the left, the copy button on the right. */
+.foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.3rem 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.foot:has(.chips) {
+  margin-top: 0.5rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--border);
+}
+
+.chips {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.chip {
+  padding: 0.1rem 0.55rem;
+  font: 0.72rem/1.5 var(--mono);
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.chip:hover,
+.chip[data-open="yes"] {
+  color: var(--fg);
+  border-color: var(--muted);
+}
+
+.chip[data-result="done"]::after {
+  content: " ✓";
+  color: var(--accent);
+}
+
+.chip[data-result="failed"]::after {
+  content: " ✗";
+}
+
+.chip[data-result=""]::after {
+  content: "…";
+}
+
+/* An open chip's lines: the request, the person's answer, the outcome. */
+.chip-detail {
+  flex-basis: 100%;
+  margin-top: 0.2rem;
+  padding: 0.3rem 0 0.1rem 0.6rem;
+  border-left: 2px solid var(--border);
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#typing .chips:empty {
+  display: none;
+}
+
+#typing .chips {
+  flex-basis: 100%;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border);
+}
+
 /* The copy button is an icon. Its words stay in the page as its name and are not drawn; the icon
    is a mask, so it takes the button's colour in both themes. */
 .copy {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='9' width='11' height='11' rx='2'/%3E%3Cpath d='M5 15V6a2 2 0 0 1 2-2h9'/%3E%3C/svg%3E");
   display: block;
   position: relative;
+  flex: none;
   width: 1.75rem;
   height: 1.75rem;
-  margin: 0.35rem -0.4rem -0.2rem auto;
+  margin: 0 -0.4rem 0 auto;
   padding: 0;
   font-size: 0;
   color: var(--muted);
@@ -507,8 +623,10 @@ footer {
 #typing {
   flex: none;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.6rem;
+  max-width: 100%;
   align-self: flex-start;
   margin: 0 max(1rem, calc((100% - var(--column)) / 2)) 0.75rem;
   padding: 0.55rem 0.85rem 0.6rem;
@@ -602,14 +720,33 @@ footer {
   border-color: var(--focus);
 }
 
+/* New chat is a round outlined button with a pen, the twin of the send button. */
 #new-chat {
   flex: none;
-  margin-bottom: 0.2rem;
-  padding: 0.3rem 0.7rem;
-  font-size: 0.8rem;
+  width: 2.35rem;
+  height: 2.35rem;
+  padding: 0;
   border: 1px solid var(--border);
-  border-radius: 999px;
-  background: none;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+}
+
+#new-chat:hover {
+  color: var(--fg);
+  border-color: var(--muted);
+}
+
+#new-chat svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* A round button with an arrow drawn in the page's own SVG. */

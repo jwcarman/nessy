@@ -39,6 +39,7 @@ const textInput = document.getElementById("text");
 const working = document.getElementById("working");
 const typing = document.getElementById("typing");
 const typingClock = document.getElementById("typing-clock");
+const typingChips = document.getElementById("typing-chips");
 const newChatButton = document.getElementById("new-chat");
 const confirmNew = document.getElementById("confirm-new");
 const greeting = document.getElementById("greeting");
@@ -227,6 +228,14 @@ function tickWorking() {
 function drawTyping() {
   const writing = live !== null && live.bubble !== null;
   typing.hidden = working.hidden || working.dataset.waiting === "yes" || writing;
+  if (!typing.hidden && live !== null && live.turn !== null) {
+    // The calls under way since the last answer, as chips on the typing bubble.
+    const marker = makeLine("marker", "", live.turn);
+    log.appendChild(marker);
+    const calls = callsAmong(linesBefore(marker));
+    marker.remove();
+    drawChips(typingChips, calls);
+  }
   keepView();
 }
 
@@ -284,9 +293,123 @@ function drawSoon(line) {
 // A streamed answer is complete: drawn from all of its source, and given its copy button. While it
 // streams it holds only its drawing.
 function finishAnswer(line) {
-  if (line.children.length > 1) return;
+  if (line.querySelector(".copy") !== null) return;
   drawAnswerText(line);
   addCopyButton(line);
+}
+
+// The tool calls are chips. A tool line in the log is the record: a request ("🔧 name: what")
+// or, for one that is not, the outcome of the request before it with that name. The lines are
+// kept but not drawn; what is drawn is a row of chips, one per request, in the order they ran,
+// each with a check when its call is done and a cross when it failed or was denied. A chip opens
+// to show the request's line, the person's answer to its card, and its outcome.
+function isRequest(line) {
+  return line.classList.contains("tool") && line.textContent.startsWith("🔧 ");
+}
+
+function requestName(line) {
+  return line.textContent.slice(2).split(":")[0].trim();
+}
+
+// Groups a run of lines into calls: each request with the lines that answer it. A line that is not
+// a request answers the latest request of its tool that has no outcome yet; an outcome in the
+// page's own words ends with "done", "failed: …" or "denied: …", and one drawn from the story
+// is the tool's result.
+function callsAmong(lines) {
+  const calls = [];
+  for (const line of lines) {
+    if (isRequest(line)) {
+      calls.push({ name: requestName(line), request: line, note: null, outcome: null });
+      continue;
+    }
+    const isNote = line.classList.contains("system") && line.dataset.tool !== undefined;
+    const isTool = line.classList.contains("tool");
+    if (!isNote && !isTool) continue;
+    const text = line.textContent;
+    const open = calls.findLast(
+      (call) => call.outcome === null && (!isNote || call.name === line.dataset.tool),
+    );
+    if (open === undefined) continue;
+    if (isNote) open.note = line;
+    else if (text === open.name + " approved") open.note = line;
+    else open.outcome = line;
+  }
+  return calls;
+}
+
+function resultOf(call) {
+  if (call.outcome === null) return "";
+  const text = call.outcome.textContent;
+  const bad = text.startsWith(call.name + " failed:") || text.startsWith(call.name + " denied:");
+  return bad ? "failed" : "done";
+}
+
+function makeChip(call) {
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "chip";
+  chip.textContent = call.name;
+  chip.dataset.result = resultOf(call);
+  chip.call = call;
+  return chip;
+}
+
+// Draws a row of chips for the calls into an element, with one open call's lines under the row.
+function drawChips(into, calls, open = null) {
+  into.replaceChildren();
+  for (const call of calls) {
+    const chip = makeChip(call);
+    if (call === open) chip.dataset.open = "yes";
+    chip.addEventListener("click", () => drawChips(into, calls, open === call ? null : call));
+    into.appendChild(chip);
+  }
+  if (open !== null) {
+    const detail = document.createElement("div");
+    detail.className = "chip-detail";
+    for (const line of [open.request, open.note, open.outcome]) {
+      if (line === null) continue;
+      const row = document.createElement("div");
+      row.textContent = line.textContent;
+      detail.appendChild(row);
+    }
+    into.appendChild(detail);
+  }
+  keepView();
+}
+
+// The lines of a turn before a given line and after its previous answer: the calls that answer
+// belongs to.
+function linesBefore(line) {
+  const before = [];
+  for (let at = line.previousSibling; at !== null; at = at.previousSibling) {
+    if (at.dataset.turn !== line.dataset.turn) break;
+    if (at.classList.contains("assistant") || at.classList.contains("user")) break;
+    before.unshift(at);
+  }
+  return before;
+}
+
+// Gives an answer its chips from the calls before it, if there were any, in the strip along its
+// bottom, before the copy button.
+function attachChips(line) {
+  const calls = callsAmong(linesBefore(line));
+  if (calls.length === 0) return;
+  let row = line.querySelector(".chips");
+  if (row === null) {
+    row = document.createElement("div");
+    row.className = "chips";
+    footOf(line).prepend(row);
+  }
+  drawChips(row, calls);
+}
+
+// A call's outcome arrived after its answer's chips were drawn: the latest row that has the
+// call is drawn again.
+function redrawChipsFor() {
+  const rows = [...log.querySelectorAll(".chips")];
+  const row = rows[rows.length - 1];
+  if (row !== undefined) attachChips(row.parentElement);
+  drawTyping();
 }
 
 // The button shows an icon, drawn by the style sheet; its words are its name for a screen reader
@@ -297,7 +420,18 @@ function addCopyButton(line) {
   copy.className = "copy";
   nameCopyButton(copy, "Copy");
   copy.addEventListener("click", () => copyAnswer(line, copy));
-  line.appendChild(copy);
+  footOf(line).appendChild(copy);
+}
+
+// The strip along the bottom of an answer: its chips on the left, the copy button on the right.
+function footOf(line) {
+  let foot = line.querySelector(".foot");
+  if (foot === null) {
+    foot = document.createElement("div");
+    foot.className = "foot";
+    line.appendChild(foot);
+  }
+  return foot;
 }
 
 function nameCopyButton(button, words, state = "") {
@@ -481,6 +615,7 @@ function drawTurn(turn, story, ending = null) {
   for (const line of story.length > 0 ? [...replaced, ...notes] : []) line.remove();
   for (const line of lines) log.insertBefore(line, marker);
   marker.remove();
+  for (const line of lines) if (line.classList.contains("assistant")) attachChips(line);
   keepView();
 }
 
@@ -551,7 +686,10 @@ async function reconcile(replays) {
 // Words of the answer being written: added to the open bubble's source, which is drawn again.
 function say(text) {
   live.thinking = null;
-  if (!live.bubble) live.bubble = appendLine("assistant", "", live.turn, true);
+  if (!live.bubble) {
+    live.bubble = appendLine("assistant", "", live.turn, true);
+    attachChips(live.bubble);
+  }
   live.bubble.dataset.source += text;
   drawSoon(live.bubble);
   drawTyping();
@@ -626,24 +764,29 @@ const handlers = {
       toolByKey.set(call.idempotencyKey, call.toolName);
       appendLine("tool", "🔧 " + call.toolName + ": " + call.action, live.turn);
     }
+    drawTyping();
   },
   // An approval was deferred, or a call was settled: what is waiting for a person has changed, so
   // the cards are read again.
   "approval-deferred": () => refreshCards(),
   "call-approved": (call) => {
     appendLine("tool", named(call) + " approved", live.turn);
+    redrawChipsFor();
     return refreshCards();
   },
   "call-denied": (call) => {
     appendLine("tool", named(call) + " denied: " + call.reason, live.turn);
+    redrawChipsFor();
     return refreshCards();
   },
   "call-finished": (call) => {
     appendLine("tool", named(call) + " done", live.turn);
+    redrawChipsFor();
     return refreshCards();
   },
   "call-failed": (call) => {
     appendLine("tool", named(call) + " failed: " + call.message, live.turn);
+    redrawChipsFor();
     return refreshCards();
   },
   // A retried call starts over: the words and the thinking the failed attempt streamed are removed,

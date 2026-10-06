@@ -54,7 +54,9 @@ After it, the call is recorded as failed and the card is gone.
 
 **The page shows what the agent is doing.** While a turn is in progress
 the page shows a typing bubble, and "waiting for you…" while an approval card is
-waiting. The input is never disabled, because a message sent now is accepted.
+waiting. The tool calls a turn makes are chips along the bottom of the answer
+that followed them. The input is never disabled, because a message sent now is
+accepted.
 
 **A page opened or reconnected mid-turn catches up from the state.** The page
 opens the stream first, then reads the state when the stream opens, and reads
@@ -102,7 +104,8 @@ grows with what you type, up to six lines, and then scrolls.
 | Escape | Clears the box. |
 
 A message you have not sent is kept for the tab, per conversation, and is
-still in the box after a reload. **New chat** is beside the box. If the
+still in the box after a reload. **New chat** is the pen button beside the
+box. If the
 conversation has messages, it asks before it terminates the conversation's
 agent.
 
@@ -114,8 +117,15 @@ shown as text, and images are not loaded. A link opens in a new tab. An answer
 that is still streaming is formatted as it arrives. Your own messages are shown
 as you typed them.
 
-**Copy.** Each finished answer has a **Copy** button. It copies the answer's
-Markdown, as the agent wrote it.
+**Copy.** Each finished answer has a copy icon in the strip along its bottom.
+It copies the answer's Markdown, as the agent wrote it.
+
+**Tool calls are chips.** When the agent called tools before an answer, the
+strip along the bottom of that answer holds one chip per call, in the order
+they ran, with a check when the call is done and a cross when it failed or was
+denied. A chip opens to show what was asked, your answer to its card if there
+was one, and how the call ended. While the agent is still working, the typing
+bubble carries the chips for the calls under way.
 
 **Scrolling.** While you are at the bottom of the conversation, new content
 keeps the view at the bottom. If you scroll up, the view stays where you put
@@ -124,7 +134,10 @@ it, and a **Jump to latest** button takes you back.
 **Approval cards** show what will be done, the tool, its arguments, and how
 long is left before the card's deadline. Approve comes first.
 
-**Themes.** The page uses a light or a dark theme, as your system is set.
+**Themes.** The page uses a light or a dark theme, as your system is set,
+in the Nessy palette from `brand/`: the header is the mark and the wordmark on
+Deep Teal with a waterline under it, and the tab icon is the Nessy face. The
+brand faces load from Google Fonts, with system faces when they cannot.
 
 **The agent is typing.** While the agent works, the reply starts as a bubble
 at the foot of the conversation with three humps swimming and a clock that

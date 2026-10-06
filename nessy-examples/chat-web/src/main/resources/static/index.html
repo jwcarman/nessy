@@ -21,6 +21,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Nessy Chat</title>
+    <link rel="icon" href="favicon.ico" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    />
     <link
       rel="stylesheet"
       href="/webjars/highlightjs__cdn-assets/11.11.1/styles/github.min.css"
@@ -35,13 +40,16 @@
   </head>
   <body>
     <header>
-      <h1>Nessy Chat</h1>
+      <img src="nessy-mark.png" alt="" width="36" height="36" />
+      <h1>Nessy</h1>
+      <span>chat</span>
     </header>
     <div id="conversation">
       <main id="log" aria-label="Conversation"></main>
       <div id="typing" aria-hidden="true" hidden>
         <span id="typing-humps"></span>
         <span id="typing-clock"></span>
+        <div id="typing-chips" class="chips"></div>
       </div>
       <div id="greeting" hidden>
         <h2>Chat with an agent</h2>
@@ -56,7 +64,12 @@
     <footer>
       <div id="working" role="status" aria-live="polite" hidden>working…</div>
       <form id="send-form">
-        <button id="new-chat" type="button">New chat</button>
+        <button id="new-chat" type="button" aria-label="New chat" title="New chat">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+          </svg>
+        </button>
         <label for="text" class="visually-hidden">Message</label>
         <textarea
           id="text"
