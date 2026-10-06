@@ -113,8 +113,7 @@ class ToolEventKeyTest {
                 .facts(),
             new AgentEvent.ApprovalDeferred(SEQ, TURN, CALL, UNTIL, null, KEY).facts());
 
-    assertThat(held).hasSize(4);
-    assertThat(held).allMatch(facts -> facts.equals(NONE));
+    assertThat(held).hasSize(4).allMatch(facts -> facts.equals(NONE));
   }
 
   @Test
@@ -130,8 +129,8 @@ class ToolEventKeyTest {
 
     facts.put("late", "yes");
 
-    assertThat(held).hasSize(4);
     assertThat(held)
+        .hasSize(4)
         .allMatch(kept -> kept.equals(JsonNodeFactory.instance.objectNode().put("risk", "low")));
   }
 

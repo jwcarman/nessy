@@ -79,7 +79,7 @@ final class ScriptedProvider implements InferenceProvider {
           if (hold) {
             try {
               release.await(30, TimeUnit.SECONDS);
-            } catch (InterruptedException interrupted) {
+            } catch (InterruptedException _) {
               Thread.currentThread().interrupt();
             }
           }

@@ -388,8 +388,7 @@ class JdbcPayloadsTest {
             .params(agent.value())
             .query(byte[].class)
             .list();
-    assertThat(stored).hasSize(2);
-    assertThat(stored).allSatisfy(row -> assertThat(row[0]).isNotEqualTo((byte) '{'));
+    assertThat(stored).hasSize(2).allSatisfy(row -> assertThat(row[0]).isNotEqualTo((byte) '{'));
     assertThat(transformed.get(blocksRef)).isEqualTo(new Payloads.Resolved.Found(blocks));
     assertThat(transformed.getDocument(documentRef)).isEqualTo(document());
   }
@@ -400,7 +399,8 @@ class JdbcPayloadsTest {
     Payloads payloads = forSomeAgent();
     PayloadRef emptyBlocks = payloads.put(List.of());
 
-    assertThat(emptyBlocks).isNotEqualTo(payloads.putDocument(MAPPER.createObjectNode()));
-    assertThat(emptyBlocks).isNotEqualTo(payloads.putDocument(MAPPER.createArrayNode()));
+    assertThat(emptyBlocks)
+        .isNotEqualTo(payloads.putDocument(MAPPER.createObjectNode()))
+        .isNotEqualTo(payloads.putDocument(MAPPER.createArrayNode()));
   }
 }

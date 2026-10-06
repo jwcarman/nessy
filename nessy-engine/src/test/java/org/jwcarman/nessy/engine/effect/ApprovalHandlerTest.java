@@ -361,7 +361,7 @@ class ApprovalHandlerTest {
               assertThat(approved.callId()).isEqualTo(new CallId("c1"));
               assertThat(approved.decidedBy()).contains("u_carol");
               assertThat(approved.facts()).isNotEmpty();
-              assertThat(approved.facts().toString()).isEqualTo(seen[0].facts().toString());
+              assertThat(approved.facts()).hasToString(seen[0].facts().toString());
             });
   }
 
@@ -387,7 +387,7 @@ class ApprovalHandlerTest {
               assertThat(denied.reason()).isEqualTo("out of hours");
               assertThat(denied.decidedBy()).contains("u_dave");
               assertThat(denied.facts()).isNotEmpty();
-              assertThat(denied.facts().toString()).isEqualTo(seen[0].facts().toString());
+              assertThat(denied.facts()).hasToString(seen[0].facts().toString());
             });
   }
 

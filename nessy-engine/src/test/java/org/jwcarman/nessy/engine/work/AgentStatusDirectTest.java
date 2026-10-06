@@ -120,7 +120,7 @@ class AgentStatusDirectTest {
           inModel.countDown();
           try {
             release.await(30, TimeUnit.SECONDS);
-          } catch (InterruptedException e) {
+          } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
           }
           return new InferenceResult.Answer(List.of(new Block.Text("ok")));
@@ -193,7 +193,7 @@ class AgentStatusDirectTest {
             inTool.countDown();
             try {
               release.await(30, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
               Thread.currentThread().interrupt();
             }
             return Awaited.ready(ToolResult.ok(new Block.Text("held")));

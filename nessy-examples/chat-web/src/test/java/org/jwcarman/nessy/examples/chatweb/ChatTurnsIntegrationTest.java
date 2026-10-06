@@ -99,7 +99,7 @@ class ChatTurnsIntegrationTest {
                         seen.add(line.substring("event:".length()).trim());
                       }
                     }
-                  } catch (IOException closed) {
+                  } catch (IOException _) {
                     // The test is over and the stream was closed under the reader.
                   }
                 });

@@ -383,8 +383,7 @@ class WaitingApprovalsTest {
 
       List<ApprovalRequest> status = engine.work().status(type, agent).waitingApprovals();
 
-      assertThat(status).isEqualTo(engine.work().waitingApprovals(type));
-      assertThat(status).hasSize(1);
+      assertThat(status).isEqualTo(engine.work().waitingApprovals(type)).hasSize(1);
       assertThat(status.getFirst().agentId()).isEqualTo(agent);
     }
   }

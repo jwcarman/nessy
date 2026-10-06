@@ -386,7 +386,7 @@ class RepliesByKeyTest {
   class An_answer_that_does_not_fit {
 
     @Test
-    void approve_for_a_running_call_is_ignored() throws Exception {
+    void approve_for_a_running_call_is_ignored() {
       AgentType type = newType();
       CountDownLatch release = new CountDownLatch(1);
       held.add(release);

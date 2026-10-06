@@ -257,8 +257,8 @@ class ValueTypeCodecTest {
     String written = new String(entries.encode(expected), StandardCharsets.UTF_8);
 
     assertThat(read).isEqualTo(expected);
-    assertThat(((AgentEvent.ApprovalDeferred) read).facts().toString())
-        .isEqualTo("{\"risk\":\"low\",\"depth\":2}");
+    assertThat(((AgentEvent.ApprovalDeferred) read).facts())
+        .hasToString("{\"risk\":\"low\",\"depth\":2}");
     assertThat(written)
         .contains("\"type\":\"approval-deferred\"")
         .contains("\"callId\":\"c1\"")

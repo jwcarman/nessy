@@ -229,7 +229,8 @@ class InMemoryPayloadsTest {
   void blocks_and_a_document_never_share_a_reference() {
     PayloadRef emptyBlocks = payloads.put(List.of());
 
-    assertThat(emptyBlocks).isNotEqualTo(payloads.putDocument(MAPPER.createObjectNode()));
-    assertThat(emptyBlocks).isNotEqualTo(payloads.putDocument(MAPPER.createArrayNode()));
+    assertThat(emptyBlocks)
+        .isNotEqualTo(payloads.putDocument(MAPPER.createObjectNode()))
+        .isNotEqualTo(payloads.putDocument(MAPPER.createArrayNode()));
   }
 }

@@ -288,7 +288,7 @@ class ApprovalFactsTest {
 
     assertThat(story.get(2)).isInstanceOf(AgentEvent.ToolApproved.class);
     AgentEvent.ToolApproved approved = (AgentEvent.ToolApproved) story.get(2);
-    assertThat(approved.facts().toString()).isEqualTo(facts().toString());
+    assertThat(approved.facts()).hasToString(facts().toString());
     assertNoApprovalDocumentIsStored(type, agentId);
   }
 
@@ -304,7 +304,7 @@ class ApprovalFactsTest {
 
     assertThat(story.get(2)).isInstanceOf(AgentEvent.ToolDenied.class);
     AgentEvent.ToolDenied denied = (AgentEvent.ToolDenied) story.get(2);
-    assertThat(denied.facts().toString()).isEqualTo(facts().toString());
+    assertThat(denied.facts()).hasToString(facts().toString());
     assertNoApprovalDocumentIsStored(type, agentId);
   }
 
@@ -332,7 +332,7 @@ class ApprovalFactsTest {
     AgentEvent.ApprovalDeferred deferred = (AgentEvent.ApprovalDeferred) story.get(2);
     AgentEvent.ToolApproved approved = (AgentEvent.ToolApproved) story.get(3);
     assertThat(approved.facts()).as("the deferral's facts are the decision's").isEqualTo(none());
-    assertThat(deferred.facts().toString()).isEqualTo(facts().toString());
+    assertThat(deferred.facts()).hasToString(facts().toString());
     assertNoApprovalDocumentIsStored(type, agentId);
   }
 
@@ -417,9 +417,9 @@ class ApprovalFactsTest {
     assertThat(failed.kind()).isEqualTo(CallFailure.NOT_AUTHORISED);
     assertThat(failed.message()).isEqualTo("the call could not be authorised: " + message);
     assertThat(failed.facts()).isEqualTo(JsonNodeFactory.instance.objectNode().put("ask", 2));
-    assertThat(TOLD_OF_FAILURES).contains("the call could not be authorised: " + message);
-    assertThat(story).isNotEmpty();
-    assertThat(story).noneMatch(event -> event instanceof AgentEvent.ToolApproved);
+    List<String> told = List.copyOf(TOLD_OF_FAILURES);
+    assertThat(told).contains("the call could not be authorised: " + message);
+    assertThat(story).isNotEmpty().noneMatch(event -> event instanceof AgentEvent.ToolApproved);
     assertNoApprovalDocumentIsStored(type, agentId);
   }
 
@@ -438,8 +438,7 @@ class ApprovalFactsTest {
     List<AgentEvent> story = engine.story(type, agentId);
 
     assertThat(shown).as("asked twice").hasSize(2);
-    assertThat(story).isNotEmpty();
-    assertThat(story).noneMatch(event -> event instanceof AgentEvent.ToolFailed);
+    assertThat(story).isNotEmpty().noneMatch(event -> event instanceof AgentEvent.ToolFailed);
     assertThat(story.get(2)).isInstanceOf(AgentEvent.ToolApproved.class);
     AgentEvent.ToolApproved approved = (AgentEvent.ToolApproved) story.get(2);
     assertThat(approved.facts()).isEqualTo(JsonNodeFactory.instance.objectNode().put("ask", 2));
@@ -461,7 +460,7 @@ class ApprovalFactsTest {
     Optional<JsonNode> waiting = content.approvalFacts(key);
 
     assertThat(waiting).isPresent();
-    assertThat(waiting.get().toString()).isEqualTo(facts().toString());
+    assertThat(waiting.get()).hasToString(facts().toString());
     assertThat(
             engine
                 .replies()
@@ -474,7 +473,7 @@ class ApprovalFactsTest {
     settled(type, agentId);
     Optional<JsonNode> answered = content.approvalFacts(key);
     assertThat(answered).isPresent();
-    assertThat(answered.get().toString()).isEqualTo(waiting.get().toString());
+    assertThat(answered.get()).hasToString(waiting.get().toString());
   }
 
   @Test
@@ -488,7 +487,7 @@ class ApprovalFactsTest {
         contentOf(engine, type, agentId).approvalFacts(keyOfTheCall(engine, type, agentId));
 
     assertThat(read).isPresent();
-    assertThat(read.get().toString()).isEqualTo(facts().toString());
+    assertThat(read.get()).hasToString(facts().toString());
   }
 
   /** An approver that adds nothing still leaves a decision with an empty object, readable. */
@@ -534,7 +533,7 @@ class ApprovalFactsTest {
           .doesNotContain("facts")
           .doesNotContain("risk");
       assertThat(read).isPresent();
-      assertThat(read.get().toString()).isEqualTo(facts().toString());
+      assertThat(read.get()).hasToString(facts().toString());
     }
   }
 }

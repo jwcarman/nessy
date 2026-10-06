@@ -352,8 +352,7 @@ class StoryContentTest {
       laterCalls(1_200);
 
       assertThat(counted.result(keyOfFailed)).isEmpty();
-      assertThat(counting.pagesAfter).isNotEmpty();
-      assertThat(counting.pagesAfter).allMatch(read -> read.value() == 0);
+      assertThat(counting.pagesAfter).isNotEmpty().allMatch(read -> read.value() == 0);
     }
 
     @Test
@@ -365,8 +364,7 @@ class StoryContentTest {
       laterCalls(1_200);
 
       assertThat(counted.result(keyOfFailed)).isEmpty();
-      assertThat(counting.pagesAfter).isNotEmpty();
-      assertThat(counting.pagesAfter).allMatch(read -> read.value() == 0);
+      assertThat(counting.pagesAfter).isNotEmpty().allMatch(read -> read.value() == 0);
     }
   }
 
@@ -816,8 +814,7 @@ class StoryContentTest {
       laterCalls(1_200);
 
       assertThat(counted.approvalFacts(first)).isPresent();
-      assertThat(counting.pagesAfter).isNotEmpty();
-      assertThat(counting.pagesAfter).allMatch(read -> read.value() == 0);
+      assertThat(counting.pagesAfter).isNotEmpty().allMatch(read -> read.value() == 0);
     }
 
     @Test
@@ -830,8 +827,7 @@ class StoryContentTest {
       laterCalls(1_200);
 
       assertThat(counted.approvalFacts(first)).isPresent();
-      assertThat(counting.pagesAfter).isNotEmpty();
-      assertThat(counting.pagesAfter).allMatch(read -> read.value() == 0);
+      assertThat(counting.pagesAfter).isNotEmpty().allMatch(read -> read.value() == 0);
     }
 
     @Test
@@ -840,8 +836,7 @@ class StoryContentTest {
       laterCalls(1_200);
 
       assertThat(counted.approvalFacts(first)).isPresent();
-      assertThat(counting.pagesAfter).isNotEmpty();
-      assertThat(counting.pagesAfter).anyMatch(read -> read.value() >= 2_000);
+      assertThat(counting.pagesAfter).isNotEmpty().anyMatch(read -> read.value() >= 2_000);
     }
   }
 
@@ -945,8 +940,7 @@ class StoryContentTest {
       // One page of results is 1,000 results, which ends at seq 2,001 and takes three event reads.
       // A second page would rescan from the start of its turn, so its reads would go on past seq
       // 3,000; none did.
-      assertThat(counting.pagesAfter).isNotEmpty();
-      assertThat(counting.pagesAfter).allMatch(read -> read.value() <= 2_000);
+      assertThat(counting.pagesAfter).isNotEmpty().allMatch(read -> read.value() <= 2_000);
     }
 
     @Test

@@ -46,8 +46,7 @@ class EffectOutcomeFactsTest {
             new EffectOutcome.ToolDenied(CALL, "no", Optional.of("ann")).facts(),
             new EffectOutcome.ToolFailed(CALL, CallFailure.FAILED, "boom").facts());
 
-    assertThat(held).hasSize(5);
-    assertThat(held).allMatch(facts -> facts.equals(none()));
+    assertThat(held).hasSize(5).allMatch(facts -> facts.equals(none()));
   }
 
   @Test
@@ -58,8 +57,7 @@ class EffectOutcomeFactsTest {
             new EffectOutcome.ToolDenied(CALL, "no", Optional.empty(), null).facts(),
             new EffectOutcome.ToolFailed(CALL, CallFailure.FAILED, "boom", null).facts());
 
-    assertThat(held).hasSize(3);
-    assertThat(held).allMatch(facts -> facts.equals(none()));
+    assertThat(held).hasSize(3).allMatch(facts -> facts.equals(none()));
   }
 
   @Test
@@ -73,8 +71,8 @@ class EffectOutcomeFactsTest {
 
     facts.put("late", "yes");
 
-    assertThat(held).hasSize(3);
     assertThat(held)
+        .hasSize(3)
         .allMatch(kept -> kept.equals(JsonNodeFactory.instance.objectNode().put("risk", "low")));
   }
 }

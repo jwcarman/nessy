@@ -50,7 +50,9 @@ class WatchmanRoundsTest {
     }
 
     @Override
-    public void terminate(AgentId agentId) {}
+    public void terminate(AgentId agentId) {
+      // The rounds never terminate the watchman; nothing here is asked to.
+    }
   }
 
   @Nested

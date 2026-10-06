@@ -86,7 +86,7 @@ class AgentWorkAutoConfigurationTest {
         inModel.countDown();
         try {
           release.await(30, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
         }
         return new InferenceResult.Answer(List.of(new Block.Text("done")));
@@ -234,7 +234,7 @@ class AgentWorkAutoConfigurationTest {
     }
 
     @Test
-    void an_agent_only_the_direct_store_holds_is_answered_from_it() throws InterruptedException {
+    void an_agent_only_the_direct_store_holds_is_answered_from_it() {
       AgentType type = new AgentType("work-direct-held");
       runner.run(
           context -> {

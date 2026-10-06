@@ -28,7 +28,6 @@ class EngineVersionTest {
   void the_engine_knows_its_own_version() {
     String version = EngineVersion.current();
 
-    assertThat(version).matches("\\d+\\.\\d+\\.\\d+(-SNAPSHOT)?");
-    assertThat(version).doesNotContain("${");
+    assertThat(version).matches("\\d+\\.\\d+\\.\\d+(-SNAPSHOT)?").doesNotContain("${");
   }
 }
