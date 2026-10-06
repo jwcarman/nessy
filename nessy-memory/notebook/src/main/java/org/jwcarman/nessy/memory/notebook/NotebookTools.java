@@ -83,20 +83,18 @@ public final class NotebookTools {
    * listed on Friday. Asked afresh on every call instead, so it can say something different each
    * time and can stop saying anything at all.
    *
-   * <p>Empty means absent. A heading with nothing under it tells a model its notebook is empty,
-   * which is a claim; saying nothing is not.
+   * <p><b>Present even when empty.</b> It used to be absent when there were no notes, on the
+   * grounds that an empty section is a claim. The claim is true -- nothing but Nessy writes the
+   * notebook -- and withholding it had a cost: a model that sees a {@code recall} tool and no index
+   * has nothing to tell it what an id is, and a 30B local model treated recall as a search and
+   * invented one (2026-10-06). Saying "there are no notes" closes that gap, and keeps the tool
+   * guidance under the index in front of the model in both states.
    */
   public static AmbientSource index(Notebook notebook) {
     Objects.requireNonNull(notebook, NOTEBOOK_NOT_NULL);
     return AmbientSource.of(
         source ->
-            source
-                .kind(KIND)
-                .text(
-                    agentId -> {
-                      List<Notebook.Heading> headings = notebook.headings(agentId);
-                      return headings.isEmpty() ? Optional.empty() : Optional.of(render(headings));
-                    }));
+            source.kind(KIND).text(agentId -> Optional.of(render(notebook.headings(agentId)))));
   }
 
   /**
@@ -109,6 +107,12 @@ public final class NotebookTools {
    * here would take that choice away from them.
    */
   private static String render(List<Notebook.Heading> headings) {
+    if (headings.isEmpty()) {
+      // The sentence alone. With the maintenance line under it, a 30B local model saved its own
+      // answer on the first turn of 8 fresh conversations in 10 (2026-10-06): an empty notebook
+      // plus an instruction to maintain it read as an instruction to fill it.
+      return "There are no notes in this notebook.";
+    }
     StringBuilder text = new StringBuilder("Notes you wrote, by id:\n");
     for (Notebook.Heading heading : headings) {
       text.append("- ").append(heading.id()).append(" — ").append(heading.hook()).append('\n');
@@ -137,9 +141,12 @@ public final class NotebookTools {
     return new NotebookTool<>(
         RememberNote.class,
         new ToolName("remember"),
-        "File a new note with a one-line hook. Returns the id it was given. To CHANGE a note that"
-            + " already exists, use revise with the id from your notebook index — never guess an"
-            + " id, and never use this tool to replace a note.",
+        "File a new note with a one-line hook, ONLY for something the user told you to keep: a"
+            + " preference, a name, a standing fact. Never file your own answers, explanations or"
+            + " drafts, and never file anything the user did not ask you to keep. Returns the id"
+            + " it was given. To CHANGE a note that already exists, use revise with the id from"
+            + " your notebook index — never guess an id, and never use this tool to replace a"
+            + " note.",
         (agentId, note) -> {
           Notebook.Entry written = notebook.write(agentId, note.hook(), note.body());
           return said("Remembered as '" + written.id() + "'.");

@@ -64,6 +64,19 @@ class NotebookToolsTest {
   @Nested
   class Remembering {
 
+    /**
+     * The description is the line a model reads closely. Measured 2026-10-06 on a 30B local model
+     * with a description that said nothing about what a note is FOR: it saved its own answer to a
+     * trivia question on the first turn of half of twenty fresh conversations, whatever the system
+     * prompt said. The tool has to say it.
+     */
+    @Test
+    void the_description_says_what_a_note_is_for_and_what_it_is_not() {
+      String description = NotebookTools.remember(notebook).description();
+
+      assertThat(description).contains("the user").contains("never").contains("own answers");
+    }
+
     @Test
     void files_a_note_and_tells_the_model_its_id() {
       ToolResult result =
@@ -207,13 +220,16 @@ class NotebookToolsTest {
     }
 
     /**
-     * A heading over no notes tells a model it has a notebook, which is a claim. Saying nothing is
-     * not -- and an empty section costs every turn of every agent that never writes one.
+     * The index used to be absent when there were no notes, on the grounds that an empty section is
+     * a claim and costs every turn. Observed on 2026-10-06 with a 30B local model: with no index in
+     * sight and a tool called {@code recall} on offer, it treated recall as a search and invented
+     * an id. The claim is true -- Nessy is the only writer of the notebook -- so it is made, and
+     * the tool guidance that follows it is read in both states.
      */
     @Test
-    @DisplayName("an agent with no notes contributes nothing at all")
-    void an_empty_notebook_offers_no_ambient_at_all() {
-      assertThat(index()).isEmpty();
+    @DisplayName("an agent with no notes is told so, and nothing more")
+    void an_empty_notebook_says_so() {
+      assertThat(shown()).isEqualTo("There are no notes in this notebook.");
     }
 
     @Test
@@ -241,13 +257,16 @@ class NotebookToolsTest {
     @Test
     @DisplayName("it is asked afresh, so a note written now is visible now and a gone one is gone")
     void the_index_reflects_the_notebook_as_it_stands() {
-      assertThat(index()).isEmpty();
+      assertThat(shown()).contains("There are no notes in this notebook.");
 
       Notebook.Entry note = notebook.write(thisAgent, "Just written", "body");
       assertThat(shown()).contains("Just written");
 
       notebook.forget(thisAgent, note.id());
-      assertThat(index()).as("and stops saying it the moment it stops being true").isEmpty();
+      assertThat(shown())
+          .as("and stops saying it the moment it stops being true")
+          .doesNotContain("Just written")
+          .contains("There are no notes in this notebook.");
     }
 
     /** One agent's notes are not another's, which is the whole reason a tool is told whose. */
@@ -255,7 +274,9 @@ class NotebookToolsTest {
     void another_agents_notes_are_not_in_this_agents_index() {
       notebook.write(Calls.agent(), "Somebody else's note", "body");
 
-      assertThat(index()).isEmpty();
+      assertThat(shown())
+          .doesNotContain("Somebody else's note")
+          .contains("There are no notes in this notebook.");
     }
   }
 }
