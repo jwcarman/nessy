@@ -20,6 +20,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.backend.QueuedBackend;
@@ -53,6 +55,7 @@ public final class QueuedHarnessFactoryConfig {
   private ProviderId defaultProvider;
   private InferenceOptions defaultOptions;
   private final List<NarrationListener> listeners = new ArrayList<>();
+  private final List<Customizer<HarnessConfig<?>>> features = new ArrayList<>();
   private ObservationRegistry observations = ObservationRegistry.NOOP;
   private TraceCarrier traceCarrier;
 
@@ -101,6 +104,20 @@ public final class QueuedHarnessFactoryConfig {
   }
 
   /**
+   * Something that equips every agent this factory serves.
+   *
+   * <p>For a module rather than an application: it reaches {@link HarnessConfig}, so it can add
+   * tools, instructions, memory, state and ambient sources, and a chapter policy or summariser, and
+   * it reads the agent type to key whatever it keeps on. It cannot set the application's own system
+   * prompt or its renderer, because the application already said what the agent is FOR. The same
+   * tier the direct door has, so one feature lands on both doors.
+   */
+  public QueuedHarnessFactoryConfig feature(Customizer<HarnessConfig<?>> customizer) {
+    features.add(Objects.requireNonNull(customizer, "customizer must not be null"));
+    return this;
+  }
+
+  /**
    * Where spans go. Defaults to {@link ObservationRegistry#NOOP}, which is the whole of switching
    * tracing off: no carrier is captured, no column is written, no span is opened.
    */
@@ -143,6 +160,10 @@ public final class QueuedHarnessFactoryConfig {
 
   List<NarrationListener> listeners() {
     return List.copyOf(listeners);
+  }
+
+  List<Customizer<HarnessConfig<?>>> features() {
+    return List.copyOf(features);
   }
 
   ObservationRegistry observations() {

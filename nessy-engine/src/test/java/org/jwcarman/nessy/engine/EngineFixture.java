@@ -32,6 +32,7 @@ import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AgentWork;
+import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.IdentityCodec;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.PayloadRef;
@@ -52,6 +53,7 @@ import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
+import org.jwcarman.nessy.engine.harness.queued.QueuedHarnessFactoryConfig;
 import org.jwcarman.nessy.engine.history.EventStreamHistory;
 import org.jwcarman.nessy.engine.history.Transcript;
 import org.jwcarman.nessy.engine.store.TurnHistories;
@@ -109,7 +111,8 @@ public final class EngineFixture implements AutoCloseable {
         observations,
         Optional.empty(),
         Optional.empty(),
-        UnaryOperator.identity());
+        UnaryOperator.identity(),
+        _ -> {});
   }
 
   /** With the backend wrapped, so a test can make one of its operations fail on command. */
@@ -117,7 +120,14 @@ public final class EngineFixture implements AutoCloseable {
       InferenceProvider provider,
       NarrationListener listener,
       UnaryOperator<QueuedBackend> wrapped) {
-    this(provider, listener, ObservationRegistry.NOOP, Optional.empty(), Optional.empty(), wrapped);
+    this(
+        provider,
+        listener,
+        ObservationRegistry.NOOP,
+        Optional.empty(),
+        Optional.empty(),
+        wrapped,
+        _ -> {});
   }
 
   /** Tracing, with the context written by {@code carrier} rather than a momentary span. */
@@ -129,7 +139,8 @@ public final class EngineFixture implements AutoCloseable {
         observations,
         Optional.empty(),
         Optional.of(carrier),
-        UnaryOperator.identity());
+        UnaryOperator.identity(),
+        _ -> {});
   }
 
   /** With something done to every stored byte, which the fixture's own reader must undo too. */
@@ -140,7 +151,8 @@ public final class EngineFixture implements AutoCloseable {
         ObservationRegistry.NOOP,
         Optional.of(storage),
         Optional.empty(),
-        UnaryOperator.identity());
+        UnaryOperator.identity(),
+        _ -> {});
   }
 
   private EngineFixture(
@@ -149,7 +161,8 @@ public final class EngineFixture implements AutoCloseable {
       ObservationRegistry observations,
       Optional<Codec<byte[]>> storage,
       Optional<TraceCarrier> carrier,
-      UnaryOperator<QueuedBackend> wrapped) {
+      UnaryOperator<QueuedBackend> wrapped,
+      Customizer<QueuedHarnessFactoryConfig> extra) {
     HikariConfig config = new HikariConfig();
     config.setJdbcUrl(POSTGRES.getJdbcUrl());
     config.setUsername(POSTGRES.getUsername());
@@ -190,7 +203,24 @@ public final class EngineFixture implements AutoCloseable {
                   .listener(listener)
                   .observations(observations);
               carrier.ifPresent(engine::traceCarrier);
+              extra.customize(engine);
             });
+  }
+
+  /**
+   * With the factory's own settings added to after the fixture's, for what a test installs. The
+   * customizer comes first because a lambda there is otherwise ambiguous with the listener forms.
+   */
+  public EngineFixture(
+      Customizer<QueuedHarnessFactoryConfig> customizer, InferenceProvider provider) {
+    this(
+        provider,
+        NarrationListener.none(),
+        ObservationRegistry.NOOP,
+        Optional.empty(),
+        Optional.empty(),
+        UnaryOperator.identity(),
+        customizer);
   }
 
   public EngineFixture(InferenceProvider provider) {

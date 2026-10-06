@@ -28,6 +28,7 @@ import org.jwcarman.codec.TypeRef;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AgentWork;
 import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.JsonSchemaGenerator;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.ProviderId;
@@ -107,6 +108,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   private final QueuedBackend backend;
 
   private final List<NarrationListener> listeners = new CopyOnWriteArrayList<>();
+  private final List<Customizer<HarnessConfig<?>>> features;
   private final DefaultReplies replies;
   private final StoredAgentWork work;
   private final ThreadPoolTaskScheduler scheduler;
@@ -150,6 +152,7 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
   DefaultQueuedHarnessFactory(QueuedHarnessFactoryConfig config) {
     this.backend = config.requiredBackend();
     listeners.addAll(config.listeners());
+    this.features = config.features();
     this.replies = new DefaultReplies(clock);
     this.work = StoredAgentWork.queued(backend, clock);
     // A timer, and only a timer: it never performs an effect (each dispatcher has its own
@@ -193,6 +196,8 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
     DefaultQueuedHarnessConfig<I> config =
         new DefaultQueuedHarnessConfig<>(
             agentType, inputType, defaults, mapper, schemas, observations);
+    // What jars installed, then what this caller asked for -- the caller able to override.
+    features.forEach(feature -> feature.customize(config));
     customizer.customize(config);
 
     Tools tools = config.tools();
