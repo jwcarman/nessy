@@ -19,8 +19,6 @@ import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import javax.sql.DataSource;
-import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.BacklogPolicy;
@@ -35,17 +33,14 @@ import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
-import org.jwcarman.nessy.planning.JdbcPlans;
-import org.jwcarman.nessy.planning.PlanTools;
-import org.jwcarman.nessy.planning.Plans;
 import org.jwcarman.nessy.spring.boot.NessyProperties;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * The chat agent: a plan, a date tool, and an email tool a person has to approve. The notebook is
- * not wired here; the starter installs it on every agent.
+ * The chat agent: a date tool and an email tool a person has to approve. The notebook and the plan
+ * are not wired here; the starter installs them on every agent.
  *
  * <p>The starter supplies the factory, the provider (from {@code nessy.provider}) and the model
  * (from {@code nessy.model}), but no harness: a harness is the agent's definition (its tools, their
@@ -60,11 +55,6 @@ public class ChatConfiguration {
   @Bean
   public SendEmailTool sendEmailTool() {
     return new SendEmailTool();
-  }
-
-  @Bean
-  public Plans plans(DataSource dataSource, CodecFactory codecs) {
-    return new JdbcPlans(dataSource, TYPE, codecs);
   }
 
   /**
@@ -95,7 +85,6 @@ public class ChatConfiguration {
       Map<String, InferenceProvider> providers,
       ObservationRegistry observations,
       SendEmailTool email,
-      Plans plans,
       @Value("${chat.chapter-turns:20}") int chapterTurns,
       @Value("${chat.summary-model:}") String summaryModel,
       @Value("${chat.approval-term:PT5M}") Duration approvalTerm) {
@@ -107,8 +96,6 @@ public class ChatConfiguration {
                 .inputRenderer(said -> List.of(new Block.Text(said)))
                 .backlogPolicy(together())
                 .systemPrompt(properties.resolveSystemPrompt())
-                // The current plan is background: ambient, so it is asked afresh every call and
-                // never part of the story -- the model sees it as it stands NOW.
                 .inference(
                     in ->
                         in.model(properties.model())
@@ -118,16 +105,14 @@ public class ChatConfiguration {
                                     // A local thinking model can take minutes to write a chapter's
                                     // summary, so the lease outlasts the two-minute default.
                                     summaries(
-                                            ctx.chapterLeaseTtl(Duration.ofMinutes(10))
-                                                .chapterPolicy(ChapterPolicy.every(chapterTurns)),
-                                            histories,
-                                            properties,
-                                            providers,
-                                            observations,
-                                            summaryModel)
-                                        .ambient(PlanTools.plan(plans))))
+                                        ctx.chapterLeaseTtl(Duration.ofMinutes(10))
+                                            .chapterPolicy(ChapterPolicy.every(chapterTurns)),
+                                        histories,
+                                        properties,
+                                        providers,
+                                        observations,
+                                        summaryModel)))
                 .tool(new DaysUntilTool())
-                .tool(PlanTools.updatePlan(plans))
                 .tool(
                     email,
                     binding ->

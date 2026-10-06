@@ -20,8 +20,6 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
-import javax.sql.DataSource;
-import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AmbientSource;
@@ -29,9 +27,6 @@ import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.console.ConsoleApprover;
 import org.jwcarman.nessy.console.Repl;
 import org.jwcarman.nessy.console.ReplConfig;
-import org.jwcarman.nessy.planning.JdbcPlans;
-import org.jwcarman.nessy.planning.PlanTools;
-import org.jwcarman.nessy.planning.Plans;
 import org.jwcarman.nessy.spring.boot.prompt.PromptAutoConfiguration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
@@ -41,7 +36,8 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 
 /**
- * A terminal chat with a plan and one tool a person has to approve.
+ * A terminal chat with one tool a person has to approve. The notebook and the plan come from the
+ * starter.
  *
  * <p>An ordinary Spring Boot application on the Nessy starter: the provider is a bean the starter
  * registers from a preset, and the database comes up from {@code compose.yaml} when this runs and
@@ -94,11 +90,6 @@ public class Chat {
         .run(args);
   }
 
-  @Bean
-  public Plans plans(DataSource database, CodecFactory codecs) {
-    return new JdbcPlans(database, TYPE, codecs);
-  }
-
   /**
    * The terminal itself. {@code chat.terminal=false} leaves it out, which is how a test starts the
    * whole application without reading a console.
@@ -109,7 +100,6 @@ public class Chat {
       DirectHarnessFactory harnesses,
       @Value("${nessy.model}") String model,
       @Value("${nessy.console.agent:}") String resume,
-      Plans plans,
       Clock clock) {
     return _ -> {
       Optional<String> problem = problemWith(resume);
@@ -128,18 +118,8 @@ public class Chat {
                   .farewell("bye.")
                   .systemPrompt(SYSTEM_PROMPT)
                   .agent(TYPE)
-                  // The current plan is background: ambient, so it is asked afresh every call and
-                  // never part of the story -- the model sees it as it stands NOW.
-                  .harness(
-                      h ->
-                          h.inference(
-                              in ->
-                                  in.context(
-                                      ctx ->
-                                          ctx.ambient(today(clock))
-                                              .ambient(PlanTools.plan(plans)))))
+                  .harness(h -> h.inference(in -> in.context(ctx -> ctx.ambient(today(clock)))))
                   .tool(new DaysUntilTool())
-                  .tool(PlanTools.updatePlan(plans))
                   // The only thing here that reaches outside the process, so the only thing a
                   // person is asked about. The action stringifier writes the sentence they consent
                   // to.

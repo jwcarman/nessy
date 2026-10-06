@@ -12,6 +12,10 @@ QueuedHarness<String> harness = factory.create(TYPE, h -> h
         .tool(PlanTools.updatePlan(plans)));
 ```
 
+With the Spring Boot starter the plan installs itself on every agent, so none
+of that is written; an application that declares its own `Plans` bean keeps the
+starter out.
+
 Two halves. `PlanTools.plan(store)` is the read half, an `AmbientSource`
 that puts the agent's current plan in front of it on every call.
 `PlanTools.updatePlan(store)` is the write half, one tool named

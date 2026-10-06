@@ -29,6 +29,7 @@ import org.jwcarman.nessy.api.StorageCodecConfigurer;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
+import org.jwcarman.nessy.planning.JdbcPlans;
 import org.jwcarman.nessy.planning.Plan;
 import org.jwcarman.nessy.planning.Plans;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -83,7 +84,6 @@ class StorageCodecWiringTest {
     }
   }
 
-  @Autowired private Plans plans;
   @Autowired private DataSource dataSource;
   @Autowired private CodecFactory codecs;
 
@@ -118,6 +118,7 @@ class StorageCodecWiringTest {
   @DisplayName("a plan's task titles are stored through the codec")
   void the_plan_is_built_with_the_applications_codec() {
     AgentId agent = AgentId.random();
+    Plans plans = new JdbcPlans(dataSource, ChatConfiguration.TYPE, codecs);
     Plan plan = new Plan(List.of(new Plan.Task("Email Ms. Okonkwo-Reyes", Plan.Status.PENDING)));
 
     plans.save(agent, plan);

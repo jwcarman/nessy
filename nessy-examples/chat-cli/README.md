@@ -3,7 +3,7 @@
 An ordinary Spring Boot application that happens to be a terminal, standing on
 the Nessy starter: a conversation, a notebook, a plan, and one tool a person has
 to approve. The starter supplies the direct-door factory, registers the
-providers and installs the notebook; `NESSY_PROVIDER` and `NESSY_MODEL` choose which one answers.
+providers and installs the notebook and the plan (`nessy.notebook.enabled=false` and `nessy.plan.enabled=false` turn them off); `NESSY_PROVIDER` and `NESSY_MODEL` choose which one answers.
 
 Nothing to start first. `compose.yaml` beside this file is brought up when the
 example runs and stopped when it exits, so the database the notebook and the

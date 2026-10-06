@@ -13,16 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every agent of both doors gets the notebook index and `remember`, `revise`, `recall` and
   `forget`. `nessy.notebook.enabled=false` turns it off, and an application's own `Notebook` bean
   keeps the starter's out.
+- **The plan store installs itself.** With the Spring Boot starter and `nessy-backend-jdbc` present,
+  every agent of both doors gets the ambient current plan and `update_plan`.
+  `nessy.plan.enabled=false` turns it off, and an application's own `Plans` bean keeps the
+  starter's out.
 - **`QueuedHarnessFactoryConfig.feature(...)`** adds a feature to the queued factory, as the direct
   factory's configuration already did.
 - **Both harness auto-configurations collect every `Customizer<HarnessConfig<?>>` bean** and apply
   it as a feature to each harness they create.
 - **`NotebookTools.feature(Notebook)`** installs the index and the four tools in one call.
+- **`PlanTools.feature(Plans)`** installs the ambient plan and `update_plan` in one call.
 
 ### Changed
 
-- **An application with `nessy.initialize-schema=false` must create `nessy_note`**, the
-  notebook's table, with the rest of its schema; the DDL is `nessy-schema.sql` in the notebook jar.
+- **An application with `nessy.initialize-schema=false` must create `nessy_note` and
+  `nessy_plan_task`**, the notebook's and the plan's tables, with the rest of its schema; the DDL is
+  `nessy-schema.sql` in the notebook jar and in the planning jar.
 - **The notebook index is present when it is empty**, and the `remember` tool's description says
   what a note is for.
 
