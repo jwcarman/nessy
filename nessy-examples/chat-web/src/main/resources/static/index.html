@@ -29,20 +29,26 @@
     <link
       rel="stylesheet"
       href="/webjars/highlightjs__cdn-assets/11.11.1/styles/github.min.css"
+      id="code-light"
       media="(prefers-color-scheme: light)"
     />
     <link
       rel="stylesheet"
       href="/webjars/highlightjs__cdn-assets/11.11.1/styles/github-dark.min.css"
+      id="code-dark"
       media="(prefers-color-scheme: dark)"
     />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header>
-      <img src="nessy-mark.png" alt="" width="36" height="36" />
+      <img src="nessy-mark.png" alt="" width="44" height="44" />
       <h1>Nessy</h1>
       <span>chat</span>
+      <button id="theme" type="button" aria-label="Switch to dark" title="Switch to dark">
+        <i class="moon" data-lucide="moon" data-glyph="☾"></i>
+        <i class="sun" data-lucide="sun" data-glyph="☼"></i>
+      </button>
     </header>
     <div id="conversation">
       <main id="log" aria-label="Conversation"></main>
@@ -65,10 +71,7 @@
       <div id="working" role="status" aria-live="polite" hidden>working…</div>
       <form id="send-form">
         <button id="new-chat" type="button" aria-label="New chat" title="New chat">
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
-          </svg>
+          <i data-lucide="square-pen" data-glyph="✎"></i>
         </button>
         <label for="text" class="visually-hidden">Message</label>
         <textarea
@@ -83,9 +86,7 @@
           Enter sends. Shift and Enter starts a new line. Up and Down bring back earlier messages.
         </span>
         <button id="send" type="submit" aria-label="Send">
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" />
-          </svg>
+          <i data-lucide="arrow-up" data-glyph="↑"></i>
         </button>
       </form>
     </footer>
@@ -101,6 +102,7 @@
     </dialog>
     <script src="/webjars/markdown-it/14.3.0/dist/markdown-it.min.js"></script>
     <script src="/webjars/highlightjs__cdn-assets/11.11.1/highlight.min.js"></script>
+    <script src="/webjars/lucide/1.48.0/dist/umd/lucide.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

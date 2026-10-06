@@ -40,6 +40,7 @@ const working = document.getElementById("working");
 const typing = document.getElementById("typing");
 const typingClock = document.getElementById("typing-clock");
 const typingChips = document.getElementById("typing-chips");
+const themeButton = document.getElementById("theme");
 const newChatButton = document.getElementById("new-chat");
 const confirmNew = document.getElementById("confirm-new");
 const greeting = document.getElementById("greeting");
@@ -434,10 +435,23 @@ function footOf(line) {
   return foot;
 }
 
+// Names the copy button and draws its icon: a copy icon, a check after a copy, a cross after a
+// refused one. The words are its name for a screen reader and its tooltip; the icon is Lucide's,
+// built from DOM calls. Without the library the button shows a glyph.
 function nameCopyButton(button, words, state = "") {
   button.textContent = words;
   button.title = words;
   button.dataset.state = state;
+  const lucide = window.lucide;
+  const icon = state === "copied" ? "Check" : state === "refused" ? "X" : "Copy";
+  if (lucide && typeof lucide.createElement === "function" && lucide[icon]) {
+    button.appendChild(lucide.createElement(lucide[icon]));
+  } else {
+    const glyph = document.createElement("i");
+    glyph.dataset.lucide = icon.toLowerCase();
+    glyph.dataset.glyph = state === "copied" ? "✓" : state === "refused" ? "✗" : "⧉";
+    button.appendChild(glyph);
+  }
 }
 
 // Copies the answer as the agent wrote it, Markdown and all, and says so on the button for a
@@ -1199,6 +1213,52 @@ jumpButton.addEventListener("click", () => {
   focusBox(jumpButton);
 });
 
+// The theme: the system's until the person chooses, then their choice, kept in the browser. The
+// code colours follow: their two style sheets are switched by their media attribute.
+function isDark() {
+  const chosen = document.documentElement.dataset.theme;
+  if (chosen !== undefined) return chosen === "dark";
+  return window.matchMedia !== undefined && window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+function applyTheme(chosen) {
+  if (chosen === null) delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = chosen;
+  const dark = isDark();
+  const codeLight = document.getElementById("code-light");
+  const codeDark = document.getElementById("code-dark");
+  if (codeLight && codeDark) {
+    codeLight.media = chosen === null ? "(prefers-color-scheme: light)" : dark ? "not all" : "all";
+    codeDark.media = chosen === null ? "(prefers-color-scheme: dark)" : dark ? "all" : "not all";
+  }
+  const words = dark ? "Switch to light" : "Switch to dark";
+  themeButton.setAttribute("aria-label", words);
+  themeButton.title = words;
+}
+
+function restoreTheme() {
+  let chosen = null;
+  try {
+    chosen = localStorage.getItem("theme");
+  } catch (unavailable) {
+    chosen = null;
+  }
+  applyTheme(chosen === "dark" || chosen === "light" ? chosen : null);
+}
+
+themeButton.addEventListener("click", () => {
+  const chosen = isDark() ? "light" : "dark";
+  applyTheme(chosen);
+  try {
+    localStorage.setItem("theme", chosen);
+  } catch (unavailable) {
+    // The choice holds for this page; it is not kept.
+  }
+});
+
+// Lucide draws the page's icons into the elements that name them.
+if (window.lucide && typeof window.lucide.createIcons === "function") window.lucide.createIcons();
+restoreTheme();
 useAgent(agentId);
 restoreDraft();
 listen();

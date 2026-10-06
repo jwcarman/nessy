@@ -43,8 +43,11 @@
   --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
+/* Dark: the system's choice unless the person chose light, and the person's choice of dark. The
+   values are written twice so that a choice wins over the system both ways. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #0d1f27;
     --surface: #12303a;
     --fg: #e6efee;
@@ -59,6 +62,27 @@
     --focus: #8cd0cd;
     --shadow: 0 1px 2px rgb(0 0 0 / 40%);
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d1f27;
+  --surface: #12303a;
+  --fg: #e6efee;
+  --muted: #9fb8bb;
+  --border: #26464f;
+  --bubble-user: #2f7f82;
+  --bubble-user-fg: #f3f8f7;
+  --code-bg: #0a1b21;
+  --accent: #8cd0cd;
+  --accent-fg: #0a3644;
+  --link: #8cd0cd;
+  --focus: #8cd0cd;
+  --shadow: 0 1px 2px rgb(0 0 0 / 40%);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 * {
@@ -125,19 +149,79 @@ header::after {
 }
 
 header img {
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2.75rem;
+  height: 2.75rem;
 }
 
 header h1 {
   margin: 0;
-  font: 700 1.35rem/1 var(--serif);
+  font: 700 1.6rem/1 var(--serif);
   letter-spacing: -0.01em;
 }
 
 header span {
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   color: var(--nessy-aqua);
+}
+
+/* Icons are Lucide's, drawn into these elements by name. Without the library an element shows
+   its glyph instead, so a button is never blank. */
+i[data-lucide] {
+  display: inline-grid;
+  place-items: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  font-style: normal;
+}
+
+i[data-lucide]:empty::before {
+  content: attr(data-glyph);
+}
+
+svg.lucide {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+/* The theme button, at the right of the header: a moon while the page is light, a sun while it is
+   dark. The page keeps the choice in the browser. */
+#theme {
+  margin-left: auto;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid rgb(235 224 193 / 30%);
+  border-radius: 50%;
+  background: none;
+  color: var(--loch-cream);
+  display: grid;
+  place-items: center;
+}
+
+#theme:hover {
+  border-color: var(--loch-cream);
+}
+
+#theme .sun {
+  display: none;
+}
+
+:root[data-theme="dark"] #theme .moon {
+  display: none;
+}
+
+:root[data-theme="dark"] #theme .sun {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) #theme .moon {
+    display: none;
+  }
+
+  :root:not([data-theme="light"]) #theme .sun {
+    display: block;
+  }
 }
 
 /* The conversation: a column of readable width, centred, that scrolls on its own. */
@@ -351,12 +435,12 @@ main#log {
   border-top: 1px solid var(--border);
 }
 
-/* The copy button is an icon. Its words stay in the page as its name and are not drawn; the icon
-   is a mask, so it takes the button's colour in both themes. */
+/* The copy button: a Lucide icon, its words kept in the page as its name and not drawn. The icon
+   is a check mark for a moment after a copy and a cross after a refused one. */
 .copy {
-  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='9' width='11' height='11' rx='2'/%3E%3Cpath d='M5 15V6a2 2 0 0 1 2-2h9'/%3E%3C/svg%3E");
-  display: block;
-  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex: none;
   width: 1.75rem;
   height: 1.75rem;
@@ -369,31 +453,19 @@ main#log {
   border-radius: 0.4rem;
 }
 
-.copy::before {
-  content: "";
-  position: absolute;
-  inset: 0;
+.copy svg {
   width: 1rem;
   height: 1rem;
-  margin: auto;
-  background: currentColor;
-  -webkit-mask: var(--icon) center / contain no-repeat;
-  mask: var(--icon) center / contain no-repeat;
 }
 
-.copy[data-state="copied"] {
-  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
-  color: var(--fg);
-}
-
+.copy:hover,
+.copy[data-state="copied"],
 .copy[data-state="refused"] {
-  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E");
   color: var(--fg);
 }
 
 .copy:hover {
   border-color: var(--border);
-  color: var(--fg);
 }
 
 /* A formatted answer. */
@@ -769,15 +841,6 @@ footer {
   border-color: var(--muted);
 }
 
-#new-chat svg {
-  width: 1.1rem;
-  height: 1.1rem;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
 
 /* A round button with an arrow drawn in the page's own SVG. */
 #send {
@@ -793,14 +856,9 @@ footer {
   place-items: center;
 }
 
-#send svg {
-  width: 1.2rem;
-  height: 1.2rem;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.25;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+#send .lucide {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 dialog {

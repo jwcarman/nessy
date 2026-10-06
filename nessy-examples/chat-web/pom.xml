@@ -150,6 +150,12 @@
       <artifactId>highlightjs__cdn-assets</artifactId>
       <scope>runtime</scope>
     </dependency>
+    <!-- The page's icons are Lucide's, drawn by its browser build from a name on an element. -->
+    <dependency>
+      <groupId>org.webjars.npm</groupId>
+      <artifactId>lucide</artifactId>
+      <scope>runtime</scope>
+    </dependency>
     <!-- Boot 4 auto-configures a DataSource only when its JDBC module is present. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

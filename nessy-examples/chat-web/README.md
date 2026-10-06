@@ -86,9 +86,9 @@ irreversible — without being something you could point at a stranger.
 ## Using the page
 
 The page is three static files (`index.html`, `app.js` and `style.css`) with
-no build step. It also loads markdown-it and highlight.js, which the
-application serves from WebJars (`/webjars/...`), so nothing is fetched from
-the internet.
+no build step. It also loads markdown-it, highlight.js and Lucide (the icons),
+which the application serves from WebJars (`/webjars/...`), so nothing is
+fetched from the internet but the brand faces.
 
 **The message box keeps the cursor.** The cursor is in the box when the page
 loads, after you send, after you answer a card and when a turn ends. It stays
@@ -139,7 +139,9 @@ first.
 **Themes.** The page uses a light or a dark theme, as your system is set,
 in the Nessy palette from `brand/`: the header is the mark and the wordmark on
 Deep Teal with a waterline under it, and the tab icon is the Nessy face. The
-brand faces load from Google Fonts, with system faces when they cannot.
+brand faces load from Google Fonts, with system faces when they cannot. The
+button at the right of the header switches between light and dark; the page
+remembers the choice in the browser and follows the system until you choose.
 
 **The agent is typing.** While the agent works, the reply starts as a bubble
 at the foot of the conversation with three humps swimming and a clock that

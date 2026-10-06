@@ -36,9 +36,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
 /**
- * The page draws answers with markdown-it's browser build and colours their code with highlight.js,
- * both served from WebJars on the classpath. The paths are read from the page itself, so each
- * version is written only in the pom and the page, and this fails when the two disagree.
+ * The page draws answers with markdown-it's browser build, colours their code with highlight.js and
+ * draws its icons with Lucide, all served from WebJars on the classpath. The paths are read from
+ * the page itself, so each version is written only in the pom and the page, and this fails when the
+ * two disagree.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -94,6 +95,7 @@ class MarkdownScriptIntegrationTest {
         WEBJAR.matcher(page.body()).results().map(found -> found.group(1)).toList();
     assertThat(paths)
         .anyMatch(path -> path.endsWith("/highlight.min.js"))
+        .anyMatch(path -> path.endsWith("/lucide.min.js"))
         .anyMatch(path -> path.endsWith("/styles/github.min.css"))
         .anyMatch(path -> path.endsWith("/styles/github-dark.min.css"));
 

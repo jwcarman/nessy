@@ -182,6 +182,9 @@
          are served from /webjars/highlightjs__cdn-assets/VERSION/, so the version also appears
          in that example's index.html. -->
     <highlightjs-webjar.version>11.11.1</highlightjs-webjar.version>
+    <!-- Lucide icons as a WebJar, for the same example: the browser build is served from
+         /webjars/lucide/VERSION/dist/umd/, so the version also appears in its index.html. -->
+    <lucide-webjar.version>1.48.0</lucide-webjar.version>
     <jug.version>5.2.0</jug.version>
     <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
     <hikaricp.version>7.1.0</hikaricp.version>
@@ -389,6 +392,11 @@
         <groupId>org.webjars.npm</groupId>
         <artifactId>highlightjs__cdn-assets</artifactId>
         <version>${highlightjs-webjar.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.webjars.npm</groupId>
+        <artifactId>lucide</artifactId>
+        <version>${lucide-webjar.version}</version>
       </dependency>
       <dependency>
         <groupId>org.testcontainers</groupId>
