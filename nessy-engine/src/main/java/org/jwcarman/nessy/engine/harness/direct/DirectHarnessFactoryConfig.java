@@ -20,6 +20,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.HarnessConfig;
@@ -212,11 +213,12 @@ public final class DirectHarnessFactoryConfig {
     return List.copyOf(listeners);
   }
 
+  // A value no customizer set. The message names the customizer call that would have set it.
   private static <T> T require(T value, String what) {
-    if (value == null) {
-      throw new IllegalStateException(
-          what + " is required: factory(f -> f." + what.split(" ")[0] + "(...))");
-    }
-    return value;
+    return Optional.ofNullable(value)
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    what + " is required: factory(f -> f." + what.split(" ")[0] + "(...))"));
   }
 }
