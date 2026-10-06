@@ -55,6 +55,11 @@
       <artifactId>nessy-memory-notebook</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-planning</artifactId>
+      <version>${project.version}</version>
+    </dependency>
   </dependencies>
 
 </project>

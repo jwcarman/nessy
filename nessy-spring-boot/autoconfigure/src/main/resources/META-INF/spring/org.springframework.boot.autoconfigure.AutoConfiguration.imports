@@ -1,5 +1,6 @@
 org.jwcarman.nessy.spring.boot.NessyAutoConfiguration
 org.jwcarman.nessy.spring.boot.notebook.NotebookAutoConfiguration
+org.jwcarman.nessy.spring.boot.plan.PlanAutoConfiguration
 org.jwcarman.nessy.spring.boot.inference.InferenceProvidersAutoConfiguration
 org.jwcarman.nessy.spring.boot.narration.SubstrateCodecAutoConfiguration
 org.jwcarman.nessy.spring.boot.narration.OdysseyNarrationAutoConfiguration
