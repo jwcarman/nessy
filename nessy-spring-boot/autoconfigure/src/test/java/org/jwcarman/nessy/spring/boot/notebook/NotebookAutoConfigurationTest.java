@@ -29,6 +29,8 @@ import org.jwcarman.nessy.spring.boot.NessyAutoConfiguration;
 import org.jwcarman.nessy.spring.boot.notebook.NotebookFeatures.Recording;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -132,5 +134,28 @@ class NotebookAutoConfigurationTest {
               .extracting(tool -> tool.name().value())
               .containsExactly("remember", "revise", "recall", "forget");
         });
+  }
+
+  /**
+   * The ordinary application declares no DataSource of its own: Boot makes it from
+   * spring.datasource.url. The feature is still there, because the condition on the data source is
+   * asked only after that auto-configuration has run.
+   */
+  @Test
+  void a_data_source_boot_makes_is_enough() {
+    new ApplicationContextRunner()
+        .withConfiguration(
+            AutoConfigurations.of(
+                JacksonAutoConfiguration.class,
+                DataSourceAutoConfiguration.class,
+                DataSourceTransactionManagerAutoConfiguration.class,
+                NessyAutoConfiguration.class,
+                JdbcBackendAutoConfiguration.class,
+                NotebookAutoConfiguration.class))
+        .withPropertyValues(
+            "nessy.initialize-schema=false",
+            "spring.datasource.type=org.springframework.jdbc.datasource.SimpleDriverDataSource",
+            "spring.datasource.url=jdbc:h2:mem:notebook-ordering;DB_CLOSE_DELAY=-1")
+        .run(context -> assertThat(context).hasBean("nessyNotebookFeature"));
   }
 }
