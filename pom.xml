@@ -176,8 +176,12 @@
     <opentelemetry-logback-appender.version>2.31.1-alpha</opentelemetry-logback-appender.version>
     <!-- markdown-it as a WebJar, application-side only (chat-web example): the page loads its
          bundled browser build from /webjars/markdown-it/VERSION/dist/, so the version also
-         appears in that example's index.html and in its MarkdownScriptIntegrationTest. -->
+         appears in that example's index.html. -->
     <markdown-it-webjar.version>14.3.0</markdown-it-webjar.version>
+    <!-- highlight.js as a WebJar, for the same example: the browser build and its style sheets
+         are served from /webjars/highlightjs__cdn-assets/VERSION/, so the version also appears
+         in that example's index.html. -->
+    <highlightjs-webjar.version>11.11.1</highlightjs-webjar.version>
     <jug.version>5.2.0</jug.version>
     <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
     <hikaricp.version>7.1.0</hikaricp.version>
@@ -380,6 +384,11 @@
         <groupId>org.webjars.npm</groupId>
         <artifactId>markdown-it</artifactId>
         <version>${markdown-it-webjar.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.webjars.npm</groupId>
+        <artifactId>highlightjs__cdn-assets</artifactId>
+        <version>${highlightjs-webjar.version}</version>
       </dependency>
       <dependency>
         <groupId>org.testcontainers</groupId>

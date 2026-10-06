@@ -22,6 +22,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
@@ -34,16 +36,18 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
 /**
- * The page draws answers with markdown-it's browser build, served from the WebJar on the classpath.
- * The path is read from the page itself, so the version is written only in the pom and the page,
- * and this fails when the two disagree.
+ * The page draws answers with markdown-it's browser build and colours their code with highlight.js,
+ * both served from WebJars on the classpath. The paths are read from the page itself, so each
+ * version is written only in the pom and the page, and this fails when the two disagree.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = "nessy.provider=scriptedModels")
 @Import(PostgresBacked.class)
-@DisplayName("The Markdown script")
+@DisplayName("The Markdown scripts")
 class MarkdownScriptIntegrationTest {
+
+  private static final Pattern WEBJAR = Pattern.compile("(?:src|href)=\"(/webjars/[^\"]+)\"");
 
   private static final Pattern SCRIPT =
       Pattern.compile("<script src=\"(/webjars/markdown-it/[^\"]+/dist/markdown-it\\.min\\.js)\"");
@@ -80,5 +84,24 @@ class MarkdownScriptIntegrationTest {
     assertThat(served.headers().firstValue("Content-Type"))
         .hasValueSatisfying(type -> assertThat(type).contains("javascript"));
     assertThat(served.body()).contains("markdownit");
+  }
+
+  @Test
+  void everything_the_page_loads_from_a_webjar_is_served()
+      throws IOException, InterruptedException {
+    HttpResponse<String> page = get("/");
+    List<String> paths =
+        WEBJAR.matcher(page.body()).results().map(found -> found.group(1)).toList();
+    assertThat(paths)
+        .anyMatch(path -> path.endsWith("/highlight.min.js"))
+        .anyMatch(path -> path.endsWith("/styles/github.min.css"))
+        .anyMatch(path -> path.endsWith("/styles/github-dark.min.css"));
+
+    List<Integer> statuses = new ArrayList<>();
+    for (String path : paths) {
+      statuses.add(get(path).statusCode());
+    }
+
+    assertThat(statuses).hasSameSizeAs(paths).containsOnly(200);
   }
 }

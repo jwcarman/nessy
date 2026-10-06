@@ -53,7 +53,7 @@ the page says the answer was refused.
 After it, the call is recorded as failed and the card is gone.
 
 **The page shows what the agent is doing.** While a turn is in progress
-the page shows "working…", and "waiting for you…" while an approval card is
+the page shows a typing bubble, and "waiting for you…" while an approval card is
 waiting. The input is never disabled, because a message sent now is accepted.
 
 **A page opened or reconnected mid-turn catches up from the state.** The page
@@ -84,8 +84,9 @@ irreversible — without being something you could point at a stranger.
 ## Using the page
 
 The page is three static files (`index.html`, `app.js` and `style.css`) with
-no build step. It also loads markdown-it, which the application serves from a
-WebJar (`/webjars/markdown-it/...`), so nothing is fetched from the internet.
+no build step. It also loads markdown-it and highlight.js, which the
+application serves from WebJars (`/webjars/...`), so nothing is fetched from
+the internet.
 
 **The message box keeps the cursor.** The cursor is in the box when the page
 loads, after you send, after you answer a card and when a turn ends. It stays
@@ -107,7 +108,8 @@ agent.
 
 **Answers are formatted.** Answers are rendered as Markdown by markdown-it,
 with raw HTML off. Headings, lists, quotes, links, tables and code blocks are
-drawn as such; a code block shows its language. Text that looks like HTML is
+drawn as such; a code block shows its language, and highlight.js colours it
+when it knows that language. Text that looks like HTML is
 shown as text, and images are not loaded. A link opens in a new tab. An answer
 that is still streaming is formatted as it arrives. Your own messages are shown
 as you typed them.
@@ -123,8 +125,13 @@ it, and a **Jump to latest** button takes you back.
 long is left before the card's deadline. Approve comes first.
 
 **Themes.** The page uses a light or a dark theme, as your system is set.
-While the agent works, a small pulsing dot shows beside "working…"; it stays
-still if your system asks for reduced motion.
+
+**The agent is typing.** While the agent works, the reply starts as a bubble
+at the foot of the conversation with three humps swimming and a clock that
+counts how long the agent has been at it. The answer's words take the bubble's
+place when they arrive. The humps stay still if your system asks for reduced
+motion. While a card waits for you there is no bubble, and the page says
+"waiting for you…".
 
 ## Run it
 

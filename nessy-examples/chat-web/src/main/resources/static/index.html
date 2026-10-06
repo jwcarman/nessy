@@ -21,6 +21,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Nessy Chat</title>
+    <link
+      rel="stylesheet"
+      href="/webjars/highlightjs__cdn-assets/11.11.1/styles/github.min.css"
+      media="(prefers-color-scheme: light)"
+    />
+    <link
+      rel="stylesheet"
+      href="/webjars/highlightjs__cdn-assets/11.11.1/styles/github-dark.min.css"
+      media="(prefers-color-scheme: dark)"
+    />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -29,6 +39,10 @@
     </header>
     <div id="conversation">
       <main id="log" aria-label="Conversation"></main>
+      <div id="typing" aria-hidden="true" hidden>
+        <span id="typing-humps"></span>
+        <span id="typing-clock"></span>
+      </div>
       <div id="greeting" hidden>
         <h2>Chat with an agent</h2>
         <p>
@@ -73,6 +87,7 @@
       </form>
     </dialog>
     <script src="/webjars/markdown-it/14.3.0/dist/markdown-it.min.js"></script>
+    <script src="/webjars/highlightjs__cdn-assets/11.11.1/highlight.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

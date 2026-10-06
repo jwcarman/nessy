@@ -37,6 +37,8 @@ const approvalsSection = document.getElementById("approvals");
 const form = document.getElementById("send-form");
 const textInput = document.getElementById("text");
 const working = document.getElementById("working");
+const typing = document.getElementById("typing");
+const typingClock = document.getElementById("typing-clock");
 const newChatButton = document.getElementById("new-chat");
 const confirmNew = document.getElementById("confirm-new");
 const greeting = document.getElementById("greeting");
@@ -51,8 +53,11 @@ const markdown = makeMarkdown();
 
 function makeMarkdown() {
   if (typeof window.markdownit !== "function") return null;
-  const md = window.markdownit({ html: false, linkify: true, breaks: true });
+  const md = window.markdownit({ html: false, linkify: true, breaks: true, highlight: colour });
   md.disable("image");
+  // Only a target written with its scheme is a link. Guessing would turn a file name such as
+  // README.md or main.py into a link to a domain nobody chose.
+  md.linkify.set({ fuzzyLink: false, fuzzyEmail: false });
   const openLink =
     md.renderer.rules.link_open ??
     ((tokens, index, options, env, self) => self.renderToken(tokens, index, options));
@@ -70,6 +75,15 @@ function makeMarkdown() {
     return `<div class="code-block">${label}${fence(tokens, index, options, env, self)}</div>`;
   };
   return md;
+}
+
+// Colours a fenced code block whose language highlight.js knows. Its output is the code, escaped,
+// in spans that name each token's kind. Anything else -- no language, an unknown one, the library
+// not loaded -- returns nothing, and markdown-it then escapes the code itself.
+function colour(code, language) {
+  const hljs = window.hljs;
+  if (!hljs || !language || !hljs.getLanguage(language)) return "";
+  return hljs.highlight(code, { language, ignoreIllegals: true }).value;
 }
 
 // Draws an answer's source into its element. This is the one place the page sets HTML, and it is
@@ -131,6 +145,12 @@ let recall = null;
 // Whether the view stays at the bottom as content arrives: true while the person is at, or within
 // a few pixels of, the bottom of the conversation.
 let following = true;
+// When the page first saw the agent busy, and the interval that redraws the clock; null while idle.
+let workingSince = null;
+let workingClock = null;
+// Where the conversation was scrolled to when the page last looked, to tell the person scrolling
+// up from the page's own layout moving under them.
+let lastScrollTop = 0;
 // The answers waiting to be drawn again from their source at the next frame.
 let toDraw = new Set();
 // The countdown on the approval cards, while there are cards.
@@ -146,6 +166,7 @@ follow(null);
 function follow(turn, watched = false) {
   if (live !== null && live.bubble !== null) finishAnswer(live.bubble);
   live = { turn, watched, streamed: false, bubble: null, thinking: null };
+  drawTyping();
 }
 
 // The turn the live events belong to, once an event names it. Lines drawn before the page knew
@@ -174,12 +195,46 @@ function useAgent(id) {
 
 // Shows whether the agent is in a turn. The input is never disabled: a message sent now is
 // accepted. When the agent is waiting on a card, the line says it is waiting for the person.
+// Says whether the agent is working. The working line carries the words, for a screen reader and,
+// while a card waits, for everyone. What a person sees while the agent works is the typing bubble
+// at the foot of the conversation, where the answer will come: three humps on the water and a
+// clock that counts from when the page first saw the agent busy.
 function setWorking(isWorking) {
   working.hidden = !isWorking;
+  if (isWorking && workingSince === null) {
+    workingSince = Date.now();
+    tickWorking();
+    workingClock = setInterval(tickWorking, 1000);
+  } else if (!isWorking && workingSince !== null) {
+    clearInterval(workingClock);
+    workingSince = null;
+    typingClock.textContent = "";
+  }
+  drawTyping();
 }
 
+function tickWorking() {
+  const seconds = Math.floor((Date.now() - workingSince) / 1000);
+  const minutes = Math.floor(seconds / 60);
+  typingClock.textContent =
+    minutes === 0 ? `${seconds}s` : `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+// The typing bubble is the reply before it has words. It shows while the agent works, until the
+// answer's first words arrive and take its place, and again when the agent goes back to work
+// after them. It does not show while a card waits: waiting for a person is not typing, and the
+// card has a clock of its own.
+function drawTyping() {
+  const writing = live !== null && live.bubble !== null;
+  typing.hidden = working.hidden || working.dataset.waiting === "yes" || writing;
+  keepView();
+}
+
+// While a card waits the agent is not working, it is waiting: the line says so and rests.
 function waitingFor(cards) {
   working.textContent = cards.length > 0 ? "waiting for you…" : "working…";
+  working.dataset.waiting = cards.length > 0 ? "yes" : "";
+  drawTyping();
 }
 
 // A line of the conversation. An answer is drawn from its source text and has a copy button; one
@@ -234,34 +289,43 @@ function finishAnswer(line) {
   addCopyButton(line);
 }
 
+// The button shows an icon, drawn by the style sheet; its words are its name for a screen reader
+// and its tooltip.
 function addCopyButton(line) {
   const copy = document.createElement("button");
   copy.type = "button";
   copy.className = "copy";
-  copy.textContent = "Copy";
+  nameCopyButton(copy, "Copy");
   copy.addEventListener("click", () => copyAnswer(line, copy));
   line.appendChild(copy);
 }
 
+function nameCopyButton(button, words, state = "") {
+  button.textContent = words;
+  button.title = words;
+  button.dataset.state = state;
+}
+
 // Copies the answer as the agent wrote it, Markdown and all, and says so on the button for a
-// moment.
+// moment: a check mark when it was copied, a cross when the browser refused.
 async function copyAnswer(line, button) {
   let said = "Copied";
+  let state = "copied";
   try {
     await navigator.clipboard.writeText(line.dataset.source);
   } catch (refused) {
     said = "Not copied";
+    state = "refused";
   }
-  button.textContent = said;
-  setTimeout(() => {
-    button.textContent = "Copy";
-  }, 1500);
+  nameCopyButton(button, said, state);
+  setTimeout(() => nameCopyButton(button, "Copy"), 1500);
 }
 
 // Keeps the newest content in view while the person is at the bottom. Scrolled up, the view stays
 // where it is and the "jump to latest" button shows.
 function keepView() {
   if (following) log.scrollTop = log.scrollHeight;
+  lastScrollTop = log.scrollTop;
   jumpButton.hidden = following;
 }
 
@@ -283,6 +347,7 @@ function drawCards(cards) {
   }
   waitingFor(cards);
   tickDeadlines();
+  keepView();
 }
 
 // How long each card has left, counted down once a second from the deadline the state gave it.
@@ -489,6 +554,7 @@ function say(text) {
   if (!live.bubble) live.bubble = appendLine("assistant", "", live.turn, true);
   live.bubble.dataset.source += text;
   drawSoon(live.bubble);
+  drawTyping();
 }
 
 // A request names each call and its tool; what happens to a call is told later without its tool,
@@ -552,6 +618,7 @@ const handlers = {
     claim(request.turn);
     if (live.bubble) finishAnswer(live.bubble);
     live.bubble = null;
+    drawTyping();
     live.thinking = null;
     live.streamed = false;
     for (const call of request.calls) {
@@ -586,6 +653,7 @@ const handlers = {
     if (live.bubble) live.bubble.remove();
     if (live.thinking) live.thinking.remove();
     live.bubble = null;
+    drawTyping();
     live.thinking = null;
     live.streamed = false;
   },
@@ -799,8 +867,8 @@ async function startNewChat() {
   recall = null;
   clearScreen();
   listen();
-  // After the switch, deliberately: the new conversation should open even if this fails, and an
-  // ending the server never heard is a leaked agent, not a broken page.
+  // After the switch, deliberately: the new conversation should open even if this fails, and a
+  // termination the server never heard is a leaked agent, not a broken page.
   try {
     await fetch(`/api/agents/${finished}`, { method: "DELETE" });
   } catch (ignored) {
@@ -925,6 +993,8 @@ textInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
     form.requestSubmit();
+  } else if (event.shiftKey || event.metaKey || event.altKey || event.ctrlKey) {
+    // An arrow with a modifier moves the caret or the selection; it never recalls a message.
   } else if (event.key === "ArrowUp" && caretOnFirstLine()) {
     if (recallOlder()) event.preventDefault();
   } else if (event.key === "ArrowDown" && recall !== null && caretOnLastLine()) {
@@ -963,11 +1033,22 @@ confirmNew.addEventListener("close", () => {
   focusBox(newChatButton);
 });
 
-// Where the person scrolls decides whether the view follows new content.
+// Where the person scrolls decides whether the view follows new content: reaching the bottom
+// follows, and scrolling up stops following. A scroll event that is neither -- content that grew
+// or a card that took room between the page scrolling and the browser saying so -- changes nothing.
 log.addEventListener("scroll", () => {
-  following = atBottom();
+  const top = log.scrollTop;
+  if (atBottom()) following = true;
+  else if (top < lastScrollTop) following = false;
+  lastScrollTop = top;
   jumpButton.hidden = following;
 });
+
+// The conversation's room changes when an approval card comes or goes and when the box grows; a
+// view that was following keeps the newest line in sight.
+if (typeof ResizeObserver !== "undefined") {
+  new ResizeObserver(() => keepView()).observe(log);
+}
 
 jumpButton.addEventListener("click", () => {
   following = true;

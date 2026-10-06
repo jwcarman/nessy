@@ -110,10 +110,13 @@ header h1 {
   flex: 1;
   min-height: 0;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 main#log {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 1rem max(1rem, calc((100% - var(--column)) / 2));
   display: flex;
@@ -169,9 +172,17 @@ main#log {
   overflow-wrap: anywhere;
 }
 
+/* An answer may use the whole column: code and tables need the room. */
+.line.assistant {
+  max-width: 100%;
+}
+
+.line.user {
+  max-width: 75%;
+}
+
 .line.user,
 .line.assistant {
-  max-width: 75%;
   min-width: 0;
   padding: 0.55rem 0.85rem;
   border-radius: 1rem;
@@ -220,15 +231,43 @@ main#log {
   max-width: 90%;
 }
 
+/* The copy button is an icon. Its words stay in the page as its name and are not drawn; the icon
+   is a mask, so it takes the button's colour in both themes. */
 .copy {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='9' width='11' height='11' rx='2'/%3E%3Cpath d='M5 15V6a2 2 0 0 1 2-2h9'/%3E%3C/svg%3E");
   display: block;
+  position: relative;
+  width: 1.75rem;
+  height: 1.75rem;
   margin: 0.35rem -0.4rem -0.2rem auto;
-  padding: 0.1rem 0.45rem;
-  font-size: 0.75rem;
+  padding: 0;
+  font-size: 0;
   color: var(--muted);
   background: none;
   border: 1px solid transparent;
   border-radius: 0.4rem;
+}
+
+.copy::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 1rem;
+  height: 1rem;
+  margin: auto;
+  background: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+.copy[data-state="copied"] {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+  color: var(--fg);
+}
+
+.copy[data-state="refused"] {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E");
+  color: var(--fg);
 }
 
 .copy:hover {
@@ -302,8 +341,10 @@ main#log {
   font-size: 0.92em;
 }
 
+/* A cell breaks between words; a table too wide for its bubble scrolls. */
 .answer th,
 .answer td {
+  overflow-wrap: normal;
   padding: 0.3em 0.6em;
   border: 1px solid var(--border);
   text-align: left;
@@ -441,41 +482,96 @@ footer {
   background: var(--surface);
 }
 
-/* Shown while the agent works: a slowly pulsing dot and its words. */
+/* The working line. Its words are for a screen reader while the agent works, so it is not drawn
+   then; while a card waits it is drawn, and says "waiting for you…". */
 #working {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0 0.25rem 0.4rem;
+  padding: 0 0.25rem 0.45rem;
   font-size: 0.8rem;
   color: var(--muted);
 }
 
-#working::before {
-  content: "";
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: currentColor;
-  animation: pulse 1.4s ease-in-out infinite;
+#working:not([data-waiting="yes"]) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-@keyframes pulse {
+/* The typing bubble, at the foot of the conversation where the answer will come: three humps on
+   the water and a clock. The humps are three half-circles in one background, each moved up and
+   down in turn, above a waterline. */
+#typing {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  align-self: flex-start;
+  margin: 0 max(1rem, calc((100% - var(--column)) / 2)) 0.75rem;
+  padding: 0.55rem 0.85rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  border-bottom-left-radius: 0.3rem;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+#typing-humps {
+  --hump: radial-gradient(circle 0.5rem at 50% 100%, var(--accent) 97%, transparent);
+  flex: none;
+  width: 3.7rem;
+  height: 1.1rem;
+  border-bottom: 2px solid var(--accent);
+  background-image: var(--hump), var(--hump), var(--hump);
+  background-repeat: no-repeat;
+  background-size: 1rem 1rem;
+  background-position:
+    0.1rem 0.34rem,
+    1.35rem 0.22rem,
+    2.6rem 0.1rem;
+  animation: swim 1.8s ease-in-out infinite;
+}
+
+#typing-clock {
+  font-variant-numeric: tabular-nums;
+}
+
+#typing-clock:empty {
+  display: none;
+}
+
+@keyframes swim {
   0%,
   100% {
-    opacity: 0.25;
-    transform: scale(0.8);
+    background-position:
+      0.1rem 0.34rem,
+      1.35rem 0.22rem,
+      2.6rem 0.1rem;
   }
-  50% {
-    opacity: 1;
-    transform: scale(1);
+
+  33% {
+    background-position:
+      0.1rem 0.1rem,
+      1.35rem 0.34rem,
+      2.6rem 0.22rem;
+  }
+
+  66% {
+    background-position:
+      0.1rem 0.22rem,
+      1.35rem 0.1rem,
+      2.6rem 0.34rem;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #working::before {
+  #typing-humps {
     animation: none;
-    opacity: 0.7;
   }
 }
 

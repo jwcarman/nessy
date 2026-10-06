@@ -144,6 +144,12 @@
       <artifactId>markdown-it</artifactId>
       <scope>runtime</scope>
     </dependency>
+    <!-- Code in an answer is coloured by highlight.js's browser build, served the same way. -->
+    <dependency>
+      <groupId>org.webjars.npm</groupId>
+      <artifactId>highlightjs__cdn-assets</artifactId>
+      <scope>runtime</scope>
+    </dependency>
     <!-- Boot 4 auto-configures a DataSource only when its JDBC module is present. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
