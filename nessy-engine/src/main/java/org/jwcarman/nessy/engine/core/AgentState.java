@@ -537,10 +537,10 @@ public sealed interface AgentState {
    * only moves on events, and this one produces none. Termination is therefore irreversible by
    * construction rather than by a flag the surrounding code must remember to check.
    *
-   * <p>It refuses commands <b>loudly</b>. Silently swallowing a command sent to a dead agent is the
-   * failure that costs somebody an afternoon. The exception is a redelivered outcome, which is
-   * at-least-once machinery working correctly rather than a caller's mistake, and which every other
-   * state also answers with nothing.
+   * <p>It refuses commands <b>loudly</b>. Silently swallowing a command sent to a terminated agent
+   * is the failure that costs somebody an afternoon. The exception is a redelivered outcome, which
+   * is at-least-once machinery working correctly rather than a caller's mistake, and which every
+   * other state also answers with nothing.
    */
   record Terminal() implements AgentState {
 
