@@ -193,11 +193,13 @@ CHAT_SUMMARY_MODEL_ID=google/gemma-4-e4b \
 | `OTLP_TRACES_URL` | `http://localhost:4318/v1/traces` | where traces go |
 
 OpenAI itself works too: export `OPENAI_API_KEY`, which lights the starter's `openai`
-provider, and name that provider instead of the `lmstudio` default:
+provider, and name that provider instead of the `lmstudio` default. A GPT-6 model
+calls tools only over OpenAI's Responses API, so put the preset on that wire:
 
 ```bash
 CHAT_PROVIDER=openai \
-CHAT_MODEL_ID=gpt-4o-mini \
+CHAT_MODEL_ID=gpt-6-luna \
+NESSY_PROVIDERS_OPENAI_WIRE=openai-responses \
   ./mvnw -q -pl :nessy-example-chat-web spring-boot:run
 ```
 
