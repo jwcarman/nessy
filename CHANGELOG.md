@@ -210,7 +210,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   brand from `brand/` and has a light and dark theme with a switch in the header.
 - **The model SDKs are at their latest releases:** AWS SDK bom 2.55.11, anthropic-java 2.68.0,
   openai-java 4.76.0 and google-genai 1.75.0, with logback 1.6.5, log4j 2.26.1, httpclient5 5.6.4,
-  httpcore5 5.4.4, H2 2.5.252, Spotless 3.10.3 and the Maven wrapper at 3.10.0.
+  httpcore5 5.4.4, H2 2.5.252 and Spotless 3.10.3. The Maven wrapper stays at 3.9.16: under
+  Maven 3.10.0 the Central publishing plugin leaves a metadata file beside each module's version
+  directory, and Central refuses the bundle.
 - **An approval's `decidedBy` and a denial's `reason` are cut, never refused.** Nessy keeps what
   the application gives and cuts one longer than 1,000 characters to that length.
 - **A payload's reference is a hash of its content before the storage transform.** The reference

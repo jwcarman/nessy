@@ -9,6 +9,11 @@ updates:
       time: "09:00"
       timezone: "America/New_York"
     open-pull-requests-limit: 10
+    ignore:
+      # The wrapper stays on the 3.9 line: under Maven 3.10.0 the Central publishing plugin leaves
+      # a metadata file beside each module's version directory and Central refuses the bundle.
+      - dependency-name: "org.apache.maven:apache-maven"
+        versions: [">= 3.10.0"]
     labels:
       - "dependencies"
       - "automated"
