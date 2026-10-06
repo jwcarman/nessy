@@ -15,6 +15,7 @@
  */
 package org.jwcarman.nessy.spring.boot;
 
+import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.QueuedBackend;
@@ -47,8 +48,8 @@ public class InMemoryBackendAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public DirectBackend directBackend(CodecFactory codecs) {
-    if (codecs instanceof StorageLayers ours) {
-      return new InMemoryDirectBackend(ours.values(), ours.transform());
+    if (codecs instanceof StorageLayers(CodecFactory values, Codec<byte[]> transform)) {
+      return new InMemoryDirectBackend(values, transform);
     }
     return new InMemoryDirectBackend(codecs);
   }
@@ -62,8 +63,8 @@ public class InMemoryBackendAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public QueuedBackend queuedBackend(CodecFactory codecs) {
-    if (codecs instanceof StorageLayers ours) {
-      return new InMemoryQueuedBackend(ours.values(), ours.transform());
+    if (codecs instanceof StorageLayers(CodecFactory values, Codec<byte[]> transform)) {
+      return new InMemoryQueuedBackend(values, transform);
     }
     return new InMemoryQueuedBackend(codecs);
   }

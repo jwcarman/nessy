@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.spring.boot;
 
 import javax.sql.DataSource;
+import org.jwcarman.codec.Codec;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.QueuedBackend;
@@ -107,8 +108,8 @@ public class JdbcBackendAutoConfiguration {
       PlatformTransactionManager transactions,
       CodecFactory codecs,
       NessySchema schema) {
-    if (codecs instanceof StorageLayers ours) {
-      return new JdbcDirectBackend(dataSource, transactions, ours.values(), ours.transform());
+    if (codecs instanceof StorageLayers(CodecFactory values, Codec<byte[]> transform)) {
+      return new JdbcDirectBackend(dataSource, transactions, values, transform);
     }
     return new JdbcDirectBackend(dataSource, transactions, codecs);
   }
@@ -120,8 +121,8 @@ public class JdbcBackendAutoConfiguration {
       PlatformTransactionManager transactions,
       CodecFactory codecs,
       NessySchema schema) {
-    if (codecs instanceof StorageLayers ours) {
-      return new JdbcQueuedBackend(dataSource, transactions, ours.values(), ours.transform());
+    if (codecs instanceof StorageLayers(CodecFactory values, Codec<byte[]> transform)) {
+      return new JdbcQueuedBackend(dataSource, transactions, values, transform);
     }
     return new JdbcQueuedBackend(dataSource, transactions, codecs);
   }

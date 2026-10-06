@@ -79,6 +79,10 @@ import tools.jackson.databind.node.ObjectNode;
 })
 public sealed interface AgentEvent {
 
+  private static void requireManifest(Optional<InferenceRequestManifest> manifest) {
+    Objects.requireNonNull(manifest, "manifest must not be null");
+  }
+
   private static void requireKey(IdempotencyKey idempotencyKey) {
     Objects.requireNonNull(idempotencyKey, "idempotencyKey must not be null");
   }
@@ -125,7 +129,7 @@ public sealed interface AgentEvent {
       implements AgentEvent {
     public InferenceAnswered {
       usage = usage == null ? Usage.unreported() : usage;
-      Objects.requireNonNull(manifest, "manifest must not be null");
+      requireManifest(manifest);
     }
   }
 
@@ -143,7 +147,7 @@ public sealed interface AgentEvent {
       implements AgentEvent {
     public InferenceRefused {
       usage = usage == null ? Usage.unreported() : usage;
-      Objects.requireNonNull(manifest, "manifest must not be null");
+      requireManifest(manifest);
     }
   }
 
@@ -166,7 +170,7 @@ public sealed interface AgentEvent {
       implements AgentEvent {
     public InferenceFailed {
       usage = usage == null ? Usage.unreported() : usage;
-      Objects.requireNonNull(manifest, "manifest must not be null");
+      requireManifest(manifest);
     }
   }
 
@@ -218,7 +222,7 @@ public sealed interface AgentEvent {
       implements AgentEvent {
     public InferenceAttempted {
       usage = usage == null ? Usage.unreported() : usage;
-      Objects.requireNonNull(manifest, "manifest must not be null");
+      requireManifest(manifest);
     }
   }
 
@@ -243,7 +247,7 @@ public sealed interface AgentEvent {
     public ActionsRequested {
       actions = List.copyOf(actions);
       usage = usage == null ? Usage.unreported() : usage;
-      Objects.requireNonNull(manifest, "manifest must not be null");
+      requireManifest(manifest);
     }
   }
 

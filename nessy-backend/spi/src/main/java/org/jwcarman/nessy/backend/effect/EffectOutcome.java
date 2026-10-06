@@ -64,6 +64,10 @@ import tools.jackson.databind.node.ObjectNode;
 })
 public sealed interface EffectOutcome {
 
+  private static void requireManifest(Optional<InferenceRequestManifest> manifest) {
+    Objects.requireNonNull(manifest, "manifest must not be null");
+  }
+
   // Nothing here carries content itself. Whatever produced this outcome -- the thing that called
   // the model, the thing that ran the tool -- put what it produced away before saying so, because
   // that is the moment the content exists and the only place that has both the content and
@@ -87,7 +91,7 @@ public sealed interface EffectOutcome {
       implements EffectOutcome {
     public InferenceAnswered {
       usage = usage == null ? Usage.unreported() : usage;
-      Objects.requireNonNull(manifest, "manifest must not be null");
+      requireManifest(manifest);
     }
   }
 
@@ -103,7 +107,7 @@ public sealed interface EffectOutcome {
       implements EffectOutcome {
     public InferenceRefused {
       usage = usage == null ? Usage.unreported() : usage;
-      Objects.requireNonNull(manifest, "manifest must not be null");
+      requireManifest(manifest);
     }
   }
 
@@ -123,7 +127,7 @@ public sealed interface EffectOutcome {
       implements EffectOutcome {
     public InferenceFailed {
       usage = usage == null ? Usage.unreported() : usage;
-      Objects.requireNonNull(manifest, "manifest must not be null");
+      requireManifest(manifest);
     }
   }
 
@@ -142,7 +146,7 @@ public sealed interface EffectOutcome {
       implements EffectOutcome {
     public InferenceRequestedActions {
       usage = usage == null ? Usage.unreported() : usage;
-      Objects.requireNonNull(manifest, "manifest must not be null");
+      requireManifest(manifest);
     }
   }
 
