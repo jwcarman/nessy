@@ -137,6 +137,13 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
+    <!-- The page draws answers as Markdown with markdown-it's bundled browser build, served by
+         Boot from /webjars/** with nothing fetched from the network. -->
+    <dependency>
+      <groupId>org.webjars.npm</groupId>
+      <artifactId>markdown-it</artifactId>
+      <scope>runtime</scope>
+    </dependency>
     <!-- Boot 4 auto-configures a DataSource only when its JDBC module is present. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

@@ -13,23 +13,40 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* Colours, light and dark. The page follows the system's choice. */
 :root {
-  --bg: #ffffff;
-  --fg: #1a1a1a;
-  --muted: #6b6b6b;
-  --bubble-user: #d6ebff;
-  --bubble-assistant: #e9e9e9;
-  --border: #cccccc;
+  color-scheme: light dark;
+  --bg: #f6f6f4;
+  --surface: #ffffff;
+  --fg: #1d1f21;
+  --muted: #5c6066;
+  --border: #d7d9dc;
+  --bubble-user: #dce9f8;
+  --code-bg: #eef0f2;
+  --accent: #2e5d8c;
+  --accent-fg: #ffffff;
+  --link: #24589f;
+  --focus: #2f6fd0;
+  --shadow: 0 1px 2px rgb(0 0 0 / 8%);
+  --column: 46rem;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1a1a1a;
-    --fg: #e9e9e9;
-    --muted: #9a9a9a;
-    --bubble-user: #2a4a63;
-    --bubble-assistant: #333333;
-    --border: #444444;
+    --bg: #17191c;
+    --surface: #202327;
+    --fg: #e6e7e9;
+    --muted: #a3a8ae;
+    --border: #363b42;
+    --bubble-user: #243a52;
+    --code-bg: #121417;
+    --accent: #8fb8e6;
+    --accent-fg: #11171e;
+    --link: #9cc4f2;
+    --focus: #8fb8e6;
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%);
   }
 }
 
@@ -37,112 +54,528 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   background: var(--bg);
   color: var(--fg);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--sans);
+  line-height: 1.5;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Read by screen readers, not drawn. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
+  flex: none;
+  padding: 0.55rem 1rem;
   border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 header h1 {
-  font-size: 1.1rem;
+  font-size: 1rem;
+  font-weight: 600;
   margin: 0;
 }
 
-main#log {
+/* The conversation: a column of readable width, centred, that scrolls on its own. */
+#conversation {
   flex: 1;
-  overflow-y: auto;
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  min-height: 0;
+  position: relative;
 }
 
+main#log {
+  height: 100%;
+  overflow-y: auto;
+  padding: 1rem max(1rem, calc((100% - var(--column)) / 2));
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* Shown only while the conversation is empty. */
+#greeting {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+#log:not(:empty) ~ #greeting {
+  display: none;
+}
+
+#greeting h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+#greeting p {
+  margin: 0;
+  max-width: 28rem;
+}
+
+#jump {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.3rem 0.85rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+/* Messages are bubbles: the person's on the right, the agent's on the left. */
 .line {
-  max-width: 70%;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.75rem;
-  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.line.user,
+.line.assistant {
+  max-width: 75%;
+  min-width: 0;
+  padding: 0.55rem 0.85rem;
+  border-radius: 1rem;
 }
 
 .line.user {
   align-self: flex-end;
   background: var(--bubble-user);
+  border-bottom-right-radius: 0.3rem;
+  white-space: pre-wrap;
 }
 
 .line.assistant {
   align-self: flex-start;
-  background: var(--bubble-assistant);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 0.3rem;
+  box-shadow: var(--shadow);
 }
 
-.line.thinking,
+/* What the agent does on the way, and what the page says itself: quieter than messages. */
 .line.tool,
+.line.thinking,
+.line.system {
+  font-size: 0.82rem;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+.line.tool {
+  align-self: flex-start;
+  padding: 0 0.85rem;
+  border-left: 2px solid var(--border);
+  margin-left: 0.6rem;
+}
+
+.line.thinking {
+  align-self: flex-start;
+  padding: 0 0.85rem;
+  font-style: italic;
+}
+
 .line.system {
   align-self: center;
-  color: var(--muted);
-  font-size: 0.85rem;
-  background: none;
+  text-align: center;
   max-width: 90%;
 }
 
+.copy {
+  display: block;
+  margin: 0.35rem -0.4rem -0.2rem auto;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+}
+
+.copy:hover {
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+/* A formatted answer. */
+.answer > :first-child {
+  margin-top: 0;
+}
+
+.answer > :last-child {
+  margin-bottom: 0;
+}
+
+.answer p,
+.answer ul,
+.answer ol,
+.answer blockquote {
+  margin: 0.5em 0;
+}
+
+/* Headings inside a bubble stay modest: # is a little larger than the text, ### and below match it. */
+.answer h1,
+.answer h2,
+.answer h3,
+.answer h4,
+.answer h5,
+.answer h6 {
+  margin: 0.8em 0 0.3em;
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.answer h1 {
+  font-size: 1.2rem;
+}
+
+.answer h2 {
+  font-size: 1.08rem;
+}
+
+.answer ul,
+.answer ol {
+  padding-left: 1.4em;
+}
+
+.answer li > ul,
+.answer li > ol {
+  margin: 0.2em 0;
+}
+
+.answer blockquote {
+  padding-left: 0.8em;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+
+.answer a {
+  color: var(--link);
+}
+
+/* A table scrolls sideways inside its bubble rather than widening it. */
+.answer table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  font-size: 0.92em;
+}
+
+.answer th,
+.answer td {
+  padding: 0.3em 0.6em;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.answer hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.9em 0;
+}
+
+.answer code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  padding: 0.1em 0.3em;
+  border-radius: 0.3em;
+  background: var(--code-bg);
+}
+
+.code-block {
+  margin: 0.6em 0;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--code-bg);
+}
+
+.code-language {
+  display: block;
+  padding: 0.35rem 0.75rem 0;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.answer pre {
+  margin: 0.6em 0;
+  padding: 0.55rem 0.75rem;
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  background: var(--code-bg);
+}
+
+.code-block pre {
+  margin: 0;
+  background: none;
+}
+
+.answer pre code {
+  padding: 0;
+  background: none;
+  font-size: 0.85rem;
+}
+
+/* Approval cards: what will be done, the arguments, the time left, and the two answers. */
 section#approvals {
-  padding: 0 1rem;
+  flex: none;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 0 max(1rem, calc((100% - var(--column)) / 2));
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
+section#approvals:not(:empty) {
+  padding-block: 0.5rem;
+}
+
 .approval-card {
+  padding: 0.75rem 0.9rem;
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--accent);
+  border-radius: 0.6rem;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.approval-what {
+  font-weight: 600;
+}
+
+.approval-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--muted);
 }
 
 .approval-tool {
-  font-weight: bold;
+  font-family: var(--mono);
 }
 
 .approval-card pre {
-  overflow-x: auto;
-  font-size: 0.85rem;
+  max-height: 10rem;
+  overflow: auto;
+  margin: 0.5rem 0 0.65rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.4rem;
+  background: var(--code-bg);
+  font-family: var(--mono);
+  font-size: 0.8rem;
 }
 
-.approval-actions button {
-  margin-right: 0.5rem;
-}
-
-footer {
-  border-top: 1px solid var(--border);
-  padding: 0.75rem 1rem;
-}
-
-#send-form {
+.approval-actions {
   display: flex;
   gap: 0.5rem;
 }
 
-#text {
-  flex: 1;
-  padding: 0.5rem;
+.approval-actions button,
+.dialog-actions button {
+  padding: 0.35rem 0.95rem;
   border: 1px solid var(--border);
   border-radius: 0.5rem;
+  background: none;
+}
+
+.approval-actions button.primary,
+.dialog-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* The composer. */
+footer {
+  flex: none;
+  padding: 0.5rem max(1rem, calc((100% - var(--column)) / 2)) 0.75rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* Shown while the agent works: a slowly pulsing dot and its words. */
+#working {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 0.25rem 0.4rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+#working::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #working::before {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+#send-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+/* One line to start; the script makes it as tall as its text, up to six lines, then it scrolls. */
+#text {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  font: inherit;
+  line-height: 1.4;
+  padding: 0.5rem 0.8rem;
+  max-height: calc(6 * 1.4em + 1rem + 2px);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 1.1rem;
   background: var(--bg);
   color: var(--fg);
 }
 
-#working {
-  font-size: 0.85rem;
-  opacity: 0.7;
-  padding: 0 0.75rem 0.25rem;
+#text:focus-visible {
+  outline-offset: 0;
+  border-color: var(--focus);
+}
+
+#new-chat {
+  flex: none;
+  margin-bottom: 0.2rem;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+}
+
+/* A round button with an arrow drawn in the page's own SVG. */
+#send {
+  flex: none;
+  width: 2.35rem;
+  height: 2.35rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-fg);
+  display: grid;
+  place-items: center;
+}
+
+#send svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+dialog {
+  max-width: min(26rem, calc(100vw - 2rem));
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+  color: var(--fg);
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 35%);
+}
+
+dialog h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.5rem;
+}
+
+dialog p {
+  margin: 0 0 1rem;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* On a phone, messages may use the whole width. */
+@media (max-width: 640px) {
+  .line.user,
+  .line.assistant {
+    max-width: 100%;
+  }
+
+  main#log {
+    padding: 0.75rem;
+  }
 }

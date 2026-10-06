@@ -81,6 +81,51 @@ terminated.
 `send_email` sends nothing. It is the right *shape* — outward-facing and
 irreversible — without being something you could point at a stranger.
 
+## Using the page
+
+The page is three static files (`index.html`, `app.js` and `style.css`) with
+no build step. It also loads markdown-it, which the application serves from a
+WebJar (`/webjars/markdown-it/...`), so nothing is fetched from the internet.
+
+**The message box keeps the cursor.** The cursor is in the box when the page
+loads, after you send, after you answer a card and when a turn ends. It stays
+where it is when you are selecting text or using another control. The box
+grows with what you type, up to six lines, and then scrolls.
+
+| Key | What it does |
+|---|---|
+| Enter | Sends the message. An empty message is not sent. |
+| Shift+Enter | Starts a new line. |
+| Up, with the cursor on the first line | Brings back your earlier messages in this conversation, newest first. |
+| Down | Goes back toward the newest message, then to what you were typing before. |
+| Escape | Clears the box. |
+
+A message you have not sent is kept for the tab, per conversation, and is
+still in the box after a reload. **New chat** is beside the box. If the
+conversation has messages, it asks before it terminates the conversation's
+agent.
+
+**Answers are formatted.** Answers are rendered as Markdown by markdown-it,
+with raw HTML off. Headings, lists, quotes, links, tables and code blocks are
+drawn as such; a code block shows its language. Text that looks like HTML is
+shown as text, and images are not loaded. A link opens in a new tab. An answer
+that is still streaming is formatted as it arrives. Your own messages are shown
+as you typed them.
+
+**Copy.** Each finished answer has a **Copy** button. It copies the answer's
+Markdown, as the agent wrote it.
+
+**Scrolling.** While you are at the bottom of the conversation, new content
+keeps the view at the bottom. If you scroll up, the view stays where you put
+it, and a **Jump to latest** button takes you back.
+
+**Approval cards** show what will be done, the tool, its arguments, and how
+long is left before the card's deadline. Approve comes first.
+
+**Themes.** The page uses a light or a dark theme, as your system is set.
+While the agent works, a small pulsing dot shows beside "working…"; it stays
+still if your system asks for reduced motion.
+
 ## Run it
 
 Run the example from the repository root. `spring-boot:run` starts the

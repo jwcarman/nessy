@@ -27,6 +27,10 @@
 // and a notice the page writes itself; its note on a decision is tagged with the card's turn. A
 // turn the page did not watch from its start is drawn whole from the state when it ends, in place
 // of whatever the page showed of it but its notes on decisions.
+//
+// An answer keeps the text the agent wrote, its Markdown source, in its data-source attribute. It
+// is drawn from that text by markdown-it as it streams and when its turn is drawn again from the
+// state, and the copy button copies that text. Everything else on screen is plain text.
 
 const log = document.getElementById("log");
 const approvalsSection = document.getElementById("approvals");
@@ -34,6 +38,50 @@ const form = document.getElementById("send-form");
 const textInput = document.getElementById("text");
 const working = document.getElementById("working");
 const newChatButton = document.getElementById("new-chat");
+const confirmNew = document.getElementById("confirm-new");
+const greeting = document.getElementById("greeting");
+const jumpButton = document.getElementById("jump");
+
+// The model's text is not trusted. markdown-it, loaded before this script, draws it with raw HTML
+// off, so a tag in the text is shown as text, and its link check refuses javascript:, vbscript:,
+// file: and most data: targets. Images are off, so an answer cannot make the browser fetch
+// anything. Links open in a new tab. Null when the library did not load: answers are then plain
+// text.
+const markdown = makeMarkdown();
+
+function makeMarkdown() {
+  if (typeof window.markdownit !== "function") return null;
+  const md = window.markdownit({ html: false, linkify: true, breaks: true });
+  md.disable("image");
+  const openLink =
+    md.renderer.rules.link_open ??
+    ((tokens, index, options, env, self) => self.renderToken(tokens, index, options));
+  md.renderer.rules.link_open = (tokens, index, options, env, self) => {
+    tokens[index].attrSet("target", "_blank");
+    tokens[index].attrSet("rel", "noopener noreferrer");
+    return openLink(tokens, index, options, env, self);
+  };
+  // A fenced code block shows its language, escaped by the library, as a small label.
+  const fence = md.renderer.rules.fence;
+  md.renderer.rules.fence = (tokens, index, options, env, self) => {
+    const language = tokens[index].info.trim().split(/\s+/)[0];
+    const label =
+      language === "" ? "" : `<span class="code-language">${md.utils.escapeHtml(language)}</span>`;
+    return `<div class="code-block">${label}${fence(tokens, index, options, env, self)}</div>`;
+  };
+  return md;
+}
+
+// Draws an answer's source into its element. This is the one place the page sets HTML, and it is
+// only ever markdown-it's rendering, with raw HTML off.
+function renderAnswer(source, into) {
+  if (markdown === null) {
+    into.textContent = source;
+    into.style.whiteSpace = "pre-wrap";
+  } else {
+    into.innerHTML = markdown.render(source);
+  }
+}
 
 // Every event the narrator names. The page listens for all of them, including those it draws
 // nothing for, because the browser keeps the id of any event it receives and a reconnect then
@@ -77,14 +125,26 @@ let pendingTyped = [];
 // the tool from the approval card that is waiting.
 let toolByCall = new Map();
 let toolByKey = new Map();
+// While Up and Down are bringing back earlier messages: what they are, newest first, which one is in
+// the box (-1 for none yet), and the draft that was there before. Null otherwise.
+let recall = null;
+// Whether the view stays at the bottom as content arrives: true while the person is at, or within
+// a few pixels of, the bottom of the conversation.
+let following = true;
+// The answers waiting to be drawn again from their source at the next frame.
+let toDraw = new Set();
+// The countdown on the approval cards, while there are cards.
+let ticking = null;
 // The turn being narrated, and what the page has drawn of it so far: whether it saw the turn
 // start (and so every event of it since), whether the current model call streamed its words, the
 // bubble those words go into, and the thinking line. Reset in one place, follow().
 let live = null;
 follow(null);
 
-// Starts following a turn, or none, with nothing of it drawn live yet.
+// Starts following a turn, or none, with nothing of it drawn live yet. A bubble the turn was still
+// writing is complete now.
 function follow(turn, watched = false) {
+  if (live !== null && live.bubble !== null) finishAnswer(live.bubble);
   live = { turn, watched, streamed: false, bubble: null, thinking: null };
 }
 
@@ -122,20 +182,91 @@ function waitingFor(cards) {
   working.textContent = cards.length > 0 ? "waiting for you…" : "working…";
 }
 
-function makeLine(role, text, turn) {
+// A line of the conversation. An answer is drawn from its source text and has a copy button; one
+// still streaming gets its button when it is complete.
+function makeLine(role, text, turn, streaming = false) {
   const div = document.createElement("div");
   div.className = "line " + role;
-  div.textContent = text;
+  if (role === "assistant") {
+    div.dataset.source = text;
+    const answer = document.createElement("div");
+    answer.className = "answer";
+    div.appendChild(answer);
+    renderAnswer(text, answer);
+    if (!streaming) addCopyButton(div);
+  } else {
+    div.textContent = text;
+  }
   if (turn !== null && turn !== undefined) div.dataset.turn = String(turn);
   return div;
 }
 
 // Draws a line at the end of the log, tagged with its turn, or with none.
-function appendLine(role, text, turn) {
-  const div = makeLine(role, text, turn);
+function appendLine(role, text, turn, streaming = false) {
+  const div = makeLine(role, text, turn, streaming);
   log.appendChild(div);
-  log.scrollTop = log.scrollHeight;
+  keepView();
   return div;
+}
+
+// Draws an answer again from its source, in its own bubble only.
+function drawAnswerText(line) {
+  toDraw.delete(line);
+  renderAnswer(line.dataset.source, line.children[0]);
+}
+
+// A streaming answer is drawn again at most once a frame, however many pieces arrive in it.
+function drawSoon(line) {
+  if (toDraw.has(line)) return;
+  toDraw.add(line);
+  requestAnimationFrame(() => {
+    if (!toDraw.has(line)) return;
+    drawAnswerText(line);
+    keepView();
+  });
+}
+
+// A streamed answer is complete: drawn from all of its source, and given its copy button. While it
+// streams it holds only its drawing.
+function finishAnswer(line) {
+  if (line.children.length > 1) return;
+  drawAnswerText(line);
+  addCopyButton(line);
+}
+
+function addCopyButton(line) {
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "copy";
+  copy.textContent = "Copy";
+  copy.addEventListener("click", () => copyAnswer(line, copy));
+  line.appendChild(copy);
+}
+
+// Copies the answer as the agent wrote it, Markdown and all, and says so on the button for a
+// moment.
+async function copyAnswer(line, button) {
+  let said = "Copied";
+  try {
+    await navigator.clipboard.writeText(line.dataset.source);
+  } catch (refused) {
+    said = "Not copied";
+  }
+  button.textContent = said;
+  setTimeout(() => {
+    button.textContent = "Copy";
+  }, 1500);
+}
+
+// Keeps the newest content in view while the person is at the bottom. Scrolled up, the view stays
+// where it is and the "jump to latest" button shows.
+function keepView() {
+  if (following) log.scrollTop = log.scrollHeight;
+  jumpButton.hidden = following;
+}
+
+function atBottom() {
+  return log.scrollHeight - log.scrollTop - log.clientHeight <= 8;
 }
 
 // Draws the approval cards the server says are waiting: adds the new ones, removes the ones no
@@ -151,6 +282,32 @@ function drawCards(cards) {
     renderApproval(card);
   }
   waitingFor(cards);
+  tickDeadlines();
+}
+
+// How long each card has left, counted down once a second from the deadline the state gave it.
+// The card itself goes only when the state says it is no longer waiting.
+function tickDeadlines() {
+  const clocks = approvalsSection.querySelectorAll("[data-deadline]");
+  for (const clock of clocks) {
+    clock.textContent = timeLeft(Number(clock.dataset.deadline) - Date.now());
+  }
+  if (clocks.length > 0 && ticking === null) {
+    ticking = setInterval(tickDeadlines, 1000);
+  } else if (clocks.length === 0 && ticking !== null) {
+    clearInterval(ticking);
+    ticking = null;
+  }
+}
+
+function timeLeft(ms) {
+  if (ms <= 0) return "expired";
+  const seconds = Math.ceil(ms / 1000);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const twoDigits = (n) => String(n).padStart(2, "0");
+  const clock = hours > 0 ? `${hours}:${twoDigits(minutes)}` : String(minutes);
+  return `${clock}:${twoDigits(seconds % 60)} left`;
 }
 
 // The state of the conversation, with a time limit: a server that does not answer must not hold
@@ -259,7 +416,7 @@ function drawTurn(turn, story, ending = null) {
   for (const line of story.length > 0 ? [...replaced, ...notes] : []) line.remove();
   for (const line of lines) log.insertBefore(line, marker);
   marker.remove();
-  log.scrollTop = log.scrollHeight;
+  keepView();
 }
 
 // Puts each note on a decision after the request line for its tool, in the order the notes were
@@ -321,13 +478,17 @@ async function reconcile(replays) {
   if (!replays) catchUp(state);
   drawCards(state.approvals);
   setWorking(state.working);
+  // The greeting waits for the first read, so a conversation with history does not flash it; the
+  // stylesheet hides it whenever the conversation has lines.
+  greeting.hidden = false;
 }
 
+// Words of the answer being written: added to the open bubble's source, which is drawn again.
 function say(text) {
   live.thinking = null;
-  if (!live.bubble) live.bubble = appendLine("assistant", "", live.turn);
-  live.bubble.textContent += text;
-  log.scrollTop = log.scrollHeight;
+  if (!live.bubble) live.bubble = appendLine("assistant", "", live.turn, true);
+  live.bubble.dataset.source += text;
+  drawSoon(live.bubble);
 }
 
 // A request names each call and its tool; what happens to a call is told later without its tool,
@@ -346,6 +507,7 @@ async function ended(turn, ending, inStory) {
   const { watched, streamed, bubble } = live;
   follow(null);
   setWorking(false);
+  focusBox();
   if (watched && ending === null) {
     if (streamed) {
       drawnTurns.add(turn);
@@ -379,7 +541,7 @@ const handlers = {
   "thinking-delta": ({ text }) => {
     if (!live.thinking) live.thinking = appendLine("thinking", "", live.turn);
     live.thinking.textContent += text;
-    log.scrollTop = log.scrollHeight;
+    keepView();
   },
   // A provider that streams says commentary delta by delta as it writes it; one that does not says
   // it only as a commentary event, and drawing both would show it twice.
@@ -388,6 +550,7 @@ const handlers = {
   },
   "actions-requested": (request) => {
     claim(request.turn);
+    if (live.bubble) finishAnswer(live.bubble);
     live.bubble = null;
     live.thinking = null;
     live.streamed = false;
@@ -487,9 +650,15 @@ async function send(event) {
   const text = textInput.value.trim();
   if (!text) return;
   textInput.value = "";
+  recall = null;
+  saveDraft();
+  fitBox();
+  focusBox(form);
   const mine = generation;
   // Drawn as typed, and pending until a turn takes it up. After a reload the story shows what the
-  // agent was given, and messages sent while it was busy are one line there, joined.
+  // agent was given, and messages sent while it was busy are one line there, joined. Sending
+  // brings the view back to the newest line.
+  following = true;
   const typed = appendLine("user", text, null);
   pendingTyped.push(typed);
   // 202 and an empty body: the line is now the agent's problem. What the agent does with it
@@ -512,26 +681,43 @@ async function send(event) {
   appendLine(
     "system",
     response !== null && response.status === 409
-      ? "that conversation has ended; start a new chat"
+      ? "this conversation has been terminated; start a new chat"
       : "that message did not go through",
     null,
   );
 }
 
+// A card: what will be done, the tool and how long is left, the arguments, and the two answers.
 function renderApproval(card) {
   if (!card.id || approvalsSection.querySelector(`[data-call="${card.id}"]`)) return;
   const div = document.createElement("div");
   div.className = "approval-card";
   div.dataset.call = card.id;
+  div.setAttribute("role", "group");
+  div.setAttribute("aria-label", card.what || card.tool);
   const title = document.createElement("div");
-  title.className = "approval-tool";
+  title.className = "approval-what";
   title.textContent = card.what || card.tool;
+  const meta = document.createElement("div");
+  meta.className = "approval-meta";
+  const tool = document.createElement("span");
+  tool.className = "approval-tool";
+  tool.textContent = card.tool;
+  meta.appendChild(tool);
+  const deadline = Date.parse(card.deadline);
+  if (!Number.isNaN(deadline)) {
+    const clock = document.createElement("span");
+    clock.setAttribute("role", "timer");
+    clock.dataset.deadline = String(deadline);
+    meta.appendChild(clock);
+  }
   const args = document.createElement("pre");
   args.textContent = card.args ?? "";
   const actions = document.createElement("div");
   actions.className = "approval-actions";
   const allow = document.createElement("button");
   allow.type = "button";
+  allow.className = "primary";
   allow.textContent = "Approve";
   allow.addEventListener("click", () => decide(card, "approve", div));
   const deny = document.createElement("button");
@@ -539,7 +725,7 @@ function renderApproval(card) {
   deny.textContent = "Deny";
   deny.addEventListener("click", () => decide(card, "deny", div));
   actions.append(allow, deny);
-  div.append(title, args, actions);
+  div.append(title, meta, args, actions);
   approvalsSection.appendChild(div);
 }
 
@@ -581,29 +767,36 @@ async function decide(card, decision, div) {
   // 202 or 409 (another tab answered first, or the term ran out), the cards are redrawn from what
   // is waiting now rather than from the click.
   queue(refreshCards);
+  focusBox(div);
 }
 
 // Clears what is on screen: a new conversation starts from nothing.
 function clearScreen() {
-  log.innerHTML = "";
-  approvalsSection.innerHTML = "";
+  log.replaceChildren();
+  approvalsSection.replaceChildren();
   follow(null);
   pendingTyped = [];
   toolByCall = new Map();
   toolByKey = new Map();
   drawnTurns = new Set();
   setWorking(false);
+  tickDeadlines();
+  following = true;
+  keepView();
 }
 
-form.addEventListener("submit", send);
-// "New chat" ends this conversation and starts another. The old agent is ended, so it takes no
-// more input and is not left waiting; what it said is kept. The old stream is closed first and its
-// queued work is dropped, so nothing of the old conversation draws into the new one.
-newChatButton.addEventListener("click", async () => {
+// "New chat" terminates this conversation's agent and starts another conversation. The old agent
+// is terminated, so it takes no more input and is not left waiting; what it said is kept. The old
+// stream is closed first and its queued work is dropped, so nothing of the old conversation draws
+// into the new one. What is typed in the box stays there, for the new conversation.
+async function startNewChat() {
   const finished = agentId;
   if (events) events.close();
   generation += 1;
+  forgetDraft();
   useAgent(crypto.randomUUID());
+  saveDraft();
+  recall = null;
   clearScreen();
   listen();
   // After the switch, deliberately: the new conversation should open even if this fails, and an
@@ -613,7 +806,176 @@ newChatButton.addEventListener("click", async () => {
   } catch (ignored) {
     // Nothing to tell the person: their new chat is already open and working.
   }
+}
+
+// The message box. Enter sends and Shift+Enter starts a new line. The box grows with what is typed,
+// up to the six lines the stylesheet allows, and then scrolls.
+
+// Puts the cursor in the message box. `from` is the control the person just used, if any: the box
+// takes the focus from it or from nothing, but never from another control the person has moved to,
+// and never while they are selecting text in the conversation.
+function focusBox(from = null) {
+  const active = document.activeElement;
+  const free =
+    !active ||
+    active === document.body ||
+    active === textInput ||
+    (from !== null && from.contains(active));
+  if (!free) return;
+  const selection = document.getSelection();
+  if (selection && !selection.isCollapsed && log.contains(selection.anchorNode)) return;
+  textInput.focus();
+}
+
+// Makes the box as tall as its text; the stylesheet's max-height caps it.
+function fitBox() {
+  textInput.style.height = "auto";
+  const border = textInput.offsetHeight - textInput.clientHeight;
+  textInput.style.height = textInput.scrollHeight + border + "px";
+}
+
+// What is typed and not sent yet is kept for this tab, per conversation, so a reload does not lose
+// it. Storage may be missing or refuse (a private window, blocked site data); the page works
+// without it, and the draft is then not kept.
+function draftKey() {
+  return "draft:" + agentId;
+}
+
+function saveDraft() {
+  try {
+    if (textInput.value) sessionStorage.setItem(draftKey(), textInput.value);
+    else sessionStorage.removeItem(draftKey());
+  } catch (unavailable) {
+    // Not kept.
+  }
+}
+
+function forgetDraft() {
+  try {
+    sessionStorage.removeItem(draftKey());
+  } catch (unavailable) {
+    // Nothing was kept.
+  }
+}
+
+function restoreDraft() {
+  try {
+    textInput.value = sessionStorage.getItem(draftKey()) ?? "";
+  } catch (unavailable) {
+    textInput.value = "";
+  }
+  fitBox();
+}
+
+// What the person said in this conversation, newest first, as the screen shows it. Lines sent
+// while the agent was busy are one line once the story joins them.
+function earlierMessages() {
+  const said = [];
+  for (const line of [...log.children].reverse()) {
+    if (line.classList.contains("user") && line.textContent !== said[said.length - 1]) {
+      said.push(line.textContent);
+    }
+  }
+  return said;
+}
+
+function showInBox(text) {
+  textInput.value = text;
+  textInput.setSelectionRange(text.length, text.length);
+  fitBox();
+}
+
+// One message further back; at the oldest, it stays there. False when there is nothing to recall.
+function recallOlder() {
+  if (recall === null) {
+    const said = earlierMessages();
+    if (said.length === 0) return false;
+    recall = { said, at: -1, draft: textInput.value };
+  }
+  if (recall.at + 1 < recall.said.length) {
+    recall.at += 1;
+    showInBox(recall.said[recall.at]);
+  }
+  return true;
+}
+
+// One message forward; past the newest, the draft that was in the box comes back.
+function recallNewer() {
+  recall.at -= 1;
+  if (recall.at >= 0) {
+    showInBox(recall.said[recall.at]);
+  } else {
+    const draft = recall.draft;
+    recall = null;
+    showInBox(draft);
+  }
+}
+
+function caretOnFirstLine() {
+  return !textInput.value.slice(0, textInput.selectionStart).includes("\n");
+}
+
+function caretOnLastLine() {
+  return !textInput.value.slice(textInput.selectionEnd).includes("\n");
+}
+
+textInput.addEventListener("keydown", (event) => {
+  // While an input method composes a word, Enter and the arrows belong to it.
+  if (event.isComposing || event.keyCode === 229) return;
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    form.requestSubmit();
+  } else if (event.key === "ArrowUp" && caretOnFirstLine()) {
+    if (recallOlder()) event.preventDefault();
+  } else if (event.key === "ArrowDown" && recall !== null && caretOnLastLine()) {
+    event.preventDefault();
+    recallNewer();
+  } else if (event.key === "Escape") {
+    recall = null;
+    showInBox("");
+    saveDraft();
+  }
+});
+
+// Typing ends a recall: what is in the box is now the person's draft.
+textInput.addEventListener("input", () => {
+  recall = null;
+  saveDraft();
+  fitBox();
+});
+
+form.addEventListener("submit", send);
+
+// A conversation with something in it has its agent terminated only once the person confirms.
+// Either way the cursor goes back to the box.
+newChatButton.addEventListener("click", () => {
+  if (log.children.length === 0) {
+    startNewChat();
+    focusBox(newChatButton);
+    return;
+  }
+  confirmNew.returnValue = "";
+  confirmNew.showModal();
+});
+
+confirmNew.addEventListener("close", () => {
+  if (confirmNew.returnValue === "new") startNewChat();
+  focusBox(newChatButton);
+});
+
+// Where the person scrolls decides whether the view follows new content.
+log.addEventListener("scroll", () => {
+  following = atBottom();
+  jumpButton.hidden = following;
+});
+
+jumpButton.addEventListener("click", () => {
+  following = true;
+  keepView();
+  focusBox(jumpButton);
 });
 
 useAgent(agentId);
+restoreDraft();
 listen();
+focusBox();
