@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -149,7 +150,10 @@ class DefaultDirectHarnessTest {
    * because the deadline logic is wrong, not because two clocks disagree, so there is one clock and
    * a test advances it deliberately.
    */
-  private final AdvanceableClock clock = new AdvanceableClock(Instant.now());
+  // Microseconds, as the harness stores time: on Linux the system clock carries nanoseconds, and
+  // a test that compares the clock with a stored time would fail by the nanoseconds it dropped.
+  private final AdvanceableClock clock =
+      new AdvanceableClock(Instant.now().truncatedTo(ChronoUnit.MICROS));
 
   private final InMemoryAgentEvents events =
       new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
