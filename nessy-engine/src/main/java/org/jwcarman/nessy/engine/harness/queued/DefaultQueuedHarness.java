@@ -147,10 +147,10 @@ final class DefaultQueuedHarness<I>
   /**
    * Admits an input.
    *
-   * <p>Accepts every input that has somewhere to go, which is the promise this door keeps -- unless
-   * the agent has been terminated, which is the one thing that can refuse, and which is said in the
-   * answer. What happens to an accepted arrival is the policy's business: appended, replacing what
-   * was waiting, or dropped to hold a bound.
+   * <p>Answers {@link TellOutcome.Terminated} for an agent that has been terminated, and stores
+   * nothing. Otherwise hands the input to the backlog policy and answers {@link
+   * TellOutcome.Accepted}. What happens to an accepted arrival is the policy's business: appended,
+   * merged, replacing what was waiting, dropped to hold a bound, or discarded as a repeat.
    *
    * <p>Then, if the agent is idle, the arrival becomes a turn under this same lock. An agent is
    * never left idle with work waiting.

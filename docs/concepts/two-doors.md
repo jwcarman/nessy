@@ -18,11 +18,12 @@ have: it can refuse to start at all, and it can answer in a typed shape
 AskOutcome<Reply> outcome = harness.ask(agentId, "what's the weather?");
 ```
 
-`QueuedHarness.tell(agent, input)` returns nothing. Telling an agent
-something cannot fail and cannot be refused — whatever arrives goes into
-that agent's backlog, and the agent runs it at its own pace. By the time
-the turn actually runs, whoever called `tell` has moved on; there is
-nothing for the method to hand back.
+`QueuedHarness.tell(agent, input)` returns a `TellOutcome`: `Accepted` when
+the agent took the input, `Terminated` when the agent has been terminated and
+the input was dropped. An accepted input goes to the agent type's backlog
+policy, and the agent runs what waits at its own pace. By the time the turn
+actually runs, whoever called `tell` has moved on; there is nothing about the
+turn for the method to hand back.
 
 ```java
 harness.tell(agentId, "the porch light came on");
@@ -66,8 +67,8 @@ attempted twice. See [Durable Computation](durable-computation.md).
 
 **What the caller can learn about failure.** `ask` gets the reason
 directly, as `AskOutcome.Failed(reason)` or `AskOutcome.Refused(category)`. A
-`tell` caller gets nothing back at all — not even a promise to poll —
-because it has already gone by the time the turn resolves. See
+`tell` caller gets back only whether the agent took the input, `Accepted` or
+`Terminated`, because it has already gone by the time the turn resolves. See
 [Outcomes](outcomes.md) for the shapes and
 [Narration](../guides/narration.md) for how a queued caller learns what
 happened by watching instead of asking.
@@ -104,8 +105,8 @@ carries the provider adapter's account of what went wrong, and
 `AskOutcome.Refused` carries the model's own category for declining. The
 caller has it before its next line of code runs.
 
-On the queued door, `tell` returns nothing, so there is no inline path at
-all. A watcher hears the reason live: `Narration.TurnFailed` carries the same
+On the queued door, `tell` returns only a `TellOutcome`, so there is no inline
+path for a turn's failure at all. A watcher hears the reason live: `Narration.TurnFailed` carries the same
 text the direct door would have returned, and `Narration.TurnRefused` carries
 the same category. A queued agent that fails with nobody watching still
 recorded the failure in its story, and `AgentStories.replay` reads it

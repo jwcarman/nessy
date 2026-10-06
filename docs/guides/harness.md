@@ -15,13 +15,14 @@ public interface DirectHarness<I, O> {
 }
 
 public interface QueuedHarness<I> {
-  void tell(AgentId agentId, I input);
+  TellOutcome tell(AgentId agentId, I input);
   void terminate(AgentId agentId);
 }
 ```
 
-`ask` always accepts a call, does the turn, and returns; `tell` always
-accepts an input and does nothing else. What `DirectHarness` does because a
+`ask` does the turn and returns what it came to; `tell` hands the input over
+and returns whether the agent took it, `Accepted` or `Terminated`, and does
+nothing else. What `DirectHarness` does because a
 caller is blocked — answering, refusing, admission control — is not part of
 `QueuedHarness`'s job, and what `QueuedHarness` does because nobody is
 waiting — a backlog, deferred answers reaching it later — is not part of

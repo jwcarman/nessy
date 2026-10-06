@@ -30,8 +30,8 @@ the front door: enough to run something real and decide what to install.
 
 Two harness doors, and they are peers. `DirectHarness<I, O>.ask` runs a
 turn on the calling thread and hands back an `AskOutcome<O>` — for a caller
-standing there waiting on an answer. `QueuedHarness<I>.tell` always accepts
-and returns nothing — for work nobody is waiting on. Build one once, keep
+standing there waiting on an answer. `QueuedHarness<I>.tell` returns a
+`TellOutcome` — `Accepted` or `Terminated` — for work nobody is waiting on. Build one once, keep
 it, and ask it things:
 
 ```bash

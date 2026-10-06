@@ -1412,11 +1412,11 @@ class AgentStateTest {
     @Test
     @DisplayName("a terminated agent refuses to start a turn, loudly")
     void terminal_refuses_work() {
-      AgentState dead = idle.applyAll(idle.execute(new AgentCommand.Terminate()).events());
+      AgentState terminated = idle.applyAll(idle.execute(new AgentCommand.Terminate()).events());
       AgentCommand.StartTurn startTurn =
           new AgentCommand.StartTurn(MAIL, "Question", Instant.EPOCH, Instant.EPOCH);
 
-      assertThatThrownBy(() -> dead.execute(startTurn))
+      assertThatThrownBy(() -> terminated.execute(startTurn))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("accepts nothing further");
     }
@@ -1424,10 +1424,10 @@ class AgentStateTest {
     @Test
     @DisplayName("a terminated agent refuses a second terminate, loudly")
     void terminal_refuses_terminate() {
-      AgentState dead = idle.applyAll(idle.execute(new AgentCommand.Terminate()).events());
+      AgentState terminated = idle.applyAll(idle.execute(new AgentCommand.Terminate()).events());
       AgentCommand.Terminate terminate = new AgentCommand.Terminate();
 
-      assertThatThrownBy(() -> dead.execute(terminate))
+      assertThatThrownBy(() -> terminated.execute(terminate))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("accepts nothing further");
     }
@@ -1435,10 +1435,10 @@ class AgentStateTest {
     @Test
     @DisplayName("but a redelivered outcome is not a caller's mistake, so it is silent")
     void terminal_ignores_a_late_outcome() {
-      AgentState dead = idle.applyAll(idle.execute(new AgentCommand.Terminate()).events());
+      AgentState terminated = idle.applyAll(idle.execute(new AgentCommand.Terminate()).events());
 
       assertThat(
-              dead.execute(
+              terminated.execute(
                   new AgentCommand.CompleteToolCall(
                       TURN,
                       REQUEST,
@@ -1450,20 +1450,20 @@ class AgentStateTest {
     @Test
     @DisplayName("nothing moves a terminated agent, which is what makes termination irreversible")
     void terminal_is_a_dead_end() {
-      AgentState dead = idle.applyAll(idle.execute(new AgentCommand.Terminate()).events());
+      AgentState terminated = idle.applyAll(idle.execute(new AgentCommand.Terminate()).events());
       AgentEvent later =
           new AgentEvent.TurnStarted(
               Seq.of(99), Seq.of(99).opensTurn(), MAIL, "Question", Instant.EPOCH, Instant.EPOCH);
 
-      assertThatThrownBy(() -> dead.apply(later)).isInstanceOf(IllegalStateException.class);
+      assertThatThrownBy(() -> terminated.apply(later)).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
     @DisplayName("and it has no position, because nothing is ever minted from it")
     void terminal_has_no_position() {
-      AgentState dead = idle.applyAll(idle.execute(new AgentCommand.Terminate()).events());
+      AgentState terminated = idle.applyAll(idle.execute(new AgentCommand.Terminate()).events());
 
-      assertThatThrownBy(dead::seq)
+      assertThatThrownBy(terminated::seq)
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("no position");
     }

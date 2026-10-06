@@ -32,6 +32,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentStatus.Activity;
 import org.jwcarman.nessy.api.AgentWork;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.TellOutcome;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
@@ -195,7 +196,7 @@ class ChatApprovalEdgesIntegrationTest {
 
   @Test
   void
-      a_message_sent_after_the_end_while_the_last_turn_is_in_progress_is_a_409_at_once_and_nothing_is_queued() {
+      a_message_sent_after_termination_while_the_last_turn_is_in_progress_is_a_409_at_once_and_nothing_is_queued() {
     ChatClient chat = new ChatClient(port);
     String agentId = UUID.randomUUID().toString();
     AgentId agent = new AgentId(UUID.fromString(agentId));
@@ -205,15 +206,14 @@ class ChatApprovalEdgesIntegrationTest {
     int status = chat.say(agentId, "are you still there?");
 
     // The agent is terminated from the moment of the termination, and tell says so at once, though
-    // its
-    // status does not read as terminated until the parked turn ends.
+    // its status does not read as terminated until the parked turn ends.
     assertThat(status).isEqualTo(409);
     assertThat(work.status(ChatConfiguration.TYPE, agent).queued()).isZero();
     assertThat(chat.state(agentId).texts()).doesNotContain("are you still there?");
   }
 
   @Test
-  void a_tell_after_the_end_leaves_nothing_queued() {
+  void a_tell_after_termination_leaves_nothing_queued() {
     ChatClient chat = new ChatClient(port);
     String agentId = UUID.randomUUID().toString();
     AgentId agent = new AgentId(UUID.fromString(agentId));
@@ -229,7 +229,9 @@ class ChatApprovalEdgesIntegrationTest {
                 assertThat(work.status(ChatConfiguration.TYPE, agent).activity())
                     .isEqualTo(Activity.TERMINATED));
 
-    harness.tell(agent, "too late");
+    TellOutcome outcome = harness.tell(agent, "too late");
+
+    assertThat(outcome).isInstanceOf(TellOutcome.Terminated.class);
 
     // tell returns after its locked step, so an input it kept would be counted here already.
     assertThat(work.status(ChatConfiguration.TYPE, agent).queued()).isZero();

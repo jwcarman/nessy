@@ -12,8 +12,8 @@ caller arriving mid-turn is not made to wait its turn in a queue — it is
 told `AskOutcome.Busy` and sent away to decide for itself whether to retry.
 There is nothing to coalesce, because there is no queue: `DefaultDirectHarness`
 holds none of the backlog machinery — no coalescing, no claims, no leases,
-no deferral. `QueuedHarness.tell`, by contrast, always accepts. Something
-has to hold what it accepted, and that something is the backlog.
+no deferral. `QueuedHarness.tell`, by contrast, accepts every input unless the agent has
+been terminated. Something has to hold what it accepted, and that something is the backlog.
 
 ## Where it lives
 

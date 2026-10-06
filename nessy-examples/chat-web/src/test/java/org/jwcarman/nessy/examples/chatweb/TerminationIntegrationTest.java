@@ -52,7 +52,7 @@ class TerminationIntegrationTest {
   }
 
   @Test
-  void ending_a_conversation_keeps_its_story_and_refuses_another_message() {
+  void terminating_a_conversation_keeps_its_story_and_refuses_another_message() {
     ChatClient chat = chat();
     String agentId = UUID.randomUUID().toString();
     assertThat(chat.say(agentId, "remember this")).isEqualTo(202);
@@ -73,7 +73,7 @@ class TerminationIntegrationTest {
 
   @Test
   @DisplayName("terminating one conversation leaves another alone")
-  void ending_is_scoped_to_one_agent() {
+  void terminating_is_scoped_to_one_agent() {
     ChatClient chat = chat();
     String kept = UUID.randomUUID().toString();
     String terminated = UUID.randomUUID().toString();
@@ -97,7 +97,7 @@ class TerminationIntegrationTest {
 
   @Test
   @DisplayName("terminating a conversation nobody ever had is accepted, not an error")
-  void ending_a_stranger_is_silent() {
+  void terminating_a_stranger_is_silent() {
     assertThat(chat().terminate(UUID.randomUUID().toString())).isEqualTo(202);
   }
 

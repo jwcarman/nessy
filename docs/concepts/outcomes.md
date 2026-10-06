@@ -1,10 +1,11 @@
 # Outcomes
 
 Nessy prefers a value that names what happened over an exception or a
-silent no-op. Two sealed interfaces carry that preference at the two places
-a caller most needs it: `AskOutcome<T>`, what came of asking, and
-`TerminationOutcome`, what came of asking an agent to terminate. Both are in
-`nessy-api`, and both make a caller write an exhaustive `switch` rather than
+silent no-op. Three sealed interfaces carry that preference at the places
+a caller most needs it: `AskOutcome<T>`, what came of asking;
+`TellOutcome`, what came of telling an agent something; and
+`TerminationOutcome`, what came of asking an agent to terminate. All are in
+`nessy-api`, and all make a caller write an exhaustive `switch` rather than
 a `catch` — the case has to be acknowledged, not discovered later in
 production.
 
@@ -75,6 +76,36 @@ There was no turn, and an empty tally would read as a turn that ran and
 spent nothing rather than as a turn that never was. See [Cost](cost.md)
 for what `TurnStats` holds and how to read it.
 
+## `TellOutcome`
+
+```java
+public sealed interface TellOutcome {
+  record Accepted() implements TellOutcome {}
+  record Terminated() implements TellOutcome {}
+}
+```
+
+`QueuedHarness.tell` returns one of these. It says whether the agent took the
+input, and never how the turn went: by the time the turn runs, whoever spoke
+has gone, and the answer reaches a caller through [narration](../guides/narration.md).
+
+**`Accepted`** means the agent took the input. It was handed to the agent
+type's [backlog policy](backlog.md), and a turn starts at once when the agent
+is idle and the policy left something waiting. The policy decides what waits:
+it may keep the input, merge it with what waits, replace what waits, drop older
+inputs to hold a bound, or discard the arrival itself as a repeat. So
+`Accepted` is not a promise that the input will run, and an input still waiting
+when the agent is terminated is abandoned. A caller serving a request answers
+it as received, such as `202`. Inside a caller's transaction, `Accepted` is only
+as durable as the caller's commit.
+
+**`Terminated`** means the agent has been terminated and takes no more input.
+The input was dropped: nothing was stored, nothing was written to the story, and
+no turn will run for it. An agent terminated while its last turn is still in
+progress answers `Terminated` at once, though its status does not read as
+terminated until that turn ends. A caller serving a request tells whoever is on
+the other end, such as `409`.
+
 ## `TerminationOutcome`
 
 ```java
@@ -115,11 +146,11 @@ termination indistinguishable from a successful one — the caller asked, nothin
 happened, and nothing in the API said so. `TerminationOutcome` exists to
 make that gap visible instead of silent.
 
-## One idea, not two types
+## One idea, not three types
 
-Both types exist because a `catch` block and a `void` return both let a
+All three types exist because a `catch` block and a `void` return both let a
 caller not deal with a case. A sealed interface doesn't: `switch` over
-`AskOutcome<T>` or `TerminationOutcome` that omits an arm doesn't compile, so
+`AskOutcome<T>`, `TellOutcome` or `TerminationOutcome` that omits an arm doesn't compile, so
 the decision to handle `Busy` or not is made at the call site, in the open,
 rather than inherited from whichever exception someone remembered to catch.
 

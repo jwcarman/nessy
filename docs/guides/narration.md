@@ -148,7 +148,7 @@ provider that streams has already said the words delta by delta.
 went wrong, and `kind`, a `FailureKind`: `TRANSIENT` (it might work next
 time), `UNKNOWN` (nobody heard back), `PERMANENT` (the same request fails
 the same way) or `REJECTED` (the provider named the input it refused). It
-matters most on the queued door: `QueuedHarness.tell` returns nothing, so
+matters most on the queued door: `QueuedHarness.tell` returns only a `TellOutcome`, so
 a watcher learns why a turn failed here as it happens, and
 `AgentStories.replay` reads it afterwards. The direct door
 hands the same text back from `ask` as `AskOutcome.Failed`.

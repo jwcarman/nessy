@@ -218,7 +218,7 @@ and resume from an external trigger, including the gap between choosing a
 tool and running it.
 
 - **Launch.** `DirectHarness.ask(agent, input)` returns an `AskOutcome`.
-  `QueuedHarness.tell(agent, input)` returns once the input is durable.
+  `QueuedHarness.tell(agent, input)` returns a `TellOutcome` once the agent has taken the input.
 - **Pause.** A tool or an approver returns `Awaited.deferred()`. The call is
   parked as a row, holds no thread, and survives a restart.
 - **Resume.** Whoever has the call's agent type, agent id and idempotency key

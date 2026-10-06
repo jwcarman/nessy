@@ -257,8 +257,8 @@ notebook, a plan and the date, given as ambient background, added.
 
 ## Telling it something instead
 
-Not every caller is waiting. `QueuedHarness<I>.tell` always accepts and
-returns nothing; the turn happens later, on the harness's own dispatcher,
+Not every caller is waiting. `QueuedHarness<I>.tell` returns a
+`TellOutcome`, `Accepted` or `Terminated`; the turn happens later, on the harness's own dispatcher,
 and the answer is narrated to listeners rather than returned:
 
 ```java

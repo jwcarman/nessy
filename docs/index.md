@@ -43,7 +43,7 @@ deadline is a database row rather than a timer in memory.
 Build a harness once per agent type, keep it, and pick the door your
 caller needs. `DirectHarness<I, O>.ask` runs a turn on the calling thread
 and hands back an `AskOutcome<O>` — for a caller standing there waiting.
-`QueuedHarness<I>.tell` always accepts and returns nothing — for work
+`QueuedHarness<I>.tell` returns a `TellOutcome`, `Accepted` or `Terminated` — for work
 nobody is waiting on. Neither is a special case of the other.
 
 ```java

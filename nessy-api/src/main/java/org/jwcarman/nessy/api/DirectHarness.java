@@ -19,11 +19,11 @@ package org.jwcarman.nessy.api;
  * Runs a turn on the calling thread and hands back what it came to.
  *
  * <p>The door for work somebody is waiting on, and the opposite bargain to a {@link QueuedHarness}:
- * that one always accepts and says nothing, this one answers and may decline to start. Neither is a
- * special case of the other. Everything a queued harness does because nobody is waiting --
- * queueing, coalescing, deferral, resumption, one-turn-at-a-time -- is absent here, not because it
- * is forbidden but because nothing in this world can produce it: the caller is the only thing that
- * can start a turn, and it is standing right there holding the answer.
+ * that one answers only whether the agent took the input, this one answers and may decline to
+ * start. Neither is a special case of the other. Everything a queued harness does because nobody is
+ * waiting -- queueing, coalescing, deferral, resumption, one-turn-at-a-time -- is absent here, not
+ * because it is forbidden but because nothing in this world can produce it: the caller is the only
+ * thing that can start a turn, and it is standing right there holding the answer.
  *
  * <p><b>The answer's shape is a property of the harness, not of the call.</b> A {@link
  * DirectHarnessFactory} settles it when the harness is made, the same way {@link

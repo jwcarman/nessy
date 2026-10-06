@@ -90,9 +90,10 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * commit -- a few milliseconds -- against a turn that runs for seconds, so a lock refusal would
  * catch a vanishing fraction of collisions. This door therefore always waits (§3a) rather than
  * being refused, and what decides whether a caller may proceed is what the reconstituted state says
- * once the wait is over. An agent that reconstitutes {@link AgentState.Terminal} is refused; one
- * reconstituted to anything but {@link AgentState.Idle} -- unless {@link #recoverToIdle} finds the
- * thing it is waiting on overdue -- is told {@link AskOutcome.Busy}.
+ * once the wait is over. An agent that reconstitutes {@link AgentState.Terminal} is answered {@link
+ * AskOutcome.Terminated}; one reconstituted to anything but {@link AgentState.Idle} -- unless
+ * {@link #recoverToIdle} finds the thing it is waiting on overdue -- is told {@link
+ * AskOutcome.Busy}.
  *
  * <p><b>Lazy recovery, by deadline, never by phase age.</b> A dead process leaves an agent on a
  * busy phase forever; the next caller to arrive reads not just the phase but when it started
@@ -698,7 +699,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   /**
    * What one locked step of a turn's opening command came to: either a caller who was told no --
-   * {@link AskOutcome.Refused} or {@link AskOutcome.Busy} -- or a turn genuinely under way.
+   * {@link AskOutcome.Terminated} or {@link AskOutcome.Busy} -- or a turn genuinely under way.
    */
   private sealed interface StepResult<O> {
 
