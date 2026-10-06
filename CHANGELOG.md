@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **The notebook installs itself.** With the Spring Boot starter and `nessy-backend-jdbc` present,
+- **The notebook installs itself.** With `nessy-memory-notebook` and `nessy-backend-jdbc` on a Spring Boot application's classpath,
   every agent of both doors gets the notebook index and `remember`, `revise`, `recall` and
   `forget`. `nessy.notebook.enabled=false` turns it off, and an application's own `Notebook` bean
   keeps the starter's out.
-- **The plan store installs itself.** With the Spring Boot starter and `nessy-backend-jdbc` present,
+- **The plan store installs itself.** With `nessy-planning` and `nessy-backend-jdbc` on a Spring Boot application's classpath,
   every agent of both doors gets the ambient current plan and `update_plan`.
   `nessy.plan.enabled=false` turns it off, and an application's own `Plans` bean keeps the
   starter's out.

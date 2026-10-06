@@ -40,11 +40,11 @@ import org.springframework.context.annotation.Bean;
  * is no feature. The conditions are a {@code DataSource}, a {@code CodecFactory} and the JDBC
  * backend's schema bean, so excluding the JDBC backend auto-configuration keeps the feature out.
  *
- * <p>Adding the starter adds the plan; an application that does not want its agents to keep one
- * says {@code nessy.plan.enabled=false}. An application that declares its own {@link Plans} bean
- * keeps the starter out; wiring the plan by hand beside the starter's feature, without declaring
- * the bean, would make the harness refuse to build, with "two ambient sources offer the kind
- * 'plan'".
+ * <p>Adding {@code nessy-planning} to the classpath adds the plan; the starter does not carry it.
+ * An application that has the module but does not want its agents to keep one says {@code
+ * nessy.plan.enabled=false}. An application that declares its own {@link Plans} bean keeps the
+ * starter out; wiring the plan by hand beside the starter's feature, without declaring the bean,
+ * would make the harness refuse to build, with "two ambient sources offer the kind 'plan'".
  *
  * <p>One plan store per agent type: {@link JdbcPlans} is keyed by type, and a feature runs once per
  * harness, so the feature builds the store for the type it is equipping. The object is a handle on

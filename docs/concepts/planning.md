@@ -12,7 +12,7 @@ QueuedHarness<String> harness = factory.create(TYPE, h -> h
         .tool(PlanTools.updatePlan(plans)));
 ```
 
-With the Spring Boot starter the plan installs itself on every agent, so none
+In a Spring Boot application, `nessy-planning` on the classpath installs the plan on every agent, so none
 of that is written; an application that declares its own `Plans` bean keeps the
 starter out.
 

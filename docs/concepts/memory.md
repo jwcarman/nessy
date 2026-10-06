@@ -71,7 +71,7 @@ config.inference(in -> in.context(ctx -> ctx.ambient(NotebookTools.index(noteboo
       .tool(NotebookTools.forget(notebook));
 ```
 
-With the Spring Boot starter the notebook installs itself on every agent, so
+In a Spring Boot application, `nessy-memory-notebook` on the classpath installs the notebook on every agent, so
 none of that is written; an application that declares its own `Notebook` bean
 keeps the starter out.
 

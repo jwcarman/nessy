@@ -41,10 +41,11 @@ import org.springframework.context.annotation.Bean;
  * the JDBC backend's schema bean, so excluding the JDBC backend auto-configuration keeps the
  * feature out.
  *
- * <p>Adding the starter adds the notebook; an application that does not want its agents to keep
- * notes says {@code nessy.notebook.enabled=false}. An application that declares its own {@link
- * Notebook} bean keeps the starter out; wiring the notebook by hand beside the starter's feature
- * would make the harness refuse to build, with "two ambient sources offer the kind 'notebook'".
+ * <p>Adding {@code nessy-memory-notebook} to the classpath adds the notebook; the starter does not
+ * carry it. An application that has the module but does not want its agents to keep notes says
+ * {@code nessy.notebook.enabled=false}. An application that declares its own {@link Notebook} bean
+ * keeps the starter out; wiring the notebook by hand beside the starter's feature would make the
+ * harness refuse to build, with "two ambient sources offer the kind 'notebook'".
  *
  * <p>One notebook per agent type: {@link JdbcNotebook} is keyed by type, and a feature runs once
  * per harness, so the feature builds the notebook for the type it is equipping. The object is a

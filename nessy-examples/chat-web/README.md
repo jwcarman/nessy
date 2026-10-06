@@ -192,7 +192,7 @@ CHAT_SUMMARY_MODEL_ID=google/gemma-4-e4b \
 | `CHAT_APPROVAL_TERM` | `PT5M` | how long a person has to answer an email approval request |
 | `OTLP_TRACES_URL` | `http://localhost:4318/v1/traces` | where traces go |
 
-The notebook and the plan come with the starter, not from this application; `nessy.notebook.enabled=false` turns the notebook off and `nessy.plan.enabled=false` turns the plan off.
+The notebook and the plan install themselves from the `nessy-memory-notebook` and `nessy-planning` modules this pom declares, not from this application's code; `nessy.notebook.enabled=false` turns the notebook off and `nessy.plan.enabled=false` turns the plan off.
 
 OpenAI itself works too: export `OPENAI_API_KEY`, which lights the starter's `openai`
 provider, and name that provider instead of the `lmstudio` default. A GPT-6 model
