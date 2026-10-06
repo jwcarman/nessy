@@ -338,10 +338,15 @@ function callsAmong(lines) {
   return calls;
 }
 
+// A call failed when the page said so ("name failed: …", "name denied: …") or when the tool's own
+// result, as the story keeps it, starts with "failed:"; a tool reports its failure as its result.
 function resultOf(call) {
   if (call.outcome === null) return "";
   const text = call.outcome.textContent;
-  const bad = text.startsWith(call.name + " failed:") || text.startsWith(call.name + " denied:");
+  const bad =
+    text.startsWith(call.name + " failed:") ||
+    text.startsWith(call.name + " denied:") ||
+    text.startsWith("failed:");
   return bad ? "failed" : "done";
 }
 
@@ -351,6 +356,8 @@ function makeChip(call) {
   chip.className = "chip";
   chip.textContent = call.name;
   chip.dataset.result = resultOf(call);
+  // The outcome reads on hover, so a cross explains itself without a click.
+  chip.title = call.outcome === null ? "in progress" : call.outcome.textContent;
   chip.call = call;
   return chip;
 }
@@ -629,8 +636,22 @@ function drawTurn(turn, story, ending = null) {
   for (const line of story.length > 0 ? [...replaced, ...notes] : []) line.remove();
   for (const line of lines) log.insertBefore(line, marker);
   marker.remove();
+  markCommentary(lines);
   for (const line of lines) if (line.classList.contains("assistant")) attachChips(line);
   keepView();
+}
+
+// An assistant line that a tool call follows in its turn is commentary: words said on the way to
+// the call, drawn quieter than the answer that ends the turn.
+function markCommentary(lines) {
+  let said = null;
+  for (const line of lines) {
+    if (line.classList.contains("assistant")) said = line;
+    else if (isRequest(line) && said !== null) {
+      said.dataset.commentary = "yes";
+      said = null;
+    }
+  }
 }
 
 // Puts each note on a decision after the request line for its tool, in the order the notes were
@@ -768,7 +789,11 @@ const handlers = {
   },
   "actions-requested": (request) => {
     claim(request.turn);
-    if (live.bubble) finishAnswer(live.bubble);
+    if (live.bubble) {
+      // Words said on the way to a tool call are commentary, not the answer.
+      live.bubble.dataset.commentary = "yes";
+      finishAnswer(live.bubble);
+    }
     live.bubble = null;
     drawTyping();
     live.thinking = null;
