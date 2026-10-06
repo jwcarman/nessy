@@ -515,18 +515,24 @@ main#log {
 }
 
 /* Approval cards: what will be done, the arguments, the time left, and the two answers. */
+/* Approval cards are toasts: they come up in the conversation's bottom corner, over it, and stay
+   until answered or expired. Several stack, newest at the bottom, and scroll when there are
+   more than fit. On a phone they take the width. */
 section#approvals {
-  flex: none;
-  max-height: 40vh;
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  width: min(27rem, calc(100% - 2rem));
+  max-height: calc(100% - 2rem);
   overflow-y: auto;
-  padding: 0 max(1rem, calc((100% - var(--column)) / 2));
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  z-index: 2;
 }
 
-section#approvals:not(:empty) {
-  padding-block: 0.5rem;
+section#approvals:empty {
+  display: none;
 }
 
 .approval-card {
@@ -535,7 +541,26 @@ section#approvals:not(:empty) {
   border-left: 3px solid var(--accent);
   border-radius: 0.6rem;
   background: var(--surface);
-  box-shadow: var(--shadow);
+  box-shadow: 0 6px 24px rgb(10 54 68 / 22%);
+  animation: toast-in 0.25s ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .approval-card {
+    animation: none;
+  }
 }
 
 .approval-what {

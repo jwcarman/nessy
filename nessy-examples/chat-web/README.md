@@ -131,8 +131,10 @@ bubble carries the chips for the calls under way.
 keeps the view at the bottom. If you scroll up, the view stays where you put
 it, and a **Jump to latest** button takes you back.
 
-**Approval cards** show what will be done, the tool, its arguments, and how
-long is left before the card's deadline. Approve comes first.
+**Approval cards** come up like toasts in the conversation's bottom corner and
+stay until answered or expired. Each shows what will be done, the tool, its
+arguments, and how long is left before the card's deadline. Approve comes
+first.
 
 **Themes.** The page uses a light or a dark theme, as your system is set,
 in the Nessy palette from `brand/`: the header is the mark and the wordmark on
