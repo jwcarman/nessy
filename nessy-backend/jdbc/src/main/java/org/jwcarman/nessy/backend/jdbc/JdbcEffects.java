@@ -72,6 +72,12 @@ public class JdbcEffects implements Effects {
 
   private static final Logger LOG = LoggerFactory.getLogger(JdbcEffects.class);
 
+  private static final String COL_EFFECT_ID = "effect_id";
+  private static final String COL_AGENT_ID = "agent_id";
+  private static final String COL_PAYLOAD = "payload";
+  private static final String COL_ATTEMPTS_MADE = "attempts_made";
+  private static final String COL_DEADLINE = "deadline";
+
   public static final String PENDING = "PENDING";
   public static final String RUNNING = "RUNNING";
 
@@ -273,12 +279,12 @@ public class JdbcEffects implements Effects {
         .query(
             (rs, n) ->
                 new Attempt(
-                    rs.getObject("effect_id", UUID.class),
-                    new AgentId(rs.getObject("agent_id", UUID.class)),
-                    rs.getBytes("payload"),
+                    rs.getObject(COL_EFFECT_ID, UUID.class),
+                    new AgentId(rs.getObject(COL_AGENT_ID, UUID.class)),
+                    rs.getBytes(COL_PAYLOAD),
                     rs.getBytes("failure_payload"),
-                    rs.getInt("attempts_made"),
-                    rs.getObject("deadline", OffsetDateTime.class).toInstant(),
+                    rs.getInt(COL_ATTEMPTS_MADE),
+                    rs.getObject(COL_DEADLINE, OffsetDateTime.class).toInstant(),
                     rs.getString("trace_context"),
                     rs.getBytes("failed_attempts")))
         .list();
@@ -303,12 +309,12 @@ public class JdbcEffects implements Effects {
         .query(
             (rs, n) ->
                 new Attempt(
-                    rs.getObject("effect_id", UUID.class),
-                    new AgentId(rs.getObject("agent_id", UUID.class)),
-                    rs.getBytes("payload"),
+                    rs.getObject(COL_EFFECT_ID, UUID.class),
+                    new AgentId(rs.getObject(COL_AGENT_ID, UUID.class)),
+                    rs.getBytes(COL_PAYLOAD),
                     rs.getBytes("failure_payload"),
-                    rs.getInt("attempts_made"),
-                    rs.getObject("deadline", OffsetDateTime.class).toInstant(),
+                    rs.getInt(COL_ATTEMPTS_MADE),
+                    rs.getObject(COL_DEADLINE, OffsetDateTime.class).toInstant(),
                     rs.getString("trace_context"),
                     rs.getBytes("failed_attempts")))
         .list();
@@ -434,11 +440,11 @@ public class JdbcEffects implements Effects {
   private record Read(Cursor cursor, Optional<LiveEffect> effect) {}
 
   private Read read(ResultSet rs) throws SQLException {
-    UUID effectId = rs.getObject("effect_id", UUID.class);
+    UUID effectId = rs.getObject(COL_EFFECT_ID, UUID.class);
     Instant createdAt = rs.getObject("created_at", OffsetDateTime.class).toInstant();
     AgentEffect effect;
     try {
-      effect = effectCodec.decode(rs.getBytes("payload"));
+      effect = effectCodec.decode(rs.getBytes(COL_PAYLOAD));
     } catch (RuntimeException e) {
       LOG.warn("Skipping effect {}: its payload cannot be decoded", effectId, e);
       return new Read(new Cursor(createdAt, effectId), Optional.empty());
@@ -450,12 +456,12 @@ public class JdbcEffects implements Effects {
             new LiveEffect(
                 effectId,
                 new AgentType(rs.getString("agent_type")),
-                new AgentId(rs.getObject("agent_id", UUID.class)),
+                new AgentId(rs.getObject(COL_AGENT_ID, UUID.class)),
                 effect,
                 createdAt,
                 Optional.ofNullable(parkedAt).map(OffsetDateTime::toInstant),
-                rs.getObject("deadline", OffsetDateTime.class).toInstant(),
-                rs.getInt("attempts_made"),
+                rs.getObject(COL_DEADLINE, OffsetDateTime.class).toInstant(),
+                rs.getInt(COL_ATTEMPTS_MADE),
                 RUNNING.equals(rs.getString("status")))));
   }
 

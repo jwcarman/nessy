@@ -69,6 +69,8 @@ public final class InMemoryEffects implements Effects {
           .thenComparing(row -> row.effectId, InMemoryEffects::byUnsignedBytes);
 
   private static final String TYPE_REQUIRED = "type must not be null";
+  private static final String AGENT_REQUIRED = "agent must not be null";
+  private static final String AT_REQUIRED = "at must not be null";
 
   /** Two meanings for one moment, decided by status -- exactly as the durable row has it. */
   private enum Status {
@@ -149,14 +151,14 @@ public final class InMemoryEffects implements Effects {
         new Row(
             effectId,
             Objects.requireNonNull(type, TYPE_REQUIRED),
-            Objects.requireNonNull(agent, "agent must not be null"),
+            Objects.requireNonNull(agent, AGENT_REQUIRED),
             effects.encode(Objects.requireNonNull(effect, "effect must not be null")),
             outcomes.encode(
                 Objects.requireNonNull(undispatchable, "undispatchable must not be null")),
             Objects.requireNonNull(timeout, "timeout must not be null"),
             Objects.requireNonNull(deadline, "deadline must not be null"),
             traceContext,
-            Objects.requireNonNull(at, "at must not be null")));
+            Objects.requireNonNull(at, AT_REQUIRED)));
   }
 
   /**
@@ -191,7 +193,7 @@ public final class InMemoryEffects implements Effects {
   @Override
   public synchronized List<Attempt> runningFor(AgentType type, AgentId agent) {
     Objects.requireNonNull(type, TYPE_REQUIRED);
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(agent, AGENT_REQUIRED);
     return rows.values().stream()
         .filter(row -> row.status == Status.RUNNING)
         .filter(row -> row.type.equals(type) && row.agent.equals(agent))
@@ -217,7 +219,7 @@ public final class InMemoryEffects implements Effects {
   @Override
   public synchronized boolean reschedule(
       UUID effectId, int attemptsMade, Instant at, List<FailedAttempt> failedAttempts) {
-    Objects.requireNonNull(at, "at must not be null");
+    Objects.requireNonNull(at, AT_REQUIRED);
     Row row = rows.get(effectId);
     if (row == null || row.status != Status.RUNNING || row.attemptsMade != attemptsMade) {
       return false;
@@ -234,7 +236,7 @@ public final class InMemoryEffects implements Effects {
    */
   @Override
   public synchronized boolean park(UUID effectId, int attemptsMade, Instant at) {
-    Objects.requireNonNull(at, "at must not be null");
+    Objects.requireNonNull(at, AT_REQUIRED);
     Row row = rows.get(effectId);
     if (row == null || row.status != Status.RUNNING || row.attemptsMade != attemptsMade) {
       return false;
@@ -248,7 +250,7 @@ public final class InMemoryEffects implements Effects {
   @Override
   public synchronized List<LiveEffect> liveFor(AgentType type, AgentId agent) {
     Objects.requireNonNull(type, TYPE_REQUIRED);
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(agent, AGENT_REQUIRED);
     return rows.values().stream()
         .filter(row -> row.type.equals(type) && row.agent.equals(agent))
         .sorted(LIVE_ORDER)
