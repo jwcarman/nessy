@@ -636,22 +636,8 @@ function drawTurn(turn, story, ending = null) {
   for (const line of story.length > 0 ? [...replaced, ...notes] : []) line.remove();
   for (const line of lines) log.insertBefore(line, marker);
   marker.remove();
-  markCommentary(lines);
   for (const line of lines) if (line.classList.contains("assistant")) attachChips(line);
   keepView();
-}
-
-// An assistant line that a tool call follows in its turn is commentary: words said on the way to
-// the call, drawn quieter than the answer that ends the turn.
-function markCommentary(lines) {
-  let said = null;
-  for (const line of lines) {
-    if (line.classList.contains("assistant")) said = line;
-    else if (isRequest(line) && said !== null) {
-      said.dataset.commentary = "yes";
-      said = null;
-    }
-  }
 }
 
 // Puts each note on a decision after the request line for its tool, in the order the notes were
@@ -789,11 +775,7 @@ const handlers = {
   },
   "actions-requested": (request) => {
     claim(request.turn);
-    if (live.bubble) {
-      // Words said on the way to a tool call are commentary, not the answer.
-      live.bubble.dataset.commentary = "yes";
-      finishAnswer(live.bubble);
-    }
+    if (live.bubble) finishAnswer(live.bubble);
     live.bubble = null;
     drawTyping();
     live.thinking = null;

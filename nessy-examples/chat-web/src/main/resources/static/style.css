@@ -309,20 +309,6 @@ main#log {
   border-radius: 1rem;
 }
 
-/* Commentary: what the agent said on the way to a tool call, quieter than its answer. */
-.line.assistant[data-commentary="yes"] {
-  background: none;
-  border-color: transparent;
-  box-shadow: none;
-  color: var(--muted);
-  font-size: 0.92rem;
-  padding-block: 0.1rem;
-}
-
-.line.assistant[data-commentary="yes"] .foot {
-  display: none;
-}
-
 /* A message from the person stands a little apart from the answers around it. */
 .line.user {
   margin: 0.55rem 0;
