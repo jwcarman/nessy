@@ -20,11 +20,15 @@ import java.util.List;
 import java.util.Objects;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The one verb a model uses on its plan, and the stage that keeps the plan in front of it.
@@ -43,6 +47,8 @@ public final class PlanTools {
 
   /** What this background is, so an adapter can label it the way its vendor likes. */
   private static final String KIND = "plan";
+
+  private static final Logger log = LoggerFactory.getLogger(PlanTools.class);
 
   private PlanTools() {}
 
@@ -94,6 +100,24 @@ public final class PlanTools {
                             .find(agentId)
                             .filter(plan -> !plan.isEmpty())
                             .map(PlanTools::render)));
+  }
+
+  /**
+   * Installs the plan on an agent: the current plan as ambient background, and the one tool that
+   * changes it.
+   *
+   * <p>One call equips a harness, which is what a factory-level feature needs; the notebook's
+   * feature is the precedent. The store passed in is keyed by this agent's type, so a caller
+   * installing it for several types builds one per type and calls this for each.
+   */
+  public static Customizer<HarnessConfig<?>> feature(Plans store) {
+    Objects.requireNonNull(store, "store must not be null");
+    return config -> {
+      config.ambient(plan(store)).tool(updatePlan(store));
+      // Says so, because a tool nobody wired by hand is otherwise a mystery in the logs.
+      log.info(
+          "NESSY PLAN: agent type '{}' keeps a plan (update_plan)", config.agentType().value());
+    };
   }
 
   /** A checklist, in the model's own order. */
