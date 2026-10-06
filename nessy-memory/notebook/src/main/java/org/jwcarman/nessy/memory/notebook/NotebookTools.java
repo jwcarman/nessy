@@ -22,11 +22,15 @@ import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.Customizer;
+import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The three verbs a model uses on its notebook, and the stage that shows it what it has.
@@ -42,6 +46,8 @@ public final class NotebookTools {
 
   /** What this background is, so an adapter can label it the way its vendor likes. */
   private static final String KIND = "notebook";
+
+  private static final Logger log = LoggerFactory.getLogger(NotebookTools.class);
 
   private static final String NOTEBOOK_NOT_NULL = "notebook must not be null";
 
@@ -193,6 +199,29 @@ public final class NotebookTools {
           notebook.forget(agentId, note.id());
           return said("Forgotten '" + note.id() + "'.");
         });
+  }
+
+  /**
+   * Installs the notebook on an agent: the index as ambient background, and the four tools.
+   *
+   * <p>One call equips a harness, which is what a factory-level feature needs: the chapters feature
+   * is the precedent. The notebook passed in is the one this agent type keeps, so a caller
+   * installing it for several types builds one per type and calls this for each.
+   */
+  public static Customizer<HarnessConfig<?>> feature(Notebook notebook) {
+    Objects.requireNonNull(notebook, NOTEBOOK_NOT_NULL);
+    return config -> {
+      config
+          .ambient(index(notebook))
+          .tool(remember(notebook))
+          .tool(revise(notebook))
+          .tool(recall(notebook))
+          .tool(forget(notebook));
+      // Says so, because a tool nobody wired by hand is otherwise a mystery in the logs.
+      log.info(
+          "NESSY NOTEBOOK: agent type '{}' keeps notes (remember, revise, recall, forget)",
+          config.agentType().value());
+    };
   }
 
   /** The same answer wherever an id turns out to name nothing: look at the index again. */

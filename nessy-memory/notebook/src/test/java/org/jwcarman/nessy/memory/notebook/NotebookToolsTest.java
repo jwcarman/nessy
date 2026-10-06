@@ -17,14 +17,24 @@ package org.jwcarman.nessy.memory.notebook;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
+import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.ChapterPolicy;
+import org.jwcarman.nessy.api.HarnessConfig;
+import org.jwcarman.nessy.api.MemorySource;
+import org.jwcarman.nessy.api.StateSource;
+import org.jwcarman.nessy.api.Summarizer;
+import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Tool;
 import org.jwcarman.nessy.api.tool.ToolResult;
@@ -180,6 +190,80 @@ class NotebookToolsTest {
       assertThat(((ToolResult.Failure) result).message())
           .contains("ghost")
           .contains("notebook index");
+    }
+  }
+
+  @Nested
+  class Installing {
+
+    /**
+     * A recording {@link HarnessConfig}: the feature is a customizer, and what a customizer does is
+     * call methods on a config. Recording which were called is the whole assertion.
+     */
+    private static final class Recording implements HarnessConfig<Recording> {
+      private final List<Tool<?>> tools = new ArrayList<>();
+      private final List<AmbientSource> ambients = new ArrayList<>();
+
+      @Override
+      public AgentType agentType() {
+        return Calls.TYPE;
+      }
+
+      @Override
+      public Recording turnPolicy(TurnPolicy policy) {
+        return this;
+      }
+
+      @Override
+      public <T> Recording tool(Tool<T> tool) {
+        tools.add(tool);
+        return this;
+      }
+
+      @Override
+      public Recording instructions(String text) {
+        return this;
+      }
+
+      @Override
+      public Recording memory(MemorySource source) {
+        return this;
+      }
+
+      @Override
+      public Recording state(StateSource source) {
+        return this;
+      }
+
+      @Override
+      public Recording ambient(AmbientSource source) {
+        ambients.add(source);
+        return this;
+      }
+
+      @Override
+      public Recording chapterPolicy(ChapterPolicy policy) {
+        return this;
+      }
+
+      @Override
+      public Recording summarizer(Summarizer summarizer) {
+        return this;
+      }
+    }
+
+    @Test
+    @DisplayName("one call equips an agent with the index and the four tools")
+    void the_feature_installs_the_index_and_the_four_tools() {
+      Recording config = new Recording();
+
+      NotebookTools.feature(notebook).customize(config);
+
+      assertThat(config.ambients).hasSize(1);
+      assertThat(config.tools).isNotEmpty();
+      assertThat(config.tools)
+          .extracting(tool -> tool.name().value())
+          .containsExactly("remember", "revise", "recall", "forget");
     }
   }
 
