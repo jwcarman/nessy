@@ -50,6 +50,11 @@
       <artifactId>nessy-spring-boot-autoconfigure</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-memory-notebook</artifactId>
+      <version>${project.version}</version>
+    </dependency>
   </dependencies>
 
 </project>
