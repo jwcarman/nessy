@@ -44,10 +44,9 @@ import java.util.List;
  * nearly everything -- keep everything, keep only the latest, keep at most N -- are one or two
  * calls each and read nothing. Adding an operation later is easy; taking one away is not.
  *
- * <p>TODO: James does not like the name {@code Coalescing}. It is a placeholder, chosen only to
- * stop it from blocking the split of what used to be a single {@code Backlog} type into this
- * policy-facing half and the engine's own {@code Backlog}, which adds taking. Expect it to be
- * renamed.
+ * <p>The name is provisional. It was chosen so that the split of one {@code Backlog} type into this
+ * policy-facing half and the engine's own {@code Backlog}, which adds taking, did not wait on a
+ * better word.
  *
  * @param <I> the application's input type
  */

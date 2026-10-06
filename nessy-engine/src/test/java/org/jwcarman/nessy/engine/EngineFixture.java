@@ -175,16 +175,16 @@ public final class EngineFixture implements AutoCloseable {
         (type, id) ->
             new EventStreamHistory(events, new Transcript(payloads.forAgent(id)), type, id);
 
-    JdbcQueuedBackend backend =
+    JdbcQueuedBackend jdbcBackend =
         new JdbcQueuedBackend(
             dataSource, new JdbcTransactionManager(dataSource), jackson, transform);
-    this.chapters = backend.chapters();
-    this.backend = backend;
+    this.chapters = jdbcBackend.chapters();
+    this.backend = jdbcBackend;
     this.harnesses =
         DefaultQueuedHarnessFactory.of(
             engine -> {
               engine
-                  .backend(wrapped.apply(backend))
+                  .backend(wrapped.apply(jdbcBackend))
                   .provider(ProviderId.of("test"), provider)
                   .inference(ProviderId.of("test"), InferenceOptions.of("a-model"))
                   .listener(listener)
