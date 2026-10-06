@@ -173,7 +173,7 @@ actually needs:
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-bom</artifactId>
-      <version>0.4.0</version>
+      <version>0.5.0</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>

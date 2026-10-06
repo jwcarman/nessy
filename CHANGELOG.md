@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-06
+
 ### Breaking changes
 
 - **`Outcome` is `AskOutcome`.** `DirectHarness.ask` returns `AskOutcome<O>`, with the same arms
@@ -198,6 +200,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **chat-web answers `409` as soon as a conversation is terminated.** It reads the outcome of
   `tell`: a message is a `202` when the agent took it and a `409` when the conversation has been
   terminated, even while its last turn is still in progress. The watchman logs a warning when its round is told to a terminated agent.
+- **The chat-web page is rebuilt.** The cursor stays in the message box, Enter sends and
+  Shift+Enter adds a line, the arrow keys recall earlier messages, and an unsent message survives a
+  reload. Answers are rendered as Markdown by markdown-it with raw HTML off, code is coloured by
+  highlight.js, and the icons are Lucide's, all served from WebJars. The reply is a typing bubble
+  of three humps on the water with a clock until the first words arrive; a turn's tool calls are
+  chips along the bottom of the answer that followed them, each opening to its call's lines; an
+  approval card comes up like a toast and stays until answered or expired; the page wears the Nessy
+  brand from `brand/` and has a light and dark theme with a switch in the header.
+- **The model SDKs are at their latest releases:** AWS SDK bom 2.55.11, anthropic-java 2.68.0,
+  openai-java 4.76.0 and google-genai 1.75.0, with logback 1.6.5, log4j 2.26.1, httpclient5 5.6.4,
+  httpcore5 5.4.4, H2 2.5.252, Spotless 3.10.3 and the Maven wrapper at 3.10.0.
 - **An approval's `decidedBy` and a denial's `reason` are cut, never refused.** Nessy keeps what
   the application gives and cuts one longer than 1,000 characters to that length.
 - **A payload's reference is a hash of its content before the storage transform.** The reference
@@ -869,6 +882,7 @@ Nessy is an agent harness framework for Java. This is the first release.
 - Java 25.
 - Spring Boot 4.1 (optional — only needed for `nessy-spring-boot-starter`).
 
+[0.5.0]: https://github.com/jwcarman/nessy/releases/tag/0.5.0
 [0.4.0]: https://github.com/jwcarman/nessy/releases/tag/0.4.0
 [0.3.0]: https://github.com/jwcarman/nessy/releases/tag/0.3.0
 [0.2.0]: https://github.com/jwcarman/nessy/releases/tag/0.2.0
