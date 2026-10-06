@@ -36,6 +36,7 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentWork;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.inference.InferenceRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -52,11 +53,18 @@ class ChatTurnsIntegrationTest {
   /** Opens while a test lets a held turn go. */
   static final CountDownLatch RELEASE = new CountDownLatch(1);
 
+  /** Every request the model was asked, in the order it was asked. */
+  static final List<InferenceRequest> REQUESTS = new CopyOnWriteArrayList<>();
+
   @TestConfiguration(proxyBeanMethods = false)
   static class ScriptedModelConfiguration {
     @Bean
     InferenceProvider scriptedModels() {
-      return ScriptedProvider.holdingOn("hold", RELEASE, "Noted.");
+      InferenceProvider scripted = ScriptedProvider.holdingOn("hold", RELEASE, "Noted.");
+      return (request, narrator) -> {
+        REQUESTS.add(request);
+        return scripted.infer(request, narrator);
+      };
     }
   }
 
@@ -165,6 +173,21 @@ class ChatTurnsIntegrationTest {
 
   private static AgentId agentIdOf(String id) {
     return new AgentId(UUID.fromString(id));
+  }
+
+  @Test
+  void the_notebook_tools_are_offered_once_each_without_the_application_wiring_them() {
+    ChatClient chat = chat();
+    String agentId = UUID.randomUUID().toString();
+    assertThat(chat.say(agentId, "hello")).isEqualTo(202);
+    await().atMost(Duration.ofSeconds(30)).until(() -> !REQUESTS.isEmpty());
+
+    List<String> offered =
+        REQUESTS.getFirst().toolset().offers().stream().map(offer -> offer.name().value()).toList();
+
+    assertThat(offered).isNotEmpty();
+    assertThat(offered)
+        .containsOnlyOnce("remember", "revise", "recall", "forget", "update_plan", "days_until");
   }
 
   @Test

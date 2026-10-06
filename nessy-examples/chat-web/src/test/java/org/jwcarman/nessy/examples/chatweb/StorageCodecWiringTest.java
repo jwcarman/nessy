@@ -23,9 +23,11 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.Codec;
+import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.StorageCodecConfigurer;
 import org.jwcarman.nessy.inference.InferenceProvider;
+import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
 import org.jwcarman.nessy.memory.notebook.Notebook;
 import org.jwcarman.nessy.planning.Plan;
 import org.jwcarman.nessy.planning.Plans;
@@ -81,9 +83,9 @@ class StorageCodecWiringTest {
     }
   }
 
-  @Autowired private Notebook notebook;
   @Autowired private Plans plans;
   @Autowired private DataSource dataSource;
+  @Autowired private CodecFactory codecs;
 
   private List<String> raw(String sql, AgentId agent) {
     return JdbcClient.create(dataSource)
@@ -100,6 +102,7 @@ class StorageCodecWiringTest {
   @DisplayName("a note's hook and body are stored through the codec")
   void the_notebook_is_built_with_the_applications_codec() {
     AgentId agent = AgentId.random();
+    Notebook notebook = new JdbcNotebook(dataSource, ChatConfiguration.TYPE, codecs);
 
     Notebook.Entry written =
         notebook.write(agent, "Bluebird-4471 is the favourite", "Ms. Okonkwo-Reyes, 9087-1123");

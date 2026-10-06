@@ -192,6 +192,8 @@ CHAT_SUMMARY_MODEL_ID=google/gemma-4-e4b \
 | `CHAT_APPROVAL_TERM` | `PT5M` | how long a person has to answer an email approval request |
 | `OTLP_TRACES_URL` | `http://localhost:4318/v1/traces` | where traces go |
 
+The notebook comes with the starter, not from this application; `nessy.notebook.enabled=false` turns it off.
+
 OpenAI itself works too: export `OPENAI_API_KEY`, which lights the starter's `openai`
 provider, and name that provider instead of the `lmstudio` default. A GPT-6 model
 calls tools only over OpenAI's Responses API, so put the preset on that wire:

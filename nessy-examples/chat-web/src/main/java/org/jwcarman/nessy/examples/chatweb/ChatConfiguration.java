@@ -35,9 +35,6 @@ import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
 import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
-import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
-import org.jwcarman.nessy.memory.notebook.Notebook;
-import org.jwcarman.nessy.memory.notebook.NotebookTools;
 import org.jwcarman.nessy.planning.JdbcPlans;
 import org.jwcarman.nessy.planning.PlanTools;
 import org.jwcarman.nessy.planning.Plans;
@@ -47,7 +44,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * The chat agent: a notebook, a plan, a date tool, and an email tool a person has to approve.
+ * The chat agent: a plan, a date tool, and an email tool a person has to approve. The notebook is
+ * not wired here; the starter installs it on every agent.
  *
  * <p>The starter supplies the factory, the provider (from {@code nessy.provider}) and the model
  * (from {@code nessy.model}), but no harness: a harness is the agent's definition (its tools, their
@@ -62,11 +60,6 @@ public class ChatConfiguration {
   @Bean
   public SendEmailTool sendEmailTool() {
     return new SendEmailTool();
-  }
-
-  @Bean
-  public Notebook notebook(DataSource dataSource, CodecFactory codecs) {
-    return new JdbcNotebook(dataSource, TYPE, codecs);
   }
 
   @Bean
@@ -102,7 +95,6 @@ public class ChatConfiguration {
       Map<String, InferenceProvider> providers,
       ObservationRegistry observations,
       SendEmailTool email,
-      Notebook notebook,
       Plans plans,
       @Value("${chat.chapter-turns:20}") int chapterTurns,
       @Value("${chat.summary-model:}") String summaryModel,
@@ -115,9 +107,8 @@ public class ChatConfiguration {
                 .inputRenderer(said -> List.of(new Block.Text(said)))
                 .backlogPolicy(together())
                 .systemPrompt(properties.resolveSystemPrompt())
-                // Two sources of background: the notebook's index and the current plan. Both
-                // ambient, so they are asked afresh every call and never part of the story --
-                // the model sees them as they stand NOW.
+                // The current plan is background: ambient, so it is asked afresh every call and
+                // never part of the story -- the model sees it as it stands NOW.
                 .inference(
                     in ->
                         in.model(properties.model())
@@ -134,13 +125,8 @@ public class ChatConfiguration {
                                             providers,
                                             observations,
                                             summaryModel)
-                                        .ambient(NotebookTools.index(notebook))
                                         .ambient(PlanTools.plan(plans))))
                 .tool(new DaysUntilTool())
-                .tool(NotebookTools.remember(notebook))
-                .tool(NotebookTools.revise(notebook))
-                .tool(NotebookTools.recall(notebook))
-                .tool(NotebookTools.forget(notebook))
                 .tool(PlanTools.updatePlan(plans))
                 .tool(
                     email,
