@@ -278,6 +278,7 @@ class AnthropicInferenceProviderTest {
         .stopSequence(Optional.empty())
         .container(Optional.empty())
         .stopDetails(Optional.empty())
+        .diagnostics(Optional.empty())
         .usage(
             // Every field is required by the SDK's builder and none is read by this adapter.
             Usage.builder()
