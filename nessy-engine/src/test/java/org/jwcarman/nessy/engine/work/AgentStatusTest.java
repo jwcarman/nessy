@@ -415,7 +415,9 @@ class AgentStatusTest {
       awaitStatus(story, agent, Activity.WAITING);
       AgentStatus status = status(story, agent);
 
-      assertThat(status.queued()).as("ending is not an input, and a later one is refused").isZero();
+      assertThat(status.queued())
+          .as("terminating is not an input, and a later one is refused")
+          .isZero();
       assertThat(status.turn()).contains(new TurnId(1));
     }
   }
@@ -449,7 +451,7 @@ class AgentStatusTest {
                   ApprovalResult.approvedBy("u_carol"));
 
       assertThat(outcome).isInstanceOf(ReplyOutcome.Applied.class);
-      awaitStatus(story, agent, Activity.ENDED);
+      awaitStatus(story, agent, Activity.TERMINATED);
     }
   }
 
@@ -478,7 +480,7 @@ class AgentStatusTest {
       awaitStatus(story, agent, Activity.IDLE);
       harness.terminate(agent);
 
-      awaitStatus(story, agent, Activity.ENDED);
+      awaitStatus(story, agent, Activity.TERMINATED);
 
       assertThat(status(story, agent).turn()).isEmpty();
     }
@@ -496,7 +498,7 @@ class AgentStatusTest {
       release(story);
 
       assertThat(during).isEqualTo(Activity.WORKING);
-      awaitStatus(story, agent, Activity.ENDED);
+      awaitStatus(story, agent, Activity.TERMINATED);
     }
   }
 }

@@ -34,7 +34,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.json.JsonMapper;
 
-/** The row that says an agent exists, and whether it has been told to end. */
+/** The row that says an agent exists, and whether it has been terminated. */
 @Tag("container")
 @DisplayName("An agent in a database")
 class JdbcAgentsTest {
@@ -87,64 +87,66 @@ class JdbcAgentsTest {
 
   /**
    * Termination cannot reach an agent mid-turn, so it waits here. The mark and the emptying of the
-   * backlog belong to the same statement pair, so an agent cannot be left ended with work still
-   * queued behind it.
+   * backlog belong to the same statement pair, so an agent cannot be left terminated with work
+   * still queued behind it.
    */
   @Test
   @DisplayName("sealing marks the agent and abandons what was waiting")
   void sealing_abandons_what_was_waiting() {
-    AgentId ending = AgentId.random();
-    agents.ensure(TYPE, ending);
-    Backlog<String> backlog = new JdbcBacklog<>(jdbc, codec, agents, TYPE, ending);
+    AgentId terminating = AgentId.random();
+    agents.ensure(TYPE, terminating);
+    Backlog<String> backlog = new JdbcBacklog<>(jdbc, codec, agents, TYPE, terminating);
     backlog.append(said("never going to happen"));
 
-    assertThat(agents.seal(TYPE, ending))
+    assertThat(agents.seal(TYPE, terminating))
         .as("work thrown away is counted, not vanished")
         .isEqualTo(1);
 
     assertThat(backlog.all()).as("whatever was waiting is abandoned").isEmpty();
-    assertThat(agents.terminated(TYPE, ending)).isTrue();
+    assertThat(agents.terminated(TYPE, terminating)).isTrue();
   }
 
   @Test
   @DisplayName("sealing an agent with nothing waiting abandons nothing")
   void sealing_an_idle_agent_abandons_nothing() {
-    AgentId ending = AgentId.random();
-    agents.ensure(TYPE, ending);
+    AgentId terminating = AgentId.random();
+    agents.ensure(TYPE, terminating);
 
-    assertThat(agents.seal(TYPE, ending)).isZero();
-    assertThat(agents.terminated(TYPE, ending)).isTrue();
+    assertThat(agents.seal(TYPE, terminating)).isZero();
+    assertThat(agents.terminated(TYPE, terminating)).isTrue();
   }
 
   /**
    * The invariant a queued harness depends on. Nothing may be coalesced into a sealed agent --
-   * sealing twice must still answer that the agent has ended.
+   * sealing twice must still answer that the agent has been terminated.
    */
   @Test
-  @DisplayName("sealing twice is still sealed, and still says end")
+  @DisplayName("sealing twice is still sealed, and still says terminated")
   void sealing_is_not_undone() {
-    AgentId ending = AgentId.random();
-    agents.ensure(TYPE, ending);
-    Backlog<String> backlog = new JdbcBacklog<>(jdbc, codec, agents, TYPE, ending);
-    backlog.append(said("in flight when it ended"));
+    AgentId terminating = AgentId.random();
+    agents.ensure(TYPE, terminating);
+    Backlog<String> backlog = new JdbcBacklog<>(jdbc, codec, agents, TYPE, terminating);
+    backlog.append(said("in flight when it was terminated"));
 
-    agents.seal(TYPE, ending);
-    assertThat(agents.seal(TYPE, ending)).as("nothing left to abandon the second time").isZero();
+    agents.seal(TYPE, terminating);
+    assertThat(agents.seal(TYPE, terminating))
+        .as("nothing left to abandon the second time")
+        .isZero();
 
-    assertThat(agents.terminated(TYPE, ending)).isTrue();
+    assertThat(agents.terminated(TYPE, terminating)).isTrue();
   }
 
   @Test
   @DisplayName("agents do not see each other's termination")
   void agents_are_separate() {
-    AgentId ended = AgentId.random();
+    AgentId terminated = AgentId.random();
     AgentId living = AgentId.random();
-    agents.ensure(TYPE, ended);
+    agents.ensure(TYPE, terminated);
     agents.ensure(TYPE, living);
 
-    agents.seal(TYPE, ended);
+    agents.seal(TYPE, terminated);
 
-    assertThat(agents.terminated(TYPE, ended)).isTrue();
+    assertThat(agents.terminated(TYPE, terminated)).isTrue();
     assertThat(agents.terminated(TYPE, living)).isFalse();
   }
 }

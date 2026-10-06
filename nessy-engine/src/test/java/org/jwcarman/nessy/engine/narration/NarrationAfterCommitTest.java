@@ -185,7 +185,8 @@ class NarrationAfterCommitTest {
         AgentId lost = AgentId.random();
         AgentId kept = AgentId.random();
 
-        // Ending an agent writes and narrates but leaves no effect behind to be performed later, so
+        // Terminating an agent writes and narrates but leaves no effect behind to be performed
+        // later, so
         // what this proves is only what the failed step itself said.
         assertThatThrownBy(() -> harness.terminate(lost))
             .isInstanceOf(IllegalStateException.class)

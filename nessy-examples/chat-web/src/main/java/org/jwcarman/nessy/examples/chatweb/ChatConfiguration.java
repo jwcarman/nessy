@@ -23,16 +23,16 @@ import javax.sql.DataSource;
 import org.jwcarman.codec.CodecFactory;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
+import org.jwcarman.nessy.api.BacklogPolicy;
 import org.jwcarman.nessy.api.ChapterPolicy;
 import org.jwcarman.nessy.api.ContextConfig;
-import org.jwcarman.nessy.api.DirectHarness;
+import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.QueuedHarnessFactory;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Approver;
-import org.jwcarman.nessy.backend.jdbc.JdbcRowLocks;
-import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.engine.chapter.ProseSummarizer;
-import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
 import org.jwcarman.nessy.engine.observability.ObservedInferenceProvider;
+import org.jwcarman.nessy.engine.store.TurnHistories;
 import org.jwcarman.nessy.inference.InferenceOptions;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.memory.notebook.JdbcNotebook;
@@ -45,14 +45,14 @@ import org.jwcarman.nessy.spring.boot.NessyProperties;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * The chat agent: a notebook, a plan, a date tool, and an email tool a person has to approve.
  *
  * <p>The starter supplies the factory, the provider (from {@code nessy.provider}) and the model
- * (from {@code nessy.model}); this class declares the harness itself because the starter's free one
- * binds tool beans with defaults, and an email needs an approver.
+ * (from {@code nessy.model}), but no harness: a harness is the agent's definition (its tools, their
+ * approvers and its prompt), which only the application knows. This class declares it, and the
+ * email tool needs an approver.
  */
 @Configuration(proxyBeanMethods = false)
 public class ChatConfiguration {
@@ -69,32 +69,22 @@ public class ChatConfiguration {
     return new JdbcNotebook(dataSource, TYPE, codecs);
   }
 
-  /**
-   * One turn at a time per agent, and a database transaction is what says so.
-   *
-   * <p>Without this the direct door falls back to locks held in this process, which are scoped to
-   * this one JVM, so a second instance would not see them at all. {@link Locks#TURN} is the
-   * transaction boundary the direct door builds each step around ({@code JdbcRowLocks.withLock} IS
-   * the transaction), so it must be exact rather than believed -- a lease would leave that boundary
-   * with no transaction at all, and the several appends {@code recoverToIdle} makes would stop
-   * being atomic. That is a lock, not a lease.
-   */
-  @Bean
-  public Locks agentLocks(DataSource dataSource, PlatformTransactionManager transactions) {
-    return new JdbcRowLocks(dataSource, transactions);
-  }
-
   @Bean
   public Plans plans(DataSource dataSource, CodecFactory codecs) {
     return new JdbcPlans(dataSource, TYPE, codecs);
   }
 
   /**
-   * A web assistant on the direct door.
+   * A web assistant on the queued door.
    *
-   * <p>Somebody is in the browser waiting, which is what this door is for. The turn runs on the
-   * request thread and the answer is the return value; the SSE stream carries what is happening
-   * while it runs, which is narration rather than delivery.
+   * <p>Whoever speaks is told that the message was accepted and is not held for the answer: the
+   * turn runs on the engine's own threads, and the SSE stream carries what happens while it runs
+   * and how it ends. A message told while a turn is in progress waits in the agent's queue and runs
+   * after it.
+   *
+   * <p>The email tool's approver defers and keeps nothing. Nessy holds the approval request open
+   * for {@code chat.approval-term}, and the page reads what is waiting from Nessy, so a request
+   * outlives the tab and the process that asked.
    *
    * <p>A chapter of the conversation closes every {@code chat.chapter-turns} turns and is
    * summarised off the request thread. The default is the engine's own twenty; a small number
@@ -105,22 +95,25 @@ public class ChatConfiguration {
    * prose, write the summaries.
    */
   @Bean
-  public DirectHarness<String, String> harness(
-      DefaultDirectHarnessFactory factory,
+  public QueuedHarness<String> harness(
+      QueuedHarnessFactory factory,
+      TurnHistories histories,
       NessyProperties properties,
       Map<String, InferenceProvider> providers,
       ObservationRegistry observations,
       SendEmailTool email,
-      Approver desk,
       Notebook notebook,
       Plans plans,
       @Value("${chat.chapter-turns:20}") int chapterTurns,
-      @Value("${chat.summary-model:}") String summaryModel) {
-    return factory.<String>create(
+      @Value("${chat.summary-model:}") String summaryModel,
+      @Value("${chat.approval-term:PT5M}") Duration approvalTerm) {
+    Approver deferring = _ -> Awaited.deferred();
+    return factory.create(
         TYPE,
         config ->
             config
                 .inputRenderer(said -> List.of(new Block.Text(said)))
+                .backlogPolicy(together())
                 .systemPrompt(properties.resolveSystemPrompt())
                 // Two sources of background: the notebook's index and the current plan. Both
                 // ambient, so they are asked afresh every call and never part of the story --
@@ -136,7 +129,7 @@ public class ChatConfiguration {
                                     summaries(
                                             ctx.chapterLeaseTtl(Duration.ofMinutes(10))
                                                 .chapterPolicy(ChapterPolicy.every(chapterTurns)),
-                                            factory,
+                                            histories,
                                             properties,
                                             providers,
                                             observations,
@@ -153,7 +146,9 @@ public class ChatConfiguration {
                     email,
                     binding ->
                         binding
-                            .approver(desk)
+                            // How long a person has to answer. An answer after it is ignored and
+                            // the call is recorded as failed.
+                            .approver(deferring, approval -> approval.timeout(approvalTerm))
                             // The body too: a page has room, and approving a message you have not
                             // read is not approval. The console example trims for want of screen;
                             // here there is none of that excuse.
@@ -164,42 +159,21 @@ public class ChatConfiguration {
   }
 
   /**
-   * Hands the approval request to the desk and tells the page, on the desk's own stream beside the
-   * one the engine narrates on. The engine narrates that an approval was sought BEFORE it asks the
-   * approver, so the page cannot be told from that event -- it would find a desk that has not heard
-   * yet. Told here, the card is complete when it arrives, and journaled, so a page opened later
-   * still sees it.
-   */
-  /**
-   * How long a turn will hold a request thread waiting for a person.
+   * Messages that arrive while the agent is busy are given to it together.
    *
-   * <p>Generous, because somebody reading a message before sending it is not being slow. Bounded,
-   * because a thread waiting forever on a closed tab is one nobody gets back -- and an unanswered
-   * approval request is a no, which is the direction a gate should fail in.
+   * <p>One constant key makes everything waiting a single input, joined with a blank line, the
+   * earlier message first. A person who sends three lines in a row means one thing, and one turn
+   * answers it better than three. A message sent to an idle agent starts its turn at once and is
+   * never merged.
    */
-  private static final Duration PATIENCE = Duration.ofMinutes(5);
-
-  /**
-   * Asks the page, and waits.
-   *
-   * <p>On the queued door this returned {@code deferred}, and the engine came back for the answer
-   * whenever it arrived. Here the turn is on a request thread, so the answer has to reach it there:
-   * the card goes out on the desk's own stream and this blocks until somebody clicks or the
-   * patience runs out.
-   */
-  @Bean
-  public Approver desk(ApprovalDesk desk, ApprovalStreams streams) {
-    return request -> {
-      desk.expecting(request);
-      desk.card(request.callId()).ifPresent(card -> streams.asked(request.agentId(), card));
-      return Awaited.ready(desk.await(request.callId(), PATIENCE));
-    };
+  static BacklogPolicy<String> together() {
+    return BacklogPolicy.mergeBy(said -> "chat", (earlier, later) -> earlier + "\n\n" + later);
   }
 
   /** The agent's own model writes the summaries, unless {@code summaryModel} names another. */
   private static ContextConfig summaries(
       ContextConfig ctx,
-      DefaultDirectHarnessFactory factory,
+      TurnHistories histories,
       NessyProperties properties,
       Map<String, InferenceProvider> providers,
       ObservationRegistry observations,
@@ -214,7 +188,7 @@ public class ChatConfiguration {
     }
     return ctx.summarizer(
         new ProseSummarizer(
-            factory.histories(),
+            histories,
             ObservedInferenceProvider.wrap(provider, observations),
             new InferenceOptions(summaryModel, properties.maxTokens())));
   }

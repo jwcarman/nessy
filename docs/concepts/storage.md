@@ -186,7 +186,7 @@ and `terminated_at`, set once and never cleared. It is not what is locked:
 `pg_advisory_xact_lock` is taken against a hash of
 `(kind, agent_type, agent_id)` and needs no row of its own to be true of.
 The queued door still needs a durable place to record that an agent was
-told to end, since ending cannot be delivered mid-turn and has to be
+told to terminate, since termination cannot be delivered mid-turn and has to be
 remembered until the agent is next idle.
 
 Where an agent actually *is* — idle, inferring, or waiting on a named set of
@@ -302,7 +302,7 @@ and writes this table. See [Context](context.md#chapters).
 
 ## Retention
 
-Nothing here deletes. Terminating an agent ends its activity and leaves its
+Nothing here deletes. Terminating an agent stops its activity and leaves its
 rows; the story and its payloads grow until you prune them. That is a
 policy your operators own, applied to the tables directly, and the schema
 is plain enough to do it in one statement per table.

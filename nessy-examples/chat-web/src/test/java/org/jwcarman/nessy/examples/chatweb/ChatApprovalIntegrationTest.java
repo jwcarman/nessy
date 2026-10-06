@@ -19,21 +19,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
-import java.util.List;
-import java.util.Map;
+import java.time.Instant;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.client.RestClient;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -57,76 +55,137 @@ class ChatApprovalIntegrationTest {
 
   @LocalServerPort private int port;
   @Autowired private SendEmailTool email;
+  @Autowired private PostgreSQLContainer postgres;
+
+  private ChatClient chat() {
+    return new ChatClient(port);
+  }
+
+  /** Asks for the email and waits until its approval request is on the page. */
+  private ChatClient.Card asked(ChatClient chat, String agentId) {
+    assertThat(chat.say(agentId, "Email Jim about dinner")).isEqualTo(202);
+    await()
+        .atMost(Duration.ofSeconds(30))
+        .untilAsserted(() -> assertThat(chat.state(agentId).approvals()).isNotEmpty());
+    return chat.state(agentId).approvals().getFirst();
+  }
 
   @Test
-  void aGatedToolWaitsForAPersonAndThenRuns() {
-    RestClient http = RestClient.create("http://localhost:" + port);
+  void an_email_waits_for_a_person_and_the_state_lists_it_as_a_card() {
+    ChatClient chat = chat();
     String agentId = UUID.randomUUID().toString();
+    int sentBefore = email.sent().size();
 
-    // Sent without waiting for the reply, which is what a browser does and what this door
-    // requires of anything that gates a tool on a person: the request is held open for the whole
-    // turn, so the answer to the approval request it raises has to come in on a different one. A
-    // test that blocked here would be waiting for a turn that is waiting for the test.
-    CompletableFuture<Void> said =
-        CompletableFuture.runAsync(
-            () ->
-                http.post()
-                    .uri("/api/agents/{id}/messages", agentId)
-                    .body(new ChatController.MessageRequest("Email Jim about dinner"))
-                    .retrieve()
-                    .toBodilessEntity());
+    ChatClient.Card card = asked(chat, agentId);
 
-    // The approval request reaches the page...
+    // The id is the call's idempotency key, which UUID.fromString accepts only if it is one.
+    assertThat(UUID.fromString(card.id())).isNotNull();
+    assertThat(card.tool()).isEqualTo("send_email");
+    // The turn the call was asked in: the one whose request line is the last in the transcript.
+    Object asking = chat.state(agentId).transcript().getLast().get("turn");
+    assertThat(card.turn()).isEqualTo(((Number) asking).longValue());
+    assertThat(card.what())
+        .isEqualTo("Send an email to jim@example.com, subject \"Dinner\": Are you free Thursday?");
+    assertThat(card.args()).contains("jim@example.com").contains("\n");
+    Instant askedAt = Instant.parse(card.askedAt());
+    Instant deadline = Instant.parse(card.deadline());
+    // The term is the default five minutes, less what the clock rounds off between the two.
+    assertThat(Duration.between(askedAt, deadline))
+        .isBetween(Duration.ofMinutes(5).minusSeconds(5), Duration.ofMinutes(5));
+    assertThat(email.sent()).hasSize(sentBefore);
+  }
+
+  @Test
+  void a_waiting_card_is_still_there_for_a_second_application_context_on_the_same_database() {
+    ChatClient chat = chat();
+    String agentId = UUID.randomUUID().toString();
+    ChatClient.Card card = asked(chat, agentId);
+
+    try (ConfigurableApplicationContext second =
+        new SpringApplicationBuilder(ChatWebApplication.class, ScriptedModelConfiguration.class)
+            // Command-line arguments, which outrank the application.yml defaults for the database.
+            .run(
+                "--spring.main.web-application-type=none",
+                "--nessy.provider=scriptedModels",
+                "--spring.datasource.url=" + postgres.getJdbcUrl(),
+                "--spring.datasource.username=" + postgres.getUsername(),
+                "--spring.datasource.password=" + postgres.getPassword())) {
+      ChatController controller = second.getBean(ChatController.class);
+
+      var state = controller.state(agentId);
+
+      assertThat(state.get("approvals").toString()).contains(card.id());
+    }
+  }
+
+  @Test
+  void approving_a_card_sends_the_email_and_the_turn_answers() {
+    ChatClient chat = chat();
+    String agentId = UUID.randomUUID().toString();
+    int sentBefore = email.sent().size();
+    ChatClient.Card card = asked(chat, agentId);
+    assertThat(email.sent()).hasSize(sentBefore);
+
+    assertThat(chat.decide(agentId, card.id(), "approve", "")).isEqualTo(202);
+
     await()
-        .atMost(Duration.ofSeconds(20))
-        .untilAsserted(() -> assertThat(approvals(http, agentId)).isNotEmpty());
-    // ...and nothing has been sent while it waits, which is the point.
-    assertThat(email.sent()).isEmpty();
-    Map<String, String> card = approvals(http, agentId).getFirst();
-    assertThat(card.get("what")).contains("jim@example.com").contains("Are you free Thursday?");
-
-    ResponseEntity<Void> answered =
-        http.post()
-            .uri("/api/agents/{id}/approvals/{call}", agentId, card.get("id"))
-            .body(new ChatController.Decision("approve", ""))
-            .retrieve()
-            .toBodilessEntity();
-    assertThat(answered.getStatusCode().is2xxSuccessful()).isTrue();
-
-    await()
-        .atMost(Duration.ofSeconds(20))
+        .atMost(Duration.ofSeconds(30))
         .untilAsserted(
             () -> {
-              assertThat(email.sent()).isNotEmpty();
-              assertThat(email.sent().getFirst().to()).isEqualTo("jim@example.com");
+              assertThat(email.sent()).hasSize(sentBefore + 1);
+              assertThat(chat.state(agentId).texts()).contains("🔧 send_email", "Sent.");
             });
-    // The desk hands out each approval request once: answering it takes it off the page.
-    assertThat(approvals(http, agentId)).isEmpty();
-    // And the turn that was held open across all of that can now finish, which is the proof that
-    // a person answering hours later would have released it too.
-    said.orTimeout(30, TimeUnit.SECONDS).join();
+    assertThat(chat.state(agentId).approvals()).isEmpty();
+  }
 
-    // And the story shows the whole of it, for a page that loads later.
+  @Test
+  void denying_a_card_tells_the_model_and_nothing_is_sent() {
+    ChatClient chat = chat();
+    String agentId = UUID.randomUUID().toString();
+    int sentBefore = email.sent().size();
+    ChatClient.Card card = asked(chat, agentId);
+
+    assertThat(chat.decide(agentId, card.id(), "deny", "not to Jim")).isEqualTo(202);
+
     await()
-        .atMost(Duration.ofSeconds(20))
+        .atMost(Duration.ofSeconds(30))
         .untilAsserted(
-            () ->
-                assertThat(transcript(http, agentId))
-                    .extracting(line -> line.get("text"))
-                    .contains("Email Jim about dinner", "🔧 send_email", "Sent."));
+            () -> assertThat(chat.state(agentId).texts()).contains("denied: not to Jim", "Sent."));
+    assertThat(email.sent()).hasSize(sentBefore);
+    assertThat(chat.state(agentId).approvals()).isEmpty();
   }
 
-  record PageState(List<Map<String, String>> transcript, List<Map<String, String>> approvals) {}
+  @Test
+  void a_second_answer_to_one_card_is_a_409_and_changes_nothing() {
+    ChatClient chat = chat();
+    String agentId = UUID.randomUUID().toString();
+    int sentBefore = email.sent().size();
+    ChatClient.Card card = asked(chat, agentId);
+    assertThat(chat.decide(agentId, card.id(), "approve", "")).isEqualTo(202);
 
-  private static PageState state(RestClient http, String agentId) {
-    return http.get().uri("/api/agents/{id}", agentId).retrieve().body(PageState.class);
+    assertThat(chat.decide(agentId, card.id(), "deny", "too late")).isEqualTo(409);
+
+    await()
+        .atMost(Duration.ofSeconds(30))
+        .untilAsserted(() -> assertThat(chat.state(agentId).texts()).contains("Sent."));
+    assertThat(email.sent()).hasSize(sentBefore + 1);
+    assertThat(chat.state(agentId).texts()).noneMatch(text -> text.contains("too late"));
   }
 
-  private static List<Map<String, String>> approvals(RestClient http, String agentId) {
-    return state(http, agentId).approvals();
+  @Test
+  void a_malformed_key_is_a_400() {
+    ChatClient chat = chat();
+
+    assertThat(chat.decide(UUID.randomUUID().toString(), "not-a-key", "approve", ""))
+        .isEqualTo(400);
   }
 
-  private static List<Map<String, String>> transcript(RestClient http, String agentId) {
-    return state(http, agentId).transcript();
+  @Test
+  void an_unknown_key_is_a_409() {
+    ChatClient chat = chat();
+
+    assertThat(
+            chat.decide(UUID.randomUUID().toString(), UUID.randomUUID().toString(), "approve", ""))
+        .isEqualTo(409);
   }
 }

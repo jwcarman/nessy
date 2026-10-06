@@ -36,10 +36,10 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AskOutcome;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.InputRenderer;
-import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.OutputReader;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TerminationOutcome;
@@ -90,9 +90,10 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * commit -- a few milliseconds -- against a turn that runs for seconds, so a lock refusal would
  * catch a vanishing fraction of collisions. This door therefore always waits (§3a) rather than
  * being refused, and what decides whether a caller may proceed is what the reconstituted state says
- * once the wait is over. An agent that reconstitutes {@link AgentState.Terminal} is refused; one
- * reconstituted to anything but {@link AgentState.Idle} -- unless {@link #recoverToIdle} finds the
- * thing it is waiting on overdue -- is told {@link Outcome.Busy}.
+ * once the wait is over. An agent that reconstitutes {@link AgentState.Terminal} is answered {@link
+ * AskOutcome.Terminated}; one reconstituted to anything but {@link AgentState.Idle} -- unless
+ * {@link #recoverToIdle} finds the thing it is waiting on overdue -- is told {@link
+ * AskOutcome.Busy}.
  *
  * <p><b>Lazy recovery, by deadline, never by phase age.</b> A dead process leaves an agent on a
  * busy phase forever; the next caller to arrive reads not just the phase but when it started
@@ -273,7 +274,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   }
 
   @Override
-  public Outcome<O> ask(AgentId agent, I input) {
+  public AskOutcome<O> ask(AgentId agent, I input) {
     // Before anything is written: a turn inside a caller's transaction would hold it across a
     // model call, and on JDBC the model call could not see the turn's first step (nessy-ap F14).
     // Only a transaction Spring manages is visible here.
@@ -315,7 +316,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * observation across instead of a column doing it -- see {@code ContextExecutorService} where
    * that executor is made.
    */
-  private Outcome<O> asking(AgentId agent, I input) {
+  private AskOutcome<O> asking(AgentId agent, I input) {
     // renderer.render is pure and can run outside the lock; only the payload write it feeds has to
     // happen inside the first locked step, after the phase check, so a declined caller writes no
     // payload at all (§3, §4d).
@@ -335,7 +336,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     // The core only takes Terminate from Idle: asking while a turn is running is declined by the
     // fold itself (Decision.ignore()), and waiting for the turn is not this door's habit. What the
     // fold decided is the answer -- an empty decision IS the refusal, so nothing needs to re-derive
-    // which states accept ending.
+    // which states accept termination.
     return narrator.locked(
         backend.locks(),
         agentType,
@@ -344,17 +345,18 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
           Instant at = clock.instant().truncatedTo(ChronoUnit.MICROS);
           AgentState state = reconstitute(agent);
           if (state instanceof AgentState.Terminal) {
-            return new TerminationOutcome.AlreadyEnded();
+            return new TerminationOutcome.AlreadyTerminated();
           }
           Decision decision =
               state.execute(new AgentCommand.Terminate(), turnPolicy, clock.instant());
           if (decision.events().isEmpty()) {
-            LOG.debug("[{}] agent {} is mid-turn; ending it was refused", agentType.value(), agent);
+            LOG.debug(
+                "[{}] agent {} is mid-turn; terminating it was refused", agentType.value(), agent);
             return new TerminationOutcome.Busy();
           }
           backend.events().append(agentType, agent, decision.events(), state.seq(), at);
           decision.events().forEach(event -> narrate(step, event, at));
-          return new TerminationOutcome.Ended();
+          return new TerminationOutcome.Terminated();
         });
   }
 
@@ -362,25 +364,23 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * The first locked step of a turn: the phase check, lazy recovery, and -- only once the agent is
    * genuinely {@link AgentState.Idle} -- the payload write and {@code TurnStarted}.
    *
-   * <p>A {@link AgentState.Terminal} agent is refused outright, never told {@link Outcome.Busy};
-   * that refusal is what the door already gave before this step existed. Anything else that is not
-   * {@link AgentState.Idle} goes through {@link #recoverToIdle}, which either proves the agent idle
-   * -- because whatever it was waiting on had already passed its own deadline -- or reports that it
-   * is genuinely busy.
+   * <p>A {@link AgentState.Terminal} agent is answered {@link AskOutcome.Terminated}, never told
+   * {@link AskOutcome.Busy}. Anything else that is not {@link AgentState.Idle} goes through {@link
+   * #recoverToIdle}, which either proves the agent idle -- because whatever it was waiting on had
+   * already passed its own deadline -- or reports that it is genuinely busy.
    */
   private StepResult<O> beginTurn(
       Step step, AgentId agent, List<Block.InputContent> rendered, String label) {
     Instant at = clock.instant().truncatedTo(ChronoUnit.MICROS);
     AgentState state = reconstitute(agent);
     if (state instanceof AgentState.Terminal) {
-      LOG.debug("[{}] agent {} has ended; the question is refused", agentType.value(), agent);
-      // No turn opened, so there is nothing this agent did to report. An ended agent refusing a
-      // question is the agent's state, not a turn's cost.
-      return StepResult.declined(
-          new Outcome.Refused<>("terminated", TurnStats.opened(clock.instant())));
+      LOG.debug("[{}] agent {} is terminated; the question is not taken", agentType.value(), agent);
+      // No turn opened, so there is nothing this agent did to report: no tally, and nothing
+      // appended.
+      return StepResult.declined(new AskOutcome.Terminated<>());
     }
     return switch (recoverToIdle(step, agent, state, at)) {
-      case RecoveryOutcome.Busy() -> StepResult.declined(new Outcome.Busy<>());
+      case RecoveryOutcome.Busy() -> StepResult.declined(new AskOutcome.Busy<>());
       case RecoveryOutcome.Recovered(AgentState.Idle idle) -> {
         Payloads content = backend.payloads().forAgent(agent);
         Decision decision =
@@ -430,7 +430,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * one semaphore this whole harness shares -- see its own javadoc for why the scope is
    * harness-wide rather than per call.
    */
-  private Outcome<O> drive(AgentId agent, TurnId turn, List<TimedEffect> firstBatch) {
+  private AskOutcome<O> drive(AgentId agent, TurnId turn, List<TimedEffect> firstBatch) {
     List<TimedEffect> batch = firstBatch;
     while (!batch.isEmpty()) {
       batch = performBatch(agent, batch);
@@ -561,7 +561,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    *
    * <p><b>Which is why the deadline check applies only to the phase this pass FIRST found.</b> That
    * phase is the one that distinguishes an abandoned agent from a live one, and a caller who finds
-   * it inside its deadline is told {@link Outcome.Busy}. A phase recovery itself produced is a
+   * it inside its deadline is told {@link AskOutcome.Busy}. A phase recovery itself produced is a
    * different thing entirely: it was written a moment ago, so a deadline would call it live, and
    * nothing holds it -- the effect it implies was decided here and this method performs nothing.
    * Checked, it would leave the agent {@code Inferring} with nobody to answer for it until the
@@ -604,7 +604,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   /**
    * What {@code state} is waiting on, discharged with {@link EffectTerms#undispatchable()} if --
    * and only if -- it has already passed its own deadline; empty if it has not, which is what makes
-   * the caller's answer {@link Outcome.Busy} rather than a recovery.
+   * the caller's answer {@link AskOutcome.Busy} rather than a recovery.
    */
   private Optional<AgentCommand> overdueDischarge(AgentId agent, AgentState state) {
     return switch (state) {
@@ -699,15 +699,15 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
 
   /**
    * What one locked step of a turn's opening command came to: either a caller who was told no --
-   * {@link Outcome.Refused} or {@link Outcome.Busy} -- or a turn genuinely under way.
+   * {@link AskOutcome.Terminated} or {@link AskOutcome.Busy} -- or a turn genuinely under way.
    */
   private sealed interface StepResult<O> {
 
-    record Declined<O>(Outcome<O> outcome) implements StepResult<O> {}
+    record Declined<O>(AskOutcome<O> outcome) implements StepResult<O> {}
 
     record Advanced<O>(TurnId turn, List<TimedEffect> effects) implements StepResult<O> {}
 
-    static <O> StepResult<O> declined(Outcome<O> outcome) {
+    static <O> StepResult<O> declined(AskOutcome<O> outcome) {
       return new Declined<>(outcome);
     }
 
@@ -881,7 +881,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * "this turn's terminal event" is exactly how a caller would end up reading someone else's
    * answer, which this scoping is what rules out.
    */
-  private Outcome<O> outcome(AgentId agent, TurnId turn) {
+  private AskOutcome<O> outcome(AgentId agent, TurnId turn) {
     // Read once and tallied once. The state that was accumulating this turn's counts has already
     // gone idle by now, so what the caller is told it cost is worked out from the same events the
     // fold counted -- by the same arithmetic, in TurnTally, so the two cannot disagree.
@@ -894,16 +894,16 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         .orElseThrow(() -> new IllegalStateException("a turn that ended without ending"));
   }
 
-  private Outcome<O> asOutcome(AgentId agent, TurnId turn, AgentEvent event, TurnStats stats) {
+  private AskOutcome<O> asOutcome(AgentId agent, TurnId turn, AgentEvent event, TurnStats stats) {
     return switch (event) {
       case AgentEvent.InferenceAnswered answered when answered.turn().equals(turn) ->
           readAnswer(agent, answered, stats);
       case AgentEvent.InferenceRefused refused when refused.turn().equals(turn) ->
-          new Outcome.Refused<>(refused.category(), stats);
+          new AskOutcome.Refused<>(refused.category(), stats);
       case AgentEvent.InferenceFailed failed when failed.turn().equals(turn) ->
-          new Outcome.Failed<>(failed.failure().reason(), stats);
+          new AskOutcome.Failed<>(failed.failure().reason(), stats);
       case AgentEvent.TurnStopped ended when ended.turn().equals(turn) ->
-          new Outcome.Failed<>(ended.reason(), stats);
+          new AskOutcome.Failed<>(ended.reason(), stats);
       default -> null;
     };
   }
@@ -934,15 +934,15 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
    * OutputReader}: a reader is handed text and hands back an object, so the only thing it can do
    * about text that is not its shape is throw. A model that answered around its schema fails the
    * turn -- which is the whole reason a caller asked for a shape instead of prose -- and it fails
-   * as an {@link Outcome.Failed} rather than an exception out of a door that promised a value.
+   * as an {@link AskOutcome.Failed} rather than an exception out of a door that promised a value.
    */
-  private Outcome<O> readAnswer(
+  private AskOutcome<O> readAnswer(
       AgentId agent, AgentEvent.InferenceAnswered answered, TurnStats stats) {
     String text = textOf(backend.payloads(), agent, answered);
     try {
-      return new Outcome.Answered<>(reading.read(text), stats);
+      return new AskOutcome.Answered<>(reading.read(text), stats);
     } catch (RuntimeException notTheShape) {
-      return new Outcome.Failed<>("the answer did not fit: " + notTheShape.getMessage(), stats);
+      return new AskOutcome.Failed<>("the answer did not fit: " + notTheShape.getMessage(), stats);
     }
   }
 

@@ -21,21 +21,88 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Nessy Chat</title>
+    <link rel="icon" href="favicon.ico" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    />
+    <link
+      rel="stylesheet"
+      href="/webjars/highlightjs__cdn-assets/11.11.1/styles/github.min.css"
+      id="code-light"
+      media="(prefers-color-scheme: light)"
+    />
+    <link
+      rel="stylesheet"
+      href="/webjars/highlightjs__cdn-assets/11.11.1/styles/github-dark.min.css"
+      id="code-dark"
+      media="(prefers-color-scheme: dark)"
+    />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header>
-      <h1>Nessy Chat</h1>
-      <button id="new-chat" type="button">New chat</button>
+      <img src="nessy-mark.png" alt="" width="44" height="44" />
+      <h1>Nessy</h1>
+      <span>chat</span>
+      <button id="theme" type="button" aria-label="Switch to dark" title="Switch to dark">
+        <i class="moon" data-lucide="moon" data-glyph="☾"></i>
+        <i class="sun" data-lucide="sun" data-glyph="☼"></i>
+      </button>
     </header>
-    <main id="log"></main>
-    <section id="approvals"></section>
+    <div id="conversation">
+      <main id="log" aria-label="Conversation"></main>
+      <div id="typing" aria-hidden="true" hidden>
+        <span id="typing-humps"></span>
+        <span id="typing-clock"></span>
+        <div id="typing-chips" class="chips"></div>
+      </div>
+      <div id="greeting" hidden>
+        <h2>Chat with an agent</h2>
+        <p>
+          Type a message below. The agent answers here. When it wants to use a tool that needs your
+          say, a card asks you to approve or deny it.
+        </p>
+      </div>
+      <button id="jump" type="button" hidden>Jump to latest</button>
+      <section id="approvals" aria-label="Waiting for your answer"></section>
+    </div>
     <footer>
+      <div id="working" role="status" aria-live="polite" hidden>working…</div>
       <form id="send-form">
-        <input id="text" type="text" placeholder="Say something…" autocomplete="off" />
-        <button id="send" type="submit">Send</button>
+        <button id="new-chat" type="button" aria-label="New chat" title="New chat">
+          <i data-lucide="square-pen" data-glyph="✎"></i>
+        </button>
+        <label for="text" class="visually-hidden">Message</label>
+        <textarea
+          id="text"
+          rows="1"
+          placeholder="Write a message…"
+          autocomplete="off"
+          aria-describedby="keys"
+          autofocus
+        ></textarea>
+        <span id="keys" class="visually-hidden">
+          Enter sends. Shift and Enter starts a new line. Up and Down bring back earlier messages.
+        </span>
+        <button id="send" type="submit" aria-label="Send">
+          <i data-lucide="arrow-up" data-glyph="↑"></i>
+        </button>
       </form>
     </footer>
+    <dialog id="confirm-new" aria-labelledby="confirm-new-title">
+      <form method="dialog">
+        <h2 id="confirm-new-title">Start a new chat?</h2>
+        <p>This conversation's agent is terminated: it takes no more messages.</p>
+        <div class="dialog-actions">
+          <button value="cancel" autofocus>Cancel</button>
+          <button value="new" class="primary">Start a new chat</button>
+        </div>
+      </form>
+    </dialog>
+    <script src="/webjars/markdown-it/14.3.0/dist/markdown-it.min.js"></script>
+    <script src="/webjars/highlightjs__cdn-assets/11.11.1/highlight.min.js"></script>
+    <script src="/webjars/lucide/1.48.0/dist/umd/lucide.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

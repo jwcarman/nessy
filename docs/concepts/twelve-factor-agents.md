@@ -217,8 +217,8 @@ asks that an agent launch through a simple API, pause for long operations,
 and resume from an external trigger, including the gap between choosing a
 tool and running it.
 
-- **Launch.** `DirectHarness.ask(agent, input)` returns an `Outcome`.
-  `QueuedHarness.tell(agent, input)` returns once the input is durable.
+- **Launch.** `DirectHarness.ask(agent, input)` returns an `AskOutcome`.
+  `QueuedHarness.tell(agent, input)` returns a `TellOutcome` once the agent has taken the input.
 - **Pause.** A tool or an approver returns `Awaited.deferred()`. The call is
   parked as a row, holds no thread, and survives a restart.
 - **Resume.** Whoever has the call's agent type, agent id and idempotency key
@@ -287,10 +287,9 @@ replies.complete(agentType, agentId, key, ToolResult.ok(new Block.Text("Yes, go 
 What is missing: there is no built-in ask-a-human tool, no delivery to
 Slack, email or any channel, and no webhook receiver. The application
 supplies the `inbox` and the endpoint that calls `Replies`. In the examples,
-`nessy-examples/watchman` lists the approvals Nessy is waiting on
-(`AgentWork`) and answers them over HTTP (`Replies`), so they survive a
-restart. `nessy-examples/chat-web` holds
-the request open while a card waits in the browser, so its approvals do not.
+`nessy-examples/watchman` and `nessy-examples/chat-web` list the approvals
+Nessy is waiting on (`AgentWork`) and answer them over HTTP (`Replies`), so
+they survive a restart.
 
 A tool's default timeout is 30 seconds, so a human-facing tool needs a
 longer one, as above.
@@ -363,9 +362,9 @@ sends `{"error": message}`.
 Model-side failures are handled differently. A failed inference is not shown
 to the model. A failure the adapter classifies as transient can be retried
 under the inference `retryPolicy`, which defaults to `Never`; otherwise the
-turn ends with `Outcome.Failed`. A reply cut off at the output limit is
+turn ends with `AskOutcome.Failed`. A reply cut off at the output limit is
 delivered as the answer, with a WARN in the log and the finish reason on the
-trace. `Outcome` carries no flag for it.
+trace. `AskOutcome` carries no flag for it.
 
 What is missing: there is no consecutive-error counter. The only bound on a
 model that keeps failing a tool is the turn policy, which counts model
@@ -406,11 +405,14 @@ on the same channel.
 
 Nessy has two entry points and both are plain Java calls, so anything that
 can run Java can be a trigger. `ask` is for a caller standing there for the
-answer. `tell` is for work nobody is waiting on. The repository shows four
-uses:
+answer. `tell` returns before the work is done, so whoever wants the result
+watches for it: a stream, a status read, or a listener. The repository shows
+four uses:
 
 - A console loop (`nessy-console`, used by `nessy-examples/chat-cli`).
-- An HTTP endpoint that calls `ask` (`nessy-examples/chat-web`).
+- An HTTP endpoint that calls `tell` and returns `202`; a resumable event
+  stream says what the agent is doing and when the turn has answered, and the
+  page reads the answer from the agent's state (`nessy-examples/chat-web`).
 - A schedule that calls `tell` (`nessy-examples/watchman`, with Spring's
   `@Scheduled`).
 - An HTTP endpoint that answers a parked approval (`watchman` and

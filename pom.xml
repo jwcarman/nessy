@@ -174,6 +174,17 @@
          published on every release. Pinned to the release whose declared opentelemetry-api
          dependency (1.65.0) matches opentelemetry.version above exactly. -->
     <opentelemetry-logback-appender.version>2.31.1-alpha</opentelemetry-logback-appender.version>
+    <!-- markdown-it as a WebJar, application-side only (chat-web example): the page loads its
+         bundled browser build from /webjars/markdown-it/VERSION/dist/, so the version also
+         appears in that example's index.html. -->
+    <markdown-it-webjar.version>14.3.0</markdown-it-webjar.version>
+    <!-- highlight.js as a WebJar, for the same example: the browser build and its style sheets
+         are served from /webjars/highlightjs__cdn-assets/VERSION/, so the version also appears
+         in that example's index.html. -->
+    <highlightjs-webjar.version>11.11.1</highlightjs-webjar.version>
+    <!-- Lucide icons as a WebJar, for the same example: the browser build is served from
+         /webjars/lucide/VERSION/dist/umd/, so the version also appears in its index.html. -->
+    <lucide-webjar.version>1.48.0</lucide-webjar.version>
     <jug.version>5.2.0</jug.version>
     <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
     <hikaricp.version>7.1.0</hikaricp.version>
@@ -371,6 +382,21 @@
         <groupId>io.opentelemetry.instrumentation</groupId>
         <artifactId>opentelemetry-logback-appender-1.0</artifactId>
         <version>${opentelemetry-logback-appender.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.webjars.npm</groupId>
+        <artifactId>markdown-it</artifactId>
+        <version>${markdown-it-webjar.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.webjars.npm</groupId>
+        <artifactId>highlightjs__cdn-assets</artifactId>
+        <version>${highlightjs-webjar.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.webjars.npm</groupId>
+        <artifactId>lucide</artifactId>
+        <version>${lucide-webjar.version}</version>
       </dependency>
       <dependency>
         <groupId>org.testcontainers</groupId>

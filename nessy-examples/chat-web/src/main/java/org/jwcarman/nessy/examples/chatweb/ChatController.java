@@ -15,18 +15,24 @@
  */
 package org.jwcarman.nessy.examples.chatweb;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.jwcarman.nessy.api.AgentId;
-import org.jwcarman.nessy.api.DirectHarness;
-import org.jwcarman.nessy.api.Outcome;
-import org.jwcarman.nessy.api.TurnStats;
+import org.jwcarman.nessy.api.AgentStatus;
+import org.jwcarman.nessy.api.AgentStatus.Activity;
+import org.jwcarman.nessy.api.AgentWork;
+import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.TellOutcome;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.tool.ApprovalRequest;
 import org.jwcarman.nessy.api.tool.ApprovalResult;
-import org.jwcarman.nessy.api.tool.CallId;
+import org.jwcarman.nessy.api.tool.IdempotencyKey;
+import org.jwcarman.nessy.api.tool.Replies;
+import org.jwcarman.nessy.api.tool.ReplyOutcome;
 import org.jwcarman.nessy.api.turn.Exchange;
 import org.jwcarman.nessy.api.turn.ToolOutcome;
 import org.jwcarman.nessy.api.turn.Turn;
@@ -45,6 +51,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 @RestController
 @RequestMapping("/api/agents")
@@ -54,83 +62,99 @@ public class ChatController {
 
   public record Decision(String decision, String note) {}
 
-  public record Line(String role, String text) {}
+  /** One line of the story; {@code turn} says which turn it belongs to. */
+  public record Line(long turn, String role, String text) {}
 
-  private final DirectHarness<String, String> harness;
+  /**
+   * An approval request as the page draws it. The id is the call's idempotency key: it addresses
+   * the answer, and it is the same after a restart. {@code turn} is the turn the call was asked in,
+   * so the page can put what it says about a decision with that turn's lines.
+   */
+  public record Card(
+      String id,
+      long turn,
+      String tool,
+      String args,
+      String what,
+      Instant askedAt,
+      Instant deadline) {}
+
+  private static final JsonMapper EVIDENCE = JsonMapper.builder().build();
+
+  private final QueuedHarness<String> harness;
+  private final AgentWork work;
+  private final Replies replies;
   private final TurnHistories histories;
   private final AgentStreams streams;
-  private final ApprovalStreams approvals;
-  private final ApprovalDesk desk;
 
   ChatController(
-      DirectHarness<String, String> harness,
+      QueuedHarness<String> harness,
+      AgentWork work,
+      Replies replies,
       TurnHistories histories,
-      AgentStreams streams,
-      ApprovalStreams approvals,
-      ApprovalDesk desk) {
+      AgentStreams streams) {
     this.harness = harness;
+    this.work = work;
+    this.replies = replies;
     this.histories = histories;
     this.streams = streams;
-    this.approvals = approvals;
-    this.desk = desk;
   }
 
-  /** What has been said, from the story itself: the page rebuilds from this, not from a replay. */
+  /**
+   * What has been said, from the story itself, and what is waiting for a person, from Nessy. The
+   * page rebuilds from this, not from a replay, and nothing here is remembered between requests.
+   */
   @GetMapping("/{id}")
   public Map<String, Object> state(@PathVariable("id") String id) {
     AgentId agentId = agent(id);
     List<Turn> turns = histories.forAgent(ChatConfiguration.TYPE, agentId).turnsFrom(0);
-    return Map.of("transcript", lines(turns), "approvals", desk.pending(agentId));
+    AgentStatus status = work.status(ChatConfiguration.TYPE, agentId);
+    List<Card> cards = status.waitingApprovals().stream().map(ChatController::card).toList();
+    // Working means a turn is in progress: moving, or parked waiting for a person.
+    boolean working =
+        status.activity() == Activity.WORKING || status.activity() == Activity.WAITING;
+    return Map.of("transcript", lines(turns), "approvals", cards, "working", working);
   }
 
   /**
-   * Says something, and waits for the answer.
+   * Says something. It is accepted at once. What the agent then does is narrated on the stream,
+   * with the answer's words only when the provider streams them; the answer itself is in the
+   * transcript, and the stream's {@code answered} event says only which turn it ended. A message
+   * with no text, or only blanks, is a {@code 400}, before anything else.
    *
-   * <p>The turn runs here, on this request's thread, and what comes back is what it came to. The
-   * stream is still how a page watches it happen -- deltas as the model writes, cards when the desk
-   * is asked -- but the answer is the response to this call rather than something to listen for.
-   *
-   * <p>A turn that stops to ask a person holds this request while it waits. That is the bargain of
-   * this door: the caller is holding the answer, so it holds the whole turn.
+   * <p>A message told while a turn is in progress waits its turn and runs after it. The one thing
+   * that refuses a message is an agent that has been terminated, and {@code tell} says so: a
+   * conversation that has been terminated answers {@code 409} at once, even while its last turn is
+   * still in progress, and nothing is queued. Any other message is {@code 202}.
    */
   @PostMapping("/{id}/messages")
-  public ResponseEntity<Map<String, String>> say(
+  public ResponseEntity<Object> say(
       @PathVariable("id") String id, @RequestBody MessageRequest body) {
-    return switch (harness.ask(agent(id), body.text())) {
-      // The answer and what it cost, which is the whole reason a turn's tally rides along with
-      // it: a caller that waited for the answer is the one entitled to know what it spent, and
-      // asking the event store afterwards would be reaching into a backend to find out.
-      case Outcome.Answered<String>(String said, TurnStats stats) ->
-          ResponseEntity.ok(
-              Map.of(
-                  "said", said,
-                  "tokens", String.valueOf(stats.spent().orZero()),
-                  "calls", String.valueOf(stats.modelCalls())));
-      case Outcome.Refused<String>(String category, _) ->
-          ResponseEntity.ok(Map.of("refused", category));
-      case Outcome.Failed<String>(String reason, _) ->
-          ResponseEntity.internalServerError().body(Map.of("failed", reason));
-      // Somebody else is mid-turn on this agent -- another tab, or a request that has not
-      // finished. Not an error: the page can say so and let them try again.
-      case Outcome.Busy<String> _ ->
-          ResponseEntity.status(409).body(Map.of("busy", "that agent is already answering"));
+    if (body.text() == null || body.text().isBlank()) {
+      return ResponseEntity.badRequest().body(Map.of("error", "a message needs some text"));
+    }
+    return switch (harness.tell(agent(id), body.text())) {
+      case TellOutcome.Accepted _ -> ResponseEntity.accepted().build();
+      case TellOutcome.Terminated _ ->
+          ResponseEntity.status(HttpStatus.CONFLICT)
+              .body(Map.of("terminated", "that conversation has been terminated"));
     };
   }
 
   /**
-   * Ends the conversation. The story is kept -- an ended agent is one that will not take another
-   * word, not one that never spoke -- and the page moves on to a fresh id.
+   * Terminates the conversation. The story is kept -- a terminated agent is one that will not take
+   * another word, not one that never spoke -- and the page moves on to a fresh id.
    */
   @DeleteMapping("/{id}")
-  public ResponseEntity<Void> end(@PathVariable("id") String id) {
+  public ResponseEntity<Void> terminate(@PathVariable("id") String id) {
     harness.terminate(agent(id));
     return ResponseEntity.accepted().build();
   }
 
   /**
-   * The agent's stream. A browser that reconnects hands back the id of the last event it saw, and
-   * gets everything since -- the journal is what makes a page that was closed catch up rather than
-   * rebuild.
+   * The agent's stream. A connection that drops and reconnects hands back the id of the last event
+   * it saw, and gets everything since from the journal. A page that is closed and reopened sends no
+   * id: it rebuilds from the state, and the stream carries what happens from then on.
    */
   @GetMapping("/{id}/events")
   public SseEmitter events(
@@ -139,44 +163,53 @@ public class ChatController {
     return streams.resume(ChatConfiguration.TYPE, agent(id), lastEventId);
   }
 
-  /** The desk's approval requests for this agent, as a stream of their own. */
-  @GetMapping("/{id}/approvals/events")
-  public SseEmitter approvalEvents(
-      @PathVariable("id") String id,
-      @RequestHeader(name = "Last-Event-ID", required = false) String lastEventId) {
-    return approvals.resume(agent(id), lastEventId);
-  }
-
-  @PostMapping("/{id}/approvals/{callId}")
+  /**
+   * Answers an approval request. Nessy has the last word on whether the answer landed: one that
+   * arrives after the request was answered, after its deadline, or for a key that is not waiting is
+   * ignored, and that is a {@code 409}. The page redraws from the state and sees what is true.
+   */
+  @PostMapping("/{id}/approvals/{key}")
   public ResponseEntity<Void> decide(
-      @PathVariable("id") String id,
-      @PathVariable("callId") String callId,
-      @RequestBody Decision body) {
-    ApprovalDesk.Waiting waiting =
-        desk.card(new CallId(callId)).isPresent()
-            ? desk.take(new CallId(callId)).orElse(null)
-            : null;
-    if (waiting == null) {
-      // Already answered, by another tab or another person. Not an error: the page should redraw
-      // and see what was decided, rather than be shown a stack trace for losing a race.
-      return ResponseEntity.status(HttpStatus.CONFLICT).build();
-    }
+      @PathVariable("id") String id, @PathVariable("key") String key, @RequestBody Decision body) {
+    AgentId agentId = agent(id);
+    // UUID.fromString refuses what is not one, and that is a 400.
+    IdempotencyKey idempotencyKey = IdempotencyKey.of(UUID.fromString(key));
     ApprovalResult result =
         "approve".equals(body.decision())
             ? ApprovalResult.approved()
             : ApprovalResult.denied(
                 body.note() == null || body.note().isBlank() ? "denied" : body.note());
-    // Handed to the turn that is waiting on it, which is on somebody's request thread rather than
-    // in an outbox. False means nothing was waiting -- the patience ran out, or another tab got
-    // there first -- and the card was stale.
-    return desk.answer(new CallId(callId), result)
-        ? ResponseEntity.accepted().build()
-        : ResponseEntity.status(HttpStatus.CONFLICT).build();
+    return switch (replies.approve(ChatConfiguration.TYPE, agentId, idempotencyKey, result)) {
+      case ReplyOutcome.Applied _ -> ResponseEntity.accepted().build();
+      case ReplyOutcome.Ignored _ -> ResponseEntity.status(HttpStatus.CONFLICT).build();
+    };
   }
 
   @ExceptionHandler(IllegalArgumentException.class)
   public ResponseEntity<String> malformed(IllegalArgumentException refused) {
     return ResponseEntity.badRequest().body(refused.getMessage());
+  }
+
+  private static Card card(ApprovalRequest request) {
+    return new Card(
+        request.idempotencyKey().toString(),
+        request.turn().value(),
+        request.toolName().value(),
+        evidenceOf(request.arguments()),
+        request.action(),
+        request.askedAt(),
+        request.deadline());
+  }
+
+  /** The arguments, pretty-printed for a person, or as they came if they will not parse. */
+  private static String evidenceOf(String arguments) {
+    try {
+      return EVIDENCE
+          .writerWithDefaultPrettyPrinter()
+          .writeValueAsString(EVIDENCE.readTree(arguments));
+    } catch (JacksonException notJson) {
+      return arguments;
+    }
   }
 
   /** An id from the address bar; UUID.fromString refuses what is not one, and that is a 400. */
@@ -187,19 +220,23 @@ public class ChatController {
   private static List<Line> lines(List<Turn> turns) {
     List<Line> lines = new ArrayList<>();
     for (Turn turn : turns) {
-      lines.add(new Line("user", text(turn.input().blocks())));
+      long t = turn.id().value();
+      lines.add(new Line(t, "user", text(turn.input().blocks())));
       for (Exchange exchange : turn.exchanges()) {
         String commentary = text(exchange.request());
         if (!commentary.isBlank()) {
-          lines.add(new Line("assistant", commentary));
+          lines.add(new Line(t, "assistant", commentary));
         }
-        exchange.calls().forEach(call -> lines.add(new Line("tool", "🔧 " + call.name().value())));
+        exchange
+            .calls()
+            .forEach(call -> lines.add(new Line(t, "tool", "🔧 " + call.name().value())));
         exchange
             .outcomes()
             .forEach(
                 outcome ->
                     lines.add(
                         new Line(
+                            t,
                             "tool",
                             switch (outcome) {
                               case ToolOutcome.Succeeded(var _, var blocks) -> text(blocks);
@@ -209,11 +246,13 @@ public class ChatController {
                             })));
       }
       switch (turn.result()) {
-        case TurnResult.Answered(var blocks) -> lines.add(new Line("assistant", text(blocks)));
-        case TurnResult.Failed _ -> lines.add(new Line("system", "the agent could not answer"));
-        case TurnResult.Refused _ -> lines.add(new Line("system", "the agent declined to answer"));
+        case TurnResult.Answered(var blocks) -> lines.add(new Line(t, "assistant", text(blocks)));
+        case TurnResult.Failed _ -> lines.add(new Line(t, "system", "the agent could not answer"));
+        case TurnResult.Refused _ ->
+            lines.add(new Line(t, "system", "the agent declined to answer"));
         case null -> {
-          // Still being worked on; what it says arrives on the stream.
+          // Still being worked on. What it does next is narrated on the stream (its words only
+          // from a provider that streams), and its answer is here once the turn ends.
         }
       }
     }

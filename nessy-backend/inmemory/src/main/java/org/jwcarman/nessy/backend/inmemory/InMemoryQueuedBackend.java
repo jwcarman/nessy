@@ -46,9 +46,9 @@ import org.jwcarman.nessy.backend.payload.Payloads;
  * The point is not that it is durable; it is that the door cannot tell the difference, so a test
  * that runs against this is testing the door rather than PostgreSQL.
  *
- * <p><b>Ending an agent clears what was waiting for it.</b> {@link InMemoryAgents} is handed the
- * way to do that rather than reaching for it, so the two halves stay separable; the durable pair
- * does the same thing with two statements.
+ * <p><b>Terminating an agent clears what was waiting for it.</b> {@link InMemoryAgents} is handed
+ * the way to do that rather than reaching for it, so the two halves stay separable; the durable
+ * pair does the same thing with two statements.
  */
 public final class InMemoryQueuedBackend implements QueuedBackend {
 
@@ -68,7 +68,7 @@ public final class InMemoryQueuedBackend implements QueuedBackend {
    * <p>One entry per {@link #backlogs(TypeRef)} call rather than one map of every backlog, because
    * a single map would hold several agents' input types at once and getting a typed backlog back
    * out of it would need a cast. Each call keeps its own map of its own type instead, and registers
-   * the way to clear it here, so ending an agent still empties whatever was waiting for it.
+   * the way to clear it here, so terminating an agent still empties whatever was waiting for it.
    */
   private final List<ToIntBiFunction<AgentType, AgentId>> clearers = new CopyOnWriteArrayList<>();
 

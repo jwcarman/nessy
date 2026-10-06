@@ -38,7 +38,7 @@ public final class InMemoryBacklog<I> implements Backlog<I> {
   private static final String ITEM_REQUIRED = "item must not be null";
 
   private final List<BacklogItem<I>> items;
-  private final BooleanSupplier ended;
+  private final BooleanSupplier terminated;
 
   public InMemoryBacklog() {
     this(List.of());
@@ -49,14 +49,15 @@ public final class InMemoryBacklog<I> implements Backlog<I> {
   }
 
   /**
-   * @param ended whether the agent this belongs to has been told to stop. Asked rather than held,
-   *     because ending an agent is {@link org.jwcarman.nessy.backend.agent.Agents}' business and a
-   *     backlog that kept its own flag would be a second answer to the same question. The durable
-   *     one asks the same way: its {@code take} reads the agent's row rather than its own table.
+   * @param terminated whether the agent this belongs to has been terminated. Asked rather than
+   *     held, because terminating an agent is {@link org.jwcarman.nessy.backend.agent.Agents}'
+   *     business and a backlog that kept its own flag would be a second answer to the same
+   *     question. The durable one asks the same way: its {@code take} reads the agent's row rather
+   *     than its own table.
    */
-  public InMemoryBacklog(List<BacklogItem<I>> waiting, BooleanSupplier ended) {
+  public InMemoryBacklog(List<BacklogItem<I>> waiting, BooleanSupplier terminated) {
     this.items = new ArrayList<>(Objects.requireNonNull(waiting, "waiting must not be null"));
-    this.ended = Objects.requireNonNull(ended, "ended must not be null");
+    this.terminated = Objects.requireNonNull(terminated, "terminated must not be null");
   }
 
   /** Abandons what was waiting and says how much there was, for {@code Agents} when it seals. */
@@ -79,7 +80,7 @@ public final class InMemoryBacklog<I> implements Backlog<I> {
     if (!items.isEmpty()) {
       return new Pull.Item<>(items.removeFirst());
     }
-    return ended.getAsBoolean() ? new Pull.Pill<>() : new Pull.Empty<>();
+    return terminated.getAsBoolean() ? new Pull.Pill<>() : new Pull.Empty<>();
   }
 
   @Override

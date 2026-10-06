@@ -17,6 +17,7 @@ package org.jwcarman.nessy.examples.watchman;
 
 import org.jwcarman.nessy.api.EmptyInput;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.TellOutcome;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -38,6 +39,10 @@ public class WatchmanRounds {
   @Scheduled(fixedRateString = "${watchman.round-interval:PT30M}")
   public void round() {
     LOG.info("[watchman] telling the watchman to do its rounds");
-    harness.tell(Watchman.AGENT, new EmptyInput());
+    switch (harness.tell(Watchman.AGENT, new EmptyInput())) {
+      case TellOutcome.Accepted _ -> {}
+      case TellOutcome.Terminated _ ->
+          LOG.warn("[watchman] the watchman agent has been terminated and will do no more rounds");
+    }
   }
 }

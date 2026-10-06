@@ -42,8 +42,8 @@ deadline is a database row rather than a timer in memory.
 
 Build a harness once per agent type, keep it, and pick the door your
 caller needs. `DirectHarness<I, O>.ask` runs a turn on the calling thread
-and hands back an `Outcome<O>` — for a caller standing there waiting.
-`QueuedHarness<I>.tell` always accepts and returns nothing — for work
+and hands back an `AskOutcome<O>` — for a caller standing there waiting.
+`QueuedHarness<I>.tell` returns a `TellOutcome`, `Accepted` or `Terminated` — for work
 nobody is waiting on. Neither is a special case of the other.
 
 ```java
@@ -71,7 +71,7 @@ DirectHarness<String, String> harness = factory.<String>create(
                 .inference(in -> in.provider("anthropic").model("claude-sonnet-5-5"))
                 .tool(new AddTool()));
 
-Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
+AskOutcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
 ```
 
 `backend` is a `DirectBackend`; [Getting Started](guides/getting-started.md)
@@ -80,7 +80,7 @@ Each harness names its provider and model, because the factory has no
 default unless it is given one.
 
 `ask` never throws for anything it understands: a model declining, a turn
-running out of budget or the agent already being busy are `Outcome` arms to
+running out of budget or the agent already being busy are `AskOutcome` arms to
 branch on, not faults. See [The Harness](guides/harness.md) for both doors
 and [Getting Started](guides/getting-started.md) for the full walkthrough.
 
@@ -137,7 +137,7 @@ See [Authorization](concepts/authorization.md).
 
 | Module | Who compiles against it |
 |---|---|
-| `nessy-api` | tool and policy authors: `Tool`, `Approver`, `Awaited`, `NarrationListener`, `Outcome`, the block vocabulary |
+| `nessy-api` | tool and policy authors: `Tool`, `Approver`, `Awaited`, `NarrationListener`, `AskOutcome`, the block vocabulary |
 | `nessy-inference-spi` | adapter authors: `InferenceProvider` |
 | `nessy-backend-spi` | backend authors: `DirectBackend`, `QueuedBackend`, `Chapters` for an agent's closed chapters, and `Leases` for background work that must run once across processes |
 | `nessy-backend-jdbc` | one PostgreSQL `DataSource` behind either door, and `Schemas` |

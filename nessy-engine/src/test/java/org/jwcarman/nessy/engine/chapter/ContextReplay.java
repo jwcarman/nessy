@@ -30,13 +30,13 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AskOutcome;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.ChapterPolicy;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.OpenTurns;
-import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.Usage;
@@ -240,8 +240,8 @@ final class ContextReplay {
         ScriptedTurn scripted = turns.get(i);
         int before = watched.map(w -> w.asked.get()).orElse(0);
         model.begin(turnNumber, scripted.replies());
-        Outcome<String> outcome = harness.ask(agent, scripted.input());
-        if (!(outcome instanceof Outcome.Answered<String>)) {
+        AskOutcome<String> outcome = harness.ask(agent, scripted.input());
+        if (!(outcome instanceof AskOutcome.Answered<String>)) {
           throw new IllegalStateException(
               "turn %d was not answered: %s".formatted(turnNumber, outcome));
         }

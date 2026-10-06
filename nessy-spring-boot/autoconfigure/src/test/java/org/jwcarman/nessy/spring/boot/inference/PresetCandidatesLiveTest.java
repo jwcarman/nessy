@@ -44,11 +44,11 @@ import org.junit.jupiter.api.TestFactory;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AskOutcome;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
-import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.Tokens;
 import org.jwcarman.nessy.api.TurnPolicy;
@@ -339,14 +339,14 @@ class PresetCandidatesLiveTest {
       DirectHarness<String, String> harness =
           harness(candidate, key, model, tool, c -> {}, strictOff(candidate));
 
-      Outcome<String> outcome =
+      AskOutcome<String> outcome =
           harness.ask(
               AgentId.random(),
               "How many whole days from today until 2030-01-01? Use the days_until tool.");
 
-      assertThat(outcome).isInstanceOf(Outcome.Answered.class);
+      assertThat(outcome).isInstanceOf(AskOutcome.Answered.class);
       assertThat(tool.callCount()).isGreaterThanOrEqualTo(1);
-      Outcome.Answered<String> answered = (Outcome.Answered<String>) outcome;
+      AskOutcome.Answered<String> answered = (AskOutcome.Answered<String>) outcome;
       assertThat(answered.stats().spent()).isInstanceOf(Tokens.Counted.class);
       recordSuccess(candidate, model);
     } catch (Throwable t) {
@@ -367,12 +367,12 @@ class PresetCandidatesLiveTest {
               c -> c.turnPolicy(TurnPolicy.calls(1, 2)),
               strictOff(candidate));
 
-      Outcome<String> outcome =
+      AskOutcome<String> outcome =
           harness.ask(
               AgentId.random(),
               "How many whole days from today until 2030-01-01? Use the days_until tool.");
 
-      assertThat(outcome).isInstanceOf(Outcome.Answered.class);
+      assertThat(outcome).isInstanceOf(AskOutcome.Answered.class);
       recordSuccess(candidate, model);
     } catch (Throwable t) {
       recordFailure(candidate, model, t);
@@ -401,12 +401,12 @@ class PresetCandidatesLiveTest {
               c -> {},
               "nessy.providers." + candidate.id() + ".properties.openai.tools.strict=true");
 
-      Outcome<String> outcome =
+      AskOutcome<String> outcome =
           harness.ask(
               AgentId.random(),
               "How many whole days from today until 2030-01-01? Use the days_until tool.");
 
-      assertThat(outcome).isInstanceOf(Outcome.Answered.class);
+      assertThat(outcome).isInstanceOf(AskOutcome.Answered.class);
       assertThat(tool.callCount()).isGreaterThanOrEqualTo(1);
       STRICT.put(candidate.id(), "OK");
     } catch (Throwable t) {

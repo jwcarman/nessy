@@ -37,9 +37,9 @@ import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AskOutcome;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
-import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
@@ -272,7 +272,7 @@ class DirectHarnessFanOutTest {
                 });
 
     try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
-      Future<Outcome<String>> future = callers.submit(() -> harness.ask(agent, "look up three"));
+      Future<AskOutcome<String>> future = callers.submit(() -> harness.ask(agent, "look up three"));
 
       assertThat(arrived.await(5, TimeUnit.SECONDS))
           .as(
@@ -284,7 +284,7 @@ class DirectHarnessFanOutTest {
       assertThat(future.get())
           .usingRecursiveComparison()
           .ignoringFields("stats")
-          .isEqualTo(new Outcome.Answered<>("done", ANY_STATS));
+          .isEqualTo(new AskOutcome.Answered<>("done", ANY_STATS));
       assertThat(events.readAll(TYPE, agent))
           .extracting(e -> e.getClass().getSimpleName())
           .filteredOn(name -> name.equals("ToolSucceeded"))
@@ -322,7 +322,7 @@ class DirectHarnessFanOutTest {
                 });
 
     try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
-      Future<Outcome<String>> future = callers.submit(() -> harness.ask(agent, "look up six"));
+      Future<AskOutcome<String>> future = callers.submit(() -> harness.ask(agent, "look up six"));
 
       assertThat(started.await(5, TimeUnit.SECONDS))
           .as("exactly the permitted number started running concurrently")
@@ -335,7 +335,7 @@ class DirectHarnessFanOutTest {
       assertThat(future.get())
           .usingRecursiveComparison()
           .ignoringFields("stats")
-          .isEqualTo(new Outcome.Answered<>("done", ANY_STATS));
+          .isEqualTo(new AskOutcome.Answered<>("done", ANY_STATS));
     }
 
     assertThat(tool.peak())
@@ -395,7 +395,7 @@ class DirectHarnessFanOutTest {
                 });
 
     try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
-      Future<Outcome<String>> future = callers.submit(() -> harness.ask(agent, "look up four"));
+      Future<AskOutcome<String>> future = callers.submit(() -> harness.ask(agent, "look up four"));
 
       assertThat(started.await(5, TimeUnit.SECONDS))
           .as("the tool calls themselves genuinely overlapped")
@@ -406,7 +406,7 @@ class DirectHarnessFanOutTest {
       assertThat(future.get())
           .usingRecursiveComparison()
           .ignoringFields("stats")
-          .isEqualTo(new Outcome.Answered<>("done", ANY_STATS));
+          .isEqualTo(new AskOutcome.Answered<>("done", ANY_STATS));
     }
 
     assertThat(locks.max())
@@ -535,7 +535,7 @@ class DirectHarnessFanOutTest {
                 });
 
     try (ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
-      Future<Outcome<String>> future = callers.submit(() -> harness.ask(agent, "look up two"));
+      Future<AskOutcome<String>> future = callers.submit(() -> harness.ask(agent, "look up two"));
 
       assertThat(firstStarted.await(5, TimeUnit.SECONDS))
           .as("one of the two calls is running and holding the only permit")
@@ -549,7 +549,7 @@ class DirectHarnessFanOutTest {
       assertThat(future.get())
           .usingRecursiveComparison()
           .ignoringFields("stats")
-          .isEqualTo(new Outcome.Answered<>("done", ANY_STATS));
+          .isEqualTo(new AskOutcome.Answered<>("done", ANY_STATS));
     }
 
     assertThat(secondRan.get())

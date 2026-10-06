@@ -182,7 +182,8 @@ public final class StoredAgentWork implements AgentWork {
       state = reconstitute(stories.readAgain(type, id).orElseGet(() -> stories.current(type, id)));
     }
     return switch (state) {
-      case AgentState.Terminal _ -> status(Activity.ENDED, queued, Optional.empty(), List.of(), 0);
+      case AgentState.Terminal _ ->
+          status(Activity.TERMINATED, queued, Optional.empty(), List.of(), 0);
       case AgentState.Idle _ ->
           status(
               queued == 0 ? Activity.IDLE : Activity.WORKING,

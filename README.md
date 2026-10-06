@@ -29,9 +29,9 @@ the front door: enough to run something real and decide what to install.
 ## The five-minute example
 
 Two harness doors, and they are peers. `DirectHarness<I, O>.ask` runs a
-turn on the calling thread and hands back an `Outcome<O>` — for a caller
-standing there waiting on an answer. `QueuedHarness<I>.tell` always accepts
-and returns nothing — for work nobody is waiting on. Build one once, keep
+turn on the calling thread and hands back an `AskOutcome<O>` — for a caller
+standing there waiting on an answer. `QueuedHarness<I>.tell` returns a
+`TellOutcome` — `Accepted` or `Terminated` — for work nobody is waiting on. Build one once, keep
 it, and ask it things:
 
 ```bash
@@ -66,7 +66,7 @@ DirectHarness<String, String> harness = factory.<String>create(
                 .inference(in -> in.provider("anthropic").model("claude-sonnet-5-5"))
                 .tool(new AddTool()));
 
-Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
+AskOutcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
 ```
 
 The example needs Java 25 and four dependencies: `nessy-engine`,
@@ -76,8 +76,8 @@ manage it). [Getting Started](https://jwcarman.github.io/nessy/guides/getting-st
 has the pom and the imports.
 
 `ask` never throws for anything it understands: a model declining, a turn
-running out of budget or the agent already being busy are `Outcome` arms —
-`Answered`, `Refused`, `Failed`, `Busy` — to branch on, not faults. See
+running out of budget or the agent already being busy are `AskOutcome` arms —
+`Answered`, `Refused`, `Failed`, `Busy`, `Terminated` — to branch on, not faults. See
 [The Harness](https://jwcarman.github.io/nessy/guides/harness/) for the
 queued door, which trades that returned outcome for a backlog and answers
 narrated to listeners.
@@ -120,12 +120,15 @@ ambient background, gated on a tool that asks at the prompt:
 ./mvnw -q -pl :nessy-example-chat-cli -am compile exec:java
 ```
 
-**`chat-web`**: the same agent as a page: streamed answers over SSE, an
-approval desk you click, and `Last-Event-ID` resume when a browser
-reconnects.
+**`chat-web`**: the same agent as a page, on the queued door. A message
+is told and the request returns. A resumable SSE stream says what the agent
+is doing and when the turn has answered, and the page reads the answer from
+the agent's state. The email tool's approval waits in Nessy, so the page lists it as a
+card and it survives a closed tab or a restart.
 
 ```bash
-cd nessy-examples/chat-web && ../../mvnw spring-boot:run
+./mvnw -q -pl :nessy-example-chat-web -am install -DskipTests
+./mvnw -q -pl :nessy-example-chat-web spring-boot:run
 ```
 
 **`mcp`**: a terminal agent whose tools come from somebody else's server.
@@ -184,7 +187,7 @@ add `nessy-inference-spi`; an application building an agent depends on
 
 | Artifact | What it is for |
 |---|---|
-| `nessy-api` | the shared vocabulary: `Tool`, `Approver`, `Awaited`, blocks, `NarrationListener`, `Outcome` |
+| `nessy-api` | the shared vocabulary: `Tool`, `Approver`, `Awaited`, blocks, `NarrationListener`, `AskOutcome` |
 | `nessy-inference-spi` | adapter authors: `InferenceProvider` |
 | `nessy-backend-spi` | backend authors: `DirectBackend`, `QueuedBackend`, `Chapters` for an agent's closed chapters, and `Leases` for work that must run once across processes |
 | `nessy-backend-jdbc` | one PostgreSQL `DataSource` behind either door, and `Schemas` |

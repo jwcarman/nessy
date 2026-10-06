@@ -30,6 +30,7 @@ import org.jwcarman.nessy.api.InputRenderer;
 import org.jwcarman.nessy.api.Narration;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.TellOutcome;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.TurnPolicy;
 import org.jwcarman.nessy.backend.QueuedBackend;
@@ -146,23 +147,24 @@ final class DefaultQueuedHarness<I>
   /**
    * Admits an input.
    *
-   * <p>Always accepts, which is the promise this door keeps -- unless the agent has ended, which is
-   * the one thing that can refuse. What happens to the arrival is the policy's business: appended,
-   * replacing what was waiting, or dropped to hold a bound.
+   * <p>Answers {@link TellOutcome.Terminated} for an agent that has been terminated, and stores
+   * nothing. Otherwise hands the input to the backlog policy and answers {@link
+   * TellOutcome.Accepted}. What happens to an accepted arrival is the policy's business: appended,
+   * merged, replacing what was waiting, dropped to hold a bound, or discarded as a repeat.
    *
    * <p>Then, if the agent is idle, the arrival becomes a turn under this same lock. An agent is
    * never left idle with work waiting.
    */
   @Override
-  public void tell(AgentId agentId, I input) {
+  public TellOutcome tell(AgentId agentId, I input) {
     BacklogItem<I> arrival = new BacklogItem<>(input, clock.instant());
     log.debug("[{}] admitting input for agent {}", agentType.value(), agentId.value());
-    traces.in(
+    return traces.in(
         "nessy.tell",
         new Identity(agentType, agentId),
         () -> {
           String trace = traces.capture();
-          boolean nudge =
+          Told told =
               narrator.locked(
                   backend.locks(),
                   agentType,
@@ -171,31 +173,36 @@ final class DefaultQueuedHarness<I>
                     backend.agents().ensure(agentType, agentId);
                     Backlog<I> backlog = backlogs.forAgent(agentType, agentId);
                     if (backend.agents().terminated(agentType, agentId)) {
-                      // Ended. Coalescing now would put something into an emptied backlog and
-                      // be
-                      // read as work next time, undoing a termination that has happened.
+                      // Terminated. Coalescing now would put something into an emptied backlog
+                      // and be read as work next time, undoing a termination that has happened.
                       log.debug(
-                          "[{}] agent {} has ended; the input is refused",
+                          "[{}] agent {} has been terminated; the input is dropped",
                           agentType.value(),
                           agentId.value());
-                      return false;
+                      return new Told(new TellOutcome.Terminated(), false);
                     }
                     policy.coalesce(backlog, arrival);
-                    return driveIfIdle(step, agentId, backlog, trace);
+                    return new Told(
+                        new TellOutcome.Accepted(), driveIfIdle(step, agentId, backlog, trace));
                   });
-          if (nudge) {
+          if (told.nudge()) {
             dispatch();
           }
-          return null;
+          return told.outcome();
         });
   }
 
   /**
-   * Ends an agent.
+   * What a locked tell came to: what to answer the caller, and whether the dispatcher is nudged.
+   */
+  private record Told(TellOutcome outcome, boolean nudge) {}
+
+  /**
+   * Terminates an agent.
    *
    * <p>It cannot be delivered to one mid-turn, because the fold takes it only from idle. So the
-   * backlog is emptied and the agent marked, and the next time it is idle and asks for work, ending
-   * is the work.
+   * backlog is emptied and the agent marked, and the next time it is idle and asks for work,
+   * terminating is the work.
    */
   @Override
   public void terminate(AgentId agentId) {
@@ -212,7 +219,7 @@ final class DefaultQueuedHarness<I>
               int abandoned = backend.agents().seal(agentType, agentId);
               if (abandoned > 0) {
                 log.info(
-                    "[{}] agent {} ended with {} input(s) waiting; abandoned",
+                    "[{}] agent {} terminated with {} input(s) waiting; abandoned",
                     agentType.value(),
                     agentId.value(),
                     abandoned);
@@ -354,8 +361,8 @@ final class DefaultQueuedHarness<I>
    * <p>An outcome whose row could not be decoded names no turn and no request, and the only ones it
    * can be attributed to are those the agent is on -- which is what the fold used to assume of
    * every outcome, and the reason a late answer could be written down as somebody else's. An idle
-   * or ended agent has no turn at all, so there is nothing such an outcome could settle, and an
-   * agent not waiting on a request has no request for it to settle.
+   * or terminated agent has no turn at all, so there is nothing such an outcome could settle, and
+   * an agent not waiting on a request has no request for it to settle.
    */
   private Folded fold(
       Step step,
@@ -412,8 +419,8 @@ final class DefaultQueuedHarness<I>
    * Takes the next thing waiting, if the agent has nothing else to do.
    *
    * <p>Where an agent comes out of idle, and it happens inside the transaction that made it idle --
-   * so at every commit an agent is busy, its backlog is empty, or it has ended. Never idle with
-   * work waiting.
+   * so at every commit an agent is busy, its backlog is empty, or it has been terminated. Never
+   * idle with work waiting.
    *
    * @return whether anything was written that an effect dispatcher should be told about
    */

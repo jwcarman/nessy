@@ -20,7 +20,7 @@ the agent before they read its state: the direct door's `ask` and
 `terminate`, and the queued door's `tell`, `terminate` and its effect
 completions. Whoever holds the lock reads idle-or-not honestly and, if
 idle, starts the turn inside the same locked step; whoever arrives a
-moment later reads busy and is turned away — `Outcome.Busy` on the direct
+moment later reads busy and is turned away — `AskOutcome.Busy` on the direct
 door, held in the backlog on the queued one. See
 [Two Doors](two-doors.md) for what each door does with that answer.
 
@@ -47,7 +47,7 @@ so the conversion is never silent.
 
 `AgentCommand.CompleteInference`, `CompleteApproval` and `CompleteToolCall`
 each carry the `TurnId` they complete. `StartTurn` and `Terminate` do not,
-because neither one answers anything — one opens a turn, the other ends an
+because neither one answers anything — one opens a turn, the other terminates an
 agent between turns.
 
 That `TurnId` is not decoration. Delivery of a completion is
@@ -88,7 +88,7 @@ happened or is about to. A turn's arms, in the order a watcher sees them:
   - `Narration.TurnFailed(TurnId turn, FailureKind kind, String reason,
     Usage usage)` — a model call failed and the turn ended without an
     answer. Carries the reason because, on the queued door, `tell` returns
-    nothing: a watcher hears it live, and `AgentStories.replay` reads it
+    only a `TellOutcome`: a watcher hears it live, and `AgentStories.replay` reads it
     afterwards.
   - `Narration.TurnRefused(TurnId turn, String category, Usage usage)` —
     the model declined, and would decline again. Carries the provider's own
@@ -110,7 +110,7 @@ The facts a turn produces are `AgentEvent`s, and every one but
 `Terminated` carries the `TurnId` it belongs to: `TurnStarted`,
 `InferenceAnswered`, `InferenceRefused`, `InferenceFailed`,
 `ActionsRequested`, `ToolApproved`, `ToolDenied`, `ToolSucceeded` and
-`ToolFailed`. `Terminated` carries none, because ending an agent sits
+`ToolFailed`. `Terminated` carries none, because terminating an agent sits
 between turns rather than inside one.
 
 Replaying that stream in order, from `AgentState.idle`, rebuilds the exact

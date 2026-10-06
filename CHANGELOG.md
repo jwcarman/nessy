@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+- **`Outcome` is `AskOutcome`.** `DirectHarness.ask` returns `AskOutcome<O>`, with the same arms
+  `Answered`, `Refused`, `Failed` and `Busy`, and a fifth, `Terminated`. Asking a terminated agent
+  returns `AskOutcome.Terminated`, not `Refused` with the category `terminated`: no turn runs,
+  nothing is appended, and the outcome carries no `TurnStats`. A `switch` over the outcome must
+  handle `Terminated`.
+- **`QueuedHarness.tell` returns a `TellOutcome`.** `Accepted` means the agent took the input: it
+  was handed to the backlog policy, whatever the policy then did with it, and a turn started at
+  once when the agent was idle and the policy left something waiting. `Terminated` means the agent has been terminated, including one whose last turn is still in
+  progress: the input was dropped, nothing was stored and the dispatcher was not nudged. It used to
+  return nothing and drop the input without a word. An implementation of `QueuedHarness` must
+  return one.
+- **A terminated agent is called terminated.** `TerminationOutcome.Ended` is
+  `TerminationOutcome.Terminated` and `TerminationOutcome.AlreadyEnded` is
+  `TerminationOutcome.AlreadyTerminated`. Code that switches on the outcome must use the new
+  names.
 - **The reply token is removed.** `ReplyToken`, `ApprovalRequest.replyToken()` and its record
   component, `ToolCallRequest.replyToken()`, the engine's `ReplyTokens`,
   `QueuedHarnessFactoryConfig.replyTokens(...)` and the `nessy.reply-token-encryption-keys`
@@ -109,7 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`AgentWork` says what an agent is doing and what waits on a person.** `status(type, id)`
-  returns an `AgentStatus`: an `Activity` (`IDLE`, `WORKING`, `WAITING` or `ENDED`), the number
+  returns an `AgentStatus`: an `Activity` (`IDLE`, `WORKING`, `WAITING` or `TERMINATED`), the number
   queued, the current turn, the approvals waiting, and the number of waiting tool calls.
   `waitingApprovals()` and `waitingApprovals(type)` list the approvals parked on people, each as
   the `ApprovalRequest` its approver was shown. Both read stored data on every call. An agent is
@@ -173,6 +188,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **chat-web runs on the queued door.** A message is told and the request returns `202`; the
+  journaled event stream says what the agent is doing and when the turn has answered, a streaming
+  provider's words arrive on it as `content-delta` events, and the page reads the finished answer
+  from the agent's state. Messages sent while the agent is working are given
+  to it together, as one. The email approval is deferred and read from Nessy (`AgentWork`,
+  `Replies`) where the example held it in memory, and `chat.approval-term` sets how long a person
+  has to answer it.
+- **chat-web answers `409` as soon as a conversation is terminated.** It reads the outcome of
+  `tell`: a message is a `202` when the agent took it and a `409` when the conversation has been
+  terminated, even while its last turn is still in progress. The watchman logs a warning when its round is told to a terminated agent.
 - **An approval's `decidedBy` and a denial's `reason` are cut, never refused.** Nessy keeps what
   the application gives and cuts one longer than 1,000 characters to that length.
 - **A payload's reference is a hash of its content before the storage transform.** The reference

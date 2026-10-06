@@ -58,7 +58,7 @@ import tools.jackson.databind.node.ObjectNode;
  * question it never asked. Each accepting arm checks the turn is its own and ignores it otherwise.
  * An answer to a tool call or an approval names the request it answers as well as the turn, because
  * a call id can repeat across two requests of one turn. {@code StartTurn} and {@code Terminate}
- * carry none: they open a turn or end an agent rather than answering anything.
+ * carry none: they open a turn or terminate an agent rather than answering anything.
  */
 public sealed interface AgentCommand {
 

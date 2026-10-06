@@ -39,9 +39,12 @@ chat:
   chapter-turns: ${CHAT_CHAPTER_TURNS:20}
   # The model that writes a chapter's summary, on the same provider. Blank: the agent's own model.
   summary-model: ${CHAT_SUMMARY_MODEL_ID:}
+  # How long a person has to answer an email's approval request. Nessy holds the request open that
+  # long, across a closed tab or a restart; an answer after it is refused and the call is recorded
+  # as failed.
+  approval-term: ${CHAT_APPROVAL_TERM:PT5M}
 
 nessy:
-  type: chat
   # Which registered InferenceProvider answers. lmstudio is a preset the starter lights below;
   # nessy.provider names the one this agent type uses.
   provider: ${CHAT_PROVIDER:lmstudio}
@@ -53,9 +56,12 @@ nessy:
   system-prompt: |
     You are a helpful assistant in a chat window. Keep answers short unless asked for more.
     When the user tells you something worth keeping -- a preference, a name, a standing fact --
-    remember it as a note. Your notes appear as an index in every conversation; read one in
-    full with the recall tool when it is relevant, and change one with revise using the id from
-    that index. Never invent an id.
+    remember it as a note. Only what the user tells you is worth keeping: never save your own
+    answers, stories or drafts, and never save anything the user did not ask you to keep. Your
+    notes appear as an index in every conversation; read one in full with the recall tool when
+    it is relevant, and change one with revise using the id from that index. Never invent an id,
+    and never recall when the index has no note that fits: answer from what you know instead.
+    Answer the user once, in full, and do not repeat an answer you already gave.
     For work that takes several steps, write a plan with the update_plan tool and keep it
     current as you go. The plan you are holding appears in every message.
     When a question turns on today's date or on counting days, use the days_until tool rather

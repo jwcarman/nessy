@@ -376,18 +376,30 @@ wires them.
 
 ## A desk on a page
 
-`nessy-examples/chat-web` is on the direct door. Its approver holds the turn
-while a card is pushed to the browser over the approvals event stream. It
-returns `Awaited.ready(...)` once a person answers, or a denial if nobody
-answers within five minutes.
+Both page examples are on the queued door. In each, the approval request
+waits in Nessy, so it outlives the page and the process, and the application
+keeps nothing. In chat-web the email tool's approver returns
+`Awaited.deferred()` for every request. In the watchman, the approver sits
+behind a risk gate: it approves below `RiskLevel.MODERATE`, denies at or
+above `RiskLevel.VERY_HIGH`, and defers the rest to a deferring approver.
 
-A `POST` answers through the desk, with `ApprovalResult.approved()` or
-`ApprovalResult.denied(note)`. A second tab that answers after the first gets
-a `409`, because losing a race to another person is not an error.
+`nessy-examples/chat-web` is a conversation. A person talks to the agent, and
+the email tool needs approval. The page lists the cards from
+`AgentWork.status(type, agent).waitingApprovals()`, and a decision goes to
+`Replies.approve(type, agent, key, result)`, with
+`ApprovalResult.approved()` or `ApprovalResult.denied(note)`. `Applied` is a
+`202`. `Ignored` is a `409`: a second tab that answers after the first, or an
+answer after the deadline, changes nothing. A person has `chat.approval-term`,
+five minutes by default; after that the call is recorded as failed and the
+card is gone.
 
-`nessy-examples/watchman` is the other shape: an approver that returns
-`Awaited.deferred()`, and a page that lists `AgentWork.waitingApprovals()`
-and answers through `Replies`.
+`nessy-examples/watchman` is an agent nobody is talking to. It wakes on a
+schedule, and its page lists every approval waiting for the agent type with
+`AgentWork.waitingApprovals(type)`. Its approval term is three days.
+
+In both, the endpoint that takes the decision does not authenticate anyone.
+Nessy does not check who is answering, so an application that copies one of
+these endpoints must guard it.
 
 ## See also
 

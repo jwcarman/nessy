@@ -52,10 +52,10 @@ import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
 import org.jwcarman.nessy.inference.InferenceResult;
 
-@DisplayName("Ending an agent, and the settings a harness takes")
+@DisplayName("Terminating an agent, and the settings a harness takes")
 class TerminationAndConfigurationTest {
 
-  private static final AgentType CHAT = new AgentType("chat-ends");
+  private static final AgentType CHAT = new AgentType("chat-terminates");
   private static final AgentType FAILING = new AgentType("chat-fails");
 
   private final List<Narration> events = new CopyOnWriteArrayList<>();
@@ -151,8 +151,8 @@ class TerminationAndConfigurationTest {
     assertThat(turns).singleElement().extracting(Turn::result).isEqualTo(new TurnResult.Failed());
 
     // The reason travels with the narration, and for THIS door that is the only way it travels:
-    // tell() returns nothing, so a watcher told only that a turn failed would have to read the
-    // event stream -- a backend concern -- to find out anything more.
+    // tell() returns only a TellOutcome, so a watcher told only that a turn failed would have to
+    // read the event stream -- a backend concern -- to find out anything more.
     assertThat(events)
         .filteredOn(Narration.TurnFailed.class::isInstance)
         .singleElement()

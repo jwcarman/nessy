@@ -148,10 +148,10 @@ provider that streams has already said the words delta by delta.
 went wrong, and `kind`, a `FailureKind`: `TRANSIENT` (it might work next
 time), `UNKNOWN` (nobody heard back), `PERMANENT` (the same request fails
 the same way) or `REJECTED` (the provider named the input it refused). It
-matters most on the queued door: `QueuedHarness.tell` returns nothing, so
+matters most on the queued door: `QueuedHarness.tell` returns only a `TellOutcome`, so
 a watcher learns why a turn failed here as it happens, and
 `AgentStories.replay` reads it afterwards. The direct door
-hands the same text back from `ask` as `Outcome.Failed`.
+hands the same text back from `ask` as `AskOutcome.Failed`.
 
 `TurnRefused` carries `category`, the provider's own word for why —
 unchanged and uninterpreted. A refusal is not a failure: the call
@@ -322,8 +322,16 @@ as a listener like any other bean. Retention is `nessy.narration.odyssey.*`:
 a day of inactivity and a day per entry by default, an hour once a stream
 is completed.
 
-`nessy-examples/chat-web` streams both the conversation and the approval
-desk's cards this way, on two streams.
+`nessy-examples/chat-web` streams the conversation this way, on one stream
+per agent. The stream says what the agent is doing and when a turn has answered. A
+streaming provider's words arrive on it as they are written, and the page
+reads the finished answer from the agent's state. None of it is in the
+response to the message. The
+approval cards are not on it: the page reads them from the agent's state.
+It reads the state when the stream opens, and again each time the stream
+reopens. It reads the cards again when the stream reports an approval
+deferred, or a call approved, denied, finished or failed. It reads them
+after it sends a decision, unless the decision did not go through.
 
 ## Where next
 

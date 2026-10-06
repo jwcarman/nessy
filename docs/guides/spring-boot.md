@@ -266,13 +266,14 @@ exist first depends on it, so Spring builds it before them.
 
 ## A worked example
 
-`nessy-examples/chat-web` declares its own `DirectHarness<String, String>`
-bean rather than taking a free one: the starter's factory binds tools with
-no gate, and an email tool needs an approver. The configuration reads
-`NessyProperties.model()`, `.maxTokens()` and `.resolveSystemPrompt()`
-itself and passes them to the factory's `create(...)` call, the same way
-any application layers a notebook, a plan and ambient background onto the door
-the starter hands it. `nessy-examples/watchman` is the same shape, doing
+`nessy-examples/chat-web` declares a `QueuedHarness<String>` bean. The
+starter provides the `QueuedHarnessFactory`, and the example calls its
+`create(...)`. The factory binds no tools, so the example binds its own: a
+date tool, the notebook and plan tools, and an email tool that needs an
+approver and an approval term. It also sets the ambient notebook index and
+current plan, and a backlog policy that joins messages sent while the agent
+works. The configuration reads `NessyProperties.model()`, `.maxTokens()` and
+`.resolveSystemPrompt()` itself and passes them to that call. `nessy-examples/watchman` is the same shape, doing
 rounds on a timer against a real host.
 
 ## Where next

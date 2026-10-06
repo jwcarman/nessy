@@ -10,18 +10,19 @@ already knows where it lives.
 
 ```java
 public interface DirectHarness<I, O> {
-  Outcome<O> ask(AgentId agent, I input);
+  AskOutcome<O> ask(AgentId agent, I input);
   TerminationOutcome terminate(AgentId agent);
 }
 
 public interface QueuedHarness<I> {
-  void tell(AgentId agentId, I input);
+  TellOutcome tell(AgentId agentId, I input);
   void terminate(AgentId agentId);
 }
 ```
 
-`ask` always accepts a call, does the turn, and returns; `tell` always
-accepts an input and does nothing else. What `DirectHarness` does because a
+`ask` does the turn and returns what it came to; `tell` hands the input over
+and returns whether the agent took it, `Accepted` or `Terminated`, and does
+nothing else. What `DirectHarness` does because a
 caller is blocked — answering, refusing, admission control — is not part of
 `QueuedHarness`'s job, and what `QueuedHarness` does because nobody is
 waiting — a backlog, deferred answers reaching it later — is not part of
@@ -42,7 +43,7 @@ that looks for due work. Neither has to be closed — a caller that never does
 loses nothing that outlives its own turns — but a container managing the
 lifecycle should.
 
-## The direct door: ask, and get an `Outcome`
+## The direct door: ask, and get an `AskOutcome`
 
 ```java
 DirectHarnessFactory factory = DefaultDirectHarnessFactory.of(config -> config
@@ -56,7 +57,7 @@ DirectHarness<String, String> harness = factory.<String>create(
                 .inference(in -> in.provider(providerId.value()).model("claude-sonnet-5-5"))
                 .tool(new AddTool()));
 
-Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
+AskOutcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
 ```
 
 Here `backend`, `provider` and `providerId` are as built in
@@ -83,17 +84,17 @@ To ask from code that runs inside a transaction, suspend it for the call:
 ```java
 TransactionTemplate outside = new TransactionTemplate(transactionManager);
 outside.setPropagationBehavior(TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
-Outcome<String> outcome = outside.execute(status -> harness.ask(agent, input));
+AskOutcome<String> outcome = outside.execute(status -> harness.ask(agent, input));
 ```
 
 The queued door is the other way round: `tell` joins the caller's
 transaction on purpose, so consuming a message and telling an agent about it
 commit or roll back together.
 
-### Outcome
+### AskOutcome
 
 `ask` never throws for anything it understands. What it hands back is one of
-four arms:
+five arms:
 
 | Arm | What it means |
 |---|---|
@@ -101,25 +102,27 @@ four arms:
 | `Refused<T>(String category, TurnStats stats)` | The model declined, and would decline again |
 | `Failed<T>(String reason, TurnStats stats)` | The turn ended without an answer — worth retrying, unlike a refusal |
 | `Busy<T>()` | Somebody else is already running a turn on this agent; nothing happened |
+| `Terminated<T>()` | The agent has been terminated; no turn ran, and it stays terminated |
 
-`Busy` is the only arm where no turn ran at all: nothing was appended,
-nothing was spent, nothing about the agent changed. That is also what makes
-it the only one worth simply asking again for — the other three are
-answers, and asking again gets another one.
+`Busy` and `Terminated` are the arms where no turn ran at all: nothing was
+appended, nothing was spent, nothing about the agent changed. `Busy` is the
+only one worth simply asking again for — the other four are answers, and
+asking again gets another one.
 
 A sealed interface, so a caller can match every arm and the compiler holds
 it to that:
 
 ```java
 switch (outcome) {
-    case Outcome.Answered<String>(String said, _) -> System.out.println(said);
-    case Outcome.Refused<String>(String category, _) -> System.out.println("refused: " + category);
-    case Outcome.Failed<String>(String reason, _) -> System.out.println("failed: " + reason);
-    case Outcome.Busy<String> _ -> System.out.println("busy; try again");
+    case AskOutcome.Answered<String>(String said, _) -> System.out.println(said);
+    case AskOutcome.Refused<String>(String category, _) -> System.out.println("refused: " + category);
+    case AskOutcome.Failed<String>(String reason, _) -> System.out.println("failed: " + reason);
+    case AskOutcome.Busy<String> _ -> System.out.println("busy; try again");
+    case AskOutcome.Terminated<String> _ -> System.out.println("terminated");
 }
 ```
 
-`Busy` carries nothing, because no turn ran to tally. The other three end in
+`Busy` and `Terminated` carry nothing, because no turn ran to tally. The other three end in
 a `TurnStats`, what the turn did and what it cost; the `_` ignores it here.
 
 ### Answering in a shape
@@ -136,11 +139,11 @@ DirectHarness<String, Verdict> harness = factory.<String, Verdict>create(
                 .systemPrompt("You review a request and decide.")
                 .inference(in -> in.provider(providerId.value()).model("claude-sonnet-5-5")));
 
-Outcome<Verdict> outcome = harness.ask(AgentId.random(), "may I deploy on a Friday?");
+AskOutcome<Verdict> outcome = harness.ask(AgentId.random(), "may I deploy on a Friday?");
 ```
 
 A vendor or model that will not constrain an answer ends the turn
-`Outcome.Failed` rather than handing back something that does not fit the
+`AskOutcome.Failed` rather than handing back something that does not fit the
 shape.
 
 ### Terminating a direct harness
@@ -150,19 +153,19 @@ TerminationOutcome result = harness.terminate(agentId);
 ```
 
 `terminate` returns `TerminationOutcome` rather than nothing, because a
-caller asking to end an agent somebody else is still asking is an ordinary
+caller asking to terminate an agent somebody else is still asking is an ordinary
 race, and being told so is the whole point of the type:
 
 | Arm | What it means |
 |---|---|
-| `Ended()` | This call is the one that ended the agent |
-| `AlreadyEnded()` | It was already over before this call |
+| `Terminated()` | This call is the one that terminated the agent |
+| `AlreadyTerminated()` | The agent had been terminated before this call |
 | `Busy()` | A turn is in flight; nothing was written, ask again |
 
-An agent is only ever ended from idle: a turn in flight is owed its
-outcome, so a request to end a busy agent is refused rather than queued.
+An agent is only ever terminated from idle: a turn in flight is owed its
+outcome, so a request to terminate a busy agent is refused rather than queued.
 The direct door has nowhere to record that somebody asked — unlike the
-queued door, which writes the ending down and honours it once the agent
+queued door, which writes the termination down and honours it once the agent
 falls idle — so a `Busy` termination here is simply refused, and a caller
 that means it must ask again.
 
@@ -180,11 +183,25 @@ QueuedHarness<String> harness = factory.create(new AgentType("watchman"), config
 harness.tell(AgentId.random(), "the porch light came on");
 ```
 
-`tell` is a post, not a call: it returns as soon as the input is durable,
-and the turn happens afterwards on the harness's own dispatcher. There is
-nothing to return, because by the time the turn runs whoever spoke has
-gone — the answer reaches a caller through a listener instead (see
-[Narration](narration.md)).
+`tell` is a post, not a call: it returns as soon as the agent has taken the
+input, and the turn happens afterwards on the harness's own dispatcher. What
+it returns is a `TellOutcome`, never how the turn went, because by the time
+the turn runs whoever spoke has gone — the answer reaches a caller through a
+listener instead (see [Narration](narration.md)).
+
+| Arm | What it means |
+|---|---|
+| `Accepted()` | The agent took the input |
+| `Terminated()` | The agent has been terminated; the input was dropped |
+
+`Accepted` means the input was handed to the agent type's backlog policy, and
+that a turn starts at once when the agent is idle and the policy left something
+waiting. The policy decides what
+waits: it may keep the input, merge it with what waits, replace what waits,
+drop older inputs to hold a bound, or discard the arrival as a repeat. So an
+accepted input is not a promise that it will run by itself, or at all, and an
+input still waiting when the agent is terminated is abandoned. Inside a
+caller's transaction, `Accepted` is only as durable as the caller's commit.
 
 `QueuedHarnessFactory.create(agentType, customizer)` takes a model and
 token cap from the factory's own `inference(providerId, options)` unless
@@ -198,12 +215,12 @@ harness.terminate(agentId);
 ```
 
 Takes effect at once if the agent is idle. One mid-turn stops accepting
-immediately and ends once the turn it already owes an outcome for is
-finished — an effect already written down cannot be cancelled, and
-abandoning it would leave a row nobody will ever discharge. Nothing is
-written to the story: what ended is the agent, not its conversation.
-Idempotent and irreversible; an input arriving afterwards is refused,
-whenever it arrives.
+immediately and is terminated once the turn it already owes an outcome for
+is finished — an effect already written down cannot be cancelled, and
+abandoning it would leave a row nobody will ever discharge. A `Terminated`
+event is written to the story: at once for an idle agent, and when its turn
+finishes otherwise. Idempotent and irreversible; an input arriving afterwards
+is answered `TellOutcome.Terminated`, whenever it arrives.
 
 ## Coalescing: what happens to what is already waiting
 
@@ -414,7 +431,7 @@ The activity is one of four:
 | `IDLE` | no turn in progress and nothing queued. An agent nobody has told anything is idle |
 | `WORKING` | something can make progress: a turn is in a model call, or has a call that is not parked, or no turn is in progress and input is queued |
 | `WAITING` | a turn is in progress and every call it has outstanding is parked, waiting for an answer from outside |
-| `ENDED` | the agent was terminated and its story ends |
+| `TERMINATED` | the agent was terminated and takes no more input |
 
 Some cases that are easy to get wrong:
 
@@ -427,7 +444,7 @@ Some cases that are easy to get wrong:
 - A parked call whose deadline has passed is not waiting. An agent with only
   such calls is `WORKING`.
 - An agent told to terminate during a turn is `WORKING` or `WAITING` until
-  that turn ends. Then it is `ENDED`.
+  that turn ends. Then it is `TERMINATED`.
 
 "Is this case finished?" is `IDLE`. "Is it waiting on a person?" is `WAITING`,
 and `waitingApprovals` says for what.

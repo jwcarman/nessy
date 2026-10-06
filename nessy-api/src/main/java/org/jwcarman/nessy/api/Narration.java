@@ -138,9 +138,9 @@ public sealed interface Narration {
    * The turn ended without an answer because a model call failed, and might have gone otherwise.
    *
    * <p><b>Carries why, because the queued door has no inline answer.</b> The direct door hands the
-   * reason back from {@code ask} as an {@code Outcome.Failed}; the queued door's {@code tell}
-   * returns nothing, so a watcher hears the reason here as it happens, and {@code
-   * AgentStories.replay} reads it afterwards.
+   * reason back from {@code ask} as an {@code AskOutcome.Failed}; the queued door's {@code tell}
+   * returns only a {@code TellOutcome}, so a watcher hears the reason here as it happens, and
+   * {@code AgentStories.replay} reads it afterwards.
    *
    * @param kind what is known about whether trying again could work
    * @param reason the provider adapter's account of what went wrong, the same text the direct door

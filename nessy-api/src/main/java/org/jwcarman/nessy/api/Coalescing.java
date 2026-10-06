@@ -30,9 +30,9 @@ import java.util.List;
  * strategy that calls {@code all()}, drops something, and calls {@code all()} again sees its own
  * change.
  *
- * <p><b>An ended agent never gets here.</b> Whatever decides to consult a policy checks first
- * whether the agent has been told to end, and refuses the arrival if it has. Anything coalesced
- * into an emptied backlog would be read as work the next time it is asked, which would undo a
+ * <p><b>A terminated agent never gets here.</b> Whatever decides to consult a policy checks first
+ * whether the agent has been terminated, and refuses the arrival if it has. Anything coalesced into
+ * an emptied backlog would be read as work the next time it is asked, which would undo a
  * termination that had already happened.
  *
  * <p><b>It runs with the agent to itself.</b> The transaction that hands this over already holds

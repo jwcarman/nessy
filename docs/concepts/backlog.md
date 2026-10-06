@@ -9,11 +9,11 @@ This is entirely a [queued-door](../guides/harness.md) concern. The direct
 door's bargain is different: a caller using `DirectHarness.ask` is standing
 there, on the calling thread, waiting for the turn it started. A second
 caller arriving mid-turn is not made to wait its turn in a queue — it is
-told `Outcome.Busy` and sent away to decide for itself whether to retry.
+told `AskOutcome.Busy` and sent away to decide for itself whether to retry.
 There is nothing to coalesce, because there is no queue: `DefaultDirectHarness`
 holds none of the backlog machinery — no coalescing, no claims, no leases,
-no deferral. `QueuedHarness.tell`, by contrast, always accepts. Something
-has to hold what it accepted, and that something is the backlog.
+no deferral. `QueuedHarness.tell`, by contrast, accepts every input unless the agent has
+been terminated. Something has to hold what it accepted, and that something is the backlog.
 
 ## Where it lives
 
@@ -63,7 +63,7 @@ it inside the same locked transaction that just made the agent idle:
 - `tell`, after the policy has coalesced the new arrival into the backlog —
   in case the agent was already idle and this input is the one to start a
   turn on.
-- `terminate`, after sealing the agent — in case an ending needs to be
+- `terminate`, after sealing the agent — in case a termination needs to be
   delivered as the next unit of work.
 - `deliverOutcome`, after folding an effect's outcome — in case that fold
   is what just made the agent idle.
@@ -72,13 +72,13 @@ it inside the same locked transaction that just made the agent idle:
 does nothing. If it is, it calls `Backlog.take()`, which returns one of
 three `Pull` values: `Item` (something to work on, removed as it is read —
 one statement, so nothing can observe an entry both waiting and taken),
-`Pill` (the agent has ended and there is nothing left to drain — offered
+`Pill` (the agent has been terminated and there is nothing left to drain — offered
 forever, so a late stray input can never undo a termination), or `Empty`
 (nothing waiting; the agent goes quiet). An `Item` becomes an
 `AgentCommand.StartTurn`; a `Pill` becomes an `AgentCommand.Terminate`.
 Either way, taking and starting the next turn happen inside the transaction
 that emptied the backlog, which is what keeps "busy, or backlog is empty,
-or ended" the only three states an agent is ever caught in.
+or terminated" the only three states an agent is ever caught in.
 
 ## `BacklogPolicy` and `Coalescing`
 

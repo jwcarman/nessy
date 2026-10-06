@@ -9,20 +9,21 @@ application needs.
 ## The bargain each makes
 
 `DirectHarness.ask(agent, input)` runs a turn on the calling thread and
-hands back an `Outcome<O>` before it returns. The caller is standing there
+hands back an `AskOutcome<O>` before it returns. The caller is standing there
 holding the answer. That gives `ask` two freedoms a queued call does not
 have: it can refuse to start at all, and it can answer in a typed shape
 `O` rather than always prose.
 
 ```java
-Outcome<Reply> outcome = harness.ask(agentId, "what's the weather?");
+AskOutcome<Reply> outcome = harness.ask(agentId, "what's the weather?");
 ```
 
-`QueuedHarness.tell(agent, input)` returns nothing. Telling an agent
-something cannot fail and cannot be refused — whatever arrives goes into
-that agent's backlog, and the agent runs it at its own pace. By the time
-the turn actually runs, whoever called `tell` has moved on; there is
-nothing for the method to hand back.
+`QueuedHarness.tell(agent, input)` returns a `TellOutcome`: `Accepted` when
+the agent took the input, `Terminated` when the agent has been terminated and
+the input was dropped. An accepted input goes to the agent type's backlog
+policy, and the agent runs what waits at its own pace. By the time the turn
+actually runs, whoever called `tell` has moved on; there is nothing about the
+turn for the method to hand back.
 
 ```java
 harness.tell(agentId, "the porch light came on");
@@ -49,7 +50,7 @@ nothing durable either, for the same reason: the story is one committed
 step behind the crash, never mid-write.
 
 **Whether backpressure is visible.** `ask` makes it visible immediately: a
-second caller arriving while a turn is in flight is told `Outcome.Busy`
+second caller arriving while a turn is in flight is told `AskOutcome.Busy`
 rather than being made to wait, because the caller is standing there and
 would rather know than block. `tell` makes backpressure invisible by
 design — there is no second caller to notice anything, because arrivals
@@ -65,9 +66,9 @@ waiting has nowhere for a late answer to arrive, and no work is ever
 attempted twice. See [Durable Computation](durable-computation.md).
 
 **What the caller can learn about failure.** `ask` gets the reason
-directly, as `Outcome.Failed(reason)` or `Outcome.Refused(category)`. A
-`tell` caller gets nothing back at all — not even a promise to poll —
-because it has already gone by the time the turn resolves. See
+directly, as `AskOutcome.Failed(reason)` or `AskOutcome.Refused(category)`. A
+`tell` caller gets back only whether the agent took the input, `Accepted` or
+`Terminated`, because it has already gone by the time the turn resolves. See
 [Outcomes](outcomes.md) for the shapes and
 [Narration](../guides/narration.md) for how a queued caller learns what
 happened by watching instead of asking.
@@ -99,13 +100,13 @@ chance to be told no.
 
 ## How failure reaches the caller
 
-On the direct door, `ask` hands back the reason inline: `Outcome.Failed`
+On the direct door, `ask` hands back the reason inline: `AskOutcome.Failed`
 carries the provider adapter's account of what went wrong, and
-`Outcome.Refused` carries the model's own category for declining. The
+`AskOutcome.Refused` carries the model's own category for declining. The
 caller has it before its next line of code runs.
 
-On the queued door, `tell` returns nothing, so there is no inline path at
-all. A watcher hears the reason live: `Narration.TurnFailed` carries the same
+On the queued door, `tell` returns only a `TellOutcome`, so there is no inline
+path for a turn's failure at all. A watcher hears the reason live: `Narration.TurnFailed` carries the same
 text the direct door would have returned, and `Narration.TurnRefused` carries
 the same category. A queued agent that fails with nobody watching still
 recorded the failure in its story, and `AgentStories.replay` reads it
@@ -120,7 +121,7 @@ interface with the queued door as a superset: `DirectBackend` needs
 `AgentEvents`, `Payloads` and `Locks` — enough to fold a turn and lock
 around it — plus `Chapters` (an agent's closed chapters) and `Leases`
 (background work that must run once). `QueuedBackend` needs those same five,
-plus `Agents` (whether an agent has been told to end), `Effects` (the outbox
+plus `Agents` (whether an agent has been told to terminate), `Effects` (the outbox
 a queued turn's work is dispatched through) and `backlogs(TypeRef<I>)` (the
 waiting-input store above). Nothing takes a `DirectBackend` hoping to be handed a queued one:
 a backend that can do more than a direct door needs is not a direct

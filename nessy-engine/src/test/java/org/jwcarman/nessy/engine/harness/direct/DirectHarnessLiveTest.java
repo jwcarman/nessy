@@ -36,11 +36,11 @@ import org.jwcarman.codec.TypeRef;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.AskOutcome;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.Customizer;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessConfig;
-import org.jwcarman.nessy.api.Outcome;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Tool;
@@ -170,11 +170,11 @@ class DirectHarnessLiveTest {
   @Test
   @DisplayName("a model answers in the shape it was asked for, and the harness hands back the type")
   void an_answer_comes_back_as_the_type_that_was_asked_for() {
-    Outcome<Capital> outcome =
+    AskOutcome<Capital> outcome =
         harness(Capital.class).ask(AgentId.random(), "What is the capital of France?");
 
-    assertThat(outcome).isInstanceOf(Outcome.Answered.class);
-    Capital capital = ((Outcome.Answered<Capital>) outcome).value();
+    assertThat(outcome).isInstanceOf(AskOutcome.Answered.class);
+    Capital capital = ((AskOutcome.Answered<Capital>) outcome).value();
     assertThat(capital.city()).containsIgnoringCase("Paris");
     assertThat(capital.country()).containsIgnoringCase("France");
   }
@@ -183,35 +183,36 @@ class DirectHarnessLiveTest {
   @Test
   @DisplayName("the shape is honoured even when the question fits it badly")
   void the_shape_survives_a_question_that_does_not_suit_it() {
-    Outcome<Answer> outcome = harness(Answer.class).ask(AgentId.random(), "Tell me a joke.");
+    AskOutcome<Answer> outcome = harness(Answer.class).ask(AgentId.random(), "Tell me a joke.");
 
-    assertThat(outcome).isInstanceOf(Outcome.Answered.class);
-    assertThat(((Outcome.Answered<Answer>) outcome).value().answer()).isNotBlank();
+    assertThat(outcome).isInstanceOf(AskOutcome.Answered.class);
+    assertThat(((AskOutcome.Answered<Answer>) outcome).value().answer()).isNotBlank();
   }
 
   /** A TypeRef carries what a Class cannot, and the parse has to survive the whole way back. */
   @Test
   @DisplayName("a collection asked for through a TypeRef comes back parsed")
   void a_collection_comes_back_parsed() {
-    Outcome<List<Capital>> outcome =
+    AskOutcome<List<Capital>> outcome =
         harness(new TypeRef<List<Capital>>() {})
             .ask(
                 AgentId.random(),
                 "Give me the capitals of France and Japan as a JSON array of "
                     + "objects with city and country.");
 
-    assertThat(outcome).isInstanceOf(Outcome.Answered.class);
-    assertThat(((Outcome.Answered<List<Capital>>) outcome).value()).hasSizeGreaterThanOrEqualTo(1);
+    assertThat(outcome).isInstanceOf(AskOutcome.Answered.class);
+    assertThat(((AskOutcome.Answered<List<Capital>>) outcome).value())
+        .hasSizeGreaterThanOrEqualTo(1);
   }
 
   /** Asking for nothing in particular still works, and is still prose. */
   @Test
   @DisplayName("prose is still prose when no shape is asked for")
   void prose_still_works() {
-    Outcome<String> outcome = harness().ask(AgentId.random(), "What is the capital of France?");
+    AskOutcome<String> outcome = harness().ask(AgentId.random(), "What is the capital of France?");
 
-    assertThat(outcome).isInstanceOf(Outcome.Answered.class);
-    assertThat(((Outcome.Answered<String>) outcome).value()).containsIgnoringCase("Paris");
+    assertThat(outcome).isInstanceOf(AskOutcome.Answered.class);
+    assertThat(((AskOutcome.Answered<String>) outcome).value()).containsIgnoringCase("Paris");
   }
 
   /**
@@ -232,10 +233,12 @@ class DirectHarnessLiveTest {
                   c.tool(tool);
                 });
 
-    Outcome<String> outcome =
+    AskOutcome<String> outcome =
         harness.ask(AgentId.random(), "Restart the service called billing-api, gracefully.");
 
-    assertThat(outcome).as("the turn finished: %s", outcome).isInstanceOf(Outcome.Answered.class);
+    assertThat(outcome)
+        .as("the turn finished: %s", outcome)
+        .isInstanceOf(AskOutcome.Answered.class);
     assertThat(tool.received.get()).as("the tool was called").isNotNull();
     assertThat(tool.received.get().command())
         .isInstanceOfSatisfying(

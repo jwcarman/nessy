@@ -137,6 +137,25 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
+    <!-- The page draws answers as Markdown with markdown-it's bundled browser build, served by
+         Boot from /webjars/** with nothing fetched from the network. -->
+    <dependency>
+      <groupId>org.webjars.npm</groupId>
+      <artifactId>markdown-it</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- Code in an answer is coloured by highlight.js's browser build, served the same way. -->
+    <dependency>
+      <groupId>org.webjars.npm</groupId>
+      <artifactId>highlightjs__cdn-assets</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- The page's icons are Lucide's, drawn by its browser build from a name on an element. -->
+    <dependency>
+      <groupId>org.webjars.npm</groupId>
+      <artifactId>lucide</artifactId>
+      <scope>runtime</scope>
+    </dependency>
     <!-- Boot 4 auto-configures a DataSource only when its JDBC module is present. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

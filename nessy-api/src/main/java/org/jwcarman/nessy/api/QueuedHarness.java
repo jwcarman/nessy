@@ -18,18 +18,18 @@ package org.jwcarman.nessy.api;
 /**
  * One agent type's door, for work nobody is waiting on.
  *
- * <p><b>It always accepts.</b> Telling an agent something cannot fail and cannot be refused: what
- * arrives goes in the queue, and the queue is what makes the agent's own pace nobody else's
- * problem. Nothing comes back, because there is nothing a caller could do with it -- by the time
- * the turn runs, whoever spoke has gone.
+ * <p><b>It accepts every input, unless the agent has been terminated.</b> What arrives goes in the
+ * queue, and the queue is what makes the agent's own pace nobody else's problem. What comes back
+ * says only whether the agent took the input or has been terminated, and never how the turn went:
+ * by the time the turn runs, whoever spoke has gone.
  *
  * <p>{@link DirectHarness} is the other door and the opposite bargain: its caller is standing there
  * holding the answer, so it hands one back and may refuse to start at all. Neither is a special
  * case of the other, and the question that picks between them is whether anybody is waiting.
  *
- * <p>An interface with one method besides ending, and that is the whole design. Everything an agent
- * type needs -- its codec, its renderer, its transactions, the callback its effects report through
- * -- is behind an implementation a caller cannot reach.
+ * <p>An interface with one method besides terminating, and that is the whole design. Everything an
+ * agent type needs -- its codec, its renderer, its transactions, the callback its effects report
+ * through -- is behind an implementation a caller cannot reach.
  *
  * <p>In particular there is no way to deliver an outcome from out here. That capability lives on
  * the engine's own callback, which the same object implements and this type does not mention: were
@@ -43,22 +43,29 @@ public interface QueuedHarness<I> {
   /**
    * Tells an agent something happened.
    *
+   * <p>An accepted input is handed to the agent type's backlog policy, and a turn starts at once
+   * when the agent is idle and the policy left something waiting. The policy decides what waits, so
+   * accepted is not a promise that the input will run; an input still waiting when the agent is
+   * terminated is abandoned. See {@link TellOutcome.Accepted}.
+   *
    * <p>An agent that has never been heard of comes into being here rather than through a separate
    * call: there is nothing to say about an agent before its first input, and a create step would
    * only be a way to get that wrong.
+   *
+   * @return {@link TellOutcome.Accepted} when the agent took the input, whatever its backlog policy
+   *     then did with it; {@link TellOutcome.Terminated} when the agent has been terminated, in
+   *     which case the input was dropped
    */
-  void tell(AgentId agentId, I input);
+  TellOutcome tell(AgentId agentId, I input);
 
   /**
-   * Ends an agent.
+   * Terminates an agent.
    *
-   * <p>Takes effect at once if the agent is idle. One mid-turn stops accepting immediately and ends
-   * when the turn it already owes an outcome for is finished -- there is no cancelling an effect
-   * that has already been written down, and abandoning it would leave a row nobody will ever
-   * discharge.
-   *
-   * <p>Nothing is written to the story. What ended is the agent, not its conversation, and the
-   * model has no use for the fact.
+   * <p>Takes effect at once if the agent is idle: a {@code Terminated} event is written to the
+   * story in this call. One mid-turn stops accepting input immediately, and its {@code Terminated}
+   * event is written when the turn it already owes an outcome for is finished -- there is no
+   * cancelling an effect that has already been written down, and abandoning it would leave a row
+   * nobody will ever discharge. Inputs still waiting are abandoned.
    *
    * <p>Idempotent, and irreversible: an input arriving afterwards is refused, whenever it arrives.
    */

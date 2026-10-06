@@ -18,8 +18,8 @@ package org.jwcarman.nessy.console;
 
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentId;
+import org.jwcarman.nessy.api.AskOutcome;
 import org.jwcarman.nessy.api.DirectHarness;
-import org.jwcarman.nessy.api.Outcome;
 
 /**
  * Reads a line, hands it to the agent, prints what came back, prompts again.
@@ -153,18 +153,20 @@ final class ReplLoop {
     io.write("  %-12s %s%n".formatted(label, value));
   }
 
-  private void report(Outcome<String> outcome) {
+  private void report(AskOutcome<String> outcome) {
     io.write(System.lineSeparator());
     switch (outcome) {
       // The tally is bound and ignored: a terminal shows the answer, not the arithmetic. It is
       // there for anyone who wants to print what a question cost.
-      case Outcome.Answered<String>(String said, _) -> reportAnswer(said);
-      case Outcome.Refused<String>(String category, _) ->
+      case AskOutcome.Answered<String>(String said, _) -> reportAnswer(said);
+      case AskOutcome.Refused<String>(String category, _) ->
           note("the model refused to answer: " + category);
-      case Outcome.Failed<String>(String reason, _) -> note("the turn failed: " + reason);
+      case AskOutcome.Failed<String>(String reason, _) -> note("the turn failed: " + reason);
       // Only reachable with a lock somebody else holds -- another terminal, or another machine
       // on the same agent. Worth saying plainly rather than looking like a failure.
-      case Outcome.Busy<String> _ -> note("that agent is busy with another turn; try again");
+      case AskOutcome.Busy<String> _ -> note("that agent is busy with another turn; try again");
+      // Reachable when something else terminated the agent, since /new leaves its old id alone.
+      case AskOutcome.Terminated<String> _ -> note("that conversation has been terminated");
     }
   }
 

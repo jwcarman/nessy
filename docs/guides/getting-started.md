@@ -63,7 +63,7 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.NarrationListener;
-import org.jwcarman.nessy.api.Outcome;
+import org.jwcarman.nessy.api.AskOutcome;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.QueuedHarnessFactory;
@@ -178,16 +178,17 @@ DirectHarness<String, Verdict> reviewer = factory.<String, Verdict>create(
 ## Asking, and getting an outcome
 
 `ask` runs the whole turn on the calling thread and hands back an
-`Outcome<O>` — nothing here throws for anything it understands:
+`AskOutcome<O>` — nothing here throws for anything it understands:
 
 ```java
-Outcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
+AskOutcome<String> outcome = harness.ask(AgentId.random(), "what is 2+2?");
 
 switch (outcome) {
-    case Outcome.Answered<String>(String said, _) -> System.out.println(said);
-    case Outcome.Refused<String>(String category, _) -> System.out.println("refused: " + category);
-    case Outcome.Failed<String>(String reason, _) -> System.out.println("failed: " + reason);
-    case Outcome.Busy<String> _ -> System.out.println("busy; try again");
+    case AskOutcome.Answered<String>(String said, _) -> System.out.println(said);
+    case AskOutcome.Refused<String>(String category, _) -> System.out.println("refused: " + category);
+    case AskOutcome.Failed<String>(String reason, _) -> System.out.println("failed: " + reason);
+    case AskOutcome.Busy<String> _ -> System.out.println("busy; try again");
+    case AskOutcome.Terminated<String> _ -> System.out.println("terminated");
 }
 ```
 
@@ -195,7 +196,9 @@ switch (outcome) {
 component, what the turn did and what it cost; the `_` ignores it here.
 
 `Busy` means no turn ran at all — somebody else already holds this agent —
-and is the only arm worth simply retrying. See [The Harness](harness.md#outcome)
+and is the only arm worth simply retrying. `Terminated` means no turn ran
+either, because the agent has been terminated, and asking again gets the
+same answer. See [The Harness](harness.md#askoutcome)
 for what each arm carries and why.
 
 A listener is still worth attaching even though the answer comes back
@@ -254,8 +257,8 @@ notebook, a plan and the date, given as ambient background, added.
 
 ## Telling it something instead
 
-Not every caller is waiting. `QueuedHarness<I>.tell` always accepts and
-returns nothing; the turn happens later, on the harness's own dispatcher,
+Not every caller is waiting. `QueuedHarness<I>.tell` returns a
+`TellOutcome`, `Accepted` or `Terminated`; the turn happens later, on the harness's own dispatcher,
 and the answer is narrated to listeners rather than returned:
 
 ```java
