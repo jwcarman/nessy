@@ -27,10 +27,20 @@
     <header>
       <h1>Nessy Chat</h1>
     </header>
-    <main id="log"></main>
-    <section id="approvals"></section>
+    <div id="conversation">
+      <main id="log" aria-label="Conversation"></main>
+      <div id="greeting" hidden>
+        <h2>Chat with an agent</h2>
+        <p>
+          Type a message below. The agent answers here. When it wants to use a tool that needs your
+          say, a card asks you to approve or deny it.
+        </p>
+      </div>
+      <button id="jump" type="button" hidden>Jump to latest</button>
+    </div>
+    <section id="approvals" aria-label="Waiting for your answer"></section>
     <footer>
-      <div id="working" hidden>working…</div>
+      <div id="working" role="status" aria-live="polite" hidden>working…</div>
       <form id="send-form">
         <button id="new-chat" type="button">New chat</button>
         <label for="text" class="visually-hidden">Message</label>
@@ -55,13 +65,14 @@
     <dialog id="confirm-new" aria-labelledby="confirm-new-title">
       <form method="dialog">
         <h2 id="confirm-new-title">Start a new chat?</h2>
-        <p>This conversation ends: the agent takes no more messages in it.</p>
+        <p>This conversation's agent is terminated: it takes no more messages.</p>
         <div class="dialog-actions">
           <button value="cancel" autofocus>Cancel</button>
           <button value="new" class="primary">Start a new chat</button>
         </div>
       </form>
     </dialog>
+    <script src="/webjars/markdown-it/14.3.0/dist/markdown-it.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

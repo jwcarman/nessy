@@ -13,10 +13,10 @@ person, and where that person is asked.
 **The queued door.** `POST /api/agents/{id}/messages` tells the agent
 and returns `202` with an empty body. The turn runs on the engine's own
 threads, so no request is held while the model works. A message with no
-text, or only blanks, is a `400`. Once an ended conversation's last turn
+text, or only blanks, is a `400`. Once a terminated agent's last turn
 is over, a message is a `409`. While that last turn is still in progress,
 it can wait on an approval card for the whole approval term, and a message
-is answered `202` and dropped: Nessy takes no more input for an ended
+is answered `202` and dropped: Nessy takes no more input for a terminated
 agent and does not report it.
 
 **One stream carries the rest.** It says what the agent is doing, and when a
@@ -74,10 +74,10 @@ or if the state read fails, the page opens a new stream after three seconds.
 answering. This example puts no login in front of the page's endpoint, so
 an application that copies it must guard it.
 
-Other endpoint: `DELETE /api/agents/{id}` ends the conversation. The story
+Other endpoint: `DELETE /api/agents/{id}` terminates the conversation's agent. The story
 is kept; the agent takes no more input. A message sent after that is a `409`
 once the last turn is over (see the queued door above). The page then says
-the conversation has ended.
+the conversation has been terminated.
 
 `send_email` sends nothing. It is the right *shape* — outward-facing and
 irreversible — without being something you could point at a stranger.
@@ -85,7 +85,8 @@ irreversible — without being something you could point at a stranger.
 ## Using the page
 
 The page is three static files (`index.html`, `app.js` and `style.css`) with
-no build step and nothing fetched from the network.
+no build step. It also loads markdown-it, which the application serves from a
+WebJar (`/webjars/markdown-it/...`), so nothing is fetched from the internet.
 
 **The message box keeps the cursor.** The cursor is in the box when the page
 loads, after you send, after you answer a card and when a turn ends. It stays
@@ -102,7 +103,29 @@ grows with what you type, up to six lines, and then scrolls.
 
 A message you have not sent is kept for the tab, per conversation, and is
 still in the box after a reload. **New chat** is beside the box. If the
-conversation has messages, it asks before it ends the conversation.
+conversation has messages, it asks before it terminates the conversation's
+agent.
+
+**Answers are formatted.** Answers are rendered as Markdown by markdown-it,
+with raw HTML off. Headings, lists, quotes, links, tables and code blocks are
+drawn as such; a code block shows its language. Text that looks like HTML is
+shown as text, and images are not loaded. A link opens in a new tab. An answer
+that is still streaming is formatted as it arrives. Your own messages are shown
+as you typed them.
+
+**Copy.** Each finished answer has a **Copy** button. It copies the answer's
+Markdown, as the agent wrote it.
+
+**Scrolling.** While you are at the bottom of the conversation, new content
+keeps the view at the bottom. If you scroll up, the view stays where you put
+it, and a **Jump to latest** button takes you back.
+
+**Approval cards** show what will be done, the tool, its arguments, and how
+long is left before the card's deadline. Approve comes first.
+
+**Themes.** The page uses a light or a dark theme, as your system is set.
+While the agent works, a small pulsing dot shows beside "working…"; it stays
+still if your system asks for reduced motion.
 
 ## Run it
 
