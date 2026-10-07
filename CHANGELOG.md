@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The task label on every turn row.** The label an application gives an input is stored in
+  `nessy_agent_turn.label`, so trajectories group by the kind of work.
+
+### Changed
+
+- **A label is a category.** `inputLabel` names the kind of work an input starts, from a small set
+  of values, and is stored plain, unencrypted. An application whose label carries input content
+  must change it. A label containing NUL, or an unpaired surrogate, is stored with U+FFFD in that
+  character's place.
+
 ## [0.6.0] - 2026-10-07
 
 ### Added

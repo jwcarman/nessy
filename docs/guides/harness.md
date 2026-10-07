@@ -300,15 +300,20 @@ on summaries by default. See [Context](../concepts/context.md#chapters).
 
 ### Labelling an input
 
-Each turn's start says what started it, in a few words, so a reader of the
-story can tell turns apart without opening their inputs. Give each input a
+Each turn's start says what kind of work started it, in a few words, so a
+reader of the story can tell turns apart without opening their inputs. Give each input a
 label with `inputLabel`:
 
 ```java
 harness
     .systemPrompt("You settle invoices.")
-    .inputLabel(invoice -> "Invoice " + invoice.number());
+    .inputLabel(invoice -> "invoice");
 ```
+
+A label is a category: it names the kind of work an input starts, from a
+small set of values such as `rounds` or `invoice:PRICE_VARIANCE`. It is
+stored plain, unencrypted, on the turn's row, so it must never carry the
+input's content. See [Trajectories](../concepts/trajectories.md#trajectories-by-task).
 
 A label is made one line and cut to 1000 characters, as an action line is. With
 no label configured, the label is the input's simple class name. It is the same

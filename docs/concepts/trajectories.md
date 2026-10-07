@@ -97,6 +97,7 @@ a rolled-back one never does.
 | `tool_success_count`, `tool_failure_count`, `tool_denied_count` | calls by outcome |
 | `inference_call_count` | every model call, retries included |
 | `inference_retry_count` | attempts that failed and were tried again |
+| `label` | the task label of the input that started the turn, `VARCHAR(1000) NOT NULL` |
 
 `turn_id` is the seq of `TurnStarted` and `ending_seq` is the seq of the
 ending event. Between them, inclusive, are the turn's events, and folding
@@ -190,6 +191,50 @@ WHERE t.trajectory_version = 1
       AND earlier.ended_at < now() - INTERVAL '1 day')
 ORDER BY t.ended_at;
 ```
+
+## Trajectories by task
+
+The `label` column holds the label the application's `inputLabel` gave the
+input that started the turn, or the input's simple class name when the
+application set none. A label is a category. It names the kind of work,
+from a small set of values such as `rounds` or `invoice:PRICE_VARIANCE`.
+It is stored plain, unencrypted, so it must never carry the input's
+content.
+
+The label is not part of the fingerprint. The fingerprint is behavior and
+the label is the task, and keeping them apart is what lets a query ask how
+predictable each kind of work is:
+
+```sql
+SELECT label, COUNT(*) AS turns, COUNT(DISTINCT trajectory_hash) AS trajectories
+FROM nessy_agent_turn
+WHERE agent_type = 'ap-agent' AND trajectory_version = 1
+GROUP BY label
+ORDER BY turns DESC;
+```
+
+A label with one trajectory is a workflow candidate: the model does the
+same thing every time, and code could do it. A label with many is where
+judgment lives.
+
+The reverse question is just as useful. Which paths are shared by
+different kinds of work?
+
+```sql
+SELECT trajectory_hash, array_agg(DISTINCT label) AS labels
+FROM nessy_agent_turn WHERE trajectory_version = 1
+GROUP BY trajectory_hash HAVING COUNT(DISTINCT label) > 1;
+```
+
+Two kinds of work that follow the same path share one hash. That is
+deliberate, and it is worth a look.
+
+On the row, a NUL or an unpaired surrogate in a label is replaced by
+U+FFFD, because the column cannot hold it. The event keeps the label as
+given.
+
+Nothing enforces how many values a label takes. An application that gives
+each input a unique label gets one trajectory per label and learns nothing.
 
 ## Reading a trajectory
 

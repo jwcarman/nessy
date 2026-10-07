@@ -7,7 +7,7 @@ were made in conversation on 2026-10-07 and are his. Every path and name below w
 **Amendment, 2026-10-07: the readable trajectory (§4.6, ruling 9). APPROVED by James. BUILT.**
 
 **Amendment, 2026-10-07: the task label (§4.7, ruling 10). APPROVED by James (option 1: the label is
-a category). NOT BUILT.**
+a category). BUILT.**
 
 ---
 
