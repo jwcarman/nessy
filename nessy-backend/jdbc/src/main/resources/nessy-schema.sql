@@ -248,3 +248,36 @@ CREATE TABLE IF NOT EXISTS nessy_chapter
     PRIMARY KEY (agent_type, agent_id, from_turn),
     UNIQUE (agent_type, agent_id, after_turn)
 );
+
+-- One row per completed turn: its trajectory (the versioned digest of which tools ran in which
+-- rounds with which outcomes, and how the turn ended) and the counts a question about behaviour
+-- asks first. A projection of nessy_agent_event, written in the same transaction as the event that
+-- ended the turn, so a committed ending always has its row. turn_id is the seq of TurnStarted and
+-- ending_seq the seq of the ending event: between them, inclusive, is the turn's slice of events,
+-- and re-folding that slice reproduces trajectory_hash. The hash is 64 lowercase hex characters,
+-- readable in a query and the same string the trace carries.
+CREATE TABLE IF NOT EXISTS nessy_agent_turn
+(
+    agent_type            VARCHAR(64)              NOT NULL,
+    agent_id              UUID                     NOT NULL,
+    turn_id               BIGINT                   NOT NULL,
+    ending_seq            BIGINT                   NOT NULL,
+    arrived_at            TIMESTAMP WITH TIME ZONE NOT NULL,
+    started_at            TIMESTAMP WITH TIME ZONE NOT NULL,
+    ended_at              TIMESTAMP WITH TIME ZONE NOT NULL,
+    trajectory_version    SMALLINT                 NOT NULL,
+    trajectory_hash       CHAR(64)                 NOT NULL,
+    outcome               VARCHAR(16)              NOT NULL,
+    round_count           INTEGER                  NOT NULL,
+    tool_call_count       INTEGER                  NOT NULL,
+    tool_success_count    INTEGER                  NOT NULL,
+    tool_failure_count    INTEGER                  NOT NULL,
+    tool_denied_count     INTEGER                  NOT NULL,
+    inference_call_count  INTEGER                  NOT NULL,
+    inference_retry_count INTEGER                  NOT NULL,
+    PRIMARY KEY (agent_type, agent_id, turn_id)
+);
+
+-- Which turns, of one agent type, followed one trajectory: the question every analysis starts from.
+CREATE INDEX IF NOT EXISTS ix_nessy_agent_turn_trajectory
+    ON nessy_agent_turn (agent_type, trajectory_version, trajectory_hash);

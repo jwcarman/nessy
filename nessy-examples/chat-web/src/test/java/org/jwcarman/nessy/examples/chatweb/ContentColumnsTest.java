@@ -50,6 +50,7 @@ class ContentColumnsTest {
           "nessy_agent_event.agent_type",
           "nessy_agent_backlog.agent_type",
           "nessy_agent_effect.agent_type",
+          "nessy_agent_turn.agent_type",
           "nessy_chapter.agent_type",
           "nessy_lease.agent_type",
           "nessy_note.agent_type",
@@ -63,6 +64,9 @@ class ContentColumnsTest {
           "nessy_agent_effect.status",
           // What kind of lease it is, a short name from the code.
           "nessy_lease.kind",
+          // A turn's outcome is one fixed word, and its trajectory hash is hex a query matches on.
+          "nessy_agent_turn.outcome",
+          "nessy_agent_turn.trajectory_hash",
           // What a payload is, BLOCKS or DOCUMENT; a fixed word from the code.
           "nessy_payload.kind",
           // Observability plumbing: a W3C trace parent, never what anybody said.
