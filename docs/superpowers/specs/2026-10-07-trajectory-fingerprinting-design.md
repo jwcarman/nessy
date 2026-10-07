@@ -1,7 +1,9 @@
 # Trajectory fingerprinting: a behavioural identity for every completed turn
 
-**Status: APPROVED by James on 2026-10-07. BUILT on branch `trajectory-fingerprinting`.** The rulings in §2 were made in
-conversation on 2026-10-07 and are his. Every path and name below was checked against `main` at
+**Status: APPROVED by James on 2026-10-07. BUILT and on `main` (a4408c755).** The rulings in §2
+were made in conversation on 2026-10-07 and are his.
+
+**Amendment, 2026-10-07: the readable trajectory (§4.6, ruling 9). APPROVED by James. NOT BUILT.** Every path and name below was checked against `main` at
 `acc3a0daf`.
 
 ---
@@ -38,12 +40,17 @@ Made in conversation on 2026-10-07.
 5. **Names**: `AgentTurns` (backend SPI), `AgentTurn` (the row), table `nessy_agent_turn`,
    `TurnOutcome` (the enum), `Trajectory` (version plus hash). The three-way tool outcome is
    engine-private and gets no public word.
-8. **The digest is stored as text**: 64 lowercase hex characters, the same string the span
-   carries, readable in SQL without decoding.
 6. **Observability**: trace attributes on the span current at the terminal fold, on both doors.
    No metrics. No new span.
 7. **No read API and no analytics in this effort.** The table is queried in SQL. The analytics
    pass is the payoff and a follow-on.
+8. **The digest is stored as text**: 64 lowercase hex characters, the same string the span
+   carries, readable in SQL without decoding.
+9. **The row also carries the trajectory itself, as JSON** (§4.6). A hash says whether two turns
+   behaved the same; it cannot say what either did. The JSON is the canonical structure the hash
+   encodes, so a query reads it directly and any later similarity measure (n-grams, edit distance,
+   the rounds-only path) is computed from it rather than frozen into a stored vector now. It is
+   stored plain, not through the codec: tool names and outcome words are not content.
 
 ## 3. What the fold knows today, and what it drops
 
@@ -137,6 +144,41 @@ A public record in `nessy-api`: `Trajectory(short version, String hash)`, where 
 digest as 64 lowercase hex characters. One value serves the record, the row and the span, with no
 decoding anywhere. Version 1 digests are SHA-256, so always 64 characters.
 
+### 4.6 The readable trajectory (amendment)
+
+The row carries the canonical structure of §4.4 as JSON: the same rounds in the same order, each
+round's entries in the same sorted order, and the turn's outcome.
+
+```json
+{"rounds": [[{"tool": "containers", "outcome": "SUCCESS"},
+             {"tool": "disk_usage", "outcome": "SUCCESS"}]],
+ "outcome": "ANSWERED"}
+```
+
+- `rounds` is an array of rounds in the order they happened; a turn that called no tool has
+  `"rounds": []`. Each round is an array of entries, sorted as §4.4 sorts them, duplicates kept.
+- `tool` is the tool name; `outcome` is `SUCCESS`, `FAILED` or `DENIED`; the top-level `outcome` is
+  the `TurnOutcome` name.
+- **A name JSON cannot carry.** Postgres `jsonb` refuses an unpaired surrogate and the NUL
+  character, and a refused insert would roll back the turn's ending and wedge the agent on every
+  retry. So a tool name that is not well-formed UTF-16, or that contains U+0000, is written with
+  each unpaired surrogate and each NUL replaced by the six ASCII characters `\uXXXX` (uppercase
+  hex), and its entry gains `"escaped": true`. The flag keeps the rendering one-to-one: a real name
+  that happens to contain the characters `\uD800` has no flag. Well-formed names are written as
+  they are.
+- **The hash is not computed over this text.** The digest stays over the binary encoding of §4.4;
+  `jsonb` reorders keys and drops whitespace, so JSON text is no stable preimage. The guarantee is
+  structural: under one `trajectory_version`, two rows have equal `trajectory` values if and only
+  if they have equal `trajectory_hash` values.
+- **Versioned with the hash.** A change to the JSON shape is a change of `trajectory_version`.
+
+What this enables in plain SQL, for example every turn in which a person denied `prune_images`:
+
+```sql
+SELECT turn_id, ended_at FROM nessy_agent_turn
+ WHERE trajectory @> '{"rounds": [[{"tool": "prune_images", "outcome": "DENIED"}]]}';
+```
+
 ## 5. The fold: `TurnTrajectory`
 
 An engine-internal accumulator in `engine/core`, parallel to `TurnTally`. Its state is carried by
@@ -174,7 +216,7 @@ exposed by both `DirectBackend` and `QueuedBackend`:
 ```java
 public interface AgentTurns {
   /** Writes the row for a turn that has just ended. Same transaction as the terminal event. */
-  void record(AgentType type, AgentId agent, AgentTurn turn);
+  void append(AgentType type, AgentId agent, AgentTurn turn);
 
   /** The turns of one agent, oldest first. For tests and audit; analytics use SQL. */
   List<AgentTurn> of(AgentType type, AgentId agent);
@@ -182,7 +224,9 @@ public interface AgentTurns {
 ```
 
 `AgentTurn` is a record with exactly the columns below. It lives in the SPI, not the public API:
-nothing public reads it in this effort.
+nothing public reads it in this effort. The amendment adds one component, `String trajectoryJson`:
+the engine renders it (§4.6) and the stores write it as given, so neither the SPI nor the API
+learns the engine's round and entry types.
 
 ### 6.2 Schema
 
@@ -202,6 +246,7 @@ CREATE TABLE IF NOT EXISTS nessy_agent_turn
     ended_at               TIMESTAMP WITH TIME ZONE NOT NULL,  -- the append's `at`
     trajectory_version     SMALLINT                 NOT NULL,
     trajectory_hash        CHAR(64)                 NOT NULL,  -- lowercase hex of the digest
+    trajectory             JSONB                    NOT NULL,  -- the canonical structure, §4.6
     outcome                VARCHAR(16)              NOT NULL,  -- TurnOutcome name
     round_count            INTEGER                  NOT NULL,
     tool_call_count        INTEGER                  NOT NULL,
@@ -225,6 +270,8 @@ Column sources:
 - `turn_id`, `arrived_at`, `started_at`: from `TurnStarted`. `arrived_at` and `started_at` are
   already in `TurnStats.startedAt` and the event; the fold keeps `arrivedAt` too.
 - `ending_seq`, `ended_at`: the terminal event's seq and the `at` passed to `append`.
+- `trajectory`: `TurnTrajectory` renders the folded rounds and the outcome as §4.6 says; JDBC
+  writes it with a `CAST(? AS JSONB)`, in-memory keeps the string.
 - `round_count`: `completed.size()`.
 - `tool_*_count`: tallied over every entry in every round. `tool_call_count` equals the number of
   settled calls, which equals the number requested because no turn ends with calls outstanding.
@@ -316,6 +363,17 @@ Prose style, no mocking library, as the design of record requires.
 - `InferenceAttempted` events before the answer: same hash.
 - deferrals and approvals in the middle of a round: same hash.
 
+**Readable trajectory** (amendment, §4.6):
+
+- the rendering of a sample of trajectories (no rounds; one round; repeated tools; three rounds;
+  each outcome) is the exact JSON §4.6 shows, entries in the same order as the hash's encoding.
+- over every trajectory the canonicalisation tests build, two renderings are equal if and only if
+  the two hashes are equal.
+- an unpaired surrogate and a NUL in a tool name render as `\uXXXX` text with `"escaped": true`,
+  and such a row inserts into Postgres (`@Tag("container")`); a well-formed name containing the
+  literal characters `\uD800` renders differently, without the flag.
+- the containment query of §4.6 finds a denied call in a container test.
+
 **Replay**: fold a turn live, then fold its persisted slice from `sinceLastTurnStarted`, and the
 two `Trajectory` values are equal.
 
@@ -342,14 +400,20 @@ finished observation on the direct door, and on the effect span on the queued do
 - A turn-wide span on the queued door.
 - Token usage on the row. Usage stays on the inference events, where its provider semantics are
   right; the row would mix models.
+- A stored similarity vector (amendment). Similarity is computed from the `trajectory` JSON when an
+  agent type has enough distinct trajectories to need it; storing one feature choice now would
+  freeze it before the question is known.
+- Migrating an existing `nessy_agent_turn` (amendment). `CREATE TABLE IF NOT EXISTS` does not add
+  the column to a table that already exists; per the no-backward-compatibility rule, a database
+  that has the table drops it and lets the schema recreate it.
 
 ## 10. Modules touched
 
 | Module | Change |
 |---|---|
 | `nessy-api` | `TurnOutcome`, `Trajectory` |
-| `nessy-backend-spi` | `AgentTurns`, `AgentTurn`; `DirectBackend` and `QueuedBackend` expose it |
-| `nessy-backend-jdbc` | `JdbcAgentTurns`, schema, wiring |
+| `nessy-backend-spi` | `AgentTurns`, `AgentTurn` (amendment: `trajectoryJson`); `DirectBackend` and `QueuedBackend` expose it |
+| `nessy-backend-jdbc` | `JdbcAgentTurns`, schema (amendment: the `trajectory` column), wiring |
 | `nessy-backend-inmemory` | `InMemoryAgentTurns`, wiring |
-| `nessy-engine` | `TurnTrajectory`, state fields on `Inferring` and `AwaitingActions`, the shared terminal-fold helper, `TurnRecorder`, both harnesses |
+| `nessy-engine` | `TurnTrajectory` (amendment: the JSON rendering), state fields on `Inferring` and `AwaitingActions`, the shared terminal-fold helper, `TurnRecorder`, both harnesses |
 | `docs/` | a concepts page describing the fingerprint and the table, written as what is |
