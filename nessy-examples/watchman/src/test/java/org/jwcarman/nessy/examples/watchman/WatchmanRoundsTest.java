@@ -17,20 +17,23 @@ package org.jwcarman.nessy.examples.watchman;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.util.ArrayList;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.EmptyInput;
 import org.jwcarman.nessy.api.QueuedHarness;
 import org.jwcarman.nessy.api.TellOutcome;
-import org.springframework.boot.test.system.CapturedOutput;
-import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.slf4j.LoggerFactory;
 
-@ExtendWith(OutputCaptureExtension.class)
 @DisplayName("The watchman's rounds")
 class WatchmanRoundsTest {
 
@@ -55,20 +58,44 @@ class WatchmanRoundsTest {
     }
   }
 
+  /** What WatchmanRounds itself logged during one test, and nothing any other thread wrote. */
+  private final ListAppender<ILoggingEvent> logged = new ListAppender<>();
+
+  private final Logger roundsLogger = (Logger) LoggerFactory.getLogger(WatchmanRounds.class);
+
+  @BeforeEach
+  void listenToTheRounds() {
+    logged.start();
+    roundsLogger.setLevel(Level.DEBUG);
+    roundsLogger.addAppender(logged);
+  }
+
+  @AfterEach
+  void stopListening() {
+    roundsLogger.detachAppender(logged);
+    logged.stop();
+  }
+
+  private List<ILoggingEvent> warnings() {
+    return logged.list.stream().filter(event -> event.getLevel() == Level.WARN).toList();
+  }
+
   @Nested
   @DisplayName("When the watchman has been terminated")
   class WhenTerminated {
 
     @Test
-    void a_round_warns_that_the_watchman_will_do_no_more_rounds(CapturedOutput output) {
+    void a_round_warns_that_the_watchman_will_do_no_more_rounds() {
       AnsweringHarness harness = new AnsweringHarness(new TellOutcome.Terminated());
       WatchmanRounds rounds = new WatchmanRounds(harness);
 
       rounds.round();
 
       assertThat(harness.told).containsExactly(Watchman.AGENT);
-      assertThat(output.getOut())
-          .contains("WARN")
+      assertThat(warnings())
+          .singleElement()
+          .extracting(ILoggingEvent::getFormattedMessage)
+          .asString()
           .contains("the watchman agent has been terminated and will do no more rounds");
     }
   }
@@ -78,14 +105,17 @@ class WatchmanRoundsTest {
   class WhenAccepted {
 
     @Test
-    void a_round_does_not_warn(CapturedOutput output) {
+    void a_round_does_not_warn() {
       AnsweringHarness harness = new AnsweringHarness(new TellOutcome.Accepted());
       WatchmanRounds rounds = new WatchmanRounds(harness);
 
       rounds.round();
 
       assertThat(harness.told).containsExactly(Watchman.AGENT);
-      assertThat(output.getOut()).doesNotContain("WARN");
+      assertThat(logged.list)
+          .as("the round logged something, so the listener is attached")
+          .isNotEmpty();
+      assertThat(warnings()).isEmpty();
     }
   }
 }
