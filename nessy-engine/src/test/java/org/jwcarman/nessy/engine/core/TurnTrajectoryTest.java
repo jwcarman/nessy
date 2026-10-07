@@ -188,6 +188,8 @@ class TurnTrajectoryTest {
       0,
       1, // one entry
       0,
+      0,
+      0,
       1,
       'a', // name "a"
       2, // FAILED
@@ -285,6 +287,20 @@ class TurnTrajectoryTest {
                     new Seq(1), TURN, PayloadRef.of("p"), "Q", Instant.EPOCH, Instant.EPOCH)))
         .isEmpty();
     assertThat(TurnTrajectory.endingOf(new AgentEvent.Terminated(new Seq(9)))).isEmpty();
+  }
+
+  @Test
+  void a_tool_name_the_model_invented_at_any_length_still_fingerprints() {
+    ToolName huge = new ToolName("x".repeat(70_000));
+    State state = opened().settled(huge, CallOutcome.FAILED).roundClosed();
+    assertThat(of(state).hash()).hasSize(64);
+  }
+
+  @Test
+  void two_distinct_names_do_not_share_a_fingerprint() {
+    State lone = opened().settled(new ToolName("a\uD800"), CallOutcome.FAILED).roundClosed();
+    State mark = opened().settled(new ToolName("a?"), CallOutcome.FAILED).roundClosed();
+    assertThat(of(lone)).isNotEqualTo(of(mark));
   }
 
   private static int indexOf(byte[] haystack, byte[] needle) {

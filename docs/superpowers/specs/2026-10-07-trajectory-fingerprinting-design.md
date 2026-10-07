@@ -106,8 +106,10 @@ usage, trace and span ids, agent id, turn id, provider, model, request ids, idem
 ### 4.4 Canonical encoding, version 1
 
 Hash: SHA-256 over the following bytes. Every integer is big-endian and unsigned. Every string is
-UTF-8 with a 16-bit length prefix. The framing is length-prefixed throughout so that no two
-distinct trajectories can produce the same bytes.
+UTF-8 with a 32-bit length prefix. The framing is length-prefixed throughout so that no two
+distinct trajectories can produce the same bytes. A tool name that is not well-formed UTF-16 (an
+unpaired surrogate) is written as 0xFF followed by its UTF-16BE code units; 0xFF never occurs in
+UTF-8, so no such name equals a well-formed one.
 
 ```
 "NESSY_TRAJECTORY"        16 bytes, ASCII, domain separation
@@ -116,7 +118,7 @@ roundCount                u32
 for each round, in order:
   entryCount              u32
   for each entry, sorted:
-    toolName              u16 length + UTF-8 bytes
+    toolName              u32 length + bytes
     toolOutcome           u8    SUCCESS=1, FAILED=2, DENIED=3
 terminalMarker            u8    = 0xFF
 terminalOutcome           u8    ANSWERED=1, TRUNCATED=2, REFUSED=3, FAILED=4, STOPPED=5

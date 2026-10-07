@@ -16,6 +16,10 @@
 package org.jwcarman.nessy.engine.core;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -42,11 +46,11 @@ import org.jwcarman.nessy.backend.event.AgentEvent;
  * that to be nothing.
  *
  * <p><b>Version 1 canonical bytes</b>, hashed with SHA-256. Big-endian, unsigned, strings UTF-8
- * with a 16-bit length prefix, so that no two distinct trajectories serialise the same:
+ * with a 32-bit length prefix, so that no two distinct trajectories serialise the same:
  *
  * <pre>
  * "NESSY_TRAJECTORY"  u16 version  u32 rounds
- *   per round: u32 entries, per entry (sorted by name bytes then outcome): u16 len, name, u8 outcome
+ *   per round: u32 entries, per entry (sorted by name bytes then outcome): u32 len, name, u8 outcome
  * 0xFF  u8 terminal outcome
  * </pre>
  *
@@ -96,10 +100,7 @@ public final class TurnTrajectory {
 
     @Override
     public int compareTo(Entry other) {
-      int byName =
-          Arrays.compareUnsigned(
-              tool.value().getBytes(StandardCharsets.UTF_8),
-              other.tool.value().getBytes(StandardCharsets.UTF_8));
+      int byName = Arrays.compareUnsigned(nameBytes(tool), nameBytes(other.tool));
       return byName != 0 ? byName : Byte.compare(outcome.tag, other.outcome.tag);
     }
   }
@@ -203,8 +204,8 @@ public final class TurnTrajectory {
     for (Round round : state.completed()) {
       u32(out, round.entries().size());
       for (Entry entry : round.entries()) {
-        byte[] name = entry.tool().value().getBytes(StandardCharsets.UTF_8);
-        u16(out, name.length);
+        byte[] name = nameBytes(entry.tool());
+        u32(out, name.length);
         out.writeBytes(name);
         out.write(entry.outcome().tag());
       }
@@ -212,6 +213,34 @@ public final class TurnTrajectory {
     out.write(TERMINAL_MARKER);
     out.write(outcome.tag());
     return out.toByteArray();
+  }
+
+  /**
+   * A tool name's bytes, for both the sort and the hash. A well-formed name is its strict UTF-8. A
+   * name with an unpaired surrogate has no UTF-8 form, so it is 0xFF (never seen in UTF-8, so no
+   * escaped name equals a well-formed one) followed by its UTF-16BE code units. Never throws.
+   */
+  private static byte[] nameBytes(ToolName tool) {
+    String value = tool.value();
+    try {
+      ByteBuffer encoded =
+          StandardCharsets.UTF_8
+              .newEncoder()
+              .onMalformedInput(CodingErrorAction.REPORT)
+              .onUnmappableCharacter(CodingErrorAction.REPORT)
+              .encode(CharBuffer.wrap(value));
+      byte[] bytes = new byte[encoded.remaining()];
+      encoded.get(bytes);
+      return bytes;
+    } catch (CharacterCodingException e) {
+      byte[] units = new byte[1 + 2 * value.length()];
+      units[0] = TERMINAL_MARKER;
+      for (int i = 0; i < value.length(); i++) {
+        units[1 + 2 * i] = (byte) (value.charAt(i) >>> 8);
+        units[2 + 2 * i] = (byte) value.charAt(i);
+      }
+      return units;
+    }
   }
 
   private static void u16(ByteArrayOutputStream out, int value) {
