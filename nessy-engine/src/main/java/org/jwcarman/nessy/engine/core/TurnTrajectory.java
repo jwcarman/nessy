@@ -35,6 +35,9 @@ import org.jwcarman.nessy.api.Trajectory;
 import org.jwcarman.nessy.api.TurnOutcome;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.backend.event.AgentEvent;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * The shape of a turn's behaviour, worked out from what it did: which tools ran in which rounds,
@@ -201,6 +204,64 @@ public final class TurnTrajectory {
 
   public static Trajectory fingerprint(State state, TurnOutcome outcome) {
     return new Trajectory(VERSION, HexFormat.of().formatHex(sha256(canonical(state, outcome))));
+  }
+
+  /**
+   * The trajectory as JSON, for the row: the same rounds in the same order, each round's entries in
+   * the order {@link #canonical} encodes them, and the turn's outcome. Compact, keys in a fixed
+   * order. Not the bytes hashed -- a database may reorder keys -- but one-to-one with them: under
+   * one version, two renderings are equal exactly when the two fingerprints are.
+   *
+   * <p>A name Postgres {@code jsonb} cannot hold (an unpaired surrogate, a NUL) would make the row
+   * refuse to insert and roll back the turn's ending on every retry. Such a name is written with
+   * each offending character as the six characters {@code \}{@code uXXXX}, and its entry is flagged
+   * {@code "escaped": true} so it never equals a real name that happens to spell the same text.
+   */
+  public static String json(State state, TurnOutcome outcome) {
+    Objects.requireNonNull(state, "state must not be null");
+    Objects.requireNonNull(outcome, "outcome must not be null");
+    JsonNodeFactory nodes = JsonNodeFactory.instance;
+    ObjectNode root = nodes.objectNode();
+    ArrayNode rounds = root.putArray("rounds");
+    for (Round round : state.completed()) {
+      ArrayNode entries = rounds.addArray();
+      for (Entry entry : round.entries()) {
+        ObjectNode written = entries.addObject();
+        String name = entry.tool().value();
+        String safe = jsonSafe(name);
+        written.put("tool", safe);
+        written.put("outcome", entry.outcome().name());
+        if (!safe.equals(name)) {
+          written.put("escaped", true);
+        }
+      }
+    }
+    root.put("outcome", outcome.name());
+    return root.toString();
+  }
+
+  /** The name with each unpaired surrogate and each NUL written as {@code \}{@code uXXXX}. */
+  private static String jsonSafe(String name) {
+    StringBuilder out = new StringBuilder(name.length());
+    int i = 0;
+    while (i < name.length()) {
+      char c = name.charAt(i);
+      boolean pairedHigh =
+          Character.isHighSurrogate(c)
+              && i + 1 < name.length()
+              && Character.isLowSurrogate(name.charAt(i + 1));
+      if (pairedHigh) {
+        out.append(c).append(name.charAt(i + 1));
+        i += 2;
+      } else if (c == '\u0000' || Character.isSurrogate(c)) {
+        out.append(String.format("\\u%04X", (int) c));
+        i++;
+      } else {
+        out.append(c);
+        i++;
+      }
+    }
+    return out.toString();
   }
 
   /** The exact bytes hashed. Exposed so a test can pin the framing. */
