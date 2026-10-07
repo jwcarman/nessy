@@ -36,7 +36,7 @@ class TurnTrajectoryJsonTest {
   private static final ToolName C = new ToolName("c");
 
   private static State opened() {
-    return State.opened(Instant.EPOCH);
+    return State.opened(Instant.EPOCH, "Q");
   }
 
   @Test

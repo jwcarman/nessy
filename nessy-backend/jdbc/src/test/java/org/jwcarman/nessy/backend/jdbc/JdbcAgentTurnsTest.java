@@ -94,6 +94,7 @@ class JdbcAgentTurnsTest {
         t.plusSeconds(3),
         new Trajectory((short) 1, "8f".repeat(32)),
         JSON,
+        "Q",
         outcome,
         2,
         4,
@@ -182,6 +183,52 @@ class JdbcAgentTurnsTest {
         .single();
   }
 
+  private static AgentTurn labelled(AgentTurn row, String label) {
+    return new AgentTurn(
+        row.turn(),
+        row.endingSeq(),
+        row.arrivedAt(),
+        row.startedAt(),
+        row.endedAt(),
+        row.trajectory(),
+        row.trajectoryJson(),
+        label,
+        row.outcome(),
+        row.rounds(),
+        row.toolCalls(),
+        row.toolSuccesses(),
+        row.toolFailures(),
+        row.toolDenials(),
+        row.inferenceCalls(),
+        row.inferenceRetries());
+  }
+
+  @Test
+  void a_label_with_a_replacement_character_round_trips() {
+    AgentTurn recorded = labelled(turn(5, TurnOutcome.ANSWERED), "a\uFFFDb");
+    turns.append(TYPE, agent, recorded);
+    assertThat(turns.of(TYPE, agent))
+        .singleElement()
+        .extracting(AgentTurn::label)
+        .isEqualTo("a\uFFFDb");
+  }
+
+  @Test
+  void turns_group_by_label() {
+    turns.append(TYPE, agent, labelled(turn(1, TurnOutcome.ANSWERED), "x"));
+    turns.append(TYPE, agent, labelled(turn(2, TurnOutcome.ANSWERED), "x"));
+    turns.append(TYPE, agent, labelled(turn(3, TurnOutcome.ANSWERED), "y"));
+    List<String> grouped =
+        JdbcClient.create(database)
+            .sql(
+                "SELECT label || '=' || COUNT(*) FROM nessy_agent_turn WHERE agent_id = ? "
+                    + "GROUP BY label ORDER BY label")
+            .params(agent.value())
+            .query(String.class)
+            .list();
+    assertThat(grouped).containsExactly("x=2", "y=1");
+  }
+
   /** The same row with a different trajectory and the counts that trajectory implies. */
   private static AgentTurn withJson(
       AgentTurn row, String json, int rounds, int ok, int fail, int denied) {
@@ -193,6 +240,7 @@ class JdbcAgentTurnsTest {
         row.endedAt(),
         row.trajectory(),
         json,
+        row.label(),
         row.outcome(),
         rounds,
         ok + fail + denied,

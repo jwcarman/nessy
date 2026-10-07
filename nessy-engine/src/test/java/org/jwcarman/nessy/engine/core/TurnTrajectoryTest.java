@@ -55,7 +55,7 @@ class TurnTrajectoryTest {
   private static final Usage USAGE = Usage.of("a-model", 1, 1);
 
   private static State opened() {
-    return State.opened(Instant.EPOCH);
+    return State.opened(Instant.EPOCH, "Q");
   }
 
   private static Trajectory of(State state) {

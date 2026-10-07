@@ -49,6 +49,7 @@ class InMemoryAgentTurnsTest {
         t,
         TRAJECTORY,
         "{\"rounds\":[],\"outcome\":\"ANSWERED\"}",
+        "Q",
         TurnOutcome.ANSWERED,
         1,
         2,

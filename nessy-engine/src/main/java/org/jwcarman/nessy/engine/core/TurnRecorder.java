@@ -121,6 +121,7 @@ public final class TurnRecorder {
         at,
         fingerprint,
         TurnTrajectory.json(trajectory, outcome),
+        columnSafe(trajectory.label()),
         outcome,
         trajectory.completed().size(),
         trajectory.toolCalls(),
@@ -129,6 +130,27 @@ public final class TurnRecorder {
         trajectory.count(CallOutcome.DENIED),
         stats.modelCalls(),
         trajectory.retries());
+  }
+
+  /**
+   * The label as the row's text column can hold it: U+0000 and an unpaired surrogate, which the
+   * database refuses, become U+FFFD. Only the row's copy changes; the event keeps what was said.
+   */
+  private static String columnSafe(String label) {
+    StringBuilder safe = new StringBuilder(label.length());
+    int i = 0;
+    while (i < label.length()) {
+      int codePoint = label.codePointAt(i);
+      int width = Character.charCount(codePoint);
+      boolean lone = Character.isSurrogate(label.charAt(i)) && width == 1;
+      if (codePoint == 0 || lone) {
+        safe.append('\uFFFD');
+      } else {
+        safe.appendCodePoint(codePoint);
+      }
+      i += width;
+    }
+    return safe.toString();
   }
 
   /**

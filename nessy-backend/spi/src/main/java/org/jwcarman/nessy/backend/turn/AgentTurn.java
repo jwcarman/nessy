@@ -33,6 +33,9 @@ import org.jwcarman.nessy.api.TurnOutcome;
  * @param trajectoryJson the trajectory as JSON (spec §4.6): readable, and one-to-one with the hash
  *     under its version. Equal as JSON, not as text: a store may normalise it (Postgres reorders
  *     keys and adds spaces).
+ * @param label what kind of turn this was: a category the application names, never content. It is
+ *     not part of the trajectory, so one behaviour under two labels is one trajectory on two rows.
+ *     A store keeps it as text, so the engine replaces what a database cannot hold.
  * @param arrivedAt when the input reached the harness
  * @param startedAt when the turn opened
  * @param endedAt when the ending event was written
@@ -47,6 +50,7 @@ public record AgentTurn(
     Instant endedAt,
     Trajectory trajectory,
     String trajectoryJson,
+    String label,
     TurnOutcome outcome,
     int rounds,
     int toolCalls,
@@ -66,6 +70,10 @@ public record AgentTurn(
     Objects.requireNonNull(trajectoryJson, "trajectoryJson must not be null");
     if (trajectoryJson.isBlank()) {
       throw new IllegalArgumentException("trajectoryJson must not be blank");
+    }
+    Objects.requireNonNull(label, "label must not be null");
+    if (label.isBlank()) {
+      throw new IllegalArgumentException("label must not be blank");
     }
     Objects.requireNonNull(outcome, "outcome must not be null");
     if (toolCalls != toolSuccesses + toolFailures + toolDenials) {

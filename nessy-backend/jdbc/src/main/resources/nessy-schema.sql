@@ -258,6 +258,7 @@ CREATE TABLE IF NOT EXISTS nessy_chapter
 -- readable in a query and the same string the trace carries.
 -- trajectory is the same behaviour as JSON (rounds of {tool, outcome}, then the outcome), stored
 -- plain because tool names are not content: what a query reads, where the hash only compares.
+-- label is the task label, a category never content, stored plain and outside the hash.
 CREATE TABLE IF NOT EXISTS nessy_agent_turn
 (
     agent_type            VARCHAR(64)              NOT NULL,
@@ -270,6 +271,7 @@ CREATE TABLE IF NOT EXISTS nessy_agent_turn
     trajectory_version    SMALLINT                 NOT NULL,
     trajectory_hash       CHAR(64)                 NOT NULL,
     trajectory            JSONB                    NOT NULL,
+    label                 VARCHAR(1000)            NOT NULL,
     outcome               VARCHAR(16)              NOT NULL,
     round_count           INTEGER                  NOT NULL,
     tool_call_count       INTEGER                  NOT NULL,

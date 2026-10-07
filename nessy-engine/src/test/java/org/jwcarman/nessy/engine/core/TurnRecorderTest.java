@@ -64,9 +64,13 @@ class TurnRecorderTest {
   private final AgentTurns turns = new InMemoryAgentTurns();
 
   private static List<AgentEvent> oneRoundThenAnswer(boolean withRetry) {
+    return oneRoundThenAnswer(withRetry, "Q");
+  }
+
+  private static List<AgentEvent> oneRoundThenAnswer(boolean withRetry, String label) {
     List<AgentEvent> events = new ArrayList<>();
     events.add(
-        new AgentEvent.TurnStarted(new Seq(1), TURN, PayloadRef.of("p"), "Q", ARRIVED, STARTED));
+        new AgentEvent.TurnStarted(new Seq(1), TURN, PayloadRef.of("p"), label, ARRIVED, STARTED));
     long seq = 2;
     if (withRetry) {
       events.add(
@@ -99,6 +103,55 @@ class TurnRecorderTest {
     assertThat(row.trajectoryJson())
         .isEqualTo(
             "{\"rounds\":[[{\"tool\":\"search\",\"outcome\":\"SUCCESS\"}]],\"outcome\":\"ANSWERED\"}");
+  }
+
+  @Test
+  void the_row_carries_the_label_the_turn_started_with() {
+    TurnRecorder recorder = new TurnRecorder(TYPE, turns, ObservationRegistry.NOOP);
+    AgentTurn row =
+        recorder
+            .recordEnding(
+                AGENT,
+                AgentState.idle(Seq.NONE),
+                oneRoundThenAnswer(false, "invoice:PRICE_VARIANCE"),
+                ENDED)
+            .orElseThrow();
+    assertThat(row.label()).isEqualTo("invoice:PRICE_VARIANCE");
+  }
+
+  @Test
+  void the_same_behavior_under_two_labels_is_one_trajectory() {
+    TurnRecorder recorder = new TurnRecorder(TYPE, turns, ObservationRegistry.NOOP);
+    AgentTurn first =
+        recorder
+            .recordEnding(
+                AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false, "invoice"), ENDED)
+            .orElseThrow();
+    AgentTurn second =
+        recorder
+            .recordEnding(
+                new AgentId(UUID.randomUUID()),
+                AgentState.idle(Seq.NONE),
+                oneRoundThenAnswer(false, "receipt"),
+                ENDED)
+            .orElseThrow();
+    assertThat(second.trajectory()).isEqualTo(first.trajectory());
+    assertThat(second.trajectoryJson()).isEqualTo(first.trajectoryJson());
+    assertThat(second.label()).isNotEqualTo(first.label());
+  }
+
+  @Test
+  void a_label_the_database_cannot_hold_is_made_safe_on_the_row() {
+    TurnRecorder recorder = new TurnRecorder(TYPE, turns, ObservationRegistry.NOOP);
+    AgentTurn row =
+        recorder
+            .recordEnding(
+                AGENT,
+                AgentState.idle(Seq.NONE),
+                oneRoundThenAnswer(false, "a\u0000b\uD800c"),
+                ENDED)
+            .orElseThrow();
+    assertThat(row.label()).isEqualTo("a\uFFFDb\uFFFDc");
   }
 
   @Test

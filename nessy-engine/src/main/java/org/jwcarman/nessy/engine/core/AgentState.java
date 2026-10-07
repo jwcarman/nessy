@@ -144,7 +144,7 @@ public sealed interface AgentState {
                 started.seq(),
                 started.turn(),
                 TurnStats.opened(started.startedAt()),
-                TurnTrajectory.State.opened(started.arrivedAt()));
+                TurnTrajectory.State.opened(started.arrivedAt(), started.label()));
         // Only here: Terminate is accepted only by Idle, so this fact can only ever follow an
         // idle agent. A busy arm carrying this case would claim something that cannot happen.
         case AgentEvent.Terminated _ -> new Terminal();

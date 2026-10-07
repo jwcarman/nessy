@@ -33,6 +33,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
+import org.jwcarman.nessy.api.DirectHarnessConfig;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.Seq;
@@ -123,6 +124,13 @@ class DirectHarnessTrajectoryTest {
 
   private DirectHarness<String, String> harness(
       ObservationRegistry observations, Consumer<HarnessConfig<?>> more) {
+    return harness(observations, more, c -> {});
+  }
+
+  private DirectHarness<String, String> harness(
+      ObservationRegistry observations,
+      Consumer<HarnessConfig<?>> more,
+      Consumer<DirectHarnessConfig<String>> direct) {
     JacksonCodecFactory codecs = new JacksonCodecFactory(JsonMapper.builder().build());
     return DefaultDirectHarnessFactory.of(
             f ->
@@ -146,6 +154,7 @@ class DirectHarnessTrajectoryTest {
                   .inference(in -> in.provider("test").model("a-model"));
               c.tool(TOOL, t -> t.approver(Approver.allow()));
               more.accept(c);
+              direct.accept(c);
             });
   }
 
@@ -170,6 +179,29 @@ class DirectHarnessTrajectoryTest {
     assertThat(row.outcome()).isEqualTo(TurnOutcome.ANSWERED);
     assertThat(row.rounds()).isEqualTo(1);
     assertThat(row.toolCalls()).isEqualTo(1);
+  }
+
+  @Test
+  void a_harness_with_no_input_label_records_the_input_class_name() {
+    DirectHarness<String, String> harness = harness(ObservationRegistry.NOOP, c -> {});
+    AgentId agent = new AgentId(UUID.randomUUID());
+    harness.ask(agent, "look up 7");
+    assertThat(turns.of(TYPE, agent))
+        .singleElement()
+        .extracting(AgentTurn::label)
+        .isEqualTo("String");
+  }
+
+  @Test
+  void a_configured_input_label_is_what_the_row_records() {
+    DirectHarness<String, String> harness =
+        harness(ObservationRegistry.NOOP, c -> {}, c -> c.inputLabel(input -> "lookup"));
+    AgentId agent = new AgentId(UUID.randomUUID());
+    harness.ask(agent, "look up 7");
+    assertThat(turns.of(TYPE, agent))
+        .singleElement()
+        .extracting(AgentTurn::label)
+        .isEqualTo("lookup");
   }
 
   @Test

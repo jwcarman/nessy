@@ -63,6 +63,11 @@ public interface QueuedHarnessConfig<I> extends HarnessConfig<QueuedHarnessConfi
    * A short label for each input, written on the start of the turn that takes it up and told in the
    * story, so a reader of the story can see what started a turn without opening its input.
    *
+   * <p><b>A label is a category, never content.</b> Name the kind of work the input asks for, such
+   * as {@code invoice:PRICE_VARIANCE}, not what the input says: it is also written to the turn's
+   * row in plain text, so a query can group turns by it, and the row is not encrypted as the story
+   * is. It is not part of the trajectory, so one behaviour under two labels is one trajectory.
+   *
    * <p>The label is made one line and cut to {@link ToolConfig#LINE_CAP} characters, as an action
    * line is. Defaults to the input's simple class name, which is also what is written when this
    * label throws, returns null or returns a blank string. A label that fails never fails the turn;

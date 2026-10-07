@@ -69,6 +69,8 @@ class ContentColumnsTest {
           "nessy_agent_turn.trajectory_hash",
           // Tool names and outcome words: the trajectory's structure, not content.
           "nessy_agent_turn.trajectory",
+          // the task label: a category by contract, not content
+          "nessy_agent_turn.label",
           // What a payload is, BLOCKS or DOCUMENT; a fixed word from the code.
           "nessy_payload.kind",
           // Observability plumbing: a W3C trace parent, never what anybody said.

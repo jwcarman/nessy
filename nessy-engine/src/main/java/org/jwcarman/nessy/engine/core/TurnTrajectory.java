@@ -120,26 +120,28 @@ public final class TurnTrajectory {
    * attempts failed and were retried (counted here because the tally's failures also count the
    * failure that ends a turn, and a retry is not that).
    */
-  public record State(Instant arrivedAt, List<Round> completed, List<Entry> current, int retries) {
+  public record State(
+      Instant arrivedAt, String label, List<Round> completed, List<Entry> current, int retries) {
 
     public State {
       Objects.requireNonNull(arrivedAt, "arrivedAt must not be null");
+      Objects.requireNonNull(label, "label must not be null");
       completed = List.copyOf(completed);
       current = List.copyOf(current);
     }
 
-    public static State opened(Instant arrivedAt) {
-      return new State(arrivedAt, List.of(), List.of(), 0);
+    public static State opened(Instant arrivedAt, String label) {
+      return new State(arrivedAt, label, List.of(), List.of(), 0);
     }
 
     public State retried() {
-      return new State(arrivedAt, completed, current, retries + 1);
+      return new State(arrivedAt, label, completed, current, retries + 1);
     }
 
     public State settled(ToolName tool, CallOutcome outcome) {
       List<Entry> next = new ArrayList<>(current);
       next.add(new Entry(tool, outcome));
-      return new State(arrivedAt, completed, next, retries);
+      return new State(arrivedAt, label, completed, next, retries);
     }
 
     /** The last call of the round has settled: sort what it held and keep it. */
@@ -151,7 +153,7 @@ public final class TurnTrajectory {
       sorted.sort(null);
       List<Round> next = new ArrayList<>(completed);
       next.add(new Round(sorted));
-      return new State(arrivedAt, next, List.of(), retries);
+      return new State(arrivedAt, label, next, List.of(), retries);
     }
 
     public int toolCalls() {
