@@ -215,7 +215,9 @@ public final class TurnTrajectory {
    * <p>A name Postgres {@code jsonb} cannot hold (an unpaired surrogate, a NUL) would make the row
    * refuse to insert and roll back the turn's ending on every retry. Such a name is written with
    * each offending character as the six characters {@code \}{@code uXXXX}, and its entry is flagged
-   * {@code "escaped": true} so it never equals a real name that happens to spell the same text.
+   * {@code "escaped": true} so it never equals a real name that happens to spell the same text. In
+   * such a name each backslash is written as {@code \} too, so that every backslash in an escaped
+   * name begins an escape and two different escaped names never render alike.
    */
   public static String json(State state, TurnOutcome outcome) {
     Objects.requireNonNull(state, "state must not be null");
@@ -240,10 +242,37 @@ public final class TurnTrajectory {
     return root.toString();
   }
 
-  /** The name with each unpaired surrogate and each NUL written as {@code \}{@code uXXXX}. */
+  /**
+   * The name with each unpaired surrogate and each NUL written as {@code \}{@code uXXXX}. In a name
+   * that needs escaping, each backslash is also written as {@code \}.
+   */
   private static String jsonSafe(String name) {
-    StringBuilder out = new StringBuilder(name.length());
+    // First pass: detect if escaping is needed (unpaired surrogates or NUL)
+    boolean needsEscaping = false;
     int i = 0;
+    while (i < name.length()) {
+      char c = name.charAt(i);
+      if (c == '\u0000' || Character.isSurrogate(c)) {
+        boolean pairedHigh =
+            Character.isHighSurrogate(c)
+                && i + 1 < name.length()
+                && Character.isLowSurrogate(name.charAt(i + 1));
+        if (!pairedHigh) {
+          needsEscaping = true;
+          break;
+        }
+      }
+      i++;
+    }
+
+    // If no escaping needed, return as-is
+    if (!needsEscaping) {
+      return name;
+    }
+
+    // Second pass: build escaped output
+    StringBuilder out = new StringBuilder(name.length() * 2);
+    i = 0;
     while (i < name.length()) {
       char c = name.charAt(i);
       boolean pairedHigh =
@@ -253,6 +282,9 @@ public final class TurnTrajectory {
       if (pairedHigh) {
         out.append(c).append(name.charAt(i + 1));
         i += 2;
+      } else if (c == '\\') {
+        out.append("\\u005C");
+        i++;
       } else if (c == '\u0000' || Character.isSurrogate(c)) {
         out.append(String.format("\\u%04X", (int) c));
         i++;

@@ -149,6 +149,8 @@ class TurnTrajectoryJsonTest {
     states.add(opened().settled(A, CallOutcome.DENIED).roundClosed());
     states.add(opened().settled(new ToolName("x\uD800"), CallOutcome.FAILED).roundClosed());
     states.add(opened().settled(new ToolName("x\\uD800"), CallOutcome.FAILED).roundClosed());
+    states.add(opened().settled(new ToolName("\uD800\u0000"), CallOutcome.FAILED).roundClosed());
+    states.add(opened().settled(new ToolName("\\uD800\u0000"), CallOutcome.FAILED).roundClosed());
     assertThat(states).isNotEmpty();
     for (State left : states) {
       for (State right : states) {
@@ -162,5 +164,25 @@ class TurnTrajectoryJsonTest {
         }
       }
     }
+  }
+
+  @Test
+  void two_different_escaped_names_never_render_alike() {
+    State lone = opened().settled(new ToolName("\uD800\u0000"), CallOutcome.FAILED).roundClosed();
+    State spelled =
+        opened().settled(new ToolName("\\uD800\u0000"), CallOutcome.FAILED).roundClosed();
+    assertThat(TurnTrajectory.fingerprint(lone, TurnOutcome.ANSWERED))
+        .isNotEqualTo(TurnTrajectory.fingerprint(spelled, TurnOutcome.ANSWERED));
+    assertThat(TurnTrajectory.json(lone, TurnOutcome.ANSWERED))
+        .isNotEqualTo(TurnTrajectory.json(spelled, TurnOutcome.ANSWERED));
+  }
+
+  @Test
+  void a_name_with_backslash_and_surrogate_renders_both_escaped() {
+    State state = opened().settled(new ToolName("a\\b\uD800"), CallOutcome.FAILED).roundClosed();
+    assertThat(TurnTrajectory.json(state, TurnOutcome.ANSWERED))
+        .isEqualTo(
+            "{\"rounds\":[[{\"tool\":\"a\\\\u005Cb\\\\uD800\",\"outcome\":\"FAILED\",\"escaped\":true}]],"
+                + "\"outcome\":\"ANSWERED\"}");
   }
 }
