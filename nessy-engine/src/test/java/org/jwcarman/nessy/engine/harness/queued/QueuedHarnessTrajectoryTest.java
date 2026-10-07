@@ -116,6 +116,26 @@ class QueuedHarnessTrajectoryTest {
   }
 
   @Test
+  void a_configured_input_label_is_what_the_row_records() {
+    engine = new EngineFixture(ANSWERS);
+    AgentId agent = AgentId.random();
+    QueuedHarness<String> labelled =
+        engine
+            .harnesses()
+            .create(
+                TYPE,
+                String.class,
+                c ->
+                    c.systemPrompt("You are terse.")
+                        .inputLabel(_ -> "lookup")
+                        .effects(e -> e.pollInterval(Duration.ofMillis(50))));
+
+    AgentTurn row = tellAndAwaitItsRow(labelled, agent);
+
+    assertThat(row.label()).isEqualTo("lookup");
+  }
+
+  @Test
   void the_rows_counts_agree_with_the_tally_of_the_same_turn() {
     engine = new EngineFixture(ANSWERS);
     AgentId agent = AgentId.random();

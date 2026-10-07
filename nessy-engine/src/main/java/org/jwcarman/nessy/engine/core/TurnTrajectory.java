@@ -57,8 +57,9 @@ import tools.jackson.databind.node.ObjectNode;
  * 0xFF  u8 terminal outcome
  * </pre>
  *
- * The bytes up to the marker are a complete encoding of the path alone, so a rounds-only
- * fingerprint, if ever wanted, is a hash of that prefix under the same version.
+ * Every byte except the last two (the 0xFF marker and the ending tag) is a complete encoding of the
+ * path alone, so a rounds-only fingerprint, if ever wanted, is a hash of that prefix under the same
+ * version.
  *
  * <p>Not public API. {@link Trajectory} is what anyone outside reads; this is how it is made.
  */
@@ -118,7 +119,8 @@ public final class TurnTrajectory {
   /**
    * Where a turn's trajectory stands: the rounds done, the round in progress, and how many model
    * attempts failed and were retried (counted here because the tally's failures also count the
-   * failure that ends a turn, and a retry is not that).
+   * failure that ends a turn, and a retry is not that), and the label the turn started with,
+   * carried for the row and never hashed.
    */
   public record State(
       Instant arrivedAt, String label, List<Round> completed, List<Entry> current, int retries) {
