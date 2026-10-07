@@ -151,6 +151,7 @@ class TurnTrajectoryJsonTest {
     states.add(opened().settled(new ToolName("x\\uD800"), CallOutcome.FAILED).roundClosed());
     states.add(opened().settled(new ToolName("\uD800\u0000"), CallOutcome.FAILED).roundClosed());
     states.add(opened().settled(new ToolName("\\uD800\u0000"), CallOutcome.FAILED).roundClosed());
+    states.add(opened().settled(new ToolName("a\\b😀"), CallOutcome.SUCCESS).roundClosed());
     assertThat(states).isNotEmpty();
     for (State left : states) {
       for (State right : states) {
@@ -183,6 +184,16 @@ class TurnTrajectoryJsonTest {
     assertThat(TurnTrajectory.json(state, TurnOutcome.ANSWERED))
         .isEqualTo(
             "{\"rounds\":[[{\"tool\":\"a\\\\u005Cb\\\\uD800\",\"outcome\":\"FAILED\",\"escaped\":true}]],"
+                + "\"outcome\":\"ANSWERED\"}");
+  }
+
+  @Test
+  void a_well_formed_name_with_a_backslash_and_a_surrogate_pair_is_written_as_it_is() {
+    State state =
+        opened().settled(new ToolName("a\\b\uD83D\uDE00"), CallOutcome.SUCCESS).roundClosed();
+    assertThat(TurnTrajectory.json(state, TurnOutcome.ANSWERED))
+        .isEqualTo(
+            "{\"rounds\":[[{\"tool\":\"a\\\\b\uD83D\uDE00\",\"outcome\":\"SUCCESS\"}]],"
                 + "\"outcome\":\"ANSWERED\"}");
   }
 }

@@ -31,7 +31,8 @@ import org.jwcarman.nessy.api.TurnOutcome;
  * slice reproduces the trajectory, which is how a stored hash is audited.
  *
  * @param trajectoryJson the trajectory as JSON (spec §4.6): readable, and one-to-one with the hash
- *     under its version
+ *     under its version. Equal as JSON, not as text: a store may normalise it (Postgres reorders
+ *     keys and adds spaces).
  * @param arrivedAt when the input reached the harness
  * @param startedAt when the turn opened
  * @param endedAt when the ending event was written

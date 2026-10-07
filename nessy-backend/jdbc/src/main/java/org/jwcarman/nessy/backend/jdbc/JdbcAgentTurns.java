@@ -53,8 +53,8 @@ public final class JdbcAgentTurns implements AgentTurns {
       """
       SELECT turn_id, ending_seq, arrived_at, started_at, ended_at, trajectory_version,
              trajectory_hash, trajectory::text AS trajectory, outcome, round_count, tool_call_count,
-             tool_success_count,
-             tool_failure_count, tool_denied_count, inference_call_count, inference_retry_count
+             tool_success_count, tool_failure_count, tool_denied_count, inference_call_count,
+             inference_retry_count
         FROM nessy_agent_turn
        WHERE agent_type = ? AND agent_id = ?
        ORDER BY turn_id

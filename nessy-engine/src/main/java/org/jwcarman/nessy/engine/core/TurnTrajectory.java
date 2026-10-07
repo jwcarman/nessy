@@ -263,6 +263,8 @@ public final class TurnTrajectory {
           needsEscaping = true;
           break;
         }
+        i += 2;
+        continue;
       }
       i++;
     }

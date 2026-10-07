@@ -105,7 +105,7 @@ class JdbcAgentTurnsTest {
   }
 
   @Test
-  void a_recorded_turn_reads_back_exactly() {
+  void a_recorded_turn_reads_back_equal_with_its_json_normalised() {
     AgentTurn recorded = turn(418, TurnOutcome.ANSWERED);
     turns.append(TYPE, agent, recorded);
     assertThat(turns.of(TYPE, agent))
