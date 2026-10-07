@@ -59,6 +59,7 @@ import org.jwcarman.nessy.engine.agent.OutstandingAction;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
+import org.jwcarman.nessy.engine.core.TurnRecorder;
 import org.jwcarman.nessy.engine.core.TurnTally;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
@@ -243,6 +244,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   private final ObservationRegistry observations;
 
   private final TurnPolicy turnPolicy;
+  private final TurnRecorder turnRecorder;
 
   private final Semaphore inFlight;
 
@@ -271,6 +273,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     this.inFlight = new Semaphore(maxInFlight);
     this.observations = Objects.requireNonNull(observations, "observations must not be null");
     this.turnPolicy = Objects.requireNonNull(turnPolicy, "turn policy must not be null");
+    this.turnRecorder = new TurnRecorder(agentType, backend.turns(), observations);
   }
 
   @Override
@@ -354,6 +357,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
                 "[{}] agent {} is mid-turn; terminating it was refused", agentType.value(), agent);
             return new TerminationOutcome.Busy();
           }
+          // No turn ends here: refusing a busy agent above leaves only an idle one to terminate.
           backend.events().append(agentType, agent, decision.events(), state.seq(), at);
           decision.events().forEach(event -> narrate(step, event, at));
           return new TerminationOutcome.Terminated();
@@ -386,6 +390,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
         Decision decision =
             idle.execute(
                 new AgentCommand.StartTurn(content.put(rendered), label, at, clock.instant()));
+        // No turn ends here: this event opens one.
         backend.events().append(agentType, agent, decision.events(), idle.seq(), at);
         decision.events().forEach(event -> narrate(step, event, at));
         TurnId turn = ((AgentEvent.TurnStarted) decision.events().getFirst()).turn();
@@ -411,6 +416,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     }
     Decision decision = state.execute(command, turnPolicy, clock.instant());
     backend.events().append(agentType, agent, decision.events(), state.seq(), at);
+    turnRecorder.record(agent, state, decision.events(), at);
     decision.events().forEach(event -> narrate(step, event, at));
     return decision;
   }
@@ -579,6 +585,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       dischargedSomething = true;
       Decision decision = current.execute(discharge.get(), turnPolicy, clock.instant());
       backend.events().append(agentType, agent, decision.events(), current.seq(), at);
+      turnRecorder.record(agent, current, decision.events(), at);
       decision.events().forEach(event -> narrate(step, event, at));
       current = current.applyAll(decision.events());
     }

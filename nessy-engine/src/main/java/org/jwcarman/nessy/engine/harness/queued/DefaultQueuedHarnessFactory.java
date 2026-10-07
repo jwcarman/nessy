@@ -39,6 +39,7 @@ import org.jwcarman.nessy.api.tool.Replies;
 import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.backlog.Backlogs;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.jwcarman.nessy.engine.core.TurnRecorder;
 import org.jwcarman.nessy.engine.effect.ApprovalHandler;
 import org.jwcarman.nessy.engine.effect.EffectDispatcher;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
@@ -300,7 +301,8 @@ public class DefaultQueuedHarnessFactory implements QueuedHarnessFactory, AutoCl
             narrator,
             clock,
             config.turnPolicy(),
-            traces);
+            traces,
+            new TurnRecorder(agentType, backend.turns(), observations));
 
     // The harness is the callback, so it has to exist before its dispatcher does -- and the
     // dispatcher must not be polling before the harness can be called back into. Three

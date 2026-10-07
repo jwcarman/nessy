@@ -16,6 +16,7 @@
 package org.jwcarman.nessy.engine.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.util.Arrays;
@@ -168,5 +169,14 @@ class AgentStateTrajectoryTest {
             .apply(requested(4, C1))
             .apply(succeeded(5, C1));
     assertThat(trajectoryOf(state).completed()).hasSize(2);
+  }
+
+  @Test
+  void a_settlement_for_a_call_nobody_is_waiting_for_cannot_be_folded() {
+    AgentState state = AgentState.idle(Seq.NONE).apply(started()).apply(requested(2, C1, C2));
+    AgentEvent stray = succeeded(3, C3);
+    assertThatThrownBy(() -> state.apply(stray))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("no outstanding call " + C3);
   }
 }

@@ -46,6 +46,7 @@ import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.engine.core.AgentCommand;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.Decision;
+import org.jwcarman.nessy.engine.core.TurnRecorder;
 import org.jwcarman.nessy.engine.effect.AgentEffectCallback;
 import org.jwcarman.nessy.engine.effect.EffectDispatcher;
 import org.jwcarman.nessy.engine.effect.EffectOutcomes;
@@ -105,6 +106,7 @@ final class DefaultQueuedHarness<I>
   private final Clock clock;
   private final TurnPolicy turnPolicy;
   private final Traces traces;
+  private final TurnRecorder turnRecorder;
 
   private EffectDispatcher dispatcher;
 
@@ -119,7 +121,8 @@ final class DefaultQueuedHarness<I>
       AfterCommit narrator,
       Clock clock,
       TurnPolicy turnPolicy,
-      Traces traces) {
+      Traces traces,
+      TurnRecorder turnRecorder) {
     this.agentType = Objects.requireNonNull(agentType, "agentType must not be null");
     this.policy = Objects.requireNonNull(policy, "policy must not be null");
     this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
@@ -131,6 +134,7 @@ final class DefaultQueuedHarness<I>
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
     this.turnPolicy = Objects.requireNonNull(turnPolicy, "turn policy must not be null");
     this.traces = Objects.requireNonNull(traces, "traces must not be null");
+    this.turnRecorder = Objects.requireNonNull(turnRecorder, "turnRecorder must not be null");
   }
 
   void dispatchWith(EffectDispatcher dispatcher) {
@@ -340,6 +344,7 @@ final class DefaultQueuedHarness<I>
                 deferral.getClass().getSimpleName());
             return null;
           }
+          // No turn ends here: a deferral only parks the call it names.
           backend.events().append(agentType, agentId, advance.events(), state.seq(), at);
           advance.events().forEach(event -> narrate(step, event, at));
           if (!effects.park(attempt.effectId(), attempt.attemptsMade(), at)) {
@@ -466,6 +471,7 @@ final class DefaultQueuedHarness<I>
       return Folded.NOTHING;
     }
     backend.events().append(agentType, agentId, advance.events(), state.seq(), at);
+    turnRecorder.record(agentId, state, advance.events(), at);
     for (AgentEffect effect : advance.effects()) {
       effects.insert(agentId, effect, clock.instant(), trace);
     }
