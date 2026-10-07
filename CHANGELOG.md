@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-07
+
 ### Added
 
 - **The task label on every turn row.** The label an application gives an input is stored in
@@ -949,6 +951,7 @@ Nessy is an agent harness framework for Java. This is the first release.
 - Java 25.
 - Spring Boot 4.1 (optional — only needed for `nessy-spring-boot-starter`).
 
+[0.7.0]: https://github.com/jwcarman/nessy/releases/tag/0.7.0
 [0.6.0]: https://github.com/jwcarman/nessy/releases/tag/0.6.0
 [0.5.0]: https://github.com/jwcarman/nessy/releases/tag/0.5.0
 [0.4.0]: https://github.com/jwcarman/nessy/releases/tag/0.4.0
