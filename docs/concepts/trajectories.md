@@ -1,6 +1,6 @@
 # Trajectories
 
-A trajectory is the behavioural identity of a completed turn: which tools
+A trajectory is the behavioral identity of a completed turn: which tools
 ran, in which rounds, what each one came to, and how the turn ended. Two
 turns with the same trajectory behaved the same way, whatever they were
 asked and whatever they said. Nessy gives each completed turn a
@@ -60,7 +60,7 @@ inference failure that both reach a caller as failed.
 - Provider and model.
 - Inference retries, deferrals, and who approved a call.
 
-Anything that varies from one run of the same behaviour to the next is
+Anything that varies from one run of the same behavior to the next is
 left out, or the fingerprint would never repeat.
 
 ## Where it is computed
@@ -146,7 +146,7 @@ abandoned turn's attributes land on the new call's span and the new turn
 then overwrites them, so the abandoned turn's trajectory is in the row only.
 
 All seven are high-cardinality span attributes. None is a metric tag: a hash
-has as many values as the agent has behaviours, and that would grow a
+has as many values as the agent has behaviors, and that would grow a
 metric's series without bound. Aggregate in SQL instead.
 
 ## Starter queries

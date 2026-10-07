@@ -34,6 +34,10 @@ embedded database standing in for it. The in-memory backend is a separate
 implementation of the same stores, not a fallback for the JDBC one. The test
 suite runs the same DDL against a real PostgreSQL container.
 
+The database must use UTF8 encoding, which is the PostgreSQL default.
+`nessy_agent_turn.trajectory` stores tool names as text, and a name outside
+the database's character set would make the turn's ending fail to commit.
+
 ## Applying the schema
 
 `Schemas` gathers every module's `nessy-schema.sql` from the classpath and

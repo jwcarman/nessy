@@ -1,10 +1,10 @@
 # Trajectory fingerprinting: a behavioural identity for every completed turn
 
 **Status: APPROVED by James on 2026-10-07. BUILT and on `main` (a4408c755).** The rulings in §2
-were made in conversation on 2026-10-07 and are his.
+were made in conversation on 2026-10-07 and are his. Every path and name below was checked against
+`main` at `acc3a0daf`.
 
-**Amendment, 2026-10-07: the readable trajectory (§4.6, ruling 9). APPROVED by James. BUILT.** Every path and name below was checked against `main` at
-`acc3a0daf`.
+**Amendment, 2026-10-07: the readable trajectory (§4.6, ruling 9). APPROVED by James. BUILT.**
 
 ---
 
