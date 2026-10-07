@@ -138,7 +138,9 @@ Seven attributes carry the same values on the turn's span:
 
 On the direct door they go on the `invoke_agent` span. On the queued door
 they go on the `nessy.effect` span of the effect whose outcome ended the
-turn. When a later call recovers an abandoned turn on the direct door, the
+turn, when an effect ended it. When a person's reply ends the turn, they go
+on the replier's current observation instead. The row is always written; the
+tags are best-effort trace annotation. When a later call recovers an abandoned turn on the direct door, the
 abandoned turn's attributes land on the new call's span and the new turn
 then overwrites them, so the abandoned turn's trajectory is in the row only.
 

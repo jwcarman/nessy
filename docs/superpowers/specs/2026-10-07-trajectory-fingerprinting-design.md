@@ -1,6 +1,6 @@
 # Trajectory fingerprinting: a behavioural identity for every completed turn
 
-**Status: APPROVED by James on 2026-10-07. NOTHING BUILT.** The rulings in §2 were made in
+**Status: APPROVED by James on 2026-10-07. BUILT on branch `trajectory-fingerprinting`.** The rulings in §2 were made in
 conversation on 2026-10-07 and are his. Every path and name below was checked against `main` at
 `acc3a0daf`.
 
@@ -97,6 +97,9 @@ A public enum in `nessy-api`, beside `AskOutcome`. `AskOutcome` is what a caller
 | `InferenceFailed` | FAILED |
 | `TurnStopped` | STOPPED |
 
+The terminal tag table (ANSWERED 1, TRUNCATED 2, REFUSED 3, FAILED 4, STOPPED 5) is engine-internal,
+in `TurnTrajectory`; the enum itself carries no tag.
+
 ### 4.3 What the fingerprint ignores
 
 Input text, tool arguments, tool results and rendered text, the answer, timestamps, latency,
@@ -139,13 +142,9 @@ decoding anywhere. Version 1 digests are SHA-256, so always 64 characters.
 An engine-internal accumulator in `engine/core`, parallel to `TurnTally`. Its state is carried by
 `Inferring` and `AwaitingActions` beside `stats`, and discarded with them when the turn ends.
 
-Conceptually:
-
-```java
-record TrajectoryState(List<Round> completed, Map<CallId, Settled> current)
-record Round(List<Entry> entries)          // sorted at close
-record Entry(ToolName tool, ToolOutcome outcome)
-```
+As built, in `TurnTrajectory`: `State` (arrival time, completed rounds, the open round, retries),
+`Round`, `Entry`, and the engine-internal `CallOutcome` (SUCCESS, FAILED, DENIED). `TurnRecorder`
+folds the decision's events after the append.
 
 Per event:
 
@@ -230,8 +229,8 @@ Column sources:
 - `tool_*_count`: tallied over every entry in every round. `tool_call_count` equals the number of
   settled calls, which equals the number requested because no turn ends with calls outstanding.
 - `inference_call_count`: `TurnStats.modelCalls`. `inference_retry_count`:
-  `TurnStats.failedAttempts`. The plan verifies these two fields count what their names say
-  before wiring them.
+  the number of `InferenceAttempted` events, not `TurnStats.failedAttempts`, which also counts the
+  failure that ends a turn.
 
 `[turn_id, ending_seq]` is the turn's exact slice of `nessy_agent_event`, so a stored hash can be
 audited by re-folding that slice.
@@ -269,19 +268,18 @@ guards the row too.
 
 ## 7. Observability
 
-At the terminal fold, the helper tags the current observation. Which span that is differs by door
-and needs no new span:
+At the terminal fold, `TurnRecorder` tags `ObservationRegistry.getCurrentObservation()` directly,
+when one exists. Which span that is differs by door and needs no new span:
 
-- Direct: the `invoke_agent` observation that wraps the whole ask; the inference observations
-  under it have closed by then.
-- Queued: the `nessy.effect` span of the inference effect whose outcome ended the turn. It is a
-  sibling of every other effect of the turn, under the captured `nessy.tell` context, so a trace
-  search on the hash finds the whole turn.
+- Direct: the `invoke_agent` observation that wraps the whole ask.
+- Queued: the `nessy.effect` span of the effect whose outcome ended the turn, when an effect ended
+  it.
+- When a person's reply ends the turn (it settles the last call and the policy stops the turn),
+  the current observation is the replier's own, so the tags land there.
 
-`Traces` gains `tagCurrent(String key, String value)` beside `nameCurrent`, adding a
-high-cardinality key-value to `registry.getCurrentObservation()` when one exists. All attributes
-are high-cardinality so none becomes a dimension of the `gen_ai.client.operation.duration` timer
-that the direct door's observation also drives.
+The row is always written; the tags are best-effort trace annotation. All attributes are
+high-cardinality so none becomes a dimension of the `gen_ai.client.operation.duration` timer that
+the direct door's observation also drives.
 
 | Attribute | Value |
 |---|---|
@@ -353,5 +351,5 @@ finished observation on the direct door, and on the effect span on the queued do
 | `nessy-backend-spi` | `AgentTurns`, `AgentTurn`; `DirectBackend` and `QueuedBackend` expose it |
 | `nessy-backend-jdbc` | `JdbcAgentTurns`, schema, wiring |
 | `nessy-backend-inmemory` | `InMemoryAgentTurns`, wiring |
-| `nessy-engine` | `TurnTrajectory`, state fields on `Inferring` and `AwaitingActions`, the shared terminal-fold helper, `Traces.tagCurrent`, both harnesses |
+| `nessy-engine` | `TurnTrajectory`, state fields on `Inferring` and `AwaitingActions`, the shared terminal-fold helper, `TurnRecorder`, both harnesses |
 | `docs/` | a concepts page describing the fingerprint and the table, written as what is |
