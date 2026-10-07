@@ -30,6 +30,8 @@ import org.jwcarman.nessy.api.TurnOutcome;
  * ended the turn, so the two bound the turn's slice of the event stream, inclusive. Re-folding that
  * slice reproduces the trajectory, which is how a stored hash is audited.
  *
+ * @param trajectoryJson the trajectory as JSON (spec §4.6): readable, and one-to-one with the hash
+ *     under its version
  * @param arrivedAt when the input reached the harness
  * @param startedAt when the turn opened
  * @param endedAt when the ending event was written
@@ -43,6 +45,7 @@ public record AgentTurn(
     Instant startedAt,
     Instant endedAt,
     Trajectory trajectory,
+    String trajectoryJson,
     TurnOutcome outcome,
     int rounds,
     int toolCalls,
@@ -59,6 +62,10 @@ public record AgentTurn(
     Objects.requireNonNull(startedAt, "startedAt must not be null");
     Objects.requireNonNull(endedAt, "endedAt must not be null");
     Objects.requireNonNull(trajectory, "trajectory must not be null");
+    Objects.requireNonNull(trajectoryJson, "trajectoryJson must not be null");
+    if (trajectoryJson.isBlank()) {
+      throw new IllegalArgumentException("trajectoryJson must not be blank");
+    }
     Objects.requireNonNull(outcome, "outcome must not be null");
     if (toolCalls != toolSuccesses + toolFailures + toolDenials) {
       throw new IllegalArgumentException("every tool call succeeded, failed or was denied");

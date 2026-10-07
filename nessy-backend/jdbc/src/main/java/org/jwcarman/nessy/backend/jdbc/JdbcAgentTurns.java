@@ -43,16 +43,17 @@ public final class JdbcAgentTurns implements AgentTurns {
       """
       INSERT INTO nessy_agent_turn
              (agent_type, agent_id, turn_id, ending_seq, arrived_at, started_at, ended_at,
-              trajectory_version, trajectory_hash, outcome, round_count, tool_call_count,
+              trajectory_version, trajectory_hash, trajectory, outcome, round_count, tool_call_count,
               tool_success_count, tool_failure_count, tool_denied_count,
               inference_call_count, inference_retry_count)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSONB), ?, ?, ?, ?, ?, ?, ?, ?)
       """;
 
   private static final String SELECT =
       """
       SELECT turn_id, ending_seq, arrived_at, started_at, ended_at, trajectory_version,
-             trajectory_hash, outcome, round_count, tool_call_count, tool_success_count,
+             trajectory_hash, trajectory::text AS trajectory, outcome, round_count, tool_call_count,
+             tool_success_count,
              tool_failure_count, tool_denied_count, inference_call_count, inference_retry_count
         FROM nessy_agent_turn
        WHERE agent_type = ? AND agent_id = ?
@@ -82,6 +83,7 @@ public final class JdbcAgentTurns implements AgentTurns {
               timestamp(turn.endedAt()),
               turn.trajectory().version(),
               turn.trajectory().hash(),
+              turn.trajectoryJson(),
               turn.outcome().name(),
               turn.rounds(),
               turn.toolCalls(),
@@ -112,6 +114,7 @@ public final class JdbcAgentTurns implements AgentTurns {
         instant(rs, "started_at"),
         instant(rs, "ended_at"),
         new Trajectory(rs.getShort("trajectory_version"), rs.getString("trajectory_hash")),
+        rs.getString("trajectory"),
         TurnOutcome.valueOf(rs.getString("outcome")),
         rs.getInt("round_count"),
         rs.getInt("tool_call_count"),

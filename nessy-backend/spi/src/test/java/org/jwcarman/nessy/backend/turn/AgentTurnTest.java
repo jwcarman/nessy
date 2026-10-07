@@ -43,6 +43,7 @@ class AgentTurnTest {
         NOW,
         NOW,
         TRAJECTORY,
+        "{\"rounds\":[],\"outcome\":\"ANSWERED\"}",
         TurnOutcome.ANSWERED,
         2,
         calls,

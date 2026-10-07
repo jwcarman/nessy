@@ -59,6 +59,7 @@ import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.backend.turn.AgentTurn;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.core.TurnRecorder;
+import org.jwcarman.nessy.engine.core.TurnRowConsistency;
 import org.jwcarman.nessy.engine.core.TurnTally;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceNarrator;
@@ -155,6 +156,7 @@ class DirectHarnessTrajectoryTest {
     harness.ask(agent, "look up 7");
     List<AgentTurn> rows = turns.of(TYPE, agent);
     assertThat(rows).hasSize(1);
+    rows.forEach(TurnRowConsistency::assertConsistent);
     AgentTurn row = rows.getFirst();
     List<AgentEvent> story = events.readAll(TYPE, agent);
     assertThat(story).isNotEmpty();
@@ -178,6 +180,7 @@ class DirectHarnessTrajectoryTest {
     harness.ask(agent, "look up Bill");
     List<AgentTurn> rows = turns.of(TYPE, agent);
     assertThat(rows).hasSize(2);
+    rows.forEach(TurnRowConsistency::assertConsistent);
     assertThat(rows.get(0).trajectory()).isEqualTo(rows.get(1).trajectory());
     assertThat(rows.get(0).turn().value()).isLessThan(rows.get(1).turn().value());
   }
@@ -215,7 +218,9 @@ class DirectHarnessTrajectoryTest {
     assertThat(turnSpans).hasSize(1);
     KeyValue hash = turnSpans.getFirst().getHighCardinalityKeyValue("nessy.trajectory.hash");
     assertThat(hash).isNotNull();
-    assertThat(hash.getValue()).isEqualTo(turns.of(TYPE, agent).getFirst().trajectory().hash());
+    AgentTurn only = turns.of(TYPE, agent).getFirst();
+    TurnRowConsistency.assertConsistent(only);
+    assertThat(hash.getValue()).isEqualTo(only.trajectory().hash());
   }
 
   @Test
@@ -231,6 +236,7 @@ class DirectHarnessTrajectoryTest {
     harness.ask(agent, "look up 7");
     List<AgentTurn> rows = turns.of(TYPE, agent);
     assertThat(rows).hasSize(1);
+    rows.forEach(TurnRowConsistency::assertConsistent);
     assertThat(rows.getFirst().outcome()).isEqualTo(TurnOutcome.STOPPED);
     assertThat(rows.getFirst().rounds()).isEqualTo(1);
   }
@@ -241,6 +247,7 @@ class DirectHarnessTrajectoryTest {
     AgentId agent = new AgentId(UUID.randomUUID());
     harness.ask(agent, "look up 7");
     AgentTurn stored = turns.of(TYPE, agent).getFirst();
+    TurnRowConsistency.assertConsistent(stored);
     List<AgentEvent> slice =
         events.readAll(TYPE, agent).stream()
             .filter(e -> e.seq().value() >= stored.turn().value())
@@ -259,6 +266,7 @@ class DirectHarnessTrajectoryTest {
     AgentId agent = new AgentId(UUID.randomUUID());
     harness.ask(agent, "look up 7");
     AgentTurn row = turns.of(TYPE, agent).getFirst();
+    TurnRowConsistency.assertConsistent(row);
     TurnStats stats = TurnTally.of(events.readAll(TYPE, agent), row.turn());
     assertThat(row.toolCalls()).isEqualTo(1);
     assertThat(row.toolCalls()).isEqualTo(stats.toolCalls());

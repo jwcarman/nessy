@@ -120,6 +120,7 @@ public final class TurnRecorder {
         stats.startedAt(),
         at,
         fingerprint,
+        TurnTrajectory.json(trajectory, outcome),
         outcome,
         trajectory.completed().size(),
         trajectory.toolCalls(),

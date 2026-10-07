@@ -67,6 +67,8 @@ class ContentColumnsTest {
           // A turn's outcome is one fixed word, and its trajectory hash is hex a query matches on.
           "nessy_agent_turn.outcome",
           "nessy_agent_turn.trajectory_hash",
+          // Tool names and outcome words: the trajectory's structure, not content.
+          "nessy_agent_turn.trajectory",
           // What a payload is, BLOCKS or DOCUMENT; a fixed word from the code.
           "nessy_payload.kind",
           // Observability plumbing: a W3C trace parent, never what anybody said.

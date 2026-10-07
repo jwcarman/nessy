@@ -256,6 +256,8 @@ CREATE TABLE IF NOT EXISTS nessy_chapter
 -- ending_seq the seq of the ending event: between them, inclusive, is the turn's slice of events,
 -- and re-folding that slice reproduces trajectory_hash. The hash is 64 lowercase hex characters,
 -- readable in a query and the same string the trace carries.
+-- trajectory is the same behaviour as JSON (rounds of {tool, outcome}, then the outcome), stored
+-- plain because tool names are not content: what a query reads, where the hash only compares.
 CREATE TABLE IF NOT EXISTS nessy_agent_turn
 (
     agent_type            VARCHAR(64)              NOT NULL,
@@ -267,6 +269,7 @@ CREATE TABLE IF NOT EXISTS nessy_agent_turn
     ended_at              TIMESTAMP WITH TIME ZONE NOT NULL,
     trajectory_version    SMALLINT                 NOT NULL,
     trajectory_hash       CHAR(64)                 NOT NULL,
+    trajectory            JSONB                    NOT NULL,
     outcome               VARCHAR(16)              NOT NULL,
     round_count           INTEGER                  NOT NULL,
     tool_call_count       INTEGER                  NOT NULL,

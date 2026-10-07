@@ -31,6 +31,7 @@ import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnId;
@@ -89,6 +90,74 @@ class TurnRecorderTest {
   }
 
   @Test
+  void the_row_carries_the_readable_trajectory_of_its_turn() {
+    TurnRecorder recorder = new TurnRecorder(TYPE, turns, ObservationRegistry.NOOP);
+    AgentTurn row =
+        recorder
+            .recordEnding(AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false), ENDED)
+            .orElseThrow();
+    assertThat(row.trajectoryJson())
+        .isEqualTo(
+            "{\"rounds\":[[{\"tool\":\"search\",\"outcome\":\"SUCCESS\"}]],\"outcome\":\"ANSWERED\"}");
+  }
+
+  @Test
+  void every_shape_of_turn_leaves_a_row_whose_counts_agree_with_its_json() {
+    TurnRecorder recorder = new TurnRecorder(TYPE, turns, ObservationRegistry.NOOP);
+    List<AgentEvent> noTools =
+        List.of(
+            new AgentEvent.TurnStarted(new Seq(1), TURN, PayloadRef.of("p"), "Q", ARRIVED, STARTED),
+            new AgentEvent.InferenceAnswered(
+                new Seq(2), TURN, PayloadRef.of("a"), false, USAGE, Optional.empty()));
+    List<AgentEvent> stopped = new ArrayList<>(oneRoundThenAnswer(false).subList(0, 3));
+    stopped.add(new AgentEvent.TurnStopped(new Seq(4), TURN, "enough"));
+    List<List<AgentEvent>> shapes =
+        List.of(noTools, oneRoundThenAnswer(false), twoRoundsMixed(), stopped);
+    List<AgentTurn> rows = new ArrayList<>();
+    for (List<AgentEvent> shape : shapes) {
+      rows.add(
+          recorder
+              .recordEnding(new AgentId(UUID.randomUUID()), AgentState.idle(Seq.NONE), shape, ENDED)
+              .orElseThrow());
+    }
+    assertThat(rows).hasSize(4);
+    assertThat(rows.get(2).rounds()).isEqualTo(2);
+    assertThat(rows.get(2).toolDenials()).isEqualTo(1);
+    rows.forEach(TurnRowConsistency::assertConsistent);
+  }
+
+  private static List<AgentEvent> twoRoundsMixed() {
+    CallId c2 = new CallId("c2");
+    CallId c3 = new CallId("c3");
+    CallId c4 = new CallId("c4");
+    return List.of(
+        new AgentEvent.TurnStarted(new Seq(1), TURN, PayloadRef.of("p"), "Q", ARRIVED, STARTED),
+        new AgentEvent.ActionsRequested(
+            new Seq(2),
+            TURN,
+            PayloadRef.of("r"),
+            List.of(
+                new ActionRequest.ToolCall(C1, new ToolName("search"), "a", KEY),
+                new ActionRequest.ToolCall(c2, new ToolName("read"), "b", KEY),
+                new ActionRequest.ToolCall(c3, new ToolName("fetch"), "c", KEY)),
+            USAGE,
+            Optional.empty()),
+        new AgentEvent.ToolSucceeded(new Seq(3), TURN, C1, PayloadRef.of("ok"), "ok", KEY),
+        new AgentEvent.ToolFailed(new Seq(4), TURN, c2, CallFailure.FAILED, "broke", null, KEY),
+        new AgentEvent.ToolDenied(new Seq(5), TURN, c3, "no", Optional.empty(), null, KEY),
+        new AgentEvent.ActionsRequested(
+            new Seq(6),
+            TURN,
+            PayloadRef.of("r2"),
+            List.of(new ActionRequest.ToolCall(c4, new ToolName("search"), "d", KEY)),
+            USAGE,
+            Optional.empty()),
+        new AgentEvent.ToolSucceeded(new Seq(7), TURN, c4, PayloadRef.of("ok"), "ok", KEY),
+        new AgentEvent.InferenceAnswered(
+            new Seq(8), TURN, PayloadRef.of("a"), false, USAGE, Optional.empty()));
+  }
+
+  @Test
   void a_turn_that_ends_gets_one_row_bounded_by_its_first_and_last_seq() {
     TurnRecorder recorder = new TurnRecorder(TYPE, turns, ObservationRegistry.NOOP);
     List<AgentEvent> events = oneRoundThenAnswer(false);
@@ -108,6 +177,7 @@ class TurnRecorderTest {
     assertThat(row.inferenceCalls()).isEqualTo(2); // the request and the answer
     assertThat(row.inferenceRetries()).isZero();
     assertThat(turns.of(TYPE, AGENT)).containsExactly(row);
+    TurnRowConsistency.assertConsistent(row);
   }
 
   @Test
@@ -126,6 +196,8 @@ class TurnRecorderTest {
                 ENDED)
             .orElseThrow();
     assertThat(retried.trajectory()).isEqualTo(plain.trajectory());
+    TurnRowConsistency.assertConsistent(plain);
+    TurnRowConsistency.assertConsistent(retried);
     assertThat(retried.inferenceCalls()).isEqualTo(3);
     assertThat(retried.inferenceRetries()).isEqualTo(1);
   }
@@ -145,6 +217,7 @@ class TurnRecorderTest {
     events.add(new AgentEvent.TurnStopped(new Seq(4), TURN, "enough"));
     AgentTurn row =
         recorder.recordEnding(AGENT, AgentState.idle(Seq.NONE), events, ENDED).orElseThrow();
+    TurnRowConsistency.assertConsistent(row);
     assertThat(row.outcome()).isEqualTo(TurnOutcome.STOPPED);
     assertThat(row.rounds()).isEqualTo(1);
     assertThat(row.inferenceCalls()).isEqualTo(1);
@@ -159,6 +232,7 @@ class TurnRecorderTest {
             new Seq(4), TURN, new Failure.Permanent("no"), USAGE, Optional.empty()));
     AgentTurn row =
         recorder.recordEnding(AGENT, AgentState.idle(Seq.NONE), events, ENDED).orElseThrow();
+    TurnRowConsistency.assertConsistent(row);
     assertThat(row.outcome()).isEqualTo(TurnOutcome.FAILED);
     assertThat(row.inferenceCalls()).isEqualTo(2);
     assertThat(row.inferenceRetries()).isZero();
@@ -177,6 +251,8 @@ class TurnRecorderTest {
         new TurnRecorder(TYPE, new InMemoryAgentTurns(), ObservationRegistry.NOOP);
     AgentTurn replayRow =
         replay.recordEnding(AGENT, AgentState.idle(Seq.NONE), events, ENDED).orElseThrow();
+    TurnRowConsistency.assertConsistent(liveRow);
+    TurnRowConsistency.assertConsistent(replayRow);
     assertThat(replayRow).isEqualTo(liveRow);
   }
 

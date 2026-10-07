@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
@@ -38,11 +39,30 @@ import org.jwcarman.nessy.backend.turn.AgentTurns;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.json.JsonMapper;
 
 @Tag("container")
 @DisplayName("Completed turns kept in a database")
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class JdbcAgentTurnsTest {
+
+  private static final String JSON =
+      "{\"rounds\":[[{\"tool\":\"read\",\"outcome\":\"FAILED\"},"
+          + "{\"tool\":\"search\",\"outcome\":\"SUCCESS\"},{\"tool\":\"search\",\"outcome\":\"SUCCESS\"}],"
+          + "[{\"tool\":\"fetch\",\"outcome\":\"SUCCESS\"}]],\"outcome\":\"ANSWERED\"}";
+
+  private static final JsonMapper MAPPER = JsonMapper.builder().build();
+
+  private static final String DISAGREEMENTS =
+      """
+      SELECT COUNT(*) FROM nessy_agent_turn t WHERE agent_id = ? AND (
+        jsonb_array_length(trajectory->'rounds') <> round_count
+        OR trajectory->>'outcome' <> outcome
+        OR (SELECT COUNT(*) FROM jsonb_path_query(trajectory, '$.rounds[*][*]')) <> tool_call_count
+        OR (SELECT COUNT(*) FROM jsonb_path_query(trajectory, '$.rounds[*][*] ? (@.outcome == "SUCCESS")')) <> tool_success_count
+        OR (SELECT COUNT(*) FROM jsonb_path_query(trajectory, '$.rounds[*][*] ? (@.outcome == "FAILED")')) <> tool_failure_count
+        OR (SELECT COUNT(*) FROM jsonb_path_query(trajectory, '$.rounds[*][*] ? (@.outcome == "DENIED")')) <> tool_denied_count)
+      """;
 
   private static final AgentType TYPE = new AgentType("chat");
   private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
@@ -73,6 +93,7 @@ class JdbcAgentTurnsTest {
         t.plusMillis(11),
         t.plusSeconds(3),
         new Trajectory((short) 1, "8f".repeat(32)),
+        JSON,
         outcome,
         2,
         4,
@@ -87,7 +108,99 @@ class JdbcAgentTurnsTest {
   void a_recorded_turn_reads_back_exactly() {
     AgentTurn recorded = turn(418, TurnOutcome.ANSWERED);
     turns.append(TYPE, agent, recorded);
-    assertThat(turns.of(TYPE, agent)).containsExactly(recorded);
+    assertThat(turns.of(TYPE, agent))
+        .singleElement()
+        .satisfies(
+            read -> {
+              assertThat(read)
+                  .usingRecursiveComparison()
+                  .ignoringFields("trajectoryJson")
+                  .isEqualTo(recorded);
+              assertThat(MAPPER.readTree(read.trajectoryJson()))
+                  .isEqualTo(MAPPER.readTree(recorded.trajectoryJson()));
+            });
+  }
+
+  @Test
+  void a_row_whose_tool_names_jsonb_cannot_hold_still_inserts() {
+    // Exactly what TurnTrajectory.json renders for one round of `x\uD800` FAILED and `y\u0000`
+    // FAILED, ending ANSWERED. A literal, because the backend modules do not depend on the engine.
+    String escaped =
+        "{\"rounds\":[[{\"tool\":\"x\\\\uD800\",\"outcome\":\"FAILED\",\"escaped\":true},"
+            + "{\"tool\":\"y\\\\u0000\",\"outcome\":\"FAILED\",\"escaped\":true}]],"
+            + "\"outcome\":\"ANSWERED\"}";
+    turns.append(TYPE, agent, withJson(turn(7, TurnOutcome.ANSWERED), escaped, 1, 0, 2, 0));
+    assertThat(turns.of(TYPE, agent))
+        .singleElement()
+        .extracting(AgentTurn::trajectoryJson)
+        .asString()
+        .contains("escaped");
+  }
+
+  @Test
+  void a_denied_call_is_found_by_containment() {
+    String denied =
+        "{\"rounds\":[[{\"tool\":\"prune_images\",\"outcome\":\"DENIED\"}]],\"outcome\":\"ANSWERED\"}";
+    turns.append(TYPE, agent, withJson(turn(1, TurnOutcome.ANSWERED), denied, 1, 0, 0, 1));
+    turns.append(TYPE, agent, turn(2, TurnOutcome.ANSWERED));
+    List<Long> found =
+        JdbcClient.create(database)
+            .sql(
+                "SELECT turn_id FROM nessy_agent_turn WHERE agent_id = ? AND trajectory @> "
+                    + "'{\"rounds\": [[{\"tool\": \"prune_images\", \"outcome\": \"DENIED\"}]]}'")
+            .params(agent.value())
+            .query(Long.class)
+            .list();
+    assertThat(found).containsExactly(1L);
+  }
+
+  @Test
+  void every_rows_counts_agree_with_its_trajectory_json() {
+    String twoCalls =
+        "{\"rounds\":[[{\"tool\":\"a\",\"outcome\":\"SUCCESS\"},"
+            + "{\"tool\":\"b\",\"outcome\":\"DENIED\"}]],\"outcome\":\"STOPPED\"}";
+    turns.append(TYPE, agent, turn(1, TurnOutcome.ANSWERED));
+    turns.append(
+        TYPE,
+        agent,
+        withJson(
+            turn(2, TurnOutcome.ANSWERED), "{\"rounds\":[],\"outcome\":\"ANSWERED\"}", 0, 0, 0, 0));
+    turns.append(TYPE, agent, withJson(turn(3, TurnOutcome.STOPPED), twoCalls, 1, 1, 0, 1));
+    assertThat(disagreements()).isZero();
+
+    String oneCall =
+        "{\"rounds\":[[{\"tool\":\"a\",\"outcome\":\"SUCCESS\"}]],\"outcome\":\"ANSWERED\"}";
+    turns.append(TYPE, agent, withJson(turn(4, TurnOutcome.ANSWERED), oneCall, 1, 2, 0, 0));
+    assertThat(disagreements()).isEqualTo(1);
+  }
+
+  private long disagreements() {
+    return JdbcClient.create(database)
+        .sql(DISAGREEMENTS)
+        .params(agent.value())
+        .query(Long.class)
+        .single();
+  }
+
+  /** The same row with a different trajectory and the counts that trajectory implies. */
+  private static AgentTurn withJson(
+      AgentTurn row, String json, int rounds, int ok, int fail, int denied) {
+    return new AgentTurn(
+        row.turn(),
+        row.endingSeq(),
+        row.arrivedAt(),
+        row.startedAt(),
+        row.endedAt(),
+        row.trajectory(),
+        json,
+        row.outcome(),
+        rounds,
+        ok + fail + denied,
+        ok,
+        fail,
+        denied,
+        row.inferenceCalls(),
+        row.inferenceRetries());
   }
 
   @Test
