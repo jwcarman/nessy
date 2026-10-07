@@ -140,7 +140,11 @@ public sealed interface AgentState {
     public AgentState accept(AgentEvent event) {
       return switch (event) {
         case AgentEvent.TurnStarted started ->
-            new Inferring(started.seq(), started.turn(), TurnStats.opened(started.startedAt()));
+            new Inferring(
+                started.seq(),
+                started.turn(),
+                TurnStats.opened(started.startedAt()),
+                TurnTrajectory.State.opened(started.arrivedAt()));
         // Only here: Terminate is accepted only by Idle, so this fact can only ever follow an
         // idle agent. A busy arm carrying this case would claim something that cannot happen.
         case AgentEvent.Terminated _ -> new Terminal();
@@ -171,7 +175,8 @@ public sealed interface AgentState {
   }
 
   /** A turn is open and the model has been asked. */
-  record Inferring(Seq seq, TurnId turn, TurnStats stats) implements AgentState {
+  record Inferring(Seq seq, TurnId turn, TurnStats stats, TurnTrajectory.State trajectory)
+      implements AgentState {
 
     @Override
     public AgentState accept(AgentEvent event) {
@@ -190,9 +195,10 @@ public sealed interface AgentState {
         // without moving the turn: the call it belongs to has not settled, and the state this
         // rebuilds to must be the one the next event expects to find.
         case AgentEvent.InferenceAttempted attempted ->
-            new Inferring(attempted.seq(), turn, TurnTally.after(stats, attempted));
+            new Inferring(
+                attempted.seq(), turn, TurnTally.after(stats, attempted), trajectory.retried());
         case AgentEvent.ActionsRequested requested ->
-            AwaitingActions.opening(requested, TurnTally.after(stats, requested));
+            AwaitingActions.opening(requested, TurnTally.after(stats, requested), trajectory);
         default -> throw unexpected(event, this);
       };
     }
@@ -302,7 +308,8 @@ public sealed interface AgentState {
       TurnId turn,
       Seq requestSeq,
       Map<CallId, OutstandingAction> outstanding,
-      TurnStats stats)
+      TurnStats stats,
+      TurnTrajectory.State trajectory)
       implements AgentState {
 
     public AwaitingActions {
@@ -314,7 +321,8 @@ public sealed interface AgentState {
       outstanding = Map.copyOf(outstanding);
     }
 
-    static AwaitingActions opening(AgentEvent.ActionsRequested requested, TurnStats stats) {
+    static AwaitingActions opening(
+        AgentEvent.ActionsRequested requested, TurnStats stats, TurnTrajectory.State trajectory) {
       Map<CallId, OutstandingAction> calls = new LinkedHashMap<>();
       for (ActionRequest action : requested.actions()) {
         switch (action) {
@@ -325,22 +333,24 @@ public sealed interface AgentState {
                       call.id(), call.name(), call.idempotencyKey(), requested.seq()));
         }
       }
-      return new AwaitingActions(requested.seq(), requested.turn(), requested.seq(), calls, stats);
+      return new AwaitingActions(
+          requested.seq(), requested.turn(), requested.seq(), calls, stats, trajectory);
     }
 
     @Override
     public AgentState accept(AgentEvent event) {
       return switch (event) {
         case AgentEvent.ToolApproved approved -> running(approved.seq(), approved.callId());
-        case AgentEvent.ToolDenied denied -> discharge(denied.seq(), denied.callId());
-        case AgentEvent.ToolSucceeded succeeded -> discharge(succeeded.seq(), succeeded.callId());
-        case AgentEvent.ToolFailed failed -> discharge(failed.seq(), failed.callId());
+        case AgentEvent.ToolDenied denied -> discharge(denied.seq(), denied, denied.callId());
+        case AgentEvent.ToolSucceeded succeeded ->
+            discharge(succeeded.seq(), succeeded, succeeded.callId());
+        case AgentEvent.ToolFailed failed -> discharge(failed.seq(), failed, failed.callId());
         // A deferral records that a call was put aside and changes nothing about it: the same
         // calls in the same phases since the same seqs, and only this state's position moves.
         case AgentEvent.ApprovalDeferred deferred ->
-            new AwaitingActions(deferred.seq(), turn, requestSeq, outstanding, stats);
+            new AwaitingActions(deferred.seq(), turn, requestSeq, outstanding, stats, trajectory);
         case AgentEvent.ToolDeferred deferred ->
-            new AwaitingActions(deferred.seq(), turn, requestSeq, outstanding, stats);
+            new AwaitingActions(deferred.seq(), turn, requestSeq, outstanding, stats, trajectory);
         default -> throw unexpected(event, this);
       };
     }
@@ -352,18 +362,25 @@ public sealed interface AgentState {
       }
       Map<CallId, OutstandingAction> next = new LinkedHashMap<>(outstanding);
       next.put(callId, call.running(at));
-      return new AwaitingActions(at, turn, requestSeq, next, stats);
+      return new AwaitingActions(at, turn, requestSeq, next, stats, trajectory);
     }
 
     /** One fewer thing to wait for -- and back to inferring when it was the last. */
-    private AgentState discharge(Seq at, CallId callId) {
+    private AgentState discharge(Seq at, AgentEvent settling, CallId callId) {
+      OutstandingAction call = outstanding.get(callId);
+      if (call == null) {
+        throw new IllegalArgumentException("no outstanding call " + callId);
+      }
       Map<CallId, OutstandingAction> next = new LinkedHashMap<>(outstanding);
       next.remove(callId);
       // The tally travels with the turn, not with the phase: a call finishing changes what the
-      // agent is waiting for and nothing about what the turn has spent.
+      // agent is waiting for and nothing about what the turn has spent. The trajectory likewise,
+      // and a round closes with its last call.
+      TurnTrajectory.State settled =
+          trajectory.settled(call.toolName(), TurnTrajectory.outcomeOf(settling));
       return next.isEmpty()
-          ? new Inferring(at, turn, stats)
-          : new AwaitingActions(at, turn, requestSeq, next, stats);
+          ? new Inferring(at, turn, stats, settled.roundClosed())
+          : new AwaitingActions(at, turn, requestSeq, next, stats, settled);
     }
 
     @Override

@@ -211,7 +211,12 @@ class AgentStateDeferralTest {
       assertThat(afterApproval)
           .isEqualTo(
               new AgentState.AwaitingActions(
-                  Seq.of(3), TURN, REQUEST, approval.outstanding(), approval.stats()));
+                  Seq.of(3),
+                  TURN,
+                  REQUEST,
+                  approval.outstanding(),
+                  approval.stats(),
+                  TurnTrajectory.State.opened(Instant.EPOCH)));
       assertThat(running.outstanding())
           .isEqualTo(
               Map.of(
@@ -220,7 +225,12 @@ class AgentStateDeferralTest {
       assertThat(afterTool)
           .isEqualTo(
               new AgentState.AwaitingActions(
-                  Seq.of(4), TURN, REQUEST, running.outstanding(), running.stats()));
+                  Seq.of(4),
+                  TURN,
+                  REQUEST,
+                  running.outstanding(),
+                  running.stats(),
+                  TurnTrajectory.State.opened(Instant.EPOCH)));
     }
 
     @Test
@@ -479,11 +489,21 @@ class AgentStateDeferralTest {
       assertThat(state.applyAll(deferredApproval.events()))
           .isEqualTo(
               new AgentState.AwaitingActions(
-                  Seq.of(4), TURN, REQUEST, before.outstanding(), before.stats()));
+                  Seq.of(4),
+                  TURN,
+                  REQUEST,
+                  before.outstanding(),
+                  before.stats(),
+                  TurnTrajectory.State.opened(Instant.EPOCH)));
       assertThat(state.applyAll(deferredTool.events()))
           .isEqualTo(
               new AgentState.AwaitingActions(
-                  Seq.of(4), TURN, REQUEST, before.outstanding(), before.stats()));
+                  Seq.of(4),
+                  TURN,
+                  REQUEST,
+                  before.outstanding(),
+                  before.stats(),
+                  TurnTrajectory.State.opened(Instant.EPOCH)));
     }
 
     @Test
@@ -498,7 +518,12 @@ class AgentStateDeferralTest {
       assertThat(once.applyAll(again.events()))
           .isEqualTo(
               new AgentState.AwaitingActions(
-                  Seq.of(4), TURN, REQUEST, start.outstanding(), start.stats()));
+                  Seq.of(4),
+                  TURN,
+                  REQUEST,
+                  start.outstanding(),
+                  start.stats(),
+                  TurnTrajectory.State.opened(Instant.EPOCH)));
     }
   }
 
@@ -517,7 +542,13 @@ class AgentStateDeferralTest {
     private final TurnStats stats = TurnStats.opened(Instant.EPOCH);
 
     private AgentState.AwaitingActions holding(OutstandingAction call) {
-      return new AgentState.AwaitingActions(Seq.of(2), TURN, REQUEST, Map.of(CALL, call), stats);
+      return new AgentState.AwaitingActions(
+          Seq.of(2),
+          TURN,
+          REQUEST,
+          Map.of(CALL, call),
+          stats,
+          TurnTrajectory.State.opened(Instant.EPOCH));
     }
 
     private final OutstandingAction waiting =
@@ -531,7 +562,10 @@ class AgentStateDeferralTest {
     private List<Row> rows() {
       return List.of(
           ignoredBoth("Idle", new AgentState.Idle(Seq.of(5))),
-          ignoredBoth("Inferring", new AgentState.Inferring(Seq.of(1), TURN, stats)),
+          ignoredBoth(
+              "Inferring",
+              new AgentState.Inferring(
+                  Seq.of(1), TURN, stats, TurnTrajectory.State.opened(Instant.EPOCH))),
           ignoredBoth("Terminal", new AgentState.Terminal()),
           new Row(
               "AwaitingActions, another turn",
@@ -592,17 +626,29 @@ class AgentStateDeferralTest {
       AgentState.AwaitingActions waitingState = holding(waiting);
       AgentState.AwaitingActions runningState = holding(waiting.running(Seq.of(2)));
       AgentState idleState = new AgentState.Idle(Seq.of(5));
-      AgentState inferring = new AgentState.Inferring(Seq.of(5), TURN, stats);
+      AgentState inferring =
+          new AgentState.Inferring(
+              Seq.of(5), TURN, stats, TurnTrajectory.State.opened(Instant.EPOCH));
       AgentState terminal = new AgentState.Terminal();
 
       assertThat(waitingState.apply(approval))
           .isEqualTo(
               new AgentState.AwaitingActions(
-                  Seq.of(6), TURN, REQUEST, waitingState.outstanding(), stats));
+                  Seq.of(6),
+                  TURN,
+                  REQUEST,
+                  waitingState.outstanding(),
+                  stats,
+                  TurnTrajectory.State.opened(Instant.EPOCH)));
       assertThat(runningState.apply(tool))
           .isEqualTo(
               new AgentState.AwaitingActions(
-                  Seq.of(6), TURN, REQUEST, runningState.outstanding(), stats));
+                  Seq.of(6),
+                  TURN,
+                  REQUEST,
+                  runningState.outstanding(),
+                  stats,
+                  TurnTrajectory.State.opened(Instant.EPOCH)));
       for (AgentState state : List.of(idleState, inferring)) {
         assertThatThrownBy(() -> state.apply(approval))
             .isInstanceOf(IllegalArgumentException.class)
