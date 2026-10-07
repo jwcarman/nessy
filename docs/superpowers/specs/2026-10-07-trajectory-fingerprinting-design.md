@@ -228,7 +228,7 @@ ORDER BY turns DESC;
 An engine-internal accumulator in `engine/core`, parallel to `TurnTally`. Its state is carried by
 `Inferring` and `AwaitingActions` beside `stats`, and discarded with them when the turn ends.
 
-As built, in `TurnTrajectory`: `State` (arrival time, completed rounds, the open round, retries),
+As built, in `TurnTrajectory`: `State` (arrival time, completed rounds, the open round, retries, label),
 `Round`, `Entry`, and the engine-internal `CallOutcome` (SUCCESS, FAILED, DENIED). `TurnRecorder`
 folds the decision's events after the append.
 

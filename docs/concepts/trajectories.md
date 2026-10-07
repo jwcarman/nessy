@@ -6,8 +6,7 @@ Two turns with the same trajectory followed the same observable control
 path: the same tools, in the same rounds, with the same normalized
 outcomes, and they ended the same way. Their inputs, arguments, results,
 reasoning and answers may be completely different. Nessy gives each
-completed turn a fingerprint of its trajectory, so "how does this agent
-behave?" becomes a query.
+completed turn a fingerprint of its trajectory.
 
 Every completed turn is a member of one behavioral equivalence class: the
 set of turns with that fingerprint. Thousands of turns with different
@@ -27,9 +26,7 @@ identity.
 
 ## Why this matters
 
-A trace tells what happened in one execution. A fingerprint lets you ask
-how an agent behaves across executions. With one stored per turn, these
-are queries:
+With a fingerprint stored per turn, these are queries:
 
 - How many distinct behaviors does this agent have?
 - What share of turns do the five most common paths take?
@@ -50,11 +47,6 @@ those paths may be candidates for deterministic implementation rather than
 repeated inference. That is a lead, not a verdict. Low variety within one
 kind of work is the stronger signal; see
 [Trajectories by task](#trajectories-by-task).
-
-The question this raises is architectural, not a score: if a large share
-of turns reduces to a small, stable set of paths, are all of those paths
-still benefiting from inference? Some may be better as code, leaving the
-model at the points that are genuinely ambiguous.
 
 ### Trace and trajectory
 
@@ -182,8 +174,7 @@ Nessy does not reconstruct trajectories from traces after the fact. The
 runtime already knows where a round begins, which calls belong to it, when
 and how each one settles, when the next model decision happens and how the
 turn ends. The fold that runs the agent maintains the trajectory as it
-goes and finalizes it when the turn ends. Replaying a turn's events
-produces the same trajectory as the live run.
+goes and finalizes it when the turn ends.
 
 ### Where it is computed
 
@@ -213,19 +204,20 @@ a rolled-back one never does.
 | `trajectory_version` | the encoding version of the hash |
 | `trajectory_hash` | the fingerprint, 64 lowercase hex characters |
 | `trajectory` | the same behavior as JSON: rounds of `{tool, outcome}`, then the outcome |
+| `label` | the task label of the input that started the turn, `VARCHAR(1000) NOT NULL` |
 | `outcome` | the `TurnOutcome` name |
 | `round_count` | rounds of tool calls |
 | `tool_call_count` | calls settled, the sum of the next three |
 | `tool_success_count`, `tool_failure_count`, `tool_denied_count` | calls by outcome |
 | `inference_call_count` | every model call, retries included |
 | `inference_retry_count` | attempts that failed and were tried again |
-| `label` | the task label of the input that started the turn, `VARCHAR(1000) NOT NULL` |
 
 The columns fall in two groups. The behavioral ones are the trajectory
 columns, `outcome`, `round_count` and the three tool counts. The
 operational ones are `arrived_at`, `started_at`, `ended_at`,
 `inference_call_count` and `inference_retry_count`. Only the behavioral
-ones describe what the agent decided.
+ones describe what the agent decided. `label` is neither: it names the
+task, and is outside the fingerprint.
 
 `turn_id` is the seq of `TurnStarted` and `ending_seq` is the seq of the
 ending event. Between them, inclusive, are the turn's events, and folding
@@ -341,7 +333,8 @@ The [starter queries](#starter-queries) below measure the first three.
 Most evals ask whether the result was acceptable. The turn row adds a
 second question: did the agent reach the result by an expected path?
 
-An eval run can compare, per scenario label:
+An eval run can compare, per scenario (the label, or the eval system's own scenario id
+joined on the primary key):
 
 - the outcome and the fingerprint,
 - `round_count` and `tool_call_count`,
@@ -398,8 +391,8 @@ shifted.
 The fingerprint covers rounds and ending together. The path alone is the
 rounds without the ending, and it answers a different question: given the
 same path, how often did the turn answer, fail, refuse or stop? In the
-canonical encoding the path is the bytes before the `0xFF` terminal
-marker. In SQL, the `rounds` of the JSON column give the same grouping:
+canonical encoding the path is every byte except the last two (the
+`0xFF` marker and the ending tag). In SQL, the `rounds` of the JSON column give the same grouping:
 
 ```sql
 SELECT trajectory -> 'rounds' AS path, outcome, COUNT(*) AS turns
@@ -417,7 +410,8 @@ paths one kind of task takes, group by the label.
 
 The `label` column holds the label the application's `inputLabel` gave the
 input that started the turn, or the input's simple class name when the
-application set none. A label is a category. It names the kind of work,
+application set none or its label failed (threw, or returned null or
+blank). A label is a category. It names the kind of work,
 from a small set of values such as `rounds` or `invoice:PRICE_VARIANCE`.
 It is stored plain, unencrypted, so it must never carry the input's
 content.

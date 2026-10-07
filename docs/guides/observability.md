@@ -8,7 +8,7 @@ Five separate things, and it helps to keep them apart:
   [Events](../concepts/events.md).
 - **Traces**: the span tree, for debugging one turn after the fact.
 - **Metrics**: counts and timings, for a dashboard.
-- **Trajectories**: the normalized behavioral identity of completed turns,
+- **Trajectories**: the normalized behavioral shape of completed turns, and its fingerprint,
   for understanding behavior across executions. Their hashes go on trace
   attributes, never on metric tags. That is
   [Trajectories](../concepts/trajectories.md).

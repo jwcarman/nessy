@@ -310,6 +310,8 @@ harness
     .inputLabel(invoice -> "invoice");
 ```
 
+A constant is fine for an agent that only ever does one kind of work; use a small set of values when it does several.
+
 A label is a category: it names the kind of work an input starts, from a
 small set of values such as `rounds` or `invoice:PRICE_VARIANCE`. It is
 stored plain, unencrypted, on the turn's row, so it must never carry the

@@ -14,9 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`nessy_agent_turn` has a new `label VARCHAR(1000) NOT NULL` column.** The schema never alters
+  an existing table, so a database created by 0.6.0 must drop and recreate `nessy_agent_turn` (or
+  be recreated) before 0.7.0 starts; otherwise every turn's ending fails to commit. An application
+  with `nessy.initialize-schema=false` must add the column itself.
+- **`AgentTurn` has a new `label` component after `trajectoryJson`.** A custom `AgentTurns`
+  implementation must store it and return it.
 - **A label is a category.** `inputLabel` names the kind of work an input starts, from a small set
   of values, and is stored plain, unencrypted. An application whose label carries input content
-  must change it. A label containing NUL, or an unpaired surrogate, is stored with U+FFFD in that
+  must change it before upgrading: from 0.7.0 the label is written in plain text to
+  `nessy_agent_turn`. A label containing NUL, or an unpaired surrogate, is stored with U+FFFD in that
   character's place.
 
 ## [0.6.0] - 2026-10-07

@@ -219,6 +219,8 @@ payload rows one statement over one table, with nothing shared out from
 under another agent. Identical content in two agents is stored twice, and
 that is the trade.
 
+`nessy_agent_turn.trajectory` and `nessy_agent_turn.label` are stored plain by contract. A label is copied out of the codec-encoded event, so it must never carry content.
+
 Each model call also puts the parts of its request into `nessy_payload`: the prompt,
 the tools offered, the options, and each memory, state and ambient section,
 and its event holds the references. The summaries shown are named by the last turn they cover.
