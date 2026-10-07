@@ -1127,11 +1127,10 @@ class AgentStateTest {
       TurnId turn = seq.opensTurn();
       Map<CallId, OutstandingAction> noActions = Map.of();
       TurnStats stats = TurnStats.opened(Instant.EPOCH);
+      TurnTrajectory.State trajectory = TurnTrajectory.State.opened(Instant.EPOCH);
 
       assertThatThrownBy(
-              () ->
-                  new AgentState.AwaitingActions(
-                      seq, turn, seq, noActions, stats, TurnTrajectory.State.opened(Instant.EPOCH)))
+              () -> new AgentState.AwaitingActions(seq, turn, seq, noActions, stats, trajectory))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("awaiting nothing");
     }

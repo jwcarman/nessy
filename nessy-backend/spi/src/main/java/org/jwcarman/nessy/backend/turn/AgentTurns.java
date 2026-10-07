@@ -27,7 +27,7 @@ import org.jwcarman.nessy.api.AgentType;
  * (how many distinct trajectories, which are common, which are new) are a query rather than a fold
  * over every event ever written.
  *
- * <p>{@link #record} is called inside the same unit of work as the append of the turn-ending event,
+ * <p>{@link #append} is called inside the same unit of work as the append of the turn-ending event,
  * so a committed ending always has its row and a rolled-back one never does.
  */
 public interface AgentTurns {
@@ -37,7 +37,7 @@ public interface AgentTurns {
    *
    * @throws IllegalStateException if this agent already has a row for this turn
    */
-  void record(AgentType type, AgentId agent, AgentTurn turn);
+  void append(AgentType type, AgentId agent, AgentTurn turn);
 
   /** This agent's completed turns, oldest first. For tests and audit; analytics use SQL. */
   List<AgentTurn> of(AgentType type, AgentId agent);

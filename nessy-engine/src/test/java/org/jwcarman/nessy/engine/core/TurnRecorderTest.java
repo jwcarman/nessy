@@ -92,7 +92,8 @@ class TurnRecorderTest {
   void a_turn_that_ends_gets_one_row_bounded_by_its_first_and_last_seq() {
     TurnRecorder recorder = new TurnRecorder(TYPE, turns, ObservationRegistry.NOOP);
     List<AgentEvent> events = oneRoundThenAnswer(false);
-    Optional<AgentTurn> recorded = recorder.record(AGENT, AgentState.idle(Seq.NONE), events, ENDED);
+    Optional<AgentTurn> recorded =
+        recorder.recordEnding(AGENT, AgentState.idle(Seq.NONE), events, ENDED);
     assertThat(recorded).isPresent();
     AgentTurn row = recorded.get();
     assertThat(row.turn()).isEqualTo(TURN);
@@ -114,11 +115,11 @@ class TurnRecorderTest {
     TurnRecorder recorder = new TurnRecorder(TYPE, turns, ObservationRegistry.NOOP);
     AgentTurn plain =
         recorder
-            .record(AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false), ENDED)
+            .recordEnding(AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false), ENDED)
             .orElseThrow();
     AgentTurn retried =
         recorder
-            .record(
+            .recordEnding(
                 new AgentId(UUID.randomUUID()),
                 AgentState.idle(Seq.NONE),
                 oneRoundThenAnswer(true),
@@ -133,7 +134,7 @@ class TurnRecorderTest {
   void events_that_end_no_turn_record_nothing() {
     TurnRecorder recorder = new TurnRecorder(TYPE, turns, ObservationRegistry.NOOP);
     List<AgentEvent> events = oneRoundThenAnswer(false).subList(0, 3);
-    assertThat(recorder.record(AGENT, AgentState.idle(Seq.NONE), events, ENDED)).isEmpty();
+    assertThat(recorder.recordEnding(AGENT, AgentState.idle(Seq.NONE), events, ENDED)).isEmpty();
     assertThat(turns.of(TYPE, AGENT)).isEmpty();
   }
 
@@ -142,7 +143,8 @@ class TurnRecorderTest {
     TurnRecorder recorder = new TurnRecorder(TYPE, turns, ObservationRegistry.NOOP);
     List<AgentEvent> events = new ArrayList<>(oneRoundThenAnswer(false).subList(0, 3));
     events.add(new AgentEvent.TurnStopped(new Seq(4), TURN, "enough"));
-    AgentTurn row = recorder.record(AGENT, AgentState.idle(Seq.NONE), events, ENDED).orElseThrow();
+    AgentTurn row =
+        recorder.recordEnding(AGENT, AgentState.idle(Seq.NONE), events, ENDED).orElseThrow();
     assertThat(row.outcome()).isEqualTo(TurnOutcome.STOPPED);
     assertThat(row.rounds()).isEqualTo(1);
     assertThat(row.inferenceCalls()).isEqualTo(1);
@@ -155,7 +157,8 @@ class TurnRecorderTest {
     events.add(
         new AgentEvent.InferenceFailed(
             new Seq(4), TURN, new Failure.Permanent("no"), USAGE, Optional.empty()));
-    AgentTurn row = recorder.record(AGENT, AgentState.idle(Seq.NONE), events, ENDED).orElseThrow();
+    AgentTurn row =
+        recorder.recordEnding(AGENT, AgentState.idle(Seq.NONE), events, ENDED).orElseThrow();
     assertThat(row.outcome()).isEqualTo(TurnOutcome.FAILED);
     assertThat(row.inferenceCalls()).isEqualTo(2);
     assertThat(row.inferenceRetries()).isZero();
@@ -168,12 +171,12 @@ class TurnRecorderTest {
     // Live: the events arrive in two decisions, each folded onto the state the last left behind.
     AgentState after = AgentState.idle(Seq.NONE).applyAll(events.subList(0, 3));
     AgentTurn liveRow =
-        live.record(AGENT, after, events.subList(3, events.size()), ENDED).orElseThrow();
+        live.recordEnding(AGENT, after, events.subList(3, events.size()), ENDED).orElseThrow();
     // Replay: the whole slice from idle, as reconstitute would fold it.
     TurnRecorder replay =
         new TurnRecorder(TYPE, new InMemoryAgentTurns(), ObservationRegistry.NOOP);
     AgentTurn replayRow =
-        replay.record(AGENT, AgentState.idle(Seq.NONE), events, ENDED).orElseThrow();
+        replay.recordEnding(AGENT, AgentState.idle(Seq.NONE), events, ENDED).orElseThrow();
     assertThat(replayRow).isEqualTo(liveRow);
   }
 
@@ -201,7 +204,8 @@ class TurnRecorderTest {
             .observe(
                 () ->
                     recorder
-                        .record(AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false), ENDED)
+                        .recordEnding(
+                            AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false), ENDED)
                         .orElseThrow());
     assertThat(stopped).hasSize(1);
     Observation.Context context = stopped.getFirst();
@@ -223,7 +227,9 @@ class TurnRecorderTest {
   @Test
   void with_no_observation_in_force_nothing_is_tagged_and_the_row_is_still_written() {
     TurnRecorder recorder = new TurnRecorder(TYPE, turns, ObservationRegistry.create());
-    assertThat(recorder.record(AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false), ENDED))
+    assertThat(
+            recorder.recordEnding(
+                AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false), ENDED))
         .isPresent();
   }
 }

@@ -86,21 +86,21 @@ class TurnTrajectoryTest {
 
   @Test
   void round_boundaries_matter() {
-    State ab_c =
+    State abThenC =
         opened()
             .settled(A, CallOutcome.SUCCESS)
             .settled(B, CallOutcome.SUCCESS)
             .roundClosed()
             .settled(C, CallOutcome.SUCCESS)
             .roundClosed();
-    State a_bc =
+    State aThenBc =
         opened()
             .settled(A, CallOutcome.SUCCESS)
             .roundClosed()
             .settled(B, CallOutcome.SUCCESS)
             .settled(C, CallOutcome.SUCCESS)
             .roundClosed();
-    assertThat(of(ab_c)).isNotEqualTo(of(a_bc));
+    assertThat(of(abThenC)).isNotEqualTo(of(aThenBc));
   }
 
   @Test

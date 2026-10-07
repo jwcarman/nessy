@@ -33,7 +33,7 @@ public final class InMemoryAgentTurns implements AgentTurns {
   private final Map<Key, List<AgentTurn>> turns = new ConcurrentHashMap<>();
 
   @Override
-  public synchronized void record(AgentType type, AgentId agent, AgentTurn turn) {
+  public synchronized void append(AgentType type, AgentId agent, AgentTurn turn) {
     Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(agent, "agent must not be null");
     Objects.requireNonNull(turn, "turn must not be null");

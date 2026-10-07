@@ -416,7 +416,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
     }
     Decision decision = state.execute(command, turnPolicy, clock.instant());
     backend.events().append(agentType, agent, decision.events(), state.seq(), at);
-    turnRecorder.record(agent, state, decision.events(), at);
+    turnRecorder.recordEnding(agent, state, decision.events(), at);
     decision.events().forEach(event -> narrate(step, event, at));
     return decision;
   }
@@ -585,7 +585,7 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
       dischargedSomething = true;
       Decision decision = current.execute(discharge.get(), turnPolicy, clock.instant());
       backend.events().append(agentType, agent, decision.events(), current.seq(), at);
-      turnRecorder.record(agent, current, decision.events(), at);
+      turnRecorder.recordEnding(agent, current, decision.events(), at);
       decision.events().forEach(event -> narrate(step, event, at));
       current = current.applyAll(decision.events());
     }

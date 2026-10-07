@@ -259,7 +259,7 @@ Six sites append events; three can carry a turn-ending event.
 Each of the three calls one shared engine helper after `events().append(...)` and inside the same
 `Locks.withLock` transaction: fold the decision's events onto the reconstituted state one at a
 time; at a turn-ending event, build the `AgentTurn` from the state before it, the event, and `at`,
-and call `AgentTurns.record`. The helper is also where the span is tagged (§7). The three
+and call `AgentTurns.append`. The helper is also where the span is tagged (§7). The three
 "cannot" sites are left alone, and a test guards each "can" site.
 
 Because it is one transaction, a committed terminal event always has its row and a rolled-back
@@ -323,7 +323,7 @@ two `Trajectory` values are equal.
 
 - a turn that ends has exactly one row; `turn_id` is the `TurnStarted` seq, `ending_seq` the
   terminal seq, and every event of the turn lies in the range.
-- an `AgentTurns.record` that throws rolls the terminal event back too.
+- an `AgentTurns.append` that throws rolls the terminal event back too.
 - each of the three "can end a turn" sites produces a row: a normal answer, a policy stop out of
   `apply`, and an overdue discharge out of `recoverToIdle`.
 - the row's counts match `TurnTally.of` for the same turn.

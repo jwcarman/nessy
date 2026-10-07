@@ -248,7 +248,7 @@ class DirectHarnessTrajectoryTest {
             .toList();
     AgentTurn refolded =
         new TurnRecorder(TYPE, new InMemoryAgentTurns(), ObservationRegistry.NOOP)
-            .record(agent, AgentState.idle(Seq.NONE), slice, stored.endedAt())
+            .recordEnding(agent, AgentState.idle(Seq.NONE), slice, stored.endedAt())
             .orElseThrow();
     assertThat(refolded).isEqualTo(stored);
   }

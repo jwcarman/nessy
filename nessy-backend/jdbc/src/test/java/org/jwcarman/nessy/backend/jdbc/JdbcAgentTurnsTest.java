@@ -86,14 +86,14 @@ class JdbcAgentTurnsTest {
   @Test
   void a_recorded_turn_reads_back_exactly() {
     AgentTurn recorded = turn(418, TurnOutcome.ANSWERED);
-    turns.record(TYPE, agent, recorded);
+    turns.append(TYPE, agent, recorded);
     assertThat(turns.of(TYPE, agent)).containsExactly(recorded);
   }
 
   @Test
   void turns_read_back_oldest_first_whatever_order_they_were_written() {
-    turns.record(TYPE, agent, turn(30, TurnOutcome.STOPPED));
-    turns.record(TYPE, agent, turn(10, TurnOutcome.TRUNCATED));
+    turns.append(TYPE, agent, turn(30, TurnOutcome.STOPPED));
+    turns.append(TYPE, agent, turn(10, TurnOutcome.TRUNCATED));
     assertThat(turns.of(TYPE, agent))
         .extracting(AgentTurn::turn)
         .containsExactly(new TurnId(10), new TurnId(30));
@@ -102,7 +102,7 @@ class JdbcAgentTurnsTest {
   @Test
   void every_outcome_round_trips() {
     for (TurnOutcome outcome : TurnOutcome.values()) {
-      turns.record(TYPE, agent, turn(outcome.ordinal() + 1, outcome));
+      turns.append(TYPE, agent, turn(outcome.ordinal() + 1, outcome));
     }
     assertThat(turns.of(TYPE, agent))
         .extracting(AgentTurn::outcome)
@@ -111,15 +111,15 @@ class JdbcAgentTurnsTest {
 
   @Test
   void a_turn_recorded_twice_is_refused() {
-    turns.record(TYPE, agent, turn(1, TurnOutcome.ANSWERED));
+    turns.append(TYPE, agent, turn(1, TurnOutcome.ANSWERED));
     AgentTurn again = turn(1, TurnOutcome.FAILED);
-    assertThatThrownBy(() -> turns.record(TYPE, agent, again))
+    assertThatThrownBy(() -> turns.append(TYPE, agent, again))
         .isInstanceOf(IllegalStateException.class);
   }
 
   @Test
   void another_agent_of_the_same_type_has_its_own_turns() {
-    turns.record(TYPE, agent, turn(1, TurnOutcome.ANSWERED));
+    turns.append(TYPE, agent, turn(1, TurnOutcome.ANSWERED));
     assertThat(turns.of(TYPE, new AgentId(UUID.randomUUID()))).isEmpty();
   }
 }

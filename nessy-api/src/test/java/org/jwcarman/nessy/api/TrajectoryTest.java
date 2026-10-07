@@ -36,7 +36,9 @@ class TrajectoryTest {
 
   @Test
   void a_hash_that_is_not_sixty_four_lowercase_hex_characters_is_refused() {
-    assertThatThrownBy(() -> new Trajectory((short) 1, "A".repeat(64)))
+    String uppercase = "A".repeat(64);
+
+    assertThatThrownBy(() -> new Trajectory((short) 1, uppercase))
         .isInstanceOf(IllegalArgumentException.class);
   }
 

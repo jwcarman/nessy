@@ -179,8 +179,8 @@ class QueuedReplyEndedTurnSpanTest {
                         }));
     List<Observation.Context> effects =
         stopped.stream().filter(c -> c.getName().equals("nessy.effect")).toList();
-    assertThat(effects).isNotEmpty();
     assertThat(effects)
+        .isNotEmpty()
         .allSatisfy(
             c -> assertThat(c.getHighCardinalityKeyValue("nessy.trajectory.hash")).isNull());
   }

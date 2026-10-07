@@ -471,7 +471,7 @@ final class DefaultQueuedHarness<I>
       return Folded.NOTHING;
     }
     backend.events().append(agentType, agentId, advance.events(), state.seq(), at);
-    turnRecorder.record(agentId, state, advance.events(), at);
+    turnRecorder.recordEnding(agentId, state, advance.events(), at);
     for (AgentEffect effect : advance.effects()) {
       effects.insert(agentId, effect, clock.instant(), trace);
     }

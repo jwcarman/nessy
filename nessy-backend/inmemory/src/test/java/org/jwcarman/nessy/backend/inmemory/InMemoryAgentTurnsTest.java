@@ -62,8 +62,8 @@ class InMemoryAgentTurnsTest {
 
   @Test
   void a_recorded_turn_is_read_back_for_its_agent_oldest_first() {
-    turns.record(TYPE, AGENT, turn(10));
-    turns.record(TYPE, AGENT, turn(20));
+    turns.append(TYPE, AGENT, turn(10));
+    turns.append(TYPE, AGENT, turn(20));
     assertThat(turns.of(TYPE, AGENT)).containsExactly(turn(10), turn(20));
   }
 
@@ -74,16 +74,16 @@ class InMemoryAgentTurnsTest {
 
   @Test
   void another_agents_turns_are_not_this_ones() {
-    turns.record(TYPE, AGENT, turn(10));
+    turns.append(TYPE, AGENT, turn(10));
     assertThat(turns.of(TYPE, new AgentId(UUID.randomUUID()))).isEmpty();
   }
 
   @Test
   void a_turn_recorded_twice_is_refused() {
     AgentTurn first = turn(10);
-    turns.record(TYPE, AGENT, first);
+    turns.append(TYPE, AGENT, first);
     AgentTurn again = turn(10);
-    assertThatThrownBy(() -> turns.record(TYPE, AGENT, again))
+    assertThatThrownBy(() -> turns.append(TYPE, AGENT, again))
         .isInstanceOf(IllegalStateException.class);
   }
 }

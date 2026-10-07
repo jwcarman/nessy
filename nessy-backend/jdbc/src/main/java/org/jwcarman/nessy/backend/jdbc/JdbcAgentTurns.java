@@ -66,7 +66,7 @@ public final class JdbcAgentTurns implements AgentTurns {
   }
 
   @Override
-  public void record(AgentType type, AgentId agent, AgentTurn turn) {
+  public void append(AgentType type, AgentId agent, AgentTurn turn) {
     Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(agent, "agent must not be null");
     Objects.requireNonNull(turn, "turn must not be null");

@@ -83,7 +83,7 @@ public final class TurnRecorder {
    * @param at when the events were written, which is when the turn ended
    * @return the row, if a turn ended in these events
    */
-  public Optional<AgentTurn> record(
+  public Optional<AgentTurn> recordEnding(
       AgentId agent, AgentState before, List<AgentEvent> events, Instant at) {
     AgentState state = before;
     Optional<AgentTurn> recorded = Optional.empty();
@@ -92,7 +92,7 @@ public final class TurnRecorder {
       if (ending.isPresent()) {
         if (state instanceof AgentState.Inferring inferring) {
           AgentTurn row = summarise(inferring, event, ending.get(), at);
-          turns.record(type, agent, row);
+          turns.append(type, agent, row);
           tag(row);
           recorded = Optional.of(row);
         } else {

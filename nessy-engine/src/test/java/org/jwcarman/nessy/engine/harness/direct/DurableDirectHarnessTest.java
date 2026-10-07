@@ -281,8 +281,7 @@ class DurableDirectHarnessTest {
     catchThrowable(() -> harness.ask(agent, "capital of France?"));
 
     List<AgentEvent> story = events.readAll(TYPE, agent);
-    assertThat(story).isNotEmpty();
-    assertThat(story).noneMatch(AgentEvent.InferenceAnswered.class::isInstance);
+    assertThat(story).isNotEmpty().noneMatch(AgentEvent.InferenceAnswered.class::isInstance);
     assertThat(real.turns().of(TYPE, agent)).isEmpty();
   }
 
@@ -319,7 +318,7 @@ class DurableDirectHarnessTest {
       AgentTurns real = backend.turns();
       return new AgentTurns() {
         @Override
-        public void record(AgentType type, AgentId agent, AgentTurn turn) {
+        public void append(AgentType type, AgentId agent, AgentTurn turn) {
           throw new IllegalStateException("refused");
         }
 

@@ -138,8 +138,8 @@ class QueuedHarnessTrajectoryTest {
 
     await().atMost(PATIENCE).until(() -> refusals.get() >= 2);
     List<AgentEvent> story = engine.story(TYPE, agent);
-    assertThat(story).isNotEmpty();
     assertThat(story)
+        .isNotEmpty()
         .noneMatch(
             e ->
                 e instanceof AgentEvent.InferenceAnswered
@@ -234,7 +234,7 @@ class QueuedHarnessTrajectoryTest {
       AgentTurns real = backend.turns();
       return new AgentTurns() {
         @Override
-        public void record(AgentType type, AgentId agent, AgentTurn turn) {
+        public void append(AgentType type, AgentId agent, AgentTurn turn) {
           refusals.incrementAndGet();
           throw new IllegalStateException("refused");
         }
