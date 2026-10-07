@@ -225,6 +225,7 @@ add `nessy-inference-spi`; an application building an agent depends on
 | Narration: listeners, the builder, and streams a browser can resume | [Narration](https://jwcarman.github.io/nessy/guides/narration/) |
 | MCP: import a remote server's tools as ordinary tools | [MCP Clients](https://jwcarman.github.io/nessy/guides/mcp-clients/) |
 | The harness: two doors, kept not closed; outcomes, coalescing, and approval desks | [The Harness](https://jwcarman.github.io/nessy/guides/harness/) |
+| Trajectories: every completed turn gets a deterministic behavioral fingerprint, so how an agent behaves across turns is a query | [Trajectories](https://jwcarman.github.io/nessy/concepts/trajectories/) |
 | Observability: GenAI semantic conventions, traces that cross the outbox, and the record | [Observability](https://jwcarman.github.io/nessy/guides/observability/) |
 | Spring Boot: a harness and every optional module from `nessy.*` properties and beans | [Spring Boot](https://jwcarman.github.io/nessy/guides/spring-boot/) |
 

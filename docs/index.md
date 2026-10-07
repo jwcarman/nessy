@@ -187,6 +187,12 @@ See [Authorization](concepts/authorization.md).
 
     What an agent recalls: memory and state sources, notes, and embeddings.
 
+- **[Trajectories](concepts/trajectories.md)**
+
+    Every completed turn gets a fingerprint of the tools, rounds, outcomes
+    and ending that shaped it. Group turns by behavior, and look for drift
+    and anomalies.
+
 - **[Leases](concepts/leases.md)**
 
     Background work that runs once across every instance, and why it is not
