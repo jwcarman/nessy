@@ -155,6 +155,17 @@ class TurnRecorderTest {
   }
 
   @Test
+  void a_valid_surrogate_pair_is_kept_and_each_lone_half_is_replaced() {
+    TurnRecorder recorder = new TurnRecorder(TYPE, turns, ObservationRegistry.NOOP);
+    String label = "x\uD83D\uDE00y\uDE00z\uD800";
+    AgentTurn row =
+        recorder
+            .recordEnding(AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false, label), ENDED)
+            .orElseThrow();
+    assertThat(row.label()).isEqualTo("x\uD83D\uDE00y\uFFFDz\uFFFD");
+  }
+
+  @Test
   void every_shape_of_turn_leaves_a_row_whose_counts_agree_with_its_json() {
     TurnRecorder recorder = new TurnRecorder(TYPE, turns, ObservationRegistry.NOOP);
     List<AgentEvent> noTools =
