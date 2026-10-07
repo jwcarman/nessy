@@ -6,6 +6,9 @@ were made in conversation on 2026-10-07 and are his. Every path and name below w
 
 **Amendment, 2026-10-07: the readable trajectory (§4.6, ruling 9). APPROVED by James. BUILT.**
 
+**Amendment, 2026-10-07: the task label (§4.7, ruling 10). APPROVED by James (option 1: the label is
+a category). NOT BUILT.**
+
 ---
 
 ## 1. The problem
@@ -51,6 +54,11 @@ Made in conversation on 2026-10-07.
    encodes, so a query reads it directly and any later similarity measure (n-grams, edit distance,
    the rounds-only path) is computed from it rather than frozen into a stored vector now. It is
    stored plain, not through the codec: tool names and outcome words are not content.
+10. **The row carries the turn's label, and a label is a category** (§4.7). The label an
+    application gives an input becomes a short, low-cardinality name for the kind of work a turn
+    does, never content, and is stored plain on the row. Grouping trajectories by label is what
+    separates "this agent's behavior varies" from "this agent does several kinds of work", and
+    makes the conditional measures (trajectory given task) a query.
 
 ## 3. What the fold knows today, and what it drops
 
@@ -180,6 +188,41 @@ SELECT turn_id, ended_at FROM nessy_agent_turn
  WHERE trajectory @> '{"rounds": [[{"tool": "prune_images", "outcome": "DENIED"}]]}';
 ```
 
+### 4.7 The task label (amendment)
+
+`TurnStarted` already carries a `label`: what the application's `inputLabel` stringifier said about
+the input, made one line and cut to `ToolConfig.LINE_CAP` (1,000) characters, or the input's simple
+class name when the application gave none or its stringifier failed. The amendment does three
+things.
+
+- **The contract becomes "a category".** The javadoc of `inputLabel` on both
+  `DirectHarnessConfig` and `QueuedHarnessConfig`, and the docs, say: a label names the kind of
+  work an input starts (`rounds`, `invoice:PRICE_VARIANCE`), from a small set of values; it is
+  stored plain, unencrypted, beside the trajectory; it must not carry the input's content. Nothing
+  enforces the cardinality -- an application that labels each input uniquely only gets a useless
+  classifier -- but the content rule is the application's to keep, and the docs say so plainly.
+- **The fold keeps it.** `TurnTrajectory.State` gains the label from `TurnStarted`, as it already
+  keeps `arrivedAt`, so the row is still built from the folded state alone and replay gives the same
+  value.
+- **The row carries it.** `AgentTurn` gains `String label` and `nessy_agent_turn` a `label` column.
+  The label is not part of the fingerprint: the fingerprint is behavior, the label is the task, and
+  keeping them apart is what makes "trajectory given task" measurable.
+
+**Characters the column cannot hold.** The label is made one line, but a NUL is not whitespace and
+survives, and Postgres rejects U+0000 in text; a refused insert would roll back the turn's ending on
+every retry. The row's label therefore has each U+0000 and each unpaired surrogate replaced by
+U+FFFD. The event keeps the label as given, since the event goes through the codec as bytes.
+
+What it enables, for example how predictable each kind of work is:
+
+```sql
+SELECT label, COUNT(*) AS turns, COUNT(DISTINCT trajectory_hash) AS trajectories
+FROM nessy_agent_turn
+WHERE agent_type = 'ap-agent' AND trajectory_version = 1
+GROUP BY label
+ORDER BY turns DESC;
+```
+
 ## 5. The fold: `TurnTrajectory`
 
 An engine-internal accumulator in `engine/core`, parallel to `TurnTally`. Its state is carried by
@@ -248,6 +291,7 @@ CREATE TABLE IF NOT EXISTS nessy_agent_turn
     trajectory_version     SMALLINT                 NOT NULL,
     trajectory_hash        CHAR(64)                 NOT NULL,  -- lowercase hex of the digest
     trajectory             JSONB                    NOT NULL,  -- the canonical structure, §4.6
+    label                  VARCHAR(1000)            NOT NULL,  -- the task label, §4.7
     outcome                VARCHAR(16)              NOT NULL,  -- TurnOutcome name
     round_count            INTEGER                  NOT NULL,
     tool_call_count        INTEGER                  NOT NULL,
@@ -273,6 +317,8 @@ Column sources:
 - `ending_seq`, `ended_at`: the terminal event's seq and the `at` passed to `append`.
 - `trajectory`: `TurnTrajectory` renders the folded rounds and the outcome as §4.6 says; JDBC
   writes it with a `CAST(? AS JSONB)`, in-memory keeps the string.
+- `label`: `TurnStarted.label` as the fold kept it, with U+0000 and unpaired surrogates replaced
+  by U+FFFD (§4.7).
 - `round_count`: `completed.size()`.
 - `tool_*_count`: tallied over every entry in every round. `tool_call_count` equals the number of
   settled calls, which equals the number requested because no turn ends with calls outstanding.
@@ -375,6 +421,17 @@ Prose style, no mocking library, as the design of record requires.
   literal characters `\uD800` renders differently, without the flag.
 - the containment query of §4.6 finds a denied call in a container test.
 
+**Task label** (amendment, §4.7):
+
+- a turn's row carries the label its `TurnStarted` carried, on both doors; an application with no
+  `inputLabel` gets the input's simple class name.
+- two turns with different labels and the same behavior have the same `trajectory_hash` and
+  different `label`s.
+- a label containing U+0000 or an unpaired surrogate is written with U+FFFD and the row inserts
+  into Postgres
+  (`@Tag("container")`); the event keeps the original.
+- replaying a turn's slice reproduces the row's label.
+
 **Replay**: fold a turn live, then fold its persisted slice from `sinceLastTurnStarted`, and the
 two `Trajectory` values are equal.
 
@@ -404,6 +461,11 @@ finished observation on the direct door, and on the effect span on the queued do
 - A stored similarity vector (amendment). Similarity is computed from the `trajectory` JSON when an
   agent type has enough distinct trajectories to need it; storing one feature choice now would
   freeze it before the question is known.
+- An index on `label` (amendment). The primary key and the trajectory index serve the queries in
+  §4.7 at today's sizes; add one when a real query needs it.
+- A span attribute for the label (amendment). The row is where the conditional analysis happens.
+- Labels for chat-web (amendment). Its input is free text, so its labels stay the class name until
+  the example has a category worth giving.
 - Migrating an existing `nessy_agent_turn` (amendment). `CREATE TABLE IF NOT EXISTS` does not add
   the column to a table that already exists; per the no-backward-compatibility rule, a database
   that has the table drops it and lets the schema recreate it.
