@@ -382,7 +382,7 @@ Ordering one agent's rows by `ended_at` gives that series:
 ```sql
 SELECT turn_id, ended_at, trajectory_hash, outcome
 FROM nessy_agent_turn
-WHERE agent_type = 'support' AND agent_id = 'case-1177' AND trajectory_version = 1
+WHERE agent_type = 'support' AND agent_id = '0199a3c4-5e2f-7b10-9a21-3c4d5e6f7a8b' AND trajectory_version = 1
 ORDER BY ended_at;
 ```
 
