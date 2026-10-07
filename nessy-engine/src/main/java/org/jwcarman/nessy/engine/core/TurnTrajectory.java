@@ -185,7 +185,17 @@ public final class TurnTrajectory {
       case AgentEvent.InferenceRefused _ -> Optional.of(TurnOutcome.REFUSED);
       case AgentEvent.InferenceFailed _ -> Optional.of(TurnOutcome.FAILED);
       case AgentEvent.TurnStopped _ -> Optional.of(TurnOutcome.STOPPED);
-      default -> Optional.empty();
+      case AgentEvent.TurnStarted _,
+          AgentEvent.InferenceAttempted _,
+          AgentEvent.ActionsRequested _,
+          AgentEvent.ToolApproved _,
+          AgentEvent.ToolDenied _,
+          AgentEvent.ToolSucceeded _,
+          AgentEvent.ToolFailed _,
+          AgentEvent.ApprovalDeferred _,
+          AgentEvent.ToolDeferred _,
+          AgentEvent.Terminated _ ->
+          Optional.empty();
     };
   }
 
@@ -211,8 +221,19 @@ public final class TurnTrajectory {
       }
     }
     out.write(TERMINAL_MARKER);
-    out.write(outcome.tag());
+    out.write(tagOf(outcome));
     return out.toByteArray();
+  }
+
+  /** The byte that stands for a turn's ending in the canonical encoding. Never reassigned. */
+  private static byte tagOf(TurnOutcome outcome) {
+    return switch (outcome) {
+      case ANSWERED -> 1;
+      case TRUNCATED -> 2;
+      case REFUSED -> 3;
+      case FAILED -> 4;
+      case STOPPED -> 5;
+    };
   }
 
   /**

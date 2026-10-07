@@ -30,6 +30,8 @@ import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.turn.AgentTurn;
 import org.jwcarman.nessy.backend.turn.AgentTurns;
 import org.jwcarman.nessy.engine.core.TurnTrajectory.CallOutcome;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Writes a turn's row the moment the turn ends, from the state the fold held just before.
@@ -45,11 +47,19 @@ import org.jwcarman.nessy.engine.core.TurnTrajectory.CallOutcome;
  * one call fewer than it did would be wrong for every turn. The retry count comes from the
  * trajectory state rather than from {@link TurnStats#failedAttempts()}, because that figure also
  * counts the failure that ends a turn, and an ending is not a retry.
+ *
+ * <p><b>The span tags are best-effort.</b> They are written to whatever observation is current when
+ * the ending is folded, before the transaction commits. If the step later rolls back, a span can
+ * carry a hash for an ending that did not commit, and the queued door's retry can then tag a second
+ * span. The row is the record of truth. When a person's reply settles a turn's last call and the
+ * policy stops the turn, the current observation is the replier's own, so the tags land there.
  */
 public final class TurnRecorder {
 
+  private static final Logger log = LoggerFactory.getLogger(TurnRecorder.class);
+
   static final String HASH = "nessy.trajectory.hash";
-  static final String VERSION = "nessy.trajectory.version";
+  static final String VERSION_KEY = "nessy.trajectory.version";
   static final String OUTCOME = "nessy.turn.outcome";
   static final String ROUNDS = "nessy.turn.rounds";
   static final String TOOL_CALLS = "nessy.turn.tool_calls";
@@ -79,11 +89,19 @@ public final class TurnRecorder {
     Optional<AgentTurn> recorded = Optional.empty();
     for (AgentEvent event : events) {
       Optional<TurnOutcome> ending = TurnTrajectory.endingOf(event);
-      if (ending.isPresent() && state instanceof AgentState.Inferring inferring) {
-        AgentTurn row = summarise(inferring, event, ending.get(), at);
-        turns.record(type, agent, row);
-        tag(row);
-        recorded = Optional.of(row);
+      if (ending.isPresent()) {
+        if (state instanceof AgentState.Inferring inferring) {
+          AgentTurn row = summarise(inferring, event, ending.get(), at);
+          turns.record(type, agent, row);
+          tag(row);
+          recorded = Optional.of(row);
+        } else {
+          log.error(
+              "No turn row was written for agent {} and turn ending event {}: the state before it was {}, not Inferring",
+              agent,
+              event.getClass().getSimpleName(),
+              state.getClass().getSimpleName());
+        }
       }
       state = state.apply(event);
     }
@@ -123,7 +141,7 @@ public final class TurnRecorder {
     }
     current
         .highCardinalityKeyValue(HASH, row.trajectory().hash())
-        .highCardinalityKeyValue(VERSION, Short.toString(row.trajectory().version()))
+        .highCardinalityKeyValue(VERSION_KEY, Short.toString(row.trajectory().version()))
         .highCardinalityKeyValue(OUTCOME, row.outcome().name())
         .highCardinalityKeyValue(ROUNDS, Integer.toString(row.rounds()))
         .highCardinalityKeyValue(TOOL_CALLS, Integer.toString(row.toolCalls()))
