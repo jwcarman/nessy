@@ -165,7 +165,8 @@ round's entries in the same sorted order, and the turn's outcome.
   each unpaired surrogate and each NUL replaced by the six ASCII characters `\uXXXX` (uppercase
   hex), and its entry gains `"escaped": true`. The flag keeps the rendering one-to-one: a real name
   that happens to contain the characters `\uD800` has no flag. Well-formed names are written as
-  they are.
+  they are. In such a name each backslash is written as `\u005C` too, so that every backslash in an
+  escaped name begins an escape and two different escaped names never render alike.
 - **The hash is not computed over this text.** The digest stays over the binary encoding of §4.4;
   `jsonb` reorders keys and drops whitespace, so JSON text is no stable preimage. The guarantee is
   structural: under one `trajectory_version`, two rows have equal `trajectory` values if and only

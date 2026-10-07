@@ -216,8 +216,9 @@ public final class TurnTrajectory {
    * refuse to insert and roll back the turn's ending on every retry. Such a name is written with
    * each offending character as the six characters {@code \}{@code uXXXX}, and its entry is flagged
    * {@code "escaped": true} so it never equals a real name that happens to spell the same text. In
-   * such a name each backslash is written as {@code \} too, so that every backslash in an escaped
-   * name begins an escape and two different escaped names never render alike.
+   * such a name each backslash is also written as the six characters {@code \}{@code u005C}, so
+   * that every backslash in an escaped name begins an escape and two different escaped names never
+   * render alike.
    */
   public static String json(State state, TurnOutcome outcome) {
     Objects.requireNonNull(state, "state must not be null");
@@ -244,7 +245,8 @@ public final class TurnTrajectory {
 
   /**
    * The name with each unpaired surrogate and each NUL written as {@code \}{@code uXXXX}. In a name
-   * that needs escaping, each backslash is also written as {@code \}.
+   * that needs escaping, each backslash is also written as the six characters {@code \}{@code
+   * u005C}.
    */
   private static String jsonSafe(String name) {
     // First pass: detect if escaping is needed (unpaired surrogates or NUL)
