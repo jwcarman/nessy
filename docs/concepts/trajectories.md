@@ -90,6 +90,7 @@ a rolled-back one never does.
 | `ended_at` | when the ending event was written |
 | `trajectory_version` | the encoding version of the hash |
 | `trajectory_hash` | the fingerprint, 64 lowercase hex characters |
+| `trajectory` | the same behavior as JSON: rounds of `{tool, outcome}`, then the outcome |
 | `outcome` | the `TurnOutcome` name |
 | `round_count` | rounds of tool calls |
 | `tool_call_count` | calls settled, the sum of the next three |
@@ -188,6 +189,44 @@ WHERE t.trajectory_version = 1
       AND earlier.trajectory_hash = t.trajectory_hash
       AND earlier.ended_at < now() - INTERVAL '1 day')
 ORDER BY t.ended_at;
+```
+
+## Reading a trajectory
+
+The `trajectory` column is `JSONB NOT NULL`. The engine renders it in
+`TurnTrajectory.json`: the rounds in the order they happened, each round
+as an array of entries, then the turn's outcome. A turn that called no
+tool has `"rounds": []`. Here is one round of two successful calls, then
+an answer:
+
+```json
+{"rounds": [[{"tool": "containers", "outcome": "SUCCESS"},
+             {"tool": "disk_usage", "outcome": "SUCCESS"}]],
+ "outcome": "ANSWERED"}
+```
+
+Entries within a round are in the order the hash encodes them, and
+duplicates are kept. Postgres sorts the keys and drops whitespace, but it
+keeps array order. So under one `trajectory_version`, two rows have equal
+`trajectory` exactly when they have equal `trajectory_hash`. The hash is
+still computed over the binary encoding, not over the JSON.
+
+The column is stored plain, not through the storage codec, because tool
+names and outcome words are not content. The count columns (`outcome`,
+`round_count` and the tool counts) sit beside it and agree with it.
+`inference_call_count` and `inference_retry_count` are not in the JSON.
+
+`jsonb` refuses an unpaired surrogate and the NUL character. A tool name
+that is not well-formed UTF-16, or that contains NUL, is written with each
+unpaired surrogate, each NUL and each backslash as six-character `\uXXXX`
+text (a backslash is `\u005C`), and its entry gains `"escaped": true`.
+
+Containment finds turns by what they did. This finds the turns in which a
+person denied `prune_images`:
+
+```sql
+SELECT turn_id, ended_at FROM nessy_agent_turn
+ WHERE trajectory @> '{"rounds": [[{"tool": "prune_images", "outcome": "DENIED"}]]}';
 ```
 
 ## Where next

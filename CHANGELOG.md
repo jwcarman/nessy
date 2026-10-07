@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   turn's round, tool and inference counts beside it; the same values are tagged on the turn's span.
   `TurnOutcome` and `Trajectory` are the new public types; `AgentTurns` is the new backend store.
   See `docs/concepts/trajectories.md`.
+- **The readable trajectory.** Each `nessy_agent_turn` row now carries its trajectory as JSONB
+  beside the hash: the rounds of tool calls with their outcomes, then how the turn ended. A query
+  reads behaviour directly, and `@>` finds turns by what they did. An existing `nessy_agent_turn`
+  table must be dropped so the schema recreates it with the new column.
 - **The notebook installs itself.** With `nessy-memory-notebook` and `nessy-backend-jdbc` on a Spring Boot application's classpath,
   every agent of both doors gets the notebook index and `remember`, `revise`, `recall` and
   `forget`. `nessy.notebook.enabled=false` turns it off, and an application's own `Notebook` bean
