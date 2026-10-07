@@ -25,6 +25,7 @@ import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.jwcarman.nessy.backend.turn.AgentTurns;
 
 /**
  * A {@link DirectBackend} over {@link InMemoryLocks}, {@link InMemoryAgentEvents}, {@link
@@ -39,6 +40,7 @@ public final class InMemoryDirectBackend implements DirectBackend {
 
   private final Locks locks = new InMemoryLocks();
   private final Leases leases = new InMemoryLeases();
+  private final AgentTurns turns = new InMemoryAgentTurns();
   private final AgentEvents events;
   private final Payloads payloads;
   private final Chapters chapters;
@@ -104,5 +106,10 @@ public final class InMemoryDirectBackend implements DirectBackend {
   @Override
   public Leases leases() {
     return leases;
+  }
+
+  @Override
+  public AgentTurns turns() {
+    return turns;
   }
 }

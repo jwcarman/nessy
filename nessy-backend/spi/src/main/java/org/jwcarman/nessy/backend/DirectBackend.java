@@ -20,13 +20,14 @@ import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.jwcarman.nessy.backend.turn.AgentTurns;
 
 /**
  * Everything the direct door needs from underneath, chosen together so that they agree.
  *
  * <p>A backend is one unit of configuration rather than independent beans, because its stores
- * (events, payloads, locks, chapters and leases) have to be the same kind of thing or the door
- * breaks in ways nothing warns about: durable events over in-memory payloads is a story of
+ * (events, payloads, locks, chapters, leases and turns) have to be the same kind of thing or the
+ * door breaks in ways nothing warns about: durable events over in-memory payloads is a story of
  * references to content that no longer exists after a restart, and JDBC stores paired with
  * in-memory locks are correct in one process and silently wrong the moment a second one exists.
  * Handing a caller one object closes the combinatorial surface a config offering {@code
@@ -43,4 +44,6 @@ public interface DirectBackend {
   Chapters chapters();
 
   Leases leases();
+
+  AgentTurns turns();
 }

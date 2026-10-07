@@ -52,6 +52,7 @@ import org.jwcarman.nessy.api.turn.Chapter;
 import org.jwcarman.nessy.api.turn.Summary;
 import org.jwcarman.nessy.api.turn.Turn;
 import org.jwcarman.nessy.backend.inmemory.InMemoryAgentEvents;
+import org.jwcarman.nessy.backend.inmemory.InMemoryAgentTurns;
 import org.jwcarman.nessy.backend.inmemory.InMemoryChapters;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLeases;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLocks;
@@ -179,7 +180,8 @@ class DirectHarnessChaptersTest {
                             new JacksonCodecFactory(JsonMapper.builder().build())),
                         new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build())),
                         chapters,
-                        new InMemoryLeases()))
+                        new InMemoryLeases(),
+                        new InMemoryAgentTurns()))
                 .provider(ProviderId.of("test"), model)
                 .schemas(new VictoolsJsonSchemaGenerator())
                 .mapper(JsonMapper.builder().build()));

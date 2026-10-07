@@ -50,6 +50,7 @@ import org.jwcarman.nessy.backend.inmemory.InMemoryQueuedBackend;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.jwcarman.nessy.backend.turn.AgentTurns;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -171,6 +172,11 @@ class StoryReadBoundTest {
     @Override
     public Leases leases() {
       return backend.leases();
+    }
+
+    @Override
+    public AgentTurns turns() {
+      return backend.turns();
     }
 
     @Override

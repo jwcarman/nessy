@@ -48,6 +48,7 @@ import org.jwcarman.nessy.backend.chapter.Chapters;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.inmemory.InMemoryAgentEvents;
+import org.jwcarman.nessy.backend.inmemory.InMemoryAgentTurns;
 import org.jwcarman.nessy.backend.inmemory.InMemoryChapters;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLeases;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLocks;
@@ -55,6 +56,7 @@ import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.jwcarman.nessy.backend.turn.AgentTurns;
 import org.jwcarman.nessy.engine.narration.StoryEvents;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.JsonNodeFactory;
@@ -460,11 +462,22 @@ class EventAgentStoriesTest {
 
   /** The three stores a test holds, and in-memory chapters and leases for the rest. */
   record Backend(
-      AgentEvents events, Payloads payloads, Locks locks, Chapters chapters, Leases leases)
+      AgentEvents events,
+      Payloads payloads,
+      Locks locks,
+      Chapters chapters,
+      Leases leases,
+      AgentTurns turns)
       implements DirectBackend {
 
     Backend(AgentEvents events, Payloads payloads, Locks locks, JacksonCodecFactory codecs) {
-      this(events, payloads, locks, new InMemoryChapters(codecs), new InMemoryLeases());
+      this(
+          events,
+          payloads,
+          locks,
+          new InMemoryChapters(codecs),
+          new InMemoryLeases(),
+          new InMemoryAgentTurns());
     }
   }
 

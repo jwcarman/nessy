@@ -36,6 +36,7 @@ import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.jwcarman.nessy.backend.turn.AgentTurns;
 
 /**
  * Everything the queued door needs, with nothing behind it but this process.
@@ -56,6 +57,7 @@ public final class InMemoryQueuedBackend implements QueuedBackend {
 
   private final Locks locks = new InMemoryLocks();
   private final Leases leases = new InMemoryLeases();
+  private final AgentTurns turns = new InMemoryAgentTurns();
   private final AgentEvents events;
   private final Payloads payloads;
   private final Chapters chapters;
@@ -144,6 +146,11 @@ public final class InMemoryQueuedBackend implements QueuedBackend {
   @Override
   public Leases leases() {
     return leases;
+  }
+
+  @Override
+  public AgentTurns turns() {
+    return turns;
   }
 
   @Override

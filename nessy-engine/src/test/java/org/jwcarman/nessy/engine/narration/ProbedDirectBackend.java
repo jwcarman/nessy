@@ -21,6 +21,7 @@ import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.jwcarman.nessy.backend.turn.AgentTurns;
 
 /** A direct backend with its locks swapped for ones a test controls. */
 public record ProbedDirectBackend(DirectBackend backend, Locks locks) implements DirectBackend {
@@ -43,5 +44,10 @@ public record ProbedDirectBackend(DirectBackend backend, Locks locks) implements
   @Override
   public Leases leases() {
     return backend.leases();
+  }
+
+  @Override
+  public AgentTurns turns() {
+    return backend.turns();
   }
 }

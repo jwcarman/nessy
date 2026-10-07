@@ -45,6 +45,7 @@ import org.jwcarman.nessy.api.tool.ToolResult;
 import org.jwcarman.nessy.backend.DirectBackend;
 import org.jwcarman.nessy.backend.chapter.Chapters;
 import org.jwcarman.nessy.backend.inmemory.InMemoryAgentEvents;
+import org.jwcarman.nessy.backend.inmemory.InMemoryAgentTurns;
 import org.jwcarman.nessy.backend.inmemory.InMemoryChapters;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLeases;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLocks;
@@ -52,6 +53,7 @@ import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.jwcarman.nessy.backend.turn.AgentTurns;
 import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -66,7 +68,12 @@ class AgentStatusDirectTest {
   private static final Instant NOW = Instant.parse("2026-10-05T00:00:00Z");
 
   private record Backend(
-      Locks locks, InMemoryAgentEvents events, Payloads payloads, Chapters chapters, Leases leases)
+      Locks locks,
+      InMemoryAgentEvents events,
+      Payloads payloads,
+      Chapters chapters,
+      Leases leases,
+      AgentTurns turns)
       implements DirectBackend {}
 
   private final JacksonCodecFactory codecs = new JacksonCodecFactory(JsonMapper.builder().build());
@@ -82,7 +89,8 @@ class AgentStatusDirectTest {
             events,
             new InMemoryPayloads(codecs),
             new InMemoryChapters(codecs),
-            new InMemoryLeases());
+            new InMemoryLeases(),
+            new InMemoryAgentTurns());
     return DefaultDirectHarnessFactory.of(
         c ->
             c.backend(backend)

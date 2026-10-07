@@ -38,6 +38,7 @@ import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.jwcarman.nessy.backend.turn.AgentTurns;
 
 /**
  * A queued backend whose effect table cannot mark a row parked, and does everything else as the
@@ -91,6 +92,11 @@ public final class ParkRefusingBackend implements QueuedBackend {
   @Override
   public Leases leases() {
     return backend.leases();
+  }
+
+  @Override
+  public AgentTurns turns() {
+    return backend.turns();
   }
 
   @Override

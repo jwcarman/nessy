@@ -32,6 +32,7 @@ import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.jwcarman.nessy.backend.turn.AgentTurns;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
 
@@ -57,6 +58,7 @@ public final class JdbcQueuedBackend implements QueuedBackend {
   private final Locks locks;
   private final Chapters chapters;
   private final Leases leases;
+  private final AgentTurns turns;
   private final Agents agents;
   private final Effects effects;
 
@@ -116,6 +118,7 @@ public final class JdbcQueuedBackend implements QueuedBackend {
     this.locks = new JdbcRowLocks(dataSource, transactions);
     this.chapters = new JdbcChapters(jdbc, codecs);
     this.leases = new JdbcLeases(jdbc);
+    this.turns = new JdbcAgentTurns(jdbc);
     this.agents = new JdbcAgents(jdbc);
     this.effects = new JdbcEffects(jdbc, codecs);
   }
@@ -143,6 +146,11 @@ public final class JdbcQueuedBackend implements QueuedBackend {
   @Override
   public Leases leases() {
     return leases;
+  }
+
+  @Override
+  public AgentTurns turns() {
+    return turns;
   }
 
   @Override
