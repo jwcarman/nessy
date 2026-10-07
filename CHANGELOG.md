@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Trajectory fingerprints.** Every completed turn gets a deterministic, versioned digest of its
-  behaviour: which tools ran in which rounds, what each came to, and how the turn ended, with
+  behavior: which tools ran in which rounds, what each came to, and how the turn ended, with
   inputs, arguments, results, timing and cost left out. It is computed in the fold and written to
   the new `nessy_agent_turn` table in the same transaction as the turn-ending event, with the
   turn's round, tool and inference counts beside it; the same values are tagged on the turn's span.
@@ -18,8 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   See `docs/concepts/trajectories.md`.
 - **The readable trajectory.** Each `nessy_agent_turn` row now carries its trajectory as JSONB
   beside the hash: the rounds of tool calls with their outcomes, then how the turn ended. A query
-  reads behaviour directly, and `@>` finds turns by what they did. An existing `nessy_agent_turn`
-  table must be dropped so the schema recreates it with the new column.
+  reads behavior directly, and `@>` finds turns by what they did.
 - **The notebook installs itself.** With `nessy-memory-notebook` and `nessy-backend-jdbc` on a Spring Boot application's classpath,
   every agent of both doors gets the notebook index and `remember`, `revise`, `recall` and
   `forget`. `nessy.notebook.enabled=false` turns it off, and an application's own `Notebook` bean
@@ -37,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`DirectBackend` and `QueuedBackend` have a new method, `turns()`**, which returns the
+  `AgentTurns` store. An application with its own backend implementation must add it; the JDBC and
+  in-memory backends already do.
+- **The database must use UTF8 encoding** (the PostgreSQL default). `nessy_agent_turn.trajectory`
+  stores tool names as text, so a name outside the database's character set would stop a turn's
+  ending from committing.
+- **An application with `nessy.initialize-schema=false` must create `nessy_agent_turn`**, the
+  table of completed turns, with the rest of its schema; the DDL is in `nessy-schema.sql` in the
+  JDBC backend jar.
 - **An application with `nessy.initialize-schema=false` must create `nessy_note` and
   `nessy_plan_task`**, the notebook's and the plan's tables, with the rest of its schema; the DDL is
   `nessy-schema.sql` in the notebook jar and in the planning jar.
