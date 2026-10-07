@@ -1,6 +1,6 @@
 # Observability
 
-Four separate things, and it helps to keep them apart:
+Five separate things, and it helps to keep them apart:
 
 - **Narration**: what an agent is doing, for a person or a UI, delivered as
   it happens. That is [Narration](narration.md).
@@ -8,6 +8,9 @@ Four separate things, and it helps to keep them apart:
   [Events](../concepts/events.md).
 - **Traces**: the span tree, for debugging one turn after the fact.
 - **Metrics**: counts and timings, for a dashboard.
+- **Trajectories**: the normalized behavioral identity of completed turns,
+  for understanding behavior across executions. That is
+  [Trajectories](../concepts/trajectories.md).
 
 ## Traces and metrics
 

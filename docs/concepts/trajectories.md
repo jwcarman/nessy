@@ -1,16 +1,86 @@
 # Trajectories
 
-A trajectory is the behavioral identity of a completed turn: which tools
-ran, in which rounds, what each one came to, and how the turn ended. Two
-turns with the same trajectory behaved the same way, whatever they were
-asked and whatever they said. Nessy gives each completed turn a
-fingerprint of its trajectory, so "how does this agent behave?" becomes a
-query.
+A trajectory is the normalized behavioral shape of a completed turn: which
+tools ran, in which rounds, what each one came to, and how the turn ended.
+Two turns with the same trajectory followed the same observable control
+path: the same tools, in the same rounds, with the same normalized
+outcomes, and they ended the same way. Their inputs, arguments, results,
+reasoning and answers may be completely different. Nessy gives each
+completed turn a fingerprint of its trajectory, so "how does this agent
+behave?" becomes a query.
+
+Every completed turn is a member of one behavioral equivalence class: the
+set of turns with that fingerprint. Thousands of turns with different
+users, arguments, data, answers and timings can share one. That turns "how
+does this agent behave?" from an inspection of single traces into a query
+over a population of turns.
 
 Bob asks for the status of order 41 and Bill asks about order 97. Each
 turn calls `lookup_order` once, the call succeeds, and the model answers.
 The inputs, results and answers differ. The trajectory is the same, so the
 fingerprint is the same.
+
+## Why this matters
+
+A trace tells what happened in one execution. A fingerprint lets you ask
+how an agent behaves across executions. With one stored per turn, these
+are queries:
+
+- How many distinct behaviors does this agent have?
+- What share of turns do the five most common paths take?
+- Is behavior diversifying over time?
+- Did a model or prompt change introduce new paths?
+- Which trajectories account for most failures?
+- Which are unusually slow or tool-heavy?
+- Is one agent behaving differently from its peers?
+- Has a trajectory appeared that was never seen before?
+- Is an apparently agentic process choosing from a handful of stable paths?
+
+If nearly all turns occupy a small, stable set of trajectories, some of
+those paths may be candidates for deterministic implementation rather than
+repeated inference. That is a lead, not a verdict. Low variety within one
+kind of work is the stronger signal; see
+[Trajectories by task](#trajectories-by-task).
+
+### Trace and trajectory
+
+A trace is instance-specific. A trajectory is deliberately
+instance-independent. Four representations of a turn answer four
+questions:
+
+| Representation | Question it answers |
+|---|---|
+| Event stream | What durable facts happened? |
+| Trace | What happened during this execution? |
+| Trajectory | What behavioral class did this execution belong to? |
+| Turn table | How does this population of turns behave? |
+
+### Computed by the runtime
+
+Nessy does not reconstruct trajectories from traces after the fact. The
+runtime already knows where a round begins, which calls belong to it, when
+and how each one settles, when the next model decision happens and how the
+turn ends. The fold that runs the agent maintains the trajectory as it
+goes and finalizes it when the turn ends. Replaying a turn's events
+produces the same trajectory as the live run.
+
+## An example
+
+Here is the shape of one turn, as rounds:
+
+```text
+Round 1
+  lookup_customer  SUCCESS
+  lookup_orders    SUCCESS
+Round 2
+  calculate_offer  SUCCESS
+ANSWERED
+```
+
+Round 1 is one batch of two calls the model asked for together. Round 2 is
+the next batch. Any turn that makes these calls in these rounds, with these
+outcomes, and then answers, has this trajectory, whatever the arguments
+and results were.
 
 ## What is in it
 
