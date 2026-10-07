@@ -88,6 +88,7 @@ nav:
       - Memory: concepts/memory.md
       - Planning: concepts/planning.md
       - Outcomes: concepts/outcomes.md
+      - Trajectories: concepts/trajectories.md
       - Backlog: concepts/backlog.md
       - Events: concepts/events.md
       - Storage: concepts/storage.md

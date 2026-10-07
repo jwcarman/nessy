@@ -15,6 +15,7 @@ it all when the process stops.
 | Work an agent owes, with its deadline | `nessy_agent_effect` | until it completes or is given up on |
 | Work offered to a busy agent, waiting its turn (queued door only) | `nessy_agent_backlog` | until it is claimed or coalesced away |
 | Closed chapters of an agent's history, each with the summary that stands in for it once written | `nessy_chapter` | forever, unless you prune it |
+| One row per completed turn: its trajectory fingerprint and counts, written with the ending event, see [Trajectories](trajectories.md) | `nessy_agent_turn` | forever, unless you prune it |
 | Notes and plan tasks | `nessy_note`, `nessy_plan_task` | as their modules decide |
 | Background work claimed once, see [Leases](leases.md) | `nessy_lease` | its TTL |
 
