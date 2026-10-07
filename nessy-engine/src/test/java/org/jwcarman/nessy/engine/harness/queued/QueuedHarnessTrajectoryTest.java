@@ -104,6 +104,7 @@ class QueuedHarnessTrajectoryTest {
     AgentTurn row = tellAndAwaitItsRow(harness(), agent);
 
     List<AgentEvent> story = engine.story(TYPE, agent);
+    assertThat(story).isNotEmpty();
     assertThat(story.getFirst()).isInstanceOf(AgentEvent.TurnStarted.class);
     assertThat(row.turn().value()).isEqualTo(story.getFirst().seq().value());
     assertThat(row.endingSeq()).isEqualTo(story.getLast().seq());
@@ -135,7 +136,7 @@ class QueuedHarnessTrajectoryTest {
 
     harness().tell(agent, "hello");
 
-    await().atMost(PATIENCE).until(() -> refusals.get() >= 1);
+    await().atMost(PATIENCE).until(() -> refusals.get() >= 2);
     List<AgentEvent> story = engine.story(TYPE, agent);
     assertThat(story).isNotEmpty();
     assertThat(story)

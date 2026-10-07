@@ -47,9 +47,13 @@ class TrajectoryTest {
   }
 
   @Test
-  void every_turn_outcome_has_a_distinct_tag() {
-    assertThat(TurnOutcome.values()).extracting(TurnOutcome::tag).doesNotHaveDuplicates();
-    assertThat(TurnOutcome.ANSWERED.tag()).isEqualTo((byte) 1);
-    assertThat(TurnOutcome.STOPPED.tag()).isEqualTo((byte) 5);
+  void a_turn_ends_in_one_of_five_ways() {
+    assertThat(TurnOutcome.values())
+        .containsExactly(
+            TurnOutcome.ANSWERED,
+            TurnOutcome.TRUNCATED,
+            TurnOutcome.REFUSED,
+            TurnOutcome.FAILED,
+            TurnOutcome.STOPPED);
   }
 }

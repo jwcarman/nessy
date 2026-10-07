@@ -157,6 +157,21 @@ class TurnTrajectoryTest {
   }
 
   @Test
+  void the_five_terminal_tags_are_pinned() {
+    State state = opened();
+    assertThat(lastByte(state, TurnOutcome.ANSWERED)).isEqualTo((byte) 1);
+    assertThat(lastByte(state, TurnOutcome.TRUNCATED)).isEqualTo((byte) 2);
+    assertThat(lastByte(state, TurnOutcome.REFUSED)).isEqualTo((byte) 3);
+    assertThat(lastByte(state, TurnOutcome.FAILED)).isEqualTo((byte) 4);
+    assertThat(lastByte(state, TurnOutcome.STOPPED)).isEqualTo((byte) 5);
+  }
+
+  private static byte lastByte(State state, TurnOutcome outcome) {
+    byte[] canonical = TurnTrajectory.canonical(state, outcome);
+    return canonical[canonical.length - 1];
+  }
+
+  @Test
   void the_canonical_bytes_are_the_documented_framing() {
     State state = opened().settled(A, CallOutcome.FAILED).roundClosed();
     byte[] canonical = TurnTrajectory.canonical(state, TurnOutcome.STOPPED);

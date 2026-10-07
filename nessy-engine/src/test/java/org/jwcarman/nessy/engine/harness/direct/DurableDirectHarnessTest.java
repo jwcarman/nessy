@@ -31,16 +31,24 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AskOutcome;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.ProviderId;
+import org.jwcarman.nessy.api.TurnOutcome;
 import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.backend.DirectBackend;
+import org.jwcarman.nessy.backend.chapter.Chapters;
+import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLocks;
 import org.jwcarman.nessy.backend.jdbc.JdbcAgentEvents;
 import org.jwcarman.nessy.backend.jdbc.JdbcDirectBackend;
 import org.jwcarman.nessy.backend.jdbc.JdbcPayloads;
 import org.jwcarman.nessy.backend.jdbc.Schemas;
+import org.jwcarman.nessy.backend.lease.Leases;
+import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
+import org.jwcarman.nessy.backend.turn.AgentTurn;
+import org.jwcarman.nessy.backend.turn.AgentTurns;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceRequest;
@@ -228,5 +236,98 @@ class DurableDirectHarnessTest {
         .usingRecursiveComparison()
         .ignoringFields("stats")
         .isEqualTo(new AskOutcome.Answered<>("the capital is Paris", ANY_STATS));
+  }
+
+  private DirectHarness<String, String> overJdbc(DirectBackend backend) {
+    return DefaultDirectHarnessFactory.of(
+            f ->
+                f.backend(backend)
+                    .provider(ProviderId.of("test"), saying("Paris"))
+                    .schemas(new VictoolsJsonSchemaGenerator())
+                    .mapper(JsonMapper.builder().build()))
+        .<String>create(
+            TYPE,
+            c ->
+                c.systemPrompt("You are terse.")
+                    .inputRenderer(said -> List.of(new Block.Text(said)))
+                    .inference(in -> in.provider("test").model("a-model")));
+  }
+
+  @Test
+  @DisplayName("a turn over the JDBC direct backend leaves its row in nessy_agent_turn")
+  void a_turn_over_the_jdbc_direct_backend_leaves_its_row() {
+    JdbcDirectBackend backend =
+        new JdbcDirectBackend(database, new DataSourceTransactionManager(database), codecs);
+    AgentId agent = AgentId.random();
+
+    overJdbc(backend).ask(agent, "capital of France?");
+
+    List<AgentTurn> rows = backend.turns().of(TYPE, agent);
+    assertThat(rows).hasSize(1);
+    assertThat(rows.getFirst().outcome()).isEqualTo(TurnOutcome.ANSWERED);
+    assertThat(rows.getFirst().endingSeq()).isEqualTo(events.readAll(TYPE, agent).getLast().seq());
+  }
+
+  @Test
+  @DisplayName("a row the JDBC direct backend cannot write takes the ending event with it")
+  void a_row_that_cannot_be_written_rolls_the_ending_back_on_the_direct_door() {
+    JdbcDirectBackend real =
+        new JdbcDirectBackend(database, new DataSourceTransactionManager(database), codecs);
+    AgentId agent = AgentId.random();
+
+    // Whether the ask throws or reports a failure is the door's business; what was committed is
+    // the question.
+    DirectHarness<String, String> harness = overJdbc(new RefusingRows(real));
+    catchThrowable(() -> harness.ask(agent, "capital of France?"));
+
+    List<AgentEvent> story = events.readAll(TYPE, agent);
+    assertThat(story).isNotEmpty();
+    assertThat(story).noneMatch(AgentEvent.InferenceAnswered.class::isInstance);
+    assertThat(real.turns().of(TYPE, agent)).isEmpty();
+  }
+
+  /** The JDBC direct backend, except that a turn's row is never written. */
+  private record RefusingRows(DirectBackend backend) implements DirectBackend {
+
+    @Override
+    public AgentEvents events() {
+      return backend.events();
+    }
+
+    @Override
+    public Payloads payloads() {
+      return backend.payloads();
+    }
+
+    @Override
+    public Locks locks() {
+      return backend.locks();
+    }
+
+    @Override
+    public Chapters chapters() {
+      return backend.chapters();
+    }
+
+    @Override
+    public Leases leases() {
+      return backend.leases();
+    }
+
+    @Override
+    public AgentTurns turns() {
+      AgentTurns real = backend.turns();
+      return new AgentTurns() {
+        @Override
+        public void record(AgentType type, AgentId agent, AgentTurn turn) {
+          throw new IllegalStateException("refused");
+        }
+
+        @Override
+        public List<AgentTurn> of(AgentType type, AgentId agent) {
+          return real.of(type, agent);
+        }
+      };
+    }
   }
 }

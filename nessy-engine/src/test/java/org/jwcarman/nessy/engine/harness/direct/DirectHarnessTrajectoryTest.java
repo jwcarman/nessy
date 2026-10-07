@@ -35,9 +35,11 @@ import org.jwcarman.nessy.api.Awaited;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.HarnessConfig;
 import org.jwcarman.nessy.api.ProviderId;
+import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.api.TurnDecision;
 import org.jwcarman.nessy.api.TurnOutcome;
 import org.jwcarman.nessy.api.TurnPolicy;
+import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.api.tool.Approver;
@@ -55,6 +57,9 @@ import org.jwcarman.nessy.backend.inmemory.InMemoryLeases;
 import org.jwcarman.nessy.backend.inmemory.InMemoryLocks;
 import org.jwcarman.nessy.backend.inmemory.InMemoryPayloads;
 import org.jwcarman.nessy.backend.turn.AgentTurn;
+import org.jwcarman.nessy.engine.core.AgentState;
+import org.jwcarman.nessy.engine.core.TurnRecorder;
+import org.jwcarman.nessy.engine.core.TurnTally;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceNarrator;
 import org.jwcarman.nessy.inference.InferenceProvider;
@@ -152,6 +157,7 @@ class DirectHarnessTrajectoryTest {
     assertThat(rows).hasSize(1);
     AgentTurn row = rows.getFirst();
     List<AgentEvent> story = events.readAll(TYPE, agent);
+    assertThat(story).isNotEmpty();
     assertThat(story.getFirst()).isInstanceOf(AgentEvent.TurnStarted.class);
     assertThat(row.turn().value()).isEqualTo(story.getFirst().seq().value());
     assertThat(row.endingSeq()).isEqualTo(story.getLast().seq());
@@ -227,5 +233,36 @@ class DirectHarnessTrajectoryTest {
     assertThat(rows).hasSize(1);
     assertThat(rows.getFirst().outcome()).isEqualTo(TurnOutcome.STOPPED);
     assertThat(rows.getFirst().rounds()).isEqualTo(1);
+  }
+
+  @Test
+  void a_stored_row_is_reproduced_by_refolding_the_stored_slice_of_its_turn() {
+    DirectHarness<String, String> harness = harness(ObservationRegistry.NOOP, c -> {});
+    AgentId agent = new AgentId(UUID.randomUUID());
+    harness.ask(agent, "look up 7");
+    AgentTurn stored = turns.of(TYPE, agent).getFirst();
+    List<AgentEvent> slice =
+        events.readAll(TYPE, agent).stream()
+            .filter(e -> e.seq().value() >= stored.turn().value())
+            .filter(e -> e.seq().value() <= stored.endingSeq().value())
+            .toList();
+    AgentTurn refolded =
+        new TurnRecorder(TYPE, new InMemoryAgentTurns(), ObservationRegistry.NOOP)
+            .record(agent, AgentState.idle(Seq.NONE), slice, stored.endedAt())
+            .orElseThrow();
+    assertThat(refolded).isEqualTo(stored);
+  }
+
+  @Test
+  void a_rows_counts_agree_with_the_tally_of_a_turn_that_called_a_tool() {
+    DirectHarness<String, String> harness = harness(ObservationRegistry.NOOP, c -> {});
+    AgentId agent = new AgentId(UUID.randomUUID());
+    harness.ask(agent, "look up 7");
+    AgentTurn row = turns.of(TYPE, agent).getFirst();
+    TurnStats stats = TurnTally.of(events.readAll(TYPE, agent), row.turn());
+    assertThat(row.toolCalls()).isEqualTo(1);
+    assertThat(row.toolCalls()).isEqualTo(stats.toolCalls());
+    assertThat(row.inferenceCalls()).isEqualTo(stats.modelCalls());
+    assertThat(row.inferenceCalls()).isEqualTo(2);
   }
 }
