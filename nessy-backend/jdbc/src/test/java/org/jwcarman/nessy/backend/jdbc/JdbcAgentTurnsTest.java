@@ -17,13 +17,16 @@ package org.jwcarman.nessy.backend.jdbc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -431,20 +434,30 @@ class JdbcAgentTurnsTest {
                           status -> {
                             boolean novel = turns.firstSighting(type, "Q", path(), Instant.now());
                             sighted.countDown();
-                            await(release);
+                            awaitLatch(release);
                             if (firstRollsBack) {
                               status.setRollbackOnly();
                             }
                             return novel;
                           }));
       assertThat(sighted.await(30, TimeUnit.SECONDS)).isTrue();
+      CompletableFuture<Integer> backendOfB = new CompletableFuture<>();
       Future<Boolean> b =
           pool.submit(
               () ->
                   transaction()
-                      .execute(status -> turns.firstSighting(type, "Q", path(), Instant.now())));
-      TimeUnit.MILLISECONDS.sleep(200);
-      assertThat(b.isDone()).isFalse();
+                      .execute(
+                          status -> {
+                            backendOfB.complete(
+                                JdbcClient.create(database)
+                                    .sql("SELECT pg_backend_pid()")
+                                    .query(Integer.class)
+                                    .single());
+                            return turns.firstSighting(type, "Q", path(), Instant.now());
+                          }));
+      int pid = backendOfB.get(30, TimeUnit.SECONDS);
+      await().atMost(Duration.ofSeconds(30)).until(() -> "Lock".equals(waitEventTypeOf(pid)));
+      assertThat(b.isDone()).as("B is waiting on A's index entry").isFalse();
       release.countDown();
       return List.of(a.get(30, TimeUnit.SECONDS), b.get(30, TimeUnit.SECONDS));
     } finally {
@@ -453,7 +466,16 @@ class JdbcAgentTurnsTest {
     }
   }
 
-  private static void await(CountDownLatch latch) {
+  private String waitEventTypeOf(int pid) {
+    return JdbcClient.create(database)
+        .sql("SELECT wait_event_type FROM pg_stat_activity WHERE pid = ?")
+        .params(pid)
+        .query(String.class)
+        .optional()
+        .orElse(null);
+  }
+
+  private static void awaitLatch(CountDownLatch latch) {
     try {
       if (!latch.await(30, TimeUnit.SECONDS)) {
         throw new IllegalStateException("latch never released");
