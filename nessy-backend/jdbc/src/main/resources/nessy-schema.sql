@@ -259,6 +259,8 @@ CREATE TABLE IF NOT EXISTS nessy_chapter
 -- trajectory is the same behaviour as JSON (rounds of {tool, outcome}, then the outcome), stored
 -- plain because tool names are not content: what a query reads, where the hash only compares.
 -- label is the task label, a category never content, stored plain and outside the hash.
+-- novel says whether this turn was the first of its agent type and label to take its trajectory,
+-- as decided by nessy_known_trajectory in the same transaction.
 CREATE TABLE IF NOT EXISTS nessy_agent_turn
 (
     agent_type            VARCHAR(64)              NOT NULL,
@@ -272,6 +274,7 @@ CREATE TABLE IF NOT EXISTS nessy_agent_turn
     trajectory_hash       CHAR(64)                 NOT NULL,
     trajectory            JSONB                    NOT NULL,
     label                 VARCHAR(1000)            NOT NULL,
+    novel                 BOOLEAN                  NOT NULL,
     outcome               VARCHAR(16)              NOT NULL,
     round_count           INTEGER                  NOT NULL,
     tool_call_count       INTEGER                  NOT NULL,
@@ -286,3 +289,19 @@ CREATE TABLE IF NOT EXISTS nessy_agent_turn
 -- Which turns, of one agent type, followed one trajectory: the question every analysis starts from.
 CREATE INDEX IF NOT EXISTS ix_nessy_agent_turn_trajectory
     ON nessy_agent_turn (agent_type, trajectory_version, trajectory_hash);
+
+-- Every trajectory ever seen, once: the first time an agent type, doing one kind of work (label),
+-- ended a turn on this path under this encoding version. Written with the turn row, in the same
+-- transaction, by INSERT ... ON CONFLICT DO NOTHING: the insert that stores a row is the turn that
+-- was novel. Deliberately not owned by any agent and not removed with one, so that a path stays
+-- known after the turns that walked it are gone. No count and no last_seen, on purpose: a DO
+-- UPDATE would lock the row of every common path under every concurrent turn's commit.
+CREATE TABLE IF NOT EXISTS nessy_known_trajectory
+(
+    agent_type         VARCHAR(64)              NOT NULL,
+    label              VARCHAR(1000)            NOT NULL,
+    trajectory_version SMALLINT                 NOT NULL,
+    trajectory_hash    CHAR(64)                 NOT NULL,
+    first_seen         TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (agent_type, label, trajectory_version, trajectory_hash)
+);

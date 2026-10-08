@@ -15,22 +15,44 @@
  */
 package org.jwcarman.nessy.backend.inmemory;
 
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Trajectory;
 import org.jwcarman.nessy.backend.turn.AgentTurn;
 import org.jwcarman.nessy.backend.turn.AgentTurns;
 
-/** Completed turns held in this process and nowhere else. */
+/**
+ * Completed turns held in this process and nowhere else. Known trajectories are kept for the life
+ * of this instance and never forgotten, as a table nothing deletes from would keep them; nothing
+ * rolls a sighting back.
+ */
 public final class InMemoryAgentTurns implements AgentTurns {
 
   private record Key(AgentType type, AgentId agent) {}
 
   private final Map<Key, List<AgentTurn>> turns = new ConcurrentHashMap<>();
+
+  private record Known(AgentType type, String label, Trajectory trajectory) {}
+
+  private final Set<Known> known = new HashSet<>();
+
+  @Override
+  public synchronized boolean firstSighting(
+      AgentType type, String label, Trajectory trajectory, Instant at) {
+    Objects.requireNonNull(type, "type must not be null");
+    Objects.requireNonNull(label, "label must not be null");
+    Objects.requireNonNull(trajectory, "trajectory must not be null");
+    Objects.requireNonNull(at, "at must not be null");
+    return known.add(new Known(type, label, trajectory));
+  }
 
   @Override
   public synchronized void append(AgentType type, AgentId agent, AgentTurn turn) {

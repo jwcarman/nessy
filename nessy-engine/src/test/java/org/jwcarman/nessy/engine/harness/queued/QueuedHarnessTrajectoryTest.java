@@ -23,6 +23,7 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -36,6 +37,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.Trajectory;
 import org.jwcarman.nessy.api.TurnOutcome;
 import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
@@ -136,6 +138,17 @@ class QueuedHarnessTrajectoryTest {
   }
 
   @Test
+  void two_agents_told_the_same_thing_make_one_novel_row_between_them() {
+    engine = new EngineFixture(ANSWERS);
+    QueuedHarness<String> harness = harness();
+
+    AgentTurn a = tellAndAwaitItsRow(harness, AgentId.random());
+    AgentTurn b = tellAndAwaitItsRow(harness, AgentId.random());
+
+    assertThat(List.of(a.novel(), b.novel())).containsExactlyInAnyOrder(true, false);
+  }
+
+  @Test
   void the_rows_counts_agree_with_the_tally_of_the_same_turn() {
     engine = new EngineFixture(ANSWERS);
     AgentId agent = AgentId.random();
@@ -203,6 +216,9 @@ class QueuedHarnessTrajectoryTest {
                           KeyValue hash = c.getHighCardinalityKeyValue("nessy.trajectory.hash");
                           assertThat(hash).isNotNull();
                           assertThat(hash.getValue()).isEqualTo(row.trajectory().hash());
+                          assertThat(
+                                  c.getHighCardinalityKeyValue("nessy.trajectory.novel").getValue())
+                              .isEqualTo(Boolean.toString(row.novel()));
                         }));
   }
 
@@ -253,6 +269,12 @@ class QueuedHarnessTrajectoryTest {
     public AgentTurns turns() {
       AgentTurns real = backend.turns();
       return new AgentTurns() {
+        @Override
+        public boolean firstSighting(
+            AgentType type, String label, Trajectory trajectory, Instant at) {
+          return real.firstSighting(type, label, trajectory, at);
+        }
+
         @Override
         public void append(AgentType type, AgentId agent, AgentTurn turn) {
           refusals.incrementAndGet();

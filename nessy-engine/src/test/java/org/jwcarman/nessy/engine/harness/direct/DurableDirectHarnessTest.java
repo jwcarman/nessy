@@ -31,6 +31,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AskOutcome;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.ProviderId;
+import org.jwcarman.nessy.api.Trajectory;
 import org.jwcarman.nessy.api.TurnOutcome;
 import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
@@ -317,6 +318,12 @@ class DurableDirectHarnessTest {
     public AgentTurns turns() {
       AgentTurns real = backend.turns();
       return new AgentTurns() {
+        @Override
+        public boolean firstSighting(
+            AgentType type, String label, Trajectory trajectory, Instant at) {
+          return real.firstSighting(type, label, trajectory, at);
+        }
+
         @Override
         public void append(AgentType type, AgentId agent, AgentTurn turn) {
           throw new IllegalStateException("refused");

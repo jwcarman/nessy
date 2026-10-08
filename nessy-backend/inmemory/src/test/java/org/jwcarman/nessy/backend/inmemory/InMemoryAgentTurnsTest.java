@@ -50,6 +50,7 @@ class InMemoryAgentTurnsTest {
         TRAJECTORY,
         "{\"rounds\":[],\"outcome\":\"ANSWERED\"}",
         "Q",
+        true,
         TurnOutcome.ANSWERED,
         1,
         2,
@@ -60,7 +61,52 @@ class InMemoryAgentTurnsTest {
         0);
   }
 
+  private static final Instant AT = Instant.parse("2026-10-08T12:00:00Z");
+
+  private static AgentTurn withNovel(AgentTurn row, boolean novel) {
+    return new AgentTurn(
+        row.turn(),
+        row.endingSeq(),
+        row.arrivedAt(),
+        row.startedAt(),
+        row.endedAt(),
+        row.trajectory(),
+        row.trajectoryJson(),
+        row.label(),
+        novel,
+        row.outcome(),
+        row.rounds(),
+        row.toolCalls(),
+        row.toolSuccesses(),
+        row.toolFailures(),
+        row.toolDenials(),
+        row.inferenceCalls(),
+        row.inferenceRetries());
+  }
+
   private final AgentTurns turns = new InMemoryAgentTurns();
+
+  @Test
+  void the_first_sighting_of_a_trajectory_is_novel_and_the_second_is_not() {
+    assertThat(turns.firstSighting(TYPE, "Q", TRAJECTORY, AT)).isTrue();
+    assertThat(turns.firstSighting(TYPE, "Q", TRAJECTORY, AT.plusSeconds(1))).isFalse();
+  }
+
+  @Test
+  void the_same_trajectory_under_another_label_type_or_version_is_novel_again() {
+    turns.firstSighting(TYPE, "Q", TRAJECTORY, AT);
+    assertThat(turns.firstSighting(TYPE, "R", TRAJECTORY, AT)).isTrue();
+    assertThat(turns.firstSighting(new AgentType("other"), "Q", TRAJECTORY, AT)).isTrue();
+    assertThat(turns.firstSighting(TYPE, "Q", new Trajectory((short) 2, TRAJECTORY.hash()), AT))
+        .isTrue();
+  }
+
+  @Test
+  void a_row_keeps_the_novelty_it_was_appended_with() {
+    AgentTurn known = withNovel(turn(10), false);
+    turns.append(TYPE, AGENT, known);
+    assertThat(turns.of(TYPE, AGENT)).singleElement().extracting(AgentTurn::novel).isEqualTo(false);
+  }
 
   @Test
   void a_recorded_turn_is_read_back_for_its_agent_oldest_first() {

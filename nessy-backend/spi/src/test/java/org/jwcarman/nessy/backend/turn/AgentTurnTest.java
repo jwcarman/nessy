@@ -45,6 +45,7 @@ class AgentTurnTest {
         TRAJECTORY,
         "{\"rounds\":[],\"outcome\":\"ANSWERED\"}",
         "Q",
+        true,
         TurnOutcome.ANSWERED,
         2,
         calls,

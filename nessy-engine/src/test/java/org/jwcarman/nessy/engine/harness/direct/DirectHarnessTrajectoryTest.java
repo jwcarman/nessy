@@ -214,6 +214,8 @@ class DirectHarnessTrajectoryTest {
     assertThat(rows).hasSize(2);
     rows.forEach(TurnRowConsistency::assertConsistent);
     assertThat(rows.get(0).trajectory()).isEqualTo(rows.get(1).trajectory());
+    assertThat(rows.get(0).novel()).isTrue();
+    assertThat(rows.get(1).novel()).isFalse();
     assertThat(rows.get(0).turn().value()).isLessThan(rows.get(1).turn().value());
   }
 
@@ -253,6 +255,22 @@ class DirectHarnessTrajectoryTest {
     AgentTurn only = turns.of(TYPE, agent).getFirst();
     TurnRowConsistency.assertConsistent(only);
     assertThat(hash.getValue()).isEqualTo(only.trajectory().hash());
+    assertThat(turnSpans.getFirst().getHighCardinalityKeyValue("nessy.trajectory.novel").getValue())
+        .isEqualTo("true");
+  }
+
+  @Test
+  void two_agents_of_one_type_on_one_path_make_one_novel_row_between_them() {
+    DirectHarness<String, String> harness = harness(ObservationRegistry.NOOP, c -> {});
+    AgentId first = new AgentId(UUID.randomUUID());
+    AgentId second = new AgentId(UUID.randomUUID());
+    harness.ask(first, "look up 7");
+    harness.ask(second, "look up 8");
+    assertThat(turns.of(TYPE, first)).singleElement().extracting(AgentTurn::novel).isEqualTo(true);
+    assertThat(turns.of(TYPE, second))
+        .singleElement()
+        .extracting(AgentTurn::novel)
+        .isEqualTo(false);
   }
 
   @Test
