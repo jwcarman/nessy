@@ -44,10 +44,10 @@ Made in conversation on 2026-10-08. These are decided.
    `append` (§5.1), so the row is complete and true when it is built.
 7. **The label is capped at 256 characters, silently.** The probe in §9 proved Postgres refuses a
    long label in the key. `InputLabels` cuts a label longer than 256 characters to 256, its first 253 characters followed by `...`, and both tables
-   declare `VARCHAR(256)`: at most about 768 UTF-8 bytes, so the key cannot reach the limit. The cut
+   declare `VARCHAR(256)`: at most 1,024 UTF-8 bytes (256 four-byte characters), so the key cannot reach the limit. The cut
    logs nothing and fails nothing, and the docs say so everywhere a label is set or read (§10.2).
-8. **Seeding the known table on upgrade is documentation only**: an optional step the docs show,
-   not code (§7, §10.3).
+8. **No upgrade path and no seed.** Nessy is pre-release: a database from an earlier version is
+   dropped and recreated (§7, §10.3).
 9. **No in-process push.** The span attribute and the column are the signal; listeners do not see
    `novel` (§10.4).
 
@@ -261,13 +261,9 @@ a warm-up, the length of which depends on how many distinct paths and labels the
 
 - **Fresh install**: `Schemas.initialize` creates both tables; the first turn of every
   `(type, label, version, hash)` is novel.
-- **Upgrade from a database that has `nessy_agent_turn`**: `CREATE TABLE IF NOT EXISTS` does not
-  add `novel` to a table that exists, and per the no-backward-compatibility rule there is no
-  in-code `ALTER` and no migration. The upgrade instruction is: `DROP TABLE nessy_agent_turn;`
-  and start the application; the schema recreates it with the column and creates
-  `nessy_known_trajectory` empty. The turn rows are a projection and are lost with the drop;
-  an operator who wants to skip the warm-up can carry their paths into the known table first, with
-  the optional statement the docs show (§10.3). Nessy does not run it.
+- **A database from an earlier version**: there is no upgrade path and no migration. Nessy is
+  pre-release, so the database is dropped and recreated; `Schemas.initialize` creates both tables
+  and the warm-up applies.
 - **A `trajectory_version` bump**: a new version is a new key space. Every path is novel again
   under the new version; rows and known entries under the old version stay and never collide.
 
@@ -313,7 +309,7 @@ Prose style, no mocking library, as the design of record requires. There is no T
 
 **The label in the key** (JDBC, `@Tag("container")`), required by §10.2:
 
-- a label of 256 characters, each three bytes in UTF-8 (the widest the cap allows), is sighted and
+- a label of 256 characters, each three bytes in UTF-8 (a probe-sized case; the cap counts code points, so four-byte characters reach 1,024 bytes, still under the limit), is sighted and
   the insert succeeds. The probe that decided the cap sighted 1,000 random three-byte characters,
   and Postgres refused the entry: `index row size 3096 exceeds btree version 4 maximum 2704 for
   index "nessy_known_trajectory_pkey"`.
@@ -353,29 +349,15 @@ Each was asked of James on 2026-10-08 and answered the same day.
    three-byte characters failed with `index row size 3096 exceeds btree version 4 maximum 2704 for
    index "nessy_known_trajectory_pkey"`, and a failing sighting rolls back the turn's ending on every
    retry. Answer: a hard cap of 256 characters on the label, applied in `InputLabels`, with
-   `VARCHAR(256)` in both tables. That is at most about 768 UTF-8 bytes, so the limit cannot be
+   `VARCHAR(256)` in both tables. That is at most 1,024 UTF-8 bytes, so the limit cannot be
    reached. The cut is silent, with no warning and no log, and the docs say so wherever a label is
    set or read: put what tells labels apart first, and two labels over 256 characters that agree
    in their first 253 are one category. A label is a category from a small set, so one near the cap is
    already a misuse, and the cap also makes `label` safe to index on `nessy_agent_turn`. A byte cap
    in `columnSafe`, keying on a hash of the label, and dropping the label from the key were not
    taken.
-3. **Seeding the known table on upgrade.** Answer: documentation only. The docs show, as an
-   optional step before `DROP TABLE nessy_agent_turn`:
-   
-   ```sql
-   INSERT INTO nessy_known_trajectory
-          (agent_type, label, trajectory_version, trajectory_hash, first_seen)
-   SELECT agent_type, cut, trajectory_version, trajectory_hash, MIN(ended_at)
-   FROM (SELECT agent_type, trajectory_version, trajectory_hash, ended_at,
-                CASE WHEN char_length(label) > 256 THEN left(label, 253) || '...' ELSE label END AS cut
-         FROM nessy_agent_turn) t
-   GROUP BY agent_type, cut, trajectory_version, trajectory_hash;
-   ```
-
-   It cuts the label as `InputLabels` does, so the seeded key is the one a new turn would write;
-   a plain copy fails on a 0.7.0 label over 256 characters.
-   Without it, the warm-up of §7 applies.
+3. **Seeding the known table on upgrade.** Answer: there is no upgrade and no seed. Nessy is
+   pre-release; the database is dropped and recreated, and the warm-up of §7 applies.
 4. **An in-process push.** Answer: not now. The span attribute and the column are enough for this
    record; a listener-visible event would be a new public type and its own design.
 
@@ -388,7 +370,7 @@ Each was asked of James on 2026-10-08 and answered the same day.
 - "On the trace" (lines 283-287) becomes eight attributes, adding `nessy.trajectory.novel`.
 - "Anomalies" (lines 350-361): "a trajectory never seen before" points at `novel`.
 - a new section, "Novelty", says what the bit means, that it is per type and label and version,
-  the warm-up, and the upgrade step of §7, and the optional seed of §10.3.
+  the warm-up, and the instruction of §7 to recreate a database from an earlier version.
 - the starter query "Turns whose trajectory first appeared in the last day" (lines 480-497) is
   replaced by two:
 

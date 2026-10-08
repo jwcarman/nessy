@@ -500,10 +500,11 @@ class JdbcAgentTurnsTest {
 
   @Test
   void a_label_of_the_most_characters_the_engine_lets_through_can_key_a_known_trajectory() {
-    // The engine cuts a label to 256 characters (InputLabels): 256 pseudo-random 3-byte characters
-    // is the worst case, ~768 bytes, well under Postgres's 2,704-byte btree entry limit. Random so
-    // the index entry cannot be compressed below it; a repeated character would pass for the wrong
-    // reason.
+    // The engine cuts a label to 256 characters (InputLabels), counted as code points, as Postgres
+    // counts them. 256 pseudo-random 3-byte characters (768 bytes) stand in for the widest label;
+    // 256 four-byte characters would reach 1,024 bytes, still well under Postgres's 2,704-byte
+    // btree entry limit. Random so the index entry cannot be compressed below it; a repeated
+    // character would pass for the wrong reason.
     String label = randomThreeByteLabel(256);
     assertThat(label).hasSize(256);
     assertThat(turns.firstSighting(freshType(), label, path(), Instant.now())).isTrue();

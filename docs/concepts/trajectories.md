@@ -334,47 +334,19 @@ no count and no last-seen time, only the first sighting.
 
 ### Warm-up
 
-A fresh install, an upgrade and a `trajectory_version` bump all start with
+A fresh install and a `trajectory_version` bump all start with
 an empty set of known paths, so every turn is novel until its path repeats.
 Arm an alert on `nessy.trajectory.novel = true` only after paths have
 repeated. How long that takes depends on how many distinct paths and labels
 the agent type has.
 
-### Upgrading a database that has `nessy_agent_turn`
+### A database from an earlier version
 
-`CREATE TABLE IF NOT EXISTS` does not add the `novel` column to a table that
-exists, and Nessy runs no migration. Keep the application stopped through
-every step:
-
-1. Stop the application.
-2. Create `nessy_known_trajectory`: run its `CREATE TABLE` statement from
-   `nessy-schema.sql` in `nessy-backend-jdbc`.
-3. Optional: seed it from the turn rows, so the warm-up is skipped. The
-   statement cuts each label as Nessy does, so the key is the one a new turn
-   would write:
-
-    ```sql
-    INSERT INTO nessy_known_trajectory
-           (agent_type, label, trajectory_version, trajectory_hash, first_seen)
-    SELECT agent_type, cut, trajectory_version, trajectory_hash, MIN(ended_at)
-    FROM (SELECT agent_type, trajectory_version, trajectory_hash, ended_at,
-                 CASE WHEN char_length(label) > 256
-                      THEN left(label, 253) || '...'
-                      ELSE label END AS cut
-          FROM nessy_agent_turn) t
-    GROUP BY agent_type, cut, trajectory_version, trajectory_hash;
-    ```
-
-    Nessy does not run it. Skipping it means the warm-up applies: every
-    path is novel once.
-4. Drop the old table. Its rows are lost:
-
-    ```sql
-    DROP TABLE nessy_agent_turn;
-    ```
-
-5. Start the application. It recreates `nessy_agent_turn` with the `novel`
-   column.
+Nessy runs no migration and `CREATE TABLE IF NOT EXISTS` does not alter a
+table that exists. A database created by an earlier version is dropped and
+recreated; the schema creates both tables, `nessy_agent_turn` and
+`nessy_known_trajectory`, when the application starts. Nothing carries over,
+so the warm-up applies.
 
 ### Reading it
 

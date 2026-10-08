@@ -76,6 +76,18 @@ class InputLabelsTest {
     }
 
     @Test
+    void the_cut_counts_characters_as_the_column_does_not_utf16_units() {
+      String emoji = new String(Character.toChars(0x1F600));
+      Stringifier<String> wide = said -> emoji.repeat(300);
+      InputLabels<String> labels = new InputLabels<>(TYPE, Optional.of(wide));
+
+      String label = labels.of("hello");
+
+      assertThat(label.codePointCount(0, label.length())).isEqualTo(256);
+      assertThat(label).isEqualTo(emoji.repeat(253) + "...");
+    }
+
+    @Test
     void a_label_that_throws_falls_back_to_the_class_name() {
       InputLabels<String> labels =
           new InputLabels<>(

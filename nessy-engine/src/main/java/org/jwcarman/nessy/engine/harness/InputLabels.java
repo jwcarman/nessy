@@ -19,6 +19,7 @@ import java.util.Objects;
 import java.util.Optional;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Stringifier;
+import org.jwcarman.nessy.api.Truncator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,6 +69,6 @@ public final class InputLabels<I> {
     }
     String simple = input.getClass().getSimpleName();
     String name = simple.isBlank() ? input.getClass().getName() : simple;
-    return name.length() <= LABEL_CAP ? name : name.substring(name.length() - LABEL_CAP);
+    return Truncator.dropTail().truncate(name, LABEL_CAP);
   }
 }
