@@ -273,7 +273,7 @@ CREATE TABLE IF NOT EXISTS nessy_agent_turn
     trajectory_version    SMALLINT                 NOT NULL,
     trajectory_hash       CHAR(64)                 NOT NULL,
     trajectory            JSONB                    NOT NULL,
-    label                 VARCHAR(1000)            NOT NULL,
+    label                 VARCHAR(256)             NOT NULL,
     novel                 BOOLEAN                  NOT NULL,
     outcome               VARCHAR(16)              NOT NULL,
     round_count           INTEGER                  NOT NULL,
@@ -299,7 +299,7 @@ CREATE INDEX IF NOT EXISTS ix_nessy_agent_turn_trajectory
 CREATE TABLE IF NOT EXISTS nessy_known_trajectory
 (
     agent_type         VARCHAR(64)              NOT NULL,
-    label              VARCHAR(1000)            NOT NULL,
+    label              VARCHAR(256)             NOT NULL,
     trajectory_version SMALLINT                 NOT NULL,
     trajectory_hash    CHAR(64)                 NOT NULL,
     first_seen         TIMESTAMP WITH TIME ZONE NOT NULL,

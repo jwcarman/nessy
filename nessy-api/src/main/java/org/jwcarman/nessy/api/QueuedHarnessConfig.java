@@ -69,10 +69,10 @@ public interface QueuedHarnessConfig<I> extends HarnessConfig<QueuedHarnessConfi
    * not encrypted as the story is. It is not part of the trajectory, so one behaviour under two
    * labels is one trajectory.
    *
-   * <p>The label is made one line and cut to {@link ToolConfig#LINE_CAP} characters, as an action
-   * line is. Defaults to the input's simple class name, which is also what is written when this
-   * label throws, returns null or returns a blank string. A label that fails never fails the turn;
-   * a warning names the agent type.
+   * <p>The label is made one line and cut to 256 characters, as an action line is. Defaults to the
+   * input's simple class name, which is also what is written when this label throws, returns null
+   * or returns a blank string. A label that fails never fails the turn; a warning names the agent
+   * type.
    */
   QueuedHarnessConfig<I> inputLabel(Stringifier<I> label);
 

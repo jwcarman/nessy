@@ -24,7 +24,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Stringifier;
-import org.jwcarman.nessy.api.tool.ToolConfig;
 
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class InputLabelsTest {
@@ -69,11 +68,11 @@ class InputLabelsTest {
     }
 
     @Test
-    void an_over_long_label_is_cut_to_the_line_cap() {
-      Stringifier<String> endless = said -> "x".repeat(ToolConfig.LINE_CAP * 3);
+    void an_over_long_label_is_cut_to_256_characters() {
+      Stringifier<String> endless = said -> "x".repeat(1000);
       InputLabels<String> labels = new InputLabels<>(TYPE, Optional.of(endless));
 
-      assertThat(labels.of("hello")).hasSize(ToolConfig.LINE_CAP);
+      assertThat(labels.of("hello")).hasSize(256);
     }
 
     @Test
