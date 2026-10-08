@@ -43,7 +43,7 @@ Made in conversation on 2026-10-08. These are decided.
 6. **The store's new method is `firstSighting`**, a second method on `AgentTurns` called before
    `append` (§5.1), so the row is complete and true when it is built.
 7. **The label is capped at 256 characters, silently.** The probe in §9 proved Postgres refuses a
-   long label in the key. `InputLabels` cuts a label to its first 256 characters, and both tables
+   long label in the key. `InputLabels` cuts a label longer than 256 characters to 256, its first 253 characters followed by `...`, and both tables
    declare `VARCHAR(256)`: at most about 768 UTF-8 bytes, so the key cannot reach the limit. The cut
    logs nothing and fails nothing, and the docs say so everywhere a label is set or read (§10.2).
 8. **Seeding the known table on upgrade is documentation only**: an optional step the docs show,
@@ -317,7 +317,7 @@ Prose style, no mocking library, as the design of record requires. There is no T
   the insert succeeds. The probe that decided the cap sighted 1,000 random three-byte characters,
   and Postgres refused the entry: `index row size 3096 exceeds btree version 4 maximum 2704 for
   index "nessy_known_trajectory_pkey"`.
-- `InputLabels` cuts a label longer than 256 characters to its first 256, logs nothing, and the
+- `InputLabels` cuts a label longer than 256 characters to its first 253 characters followed by `...`, logs nothing, and the
   turn runs.
 
 **Engine** (`TurnRecorderTest`, with a store fake that answers a scripted bit):
@@ -355,14 +355,26 @@ Each was asked of James on 2026-10-08 and answered the same day.
    retry. Answer: a hard cap of 256 characters on the label, applied in `InputLabels`, with
    `VARCHAR(256)` in both tables. That is at most about 768 UTF-8 bytes, so the limit cannot be
    reached. The cut is silent, with no warning and no log, and the docs say so wherever a label is
-   set or read: put what tells labels apart first, and two labels that agree in their first 256
-   characters are one category. A label is a category from a small set, so one near the cap is
+   set or read: put what tells labels apart first, and two labels over 256 characters that agree
+   in their first 253 are one category. A label is a category from a small set, so one near the cap is
    already a misuse, and the cap also makes `label` safe to index on `nessy_agent_turn`. A byte cap
    in `columnSafe`, keying on a hash of the label, and dropping the label from the key were not
    taken.
 3. **Seeding the known table on upgrade.** Answer: documentation only. The docs show, as an
    optional step before `DROP TABLE nessy_agent_turn`:
-   `INSERT INTO nessy_known_trajectory SELECT agent_type, label, trajectory_version, trajectory_hash, MIN(ended_at) FROM nessy_agent_turn GROUP BY 1, 2, 3, 4;`
+   
+   ```sql
+   INSERT INTO nessy_known_trajectory
+          (agent_type, label, trajectory_version, trajectory_hash, first_seen)
+   SELECT agent_type, cut, trajectory_version, trajectory_hash, MIN(ended_at)
+   FROM (SELECT agent_type, trajectory_version, trajectory_hash, ended_at,
+                CASE WHEN char_length(label) > 256 THEN left(label, 253) || '...' ELSE label END AS cut
+         FROM nessy_agent_turn) t
+   GROUP BY agent_type, cut, trajectory_version, trajectory_hash;
+   ```
+
+   It cuts the label as `InputLabels` does, so the seeded key is the one a new turn would write;
+   a plain copy fails on a 0.7.0 label over 256 characters.
    Without it, the warm-up of §7 applies.
 4. **An in-process push.** Answer: not now. The span attribute and the column are enough for this
    record; a listener-visible event would be a new public type and its own design.

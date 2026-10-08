@@ -69,12 +69,13 @@ public interface QueuedHarnessConfig<I> extends HarnessConfig<QueuedHarnessConfi
    * not encrypted as the story is. It is not part of the trajectory, so one behaviour under two
    * labels is one trajectory.
    *
-   * <p><b>A label is cut to its first 256 characters, silently.</b> It is made one line first.
-   * Nothing is logged and nothing fails when the cut happens. So put the parts that tell labels
-   * apart first: {@code price-variance:invoice}, not a long shared prefix with the discriminator
-   * last. Two labels that agree in their first 256 characters become one category, in the turn
-   * rows, in trajectory statistics and in novelty. A label that long is a misuse in any case: it is
-   * a category from a small closed set, never content, ids, names or free text.
+   * <p><b>A label over 256 characters is cut to 256, silently.</b> It is made one line first, then
+   * cut to its first 253 characters followed by {@code ...}. Nothing is logged and nothing fails
+   * when the cut happens. So put the parts that tell labels apart first: {@code
+   * price-variance:invoice}, not a long shared prefix with the discriminator last. Two labels over
+   * 256 characters that agree in their first 253 become one category, in the turn rows, in
+   * trajectory statistics and in novelty. A label that long is a misuse in any case: it is a
+   * category from a small closed set, never content, ids, names or free text.
    *
    * <p>Defaults to the input's simple class name, which is also what is written when this label
    * throws, returns null or returns a blank string. A label that fails never fails the turn; a

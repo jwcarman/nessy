@@ -298,7 +298,7 @@ tags are best-effort trace annotation. When a later call recovers an abandoned t
 abandoned turn's attributes land on the new call's span and the new turn
 then overwrites them, so the abandoned turn's trajectory is in the row only.
 
-All seven are high-cardinality span attributes. None is a metric tag: a hash
+All eight are high-cardinality span attributes. None is a metric tag: a hash
 has as many values as the agent has behaviors, and that would grow a
 metric's series without bound. Aggregate in SQL instead.
 
@@ -327,9 +327,9 @@ one is. A path stays known after the turns that walked it are gone. It holds
 no count and no last-seen time, only the first sighting.
 
 !!! warning "The label is part of the key, and it is cut to 256 characters"
-    Novelty is per label, and the label is cut to its first 256 characters,
-    silently, with nothing logged. Two labels that agree that far are one
-    category here too: a path new under the second one is already known. Put
+    Novelty is per label, and a label over 256 characters is cut to its first
+    253 characters followed by `...`, silently, with nothing logged. Two such
+    labels that agree in those 253 are one category here too: a path new under the second one is already known. Put
     what tells labels apart first. See [Trajectories by task](#trajectories-by-task).
 
 ### Warm-up
@@ -343,26 +343,38 @@ the agent type has.
 ### Upgrading a database that has `nessy_agent_turn`
 
 `CREATE TABLE IF NOT EXISTS` does not add the `novel` column to a table that
-exists, and Nessy runs no migration. Drop the table and start the
-application. The schema recreates `nessy_agent_turn` with the column and
-creates `nessy_known_trajectory` empty:
+exists, and Nessy runs no migration. Keep the application stopped through
+every step:
 
-```sql
-DROP TABLE nessy_agent_turn;
-```
+1. Stop the application.
+2. Create `nessy_known_trajectory`: run its `CREATE TABLE` statement from
+   `nessy-schema.sql` in `nessy-backend-jdbc`.
+3. Optional: seed it from the turn rows, so the warm-up is skipped. The
+   statement cuts each label as Nessy does, so the key is the one a new turn
+   would write:
 
-The turn rows are lost with the drop. To skip the warm-up, carry the paths
-into the known table first. This statement is optional. You run it, before
-the drop, and Nessy does not. `nessy_known_trajectory` must exist first, so
-run its `CREATE TABLE` statement from `nessy-schema.sql` in
-`nessy-backend-jdbc` (do not start the application yet):
+    ```sql
+    INSERT INTO nessy_known_trajectory
+           (agent_type, label, trajectory_version, trajectory_hash, first_seen)
+    SELECT agent_type, cut, trajectory_version, trajectory_hash, MIN(ended_at)
+    FROM (SELECT agent_type, trajectory_version, trajectory_hash, ended_at,
+                 CASE WHEN char_length(label) > 256
+                      THEN left(label, 253) || '...'
+                      ELSE label END AS cut
+          FROM nessy_agent_turn) t
+    GROUP BY agent_type, cut, trajectory_version, trajectory_hash;
+    ```
 
-```sql
-INSERT INTO nessy_known_trajectory
-SELECT agent_type, label, trajectory_version, trajectory_hash, MIN(ended_at)
-FROM nessy_agent_turn
-GROUP BY 1, 2, 3, 4;
-```
+    Nessy does not run it. Skipping it means the warm-up applies: every
+    path is novel once.
+4. Drop the old table. Its rows are lost:
+
+    ```sql
+    DROP TABLE nessy_agent_turn;
+    ```
+
+5. Start the application. It recreates `nessy_agent_turn` with the `novel`
+   column.
 
 ### Reading it
 
@@ -485,13 +497,14 @@ It is stored plain, unencrypted, so it must never carry the input's
 content.
 
 !!! warning "A label is cut to 256 characters, silently"
-    The label is cut to its **first 256 characters**. Nothing is logged and
-    nothing fails when the cut happens.
+    A label longer than 256 characters is cut to 256: its **first 253
+    characters followed by `...`**. Nothing is logged and nothing fails when
+    the cut happens.
 
     - Put the parts that tell labels apart **first**: `price-variance:invoice`,
       not a long shared prefix with the discriminator last.
-    - Two labels that agree in their first 256 characters become **one
-      category**: in the turn rows, in trajectory statistics, and in novelty
+    - Two labels over 256 characters that agree in their first 253 become
+      **one category**: in the turn rows, in trajectory statistics, and in novelty
       (`nessy_known_trajectory`).
     - A label is a category from a small closed set. It is never content,
       ids, names or free text.

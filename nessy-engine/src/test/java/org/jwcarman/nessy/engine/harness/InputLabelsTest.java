@@ -72,7 +72,7 @@ class InputLabelsTest {
       Stringifier<String> endless = said -> "x".repeat(1000);
       InputLabels<String> labels = new InputLabels<>(TYPE, Optional.of(endless));
 
-      assertThat(labels.of("hello")).hasSize(256);
+      assertThat(labels.of("hello")).hasSize(256).isEqualTo("x".repeat(253) + "...");
     }
 
     @Test

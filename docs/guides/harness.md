@@ -318,13 +318,14 @@ stored plain, unencrypted, on the turn's row, so it must never carry the
 input's content. See [Trajectories](../concepts/trajectories.md#trajectories-by-task).
 
 !!! warning "A label is cut to 256 characters, silently"
-    The label is cut to its **first 256 characters**. Nothing is logged and
-    nothing fails when the cut happens.
+    A label longer than 256 characters is cut to 256: its **first 253
+    characters followed by `...`**. Nothing is logged and nothing fails when
+    the cut happens.
 
     - Put the parts that tell labels apart **first**: `price-variance:invoice`,
       not a long shared prefix with the discriminator last.
-    - Two labels that agree in their first 256 characters become **one
-      category**: in the turn rows, in trajectory statistics, and in novelty
+    - Two labels over 256 characters that agree in their first 253 become
+      **one category**: in the turn rows, in trajectory statistics, and in novelty
       (`nessy_known_trajectory`).
     - A label is a category from a small closed set. It is never content,
       ids, names or free text.

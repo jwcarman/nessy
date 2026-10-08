@@ -220,7 +220,7 @@ payload rows one statement over one table, with nothing shared out from
 under another agent. Identical content in two agents is stored twice, and
 that is the trade.
 
-`nessy_agent_turn.trajectory`, `nessy_agent_turn.label` and `nessy_known_trajectory.label` are stored plain by contract. A label is copied out of the codec-encoded event, so it must never carry content. A label is cut to its first 256 characters, silently; see [Trajectories by task](trajectories.md#trajectories-by-task).
+`nessy_agent_turn.trajectory`, `nessy_agent_turn.label` and `nessy_known_trajectory.label` are stored plain by contract. A label is copied out of the codec-encoded event, so it must never carry content. A label over 256 characters is cut to 256, silently (its first 253 characters and `...`); see [Trajectories by task](trajectories.md#trajectories-by-task).
 
 Each model call also puts the parts of its request into `nessy_payload`: the prompt,
 the tools offered, the options, and each memory, state and ambient section,
