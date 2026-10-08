@@ -70,6 +70,9 @@ public final class JdbcAgentTurns implements AgentTurns {
           ON CONFLICT (agent_type, label, trajectory_version, trajectory_hash) DO NOTHING
       """;
 
+  private static final String TYPE_NOT_NULL = "type must not be null";
+  private static final String AGENT_NOT_NULL = "agent must not be null";
+
   private final JdbcClient jdbc;
 
   public JdbcAgentTurns(JdbcClient jdbc) {
@@ -78,7 +81,7 @@ public final class JdbcAgentTurns implements AgentTurns {
 
   @Override
   public boolean firstSighting(AgentType type, String label, Trajectory trajectory, Instant at) {
-    Objects.requireNonNull(type, "type must not be null");
+    Objects.requireNonNull(type, TYPE_NOT_NULL);
     Objects.requireNonNull(label, "label must not be null");
     Objects.requireNonNull(trajectory, "trajectory must not be null");
     Objects.requireNonNull(at, "at must not be null");
@@ -90,8 +93,8 @@ public final class JdbcAgentTurns implements AgentTurns {
 
   @Override
   public void append(AgentType type, AgentId agent, AgentTurn turn) {
-    Objects.requireNonNull(type, "type must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(type, TYPE_NOT_NULL);
+    Objects.requireNonNull(agent, AGENT_NOT_NULL);
     Objects.requireNonNull(turn, "turn must not be null");
     try {
       jdbc.sql(INSERT)
@@ -125,8 +128,8 @@ public final class JdbcAgentTurns implements AgentTurns {
 
   @Override
   public List<AgentTurn> of(AgentType type, AgentId agent) {
-    Objects.requireNonNull(type, "type must not be null");
-    Objects.requireNonNull(agent, "agent must not be null");
+    Objects.requireNonNull(type, TYPE_NOT_NULL);
+    Objects.requireNonNull(agent, AGENT_NOT_NULL);
     return jdbc.sql(SELECT).params(type.value(), agent.value()).query((rs, _) -> read(rs)).list();
   }
 

@@ -514,8 +514,9 @@ class JdbcAgentTurnsTest {
   void a_label_beyond_the_column_is_refused_by_the_database() {
     String label = randomThreeByteLabel(257);
     AgentType type = freshType();
+    Trajectory trajectory = path();
     Instant now = Instant.now();
-    assertThatThrownBy(() -> turns.firstSighting(type, label, path(), now))
+    assertThatThrownBy(() -> turns.firstSighting(type, label, trajectory, now))
         .isInstanceOf(DataAccessException.class)
         .hasMessageContaining("value too long");
   }
