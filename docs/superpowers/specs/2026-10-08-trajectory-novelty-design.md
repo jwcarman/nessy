@@ -42,9 +42,10 @@ Made in conversation on 2026-10-08. These are decided.
    future metrics roster.
 6. **The store's new method is `firstSighting`**, a second method on `AgentTurns` called before
    `append` (§5.1), so the row is complete and true when it is built.
-7. **A label too long for the key is capped in bytes**, if the test in §9 proves Postgres refuses
-   it: `columnSafe` caps the label in UTF-8 bytes as well as characters, on the row and in the known
-   table alike (§10.2).
+7. **The label is capped at 256 characters, silently.** The probe in §9 proved Postgres refuses a
+   long label in the key. `InputLabels` cuts a label to its first 256 characters, and both tables
+   declare `VARCHAR(256)`: at most about 768 UTF-8 bytes, so the key cannot reach the limit. The cut
+   logs nothing and fails nothing, and the docs say so everywhere a label is set or read (§10.2).
 8. **Seeding the known table on upgrade is documentation only**: an optional step the docs show,
    not code (§7, §10.3).
 9. **No in-process push.** The span attribute and the column are the signal; listeners do not see
@@ -141,7 +142,7 @@ same value everywhere, timestamps with time zone, and a comment that says what t
 CREATE TABLE IF NOT EXISTS nessy_known_trajectory
 (
     agent_type         VARCHAR(64)              NOT NULL,
-    label              VARCHAR(1000)            NOT NULL,
+    label              VARCHAR(256)             NOT NULL,
     trajectory_version SMALLINT                 NOT NULL,
     trajectory_hash    CHAR(64)                 NOT NULL,
     first_seen         TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -312,11 +313,12 @@ Prose style, no mocking library, as the design of record requires. There is no T
 
 **The label in the key** (JDBC, `@Tag("container")`), required by §10.2:
 
-- a label of `ToolConfig.LINE_CAP` (1,000) characters each four bytes in UTF-8 is sighted. The
-  test states which it is: the insert succeeds, or Postgres refuses the index entry. If Postgres
-  refuses it, the byte cap of §2.7 is implemented and this test is its red test; a second case pins
-  that a label at the cap inserts. If Postgres accepts it, no cap is added and the test stays as
-  the proof.
+- a label of 256 characters, each three bytes in UTF-8 (the widest the cap allows), is sighted and
+  the insert succeeds. The probe that decided the cap sighted 1,000 random three-byte characters,
+  and Postgres refused the entry: `index row size 3096 exceeds btree version 4 maximum 2704 for
+  index "nessy_known_trajectory_pkey"`.
+- `InputLabels` cuts a label longer than 256 characters to its first 256, logs nothing, and the
+  turn runs.
 
 **Engine** (`TurnRecorderTest`, with a store fake that answers a scripted bit):
 
@@ -345,14 +347,19 @@ Each was asked of James on 2026-10-08 and answered the same day.
    it is written. Answer: a second method, `firstSighting`, called before `append` in the same unit
    of work. Having `append` return the bit was not taken: the row would be built with a `novel` that
    is wrong until after the write.
-2. **A label that breaks the primary key.** `label` is `VARCHAR(1000)` in characters, up to about
+2. **A label that breaks the primary key.** `label` was `VARCHAR(1000)` in characters, up to about
    4,000 bytes in UTF-8, and is part of `nessy_known_trajectory`'s primary key. A Postgres btree
-   entry has a limit of about 2,700 bytes ("index row size exceeds btree version 4 maximum 2704";
-   not yet proven here). Over it, the sighting fails and rolls back the turn's ending on every
-   retry. Answer: the test in §9 decides whether this is real; if it is, `columnSafe` caps the label
-   in UTF-8 bytes as well as characters. A label is a category from a small set, so a label near the
-   cap is already a misuse, and the cap also makes `label` safe to index on `nessy_agent_turn`.
-   Keying on a hash of the label, or dropping the label from the key, were not taken.
+   entry has a limit of about 2,700 bytes. The probe proved it real: a sighting with 1,000 random
+   three-byte characters failed with `index row size 3096 exceeds btree version 4 maximum 2704 for
+   index "nessy_known_trajectory_pkey"`, and a failing sighting rolls back the turn's ending on every
+   retry. Answer: a hard cap of 256 characters on the label, applied in `InputLabels`, with
+   `VARCHAR(256)` in both tables. That is at most about 768 UTF-8 bytes, so the limit cannot be
+   reached. The cut is silent, with no warning and no log, and the docs say so wherever a label is
+   set or read: put what tells labels apart first, and two labels that agree in their first 256
+   characters are one category. A label is a category from a small set, so one near the cap is
+   already a misuse, and the cap also makes `label` safe to index on `nessy_agent_turn`. A byte cap
+   in `columnSafe`, keying on a hash of the label, and dropping the label from the key were not
+   taken.
 3. **Seeding the known table on upgrade.** Answer: documentation only. The docs show, as an
    optional step before `DROP TABLE nessy_agent_turn`:
    `INSERT INTO nessy_known_trajectory SELECT agent_type, label, trajectory_version, trajectory_hash, MIN(ended_at) FROM nessy_agent_turn GROUP BY 1, 2, 3, 4;`
