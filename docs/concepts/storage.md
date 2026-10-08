@@ -16,6 +16,7 @@ it all when the process stops.
 | Work offered to a busy agent, waiting its turn (queued door only) | `nessy_agent_backlog` | until it is claimed or coalesced away |
 | Closed chapters of an agent's history, each with the summary that stands in for it once written | `nessy_chapter` | forever, unless you prune it |
 | One row per completed turn: its trajectory fingerprint and counts, written with the ending event, see [Trajectories](trajectories.md) | `nessy_agent_turn` | forever, unless you prune it |
+| Every trajectory ever seen, once per agent type, label and version, see [Novelty](trajectories.md#novelty) | `nessy_known_trajectory` | forever; not removed with an agent |
 | Notes and plan tasks | `nessy_note`, `nessy_plan_task` | as their modules decide |
 | Background work claimed once, see [Leases](leases.md) | `nessy_lease` | its TTL |
 
@@ -219,7 +220,7 @@ payload rows one statement over one table, with nothing shared out from
 under another agent. Identical content in two agents is stored twice, and
 that is the trade.
 
-`nessy_agent_turn.trajectory` and `nessy_agent_turn.label` are stored plain by contract. A label is copied out of the codec-encoded event, so it must never carry content.
+`nessy_agent_turn.trajectory`, `nessy_agent_turn.label` and `nessy_known_trajectory.label` are stored plain by contract. A label is copied out of the codec-encoded event, so it must never carry content. A label over 256 characters is cut to 256, silently (its first 253 characters and `...`); see [Trajectories by task](trajectories.md#trajectories-by-task).
 
 Each model call also puts the parts of its request into `nessy_payload`: the prompt,
 the tools offered, the options, and each memory, state and ambient section,

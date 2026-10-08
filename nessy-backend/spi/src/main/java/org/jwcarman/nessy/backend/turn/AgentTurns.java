@@ -15,9 +15,11 @@
  */
 package org.jwcarman.nessy.backend.turn;
 
+import java.time.Instant;
 import java.util.List;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
+import org.jwcarman.nessy.api.Trajectory;
 
 /**
  * The completed turns of every agent, one row each, written as each turn ends.
@@ -27,10 +29,21 @@ import org.jwcarman.nessy.api.AgentType;
  * (how many distinct trajectories, which are common, which are new) are a query rather than a fold
  * over every event ever written.
  *
- * <p>{@link #append} is called inside the same unit of work as the append of the turn-ending event,
- * so a committed ending always has its row and a rolled-back one never does.
+ * <p>{@link #firstSighting} and {@link #append} are both called inside the same unit of work as the
+ * append of the turn-ending event, so a committed ending always has its row and a rolled-back one
+ * never does.
  */
 public interface AgentTurns {
+
+  /**
+   * Records that a turn of this agent type, with this label, ended on this trajectory, and says
+   * whether that had ever happened before. Called before {@link #append}, in the same unit of work,
+   * so the row can carry the answer. Write-once: a repeat changes nothing.
+   *
+   * @param at when the turn ended; kept as the first time only on a first sighting
+   * @return true if this is the first time: the turn is novel
+   */
+  boolean firstSighting(AgentType type, String label, Trajectory trajectory, Instant at);
 
   /**
    * Writes the row for a turn that has just ended.

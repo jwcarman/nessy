@@ -36,6 +36,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 /**
  * {@link AgentTurns} over rows in {@code nessy_agent_turn}. It opens no transaction of its own: the
  * caller's ambient one carries the insert, so a turn's row commits with the event that ended it.
+ * The sighting is write-once ({@code DO NOTHING}, never {@code DO UPDATE}, which would lock a
+ * common path's row under every concurrent commit) and rides the same ambient transaction.
  */
 public final class JdbcAgentTurns implements AgentTurns {
 
@@ -43,16 +45,16 @@ public final class JdbcAgentTurns implements AgentTurns {
       """
       INSERT INTO nessy_agent_turn
              (agent_type, agent_id, turn_id, ending_seq, arrived_at, started_at, ended_at,
-              trajectory_version, trajectory_hash, trajectory, label, outcome, round_count, tool_call_count,
+              trajectory_version, trajectory_hash, trajectory, label, novel, outcome, round_count, tool_call_count,
               tool_success_count, tool_failure_count, tool_denied_count,
               inference_call_count, inference_retry_count)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSONB), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSONB), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """;
 
   private static final String SELECT =
       """
       SELECT turn_id, ending_seq, arrived_at, started_at, ended_at, trajectory_version,
-             trajectory_hash, trajectory::text AS trajectory, label, outcome, round_count, tool_call_count,
+             trajectory_hash, trajectory::text AS trajectory, label, novel, outcome, round_count, tool_call_count,
              tool_success_count, tool_failure_count, tool_denied_count, inference_call_count,
              inference_retry_count
         FROM nessy_agent_turn
@@ -60,10 +62,30 @@ public final class JdbcAgentTurns implements AgentTurns {
        ORDER BY turn_id
       """;
 
+  private static final String SIGHT =
+      """
+      INSERT INTO nessy_known_trajectory
+             (agent_type, label, trajectory_version, trajectory_hash, first_seen)
+      VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT (agent_type, label, trajectory_version, trajectory_hash) DO NOTHING
+      """;
+
   private final JdbcClient jdbc;
 
   public JdbcAgentTurns(JdbcClient jdbc) {
     this.jdbc = Objects.requireNonNull(jdbc, "jdbc must not be null");
+  }
+
+  @Override
+  public boolean firstSighting(AgentType type, String label, Trajectory trajectory, Instant at) {
+    Objects.requireNonNull(type, "type must not be null");
+    Objects.requireNonNull(label, "label must not be null");
+    Objects.requireNonNull(trajectory, "trajectory must not be null");
+    Objects.requireNonNull(at, "at must not be null");
+    return jdbc.sql(SIGHT)
+            .params(type.value(), label, trajectory.version(), trajectory.hash(), timestamp(at))
+            .update()
+        == 1;
   }
 
   @Override
@@ -85,6 +107,7 @@ public final class JdbcAgentTurns implements AgentTurns {
               turn.trajectory().hash(),
               turn.trajectoryJson(),
               turn.label(),
+              turn.novel(),
               turn.outcome().name(),
               turn.rounds(),
               turn.toolCalls(),
@@ -117,6 +140,7 @@ public final class JdbcAgentTurns implements AgentTurns {
         new Trajectory(rs.getShort("trajectory_version"), rs.getString("trajectory_hash")),
         rs.getString("trajectory"),
         rs.getString("label"),
+        rs.getBoolean("novel"),
         TurnOutcome.valueOf(rs.getString("outcome")),
         rs.getInt("round_count"),
         rs.getInt("tool_call_count"),

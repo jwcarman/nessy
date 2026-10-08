@@ -204,7 +204,8 @@ a rolled-back one never does.
 | `trajectory_version` | the encoding version of the hash |
 | `trajectory_hash` | the fingerprint, 64 lowercase hex characters |
 | `trajectory` | the same behavior as JSON: rounds of `{tool, outcome}`, then the outcome |
-| `label` | the task label of the input that started the turn, `VARCHAR(1000) NOT NULL` |
+| `label` | the task label of the input that started the turn, `VARCHAR(256) NOT NULL` |
+| `novel` | `true` when this was the first turn of its agent type and label to take this trajectory under this version, see [Novelty](#novelty) |
 | `outcome` | the `TurnOutcome` name |
 | `round_count` | rounds of tool calls |
 | `tool_call_count` | calls settled, the sum of the next three |
@@ -216,8 +217,9 @@ The columns fall in two groups. The behavioral ones are the trajectory
 columns, `outcome`, `round_count` and the three tool counts. The
 operational ones are `arrived_at`, `started_at`, `ended_at`,
 `inference_call_count` and `inference_retry_count`. Only the behavioral
-ones describe what the agent decided. `label` is neither: it names the
-task, and is outside the fingerprint.
+ones describe what the agent decided. `novel` is behavioral too: it is
+derived from the trajectory when the turn ends, in the same transaction.
+`label` is neither: it names the task, and is outside the fingerprint.
 
 `turn_id` is the seq of `TurnStarted` and `ending_seq` is the seq of the
 ending event. Between them, inclusive, are the turn's events, and folding
@@ -282,8 +284,9 @@ mining, or something else. The stored structure supports all of them.
 
 ## On the trace
 
-Seven attributes carry the same values on the turn's span:
-`nessy.trajectory.hash`, `nessy.trajectory.version`, `nessy.turn.outcome`,
+Eight attributes carry the same values on the turn's span:
+`nessy.trajectory.hash`, `nessy.trajectory.version`,
+`nessy.trajectory.novel` (`true` or `false`), `nessy.turn.outcome`,
 `nessy.turn.rounds`, `nessy.turn.tool_calls`, `nessy.turn.tool_failures` and
 `nessy.turn.tool_denials`.
 
@@ -295,13 +298,62 @@ tags are best-effort trace annotation. When a later call recovers an abandoned t
 abandoned turn's attributes land on the new call's span and the new turn
 then overwrites them, so the abandoned turn's trajectory is in the row only.
 
-All seven are high-cardinality span attributes. None is a metric tag: a hash
+All eight are high-cardinality span attributes. None is a metric tag: a hash
 has as many values as the agent has behaviors, and that would grow a
 metric's series without bound. Aggregate in SQL instead.
 
 The trace is the place to look at one turn. The table is the place to ask
 about many. See [Observability](../guides/observability.md) for how
 trajectories sit beside narration, events, traces and metrics.
+
+## Novelty
+
+Each turn's row says whether its trajectory was new: `novel` is `true` when
+no earlier turn of the same agent type, with the same label, took the same
+trajectory under the same `trajectory_version`. Any one of the four values
+differing makes the path new. The same path under a new label is novel, and
+a version bump starts every path over.
+
+The bit is decided by the database as the turn ends. The first turn to
+record a path inserts a row into `nessy_known_trajectory`, keyed by
+`(agent_type, label, trajectory_version, trajectory_hash)` with the
+`first_seen` time. That insert is in the same transaction as the turn's row
+and its ending event, so a rolled-back turn leaves no known path behind. Of
+two agents of one type that end a turn on a new path at the same moment,
+exactly one is novel.
+
+`nessy_known_trajectory` is not owned by an agent and is not removed when
+one is. A path stays known after the turns that walked it are gone. It holds
+no count and no last-seen time, only the first sighting.
+
+!!! warning "The label is part of the key, and it is cut to 256 characters"
+    Novelty is per label, and a label over 256 characters is cut to its first
+    253 characters followed by `...`, silently, with nothing logged. Two such
+    labels that agree in those 253 are one category here too: a path new under the second one is already known. Put
+    what tells labels apart first. See [Trajectories by task](#trajectories-by-task).
+
+### Warm-up
+
+A fresh install and a `trajectory_version` bump all start with
+an empty set of known paths, so every turn is novel until its path repeats.
+Arm an alert on `nessy.trajectory.novel = true` only after paths have
+repeated. How long that takes depends on how many distinct paths and labels
+the agent type has.
+
+### A database from an earlier version
+
+Nessy runs no migration and `CREATE TABLE IF NOT EXISTS` does not alter a
+table that exists. A database created by an earlier version is dropped and
+recreated; the schema creates both tables, `nessy_agent_turn` and
+`nessy_known_trajectory`, when the application starts. Nothing carries over,
+so the warm-up applies.
+
+### Reading it
+
+An alert rule on the span attribute `nessy.trajectory.novel = true` for the
+agent types you watch is the push. The `novel` column and the table are the
+query. No in-process listener is told about novelty. The
+[starter queries](#starter-queries) show both reads.
 
 ## Analyzing behavior
 
@@ -326,7 +378,7 @@ holding 99 percent of turns and five hundred trajectories of about equal
 share are different agents. A distribution can also change when no single
 trajectory is new, so novelty and drift are separate checks.
 
-The [starter queries](#starter-queries) below measure the first three.
+The [starter queries](#starter-queries) below measure the first three, and [Novelty](#novelty) covers the fourth.
 
 ### Evals
 
@@ -353,7 +405,7 @@ A trace tells you what happened. The trajectory distribution helps tell
 you whether it was normal. These are signals a reader can look for in the
 table:
 
-- a trajectory never seen before for the agent type,
+- a trajectory never seen before for the agent type and label (the `novel` column, see [Novelty](#novelty)),
 - a trajectory that is rare for the agent type, or for one `agent_id`,
 - a sudden rise in the number of distinct trajectories,
 - an unusual `round_count`, `tool_call_count` or `tool_failure_count`,
@@ -416,6 +468,19 @@ from a small set of values such as `rounds` or `invoice:PRICE_VARIANCE`.
 It is stored plain, unencrypted, so it must never carry the input's
 content.
 
+!!! warning "A label is cut to 256 characters, silently"
+    A label longer than 256 characters is cut to 256: its **first 253
+    characters followed by `...`**. Nothing is logged and nothing fails when
+    the cut happens.
+
+    - Put the parts that tell labels apart **first**: `price-variance:invoice`,
+      not a long shared prefix with the discriminator last.
+    - Two labels over 256 characters that agree in their first 253 become
+      **one category**: in the turn rows, in trajectory statistics, and in novelty
+      (`nessy_known_trajectory`).
+    - A label is a category from a small closed set. It is never content,
+      ids, names or free text.
+
 The label is not part of the fingerprint. The fingerprint is behavior and
 the label is the task, and keeping them apart is what lets a query ask how
 predictable each kind of work is:
@@ -448,7 +513,7 @@ On the row, a NUL or an unpaired surrogate in a label is replaced by
 U+FFFD, because the column cannot hold it. The event keeps the label as
 given.
 
-Nothing enforces how many values a label takes. An application that gives
+Nothing enforces how many values a label takes, only how long one is. An application that gives
 each input a unique label gets one trajectory per label and learns nothing.
 
 Nessy defines no task taxonomy beyond the label. Richer metadata, such as
@@ -488,24 +553,23 @@ LIMIT 5;
 The percentages are the concentration of the agent type's turns in its
 top five paths.
 
-Turns whose trajectory first appeared in the last day:
+Turns that took a new trajectory in the last day (see [Novelty](#novelty)):
 
 ```sql
-SELECT t.agent_type, t.agent_id, t.turn_id, t.trajectory_hash
-FROM nessy_agent_turn t
-WHERE t.trajectory_version = 1
-  AND t.ended_at >= now() - INTERVAL '1 day'
-  AND NOT EXISTS (
-    SELECT 1
-    FROM nessy_agent_turn earlier
-    WHERE earlier.agent_type = t.agent_type
-      AND earlier.trajectory_version = t.trajectory_version
-      AND earlier.trajectory_hash = t.trajectory_hash
-      AND earlier.ended_at < now() - INTERVAL '1 day')
-ORDER BY t.ended_at;
+SELECT agent_type, agent_id, turn_id, label, trajectory_hash, ended_at
+FROM nessy_agent_turn
+WHERE novel AND ended_at >= now() - INTERVAL '1 day'
+ORDER BY ended_at;
 ```
 
-Those turns are the novelty signal for the last day.
+The trajectories themselves, from the table of known paths:
+
+```sql
+SELECT agent_type, label, trajectory_hash, first_seen
+FROM nessy_known_trajectory
+WHERE trajectory_version = 1 AND first_seen >= now() - INTERVAL '1 day'
+ORDER BY first_seen;
+```
 
 ## Canonical encoding
 

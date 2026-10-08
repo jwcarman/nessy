@@ -34,6 +34,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.CallFailure;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.Seq;
+import org.jwcarman.nessy.api.Trajectory;
 import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.TurnOutcome;
 import org.jwcarman.nessy.api.Usage;
@@ -62,6 +63,126 @@ class TurnRecorderTest {
   private static final Instant ENDED = Instant.parse("2026-10-07T14:02:04.018Z");
 
   private final AgentTurns turns = new InMemoryAgentTurns();
+
+  /** A store that answers a scripted bit and remembers what it was asked, and in what order. */
+  private static final class ScriptedTurns implements AgentTurns {
+    private final boolean answer;
+    private final InMemoryAgentTurns rows = new InMemoryAgentTurns();
+    final List<String> calls = new ArrayList<>();
+
+    ScriptedTurns(boolean answer) {
+      this.answer = answer;
+    }
+
+    @Override
+    public boolean firstSighting(AgentType type, String label, Trajectory trajectory, Instant at) {
+      calls.add("sight " + label + " " + trajectory.hash() + " " + at);
+      return answer;
+    }
+
+    @Override
+    public void append(AgentType type, AgentId agent, AgentTurn turn) {
+      calls.add("append " + turn.turn().value());
+      rows.append(type, agent, turn);
+    }
+
+    @Override
+    public List<AgentTurn> of(AgentType type, AgentId agent) {
+      return rows.of(type, agent);
+    }
+  }
+
+  @Test
+  void the_row_carries_the_novelty_the_store_answered() {
+    for (boolean answer : List.of(true, false)) {
+      TurnRecorder recorder =
+          new TurnRecorder(TYPE, new ScriptedTurns(answer), ObservationRegistry.NOOP);
+      AgentTurn row =
+          recorder
+              .recordEnding(AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false), ENDED)
+              .orElseThrow();
+      assertThat(row.novel()).isEqualTo(answer);
+    }
+  }
+
+  @Test
+  void the_store_is_asked_once_before_the_row_with_the_rows_label_trajectory_and_end() {
+    ScriptedTurns store = new ScriptedTurns(true);
+    TurnRecorder recorder = new TurnRecorder(TYPE, store, ObservationRegistry.NOOP);
+    AgentTurn row =
+        recorder
+            .recordEnding(
+                AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false, "a\u0000b"), ENDED)
+            .orElseThrow();
+    assertThat(row.label()).isEqualTo("a\uFFFDb");
+    assertThat(store.calls)
+        .containsExactly(
+            "sight a\uFFFDb " + row.trajectory().hash() + " " + ENDED,
+            "append " + row.turn().value());
+  }
+
+  @Test
+  void the_first_turn_on_a_path_is_novel_and_the_next_is_not() {
+    TurnRecorder recorder = new TurnRecorder(TYPE, turns, ObservationRegistry.NOOP);
+    AgentTurn first =
+        recorder
+            .recordEnding(AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false), ENDED)
+            .orElseThrow();
+    AgentTurn second =
+        recorder
+            .recordEnding(
+                new AgentId(UUID.randomUUID()),
+                AgentState.idle(Seq.NONE),
+                oneRoundThenAnswer(false),
+                ENDED)
+            .orElseThrow();
+    assertThat(first.novel()).isTrue();
+    assertThat(second.novel()).isFalse();
+  }
+
+  @Test
+  void events_that_end_no_turn_do_not_ask_the_store_about_a_path() {
+    ScriptedTurns store = new ScriptedTurns(true);
+    TurnRecorder recorder = new TurnRecorder(TYPE, store, ObservationRegistry.NOOP);
+    List<AgentEvent> events = oneRoundThenAnswer(false).subList(0, 3);
+    assertThat(recorder.recordEnding(AGENT, AgentState.idle(Seq.NONE), events, ENDED)).isEmpty();
+    assertThat(store.calls).isEmpty();
+  }
+
+  @Test
+  void the_novelty_tag_follows_the_stores_answer() {
+    assertThat(novelTagOf(new ScriptedTurns(false))).isEqualTo("false");
+    assertThat(novelTagOf(new ScriptedTurns(true))).isEqualTo("true");
+  }
+
+  private static String novelTagOf(AgentTurns store) {
+    List<Observation.Context> stopped = new CopyOnWriteArrayList<>();
+    ObservationRegistry registry = ObservationRegistry.create();
+    registry
+        .observationConfig()
+        .observationHandler(
+            new ObservationHandler<Observation.Context>() {
+              @Override
+              public boolean supportsContext(Observation.Context context) {
+                return true;
+              }
+
+              @Override
+              public void onStop(Observation.Context context) {
+                stopped.add(context);
+              }
+            });
+    TurnRecorder recorder = new TurnRecorder(TYPE, store, registry);
+    Observation.createNotStarted("invoke_agent", registry)
+        .observe(
+            () ->
+                recorder
+                    .recordEnding(
+                        AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false), ENDED)
+                    .orElseThrow());
+    assertThat(stopped).hasSize(1);
+    return stopped.getFirst().getHighCardinalityKeyValue("nessy.trajectory.novel").getValue();
+  }
 
   private static List<AgentEvent> oneRoundThenAnswer(boolean withRetry) {
     return oneRoundThenAnswer(withRetry, "Q");
@@ -353,6 +474,8 @@ class TurnRecorderTest {
         .isEqualTo(row.trajectory().hash());
     assertThat(context.getHighCardinalityKeyValue("nessy.trajectory.version").getValue())
         .isEqualTo("1");
+    assertThat(context.getHighCardinalityKeyValue("nessy.trajectory.novel").getValue())
+        .isEqualTo("true");
     assertThat(context.getHighCardinalityKeyValue("nessy.turn.outcome").getValue())
         .isEqualTo("ANSWERED");
     assertThat(context.getHighCardinalityKeyValue("nessy.turn.rounds").getValue()).isEqualTo("1");

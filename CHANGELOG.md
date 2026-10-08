@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A `novel` bit on every turn.** It is true when the turn's trajectory was never seen before for
+  its agent type, task label and `trajectory_version`. It is the `nessy_agent_turn.novel` column,
+  `AgentTurn.novel`, and the span attribute `nessy.trajectory.novel`.
+- **The `nessy_known_trajectory` table.** It records the first sighting of each trajectory,
+  write-once, and outlives the turns.
+
+### Changed
+
+- **`AgentTurns` has a new method, `firstSighting`.** A custom `AgentTurns` implementation must
+  implement it.
+- **`AgentTurn` has a new `novel` component after `label`.**
+- **`nessy_agent_turn` has a new `novel BOOLEAN NOT NULL` column, `label` is now `VARCHAR(256)`,
+  and `nessy_known_trajectory` is new.** A database created by 0.7.0 must be dropped and recreated
+  before this version starts; there is no migration and no seed. An application with
+  `nessy.initialize-schema=false` must create the table and the column itself.
+- **The task label is cut to 256 characters, not 1,000.** A label over 256 characters becomes its
+  first 253 followed by `...`, silently, so two labels that agree in those 253 are one category.
+
 ## [0.7.0] - 2026-10-07
 
 ### Added

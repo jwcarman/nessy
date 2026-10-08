@@ -64,6 +64,10 @@ class ContentColumnsTest {
           "nessy_agent_effect.status",
           // What kind of lease it is, a short name from the code.
           "nessy_lease.kind",
+          // The known-trajectory key: the same type, label and hash the turn row holds.
+          "nessy_known_trajectory.agent_type",
+          "nessy_known_trajectory.label",
+          "nessy_known_trajectory.trajectory_hash",
           // A turn's outcome is one fixed word, and its trajectory hash is hex a query matches on.
           "nessy_agent_turn.outcome",
           "nessy_agent_turn.trajectory_hash",

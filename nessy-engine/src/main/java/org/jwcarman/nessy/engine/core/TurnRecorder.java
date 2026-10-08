@@ -48,6 +48,9 @@ import org.slf4j.LoggerFactory;
  * trajectory state rather than from {@link TurnStats#failedAttempts()}, because that figure also
  * counts the failure that ends a turn, and an ending is not a retry.
  *
+ * <p><b>The store is asked first</b> whether the path is new, with the row's column-safe label, so
+ * the known table and the row agree. The novelty tag is as best-effort as the hash.
+ *
  * <p><b>The span tags are best-effort.</b> They are written to whatever observation is current when
  * the ending is folded, before the transaction commits. If the step later rolls back, a span can
  * carry a hash for an ending that did not commit, and the queued door's retry can then tag a second
@@ -60,6 +63,7 @@ public final class TurnRecorder {
 
   static final String HASH = "nessy.trajectory.hash";
   static final String VERSION_KEY = "nessy.trajectory.version";
+  static final String NOVEL = "nessy.trajectory.novel";
   static final String OUTCOME = "nessy.turn.outcome";
   static final String ROUNDS = "nessy.turn.rounds";
   static final String TOOL_CALLS = "nessy.turn.tool_calls";
@@ -91,7 +95,14 @@ public final class TurnRecorder {
       Optional<TurnOutcome> ending = TurnTrajectory.endingOf(event);
       if (ending.isPresent()) {
         if (state instanceof AgentState.Inferring inferring) {
-          AgentTurn row = summarise(inferring, event, ending.get(), at);
+          TurnTrajectory.State trajectory = inferring.trajectory();
+          boolean novel =
+              turns.firstSighting(
+                  type,
+                  columnSafe(trajectory.label()),
+                  TurnTrajectory.fingerprint(trajectory, ending.get()),
+                  at);
+          AgentTurn row = summarise(inferring, event, ending.get(), at, novel);
           turns.append(type, agent, row);
           tag(row);
           recorded = Optional.of(row);
@@ -109,7 +120,11 @@ public final class TurnRecorder {
   }
 
   static AgentTurn summarise(
-      AgentState.Inferring ending, AgentEvent event, TurnOutcome outcome, Instant at) {
+      AgentState.Inferring ending,
+      AgentEvent event,
+      TurnOutcome outcome,
+      Instant at,
+      boolean novel) {
     TurnTrajectory.State trajectory = ending.trajectory();
     TurnStats stats = TurnTally.after(ending.stats(), event);
     Trajectory fingerprint = TurnTrajectory.fingerprint(trajectory, outcome);
@@ -122,6 +137,7 @@ public final class TurnRecorder {
         fingerprint,
         TurnTrajectory.json(trajectory, outcome),
         columnSafe(trajectory.label()),
+        novel,
         outcome,
         trajectory.completed().size(),
         trajectory.toolCalls(),
@@ -165,6 +181,7 @@ public final class TurnRecorder {
     current
         .highCardinalityKeyValue(HASH, row.trajectory().hash())
         .highCardinalityKeyValue(VERSION_KEY, Short.toString(row.trajectory().version()))
+        .highCardinalityKeyValue(NOVEL, Boolean.toString(row.novel()))
         .highCardinalityKeyValue(OUTCOME, row.outcome().name())
         .highCardinalityKeyValue(ROUNDS, Integer.toString(row.rounds()))
         .highCardinalityKeyValue(TOOL_CALLS, Integer.toString(row.toolCalls()))

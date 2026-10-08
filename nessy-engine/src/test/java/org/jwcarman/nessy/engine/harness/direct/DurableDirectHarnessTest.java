@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -31,6 +32,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.AskOutcome;
 import org.jwcarman.nessy.api.DirectHarness;
 import org.jwcarman.nessy.api.ProviderId;
+import org.jwcarman.nessy.api.Trajectory;
 import org.jwcarman.nessy.api.TurnOutcome;
 import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
@@ -238,7 +240,7 @@ class DurableDirectHarnessTest {
         .isEqualTo(new AskOutcome.Answered<>("the capital is Paris", ANY_STATS));
   }
 
-  private DirectHarness<String, String> overJdbc(DirectBackend backend) {
+  private DirectHarness<String, String> overJdbc(AgentType type, DirectBackend backend) {
     return DefaultDirectHarnessFactory.of(
             f ->
                 f.backend(backend)
@@ -246,7 +248,7 @@ class DurableDirectHarnessTest {
                     .schemas(new VictoolsJsonSchemaGenerator())
                     .mapper(JsonMapper.builder().build()))
         .<String>create(
-            TYPE,
+            type,
             c ->
                 c.systemPrompt("You are terse.")
                     .inputRenderer(said -> List.of(new Block.Text(said)))
@@ -260,7 +262,7 @@ class DurableDirectHarnessTest {
         new JdbcDirectBackend(database, new DataSourceTransactionManager(database), codecs);
     AgentId agent = AgentId.random();
 
-    overJdbc(backend).ask(agent, "capital of France?");
+    overJdbc(TYPE, backend).ask(agent, "capital of France?");
 
     List<AgentTurn> rows = backend.turns().of(TYPE, agent);
     assertThat(rows).hasSize(1);
@@ -274,15 +276,24 @@ class DurableDirectHarnessTest {
     JdbcDirectBackend real =
         new JdbcDirectBackend(database, new DataSourceTransactionManager(database), codecs);
     AgentId agent = AgentId.random();
+    // A type of its own: the other tests in this class commit sightings under "chat".
+    AgentType own = new AgentType("t" + UUID.randomUUID().toString().substring(0, 8));
 
     // Whether the ask throws or reports a failure is the door's business; what was committed is
     // the question.
-    DirectHarness<String, String> harness = overJdbc(new RefusingRows(real));
+    DirectHarness<String, String> harness = overJdbc(own, new RefusingRows(real));
     catchThrowable(() -> harness.ask(agent, "capital of France?"));
 
-    List<AgentEvent> story = events.readAll(TYPE, agent);
+    List<AgentEvent> story = events.readAll(own, agent);
     assertThat(story).isNotEmpty().noneMatch(AgentEvent.InferenceAnswered.class::isInstance);
-    assertThat(real.turns().of(TYPE, agent)).isEmpty();
+    assertThat(real.turns().of(own, agent)).isEmpty();
+    assertThat(
+            JdbcClient.create(database)
+                .sql("SELECT COUNT(*) FROM nessy_known_trajectory WHERE agent_type = ?")
+                .params(own.value())
+                .query(Long.class)
+                .single())
+        .isZero();
   }
 
   /** The JDBC direct backend, except that a turn's row is never written. */
@@ -317,6 +328,12 @@ class DurableDirectHarnessTest {
     public AgentTurns turns() {
       AgentTurns real = backend.turns();
       return new AgentTurns() {
+        @Override
+        public boolean firstSighting(
+            AgentType type, String label, Trajectory trajectory, Instant at) {
+          return real.firstSighting(type, label, trajectory, at);
+        }
+
         @Override
         public void append(AgentType type, AgentId agent, AgentTurn turn) {
           throw new IllegalStateException("refused");

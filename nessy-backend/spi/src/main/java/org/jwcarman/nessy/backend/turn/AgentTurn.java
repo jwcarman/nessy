@@ -35,7 +35,12 @@ import org.jwcarman.nessy.api.TurnOutcome;
  *     keys and adds spaces).
  * @param label what kind of turn this was: a category the application names, never content. It is
  *     not part of the trajectory, so one behaviour under two labels is one trajectory on two rows.
- *     A store keeps it as text, so the engine replaces what a database cannot hold.
+ *     A store keeps it as text, so the engine replaces what a database cannot hold. It is at most
+ *     256 characters: a longer label is cut, silently, to its first 253 characters and {@code ...},
+ *     so such labels that agree in those 253 are one category in the rows, in statistics and in
+ *     novelty.
+ * @param novel whether this was the first turn of its agent type and label to take its trajectory
+ *     under its version, as the store answered at {@link AgentTurns#firstSighting}
  * @param arrivedAt when the input reached the harness
  * @param startedAt when the turn opened
  * @param endedAt when the ending event was written
@@ -51,6 +56,7 @@ public record AgentTurn(
     Trajectory trajectory,
     String trajectoryJson,
     String label,
+    boolean novel,
     TurnOutcome outcome,
     int rounds,
     int toolCalls,

@@ -317,7 +317,20 @@ small set of values such as `rounds` or `invoice:PRICE_VARIANCE`. It is
 stored plain, unencrypted, on the turn's row, so it must never carry the
 input's content. See [Trajectories](../concepts/trajectories.md#trajectories-by-task).
 
-A label is made one line and cut to 1000 characters, as an action line is. With
+!!! warning "A label is cut to 256 characters, silently"
+    A label longer than 256 characters is cut to 256: its **first 253
+    characters followed by `...`**. Nothing is logged and nothing fails when
+    the cut happens.
+
+    - Put the parts that tell labels apart **first**: `price-variance:invoice`,
+      not a long shared prefix with the discriminator last.
+    - Two labels over 256 characters that agree in their first 253 become
+      **one category**: in the turn rows, in trajectory statistics, and in novelty
+      (`nessy_known_trajectory`).
+    - A label is a category from a small closed set. It is never content,
+      ids, names or free text.
+
+A label is made one line before it is cut. With
 no label configured, the label is the input's simple class name. It is the same
 when the label throws, returns null or returns a blank string. The turn runs as
 usual in each case, and only a label that throws is warned about, with a message

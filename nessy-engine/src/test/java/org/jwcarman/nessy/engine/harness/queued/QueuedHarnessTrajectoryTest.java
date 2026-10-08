@@ -23,7 +23,9 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
@@ -36,6 +38,7 @@ import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.NarrationListener;
 import org.jwcarman.nessy.api.QueuedHarness;
+import org.jwcarman.nessy.api.Trajectory;
 import org.jwcarman.nessy.api.TurnOutcome;
 import org.jwcarman.nessy.api.TurnStats;
 import org.jwcarman.nessy.api.Usage;
@@ -62,7 +65,10 @@ import org.jwcarman.nessy.inference.InferenceResult;
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class QueuedHarnessTrajectoryTest {
 
-  private static final AgentType TYPE = new AgentType("trajectory");
+  // One database serves the whole class, and what a type has sighted stays sighted: each test
+  // takes a type of its own, so no test inherits another's known trajectories.
+  private final AgentType type =
+      new AgentType("trajectory-" + UUID.randomUUID().toString().substring(0, 8));
   private static final Duration PATIENCE = Duration.ofSeconds(30);
 
   private static final InferenceProvider ANSWERS =
@@ -81,7 +87,7 @@ class QueuedHarnessTrajectoryTest {
     return engine
         .harnesses()
         .create(
-            TYPE,
+            type,
             String.class,
             c ->
                 c.systemPrompt("You are terse.")
@@ -92,8 +98,8 @@ class QueuedHarnessTrajectoryTest {
     harness.tell(agent, "hello");
     await()
         .atMost(PATIENCE)
-        .untilAsserted(() -> assertThat(engine.backend().turns().of(TYPE, agent)).hasSize(1));
-    return engine.backend().turns().of(TYPE, agent).getFirst();
+        .untilAsserted(() -> assertThat(engine.backend().turns().of(type, agent)).hasSize(1));
+    return engine.backend().turns().of(type, agent).getFirst();
   }
 
   @Test
@@ -103,7 +109,7 @@ class QueuedHarnessTrajectoryTest {
 
     AgentTurn row = tellAndAwaitItsRow(harness(), agent);
 
-    List<AgentEvent> story = engine.story(TYPE, agent);
+    List<AgentEvent> story = engine.story(type, agent);
     assertThat(story).isNotEmpty();
     assertThat(story.getFirst()).isInstanceOf(AgentEvent.TurnStarted.class);
     assertThat(row.turn().value()).isEqualTo(story.getFirst().seq().value());
@@ -123,7 +129,7 @@ class QueuedHarnessTrajectoryTest {
         engine
             .harnesses()
             .create(
-                TYPE,
+                type,
                 String.class,
                 c ->
                     c.systemPrompt("You are terse.")
@@ -136,13 +142,24 @@ class QueuedHarnessTrajectoryTest {
   }
 
   @Test
+  void two_agents_told_the_same_thing_make_one_novel_row_between_them() {
+    engine = new EngineFixture(ANSWERS);
+    QueuedHarness<String> harness = harness();
+
+    AgentTurn a = tellAndAwaitItsRow(harness, AgentId.random());
+    AgentTurn b = tellAndAwaitItsRow(harness, AgentId.random());
+
+    assertThat(List.of(a.novel(), b.novel())).containsExactlyInAnyOrder(true, false);
+  }
+
+  @Test
   void the_rows_counts_agree_with_the_tally_of_the_same_turn() {
     engine = new EngineFixture(ANSWERS);
     AgentId agent = AgentId.random();
 
     AgentTurn row = tellAndAwaitItsRow(harness(), agent);
 
-    TurnStats stats = TurnTally.of(engine.story(TYPE, agent), row.turn());
+    TurnStats stats = TurnTally.of(engine.story(type, agent), row.turn());
     assertThat(row.inferenceCalls()).isEqualTo(stats.modelCalls());
     assertThat(row.toolCalls()).isEqualTo(stats.toolCalls());
     assertThat(row.inferenceCalls()).isEqualTo(1);
@@ -157,7 +174,7 @@ class QueuedHarnessTrajectoryTest {
     harness().tell(agent, "hello");
 
     await().atMost(PATIENCE).until(() -> refusals.get() >= 2);
-    List<AgentEvent> story = engine.story(TYPE, agent);
+    List<AgentEvent> story = engine.story(type, agent);
     assertThat(story)
         .isNotEmpty()
         .noneMatch(
@@ -166,7 +183,7 @@ class QueuedHarnessTrajectoryTest {
                     || e instanceof AgentEvent.InferenceRefused
                     || e instanceof AgentEvent.InferenceFailed
                     || e instanceof AgentEvent.TurnStopped);
-    assertThat(engine.backend().turns().of(TYPE, agent)).isEmpty();
+    assertThat(engine.backend().turns().of(type, agent)).isEmpty();
   }
 
   @Test
@@ -203,6 +220,9 @@ class QueuedHarnessTrajectoryTest {
                           KeyValue hash = c.getHighCardinalityKeyValue("nessy.trajectory.hash");
                           assertThat(hash).isNotNull();
                           assertThat(hash.getValue()).isEqualTo(row.trajectory().hash());
+                          assertThat(
+                                  c.getHighCardinalityKeyValue("nessy.trajectory.novel").getValue())
+                              .isEqualTo(Boolean.toString(row.novel()));
                         }));
   }
 
@@ -253,6 +273,12 @@ class QueuedHarnessTrajectoryTest {
     public AgentTurns turns() {
       AgentTurns real = backend.turns();
       return new AgentTurns() {
+        @Override
+        public boolean firstSighting(
+            AgentType type, String label, Trajectory trajectory, Instant at) {
+          return real.firstSighting(type, label, trajectory, at);
+        }
+
         @Override
         public void append(AgentType type, AgentId agent, AgentTurn turn) {
           refusals.incrementAndGet();
