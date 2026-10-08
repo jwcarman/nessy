@@ -19,9 +19,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DisplayNameGeneration;
@@ -36,8 +43,11 @@ import org.jwcarman.nessy.api.TurnId;
 import org.jwcarman.nessy.api.TurnOutcome;
 import org.jwcarman.nessy.backend.turn.AgentTurn;
 import org.jwcarman.nessy.backend.turn.AgentTurns;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -285,5 +295,205 @@ class JdbcAgentTurnsTest {
   void another_agent_of_the_same_type_has_its_own_turns() {
     turns.append(TYPE, agent, turn(1, TurnOutcome.ANSWERED));
     assertThat(turns.of(TYPE, new AgentId(UUID.randomUUID()))).isEmpty();
+  }
+
+  private static AgentType freshType() {
+    return new AgentType("t" + UUID.randomUUID().toString().substring(0, 8));
+  }
+
+  private static Trajectory path() {
+    return new Trajectory((short) 1, "ab".repeat(32));
+  }
+
+  private long knownRows(AgentType type) {
+    return JdbcClient.create(database)
+        .sql("SELECT COUNT(*) FROM nessy_known_trajectory WHERE agent_type = ?")
+        .params(type.value())
+        .query(Long.class)
+        .single();
+  }
+
+  private TransactionTemplate transaction() {
+    return new TransactionTemplate(new DataSourceTransactionManager(database));
+  }
+
+  @Test
+  void the_first_sighting_of_a_trajectory_is_novel_and_the_second_is_not() {
+    AgentType type = freshType();
+    Instant now = Instant.now();
+    boolean first = turns.firstSighting(type, "Q", path(), now);
+    boolean second = turns.firstSighting(type, "Q", path(), now);
+    assertThat(first).isTrue();
+    assertThat(second).isFalse();
+  }
+
+  @Test
+  void the_same_trajectory_under_another_label_type_or_version_is_novel_again() {
+    AgentType type = freshType();
+    Instant now = Instant.now();
+    assertThat(turns.firstSighting(type, "Q", path(), now)).isTrue();
+    assertThat(turns.firstSighting(type, "R", path(), now)).isTrue();
+    assertThat(turns.firstSighting(freshType(), "Q", path(), now)).isTrue();
+    assertThat(turns.firstSighting(type, "Q", new Trajectory((short) 2, path().hash()), now))
+        .isTrue();
+  }
+
+  @Test
+  void a_sighting_keeps_the_first_time_and_a_repeat_does_not_move_it() {
+    AgentType type = freshType();
+    Instant t = Instant.now().truncatedTo(ChronoUnit.MICROS);
+    turns.firstSighting(type, "Q", path(), t);
+    turns.firstSighting(type, "Q", path(), t.plusSeconds(60));
+    OffsetDateTime firstSeen =
+        JdbcClient.create(database)
+            .sql("SELECT first_seen FROM nessy_known_trajectory WHERE agent_type = ?")
+            .params(type.value())
+            .query(OffsetDateTime.class)
+            .single();
+    assertThat(firstSeen.toInstant()).isEqualTo(t);
+  }
+
+  @Test
+  void a_row_reads_back_the_novelty_it_was_written_with() {
+    AgentTurn repeat = withNovelty(turn(1, TurnOutcome.ANSWERED), false);
+    AgentTurn fresh = withNovelty(turn(2, TurnOutcome.ANSWERED), true);
+    turns.append(TYPE, agent, repeat);
+    turns.append(TYPE, agent, fresh);
+    assertThat(turns.of(TYPE, agent)).extracting(AgentTurn::novel).containsExactly(false, true);
+  }
+
+  private static AgentTurn withNovelty(AgentTurn row, boolean novel) {
+    return new AgentTurn(
+        row.turn(),
+        row.endingSeq(),
+        row.arrivedAt(),
+        row.startedAt(),
+        row.endedAt(),
+        row.trajectory(),
+        row.trajectoryJson(),
+        row.label(),
+        novel,
+        row.outcome(),
+        row.rounds(),
+        row.toolCalls(),
+        row.toolSuccesses(),
+        row.toolFailures(),
+        row.toolDenials(),
+        row.inferenceCalls(),
+        row.inferenceRetries());
+  }
+
+  @Test
+  void a_sighting_in_a_rolled_back_transaction_leaves_nothing_and_the_next_is_novel() {
+    AgentType type = freshType();
+    TransactionTemplate template = transaction();
+    Boolean inside =
+        template.execute(
+            status -> {
+              boolean novel = turns.firstSighting(type, "Q", path(), Instant.now());
+              status.setRollbackOnly();
+              return novel;
+            });
+    assertThat(inside).isTrue();
+    assertThat(knownRows(type)).isZero();
+    assertThat(turns.firstSighting(type, "Q", path(), Instant.now())).isTrue();
+    assertThat(knownRows(type)).isEqualTo(1);
+  }
+
+  @Test
+  void two_transactions_sighting_one_new_path_at_once_make_exactly_one_novel() throws Exception {
+    AgentType type = freshType();
+    assertThat(racingSightings(type, false)).containsExactly(true, false);
+    assertThat(knownRows(type)).isEqualTo(1);
+  }
+
+  @Test
+  void when_the_first_of_two_rolls_back_the_second_is_novel() throws Exception {
+    AgentType type = freshType();
+    assertThat(racingSightings(type, true)).containsExactly(true, true);
+    assertThat(knownRows(type)).isEqualTo(1);
+  }
+
+  /**
+   * Transaction A sights and holds its transaction open; B then sights the same key and blocks on
+   * A's index entry; A is released to commit or roll back. Returns A's and B's answers.
+   */
+  private List<Boolean> racingSightings(AgentType type, boolean firstRollsBack) throws Exception {
+    CountDownLatch sighted = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    try {
+      Future<Boolean> a =
+          pool.submit(
+              () ->
+                  transaction()
+                      .execute(
+                          status -> {
+                            boolean novel = turns.firstSighting(type, "Q", path(), Instant.now());
+                            sighted.countDown();
+                            await(release);
+                            if (firstRollsBack) {
+                              status.setRollbackOnly();
+                            }
+                            return novel;
+                          }));
+      assertThat(sighted.await(30, TimeUnit.SECONDS)).isTrue();
+      Future<Boolean> b =
+          pool.submit(
+              () ->
+                  transaction()
+                      .execute(status -> turns.firstSighting(type, "Q", path(), Instant.now())));
+      TimeUnit.MILLISECONDS.sleep(200);
+      assertThat(b.isDone()).isFalse();
+      release.countDown();
+      return List.of(a.get(30, TimeUnit.SECONDS), b.get(30, TimeUnit.SECONDS));
+    } finally {
+      release.countDown();
+      pool.shutdownNow();
+    }
+  }
+
+  private static void await(CountDownLatch latch) {
+    try {
+      if (!latch.await(30, TimeUnit.SECONDS)) {
+        throw new IllegalStateException("latch never released");
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException(e);
+    }
+  }
+
+  /**
+   * Pseudo-random 3-byte characters, so Postgres cannot compress the index entry below its limit.
+   */
+  private static String randomThreeByteLabel(int characters) {
+    Random random = new Random(20261008L);
+    StringBuilder label = new StringBuilder();
+    while (label.length() < characters) {
+      label.append((char) (0x0800 + random.nextInt(0xD7FF - 0x0800)));
+    }
+    return label.toString();
+  }
+
+  @Test
+  void a_label_of_the_most_characters_the_engine_lets_through_can_key_a_known_trajectory() {
+    // The engine cuts a label to 256 characters (InputLabels): 256 pseudo-random 3-byte characters
+    // is the worst case, ~768 bytes, well under Postgres's 2,704-byte btree entry limit. Random so
+    // the index entry cannot be compressed below it; a repeated character would pass for the wrong
+    // reason.
+    String label = randomThreeByteLabel(256);
+    assertThat(label).hasSize(256);
+    assertThat(turns.firstSighting(freshType(), label, path(), Instant.now())).isTrue();
+  }
+
+  @Test
+  void a_label_beyond_the_column_is_refused_by_the_database() {
+    String label = randomThreeByteLabel(257);
+    AgentType type = freshType();
+    Instant now = Instant.now();
+    assertThatThrownBy(() -> turns.firstSighting(type, label, path(), now))
+        .isInstanceOf(DataAccessException.class)
+        .hasMessageContaining("value too long");
   }
 }
