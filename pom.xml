@@ -198,7 +198,7 @@
          here directly, unlike nessy-autoconfigure, which inherits the version from its own Boot
          BOM import — nessy-console pulls no Spring BOM at all. -->
     <awaitility.version>4.3.0</awaitility.version>
-    <postgresql.version>42.7.13</postgresql.version>
+    <postgresql.version>42.7.14</postgresql.version>
     <!-- The MCP Java SDK's 2.0.0 line splits its JSON backend into a separate artifact
          (mcp-json-jackson2 vs. mcp-json-jackson3); nessy-tool-mcp pulls the core artifact
          plus the jackson2 backend explicitly rather than the `mcp` facade, which defaults
