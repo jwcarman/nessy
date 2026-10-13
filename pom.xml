@@ -110,7 +110,7 @@
     <jackson2.version>2.22.3</jackson2.version>
     <!-- Transitive through the AWS SDK's async HTTP client. Pinned per artifact rather than by
          importing netty-bom, for the reason recorded above on spring-boot-dependencies. -->
-    <netty.version>4.2.18.Final</netty.version>
+    <netty.version>4.2.19.Final</netty.version>
     <!-- Transitive through the AWS SDK's apache client. -->
     <httpcore5.version>5.4.4</httpcore5.version>
     <httpclient5.version>5.6.4</httpclient5.version>
