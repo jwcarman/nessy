@@ -177,7 +177,7 @@
     <!-- markdown-it as a WebJar, application-side only (chat-web example): the page loads its
          bundled browser build from /webjars/markdown-it/VERSION/dist/, so the version also
          appears in that example's index.html. -->
-    <markdown-it-webjar.version>14.3.0</markdown-it-webjar.version>
+    <markdown-it-webjar.version>14.3.2</markdown-it-webjar.version>
     <!-- highlight.js as a WebJar, for the same example: the browser build and its style sheets
          are served from /webjars/highlightjs__cdn-assets/VERSION/, so the version also appears
          in that example's index.html. -->
