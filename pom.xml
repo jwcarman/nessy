@@ -87,7 +87,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>25</maven.compiler.release>
     <anthropic.version>2.68.0</anthropic.version>
-    <openai.version>4.76.0</openai.version>
+    <openai.version>4.101.0</openai.version>
     <!-- Google's Gen AI Java SDK (Gemini Developer API + Vertex AI), GA line. Current
          release as of this module's creation (2026-08-15); see java-genai's GitHub
          releases for newer lines. -->
@@ -97,7 +97,7 @@
          since bedrockruntime pulls sibling AWS modules (regions, auth, sdk-core, netty-nio-client)
          that must resolve to one consistent line. Newest stable line on Maven Central as of this
          module's creation (2026-08-16). -->
-    <awssdk.version>2.55.11</awssdk.version>
+    <awssdk.version>2.57.10</awssdk.version>
     <jackson.version>3.2.3</jackson.version>
     <!-- jackson-annotations diverged from jackson-databind's version scheme
          starting with the 2.22 line (no patch digit) — kept as a separate
