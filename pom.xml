@@ -92,6 +92,12 @@
          release as of this module's creation (2026-08-15); see java-genai's GitHub
          releases for newer lines. -->
     <google-genai.version>1.75.0</google-genai.version>
+    <!-- Guava, pinned only because google-genai brings it in transitively (via
+         google-auth-library-oauth2-http) at 33.4.0-android, inside the range of a deserialization
+         memory-allocation advisory fixed in 33.7.2. The -jre flavour because Nessy runs only on a
+         full JVM, as Google's newer auth releases also choose. Remove this pin when google-genai's
+         own Guava is 33.7.2 or later. -->
+    <guava.version>33.8.0-jre</guava.version>
     <!-- AWS SDK for Java v2 (bedrockruntime, Converse/ConverseStream). Managed via the SDK's
          own BOM (like micrometer/testcontainers below) rather than a single artifact version,
          since bedrockruntime pulls sibling AWS modules (regions, auth, sdk-core, netty-nio-client)
@@ -493,6 +499,11 @@
         <groupId>com.google.genai</groupId>
         <artifactId>google-genai</artifactId>
         <version>${google-genai.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.google.guava</groupId>
+        <artifactId>guava</artifactId>
+        <version>${guava.version}</version>
       </dependency>
       <dependency>
         <groupId>tools.jackson.core</groupId>
