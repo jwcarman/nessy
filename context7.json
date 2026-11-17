@@ -1,0 +1,21 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "url": "https://context7.com/jwcarman/nessy",
+  "public_key": "pk_teuqTJ1f9Z3tSlPtgF1K9",
+  "projectTitle": "Nessy (AI agent harness for Java)",
+  "description": "Nessy (org.jwcarman.nessy) is an agent harness framework for Java 25: DirectHarness and QueuedHarness run agent turns with tools, inference providers such as Anthropic, durable or in-memory backends, memory, planning, approvals, MCP tools and Spring Boot support.",
+  "folders": [
+    "docs",
+    "nessy-examples"
+  ],
+  "excludeFolders": [
+    "docs/superpowers",
+    "docs/assets"
+  ],
+  "rules": [
+    "Import org.jwcarman.nessy:nessy-bom and add the Nessy modules you need without versions; it does not manage org.jwcarman.codec:codec-jackson, which needs its own version.",
+    "DirectHarness.ask answers an AskOutcome (Answered, Refused, Failed, Busy, Terminated): branch on it rather than catching exceptions.",
+    "Build a harness once with its factory and keep it; use QueuedHarness.tell for work no caller waits on.",
+    "Check https://github.com/jwcarman/nessy/blob/main/CHANGELOG.md against the Nessy version in use: entries under Unreleased are not in any release yet."
+  ]
+}

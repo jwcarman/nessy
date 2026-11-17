@@ -40,8 +40,9 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
+      # every package pinned by hash (docs/requirements.in says how to regenerate it)
       - name: Install MkDocs Material
-        run: pip install --only-binary ':all:' mkdocs-material==9.7.7
+        run: pip install --require-hashes --only-binary ':all:' -r docs/requirements.txt
       - name: Build site
         run: mkdocs build --strict
       - uses: actions/upload-pages-artifact@v5
