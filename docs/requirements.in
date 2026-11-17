@@ -1,0 +1,5 @@
+# The docs site build. Regenerate requirements.txt after changing this file:
+#   uv pip compile docs/requirements.in --generate-hashes --universal --python-version 3.13 -o docs/requirements.txt
+mkdocs-material==9.7.7
+# /llms.txt, llms-full.txt and a Markdown copy of each page, for coding agents
+mkdocs-llmstxt==0.5.1

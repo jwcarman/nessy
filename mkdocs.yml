@@ -26,6 +26,7 @@ docs_dir: docs
 # Nessy's process artifacts (specs, plans) live under docs/superpowers and
 # stay out of the published site.
 exclude_docs: |
+  /requirements.*
   /superpowers/
 
 theme:
@@ -72,6 +73,50 @@ markdown_extensions:
   - pymdownx.highlight
   - pymdownx.inlinehilite
   - pymdownx.superfences
+
+# Declaring plugins replaces MkDocs' default list, so search is named here too.
+plugins:
+  - search
+  # https://llmstxt.org: an index of the docs for coding agents at /llms.txt, every page in
+  # one file at /llms-full.txt, and a Markdown copy of each page beside its HTML.
+  - llmstxt:
+      full_output: llms-full.txt
+      markdown_description: |
+        Nessy is an agent harness framework for Java 25. Maven coordinates: `org.jwcarman.nessy`; import
+        `nessy-bom` and add the modules you need (it does not manage `org.jwcarman.codec:codec-jackson`).
+        The changelog says what each version has: https://github.com/jwcarman/nessy/blob/main/CHANGELOG.md.
+      sections:
+        Start here:
+          - index.md: what Nessy is and which module does what
+          - guides/getting-started.md: building a direct harness, asking it things, the dependencies and imports
+          - guides/harness.md: DirectHarness.ask and QueuedHarness.tell, and when to use each
+          - guides/spring-boot.md: wiring Nessy into a Spring Boot application with nessy-spring-boot-starter
+        Guides:
+          - guides/providers.md: InferenceProvider adapters for model vendors, such as Anthropic
+          - guides/structured-output.md: asking a model for a typed answer instead of prose
+          - guides/prompts.md: system prompts and how they are fixed when a harness is built
+          - guides/narration.md: "Narration and NarrationListener: following what an agent is doing"
+          - guides/mcp-clients.md: using an MCP server's tools as Nessy tools with nessy-tool-mcp
+          - guides/observability.md: narration, events, traces, metrics and trajectories from a running agent
+        Concepts:
+          - concepts/two-doors.md: the two ways into an agent, DirectHarness and QueuedHarness
+          - concepts/turns.md: what a turn is and what happens during one
+          - concepts/agent-as-scope.md: an agent as a recipe bound to an id
+          - concepts/durable-computation.md: tools and approvals that take days, and how turns survive them
+          - concepts/turn-policy.md: budgets and limits on a whole turn
+          - concepts/cost.md: what a turn spends on tokens and how to bound it
+          - concepts/tools.md: "writing a tool: name, description, input type and call"
+          - concepts/authorization.md: approving or refusing a tool call before it runs
+          - concepts/context.md: the stratified context a model is shown
+          - concepts/memory.md: what an agent remembers between turns, with nessy-memory
+          - concepts/planning.md: model-written plans with nessy-planning
+          - concepts/outcomes.md: outcome values such as AskOutcome instead of exceptions
+          - concepts/trajectories.md: the normalized shape of a completed turn
+          - concepts/backlog.md: what happens to a tell while a turn is running
+          - concepts/events.md: AgentEvent, the durable record of what happened to an agent
+          - concepts/storage.md: how Nessy keeps agents in PostgreSQL
+          - concepts/leases.md: running background work once across several processes
+          - concepts/twelve-factor-agents.md: how Nessy maps to the 12-Factor Agents principles
 
 nav:
   - Home: index.md
