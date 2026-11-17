@@ -37,9 +37,9 @@ import org.springframework.context.annotation.Import;
 
 /**
  * The page draws answers with markdown-it's browser build, colours their code with highlight.js and
- * draws its icons with Lucide, all served from WebJars on the classpath. The paths are read from
- * the page itself, so each version is written only in the pom and the page, and this fails when the
- * two disagree.
+ * draws its icons with Lucide, all served from WebJars on the classpath. The page names them by
+ * versionless paths that webjars-locator-lite resolves, so each version is written only in the pom;
+ * this fails when a path is not served, and when a version creeps back into the page.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -51,7 +51,9 @@ class MarkdownScriptIntegrationTest {
   private static final Pattern WEBJAR = Pattern.compile("(?:src|href)=\"(/webjars/[^\"]+)\"");
 
   private static final Pattern SCRIPT =
-      Pattern.compile("<script src=\"(/webjars/markdown-it/[^\"]+/dist/markdown-it\\.min\\.js)\"");
+      Pattern.compile("<script src=\"(/webjars/markdown-it/dist/markdown-it\\.min\\.js)\"");
+
+  private static final Pattern VERSION_SEGMENT = Pattern.compile("/\\d+\\.\\d+[^/]*/");
 
   @TestConfiguration(proxyBeanMethods = false)
   static class ScriptedModelConfiguration {
@@ -105,5 +107,14 @@ class MarkdownScriptIntegrationTest {
     }
 
     assertThat(statuses).hasSameSizeAs(paths).containsOnly(200);
+  }
+
+  @Test
+  void the_page_names_no_webjar_version() throws IOException, InterruptedException {
+    HttpResponse<String> page = get("/");
+    List<String> paths =
+        WEBJAR.matcher(page.body()).results().map(found -> found.group(1)).toList();
+
+    assertThat(paths).isNotEmpty().noneMatch(path -> VERSION_SEGMENT.matcher(path).find());
   }
 }

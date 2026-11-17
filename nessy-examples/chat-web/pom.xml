@@ -156,6 +156,14 @@
       <artifactId>lucide</artifactId>
       <scope>runtime</scope>
     </dependency>
+    <!-- With the locator on the classpath Boot serves each WebJar without its version in the path
+         (/webjars/markdown-it/dist/...), so the page names no version and a bump in the root pom
+         is the only edit an upgrade needs. Version managed by Boot. -->
+    <dependency>
+      <groupId>org.webjars</groupId>
+      <artifactId>webjars-locator-lite</artifactId>
+      <scope>runtime</scope>
+    </dependency>
     <!-- Boot 4 auto-configures a DataSource only when its JDBC module is present. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
