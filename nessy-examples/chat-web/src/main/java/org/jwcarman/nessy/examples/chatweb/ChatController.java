@@ -247,7 +247,8 @@ public class ChatController {
       }
       switch (turn.result()) {
         case TurnResult.Answered(var blocks) -> lines.add(new Line(t, "assistant", text(blocks)));
-        case TurnResult.Failed _ -> lines.add(new Line(t, "system", "the agent could not answer"));
+        case TurnResult.Failed(var reason) ->
+            lines.add(new Line(t, "system", "the agent could not answer: " + reason));
         case TurnResult.Refused _ ->
             lines.add(new Line(t, "system", "the agent declined to answer"));
         case null -> {

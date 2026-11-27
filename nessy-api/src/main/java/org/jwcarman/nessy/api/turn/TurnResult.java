@@ -30,7 +30,8 @@ import org.jwcarman.nessy.api.block.Block;
  *
  * <p>Sealed, so a provider building a request switches over it exhaustively and cannot forget an
  * ending. It carries what each ending has rather than a discriminator plus a lookup: an answer has
- * content, and the other two have nothing to say beyond having happened.
+ * content, a failure has its reason (for the application, never the model), and a refusal has
+ * nothing to say beyond having happened.
  */
 // Named on the wire so a Turn can be written down whole -- the recorded inference contexts are
 // where that happens -- and read back as the type it was.
@@ -58,8 +59,24 @@ public sealed interface TurnResult {
    * The turn ended without an answer, and might have gone otherwise.
    *
    * <p>"Not this time." Nothing about the conversation is wrong; a call did not complete.
+   *
+   * <p>The {@code reason} is for the application -- a history read back after the turn's narration
+   * has gone by is the only place left to say why. It is never for the model: a provider building a
+   * request renders a failed turn without it, so the model is not invited to apologise for the
+   * engine's weather. A turn written down before the reason was recorded reads back with {@link
+   * #UNRECORDED}.
    */
-  record Failed() implements TurnResult {}
+  record Failed(String reason) implements TurnResult {
+
+    /** The reason of a failed turn written down before reasons were recorded. */
+    public static final String UNRECORDED = "no reason was recorded";
+
+    public Failed {
+      if (reason == null || reason.isBlank()) {
+        reason = UNRECORDED;
+      }
+    }
+  }
 
   /**
    * The turn was declined, and would be declined again.

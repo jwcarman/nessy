@@ -383,7 +383,12 @@ class OpenAiResponsesRequestsTest {
 
     @Test
     void that_failed_is_explained_by_a_system_item_rather_than_left_silent() {
-      Turn failed = new Turn(new TurnId(1), asked(1, "hello"), List.of(), new TurnResult.Failed());
+      Turn failed =
+          new Turn(
+              new TurnId(1),
+              asked(1, "hello"),
+              List.of(),
+              new TurnResult.Failed("the vendor was unreachable"));
 
       List<ResponseInputItem> items = itemsOf(List.of(failed, open(2, "again")));
 

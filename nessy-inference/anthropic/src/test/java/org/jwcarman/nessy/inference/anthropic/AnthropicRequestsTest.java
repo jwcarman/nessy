@@ -498,7 +498,11 @@ class AnthropicRequestsTest {
     @Test
     void that_failed_gets_an_assistant_message_because_there_is_no_role_that_could_narrate() {
       Turn failed =
-          new Turn(new TurnId(1), asked(1, "what happened?"), List.of(), new TurnResult.Failed());
+          new Turn(
+              new TurnId(1),
+              asked(1, "what happened?"),
+              List.of(),
+              new TurnResult.Failed("the vendor was unreachable"));
 
       var messages = params(List.of(failed, open(3, "again?"))).messages();
 
@@ -506,7 +510,9 @@ class AnthropicRequestsTest {
       assertThat(messages.get(1).role()).isEqualTo(MessageParam.Role.ASSISTANT);
       assertThat(messages.get(1).content().asBlockParams().getFirst().asText().text())
           .as("did not complete, rather than returned an error: it may never have run at all")
-          .contains("did not complete");
+          .contains("did not complete")
+          .as("the reason is the application's to read, never the model's")
+          .doesNotContain("the vendor was unreachable");
       assertThat(messages.get(2).role()).isEqualTo(MessageParam.Role.USER);
     }
 
@@ -1093,7 +1099,10 @@ class AnthropicRequestsTest {
           cached(
               List.of(
                   new Turn(
-                      new TurnId(1), asked(1, "question 1"), List.of(), new TurnResult.Failed()),
+                      new TurnId(1),
+                      asked(1, "question 1"),
+                      List.of(),
+                      new TurnResult.Failed("the vendor was unreachable")),
                   open(2, "question 2")));
 
       assertThat(markedIn(blocks)).containsExactly(0, 2);

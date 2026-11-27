@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.nessy.api.block.Block;
+import org.jwcarman.nessy.api.turn.TurnResult;
 import org.jwcarman.nessy.inference.Failure;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.jwcarman.nessy.inference.InferenceResult;
@@ -87,7 +88,7 @@ class ChatTurnEndingsIntegrationTest {
   }
 
   @Test
-  void a_failed_turn_ends_in_a_system_line_and_no_answer() {
+  void a_failed_turn_ends_in_a_system_line_that_says_why_and_no_answer() {
     ChatClient chat = new ChatClient(port);
     String agentId = UUID.randomUUID().toString();
 
@@ -97,7 +98,10 @@ class ChatTurnEndingsIntegrationTest {
         .atMost(Duration.ofSeconds(30))
         .untilAsserted(() -> assertThat(chat.state(agentId).working()).isFalse());
     ChatClient.PageState state = chat.state(agentId);
-    assertThat(state.texts()).containsExactly("please fail", "the agent could not answer");
+    assertThat(state.texts()).hasSize(2).first().isEqualTo("please fail");
+    assertThat(state.texts().getLast())
+        .startsWith("the agent could not answer: ")
+        .doesNotEndWith(TurnResult.Failed.UNRECORDED);
     assertThat(lastLine(state)).containsEntry("role", "system");
   }
 }

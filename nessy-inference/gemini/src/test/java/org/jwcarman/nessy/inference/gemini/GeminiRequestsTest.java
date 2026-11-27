@@ -162,7 +162,12 @@ class GeminiRequestsTest {
 
     @Test
     void a_failed_turn_is_answered_for_and_a_refused_one_is_left_out() {
-      Turn failed = new Turn(new TurnId(1), asked(1, "one"), List.of(), new TurnResult.Failed());
+      Turn failed =
+          new Turn(
+              new TurnId(1),
+              asked(1, "one"),
+              List.of(),
+              new TurnResult.Failed("the vendor was unreachable"));
       Turn refused = new Turn(new TurnId(3), asked(3, "two"), List.of(), new TurnResult.Refused());
 
       List<Content> contents =

@@ -339,7 +339,11 @@ class OpenAiChatRequestsTest {
     @Test
     void that_failed_is_explained_rather_than_left_silent() {
       Turn failed =
-          new Turn(new TurnId(1), asked(1, "what happened?"), List.of(), new TurnResult.Failed());
+          new Turn(
+              new TurnId(1),
+              asked(1, "what happened?"),
+              List.of(),
+              new TurnResult.Failed("the vendor was unreachable"));
 
       List<ChatCompletionMessageParam> messages = messagesOf(List.of(failed, open(3, "again?")));
 

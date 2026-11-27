@@ -147,18 +147,21 @@ class TerminationAndConfigurationTest {
         .atMost(Duration.ofSeconds(20))
         .until(() -> events.stream().anyMatch(Narration.TurnFailed.class::isInstance));
 
-    List<Turn> turns = engine.harnesses().histories().forAgent(FAILING, agentId).turnsFrom(0);
-    assertThat(turns).singleElement().extracting(Turn::result).isEqualTo(new TurnResult.Failed());
+    String narrated =
+        events.stream()
+            .filter(Narration.TurnFailed.class::isInstance)
+            .map(narration -> ((Narration.TurnFailed) narration).reason())
+            .findFirst()
+            .orElseThrow();
+    assertThat(narrated).isNotBlank().isNotEqualTo(TurnResult.Failed.UNRECORDED);
 
-    // The reason travels with the narration, and for THIS door that is the only way it travels:
-    // tell() returns only a TellOutcome, so a watcher told only that a turn failed would have to
-    // read the event stream -- a backend concern -- to find out anything more.
-    assertThat(events)
-        .filteredOn(Narration.TurnFailed.class::isInstance)
+    // The narration has gone by once the turn is over; the history is what an application reads
+    // back later (a page reload, say), so the reason travels there too -- the same words.
+    List<Turn> turns = engine.harnesses().histories().forAgent(FAILING, agentId).turnsFrom(0);
+    assertThat(turns)
         .singleElement()
-        .extracting(narration -> ((Narration.TurnFailed) narration).reason())
-        .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.STRING)
-        .isNotBlank();
+        .extracting(Turn::result)
+        .isEqualTo(new TurnResult.Failed(narrated));
   }
 
   @Test

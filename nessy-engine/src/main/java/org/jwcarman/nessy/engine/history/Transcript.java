@@ -102,7 +102,7 @@ public final class Transcript {
           open = null;
         }
         case AgentEvent.InferenceFailed failed -> {
-          turns.add(require(open, event).closed(new TurnResult.Failed()));
+          turns.add(require(open, event).closed(new TurnResult.Failed(failed.failure().reason())));
           open = null;
         }
 

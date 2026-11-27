@@ -162,7 +162,8 @@ public class ApprovalsController {
       }
       switch (turn.result()) {
         case TurnResult.Answered(var blocks) -> notes.add(new Note("assistant", text(blocks)));
-        case TurnResult.Failed _ -> notes.add(new Note("system", "the round failed"));
+        case TurnResult.Failed(var reason) ->
+            notes.add(new Note("system", "the round failed: " + reason));
         case TurnResult.Refused _ -> notes.add(new Note("system", "the model refused"));
         case null -> {
           // A round still under way.
