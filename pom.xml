@@ -104,16 +104,16 @@
          that must resolve to one consistent line. Newest stable line on Maven Central as of this
          module's creation (2026-08-16). -->
     <awssdk.version>2.59.5</awssdk.version>
-    <jackson.version>3.2.3</jackson.version>
+    <jackson.version>3.3.0</jackson.version>
     <!-- jackson-annotations diverged from jackson-databind's version scheme
          starting with the 2.22 line (no patch digit) — kept as a separate
          property so each artifact resolves to a version that actually
          exists. -->
-    <jackson-annotations.version>2.22</jackson-annotations.version>
+    <jackson-annotations.version>2.23</jackson-annotations.version>
     <!-- Jackson 2 arrives transitively (the AWS SDK, the MCP jackson2 backend) while this repo
          codes against Jackson 3. Both lines therefore need pinning, and the 2 line was resolving
          at two different versions in different modules. -->
-    <jackson2.version>2.22.3</jackson2.version>
+    <jackson2.version>2.23.0</jackson2.version>
     <!-- Transitive through the AWS SDK's async HTTP client. Pinned per artifact rather than by
          importing netty-bom, for the reason recorded above on spring-boot-dependencies. -->
     <netty.version>4.2.19.Final</netty.version>
