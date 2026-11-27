@@ -149,15 +149,19 @@
          versions therefore move together; neither can lead.
 
          Odyssey 0.11.0 is the release on that same line: its parent pins codec 0.10.0, substrate
-         0.10.0 and Boot 4.1.1, which is what this POM pins too. Verified from the published
-         parent rather than inferred from the version number. -->
+         0.10.0 and Boot 4.1.1. Substrate here is 0.12.0 regardless: the first release whose
+         tables are a migratory changelog, like Nessy's own, and with the slow-shutdown fix of
+         0.11.0. Odyssey builds and passes against it unchanged, and substrate-bom, imported
+         below, lifts Odyssey's substrate to 0.12.0 in this build. An application does the same
+         by importing substrate-bom itself: under Maven 3 this POM's imports do not reach its
+         dependency resolution. -->
     <odyssey.version>0.11.0</odyssey.version>
     <!-- Migratory: every module that owns tables ships a Liquibase changelog and a
          META-INF/migratory.properties, and migratory runs them all before the application's own
          Liquibase. See docs/superpowers/specs/2026-11-27-schema-migrations-design.md. -->
     <migratory.version>0.1.0</migratory.version>
     <jmustache.version>1.16</jmustache.version>
-    <substrate.version>0.10.0</substrate.version>
+    <substrate.version>0.12.0</substrate.version>
     <!-- victools 5 returns tools.jackson ObjectNode, which is what we want now. The schema it
          produces is handed on as InputSchema, which is text, so which node type it builds
          internally never reaches an adapter. -->

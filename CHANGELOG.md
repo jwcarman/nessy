@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Spring Boot's Liquibase is now on in every application with a `DataSource`.** It needs a
   changelog of the application's own (an empty `databaseChangeLog: []` will do), or
   `spring.liquibase.enabled=false`, which leaves migratory running.
+- **Substrate 0.12.0.** Its tables are a migratory changelog too, so substrate-postgresql's tables
+  are created beside Nessy's, and it carries 0.11.0's slow-shutdown fix. Odyssey 0.11.0's pom
+  still names substrate 0.10.0, and Nessy's own BOM does not manage substrate: an application that
+  uses Odyssey or substrate should import `org.jwcarman.substrate:substrate-bom:0.12.0` itself,
+  after Spring Boot's BOM, so every substrate artifact resolves to one version.
 - **`TurnResult.Failed` carries the failure's reason.** `new TurnResult.Failed()` no longer
   compiles; a turn recorded before reasons were kept reads back with `TurnResult.Failed.UNRECORDED`.
 - **The starter depends on `codec-jackson`,** which its auto-configuration always needed at runtime.
