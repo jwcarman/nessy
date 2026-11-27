@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-27
+
+### Breaking changes
+
+Upgrading from 0.7.0:
+
+1. **Drop and recreate the database.** Nessy's tables, and substrate-postgresql's, are now Liquibase
+   migrations run by [migratory](https://jwcarman.github.io/migratory/), with no baseline for
+   tables the old scripts made.
+2. **Give the application a Liquibase changelog of its own** (empty is fine, and it never lists
+   Nessy's tables), or set `spring.liquibase.enabled=false`.
+3. **Remove `nessy.initialize-schema`.** To manage the tables yourself, set
+   `migratory.enabled=false`.
+4. **Import `org.jwcarman.substrate:substrate-bom:0.12.0`** after Spring Boot's BOM if the
+   application uses Odyssey or substrate.
+5. **`new TurnResult.Failed()` becomes `new TurnResult.Failed(reason)`**; a pattern match on
+   `TurnResult.Failed _` still compiles, and `TurnResult.Failed(var reason)` reads why.
+6. **`ReplConfig.dataSource` and `Schemas` are gone**, and `AgentTurns` has a new method,
+   `firstSighting`, that a custom implementation must add.
+
 ### Added
 
 - **A `novel` bit on every turn.** It is true when the turn's trajectory was never seen before for
@@ -18,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `nessy-backend-jdbc`, `nessy-memory-notebook` and `nessy-planning` each ship a Liquibase changelog
   and a `META-INF/migratory.properties`, and migratory runs them at startup before the
   application's own Liquibase. A later change to a table arrives as a new changeset.
+- **A startup warning when `nessy.provider` names a provider that is not registered**, saying which
+  key would register it (for a preset, the property and its environment variable).
 
 ### Changed
 
@@ -994,6 +1016,7 @@ Nessy is an agent harness framework for Java. This is the first release.
 - Java 25.
 - Spring Boot 4.1 (optional — only needed for `nessy-spring-boot-starter`).
 
+[0.8.0]: https://github.com/jwcarman/nessy/releases/tag/0.8.0
 [0.7.0]: https://github.com/jwcarman/nessy/releases/tag/0.7.0
 [0.6.0]: https://github.com/jwcarman/nessy/releases/tag/0.6.0
 [0.5.0]: https://github.com/jwcarman/nessy/releases/tag/0.5.0
