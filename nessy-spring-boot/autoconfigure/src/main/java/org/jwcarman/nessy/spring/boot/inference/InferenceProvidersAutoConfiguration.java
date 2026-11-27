@@ -20,6 +20,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
 
 /**
  * Registers every {@code nessy.providers.<id>} preset (lit by a vendor key or an explicit {@code
@@ -40,7 +41,9 @@ public class InferenceProvidersAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public InferenceReport nessyInferenceReport(
-      ObjectProvider<ResolvedProviders> resolvedProviders, ListableBeanFactory beans) {
-    return new InferenceReport(resolvedProviders, beans);
+      ObjectProvider<ResolvedProviders> resolvedProviders,
+      ListableBeanFactory beans,
+      Environment environment) {
+    return new InferenceReport(resolvedProviders, beans, environment.getProperty("nessy.provider"));
   }
 }

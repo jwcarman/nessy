@@ -16,10 +16,13 @@
 package org.jwcarman.nessy.spring.boot.inference;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 import org.jwcarman.nessy.inference.InferenceProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +40,10 @@ import org.springframework.beans.factory.SmartInitializingSingleton;
  * InferenceProvider#vendor()} -- {@code resolved.vendor()} can disagree with it for the {@code
  * anthropic} and {@code gemini} wires, which ignore a vendor override, so the bean is the one
  * asked. Never the key, in either case, and never a property's value -- only its name.
+ *
+ * <p>It also says when {@code nessy.provider}, the default every agent type falls back to, names a
+ * provider that is not registered -- most often a preset whose key is unset -- because nothing else
+ * says so before the first turn fails.
  */
 final class InferenceReport implements SmartInitializingSingleton {
 
@@ -44,16 +51,22 @@ final class InferenceReport implements SmartInitializingSingleton {
 
   private final ObjectProvider<ResolvedProviders> resolvedProviders;
   private final ListableBeanFactory beans;
+  private final @Nullable String defaultProvider;
 
-  InferenceReport(ObjectProvider<ResolvedProviders> resolvedProviders, ListableBeanFactory beans) {
+  InferenceReport(
+      ObjectProvider<ResolvedProviders> resolvedProviders,
+      ListableBeanFactory beans,
+      @Nullable String defaultProvider) {
     this.resolvedProviders = resolvedProviders;
     this.beans = beans;
+    this.defaultProvider = defaultProvider;
   }
 
   @Override
   public void afterSingletonsInstantiated() {
     Map<String, InferenceProvider> providers =
         new TreeMap<>(beans.getBeansOfType(InferenceProvider.class));
+    warnWhenTheDefaultIsMissing(providers);
     if (providers.isEmpty()) {
       // Not this class's business to fail: whatever needs a provider will say so far more
       // usefully, naming the agent type that wanted one.
@@ -68,6 +81,41 @@ final class InferenceReport implements SmartInitializingSingleton {
               .collect(Collectors.joining("; "));
       log.info("NESSY INFERENCE: providers: {}", line);
     }
+  }
+
+  private void warnWhenTheDefaultIsMissing(Map<String, InferenceProvider> providers) {
+    if (defaultProvider == null
+        || defaultProvider.isBlank()
+        || providers.containsKey(defaultProvider)) {
+      return;
+    }
+    log.warn(
+        "NESSY INFERENCE: nessy.provider is {}, but no provider named {} is registered; turns that"
+            + " use the default will fail until {}",
+        defaultProvider,
+        defaultProvider,
+        remedy(defaultProvider));
+  }
+
+  /** What would register the provider: a preset's key or switch, or a bean of that name. */
+  private static String remedy(String id) {
+    Optional<Preset> preset = Preset.CATALOGUE.stream().filter(p -> p.id().equals(id)).findFirst();
+    if (preset.isEmpty()) {
+      return "nessy.providers." + id + " or an InferenceProvider bean named " + id + " exists";
+    }
+    if (preset.get().keyless()) {
+      return "nessy.providers." + id + ".enabled=true is set";
+    }
+    String keys =
+        preset.get().keyProperties().stream()
+            .map(name -> name + " (" + environmentVariable(name) + ")")
+            .collect(Collectors.joining(" or "));
+    return keys + " is set";
+  }
+
+  /** The environment variable Spring's relaxed binding reads a property from. */
+  private static String environmentVariable(String property) {
+    return property.replace('.', '_').replace('-', '_').toUpperCase(Locale.ROOT);
   }
 
   private Map<String, ResolvedProvider> resolvedById() {

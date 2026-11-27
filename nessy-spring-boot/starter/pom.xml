@@ -50,6 +50,14 @@
       <artifactId>nessy-spring-boot-autoconfigure</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!-- The auto-configuration's codecFactory builds a JacksonCodecFactory, so every application
+         the starter boots needs it at runtime. Optional in autoconfigure (it only compiles there);
+         brought here so an application that had it in test scope alone does not pass its tests
+         and then die at startup with NoClassDefFoundError. -->
+    <dependency>
+      <groupId>org.jwcarman.codec</groupId>
+      <artifactId>codec-jackson</artifactId>
+    </dependency>
   </dependencies>
 
 </project>

@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -57,6 +58,13 @@ class InferenceReportTest {
     logger().setLevel(null);
   }
 
+  private static InferenceReport report(AssertableApplicationContext context) {
+    return new InferenceReport(
+        context.getBeanProvider(ResolvedProviders.class),
+        context,
+        context.getEnvironment().getProperty("nessy.provider"));
+  }
+
   private static Logger logger() {
     return (Logger) LoggerFactory.getLogger(InferenceReport.class);
   }
@@ -67,8 +75,7 @@ class InferenceReportTest {
         .withPropertyValues("openai.api-key=sk-super-secret", "xai.api-key=xai-super-secret")
         .run(
             context -> {
-              InferenceReport report =
-                  new InferenceReport(context.getBeanProvider(ResolvedProviders.class), context);
+              InferenceReport report = report(context);
               report.afterSingletonsInstantiated();
 
               assertThat(output)
@@ -93,8 +100,7 @@ class InferenceReportTest {
             "nessy.providers.myanthropic.vendor=not-anthropic")
         .run(
             context -> {
-              InferenceReport report =
-                  new InferenceReport(context.getBeanProvider(ResolvedProviders.class), context);
+              InferenceReport report = report(context);
               report.afterSingletonsInstantiated();
 
               assertThat(output)
@@ -108,8 +114,7 @@ class InferenceReportTest {
   void nothing_configured_warns(CapturedOutput output) {
     runner.run(
         context -> {
-          InferenceReport report =
-              new InferenceReport(context.getBeanProvider(ResolvedProviders.class), context);
+          InferenceReport report = report(context);
           report.afterSingletonsInstantiated();
 
           assertThat(output).contains("NESSY INFERENCE: no provider is configured");
@@ -124,14 +129,58 @@ class InferenceReportTest {
             "nessy.providers.openai.properties.openai.user=tenant-42")
         .run(
             context -> {
-              InferenceReport report =
-                  new InferenceReport(context.getBeanProvider(ResolvedProviders.class), context);
+              InferenceReport report = report(context);
               report.afterSingletonsInstantiated();
 
               assertThat(output)
                   .contains("properties [openai.tools.strict, openai.user]")
                   .doesNotContain("tenant-42")
                   .doesNotContain("sk-super-secret");
+            });
+  }
+
+  @Test
+  void a_default_preset_without_its_key_warns_naming_the_key(CapturedOutput output) {
+    runner
+        .withPropertyValues("nessy.provider=anthropic", "openai.api-key=sk-super-secret")
+        .run(
+            context -> {
+              report(context).afterSingletonsInstantiated();
+
+              assertThat(output)
+                  .contains(
+                      "NESSY INFERENCE: nessy.provider is anthropic, but no provider named"
+                          + " anthropic is registered; turns that use the default will fail until"
+                          + " anthropic.api-key (ANTHROPIC_API_KEY) is set")
+                  .doesNotContain("sk-super-secret");
+            });
+  }
+
+  @Test
+  void a_default_custom_provider_that_is_not_registered_warns(CapturedOutput output) {
+    runner
+        .withPropertyValues("nessy.provider=corporate")
+        .run(
+            context -> {
+              report(context).afterSingletonsInstantiated();
+
+              assertThat(output)
+                  .contains(
+                      "nessy.provider is corporate, but no provider named corporate is registered;"
+                          + " turns that use the default will fail until nessy.providers.corporate"
+                          + " or an InferenceProvider bean named corporate exists");
+            });
+  }
+
+  @Test
+  void a_registered_default_provider_does_not_warn(CapturedOutput output) {
+    runner
+        .withPropertyValues("nessy.provider=openai", "openai.api-key=sk-super-secret")
+        .run(
+            context -> {
+              report(context).afterSingletonsInstantiated();
+
+              assertThat(output).doesNotContain("nessy.provider is");
             });
   }
 }
