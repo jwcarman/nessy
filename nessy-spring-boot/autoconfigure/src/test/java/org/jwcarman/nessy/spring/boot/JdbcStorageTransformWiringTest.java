@@ -25,6 +25,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.Codec;
+import org.jwcarman.migratory.autoconfigure.MigratoryAutoConfiguration;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.PayloadRef;
 import org.jwcarman.nessy.api.StorageCodecConfigurer;
@@ -37,6 +38,7 @@ import org.jwcarman.nessy.inference.InferenceResult;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration;
+import org.springframework.boot.liquibase.autoconfigure.LiquibaseAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -110,10 +112,15 @@ class JdbcStorageTransformWiringTest {
                   JacksonAutoConfiguration.class,
                   DataSourceTransactionManagerAutoConfiguration.class,
                   NessyAutoConfiguration.class,
-                  JdbcBackendAutoConfiguration.class))
+                  JdbcBackendAutoConfiguration.class,
+                  // The tables, the way an application gets them: migratory runs every module's
+                  // changelog. No changelog of this test's own, so Boot's own run is off.
+                  LiquibaseAutoConfiguration.class,
+                  MigratoryAutoConfiguration.class))
           .withUserConfiguration(
               AnInferenceProvider.class, ADatabaseAndANonDeterministicTransform.class)
           .withPropertyValues(
+              "spring.liquibase.enabled=false",
               "nessy.model=a-test-model",
               "nessy.provider=inference",
               "nessy.system-prompt=you are a test assistant");

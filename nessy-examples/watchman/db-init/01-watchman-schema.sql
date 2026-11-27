@@ -20,6 +20,6 @@
 -- the only moment this can happen: the application creates its own tables, but it cannot create the
 -- SCHEMA it is configured to put them in.
 --
--- application.yml asks for ?currentSchema=watchman, and CREATE TABLE IF NOT EXISTS cannot conjure a
--- schema to be created in.
+-- application.yml asks for ?currentSchema=watchman, and the migrations that create Nessy's tables
+-- cannot conjure a schema to create them in.
 CREATE SCHEMA IF NOT EXISTS watchman AUTHORIZATION watchman;

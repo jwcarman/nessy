@@ -38,6 +38,13 @@
       <groupId>org.springframework</groupId>
       <artifactId>spring-jdbc</artifactId>
     </dependency>
+    <!-- This module's tables are a Liquibase changelog, declared in META-INF/migratory.properties
+         and run by migratory before the application's own Liquibase: the dependency migratory
+         asks of every library that owns tables. -->
+    <dependency>
+      <groupId>org.jwcarman.migratory</groupId>
+      <artifactId>migratory-spring-boot-starter</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.jwcarman.codec</groupId>
       <artifactId>codec-core</artifactId>
@@ -51,11 +58,19 @@
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
     </dependency>
-    <!-- Test only: Schemas.initialize, which applies the schema the way an application would. -->
+    <!-- Test only: the backend's tables, which an application always has beside these. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-backend-jdbc</artifactId>
       <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- Test only: Migrations, the fixture that creates the tables with migratory's own runner. -->
+    <dependency>
+      <groupId>org.jwcarman.nessy</groupId>
+      <artifactId>nessy-backend-jdbc</artifactId>
+      <classifier>tests</classifier>
+      <type>test-jar</type>
       <scope>test</scope>
     </dependency>
     <!-- Test only: a CodecFactory to hand the store, which is what an application's is built on. -->

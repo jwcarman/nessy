@@ -52,13 +52,6 @@
       <artifactId>nessy-engine</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- Schemas.initialize, to create the tables before the first turn. Declared here rather than
-         reached through the starter, whose copy is optional and so does not travel. -->
-    <dependency>
-      <groupId>org.jwcarman.nessy</groupId>
-      <artifactId>nessy-backend-jdbc</artifactId>
-      <version>${project.version}</version>
-    </dependency>
     <!-- The model comes from whichever credentials are in the environment: a minimal Boot context
          (web-application-type NONE), and the starter's auto-configuration for whichever adapter is
          on the classpath contributes the InferenceProvider bean. The auto-configurations all live
@@ -74,21 +67,18 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter</artifactId>
     </dependency>
-    <!-- A real run, in a test: an adapter to find, a database to keep the agent in. -->
+    <!-- The auto-configuration's codecFactory builds a JacksonCodecFactory, and this module takes
+         nessy-spring-boot-autoconfigure (whose copy is optional) rather than the starter, so it
+         declares the codec itself. -->
+    <dependency>
+      <groupId>org.jwcarman.codec</groupId>
+      <artifactId>codec-jackson</artifactId>
+    </dependency>
+    <!-- A real run, in a test: an adapter to find. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-inference-openai</artifactId>
       <version>${project.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.postgresql</groupId>
-      <artifactId>postgresql</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>testcontainers-postgresql</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

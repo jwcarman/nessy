@@ -83,8 +83,7 @@ class NotebookAutoConfigurationTest {
                   NessyAutoConfiguration.class,
                   JdbcBackendAutoConfiguration.class,
                   NotebookAutoConfiguration.class))
-          .withUserConfiguration(ADatabase.class)
-          .withPropertyValues("nessy.initialize-schema=false");
+          .withUserConfiguration(ADatabase.class);
 
   @Test
   void the_notebook_feature_is_there_by_default() {
@@ -113,7 +112,6 @@ class NotebookAutoConfigurationTest {
                 JacksonAutoConfiguration.class,
                 NessyAutoConfiguration.class,
                 NotebookAutoConfiguration.class))
-        .withPropertyValues("nessy.initialize-schema=false")
         .run(
             context -> {
               assertThat(context).hasNotFailed();
@@ -153,7 +151,6 @@ class NotebookAutoConfigurationTest {
                 JdbcBackendAutoConfiguration.class,
                 NotebookAutoConfiguration.class))
         .withPropertyValues(
-            "nessy.initialize-schema=false",
             "spring.datasource.type=org.springframework.jdbc.datasource.SimpleDriverDataSource",
             "spring.datasource.url=jdbc:h2:mem:notebook-ordering;DB_CLOSE_DELAY=-1")
         .run(context -> assertThat(context).hasBean("nessyNotebookFeature"));

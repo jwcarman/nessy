@@ -1,6 +1,10 @@
 spring:
   application:
     name: chat-web
+  # This application's own tables, in its own Liquibase changelog. Nessy's tables are not listed
+  # there: migratory runs every Nessy module's changelog first, before this one.
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.xml
   threads:
     virtual:
       enabled: true

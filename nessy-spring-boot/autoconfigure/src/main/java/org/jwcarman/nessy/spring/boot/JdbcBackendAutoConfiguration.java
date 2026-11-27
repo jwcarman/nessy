@@ -23,7 +23,6 @@ import org.jwcarman.nessy.backend.QueuedBackend;
 import org.jwcarman.nessy.backend.jdbc.JdbcDirectBackend;
 import org.jwcarman.nessy.backend.jdbc.JdbcLeases;
 import org.jwcarman.nessy.backend.jdbc.JdbcQueuedBackend;
-import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -31,6 +30,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.annotation.Bean;
 import org.springframework.transaction.PlatformTransactionManager;
 
@@ -52,9 +52,7 @@ import org.springframework.transaction.PlatformTransactionManager;
  *
  * <p><b>Self-sufficient on purpose.</b> The tables and the codec factory both belong here rather
  * than in {@link NessyAutoConfiguration}: an application that excludes that class, or that runs
- * with no {@code DataSource} at all, must not orphan this backend. {@link NessyProperties} is
- * declared again here for the same reason -- {@code nessy.initialize-schema} has to be readable
- * whether or not {@link NessyAutoConfiguration} is on the classpath.
+ * with no {@code DataSource} at all, must not orphan this backend.
  */
 @AutoConfiguration(
     after = DataSourceAutoConfiguration.class,
@@ -70,36 +68,25 @@ import org.springframework.transaction.PlatformTransactionManager;
 public class JdbcBackendAutoConfiguration {
 
   /**
-   * The schema, created where the application says so.
-   *
-   * <p>Opt-in on purpose: {@code nessy.initialize-schema} defaults to true because an application
-   * that added the starter wants the tables, but an application that manages its own migrations
-   * turns it off and nothing runs a DDL file behind its back.
-   */
-  @Bean
-  @ConditionalOnMissingBean(name = "nessySchema")
-  /**
    * Named by every store this class hands out, and used by none of them: asking for it is what
-   * makes Boot create the tables before anything exists that would query them.
+   * makes Boot run the database initializers -- migratory, which runs every module's changelog --
+   * before anything exists that would query the tables.
    *
    * <p>It belongs here rather than on a door. A door takes a backend and cannot see what is behind
    * it, so a door that asked for a schema would be a door that knew what a table is; and the
-   * in-memory backend, which satisfies the same interface, has nothing to create.
+   * in-memory backend, which satisfies the same interface, has nothing to create. Nessy runs no SQL
+   * of its own: an application that manages the tables itself sets {@code migratory.enabled=false}
+   * and creates them however it sees fit.
    */
-  public NessySchema nessySchema(DataSource dataSource, NessyProperties properties) {
-    boolean initialize = Boolean.TRUE.equals(properties.initializeSchema());
-    if (initialize) {
-      Schemas.initialize(dataSource);
-    }
-    return new NessySchema(initialize);
+  @Bean
+  @ConditionalOnMissingBean
+  @DependsOnDatabaseInitialization
+  public NessySchema nessySchema() {
+    return new NessySchema();
   }
 
-  /**
-   * A marker, so every bean that needs tables can depend on the tables existing.
-   *
-   * @param initialized whether this starter ran the DDL, or left the tables to the application
-   */
-  public record NessySchema(boolean initialized) {}
+  /** A marker, so every bean that needs tables can depend on the tables existing. */
+  public record NessySchema() {}
 
   @Bean
   @ConditionalOnMissingBean

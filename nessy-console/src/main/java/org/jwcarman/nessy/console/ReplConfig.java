@@ -21,9 +21,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
-import javax.sql.DataSource;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Customizer;
@@ -51,7 +49,6 @@ public final class ReplConfig {
   private AgentType type = new AgentType("chat");
   private AgentId agentId = newConversation();
   private int maxTokens = 4096;
-  private DataSource dataSource;
   private boolean keptInMemory;
 
   ReplConfig() {}
@@ -129,19 +126,6 @@ public final class ReplConfig {
     return this;
   }
 
-  /**
-   * Where the conversation is kept.
-   *
-   * <p><b>No default, and there used to be one.</b> It was an embedded H2, and the engine's schema
-   * does not load on H2 at all -- its queries are PostgreSQL's. Left unset, the REPL uses whatever
-   * {@code DataSource} the Boot context has (so {@code SPRING_DATASOURCE_URL} is the easy button),
-   * and says so plainly if there is none.
-   */
-  public ReplConfig dataSource(DataSource dataSource) {
-    this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
-    return this;
-  }
-
   public <I> ReplConfig tool(Tool<I> tool) {
     Objects.requireNonNull(tool, "tool must not be null");
     granted.add(tool.name().value());
@@ -207,10 +191,6 @@ public final class ReplConfig {
 
   int maxTokens() {
     return maxTokens;
-  }
-
-  Optional<DataSource> dataSource() {
-    return Optional.ofNullable(dataSource);
   }
 
   List<Customizer<DirectHarnessConfig<String>>> tools() {

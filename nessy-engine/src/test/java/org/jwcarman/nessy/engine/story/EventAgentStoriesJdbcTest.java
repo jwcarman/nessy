@@ -33,7 +33,7 @@ import org.jwcarman.nessy.api.Narrated;
 import org.jwcarman.nessy.api.Seq;
 import org.jwcarman.nessy.backend.jdbc.JdbcAgentEvents;
 import org.jwcarman.nessy.backend.jdbc.JdbcDirectBackend;
-import org.jwcarman.nessy.backend.jdbc.Schemas;
+import org.jwcarman.nessy.backend.jdbc.Migrations;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.support.JdbcTransactionManager;
@@ -57,7 +57,7 @@ class EventAgentStoriesJdbcTest {
     DataSource database =
         new DriverManagerDataSource(
             POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
-    Schemas.initialize(database);
+    Migrations.run(database);
     JacksonCodecFactory codecs = new JacksonCodecFactory(JsonMapper.builder().build());
     Instant nanos = Instant.parse("2026-01-01T00:00:00.123456789Z");
     AgentId agent = AgentId.random();

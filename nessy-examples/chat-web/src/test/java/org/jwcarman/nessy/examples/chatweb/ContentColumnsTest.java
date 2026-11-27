@@ -24,7 +24,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.jwcarman.nessy.backend.jdbc.Schemas;
+import org.jwcarman.nessy.backend.jdbc.Migrations;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -90,7 +90,7 @@ class ContentColumnsTest {
     DataSource database =
         new DriverManagerDataSource(
             POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
-    Schemas.initialize(database);
+    Migrations.run(database);
     jdbc = JdbcClient.create(database);
   }
 

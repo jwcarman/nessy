@@ -52,8 +52,7 @@
       <artifactId>nessy-console</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- Schemas.initialize: this example creates its own tables rather than having a framework
-         run a DDL file behind its back. -->
+    <!-- The durable backend and its stores; their tables come with them, run by migratory. -->
     <dependency>
       <groupId>org.jwcarman.nessy</groupId>
       <artifactId>nessy-backend-jdbc</artifactId>

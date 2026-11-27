@@ -55,7 +55,7 @@ class JdbcBackendStorageTransformTest {
     DataSource database =
         new DriverManagerDataSource(
             POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
-    Schemas.initialize(database);
+    Migrations.run(database);
     return database;
   }
 

@@ -22,7 +22,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -50,42 +49,11 @@ import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolConfig;
 import org.jwcarman.nessy.api.tool.ToolName;
 import org.jwcarman.nessy.api.tool.ToolResult;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 @DisplayName("A REPL's configuration")
 class ReplConfigTest {
 
   private final ReplConfig config = new ReplConfig();
-
-  @Nested
-  @DisplayName("the database")
-  class TheDatabase {
-
-    /**
-     * There used to be a default -- an embedded H2 -- and the engine's schema does not load on H2
-     * at all. Absent here means "use the Boot context's", and the REPL says so if there is none.
-     */
-    @Test
-    @DisplayName("is absent until somebody supplies one, because there is no honest default")
-    void has_no_default() {
-      assertThat(config.dataSource()).isEmpty();
-    }
-
-    @Test
-    @DisplayName("is the caller's own when they have one, which is the whole point")
-    void a_supplied_database_is_the_one_used() {
-      // Never queried here: any DataSource object proves the plumbing, and this one needs no
-      // driver.
-      DataSource mine = new DriverManagerDataSource();
-      config.dataSource(mine);
-      assertThat(config.dataSource()).containsSame(mine);
-    }
-
-    @Test
-    void null_is_refused_rather_than_silently_meaning_the_default() {
-      assertThatThrownBy(() -> config.dataSource(null)).isInstanceOf(NullPointerException.class);
-    }
-  }
 
   @Nested
   @DisplayName("what is printed")

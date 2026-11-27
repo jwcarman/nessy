@@ -54,7 +54,6 @@ public record NessyProperties(
     Resource systemPromptFile,
     String model,
     Integer maxTokens,
-    Boolean initializeSchema,
     String embedder,
     String embeddingModel,
     Integer embeddingDimension) {
@@ -62,9 +61,6 @@ public record NessyProperties(
   public NessyProperties {
     type = type == null || type.isBlank() ? "agent" : type;
     maxTokens = maxTokens == null ? 4096 : maxTokens;
-    // On by default: an application that added the starter wants the tables. An application that
-    // manages its own migrations turns it off, and nothing runs a DDL file behind its back.
-    initializeSchema = initializeSchema == null || initializeSchema;
     // Blank is unset: ${CHAT_EMBEDDER:} binds as the empty string when the variable is not set, and
     // a store asks whether a default embedder was named.
     embedder = embedder == null || embedder.isBlank() ? null : embedder;

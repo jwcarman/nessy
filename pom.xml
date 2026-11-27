@@ -152,6 +152,10 @@
          0.10.0 and Boot 4.1.1, which is what this POM pins too. Verified from the published
          parent rather than inferred from the version number. -->
     <odyssey.version>0.11.0</odyssey.version>
+    <!-- Migratory: every module that owns tables ships a Liquibase changelog and a
+         META-INF/migratory.properties, and migratory runs them all before the application's own
+         Liquibase. See docs/superpowers/specs/2026-11-27-schema-migrations-design.md. -->
+    <migratory.version>0.1.0</migratory.version>
     <jmustache.version>1.16</jmustache.version>
     <substrate.version>0.10.0</substrate.version>
     <!-- victools 5 returns tools.jackson ObjectNode, which is what we want now. The schema it
@@ -725,6 +729,23 @@
         <groupId>org.jwcarman.odyssey</groupId>
         <artifactId>odyssey</artifactId>
         <version>${odyssey.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.migratory</groupId>
+        <artifactId>migratory-spring-boot-starter</artifactId>
+        <version>${migratory.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.migratory</groupId>
+        <artifactId>migratory-autoconfigure</artifactId>
+        <version>${migratory.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jwcarman.nessy</groupId>
+        <artifactId>nessy-backend-jdbc</artifactId>
+        <version>${project.version}</version>
+        <classifier>tests</classifier>
+        <type>test-jar</type>
       </dependency>
       <dependency>
         <groupId>io.modelcontextprotocol.sdk</groupId>

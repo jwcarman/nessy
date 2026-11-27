@@ -190,7 +190,7 @@ add `nessy-inference-spi`; an application building an agent depends on
 | `nessy-api` | the shared vocabulary: `Tool`, `Approver`, `Awaited`, blocks, `NarrationListener`, `AskOutcome` |
 | `nessy-inference-spi` | adapter authors: `InferenceProvider` |
 | `nessy-backend-spi` | backend authors: `DirectBackend`, `QueuedBackend`, `Chapters` for an agent's closed chapters, and `Leases` for work that must run once across processes |
-| `nessy-backend-jdbc` | one PostgreSQL `DataSource` behind either door, and `Schemas` |
+| `nessy-backend-jdbc` | one PostgreSQL `DataSource` behind either door, with its tables as a migratory changelog |
 | `nessy-backend-inmemory` | the same stores with nothing behind them but the process |
 | `nessy-engine` | the two doors' factories, and the fold behind them |
 | `nessy-inference-anthropic`, `nessy-inference-openai`, `nessy-inference-gemini`, `nessy-inference-bedrock` | the provider adapters; the OpenAI module speaks Chat Completions and the Responses API, and reaches every OpenAI-compatible endpoint |

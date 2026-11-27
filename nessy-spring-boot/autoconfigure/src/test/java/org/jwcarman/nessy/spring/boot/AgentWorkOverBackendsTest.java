@@ -26,6 +26,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jwcarman.codec.jackson.JacksonCodecFactory;
+import org.jwcarman.migratory.autoconfigure.MigratoryAutoConfiguration;
 import org.jwcarman.nessy.api.AgentId;
 import org.jwcarman.nessy.api.AgentStatus.Activity;
 import org.jwcarman.nessy.api.AgentType;
@@ -47,6 +48,7 @@ import org.jwcarman.nessy.inference.InferenceResult;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration;
+import org.springframework.boot.liquibase.autoconfigure.LiquibaseAutoConfiguration;
 import org.springframework.boot.micrometer.observation.autoconfigure.ObservationAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
@@ -102,8 +104,13 @@ class AgentWorkOverBackendsTest {
     }
   }
 
+  // spring.liquibase.enabled=false: this test has no changelog of its own, and migratory runs
+  // every module's regardless.
   private static final String[] PROPERTIES = {
-    "nessy.model=a-test-model", "nessy.provider=model", "nessy.system-prompt=you are a test"
+    "spring.liquibase.enabled=false",
+    "nessy.model=a-test-model",
+    "nessy.provider=model",
+    "nessy.system-prompt=you are a test"
   };
 
   private static Tool<Query> lookup() {
@@ -164,6 +171,8 @@ class AgentWorkOverBackendsTest {
                 ObservationAutoConfiguration.class,
                 NessyAutoConfiguration.class,
                 JdbcBackendAutoConfiguration.class,
+                LiquibaseAutoConfiguration.class,
+                MigratoryAutoConfiguration.class,
                 InMemoryBackendAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class,
                 DirectHarnessAutoConfiguration.class,
@@ -207,6 +216,8 @@ class AgentWorkOverBackendsTest {
                 ObservationAutoConfiguration.class,
                 NessyAutoConfiguration.class,
                 JdbcBackendAutoConfiguration.class,
+                LiquibaseAutoConfiguration.class,
+                MigratoryAutoConfiguration.class,
                 InMemoryBackendAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class,
                 DirectHarnessAutoConfiguration.class,

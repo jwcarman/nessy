@@ -29,7 +29,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.backend.jdbc.Schemas;
+import org.jwcarman.nessy.backend.jdbc.Migrations;
 import org.jwcarman.nessy.planning.Plan;
 import org.jwcarman.nessy.planning.PlanTools;
 import org.jwcarman.nessy.spring.boot.JdbcBackendAutoConfiguration;
@@ -68,7 +68,7 @@ class PlanPerTypeTest {
       DataSource database =
           new DriverManagerDataSource(
               POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
-      Schemas.initialize(database);
+      Migrations.run(database);
       return database;
     }
 
@@ -86,8 +86,7 @@ class PlanPerTypeTest {
                   NessyAutoConfiguration.class,
                   JdbcBackendAutoConfiguration.class,
                   PlanAutoConfiguration.class))
-          .withUserConfiguration(ADatabase.class)
-          .withPropertyValues("nessy.initialize-schema=false");
+          .withUserConfiguration(ADatabase.class);
 
   @Test
   void a_plan_written_for_one_type_is_not_in_the_ambient_of_another() {

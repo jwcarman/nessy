@@ -74,14 +74,6 @@ class NessyAutoConfigurationTest {
   private static final String PROVIDER = "nessy.provider=inference";
   private static final String PROMPT = "nessy.system-prompt=you are a test assistant";
 
-  /**
-   * <b>No tables, and that is the point of these tests.</b> They assert which beans exist; nothing
-   * here runs a turn. The engine's own schema does not even load on H2 -- {@code BYTEA} and {@code
-   * TIMESTAMPTZ} are PostgreSQL's -- so opting out is what lets a wiring test with an H2 {@code
-   * DataSource} stay a wiring test.
-   */
-  private static final String NO_SCHEMA = "nessy.initialize-schema=false";
-
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
           .withConfiguration(
@@ -94,7 +86,7 @@ class NessyAutoConfigurationTest {
                   InMemoryBackendAutoConfiguration.class,
                   QueuedHarnessAutoConfiguration.class))
           .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
-          .withPropertyValues(MODEL, PROVIDER, PROMPT, NO_SCHEMA);
+          .withPropertyValues(MODEL, PROVIDER, PROMPT);
 
   @Test
   void it_wires_a_harness_from_a_provider_and_a_database() {
@@ -133,7 +125,7 @@ class NessyAutoConfigurationTest {
                 InMemoryBackendAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class)
-        .withPropertyValues(MODEL, PROVIDER, PROMPT, NO_SCHEMA)
+        .withPropertyValues(MODEL, PROVIDER, PROMPT)
         .run(
             context -> {
               assertThat(context).hasNotFailed();
@@ -161,7 +153,7 @@ class NessyAutoConfigurationTest {
                 QueuedHarnessAutoConfiguration.class,
                 UsageReportsAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class)
-        .withPropertyValues(MODEL, PROVIDER, PROMPT, NO_SCHEMA)
+        .withPropertyValues(MODEL, PROVIDER, PROMPT)
         .run(
             context -> {
               assertThat(context).hasSingleBean(UsageReports.class);
@@ -184,7 +176,7 @@ class NessyAutoConfigurationTest {
                 QueuedHarnessAutoConfiguration.class,
                 AgentStoriesAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class)
-        .withPropertyValues(MODEL, PROVIDER, PROMPT, NO_SCHEMA)
+        .withPropertyValues(MODEL, PROVIDER, PROMPT)
         .run(context -> assertThat(context).hasSingleBean(AgentStories.class));
   }
 
@@ -218,7 +210,7 @@ class NessyAutoConfigurationTest {
                 InMemoryBackendAutoConfiguration.class,
                 DirectHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, AMeterRegistry.class)
-        .withPropertyValues(MODEL, PROVIDER, PROMPT, NO_SCHEMA)
+        .withPropertyValues(MODEL, PROVIDER, PROMPT)
         .run(
             context -> {
               assertThat(context).hasSingleBean(TokenUsageHandler.class);
@@ -249,7 +241,7 @@ class NessyAutoConfigurationTest {
                 InMemoryBackendAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
-        .withPropertyValues(PROVIDER, PROMPT, NO_SCHEMA)
+        .withPropertyValues(PROVIDER, PROMPT)
         .run(
             context -> {
               assertThat(context).hasFailed();
@@ -273,7 +265,7 @@ class NessyAutoConfigurationTest {
                 InferenceProvidersAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(ADatabase.class)
-        .withPropertyValues("xai.api-key=xai-test", "nessy.provider=xai", MODEL, PROMPT, NO_SCHEMA)
+        .withPropertyValues("xai.api-key=xai-test", "nessy.provider=xai", MODEL, PROMPT)
         .run(
             context -> {
               assertThat(context).hasNotFailed();
@@ -303,8 +295,7 @@ class NessyAutoConfigurationTest {
                 InferenceProvidersAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(ADatabase.class)
-        .withPropertyValues(
-            "openai.api-key=sk-test", "nessy.provider=claude", MODEL, PROMPT, NO_SCHEMA)
+        .withPropertyValues("openai.api-key=sk-test", "nessy.provider=claude", MODEL, PROMPT)
         .run(
             context -> {
               assertThat(context).hasNotFailed();
@@ -335,7 +326,7 @@ class NessyAutoConfigurationTest {
                 InferenceProvidersAutoConfiguration.class,
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
-        .withPropertyValues("openai.api-key=sk-test", PROMPT, NO_SCHEMA)
+        .withPropertyValues("openai.api-key=sk-test", PROMPT)
         .run(
             context -> {
               assertThat(context).hasNotFailed();
@@ -385,7 +376,7 @@ class NessyAutoConfigurationTest {
             InferenceProvider.class,
             () -> (request, narrator) -> new InferenceResult.Refusal("never called"))
         .withUserConfiguration(ADatabase.class)
-        .withPropertyValues(PROMPT, NO_SCHEMA)
+        .withPropertyValues(PROMPT)
         .run(
             context -> {
               assertThat(context).hasFailed();

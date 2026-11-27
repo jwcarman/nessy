@@ -140,7 +140,7 @@ See [Authorization](concepts/authorization.md).
 | `nessy-api` | tool and policy authors: `Tool`, `Approver`, `Awaited`, `NarrationListener`, `AskOutcome`, the block vocabulary |
 | `nessy-inference-spi` | adapter authors: `InferenceProvider` |
 | `nessy-backend-spi` | backend authors: `DirectBackend`, `QueuedBackend`, `Chapters` for an agent's closed chapters, and `Leases` for background work that must run once across processes |
-| `nessy-backend-jdbc` | one PostgreSQL `DataSource` behind either door, and `Schemas` |
+| `nessy-backend-jdbc` | one PostgreSQL `DataSource` behind either door, with its tables as a migratory changelog |
 | `nessy-backend-inmemory` | the same stores with nothing behind them but the process |
 | `nessy-engine` | application builders: `DefaultDirectHarnessFactory`, `DefaultQueuedHarnessFactory`, and the fold behind them |
 | `nessy-inference-anthropic`, `nessy-inference-openai`, `nessy-inference-gemini`, `nessy-inference-bedrock` | the provider adapters; the OpenAI module speaks Chat Completions and the Responses API, and reaches every OpenAI-compatible endpoint |

@@ -30,7 +30,7 @@ import org.jwcarman.nessy.api.tool.CallId;
 import org.jwcarman.nessy.api.tool.IdempotencyKey;
 import org.jwcarman.nessy.api.tool.ToolCallRequest;
 import org.jwcarman.nessy.api.tool.ToolName;
-import org.jwcarman.nessy.backend.jdbc.Schemas;
+import org.jwcarman.nessy.backend.jdbc.Migrations;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -64,12 +64,12 @@ final class Calls {
     POSTGRES.start();
   }
 
-  /** The shared database, with every {@code nessy-schema.sql} on the classpath applied to it. */
+  /** The shared database, with every migration declared on the test class path run against it. */
   static DataSource database() {
     DataSource database =
         new DriverManagerDataSource(
             POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
-    Schemas.initialize(database);
+    Migrations.run(database);
     return database;
   }
 

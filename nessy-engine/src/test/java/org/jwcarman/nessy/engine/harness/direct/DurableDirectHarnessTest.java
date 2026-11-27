@@ -45,7 +45,7 @@ import org.jwcarman.nessy.backend.inmemory.InMemoryLocks;
 import org.jwcarman.nessy.backend.jdbc.JdbcAgentEvents;
 import org.jwcarman.nessy.backend.jdbc.JdbcDirectBackend;
 import org.jwcarman.nessy.backend.jdbc.JdbcPayloads;
-import org.jwcarman.nessy.backend.jdbc.Schemas;
+import org.jwcarman.nessy.backend.jdbc.Migrations;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
 import org.jwcarman.nessy.backend.payload.Payloads;
@@ -88,7 +88,7 @@ class DurableDirectHarnessTest {
     DataSource database =
         new DriverManagerDataSource(
             POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
-    Schemas.initialize(database);
+    Migrations.run(database);
     return database;
   }
 

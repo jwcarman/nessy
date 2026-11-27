@@ -99,7 +99,6 @@ Everything below is read from `nessy.*`, bound by `NessyProperties`.
 | `nessy.system-prompt` | none | your own configuration, via `NessyProperties.resolveSystemPrompt()`; also the prompt-template auto-configuration when a prompt engine is on the classpath, where one of the two prompt properties is required at startup unless you declare your own `SystemPrompt` bean |
 | `nessy.system-prompt-file` | none; a `Resource`. **Setting both is an error** | the same places as `nessy.system-prompt` |
 | `nessy.type` | `agent` | ignored: nothing reads it. An agent's type is named when you call `factory.create(agentType, ...)`, not from a property |
-| `nessy.initialize-schema` | `true`: apply every module's `nessy-schema.sql` at startup | `JdbcBackendAutoConfiguration`'s schema bean |
 | `nessy.notebook.enabled` | `true`: the notebook installs its index and `remember`, `revise`, `recall` and `forget` on every agent of both doors when `nessy-memory-notebook` and the JDBC backend are on the classpath; `false` turns it off | `NotebookAutoConfiguration` |
 | `nessy.plan.enabled` | `true`: the plan store installs the ambient current plan and `update_plan` on every agent of both doors when `nessy-planning` and the JDBC backend are on the classpath; `false` turns it off | `PlanAutoConfiguration` |
 | `nessy.prompt.engine` | `spring`, or `mustache` | `PromptEngineAutoConfiguration` |
@@ -271,20 +270,21 @@ Jackson.
 
 ## The schema
 
-`nessy.initialize-schema` defaults to `true`: with `nessy-backend-jdbc` and a
-`DataSource`, the starter gathers every module's `nessy-schema.sql` from the
-classpath and runs them at startup, safe to repeat. An application using
-Flyway or Liquibase sets it to `false` and applies the same files through
-whichever migration tool it already runs — Boot looks for `schema.sql`,
-Nessy's file is named `nessy-schema.sql`, and that name is the whole opt-in.
-`nessy_note`, the notebook's table, and `nessy_plan_task`, the plan's, are among
-the tables it must create; their DDL is the `nessy-schema.sql` in the notebook
-jar and the one in the planning jar.
-See [Storage](../concepts/storage.md).
+With `nessy-backend-jdbc` and a `DataSource`, Nessy's tables are created by
+[migratory](https://jwcarman.github.io/migratory/), which runs every module's
+Liquibase changelog at startup, before your application's own Liquibase.
+`nessy_note`, the notebook's table, and `nessy_plan_task`, the plan's, come
+from the notebook and planning jars the same way. Because Spring Boot's
+Liquibase is on too, your application needs a changelog of its own, listing
+only its own tables; the examples each carry an empty one to copy.
 
-The bean this produces, `JdbcBackendAutoConfiguration.NessySchema`, is a
-marker record: nothing queries it, and everything that needs the tables to
-exist first depends on it, so Spring builds it before them.
+To manage the tables yourself, set `migratory.enabled=false` and create them
+however you see fit. See [Storage](../concepts/storage.md).
+
+The bean `JdbcBackendAutoConfiguration.NessySchema` is a marker record:
+nothing queries it, it waits for database initialization (migratory's run),
+and everything that needs the tables to exist depends on it, so Spring builds
+it before them.
 
 ## A worked example
 

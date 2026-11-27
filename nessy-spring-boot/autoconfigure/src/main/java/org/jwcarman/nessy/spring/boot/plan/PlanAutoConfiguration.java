@@ -35,9 +35,9 @@ import org.springframework.context.annotation.Bean;
 
 /**
  * The plan store, installed on every agent of both doors when it and the JDBC backend are on the
- * classpath. The plan keeps its tasks in {@code nessy_plan_task}, a table the planning module's
- * schema file creates when the JDBC backend initializes the schema, so without that backend there
- * is no feature. The conditions are a {@code DataSource}, a {@code CodecFactory} and the JDBC
+ * classpath. The plan keeps its tasks in {@code nessy_plan_task}, a table the planning module's own
+ * changelog creates, run by migratory beside the JDBC backend's, so without that backend there is
+ * no feature. The conditions are a {@code DataSource}, a {@code CodecFactory} and the JDBC
  * backend's schema bean, so excluding the JDBC backend auto-configuration keeps the feature out.
  *
  * <p>Adding {@code nessy-planning} to the classpath adds the plan; the starter does not carry it.

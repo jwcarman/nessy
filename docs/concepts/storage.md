@@ -20,7 +20,7 @@ it all when the process stops.
 | Notes and plan tasks | `nessy_note`, `nessy_plan_task` | as their modules decide |
 | Background work claimed once, see [Leases](leases.md) | `nessy_lease` | its TTL |
 
-Every module that needs a table ships it in its own `nessy-schema.sql`.
+Every module that needs a table ships it as a Liquibase changelog of its own.
 The story, the outbox, the backlog, the chapters and the leases come from
 `nessy-backend-jdbc`; notes and plan tasks come from `nessy-memory-notebook`
 and `nessy-planning`.
@@ -33,7 +33,7 @@ LOCKED` to claim work, `INSERT ... ON CONFLICT` to take a lease, `TIMESTAMPTZ`
 columns. The JDBC backend runs on PostgreSQL only, with no H2 or other
 embedded database standing in for it. The in-memory backend is a separate
 implementation of the same stores, not a fallback for the JDBC one. The test
-suite runs the same DDL against a real PostgreSQL container.
+suite runs the same changelogs against a real PostgreSQL container.
 
 The database must use UTF8 encoding, which is the PostgreSQL default.
 `nessy_agent_turn.trajectory` stores tool names as text, and a name outside
@@ -41,20 +41,26 @@ the database's character set would make the turn's ending fail to commit.
 
 ## Applying the schema
 
-`Schemas` gathers every module's `nessy-schema.sql` from the classpath and
-runs them, in one call, safe to repeat. It creates what is missing and never
-alters an existing table, so a changed table means recreating the database:
+Nessy runs no SQL of its own. Each module that owns tables puts a Liquibase
+changelog and a `META-INF/migratory.properties` in its jar, and
+[migratory](https://jwcarman.github.io/migratory/) finds every one on the
+classpath and runs them, in order, before your application's own Liquibase.
+Add a module and its tables come with it; you list nothing.
 
-```java
-Schemas.initialize(dataSource);
-```
+Liquibase records what it ran, so a changelog runs once per database, and a
+change to a table arrives as a new changeset in a later release rather than
+as a recreated database.
 
-**The name is the opt-in.** Spring Boot looks for `schema.sql`, so Nessy's
-file never runs uninvited, and Nessy's loader never runs yours. Call this
-yourself, let the starter do it (`nessy.initialize-schema`, on by default),
-or feed the files to whatever runs your migrations. `classpath*:` matters:
-it enumerates *every* matching resource rather than the first, so a module
-added later brings its table with it.
+migratory turns Spring Boot's Liquibase on, and that wants a changelog of your
+application's own, which lists only your tables, never Nessy's. The examples
+each carry one, empty until they add a table:
+`src/main/resources/db/changelog/db.changelog-master.xml`, named by
+`spring.liquibase.change-log`. An application with no tables at all can set
+`spring.liquibase.enabled=false` instead, which leaves migratory running.
+
+**Managing the tables yourself.** Set `migratory.enabled=false` and create
+them however you like; the changelogs in Nessy's jars say what each table
+must look like.
 
 ## Two doors, two backends, different tables
 

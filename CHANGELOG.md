@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AgentTurn.novel`, and the span attribute `nessy.trajectory.novel`.
 - **The `nessy_known_trajectory` table.** It records the first sighting of each trajectory,
   write-once, and outlives the turns.
+- **Nessy's tables are migrations, run by [migratory](https://jwcarman.github.io/migratory/).**
+  `nessy-backend-jdbc`, `nessy-memory-notebook` and `nessy-planning` each ship a Liquibase changelog
+  and a `META-INF/migratory.properties`, and migratory runs them at startup before the
+  application's own Liquibase. A later change to a table arrives as a new changeset.
 
 ### Changed
 
@@ -22,10 +26,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`AgentTurn` has a new `novel` component after `label`.**
 - **`nessy_agent_turn` has a new `novel BOOLEAN NOT NULL` column, `label` is now `VARCHAR(256)`,
   and `nessy_known_trajectory` is new.** A database created by 0.7.0 must be dropped and recreated
-  before this version starts; there is no migration and no seed. An application with
-  `nessy.initialize-schema=false` must create the table and the column itself.
+  before this version starts; there is no migration and no seed.
+- **A database created by an earlier version must be dropped and recreated.** The tables now come
+  from migratory, and there is no baseline for a database the old `nessy-schema.sql` scripts made.
+- **Spring Boot's Liquibase is now on in every application with a `DataSource`.** It needs a
+  changelog of the application's own (an empty `databaseChangeLog: []` will do), or
+  `spring.liquibase.enabled=false`, which leaves migratory running.
+- **`TurnResult.Failed` carries the failure's reason.** `new TurnResult.Failed()` no longer
+  compiles; a turn recorded before reasons were kept reads back with `TurnResult.Failed.UNRECORDED`.
+- **The starter depends on `codec-jackson`,** which its auto-configuration always needed at runtime.
 - **The task label is cut to 256 characters, not 1,000.** A label over 256 characters becomes its
   first 253 followed by `...`, silently, so two labels that agree in those 253 are one category.
+
+### Removed
+
+- **`Schemas`, every `nessy-schema.sql`, and `nessy.initialize-schema`.** Nessy runs no SQL of its
+  own. An application that manages its tables itself sets `migratory.enabled=false`.
+- **`ReplConfig.dataSource`.** It existed only to create the tables before the console's first
+  turn, and the console keeps its conversation in memory.
 
 ## [0.7.0] - 2026-10-07
 

@@ -49,7 +49,7 @@ import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.jdbc.JdbcAgentEvents;
 import org.jwcarman.nessy.backend.jdbc.JdbcPayloads;
 import org.jwcarman.nessy.backend.jdbc.JdbcQueuedBackend;
-import org.jwcarman.nessy.backend.jdbc.Schemas;
+import org.jwcarman.nessy.backend.jdbc.Migrations;
 import org.jwcarman.nessy.backend.payload.Payloads;
 import org.jwcarman.nessy.engine.core.AgentState;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
@@ -171,7 +171,7 @@ public final class EngineFixture implements AutoCloseable {
 
     // Opt-in, and the whole point of the convention: an application says when its schema is
     // created rather than having a framework run a file named schema.sql behind its back.
-    Schemas.initialize(dataSource);
+    Migrations.run(dataSource);
 
     // Held for assertions only. The engine builds its own from the same DataSource; these are
     // stateless readers over the same tables, and a test that reached into the engine's would be

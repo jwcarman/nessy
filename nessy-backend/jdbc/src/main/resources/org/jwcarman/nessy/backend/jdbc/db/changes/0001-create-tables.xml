@@ -1,0 +1,517 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Copyright © 2026 James Carman
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+  <!--
+    Every table is keyed by a meaningless version 7 UUID, and a given id has the same
+    column name wherever it appears, primary key or foreign key. That is what lets a
+    query say USING (agent_id) rather than spelling out a join condition.
+  -->
+
+  <!--
+    An agent, so there is something to point at and a place to record that it has been terminated.
+
+    The lock that serialises an agent is not taken on this row. It is a Postgres advisory
+    transaction lock, pg_advisory_xact_lock, keyed by the agent's type and id. It holds for exactly
+    the transaction and is released by the database when a connection dies — no time-to-live to
+    tune, and none of the trouble a lease has telling a slow holder from a dead one.
+  -->
+  <changeSet id="nessy-backend-create-nessy_agent" author="nessy">
+    <createTable tableName="nessy_agent">
+      <column name="agent_type" type="VARCHAR(64)">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_agent" nullable="false"/>
+      </column>
+      <column name="agent_id" type="UUID">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_agent" nullable="false"/>
+      </column>
+      <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+        <constraints nullable="false"/>
+      </column>
+      <!--
+        When it was terminated, and null while it has not been.
+
+        Terminating cannot be delivered to an agent in the middle of a turn, because the fold takes
+        it only from idle. So it is recorded here, the backlog is emptied, and every read of the
+        backlog afterwards answers with the pill. The next time the agent is idle and asks for work,
+        terminating IS the work.
+      -->
+      <column name="terminated_at" type="TIMESTAMP WITH TIME ZONE"/>
+    </createTable>
+  </changeSet>
+
+  <!--
+    The outbox. Rows are written in the transition's transaction and performed later.
+
+    An effect has no row naming its cause. The cause is the transition that emitted it, and
+    the transaction that wrote state, story and effect together is what makes that hold —
+    a foreign key would only have restated it, and could not have pointed anywhere true:
+    a fold may emit an effect while recording no message at all.
+  -->
+  <changeSet id="nessy-backend-create-nessy_agent_effect" author="nessy">
+    <createTable tableName="nessy_agent_effect">
+      <column name="effect_id" type="UUID">
+        <constraints primaryKey="true" nullable="false"/>
+      </column>
+      <column name="agent_id" type="UUID">
+        <constraints nullable="false"/>
+      </column>
+      <column name="agent_type" type="VARCHAR(64)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="payload" type="BYTEA">
+        <constraints nullable="false"/>
+      </column>
+      <!--
+        Attached at emit, from the binding for this effect. Here rather than looked up when
+        marking, because marking must not decode the payload: it happens before anything knows what
+        kind of work this is. Frozen at emit, so a timeout changed in configuration reaches work
+        emitted afterwards, not work already queued. It is how long the work gets once it starts,
+        and it is read again at the first claim to fix the deadline below.
+      -->
+      <column name="timeout_millis" type="BIGINT">
+        <constraints nullable="false"/>
+      </column>
+      <!--
+        What to tell the agent if this effect can never be dispatched at all — written when the
+        effect is, in its own blob so that a payload which will not decode does not take the
+        handling of that failure down with it. Read only in that emergency; an ordinary failure
+        still produces its outcome the rich way, from the handler that knows what went wrong.
+
+        The case is not only corruption. A rolled-back deploy leaves rows naming an effect type the
+        running build has never heard of, which fails at decode identically — and an agent hanging
+        forever on one of those is a deploy incident rather than a bad byte.
+      -->
+      <column name="failure_payload" type="BYTEA">
+        <constraints nullable="false"/>
+      </column>
+      <!--
+        When this effect stops being worth doing. The agent declaring how long it is willing to
+        wait for an answer, so it is measured from when the effect was written down rather than
+        from when somebody got round to it: time spent queued is time the agent spent waiting, and
+        a budget that ignored it would be bounding the wrong thing.
+
+        Frozen at emit like timeout_millis above, and never touched again, so retries spend one
+        budget rather than restarting it. Distinct from actionable_at, which moves with every
+        attempt; this never moves.
+      -->
+      <column name="deadline" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+      <!--
+        The trace this effect belongs to, in W3C's own format, captured as the row was written.
+
+        Here because the thread that performs this row has nothing to inherit from: the emitting
+        transaction committed minutes ago and may have been in a process that has since died. A
+        turn comes back as one trace only if its parent was written down beside the work.
+
+        Nullable, and losing it costs a parent rather than a turn: a row written before tracing was
+        switched on, or by an application that never will, simply starts a trace of its own.
+      -->
+      <column name="trace_context" type="TEXT"/>
+      <column name="status" type="VARCHAR(16)">
+        <constraints nullable="false"/>
+      </column>
+      <!--
+        attempts_made is a fact the row records, and nothing yet judges it. actionable_at is the
+        one thing a query must see: before an attempt it is when to try, during one it is when the
+        attempt stops being believed. Either way it is when the row is due, which is why one column
+        serves both and no query needs to know which it is looking at.
+
+        On a parked row it is the deadline itself: nothing takes the row again before then.
+
+        It never runs past deadline. A row coming due at its deadline comes due to be given up on,
+        not to be tried again, and a backoff that would land beyond it is not a later retry.
+      -->
+      <column name="attempts_made" type="INT">
+        <constraints nullable="false"/>
+      </column>
+      <!--
+        What the attempts before this one learned, appended each time the row is rescheduled. Null
+        until something is tried a second time, which is the overwhelming majority of rows.
+
+        Here rather than derived later because a retry may span a crash: the process that made the
+        first attempt need not be the one that finishes the work, and an accounting that lived in
+        the dispatcher's memory would lose exactly the attempts a long retry made.
+
+        A blob for the same reason the payload beside it is one. What a failed attempt learned is
+        the engine's vocabulary — a classification and a count of tokens — and a table that
+        understood it would be a table that has to change when that vocabulary does.
+      -->
+      <column name="failed_attempts" type="BYTEA"/>
+      <column name="actionable_at" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+      <column name="created_at" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+      <column name="updated_at" type="TIMESTAMP WITH TIME ZONE"/>
+      <!--
+        When the attempt was parked: it asked for more time and is waiting for an answer from outside
+        rather than working. NULL on every row that was never parked. A parked row stays RUNNING, so
+        a late reply still finds it, and its actionable_at is its deadline.
+      -->
+      <column name="parked_at" type="TIMESTAMP WITH TIME ZONE"/>
+    </createTable>
+    <addForeignKeyConstraint baseTableName="nessy_agent_effect" baseColumnNames="agent_type,agent_id" referencedTableName="nessy_agent" referencedColumnNames="agent_type,agent_id" constraintName="fk_nessy_agent_effect_nessy_agent"/>
+    <!-- A check constraint has no change of its own outside Liquibase Pro. -->
+    <sql>ALTER TABLE nessy_agent_effect ADD CONSTRAINT ck_nessy_agent_effect_attempts_made CHECK (attempts_made >= 0)</sql>
+    <!-- Shaped for the one query that matters: due work of one agent type, oldest first. -->
+    <createIndex indexName="ix_nessy_agent_effect_actionable" tableName="nessy_agent_effect">
+      <column name="agent_type"/>
+      <column name="status"/>
+      <column name="actionable_at"/>
+    </createIndex>
+  </changeSet>
+
+  <!--
+    Content, kept away from the record of what happened to it.
+
+    Everything a model was shown or said — inputs, answers, tool results, JSON documents — lives here, and the
+    tables that describe an agent's life hold references to it. Two bounded lines of text per tool
+    call are the exception: what a call would do and what it returned, each at most 1,000
+    characters, kept in nessy_agent_event. The summaries of an agent's chapters are in nessy_chapter.
+    So what an agent has said is in three places, and answering what is retained means all three;
+    inputs still waiting their turn are in a fourth, nessy_agent_backlog.
+
+    Addressed by the hash of its own bytes, which buys idempotence: an effect retried after a
+    failure writes the same row rather than a second copy. Scoped by agent, which buys removal of
+    its payload rows: that is one statement over one table, with nothing shared out from under
+    another agent. It is not everything the agent said; the lines in nessy_agent_event, the
+    summaries in nessy_chapter and the waiting inputs in nessy_agent_backlog are elsewhere.
+    Identical content in two agents is stored twice, and that is the trade — cross-agent sharing is
+    rare, and a deletion that has to count references is a deletion somebody eventually gets wrong.
+  -->
+  <changeSet id="nessy-backend-create-nessy_payload" author="nessy">
+    <createTable tableName="nessy_payload">
+      <column name="agent_id" type="UUID">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_payload" nullable="false"/>
+      </column>
+      <!--
+        SHA-256 of the encoded content. Large enough that an accidental collision is far less
+        likely than the row being corrupted underneath us, and strong enough that a crafted one
+        is not a thing anybody can do.
+      -->
+      <column name="hash" type="BYTEA">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_payload" nullable="false"/>
+      </column>
+      <!--
+        What the content is, so a reader knows how to decode it before it decodes anything:
+        'BLOCKS' for message blocks, 'DOCUMENT' for a JSON document. A fixed word from the code.
+      -->
+      <column name="kind" type="VARCHAR(16)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="content" type="BYTEA">
+        <constraints nullable="false"/>
+      </column>
+      <column name="written_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+  </changeSet>
+
+  <!--
+    What happened to an agent, in order, append-only. Facts about a life rather than a copy of it:
+    every block is a reference into nessy_payload. It also holds short text: for a tool call, a line
+    saying what the call would do and a line saying what it returned, each at most 1,000 characters,
+    and a failed call's message, at most 1,000 characters as well. A denial's reason, why a turn
+    failed, a refusal's category and a failure's reason are also text, and are not bounded.
+
+    The primary key is the concurrency control. Two writers that decided from the same state mint
+    the same seq, so the second one violates it and takes its own transaction down — which is the
+    right way to find out that the state it decided against no longer holds.
+  -->
+  <changeSet id="nessy-backend-create-nessy_agent_event" author="nessy">
+    <createTable tableName="nessy_agent_event">
+      <!--
+        An agent is a type and an id together. An id alone was enough while every id was minted
+        fresh, but a caller names its own, so an application keying agents off a business identifier
+        can run two agent types over one id — and keyed by id alone those two would share one story.
+      -->
+      <column name="agent_type" type="VARCHAR(64)">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_agent_event" nullable="false"/>
+      </column>
+      <column name="agent_id" type="UUID">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_agent_event" nullable="false"/>
+      </column>
+      <column name="seq" type="BIGINT">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_agent_event" nullable="false"/>
+      </column>
+      <!--
+        Where a turn begins, which is the only thing about an event this table needs to know
+        without decoding it. Reading an agent back means replaying its last turn, and finding
+        where that starts is a lookup rather than a scan because of this column. A stored
+        watermark would answer the same question as a second copy of it that can disagree; this
+        is the events saying it themselves.
+      -->
+      <column name="starts_turn" type="BOOLEAN">
+        <constraints nullable="false"/>
+      </column>
+      <column name="payload" type="BYTEA">
+        <constraints nullable="false"/>
+      </column>
+      <column name="written_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+    <!--
+      Only the turn starts, which is all the boundary lookup reads. A handful of rows per agent
+      however long the conversation.
+    -->
+    <!-- A partial index has no change of its own outside Liquibase Pro. -->
+    <sql>CREATE INDEX nessy_agent_event_turn_starts ON nessy_agent_event (agent_type, agent_id, seq DESC) WHERE starts_turn</sql>
+  </changeSet>
+
+  <!--
+    An agent lock has no table. It is a Postgres advisory lock, taken with
+    pg_advisory_xact_lock on a hash of (kind, agent type, agent id) and released by the database
+    when the transaction ends — committed, rolled back, or its connection simply dropped. There is
+    no stale holder to fence against and nothing for an expiry to time. A lease needs its own table,
+    and the difference is the whole distinction between the two: a lease must outlive the process
+    that took it, so it is a fact to store; a lock exists only while a transaction is running, so
+    there is nothing to keep.
+
+    Work offered to an agent that is busy, waiting its turn.
+
+    One row per item, which is what lets a coalescer say "append" or "keep only this" in a statement
+    rather than rewriting a list. A single row holding a serialized backlog would make every
+    strategy a read-modify-write of the whole thing.
+
+    The input itself, NOT a claim check. Alongside the lines nessy_agent_event keeps, this is text
+    held outside nessy_payload, and unlike them it is whole and not bounded: a backlog is a staging
+    area rather than a record, and what is here is on its way into an event where it WILL be
+    claim-checked. Removing what an agent has said means this table too, with its payloads, its
+    events and its chapters.
+  -->
+  <changeSet id="nessy-backend-create-nessy_agent_backlog" author="nessy">
+    <createTable tableName="nessy_agent_backlog">
+      <column name="agent_type" type="VARCHAR(64)">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_agent_backlog" nullable="false"/>
+      </column>
+      <column name="agent_id" type="UUID">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_agent_backlog" nullable="false"/>
+      </column>
+      <!--
+        The backlog's own arrival ordinal, not an event seq: an item here is not an event yet and
+        may never become one, since a coalescer is free to drop it.
+      -->
+      <column name="ordinal" type="BIGINT">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_agent_backlog" nullable="false"/>
+      </column>
+      <column name="arrived_at" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+      <column name="payload" type="BYTEA">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+  </changeSet>
+
+  <!--
+    Leases: "only one of us should do this right now."
+
+    A row per (kind, agent type, agent id) that somebody is working on. Taking one is an insert, or
+    an update of a row whose holder let it expire; the holder deletes it when the work is done, and
+    a holder that died leaves a row the next caller takes over once expires_at has passed. Nothing
+    waits and nothing queues: a caller that finds the lease held gives up, which is what makes this
+    fit opportunistic work rather than work somebody is owed.
+
+    Time is the database's, so holders on different machines with different clocks agree on when
+    a lease has expired.
+
+    takeovers counts, for this row, how many times a holder that never released it has been taken
+    over; it is incremented only on the ON CONFLICT DO UPDATE path and resets naturally, because
+    release DELETEs the row — a row exists only between a take and its release, and the count never
+    outlives the contention it counts.
+  -->
+  <changeSet id="nessy-backend-create-nessy_lease" author="nessy">
+    <createTable tableName="nessy_lease">
+      <column name="kind" type="VARCHAR(64)">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_lease" nullable="false"/>
+      </column>
+      <column name="agent_type" type="VARCHAR(64)">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_lease" nullable="false"/>
+      </column>
+      <column name="agent_id" type="UUID">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_lease" nullable="false"/>
+      </column>
+      <column name="holder" type="UUID">
+        <constraints nullable="false"/>
+      </column>
+      <column name="expires_at" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+      <column name="takeovers" type="INT" defaultValueNumeric="0">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+  </changeSet>
+
+  <!--
+    One row per closed chapter of an agent's history. A chapter is a run of whole turns, from_turn
+    through through_turn inclusive; chapters are contiguous and never overlap. summary is null until
+    the text that stands in for the chapter has been written, and is written once.
+
+    after_turn is the through_turn of the chapter before this one, or 0 for the first. Unique per
+    agent, it is what lets two writers appending different chapters after the same point exclude each
+    other with no transaction and no lock: a chapter's from_turn differs between them, so the
+    primary key alone would let both in, but both would be claiming the same predecessor.
+  -->
+  <changeSet id="nessy-backend-create-nessy_chapter" author="nessy">
+    <createTable tableName="nessy_chapter">
+      <column name="agent_type" type="VARCHAR(64)">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_chapter" nullable="false"/>
+      </column>
+      <column name="agent_id" type="UUID">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_chapter" nullable="false"/>
+      </column>
+      <column name="from_turn" type="BIGINT">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_chapter" nullable="false"/>
+      </column>
+      <column name="through_turn" type="BIGINT">
+        <constraints nullable="false"/>
+      </column>
+      <column name="after_turn" type="BIGINT">
+        <constraints nullable="false"/>
+      </column>
+      <column name="summary" type="BYTEA"/>
+      <column name="closed_at" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+      <column name="summarized_at" type="TIMESTAMP WITH TIME ZONE"/>
+    </createTable>
+    <addUniqueConstraint tableName="nessy_chapter" columnNames="agent_type,agent_id,after_turn" constraintName="uq_nessy_chapter_after_turn"/>
+  </changeSet>
+
+  <!--
+    One row per completed turn: its trajectory (the versioned digest of which tools ran in which
+    rounds with which outcomes, and how the turn ended) and the counts a question about behaviour
+    asks first. A projection of nessy_agent_event, written in the same transaction as the event that
+    ended the turn, so a committed ending always has its row. turn_id is the seq of TurnStarted and
+    ending_seq the seq of the ending event: between them, inclusive, is the turn's slice of events,
+    and re-folding that slice reproduces trajectory_hash. The hash is 64 lowercase hex characters,
+    readable in a query and the same string the trace carries.
+    trajectory is the same behaviour as JSON (rounds of {tool, outcome}, then the outcome), stored
+    plain because tool names are not content: what a query reads, where the hash only compares.
+    label is the task label, a category never content, stored plain and outside the hash.
+    novel says whether this turn was the first of its agent type and label to take its trajectory,
+    as decided by nessy_known_trajectory in the same transaction.
+  -->
+  <changeSet id="nessy-backend-create-nessy_agent_turn" author="nessy">
+    <createTable tableName="nessy_agent_turn">
+      <column name="agent_type" type="VARCHAR(64)">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_agent_turn" nullable="false"/>
+      </column>
+      <column name="agent_id" type="UUID">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_agent_turn" nullable="false"/>
+      </column>
+      <column name="turn_id" type="BIGINT">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_agent_turn" nullable="false"/>
+      </column>
+      <column name="ending_seq" type="BIGINT">
+        <constraints nullable="false"/>
+      </column>
+      <column name="arrived_at" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+      <column name="started_at" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+      <column name="ended_at" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+      <column name="trajectory_version" type="SMALLINT">
+        <constraints nullable="false"/>
+      </column>
+      <column name="trajectory_hash" type="CHAR(64)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="trajectory" type="JSONB">
+        <constraints nullable="false"/>
+      </column>
+      <column name="label" type="VARCHAR(256)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="novel" type="BOOLEAN">
+        <constraints nullable="false"/>
+      </column>
+      <column name="outcome" type="VARCHAR(16)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="round_count" type="INTEGER">
+        <constraints nullable="false"/>
+      </column>
+      <column name="tool_call_count" type="INTEGER">
+        <constraints nullable="false"/>
+      </column>
+      <column name="tool_success_count" type="INTEGER">
+        <constraints nullable="false"/>
+      </column>
+      <column name="tool_failure_count" type="INTEGER">
+        <constraints nullable="false"/>
+      </column>
+      <column name="tool_denied_count" type="INTEGER">
+        <constraints nullable="false"/>
+      </column>
+      <column name="inference_call_count" type="INTEGER">
+        <constraints nullable="false"/>
+      </column>
+      <column name="inference_retry_count" type="INTEGER">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+    <!-- Which turns, of one agent type, followed one trajectory: the question every analysis starts from. -->
+    <createIndex indexName="ix_nessy_agent_turn_trajectory" tableName="nessy_agent_turn">
+      <column name="agent_type"/>
+      <column name="trajectory_version"/>
+      <column name="trajectory_hash"/>
+    </createIndex>
+  </changeSet>
+
+  <!--
+    Every trajectory ever seen, once: the first time an agent type, doing one kind of work (label),
+    ended a turn on this path under this encoding version. Written with the turn row, in the same
+    transaction, by INSERT ... ON CONFLICT DO NOTHING: the insert that stores a row is the turn that
+    was novel. Deliberately not owned by any agent and not removed with one, so that a path stays
+    known after the turns that walked it are gone. No count and no last_seen, on purpose: a DO
+    UPDATE would lock the row of every common path under every concurrent turn's commit.
+  -->
+  <changeSet id="nessy-backend-create-nessy_known_trajectory" author="nessy">
+    <createTable tableName="nessy_known_trajectory">
+      <column name="agent_type" type="VARCHAR(64)">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_known_trajectory" nullable="false"/>
+      </column>
+      <column name="label" type="VARCHAR(256)">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_known_trajectory" nullable="false"/>
+      </column>
+      <column name="trajectory_version" type="SMALLINT">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_known_trajectory" nullable="false"/>
+      </column>
+      <column name="trajectory_hash" type="CHAR(64)">
+        <constraints primaryKey="true" primaryKeyName="pk_nessy_known_trajectory" nullable="false"/>
+      </column>
+      <column name="first_seen" type="TIMESTAMP WITH TIME ZONE">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+  </changeSet>
+
+</databaseChangeLog>

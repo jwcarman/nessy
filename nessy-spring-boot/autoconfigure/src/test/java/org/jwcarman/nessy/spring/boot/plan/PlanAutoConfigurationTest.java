@@ -83,8 +83,7 @@ class PlanAutoConfigurationTest {
                   NessyAutoConfiguration.class,
                   JdbcBackendAutoConfiguration.class,
                   PlanAutoConfiguration.class))
-          .withUserConfiguration(ADatabase.class)
-          .withPropertyValues("nessy.initialize-schema=false");
+          .withUserConfiguration(ADatabase.class);
 
   @Test
   void the_plan_feature_is_there_by_default() {
@@ -113,7 +112,6 @@ class PlanAutoConfigurationTest {
                 JacksonAutoConfiguration.class,
                 NessyAutoConfiguration.class,
                 PlanAutoConfiguration.class))
-        .withPropertyValues("nessy.initialize-schema=false")
         .run(
             context -> {
               assertThat(context).hasNotFailed();
@@ -153,7 +151,6 @@ class PlanAutoConfigurationTest {
                 JdbcBackendAutoConfiguration.class,
                 PlanAutoConfiguration.class))
         .withPropertyValues(
-            "nessy.initialize-schema=false",
             "spring.datasource.type=org.springframework.jdbc.datasource.SimpleDriverDataSource",
             "spring.datasource.url=jdbc:h2:mem:plan-ordering;DB_CLOSE_DELAY=-1")
         .run(context -> assertThat(context).hasBean("nessyPlanFeature"));

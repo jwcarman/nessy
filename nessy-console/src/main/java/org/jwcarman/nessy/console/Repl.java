@@ -28,7 +28,6 @@ import org.jwcarman.nessy.api.DirectHarnessFactory;
 import org.jwcarman.nessy.api.ProviderId;
 import org.jwcarman.nessy.api.block.Block;
 import org.jwcarman.nessy.backend.inmemory.InMemoryDirectBackend;
-import org.jwcarman.nessy.backend.jdbc.Schemas;
 import org.jwcarman.nessy.engine.harness.direct.DefaultDirectHarnessFactory;
 import org.jwcarman.nessy.engine.schema.VictoolsJsonSchemaGenerator;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -122,8 +121,8 @@ public final class Repl {
 
   /**
    * web-application-type NONE: the context exists to let Boot's own mechanism find an {@link
-   * InferenceProvider} bean (and, unless one was configured here, a {@code DataSource}), not to
-   * serve anything. Closed in the same try that closes everything else this call built.
+   * InferenceProvider} bean, not to serve anything. Closed in the same try that closes everything
+   * else this call built.
    */
   static void run(ReplConfig config, ConsoleIo io) {
     ConfigurableApplicationContext started;
@@ -170,7 +169,6 @@ public final class Repl {
       // backend hands over its own factory and can resume a conversation by id.
       // A tool that wants to remember something still brings its own store.
       config.keptInMemory();
-      config.dataSource().ifPresent(Schemas::initialize);
       // Both taken from the context rather than built here: Boot configures the mapper, the starter
       // configures the codec factory, and a terminal that made its own would write bytes by
       // different rules than the rest of the process it is running in. Reads are right; under a

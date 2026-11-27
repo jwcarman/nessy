@@ -36,10 +36,9 @@ import org.springframework.context.annotation.Bean;
 /**
  * The notebook, installed on every agent of both doors when it and the JDBC backend are on the
  * classpath. The notebook keeps its notes in {@code nessy_note}, a table the memory module's own
- * {@code nessy-schema.sql} creates when the JDBC backend initializes the schema, so without that
- * backend there is no feature. The conditions are a {@code DataSource}, a {@code CodecFactory} and
- * the JDBC backend's schema bean, so excluding the JDBC backend auto-configuration keeps the
- * feature out.
+ * changelog creates, run by migratory beside the JDBC backend's, so without that backend there is
+ * no feature. The conditions are a {@code DataSource}, a {@code CodecFactory} and the JDBC
+ * backend's schema bean, so excluding the JDBC backend auto-configuration keeps the feature out.
  *
  * <p>Adding {@code nessy-memory-notebook} to the classpath adds the notebook; the starter does not
  * carry it. An application that has the module but does not want its agents to keep notes says

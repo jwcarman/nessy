@@ -22,19 +22,14 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.postgresql.ds.PGSimpleDataSource;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
- * The whole console, once: a provider found through the Boot context it raises, a database handed
- * in, the schema applied, the harness built, and the loop run until the person leaves. The provider
- * points at a closed port, so a line typed into it fails fast and the failure is narrated rather
- * than thrown.
+ * The whole console, once: a provider found through the Boot context it raises, the harness built,
+ * and the loop run until the person leaves. The provider points at a closed port, so a line typed
+ * into it fails fast and the failure is narrated rather than thrown.
  */
 @DisplayName("A console application with everything configured")
 class ReplRunsTest {
-
-  private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
 
   private static final Map<String, String> PROPERTIES =
       Map.of(
@@ -45,14 +40,12 @@ class ReplRunsTest {
 
   @BeforeAll
   static void start() {
-    POSTGRES.start();
     PROPERTIES.forEach(System::setProperty);
   }
 
   @AfterAll
   static void stop() {
     PROPERTIES.keySet().forEach(System::clearProperty);
-    POSTGRES.stop();
   }
 
   private record Ping() {}
@@ -83,14 +76,6 @@ class ReplRunsTest {
     }
   }
 
-  private static PGSimpleDataSource database() {
-    PGSimpleDataSource dataSource = new PGSimpleDataSource();
-    dataSource.setUrl(POSTGRES.getJdbcUrl());
-    dataSource.setUser(POSTGRES.getUsername());
-    dataSource.setPassword(POSTGRES.getPassword());
-    return dataSource;
-  }
-
   @Test
   @DisplayName("prints its banner, takes a line, reports the turn, and leaves when told")
   void it_runs_the_loop() {
@@ -99,7 +84,6 @@ class ReplRunsTest {
         new ReplConfig()
             .banner("nessy test")
             .farewell("bye.")
-            .dataSource(database())
             .maxTokens(64)
             .tool(new PingTool())
             .systemPrompt("You are a test assistant.");
@@ -123,7 +107,7 @@ class ReplRunsTest {
     System.clearProperty("nessy.model");
     try {
       FakeConsole console = new FakeConsole("/exit");
-      Repl.run(new ReplConfig().dataSource(database()), console);
+      Repl.run(new ReplConfig(), console);
       assertThat(console.written()).contains("nessy.provider and nessy.model are a pair");
     } finally {
       System.setProperty("nessy.model", "a-model");
@@ -136,7 +120,7 @@ class ReplRunsTest {
     System.setProperty("nessy.provider", "oepnai");
     try {
       FakeConsole console = new FakeConsole("/exit");
-      Repl.run(new ReplConfig().dataSource(database()), console);
+      Repl.run(new ReplConfig(), console);
       assertThat(console.written())
           .contains("names provider 'oepnai', which is not registered")
           .doesNotContain("Exception");

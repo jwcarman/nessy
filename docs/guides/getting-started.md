@@ -96,10 +96,11 @@ DirectBackend backend = new InMemoryDirectBackend(codecs);
 
 `nessy-backend-jdbc` implements the same `DirectBackend` seam over
 PostgreSQL rows instead, for anything that must survive a restart — bring a
-`DataSource` and a Spring `PlatformTransactionManager`, call
-`Schemas.initialize(dataSource)` once, and hand
+`DataSource` and a Spring `PlatformTransactionManager`, and hand
 `new JdbcDirectBackend(dataSource, transactionManager, codecs)` to the
-factory instead. See [Storage](../concepts/storage.md).
+factory instead. In a Spring Boot application its tables are created at startup
+by [migratory](https://jwcarman.github.io/migratory/); see
+[Storage](../concepts/storage.md).
 
 **A provider.** An `InferenceProvider` is a vendor adapter, one per
 application:

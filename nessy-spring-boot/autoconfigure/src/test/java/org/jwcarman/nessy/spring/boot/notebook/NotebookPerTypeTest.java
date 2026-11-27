@@ -28,7 +28,7 @@ import org.jwcarman.nessy.api.AgentType;
 import org.jwcarman.nessy.api.Ambient;
 import org.jwcarman.nessy.api.AmbientSource;
 import org.jwcarman.nessy.api.block.Block;
-import org.jwcarman.nessy.backend.jdbc.Schemas;
+import org.jwcarman.nessy.backend.jdbc.Migrations;
 import org.jwcarman.nessy.memory.notebook.NotebookTools;
 import org.jwcarman.nessy.spring.boot.JdbcBackendAutoConfiguration;
 import org.jwcarman.nessy.spring.boot.NessyAutoConfiguration;
@@ -66,7 +66,7 @@ class NotebookPerTypeTest {
       DataSource database =
           new DriverManagerDataSource(
               POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
-      Schemas.initialize(database);
+      Migrations.run(database);
       return database;
     }
 
@@ -84,8 +84,7 @@ class NotebookPerTypeTest {
                   NessyAutoConfiguration.class,
                   JdbcBackendAutoConfiguration.class,
                   NotebookAutoConfiguration.class))
-          .withUserConfiguration(ADatabase.class)
-          .withPropertyValues("nessy.initialize-schema=false");
+          .withUserConfiguration(ADatabase.class);
 
   @Test
   void a_note_filed_for_one_type_is_not_in_the_index_of_another() {
