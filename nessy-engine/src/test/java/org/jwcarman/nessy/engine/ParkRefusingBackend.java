@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.engine;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -34,6 +33,7 @@ import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.Effects;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.backend.effect.LiveEffect;
+import org.jwcarman.nessy.backend.effect.PendingEffect;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.lease.Leases;
 import org.jwcarman.nessy.backend.lock.Locks;
@@ -112,16 +112,8 @@ public final class ParkRefusingBackend implements QueuedBackend {
   private record RefusingToPark(Effects effects, AtomicInteger refusals) implements Effects {
 
     @Override
-    public void insert(
-        AgentType type,
-        AgentId agent,
-        AgentEffect effect,
-        Duration timeout,
-        EffectOutcome undispatchable,
-        Instant deadline,
-        String traceContext,
-        Instant at) {
-      effects.insert(type, agent, effect, timeout, undispatchable, deadline, traceContext, at);
+    public void insert(PendingEffect pending) {
+      effects.insert(pending);
     }
 
     @Override

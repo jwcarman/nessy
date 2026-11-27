@@ -45,6 +45,7 @@ import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.Effects;
+import org.jwcarman.nessy.backend.effect.PendingEffect;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.support.JdbcTransactionManager;
@@ -112,15 +113,16 @@ class JdbcEffectClaimTest {
       backend
           .effects()
           .insert(
-              TYPE,
-              agent,
-              new AgentEffect.Infer(new TurnId(1)),
-              Duration.ofMinutes(1),
-              new EffectOutcome.InferenceRefused(
-                  "undispatchable", Usage.unreported(), Optional.empty()),
-              now.plus(Duration.ofHours(1)),
-              null,
-              now);
+              new PendingEffect(
+                  TYPE,
+                  agent,
+                  new AgentEffect.Infer(new TurnId(1)),
+                  Duration.ofMinutes(1),
+                  new EffectOutcome.InferenceRefused(
+                      "undispatchable", Usage.unreported(), Optional.empty()),
+                  now.plus(Duration.ofHours(1)),
+                  null,
+                  now));
     }
     List<Integer> sizes = new ArrayList<>();
     Set<Object> claimed = ConcurrentHashMap.newKeySet();
@@ -172,15 +174,16 @@ class JdbcEffectClaimTest {
       backend
           .effects()
           .insert(
-              TYPE_CHURNED,
-              agent,
-              new AgentEffect.Infer(new TurnId(1)),
-              Duration.ofMinutes(1),
-              new EffectOutcome.InferenceRefused(
-                  "undispatchable", Usage.unreported(), Optional.empty()),
-              now.plus(Duration.ofHours(1)),
-              null,
-              now.minusSeconds(i));
+              new PendingEffect(
+                  TYPE_CHURNED,
+                  agent,
+                  new AgentEffect.Infer(new TurnId(1)),
+                  Duration.ofMinutes(1),
+                  new EffectOutcome.InferenceRefused(
+                      "undispatchable", Usage.unreported(), Optional.empty()),
+                  now.plus(Duration.ofHours(1)),
+                  null,
+                  now.minusSeconds(i)));
     }
     List<Integer> sizes = new ArrayList<>();
     CountDownLatch start = new CountDownLatch(1);
@@ -230,14 +233,16 @@ class JdbcEffectClaimTest {
     AgentId agent = AgentId.random();
     backend().agents().ensure(type, agent);
     effects.insert(
-        type,
-        agent,
-        new AgentEffect.Infer(new TurnId(1)),
-        TIMEOUT,
-        new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported(), Optional.empty()),
-        DEADLINE,
-        null,
-        START);
+        new PendingEffect(
+            type,
+            agent,
+            new AgentEffect.Infer(new TurnId(1)),
+            TIMEOUT,
+            new EffectOutcome.InferenceRefused(
+                "undispatchable", Usage.unreported(), Optional.empty()),
+            DEADLINE,
+            null,
+            START));
     return effects;
   }
 
@@ -378,14 +383,16 @@ class JdbcEffectClaimTest {
     backend.agents().ensure(type, agent);
     Effects effects = backend.effects();
     effects.insert(
-        type,
-        agent,
-        new AgentEffect.Infer(new TurnId(1)),
-        TIMEOUT,
-        new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported(), Optional.empty()),
-        DEADLINE,
-        null,
-        START);
+        new PendingEffect(
+            type,
+            agent,
+            new AgentEffect.Infer(new TurnId(1)),
+            TIMEOUT,
+            new EffectOutcome.InferenceRefused(
+                "undispatchable", Usage.unreported(), Optional.empty()),
+            DEADLINE,
+            null,
+            START));
     Attempt attempt = effects.markRunning(type, START, 1).getFirst();
     effects.park(attempt.effectId(), attempt.attemptsMade(), START);
 

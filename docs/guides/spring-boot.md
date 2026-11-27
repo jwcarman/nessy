@@ -281,10 +281,10 @@ only its own tables; the examples each carry an empty one to copy.
 To manage the tables yourself, set `migratory.enabled=false` and create them
 however you see fit. See [Storage](../concepts/storage.md).
 
-The bean `JdbcBackendAutoConfiguration.NessySchema` is a marker record:
-nothing queries it, it waits for database initialization (migratory's run),
-and everything that needs the tables to exist depends on it, so Spring builds
-it before them.
+The bean `JdbcBackendAutoConfiguration.NessySchema` says the tables exist in
+its `dataSource`: it waits for database initialization (migratory's run), and
+everything that needs the tables depends on it, so Spring builds it before
+them.
 
 ## A worked example
 

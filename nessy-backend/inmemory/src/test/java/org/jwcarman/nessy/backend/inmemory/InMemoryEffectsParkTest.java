@@ -33,6 +33,7 @@ import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.Effects;
+import org.jwcarman.nessy.backend.effect.PendingEffect;
 import tools.jackson.databind.json.JsonMapper;
 
 @DisplayName("Parking an effect held in this process")
@@ -49,14 +50,16 @@ class InMemoryEffectsParkTest {
 
   private Attempt claimedEffect() {
     effects.insert(
-        TYPE,
-        agent,
-        new AgentEffect.Infer(new TurnId(1)),
-        TIMEOUT,
-        new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported(), Optional.empty()),
-        DEADLINE,
-        null,
-        START);
+        new PendingEffect(
+            TYPE,
+            agent,
+            new AgentEffect.Infer(new TurnId(1)),
+            TIMEOUT,
+            new EffectOutcome.InferenceRefused(
+                "undispatchable", Usage.unreported(), Optional.empty()),
+            DEADLINE,
+            null,
+            START));
     return effects.markRunning(TYPE, START, 1).getFirst();
   }
 

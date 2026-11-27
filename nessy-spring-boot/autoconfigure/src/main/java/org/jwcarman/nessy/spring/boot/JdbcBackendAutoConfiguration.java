@@ -81,12 +81,17 @@ public class JdbcBackendAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   @DependsOnDatabaseInitialization
-  public NessySchema nessySchema() {
-    return new NessySchema();
+  public NessySchema nessySchema(DataSource dataSource) {
+    return new NessySchema(dataSource);
   }
 
-  /** A marker, so every bean that needs tables can depend on the tables existing. */
-  public record NessySchema() {}
+  /**
+   * The tables exist in {@code dataSource}: every bean that needs them depends on this, so Spring
+   * builds it after the database initializers and before anything that would query them.
+   *
+   * @param dataSource the database whose tables the initializers have made
+   */
+  public record NessySchema(DataSource dataSource) {}
 
   @Bean
   @ConditionalOnMissingBean

@@ -38,6 +38,7 @@ import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.Effects;
 import org.jwcarman.nessy.backend.effect.LiveEffect;
+import org.jwcarman.nessy.backend.effect.PendingEffect;
 import tools.jackson.databind.json.JsonMapper;
 
 @DisplayName("Reading the live work of effects held in this process")
@@ -79,14 +80,16 @@ class InMemoryEffectsLiveTest {
 
   private void insert(AgentType type, AgentId owner, long turn, Instant at) {
     effects.insert(
-        type,
-        owner,
-        new AgentEffect.Infer(new TurnId(turn)),
-        TIMEOUT,
-        new EffectOutcome.InferenceRefused("undispatchable", Usage.unreported(), Optional.empty()),
-        DEADLINE,
-        null,
-        at);
+        new PendingEffect(
+            type,
+            owner,
+            new AgentEffect.Infer(new TurnId(turn)),
+            TIMEOUT,
+            new EffectOutcome.InferenceRefused(
+                "undispatchable", Usage.unreported(), Optional.empty()),
+            DEADLINE,
+            null,
+            at));
   }
 
   private Attempt claimed(AgentType type, Instant now) {

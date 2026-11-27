@@ -25,6 +25,7 @@ import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.Effects;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
+import org.jwcarman.nessy.backend.effect.PendingEffect;
 import org.jwcarman.nessy.engine.effect.EffectHandlers;
 import org.jwcarman.nessy.engine.effect.EffectTerms;
 
@@ -66,14 +67,15 @@ public class Outbox {
   public void insert(AgentId agentId, AgentEffect effect, Instant at, String traceContext) {
     EffectTerms terms = handlers.termsFor(effect);
     rows.insert(
-        agentType,
-        agentId,
-        effect,
-        terms.timeout(),
-        terms.undispatchable(),
-        at.plus(terms.timeout()),
-        traceContext,
-        at);
+        new PendingEffect(
+            agentType,
+            agentId,
+            effect,
+            terms.timeout(),
+            terms.undispatchable(),
+            at.plus(terms.timeout()),
+            traceContext,
+            at));
   }
 
   /** Every claimed, unfinished row of one agent -- the candidates a late answer could name. */

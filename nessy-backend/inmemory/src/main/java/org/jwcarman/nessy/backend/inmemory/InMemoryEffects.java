@@ -35,6 +35,7 @@ import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.Effects;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.backend.effect.LiveEffect;
+import org.jwcarman.nessy.backend.effect.PendingEffect;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -93,26 +94,17 @@ public final class InMemoryEffects implements Effects {
     private int attemptsMade;
     private Instant actionableAt;
 
-    private Row(
-        UUID effectId,
-        AgentType type,
-        AgentId agent,
-        byte[] payload,
-        byte[] failurePayload,
-        Duration timeout,
-        Instant deadline,
-        String traceContext,
-        Instant at) {
+    private Row(UUID effectId, PendingEffect pending, byte[] payload, byte[] failurePayload) {
       this.effectId = effectId;
-      this.type = type;
-      this.agent = agent;
+      this.type = pending.agentType();
+      this.agent = pending.agentId();
       this.payload = payload;
       this.failurePayload = failurePayload;
-      this.timeout = timeout;
-      this.deadline = deadline;
-      this.traceContext = traceContext;
-      this.actionableAt = at;
-      this.createdAt = at;
+      this.timeout = pending.timeout();
+      this.deadline = pending.deadline();
+      this.traceContext = pending.traceContext();
+      this.actionableAt = pending.at();
+      this.createdAt = pending.at();
     }
 
     private List<FailedAttempt> failedAttempts = List.of();
@@ -136,29 +128,16 @@ public final class InMemoryEffects implements Effects {
   }
 
   @Override
-  public void insert(
-      AgentType type,
-      AgentId agent,
-      AgentEffect effect,
-      Duration timeout,
-      EffectOutcome undispatchable,
-      Instant deadline,
-      String traceContext,
-      Instant at) {
+  public void insert(PendingEffect pending) {
+    Objects.requireNonNull(pending, "pending must not be null");
     UUID effectId = UUID.randomUUID();
     rows.put(
         effectId,
         new Row(
             effectId,
-            Objects.requireNonNull(type, TYPE_REQUIRED),
-            Objects.requireNonNull(agent, AGENT_REQUIRED),
-            effects.encode(Objects.requireNonNull(effect, "effect must not be null")),
-            outcomes.encode(
-                Objects.requireNonNull(undispatchable, "undispatchable must not be null")),
-            Objects.requireNonNull(timeout, "timeout must not be null"),
-            Objects.requireNonNull(deadline, "deadline must not be null"),
-            traceContext,
-            Objects.requireNonNull(at, AT_REQUIRED)));
+            pending,
+            effects.encode(pending.effect()),
+            outcomes.encode(pending.undispatchable())));
   }
 
   /**

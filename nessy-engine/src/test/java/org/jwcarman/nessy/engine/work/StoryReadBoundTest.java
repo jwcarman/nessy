@@ -44,6 +44,7 @@ import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.Effects;
+import org.jwcarman.nessy.backend.effect.PendingEffect;
 import org.jwcarman.nessy.backend.event.AgentEvent;
 import org.jwcarman.nessy.backend.event.AgentEvents;
 import org.jwcarman.nessy.backend.inmemory.InMemoryQueuedBackend;
@@ -69,19 +70,20 @@ class StoryReadBoundTest {
       memory
           .effects()
           .insert(
-              type,
-              agent,
-              new AgentEffect.Approve(
-                  new TurnId(1),
-                  new Seq(2),
-                  callId,
-                  new ToolName("lookup"),
-                  IdempotencyKey.of(UUID.randomUUID())),
-              Duration.ofMinutes(30),
-              new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, "undispatchable"),
-              Instant.now().plus(Duration.ofDays(1)),
-              null,
-              longAgo.plusMillis(i));
+              new PendingEffect(
+                  type,
+                  agent,
+                  new AgentEffect.Approve(
+                      new TurnId(1),
+                      new Seq(2),
+                      callId,
+                      new ToolName("lookup"),
+                      IdempotencyKey.of(UUID.randomUUID())),
+                  Duration.ofMinutes(30),
+                  new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, "undispatchable"),
+                  Instant.now().plus(Duration.ofDays(1)),
+                  null,
+                  longAgo.plusMillis(i)));
     }
     List<Attempt> claimed = memory.effects().markRunning(type, Instant.now(), 2);
     assertThat(claimed).hasSize(2);

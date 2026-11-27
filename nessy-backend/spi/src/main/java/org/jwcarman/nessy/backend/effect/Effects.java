@@ -15,7 +15,6 @@
  */
 package org.jwcarman.nessy.backend.effect;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -48,15 +47,7 @@ public interface Effects {
    * Writes down an effect to be performed later, and beside it the outcome to deliver if it never
    * can be.
    */
-  void insert(
-      AgentType type,
-      AgentId agent,
-      AgentEffect effect,
-      Duration timeout,
-      EffectOutcome undispatchable,
-      Instant deadline,
-      String traceContext,
-      Instant at);
+  void insert(PendingEffect pending);
 
   /** Claims up to {@code batchSize} due rows of one agent type, oldest first. */
   List<Attempt> markRunning(AgentType type, Instant now, int batchSize);

@@ -39,6 +39,7 @@ import org.jwcarman.nessy.backend.backlog.Pull;
 import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
+import org.jwcarman.nessy.backend.effect.PendingEffect;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -120,15 +121,16 @@ class JdbcQueuedBackendTest {
     writer
         .effects()
         .insert(
-            TYPE,
-            agent,
-            new AgentEffect.Infer(new TurnId(1)),
-            Duration.ofMinutes(1),
-            new EffectOutcome.InferenceRefused(
-                "undispatchable", Usage.unreported(), Optional.empty()),
-            now.plus(Duration.ofHours(1)),
-            null,
-            now);
+            new PendingEffect(
+                TYPE,
+                agent,
+                new AgentEffect.Infer(new TurnId(1)),
+                Duration.ofMinutes(1),
+                new EffectOutcome.InferenceRefused(
+                    "undispatchable", Usage.unreported(), Optional.empty()),
+                now.plus(Duration.ofHours(1)),
+                null,
+                now));
 
     List<Attempt> claimed = reader.effects().markRunning(TYPE, now, 10);
 

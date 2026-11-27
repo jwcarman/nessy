@@ -53,6 +53,7 @@ import org.jwcarman.nessy.backend.effect.AgentEffect;
 import org.jwcarman.nessy.backend.effect.Attempt;
 import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.LiveEffect;
+import org.jwcarman.nessy.backend.effect.PendingEffect;
 import org.jwcarman.nessy.backend.inmemory.InMemoryQueuedBackend;
 import org.jwcarman.nessy.engine.harness.queued.DefaultQueuedHarnessFactory;
 import org.jwcarman.nessy.inference.InferenceOptions;
@@ -352,19 +353,20 @@ class WaitingApprovalsInMemoryTest {
       memory
           .effects()
           .insert(
-              type,
-              AgentId.random(),
-              new AgentEffect.Approve(
-                  new TurnId(1),
-                  new Seq(2),
-                  callId,
-                  new ToolName("lookup"),
-                  IdempotencyKey.of(UUID.randomUUID())),
-              Duration.ofMinutes(30),
-              new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, "undispatchable"),
-              Instant.now().plus(Duration.ofDays(1)),
-              null,
-              longAgo.plusMillis(i));
+              new PendingEffect(
+                  type,
+                  AgentId.random(),
+                  new AgentEffect.Approve(
+                      new TurnId(1),
+                      new Seq(2),
+                      callId,
+                      new ToolName("lookup"),
+                      IdempotencyKey.of(UUID.randomUUID())),
+                  Duration.ofMinutes(30),
+                  new EffectOutcome.ToolFailed(callId, CallFailure.FAILED, "undispatchable"),
+                  Instant.now().plus(Duration.ofDays(1)),
+                  null,
+                  longAgo.plusMillis(i)));
     }
     List<Attempt> claimed = memory.effects().markRunning(type, Instant.now(), count);
     assertThat(claimed).hasSize(count);

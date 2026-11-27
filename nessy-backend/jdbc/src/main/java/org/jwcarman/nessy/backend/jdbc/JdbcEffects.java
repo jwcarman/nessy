@@ -17,7 +17,6 @@ package org.jwcarman.nessy.backend.jdbc;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -37,6 +36,7 @@ import org.jwcarman.nessy.backend.effect.EffectOutcome;
 import org.jwcarman.nessy.backend.effect.Effects;
 import org.jwcarman.nessy.backend.effect.FailedAttempt;
 import org.jwcarman.nessy.backend.effect.LiveEffect;
+import org.jwcarman.nessy.backend.effect.PendingEffect;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -218,28 +218,21 @@ public class JdbcEffects implements Effects {
    * that has been handed the wrong thing.
    */
   @Override
-  public void insert(
-      AgentType agentType,
-      AgentId agentId,
-      AgentEffect effect,
-      Duration timeout,
-      EffectOutcome undispatchable,
-      Instant deadline,
-      String traceContext,
-      Instant at) {
+  public void insert(PendingEffect pending) {
+    Objects.requireNonNull(pending, "pending must not be null");
     jdbc.sql(INSERT)
         .params(
             UUID.randomUUID(),
-            agentId.value(),
-            agentType.value(),
-            effectCodec.encode(effect),
-            timeout.toMillis(),
-            outcomeCodec.encode(undispatchable),
-            utc(deadline),
-            traceContext,
+            pending.agentId().value(),
+            pending.agentType().value(),
+            effectCodec.encode(pending.effect()),
+            pending.timeout().toMillis(),
+            outcomeCodec.encode(pending.undispatchable()),
+            utc(pending.deadline()),
+            pending.traceContext(),
             PENDING,
-            utc(at),
-            utc(at))
+            utc(pending.at()),
+            utc(pending.at()))
         .update();
   }
 
