@@ -187,7 +187,7 @@
          carries webjars-locator-lite, so its page loads them by versionless paths
          (/webjars/markdown-it/dist/...): these properties are the only place the versions live. -->
     <markdown-it-webjar.version>14.3.2</markdown-it-webjar.version>
-    <highlightjs-webjar.version>11.11.1</highlightjs-webjar.version>
+    <highlightjs-webjar.version>11.12.0</highlightjs-webjar.version>
     <lucide-webjar.version>1.48.0</lucide-webjar.version>
     <jug.version>5.2.0</jug.version>
     <maven-surefire-plugin.version>3.6.1</maven-surefire-plugin.version>
