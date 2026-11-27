@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking changes
+
+- **`Effects.insert` takes one `PendingEffect`.** The record holds the eight values the method
+  used to take separately (agent type and id, effect, timeout, undispatchable outcome, deadline,
+  trace context, time) and checks them for null. A custom `Effects` implementation changes its
+  signature; a caller wraps its arguments in `new PendingEffect(...)`.
+
+### Changed
+
+- **`JdbcBackendAutoConfiguration.NessySchema` carries its `DataSource`**, the database whose
+  tables the initializers have made. It was an empty record; how it is used is unchanged.
+- **MCP Java SDK 2.2.0.**
+
 ## [0.8.0] - 2026-11-27
 
 ### Breaking changes
