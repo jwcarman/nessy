@@ -103,10 +103,9 @@ class ProviderRegistrar
           JsonMapper mapper = beanFactory.getBeanProvider(JsonMapper.class).getIfAvailable();
           InferenceProvider built =
               WireProviders.build(provider, mapper, beanFactory.getBeanClassLoader())
-                  .orElseThrow(
-                      () ->
-                          new IllegalStateException(
-                              "the " + provider.id() + " provider's adapter vanished"));
+                  .orElseThrow(() ->
+                      new IllegalStateException(
+                          "the " + provider.id() + " provider's adapter vanished"));
           ObservationRegistry observations =
               beanFactory
                   .getBeanProvider(ObservationRegistry.class)

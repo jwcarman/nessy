@@ -112,26 +112,24 @@ class NotebookAutoConfigurationTest {
                 JacksonAutoConfiguration.class,
                 NessyAutoConfiguration.class,
                 NotebookAutoConfiguration.class))
-        .run(
-            context -> {
-              assertThat(context).hasNotFailed();
-              assertThat(context).doesNotHaveBean("nessyNotebookFeature");
-            });
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(context).doesNotHaveBean("nessyNotebookFeature");
+        });
   }
 
   @Test
   void the_feature_installs_the_index_and_four_tools_on_the_harness_it_is_given() {
-    runner.run(
-        context -> {
-          Recording config = new Recording(new AgentType("chat"));
+    runner.run(context -> {
+      Recording config = new Recording(new AgentType("chat"));
 
-          NotebookFeatures.feature(context).customize(config);
+      NotebookFeatures.feature(context).customize(config);
 
-          assertThat(config.ambients).hasSize(1);
-          assertThat(config.tools)
-              .extracting(tool -> tool.name().value())
-              .containsExactly("remember", "revise", "recall", "forget");
-        });
+      assertThat(config.ambients).hasSize(1);
+      assertThat(config.tools)
+          .extracting(tool -> tool.name().value())
+          .containsExactly("remember", "revise", "recall", "forget");
+    });
   }
 
   /**
@@ -171,10 +169,9 @@ class NotebookAutoConfigurationTest {
                 NessyAutoConfiguration.class,
                 NotebookAutoConfiguration.class))
         .withUserConfiguration(ADatabase.class)
-        .run(
-            context -> {
-              assertThat(context).hasNotFailed();
-              assertThat(context).doesNotHaveBean("nessyNotebookFeature");
-            });
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(context).doesNotHaveBean("nessyNotebookFeature");
+        });
   }
 }

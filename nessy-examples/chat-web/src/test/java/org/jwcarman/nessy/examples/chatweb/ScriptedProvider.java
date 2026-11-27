@@ -45,18 +45,17 @@ final class ScriptedProvider implements InferenceProvider {
 
   /** Asks for one tool the first time it is consulted in a turn, and answers once it has run. */
   static InferenceProvider callingOnce(String callId, String tool, String arguments, String then) {
-    return new ScriptedProvider(
-        request -> {
-          boolean called =
-              request.context().turns().stream()
-                  .anyMatch(turn -> !turn.complete() && !turn.exchanges().isEmpty());
-          return called
-              ? new InferenceResult.Answer(List.of(new Block.Text(then)))
-              : new InferenceResult.Actions(
-                  List.of(
-                      new Block.Commentary("I will send that."),
-                      new Block.ToolCall(callId, tool, arguments)));
-        });
+    return new ScriptedProvider(request -> {
+      boolean called =
+          request.context().turns().stream()
+              .anyMatch(turn -> !turn.complete() && !turn.exchanges().isEmpty());
+      return called
+          ? new InferenceResult.Answer(List.of(new Block.Text(then)))
+          : new InferenceResult.Actions(
+              List.of(
+                  new Block.Commentary("I will send that."),
+                  new Block.ToolCall(callId, tool, arguments)));
+    });
   }
 
   /**
@@ -64,27 +63,23 @@ final class ScriptedProvider implements InferenceProvider {
    * until {@code release} opens, so a test can send more while a turn is in progress.
    */
   static InferenceProvider holdingOn(String holdWord, CountDownLatch release, String text) {
-    return new ScriptedProvider(
-        request -> {
-          boolean hold =
-              request.context().turns().stream()
-                  .filter(turn -> !turn.complete())
-                  .anyMatch(
-                      turn ->
-                          turn.input().blocks().stream()
-                              .anyMatch(
-                                  block ->
-                                      block instanceof Block.Text(String said)
-                                          && said.contains(holdWord)));
-          if (hold) {
-            try {
-              release.await(30, TimeUnit.SECONDS);
-            } catch (InterruptedException _) {
-              Thread.currentThread().interrupt();
-            }
-          }
-          return new InferenceResult.Answer(List.of(new Block.Text(text)));
-        });
+    return new ScriptedProvider(request -> {
+      boolean hold =
+          request.context().turns().stream()
+              .filter(turn -> !turn.complete())
+              .anyMatch(turn ->
+                  turn.input().blocks().stream()
+                      .anyMatch(block ->
+                          block instanceof Block.Text(String said) && said.contains(holdWord)));
+      if (hold) {
+        try {
+          release.await(30, TimeUnit.SECONDS);
+        } catch (InterruptedException _) {
+          Thread.currentThread().interrupt();
+        }
+      }
+      return new InferenceResult.Answer(List.of(new Block.Text(text)));
+    });
   }
 
   @Override

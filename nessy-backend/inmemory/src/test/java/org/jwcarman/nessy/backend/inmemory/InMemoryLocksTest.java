@@ -54,17 +54,16 @@ class InMemoryLocksTest {
    * Starts a caller that holds {@code (KIND, TYPE, agent)} under {@code withLock} until released.
    */
   private Future<Void> holderOf(AgentId agent, CountDownLatch holding, CountDownLatch release) {
-    return callers.submit(
-        () ->
-            locks.withLock(
-                KIND,
-                TYPE,
-                agent,
-                () -> {
-                  holding.countDown();
-                  await().atMost(Duration.ofSeconds(10)).until(() -> release.getCount() == 0);
-                  return null;
-                }));
+    return callers.submit(() ->
+        locks.withLock(
+            KIND,
+            TYPE,
+            agent,
+            () -> {
+              holding.countDown();
+              await().atMost(Duration.ofSeconds(10)).until(() -> release.getCount() == 0);
+              return null;
+            }));
   }
 
   @AfterEach
@@ -113,15 +112,14 @@ class InMemoryLocksTest {
     AgentId agent = agent();
     AtomicInteger counted = new AtomicInteger();
 
-    assertThatThrownBy(
-            () ->
-                locks.withLock(
-                    KIND,
-                    TYPE,
-                    agent,
-                    () -> {
-                      throw new IllegalStateException("the work failed");
-                    }))
+    assertThatThrownBy(() ->
+            locks.withLock(
+                KIND,
+                TYPE,
+                agent,
+                () -> {
+                  throw new IllegalStateException("the work failed");
+                }))
         .isInstanceOf(IllegalStateException.class);
 
     Integer result = locks.withLock(KIND, TYPE, agent, counted::incrementAndGet);
@@ -145,24 +143,22 @@ class InMemoryLocksTest {
     AtomicInteger completed = new AtomicInteger();
     List<Future<Void>> outcomes =
         IntStream.range(0, 16)
-            .mapToObj(
-                _ ->
-                    callers.<Void>submit(
-                        () -> {
-                          go.await();
-                          return locks.withLock(
-                              KIND,
-                              TYPE,
-                              agent,
-                              () -> {
-                                int now = concurrent.incrementAndGet();
-                                maxConcurrent.updateAndGet(max -> Math.max(max, now));
-                                await().pollDelay(Duration.ofMillis(20)).until(() -> true);
-                                concurrent.decrementAndGet();
-                                completed.incrementAndGet();
-                                return null;
-                              });
-                        }))
+            .mapToObj(_ ->
+                callers.<Void>submit(() -> {
+                  go.await();
+                  return locks.withLock(
+                      KIND,
+                      TYPE,
+                      agent,
+                      () -> {
+                        int now = concurrent.incrementAndGet();
+                        maxConcurrent.updateAndGet(max -> Math.max(max, now));
+                        await().pollDelay(Duration.ofMillis(20)).until(() -> true);
+                        concurrent.decrementAndGet();
+                        completed.incrementAndGet();
+                        return null;
+                      });
+                }))
             .toList();
 
     go.countDown();

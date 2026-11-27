@@ -193,71 +193,65 @@ class AgentWorkAutoConfigurationTest {
     @Test
     void the_bean_reports_status_and_lists_a_waiting_approval() {
       AgentType type = new AgentType("work-queued");
-      runner.run(
-          context -> {
-            assertThat(context).hasSingleBean(AgentWork.class);
-            AgentWork work = context.getBean(AgentWork.class);
-            DefaultQueuedHarnessFactory factory =
-                context.getBean(DefaultQueuedHarnessFactory.class);
-            QueuedHarness<String> harness =
-                factory.create(
-                    type,
-                    String.class,
-                    config ->
-                        config
-                            .systemPrompt("You are a test assistant.")
-                            .tool(
-                                lookup(),
-                                t ->
-                                    t.action(query -> "look up " + query.q())
-                                        .approver(
-                                            request -> Awaited.deferred(),
-                                            a -> a.timeout(Duration.ofMinutes(30))))
-                            .effects(e -> e.pollInterval(Duration.ofMillis(20))));
-            AgentId agent = AgentId.random();
-            assertThat(work.status(type, agent).activity()).isEqualTo(Activity.IDLE);
+      runner.run(context -> {
+        assertThat(context).hasSingleBean(AgentWork.class);
+        AgentWork work = context.getBean(AgentWork.class);
+        DefaultQueuedHarnessFactory factory = context.getBean(DefaultQueuedHarnessFactory.class);
+        QueuedHarness<String> harness =
+            factory.create(
+                type,
+                String.class,
+                config ->
+                    config
+                        .systemPrompt("You are a test assistant.")
+                        .tool(
+                            lookup(),
+                            t ->
+                                t.action(query -> "look up " + query.q())
+                                    .approver(
+                                        request -> Awaited.deferred(),
+                                        a -> a.timeout(Duration.ofMinutes(30))))
+                        .effects(e -> e.pollInterval(Duration.ofMillis(20))));
+        AgentId agent = AgentId.random();
+        assertThat(work.status(type, agent).activity()).isEqualTo(Activity.IDLE);
 
-            harness.tell(agent, "go");
+        harness.tell(agent, "go");
 
-            await()
-                .atMost(PATIENT)
-                .untilAsserted(
-                    () ->
-                        assertThat(work.status(type, agent).activity())
-                            .isEqualTo(Activity.WAITING));
-            List<ApprovalRequest> waiting = work.waitingApprovals(type);
-            assertThat(waiting).hasSize(1);
-            assertThat(waiting.getFirst().agentId()).isEqualTo(agent);
-            assertThat(work.waitingApprovals()).isEqualTo(waiting);
-            assertThat(work.status(type, agent).waitingApprovals()).isEqualTo(waiting);
-          });
+        await()
+            .atMost(PATIENT)
+            .untilAsserted(
+                () -> assertThat(work.status(type, agent).activity()).isEqualTo(Activity.WAITING));
+        List<ApprovalRequest> waiting = work.waitingApprovals(type);
+        assertThat(waiting).hasSize(1);
+        assertThat(waiting.getFirst().agentId()).isEqualTo(agent);
+        assertThat(work.waitingApprovals()).isEqualTo(waiting);
+        assertThat(work.status(type, agent).waitingApprovals()).isEqualTo(waiting);
+      });
     }
 
     @Test
     void an_agent_only_the_direct_store_holds_is_answered_from_it() {
       AgentType type = new AgentType("work-direct-held");
-      runner.run(
-          context -> {
-            AgentWork work = context.getBean(AgentWork.class);
-            ScriptedModel model = context.getBean(ScriptedModel.class);
-            model.hold = true;
-            DefaultDirectHarnessFactory factory =
-                context.getBean(DefaultDirectHarnessFactory.class);
-            DirectHarness<String, String> harness =
-                factory.<String>create(
-                    type, config -> config.inputRenderer(text -> List.of(new Block.Text(text))));
-            AgentId agent = AgentId.random();
-            Thread asking = Thread.ofVirtual().start(() -> harness.ask(agent, "go"));
-            assertThat(model.inModel.await(20, TimeUnit.SECONDS)).isTrue();
+      runner.run(context -> {
+        AgentWork work = context.getBean(AgentWork.class);
+        ScriptedModel model = context.getBean(ScriptedModel.class);
+        model.hold = true;
+        DefaultDirectHarnessFactory factory = context.getBean(DefaultDirectHarnessFactory.class);
+        DirectHarness<String, String> harness =
+            factory.<String>create(
+                type, config -> config.inputRenderer(text -> List.of(new Block.Text(text))));
+        AgentId agent = AgentId.random();
+        Thread asking = Thread.ofVirtual().start(() -> harness.ask(agent, "go"));
+        assertThat(model.inModel.await(20, TimeUnit.SECONDS)).isTrue();
 
-            AgentStatus status = work.status(type, agent);
-            model.release.countDown();
-            asking.join();
+        AgentStatus status = work.status(type, agent);
+        model.release.countDown();
+        asking.join();
 
-            assertThat(status)
-                .isEqualTo(
-                    new AgentStatus(Activity.WORKING, 0, Optional.of(new TurnId(1)), List.of(), 0));
-          });
+        assertThat(status)
+            .isEqualTo(
+                new AgentStatus(Activity.WORKING, 0, Optional.of(new TurnId(1)), List.of(), 0));
+      });
     }
   }
 
@@ -270,19 +264,18 @@ class AgentWorkAutoConfigurationTest {
       new ApplicationContextRunner()
           .withConfiguration(AutoConfigurations.of(AgentWorkAutoConfiguration.class))
           .withUserConfiguration(ADirectBackendOnly.class)
-          .run(
-              context -> {
-                assertThat(context).hasSingleBean(AgentWork.class);
-                AgentWork work = context.getBean(AgentWork.class);
-                AgentType type = new AgentType("work-direct-only");
+          .run(context -> {
+            assertThat(context).hasSingleBean(AgentWork.class);
+            AgentWork work = context.getBean(AgentWork.class);
+            AgentType type = new AgentType("work-direct-only");
 
-                AgentStatus status = work.status(type, AgentId.random());
+            AgentStatus status = work.status(type, AgentId.random());
 
-                assertThat(status)
-                    .isEqualTo(new AgentStatus(Activity.IDLE, 0, Optional.empty(), List.of(), 0));
-                assertThat(work.waitingApprovals()).isEmpty();
-                assertThat(work.waitingApprovals(type)).isEmpty();
-              });
+            assertThat(status)
+                .isEqualTo(new AgentStatus(Activity.IDLE, 0, Optional.empty(), List.of(), 0));
+            assertThat(work.waitingApprovals()).isEmpty();
+            assertThat(work.waitingApprovals(type)).isEmpty();
+          });
     }
   }
 
@@ -294,12 +287,10 @@ class AgentWorkAutoConfigurationTest {
     void an_applications_own_agent_work_is_used_in_its_place() {
       runner
           .withUserConfiguration(AnApplicationsOwnWork.class)
-          .run(
-              context -> {
-                assertThat(context).hasSingleBean(AgentWork.class);
-                assertThat(context.getBean(AgentWork.class))
-                    .isSameAs(AnApplicationsOwnWork.INSTANCE);
-              });
+          .run(context -> {
+            assertThat(context).hasSingleBean(AgentWork.class);
+            assertThat(context.getBean(AgentWork.class)).isSameAs(AnApplicationsOwnWork.INSTANCE);
+          });
     }
 
     @Test

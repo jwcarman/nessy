@@ -367,12 +367,11 @@ class WaitingApprovalsTest {
     private void awaitReplacedBy(AgentType type, ApprovalRequest answered) {
       await()
           .atMost(PATIENT)
-          .untilAsserted(
-              () ->
-                  assertThat(engine.work().waitingApprovals(type))
-                      .extracting(ApprovalRequest::idempotencyKey)
-                      .isNotEmpty()
-                      .doesNotContain(answered.idempotencyKey()));
+          .untilAsserted(() ->
+              assertThat(engine.work().waitingApprovals(type))
+                  .extracting(ApprovalRequest::idempotencyKey)
+                  .isNotEmpty()
+                  .doesNotContain(answered.idempotencyKey()));
     }
 
     @Test

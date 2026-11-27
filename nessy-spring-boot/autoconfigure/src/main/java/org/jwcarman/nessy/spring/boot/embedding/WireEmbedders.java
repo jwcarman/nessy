@@ -88,15 +88,14 @@ final class WireEmbedders {
     private OpenAi() {}
 
     static EmbeddingProvider build(ResolvedEmbedder resolved) {
-      return OpenAiEmbeddingProvider.of(
-          c -> {
-            c.apiKey(resolved.apiKey());
-            if (resolved.baseUrl() != null) {
-              c.baseUrl(resolved.baseUrl());
-            }
-            c.vendor(resolved.vendor());
-            c.properties(resolved.properties());
-          });
+      return OpenAiEmbeddingProvider.of(c -> {
+        c.apiKey(resolved.apiKey());
+        if (resolved.baseUrl() != null) {
+          c.baseUrl(resolved.baseUrl());
+        }
+        c.vendor(resolved.vendor());
+        c.properties(resolved.properties());
+      });
     }
   }
 
@@ -105,14 +104,13 @@ final class WireEmbedders {
     private Gemini() {}
 
     static EmbeddingProvider build(ResolvedEmbedder resolved) {
-      return GeminiEmbeddingProvider.of(
-          c -> {
-            c.apiKey(resolved.apiKey());
-            if (resolved.baseUrl() != null) {
-              c.baseUrl(resolved.baseUrl());
-            }
-            c.properties(resolved.properties());
-          });
+      return GeminiEmbeddingProvider.of(c -> {
+        c.apiKey(resolved.apiKey());
+        if (resolved.baseUrl() != null) {
+          c.baseUrl(resolved.baseUrl());
+        }
+        c.properties(resolved.properties());
+      });
     }
   }
 
@@ -121,17 +119,16 @@ final class WireEmbedders {
     private Voyage() {}
 
     static EmbeddingProvider build(ResolvedEmbedder resolved, @Nullable JsonMapper mapper) {
-      return VoyageEmbeddingProvider.of(
-          c -> {
-            c.apiKey(resolved.apiKey());
-            if (resolved.baseUrl() != null) {
-              c.baseUrl(resolved.baseUrl());
-            }
-            c.properties(resolved.properties());
-            if (mapper != null) {
-              c.mapper(mapper);
-            }
-          });
+      return VoyageEmbeddingProvider.of(c -> {
+        c.apiKey(resolved.apiKey());
+        if (resolved.baseUrl() != null) {
+          c.baseUrl(resolved.baseUrl());
+        }
+        c.properties(resolved.properties());
+        if (mapper != null) {
+          c.mapper(mapper);
+        }
+      });
     }
   }
 }

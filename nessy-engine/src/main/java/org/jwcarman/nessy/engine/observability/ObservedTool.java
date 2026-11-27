@@ -80,15 +80,14 @@ public final class ObservedTool {
                 .lowCardinalityKeyValue("nessy.tool.deferred", "none")
                 .highCardinalityKeyValue("gen_ai.tool.call.id", request.callId().value());
         new Identity(request.agentType(), request.agentId()).on(observation, request.turn());
-        return observation.observe(
-            () -> {
-              Awaited<ToolResult> answer = delegate.call(request);
-              observation.lowCardinalityKeyValue("nessy.tool.outcome", outcomeOf(answer));
-              observation.lowCardinalityKeyValue(
-                  "nessy.tool.deferred",
-                  String.valueOf(answer instanceof Awaited.Deferred<ToolResult>));
-              return answer;
-            });
+        return observation.observe(() -> {
+          Awaited<ToolResult> answer = delegate.call(request);
+          observation.lowCardinalityKeyValue("nessy.tool.outcome", outcomeOf(answer));
+          observation.lowCardinalityKeyValue(
+              "nessy.tool.deferred",
+              String.valueOf(answer instanceof Awaited.Deferred<ToolResult>));
+          return answer;
+        });
       }
     };
   }

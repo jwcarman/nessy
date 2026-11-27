@@ -134,10 +134,9 @@ class AnswerPastItsDeadlineTest {
     harness.tell(agent, "what lake?");
     await()
         .atMost(Duration.ofSeconds(20))
-        .until(
-            () ->
-                engine.story(type, agent).stream()
-                    .anyMatch(AgentEvent.ApprovalDeferred.class::isInstance));
+        .until(() ->
+            engine.story(type, agent).stream()
+                .anyMatch(AgentEvent.ApprovalDeferred.class::isInstance));
     ApprovalRequest request = asks.peek();
     await()
         .atMost(Duration.ofSeconds(10))
@@ -200,10 +199,9 @@ class AnswerPastItsDeadlineTest {
     harness.tell(agent, "what lake?");
     await()
         .atMost(Duration.ofSeconds(20))
-        .until(
-            () ->
-                engine.story(type, agent).stream()
-                    .anyMatch(AgentEvent.ApprovalDeferred.class::isInstance));
+        .until(() ->
+            engine.story(type, agent).stream()
+                .anyMatch(AgentEvent.ApprovalDeferred.class::isInstance));
     ApprovalRequest request = asks.peek();
     await()
         .atMost(Duration.ofSeconds(10))
@@ -224,13 +222,12 @@ class AnswerPastItsDeadlineTest {
     assertThat(outcome).isEqualTo(new ReplyOutcome.Ignored());
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () ->
-                assertThat(engine.story(type, agent))
-                    .filteredOn(AgentEvent.ToolFailed.class::isInstance)
-                    .map(AgentEvent.ToolFailed.class::cast)
-                    .extracting(AgentEvent.ToolFailed::kind)
-                    .containsExactly(CallFailure.NOT_AUTHORISED));
+        .untilAsserted(() ->
+            assertThat(engine.story(type, agent))
+                .filteredOn(AgentEvent.ToolFailed.class::isInstance)
+                .map(AgentEvent.ToolFailed.class::cast)
+                .extracting(AgentEvent.ToolFailed::kind)
+                .containsExactly(CallFailure.NOT_AUTHORISED));
     assertThat(engine.stateOf(type, agent))
         .as("the turn goes on past the call")
         .isNotInstanceOf(AgentState.AwaitingActions.class);

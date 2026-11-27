@@ -54,76 +54,72 @@ class InferenceRequestManifestTest {
 
     @Test
     void refuses_a_missing_engine_version() {
-      assertThatThrownBy(
-              () ->
-                  new InferenceRequestManifest(
-                      null,
-                      REF,
-                      REF,
-                      Optional.empty(),
-                      REF,
-                      Optional.empty(),
-                      Optional.empty(),
-                      List.of(),
-                      List.of(),
-                      List.of()))
+      assertThatThrownBy(() ->
+              new InferenceRequestManifest(
+                  null,
+                  REF,
+                  REF,
+                  Optional.empty(),
+                  REF,
+                  Optional.empty(),
+                  Optional.empty(),
+                  List.of(),
+                  List.of(),
+                  List.of()))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("engineVersion must not be null");
     }
 
     @Test
     void refuses_missing_instructions() {
-      assertThatThrownBy(
-              () ->
-                  new InferenceRequestManifest(
-                      "0.5.0",
-                      null,
-                      REF,
-                      Optional.empty(),
-                      REF,
-                      Optional.empty(),
-                      Optional.empty(),
-                      List.of(),
-                      List.of(),
-                      List.of()))
+      assertThatThrownBy(() ->
+              new InferenceRequestManifest(
+                  "0.5.0",
+                  null,
+                  REF,
+                  Optional.empty(),
+                  REF,
+                  Optional.empty(),
+                  Optional.empty(),
+                  List.of(),
+                  List.of(),
+                  List.of()))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("instructions must not be null");
     }
 
     @Test
     void refuses_a_missing_tools_reference() {
-      assertThatThrownBy(
-              () ->
-                  new InferenceRequestManifest(
-                      "0.5.0",
-                      REF,
-                      null,
-                      Optional.empty(),
-                      REF,
-                      Optional.empty(),
-                      Optional.empty(),
-                      List.of(),
-                      List.of(),
-                      List.of()))
+      assertThatThrownBy(() ->
+              new InferenceRequestManifest(
+                  "0.5.0",
+                  REF,
+                  null,
+                  Optional.empty(),
+                  REF,
+                  Optional.empty(),
+                  Optional.empty(),
+                  List.of(),
+                  List.of(),
+                  List.of()))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("tools must not be null");
     }
 
     @Test
     void refuses_missing_options() {
-      assertThatThrownBy(
-              () ->
-                  new InferenceRequestManifest(
-                      "0.5.0",
-                      REF,
-                      REF,
-                      Optional.empty(),
-                      null,
-                      Optional.empty(),
-                      Optional.empty(),
-                      List.of(),
-                      List.of(),
-                      List.of()))
+      assertThatThrownBy(() ->
+              new InferenceRequestManifest(
+                  "0.5.0",
+                  REF,
+                  REF,
+                  Optional.empty(),
+                  null,
+                  Optional.empty(),
+                  Optional.empty(),
+                  List.of(),
+                  List.of(),
+                  List.of()))
           .isInstanceOf(NullPointerException.class)
           .hasMessage("options must not be null");
     }

@@ -135,11 +135,10 @@ public final class PolicyApprover implements Approver {
 
   private static Map<String, Approver> requireNames(Map<String, Approver> delegates) {
     Objects.requireNonNull(delegates, "delegates must not be null");
-    delegates.forEach(
-        (name, approver) -> {
-          Objects.requireNonNull(name, "a delegate name must not be null");
-          Objects.requireNonNull(approver, "the approver named " + name + " must not be null");
-        });
+    delegates.forEach((name, approver) -> {
+      Objects.requireNonNull(name, "a delegate name must not be null");
+      Objects.requireNonNull(approver, "the approver named " + name + " must not be null");
+    });
     return delegates;
   }
 

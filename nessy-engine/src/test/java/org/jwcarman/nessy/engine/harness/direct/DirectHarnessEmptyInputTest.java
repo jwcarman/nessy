@@ -71,12 +71,11 @@ class DirectHarnessEmptyInputTest {
           return new InferenceResult.Answer(List.of(new Block.Text("ok")), Usage.unreported());
         };
     factory =
-        DefaultDirectHarnessFactory.of(
-            c ->
-                c.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
-                    .provider(ProviderId.of("test"), model)
-                    .schemas(new VictoolsJsonSchemaGenerator())
-                    .mapper(JsonMapper.builder().build()));
+        DefaultDirectHarnessFactory.of(c ->
+            c.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
+                .provider(ProviderId.of("test"), model)
+                .schemas(new VictoolsJsonSchemaGenerator())
+                .mapper(JsonMapper.builder().build()));
     DirectHarness<EmptyInput, String> harness =
         factory.<EmptyInput>create(
             TYPE,

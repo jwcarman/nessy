@@ -131,15 +131,14 @@ class DirectHarnessLiveTest {
   private static DefaultDirectHarnessFactory factory() {
     assumeTrue(serving(), "no OpenAI-compatible endpoint at " + BASE_URL);
     ObjectMapper mapper = JsonMapper.builder().build();
-    return DefaultDirectHarnessFactory.of(
-        config ->
-            config
-                .backend(new InMemoryDirectBackend(new JacksonCodecFactory(mapper)))
-                .provider(
-                    ProviderId.of("test"),
-                    OpenAiChatInferenceProvider.of(c -> c.apiKey(key()).baseUrl(BASE_URL)))
-                .schemas(new VictoolsJsonSchemaGenerator())
-                .mapper(mapper));
+    return DefaultDirectHarnessFactory.of(config ->
+        config
+            .backend(new InMemoryDirectBackend(new JacksonCodecFactory(mapper)))
+            .provider(
+                ProviderId.of("test"),
+                OpenAiChatInferenceProvider.of(c -> c.apiKey(key()).baseUrl(BASE_URL)))
+            .schemas(new VictoolsJsonSchemaGenerator())
+            .mapper(mapper));
   }
 
   private static Customizer<DirectHarnessConfig<String>> config() {

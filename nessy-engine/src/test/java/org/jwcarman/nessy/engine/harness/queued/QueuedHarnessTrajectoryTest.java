@@ -115,9 +115,8 @@ class QueuedHarnessTrajectoryTest {
     assertThat(row.turn().value()).isEqualTo(story.getFirst().seq().value());
     assertThat(row.endingSeq()).isEqualTo(story.getLast().seq());
     assertThat(story)
-        .allSatisfy(
-            e ->
-                assertThat(e.seq().value()).isBetween(row.turn().value(), row.endingSeq().value()));
+        .allSatisfy(e ->
+            assertThat(e.seq().value()).isBetween(row.turn().value(), row.endingSeq().value()));
     assertThat(row.outcome()).isEqualTo(TurnOutcome.ANSWERED);
   }
 
@@ -177,12 +176,11 @@ class QueuedHarnessTrajectoryTest {
     List<AgentEvent> story = engine.story(type, agent);
     assertThat(story)
         .isNotEmpty()
-        .noneMatch(
-            e ->
-                e instanceof AgentEvent.InferenceAnswered
-                    || e instanceof AgentEvent.InferenceRefused
-                    || e instanceof AgentEvent.InferenceFailed
-                    || e instanceof AgentEvent.TurnStopped);
+        .noneMatch(e ->
+            e instanceof AgentEvent.InferenceAnswered
+                || e instanceof AgentEvent.InferenceRefused
+                || e instanceof AgentEvent.InferenceFailed
+                || e instanceof AgentEvent.TurnStopped);
     assertThat(engine.backend().turns().of(type, agent)).isEmpty();
   }
 
@@ -211,19 +209,16 @@ class QueuedHarnessTrajectoryTest {
 
     await()
         .atMost(PATIENCE)
-        .untilAsserted(
-            () ->
-                assertThat(stopped)
-                    .anySatisfy(
-                        c -> {
-                          assertThat(c.getName()).isEqualTo("nessy.effect");
-                          KeyValue hash = c.getHighCardinalityKeyValue("nessy.trajectory.hash");
-                          assertThat(hash).isNotNull();
-                          assertThat(hash.getValue()).isEqualTo(row.trajectory().hash());
-                          assertThat(
-                                  c.getHighCardinalityKeyValue("nessy.trajectory.novel").getValue())
-                              .isEqualTo(Boolean.toString(row.novel()));
-                        }));
+        .untilAsserted(() ->
+            assertThat(stopped)
+                .anySatisfy(c -> {
+                  assertThat(c.getName()).isEqualTo("nessy.effect");
+                  KeyValue hash = c.getHighCardinalityKeyValue("nessy.trajectory.hash");
+                  assertThat(hash).isNotNull();
+                  assertThat(hash.getValue()).isEqualTo(row.trajectory().hash());
+                  assertThat(c.getHighCardinalityKeyValue("nessy.trajectory.novel").getValue())
+                      .isEqualTo(Boolean.toString(row.novel()));
+                }));
   }
 
   private static NarrationListener listener() {

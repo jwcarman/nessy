@@ -235,13 +235,12 @@ public class JdbcChapters implements Chapters {
     return new ArrayList<>(
         jdbc.sql(UNSUMMARIZED)
             .params(type.value(), agent.value())
-            .query(
-                (rs, _) ->
-                    new Chapter(
-                        type,
-                        agent,
-                        new TurnId(rs.getLong("from_turn")),
-                        new TurnId(rs.getLong("through_turn"))))
+            .query((rs, _) ->
+                new Chapter(
+                    type,
+                    agent,
+                    new TurnId(rs.getLong("from_turn")),
+                    new TurnId(rs.getLong("through_turn"))))
             .list());
   }
 
@@ -251,15 +250,14 @@ public class JdbcChapters implements Chapters {
     Objects.requireNonNull(agent, AGENT_NOT_NULL);
     return jdbc.sql(SUMMARIES)
         .params(type.value(), agent.value(), type.value(), agent.value())
-        .query(
-            (rs, _) ->
-                new Summary(
-                    new Chapter(
-                        type,
-                        agent,
-                        new TurnId(rs.getLong("from_turn")),
-                        new TurnId(rs.getLong("through_turn"))),
-                    codec.decode(rs.getBytes("summary"))))
+        .query((rs, _) ->
+            new Summary(
+                new Chapter(
+                    type,
+                    agent,
+                    new TurnId(rs.getLong("from_turn")),
+                    new TurnId(rs.getLong("through_turn"))),
+                codec.decode(rs.getBytes("summary"))))
         .list();
   }
 }

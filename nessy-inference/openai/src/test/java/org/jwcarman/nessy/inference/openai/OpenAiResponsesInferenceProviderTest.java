@@ -115,10 +115,9 @@ class OpenAiResponsesInferenceProviderTest {
   private static Failure inferFailing(RuntimeException failure) {
     InferenceResult result =
         provider(
-                ResponseStreams.client(
-                    params -> {
-                      throw failure;
-                    }))
+                ResponseStreams.client(params -> {
+                  throw failure;
+                }))
             .infer(REQUEST);
     assertThat(result).isInstanceOf(InferenceResult.Fault.class);
     return ((InferenceResult.Fault) result).failure();
@@ -351,11 +350,10 @@ class OpenAiResponsesInferenceProviderTest {
     void the_model_asked_for_is_the_one_in_the_options() {
       ResponseCreateParams[] captured = new ResponseCreateParams[1];
       provider(
-              ResponseStreams.client(
-                  params -> {
-                    captured[0] = params;
-                    return ResponseStreams.eventsOf(completed(List.of(message("msg_1", "ok"))));
-                  }))
+              ResponseStreams.client(params -> {
+                captured[0] = params;
+                return ResponseStreams.eventsOf(completed(List.of(message("msg_1", "ok"))));
+              }))
           .infer(REQUEST);
 
       assertThat(captured[0].model().orElseThrow().asString()).isEqualTo("gpt-4o");

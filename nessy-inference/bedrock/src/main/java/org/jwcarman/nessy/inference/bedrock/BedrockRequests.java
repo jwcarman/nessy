@@ -98,14 +98,13 @@ public final class BedrockRequests {
     ConverseStreamRequest.Builder builder =
         ConverseStreamRequest.builder().modelId(request.options().modelName());
     if (request.options().hasMaxTokens() || read.tunesInference()) {
-      builder.inferenceConfig(
-          config -> {
-            if (request.options().hasMaxTokens()) {
-              config.maxTokens(request.options().maxTokens());
-            }
-            read.temperature().ifPresent(config::temperature);
-            read.topP().ifPresent(config::topP);
-          });
+      builder.inferenceConfig(config -> {
+        if (request.options().hasMaxTokens()) {
+          config.maxTokens(request.options().maxTokens());
+        }
+        read.temperature().ifPresent(config::temperature);
+        read.topP().ifPresent(config::topP);
+      });
     }
 
     builder.system(SystemContentBlock.fromText(request.systemPrompt().value()));
@@ -149,16 +148,12 @@ public final class BedrockRequests {
    * something {@code JsonSchema} has to carry.
    */
   private static void askForShape(ConverseStreamRequest.Builder builder, JsonSchema schema) {
-    builder.outputConfig(
-        output ->
-            output.textFormat(
-                format ->
-                    format
-                        .type(OutputFormatType.JSON_SCHEMA)
-                        .structure(
-                            structure ->
-                                structure.jsonSchema(
-                                    json -> json.name("answer").schema(schema.json())))));
+    builder.outputConfig(output ->
+        output.textFormat(format ->
+            format
+                .type(OutputFormatType.JSON_SCHEMA)
+                .structure(structure ->
+                    structure.jsonSchema(json -> json.name("answer").schema(schema.json())))));
   }
 
   /**
@@ -213,9 +208,8 @@ public final class BedrockRequests {
   private static Stream<String> recalled(InferenceContext context) {
     return Stream.concat(
         context.memory().stream()
-            .map(
-                memory ->
-                    tagged("memory kind=\"" + memory.kind() + "\"", "memory", memory.content())),
+            .map(memory ->
+                tagged("memory kind=\"" + memory.kind() + "\"", "memory", memory.content())),
         context.state().stream()
             .map(state -> tagged("state kind=\"" + state.kind() + "\"", "state", state.content())));
   }

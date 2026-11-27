@@ -179,31 +179,28 @@ class AgentWorkOverBackendsTest {
                 AgentWorkAutoConfiguration.class))
         .withUserConfiguration(AModel.class, ADatabase.class)
         .withPropertyValues(PROPERTIES)
-        .run(
-            context -> {
-              assertThat(context.getBean(QueuedBackend.class).getClass().getSimpleName())
-                  .startsWith("Jdbc");
-              assertThat(context.getBean(DirectBackend.class).getClass().getSimpleName())
-                  .startsWith("Jdbc");
-              AgentWork work = context.getBean(AgentWork.class);
-              AtomicReference<ApprovalRequest> handed = new AtomicReference<>();
-              QueuedHarness<String> harness =
-                  parking(context.getBean(DefaultQueuedHarnessFactory.class), type, handed);
-              AgentId agent = AgentId.random();
+        .run(context -> {
+          assertThat(context.getBean(QueuedBackend.class).getClass().getSimpleName())
+              .startsWith("Jdbc");
+          assertThat(context.getBean(DirectBackend.class).getClass().getSimpleName())
+              .startsWith("Jdbc");
+          AgentWork work = context.getBean(AgentWork.class);
+          AtomicReference<ApprovalRequest> handed = new AtomicReference<>();
+          QueuedHarness<String> harness =
+              parking(context.getBean(DefaultQueuedHarnessFactory.class), type, handed);
+          AgentId agent = AgentId.random();
 
-              harness.tell(agent, "go");
+          harness.tell(agent, "go");
 
-              await()
-                  .atMost(Duration.ofSeconds(30))
-                  .untilAsserted(
-                      () ->
-                          assertThat(work.status(type, agent).activity())
-                              .isEqualTo(Activity.WAITING));
-              assertThat(work.waitingApprovals(type)).hasSize(1);
-              assertThat(work.waitingApprovals().stream().filter(r -> r.agentId().equals(agent)))
-                  .hasSize(1);
-              assertThat(work.status(type, agent).waitingApprovals()).hasSize(1);
-            });
+          await()
+              .atMost(Duration.ofSeconds(30))
+              .untilAsserted(() ->
+                  assertThat(work.status(type, agent).activity()).isEqualTo(Activity.WAITING));
+          assertThat(work.waitingApprovals(type)).hasSize(1);
+          assertThat(work.waitingApprovals().stream().filter(r -> r.agentId().equals(agent)))
+              .hasSize(1);
+          assertThat(work.status(type, agent).waitingApprovals()).hasSize(1);
+        });
   }
 
   @Test
@@ -224,34 +221,33 @@ class AgentWorkOverBackendsTest {
                 AgentWorkAutoConfiguration.class))
         .withUserConfiguration(AModel.class)
         .withPropertyValues(PROPERTIES)
-        .run(
-            context -> {
-              AgentWork work = context.getBean(AgentWork.class);
-              AtomicReference<ApprovalRequest> handed = new AtomicReference<>();
-              QueuedHarness<String> harness =
-                  parking(context.getBean(DefaultQueuedHarnessFactory.class), type, handed);
-              AgentId agent = AgentId.random();
+        .run(context -> {
+          AgentWork work = context.getBean(AgentWork.class);
+          AtomicReference<ApprovalRequest> handed = new AtomicReference<>();
+          QueuedHarness<String> harness =
+              parking(context.getBean(DefaultQueuedHarnessFactory.class), type, handed);
+          AgentId agent = AgentId.random();
 
-              harness.tell(agent, "go");
+          harness.tell(agent, "go");
 
-              await()
-                  .atMost(Duration.ofSeconds(30))
-                  .untilAsserted(() -> assertThat(work.waitingApprovals(type)).hasSize(1));
-              ApprovalRequest read = work.waitingApprovals(type).getFirst();
-              ApprovalRequest given = handed.get();
-              assertThat(given).isNotNull();
-              assertThat(read.toolName()).isEqualTo(new ToolName("lookup"));
-              assertThat(read.toolName()).isEqualTo(given.toolName());
-              assertThat(read.callId().value()).isEqualTo("call_1");
-              assertThat(read.callId()).isEqualTo(given.callId());
-              assertThat(read.idempotencyKey()).isEqualTo(given.idempotencyKey());
-              assertThat(read.turn()).isEqualTo(given.turn());
-              assertThat(read.agentType()).isEqualTo(type);
-              assertThat(read.agentId()).isEqualTo(agent);
-              assertThat(read.arguments()).isEqualTo(given.arguments());
-              assertThat(read.action()).isEqualTo(given.action());
-              assertThat(read.action()).isEqualTo("look up loch ness");
-            });
+          await()
+              .atMost(Duration.ofSeconds(30))
+              .untilAsserted(() -> assertThat(work.waitingApprovals(type)).hasSize(1));
+          ApprovalRequest read = work.waitingApprovals(type).getFirst();
+          ApprovalRequest given = handed.get();
+          assertThat(given).isNotNull();
+          assertThat(read.toolName()).isEqualTo(new ToolName("lookup"));
+          assertThat(read.toolName()).isEqualTo(given.toolName());
+          assertThat(read.callId().value()).isEqualTo("call_1");
+          assertThat(read.callId()).isEqualTo(given.callId());
+          assertThat(read.idempotencyKey()).isEqualTo(given.idempotencyKey());
+          assertThat(read.turn()).isEqualTo(given.turn());
+          assertThat(read.agentType()).isEqualTo(type);
+          assertThat(read.agentId()).isEqualTo(agent);
+          assertThat(read.arguments()).isEqualTo(given.arguments());
+          assertThat(read.action()).isEqualTo(given.action());
+          assertThat(read.action()).isEqualTo("look up loch ness");
+        });
   }
 
   @Test
@@ -267,27 +263,24 @@ class AgentWorkOverBackendsTest {
                 AgentWorkAutoConfiguration.class))
         .withUserConfiguration(AModel.class, AQueuedBackendOnly.class)
         .withPropertyValues(PROPERTIES)
-        .run(
-            context -> {
-              assertThat(context).doesNotHaveBean(DirectBackend.class);
-              assertThat(context).hasSingleBean(AgentWork.class);
-              AgentWork work = context.getBean(AgentWork.class);
-              AtomicReference<ApprovalRequest> handed = new AtomicReference<>();
-              QueuedHarness<String> harness =
-                  parking(context.getBean(DefaultQueuedHarnessFactory.class), type, handed);
-              AgentId agent = AgentId.random();
-              assertThat(work.status(type, agent).activity()).isEqualTo(Activity.IDLE);
+        .run(context -> {
+          assertThat(context).doesNotHaveBean(DirectBackend.class);
+          assertThat(context).hasSingleBean(AgentWork.class);
+          AgentWork work = context.getBean(AgentWork.class);
+          AtomicReference<ApprovalRequest> handed = new AtomicReference<>();
+          QueuedHarness<String> harness =
+              parking(context.getBean(DefaultQueuedHarnessFactory.class), type, handed);
+          AgentId agent = AgentId.random();
+          assertThat(work.status(type, agent).activity()).isEqualTo(Activity.IDLE);
 
-              harness.tell(agent, "go");
+          harness.tell(agent, "go");
 
-              await()
-                  .atMost(Duration.ofSeconds(30))
-                  .untilAsserted(
-                      () ->
-                          assertThat(work.status(type, agent).activity())
-                              .isEqualTo(Activity.WAITING));
-              assertThat(work.waitingApprovals(type)).hasSize(1);
-              assertThat(work.waitingApprovals().getFirst().agentId()).isEqualTo(agent);
-            });
+          await()
+              .atMost(Duration.ofSeconds(30))
+              .untilAsserted(() ->
+                  assertThat(work.status(type, agent).activity()).isEqualTo(Activity.WAITING));
+          assertThat(work.waitingApprovals(type)).hasSize(1);
+          assertThat(work.waitingApprovals().getFirst().agentId()).isEqualTo(agent);
+        });
   }
 }

@@ -316,15 +316,13 @@ public final class StoredAgentWork implements AgentWork {
   /** Whether a story holds both the request an approval row is for and the row's deferral. */
   private static boolean holds(List<AgentEvent> story, AgentEffect.Approve approve) {
     return story.stream()
-            .anyMatch(
-                event ->
-                    event instanceof AgentEvent.ActionsRequested asked
-                        && asked.seq().equals(approve.requestSeq()))
+            .anyMatch(event ->
+                event instanceof AgentEvent.ActionsRequested asked
+                    && asked.seq().equals(approve.requestSeq()))
         && story.stream()
-            .anyMatch(
-                event ->
-                    event instanceof AgentEvent.ApprovalDeferred deferred
-                        && deferred.idempotencyKey().equals(approve.idempotencyKey()));
+            .anyMatch(event ->
+                event instanceof AgentEvent.ApprovalDeferred deferred
+                    && deferred.idempotencyKey().equals(approve.idempotencyKey()));
   }
 
   private Optional<ApprovalRequest> rebuild(
@@ -336,12 +334,11 @@ public final class StoredAgentWork implements AgentWork {
             .map(AgentEvent.ActionsRequested.class::cast)
             .filter(asked -> asked.seq().equals(approve.requestSeq()))
             .findFirst()
-            .flatMap(
-                asked ->
-                    RequestedCalls.resolve(
-                        rows.payloads(row.agentId()),
-                        asked,
-                        entry -> entry.idempotencyKey().equals(key)));
+            .flatMap(asked ->
+                RequestedCalls.resolve(
+                    rows.payloads(row.agentId()),
+                    asked,
+                    entry -> entry.idempotencyKey().equals(key)));
     if (call.isEmpty()) {
       return Optional.empty();
     }

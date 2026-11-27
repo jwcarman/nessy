@@ -246,11 +246,10 @@ class ApprovalHandlerTest {
   void approvingACallForAToolThatIsNotBoundDischargesItInstead() {
     assertThat(ask(Tools.none()))
         .asInstanceOf(type(EffectOutcome.ToolFailed.class))
-        .satisfies(
-            failed -> {
-              assertThat(failed.callId()).isEqualTo(new CallId("c1"));
-              assertThat(failed.message()).contains("lookup");
-            });
+        .satisfies(failed -> {
+          assertThat(failed.callId()).isEqualTo(new CallId("c1"));
+          assertThat(failed.message()).contains("lookup");
+        });
   }
 
   // ---- the deadline shown is the deadline kept ---------------------------------------------
@@ -264,11 +263,10 @@ class ApprovalHandlerTest {
     ApprovalRequest[] seen = new ApprovalRequest[1];
     ApprovalHandler handler =
         handler(
-            bound(
-                request -> {
-                  seen[0] = request;
-                  return Awaited.ready(ApprovalResult.approved());
-                }),
+            bound(request -> {
+              seen[0] = request;
+              return Awaited.ready(ApprovalResult.approved());
+            }),
             story());
 
     asked(handler, WRITTEN_DEADLINE);
@@ -294,11 +292,10 @@ class ApprovalHandlerTest {
   void a_deferred_approval_hands_back_the_facts_it_was_shown() {
     ApprovalHandler handler =
         handler(
-            bound(
-                request -> {
-                  request.fact("risk", "low").fact("depth", JsonNodeFactory.instance.numberNode(2));
-                  return new Awaited.Deferred<>();
-                }),
+            bound(request -> {
+              request.fact("risk", "low").fact("depth", JsonNodeFactory.instance.numberNode(2));
+              return new Awaited.Deferred<>();
+            }),
             story());
 
     Handled handled = asked(handler, WRITTEN_DEADLINE);
@@ -324,12 +321,11 @@ class ApprovalHandlerTest {
     ApprovalRequest[] seen = new ApprovalRequest[1];
     ApprovalHandler handler =
         handler(
-            bound(
-                request -> {
-                  seen[0] = request;
-                  request.fact("risk", "low");
-                  return new Awaited.Deferred<>();
-                }),
+            bound(request -> {
+              seen[0] = request;
+              request.fact("risk", "low");
+              return new Awaited.Deferred<>();
+            }),
             story());
 
     Handled handled = asked(handler, WRITTEN_DEADLINE);
@@ -347,22 +343,20 @@ class ApprovalHandlerTest {
 
     EffectOutcome outcome =
         ask(
-            bound(
-                request -> {
-                  seen[0] = request;
-                  request.fact("risk", "low");
-                  return Awaited.ready(new ApprovalResult.Approved(Optional.of("u_carol")));
-                }));
+            bound(request -> {
+              seen[0] = request;
+              request.fact("risk", "low");
+              return Awaited.ready(new ApprovalResult.Approved(Optional.of("u_carol")));
+            }));
 
     assertThat(outcome)
         .asInstanceOf(type(EffectOutcome.ToolApproved.class))
-        .satisfies(
-            approved -> {
-              assertThat(approved.callId()).isEqualTo(new CallId("c1"));
-              assertThat(approved.decidedBy()).contains("u_carol");
-              assertThat(approved.facts()).isNotEmpty();
-              assertThat(approved.facts()).hasToString(seen[0].facts().toString());
-            });
+        .satisfies(approved -> {
+          assertThat(approved.callId()).isEqualTo(new CallId("c1"));
+          assertThat(approved.decidedBy()).contains("u_carol");
+          assertThat(approved.facts()).isNotEmpty();
+          assertThat(approved.facts()).hasToString(seen[0].facts().toString());
+        });
   }
 
   @Test
@@ -371,24 +365,22 @@ class ApprovalHandlerTest {
 
     EffectOutcome outcome =
         ask(
-            bound(
-                request -> {
-                  seen[0] = request;
-                  request.fact("risk", "high");
-                  return Awaited.ready(
-                      new ApprovalResult.Denied("out of hours", Optional.of("u_dave")));
-                }));
+            bound(request -> {
+              seen[0] = request;
+              request.fact("risk", "high");
+              return Awaited.ready(
+                  new ApprovalResult.Denied("out of hours", Optional.of("u_dave")));
+            }));
 
     assertThat(outcome)
         .asInstanceOf(type(EffectOutcome.ToolDenied.class))
-        .satisfies(
-            denied -> {
-              assertThat(denied.callId()).isEqualTo(new CallId("c1"));
-              assertThat(denied.reason()).isEqualTo("out of hours");
-              assertThat(denied.decidedBy()).contains("u_dave");
-              assertThat(denied.facts()).isNotEmpty();
-              assertThat(denied.facts()).hasToString(seen[0].facts().toString());
-            });
+        .satisfies(denied -> {
+          assertThat(denied.callId()).isEqualTo(new CallId("c1"));
+          assertThat(denied.reason()).isEqualTo("out of hours");
+          assertThat(denied.decidedBy()).contains("u_dave");
+          assertThat(denied.facts()).isNotEmpty();
+          assertThat(denied.facts()).hasToString(seen[0].facts().toString());
+        });
   }
 
   /**
@@ -399,11 +391,10 @@ class ApprovalHandlerTest {
   void a_fact_the_approver_added_while_deciding_is_in_the_facts() {
     EffectOutcome outcome =
         ask(
-            bound(
-                request -> {
-                  request.fact("depth", JsonNodeFactory.instance.numberNode(230));
-                  return Awaited.ready(ApprovalResult.approved());
-                }));
+            bound(request -> {
+              request.fact("depth", JsonNodeFactory.instance.numberNode(230));
+              return Awaited.ready(ApprovalResult.approved());
+            }));
 
     assertThat(factsOf(outcome)).isEqualTo(JsonNodeFactory.instance.objectNode().put("depth", 230));
   }
@@ -415,20 +406,18 @@ class ApprovalHandlerTest {
     ApprovalRequest[] seenDenying = new ApprovalRequest[1];
     EffectOutcome approved =
         ask(
-            bound(
-                request -> {
-                  seenApproving[0] = request;
-                  request.fact("risk", "low");
-                  return Awaited.ready(ApprovalResult.approved());
-                }));
+            bound(request -> {
+              seenApproving[0] = request;
+              request.fact("risk", "low");
+              return Awaited.ready(ApprovalResult.approved());
+            }));
     EffectOutcome denied =
         ask(
-            bound(
-                request -> {
-                  request.fact("risk", "low");
-                  seenDenying[0] = request;
-                  return Awaited.ready(ApprovalResult.denied("no"));
-                }));
+            bound(request -> {
+              request.fact("risk", "low");
+              seenDenying[0] = request;
+              return Awaited.ready(ApprovalResult.denied("no"));
+            }));
 
     seenApproving[0].fact("late", "yes");
     seenDenying[0].fact("late", "yes");
@@ -504,11 +493,10 @@ class ApprovalHandlerTest {
   void theApproverIsToldWhatItIsBeingAskedAbout() {
     ApprovalRequest[] seen = new ApprovalRequest[1];
     ask(
-        bound(
-            request -> {
-              seen[0] = request;
-              return Awaited.ready(ApprovalResult.approved());
-            }));
+        bound(request -> {
+          seen[0] = request;
+          return Awaited.ready(ApprovalResult.approved());
+        }));
 
     assertThat(seen[0].agentType()).isEqualTo(TYPE);
     assertThat(seen[0].agentId()).isEqualTo(AGENT);
@@ -572,11 +560,10 @@ class ApprovalHandlerTest {
   void theDefaultActionIsTheInputsOwnToString() {
     String[] seen = new String[1];
     ask(
-        bound(
-            request -> {
-              seen[0] = request.action();
-              return Awaited.ready(ApprovalResult.approved());
-            }));
+        bound(request -> {
+          seen[0] = request.action();
+          return Awaited.ready(ApprovalResult.approved());
+        }));
 
     assertThat(seen[0]).isEqualTo("Query[q=loch ness]");
   }
@@ -590,21 +577,19 @@ class ApprovalHandlerTest {
     boolean[] asked = {false};
     EffectOutcome outcome =
         ask(
-            bound(
-                _ -> {
-                  asked[0] = true;
-                  return Awaited.ready(ApprovalResult.approved());
-                }),
+            bound(_ -> {
+              asked[0] = true;
+              return Awaited.ready(ApprovalResult.approved());
+            }),
             story("{\"q\": "));
 
     assertThat(asked[0]).as("nothing to consent to").isFalse();
     assertThat(outcome)
         .asInstanceOf(type(EffectOutcome.ToolFailed.class))
-        .satisfies(
-            failed -> {
-              assertThat(failed.callId()).isEqualTo(new CallId("c1"));
-              assertThat(failed.message()).contains("could not be read");
-            });
+        .satisfies(failed -> {
+          assertThat(failed.callId()).isEqualTo(new CallId("c1"));
+          assertThat(failed.message()).contains("could not be read");
+        });
   }
 
   /**
@@ -659,10 +644,9 @@ class ApprovalHandlerTest {
                     new RetryPolicy.Never(),
                     Optional.empty(),
                     Optional.empty(),
-                    List.of(
-                        _ -> {
-                          throw new IllegalStateException();
-                        }),
+                    List.of(_ -> {
+                      throw new IllegalStateException();
+                    }),
                     _ -> {
                       asked[0] = true;
                       return Awaited.ready(ApprovalResult.approved());
@@ -675,11 +659,10 @@ class ApprovalHandlerTest {
     assertThat(asked[0]).as("nobody was asked, so nothing was approved").isFalse();
     assertThat(outcome)
         .asInstanceOf(type(EffectOutcome.ToolFailed.class))
-        .satisfies(
-            failed -> {
-              assertThat(failed.callId()).isEqualTo(new CallId("c1"));
-              assertThat(failed.message()).isNotNull().isNotBlank();
-            });
+        .satisfies(failed -> {
+          assertThat(failed.callId()).isEqualTo(new CallId("c1"));
+          assertThat(failed.message()).isNotNull().isNotBlank();
+        });
   }
 
   /**
@@ -720,11 +703,10 @@ class ApprovalHandlerTest {
   void theArgumentsAreNotInTheRequestsOwnToString() {
     ApprovalRequest[] seen = new ApprovalRequest[1];
     ask(
-        bound(
-            request -> {
-              seen[0] = request;
-              return Awaited.ready(ApprovalResult.approved());
-            }));
+        bound(request -> {
+          seen[0] = request;
+          return Awaited.ready(ApprovalResult.approved());
+        }));
 
     assertThat(seen[0].arguments()).isNotBlank();
     assertThat(seen[0].toString()).doesNotContain(seen[0].arguments()).contains("lookup");
@@ -738,11 +720,10 @@ class ApprovalHandlerTest {
   void theRequestCarriesTheCallsIdempotencyKey() {
     ApprovalRequest[] seen = new ApprovalRequest[1];
     ask(
-        bound(
-            request -> {
-              seen[0] = request;
-              return Awaited.ready(ApprovalResult.approved());
-            }));
+        bound(request -> {
+          seen[0] = request;
+          return Awaited.ready(ApprovalResult.approved());
+        }));
 
     assertThat(seen[0].idempotencyKey()).isEqualTo(KEY);
   }
@@ -789,11 +770,10 @@ class ApprovalHandlerTest {
 
     assertThat(terms.undispatchable())
         .asInstanceOf(type(EffectOutcome.ToolFailed.class))
-        .satisfies(
-            failed -> {
-              assertThat(failed.callId()).isEqualTo(new CallId("c1"));
-              assertThat(failed.message()).contains("authorised");
-            });
+        .satisfies(failed -> {
+          assertThat(failed.callId()).isEqualTo(new CallId("c1"));
+          assertThat(failed.message()).contains("authorised");
+        });
     assertThat(terms.failed(new IllegalStateException("unreachable")))
         .asInstanceOf(type(EffectOutcome.ToolFailed.class))
         .extracting(EffectOutcome.ToolFailed::callId)

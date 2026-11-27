@@ -190,13 +190,12 @@ public final class AnthropicInferenceProvider implements InferenceProvider, Auto
       MessageAccumulator accumulator = MessageAccumulator.create();
       boolean[] any = {false};
       stream.stream()
-          .forEach(
-              event -> {
-                any[0] = true;
-                accumulator.accumulate(event);
-                narrate(event, narrator);
-                reportDroppedThinking(event);
-              });
+          .forEach(event -> {
+            any[0] = true;
+            accumulator.accumulate(event);
+            narrate(event, narrator);
+            reportDroppedThinking(event);
+          });
       if (!any[0]) {
         return new InferenceResult.Fault(new Failure.Permanent("model returned no message"));
       }

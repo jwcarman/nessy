@@ -89,22 +89,21 @@ public class DirectHarnessAutoConfiguration {
     // The starter says what it knows, then every customizer bean has its turn. An application
     // adds a lease, a listener or a store of its own without declaring the whole factory.
     List<Customizer<DirectHarnessFactoryConfig>> all = new ArrayList<>();
-    all.add(
-        config -> {
-          config.backend(backend).schemas(schemas).mapper(mapper).observations(observations);
-          beans
-              .getBeansOfType(InferenceProvider.class)
-              .forEach((name, provider) -> config.provider(providerId(name), provider));
-          String provider = properties.provider();
-          String model = properties.model();
-          requireBothOrNeither(provider, model);
-          if (provider != null && !provider.isBlank()) {
-            config.inference(
-                ProviderId.of(provider), new InferenceOptions(model, properties.maxTokens()));
-          }
-          // Every feature bean -- a jar that equips every agent -- lands on this door too.
-          features.orderedStream().forEach(config::feature);
-        });
+    all.add(config -> {
+      config.backend(backend).schemas(schemas).mapper(mapper).observations(observations);
+      beans
+          .getBeansOfType(InferenceProvider.class)
+          .forEach((name, provider) -> config.provider(providerId(name), provider));
+      String provider = properties.provider();
+      String model = properties.model();
+      requireBothOrNeither(provider, model);
+      if (provider != null && !provider.isBlank()) {
+        config.inference(
+            ProviderId.of(provider), new InferenceOptions(model, properties.maxTokens()));
+      }
+      // Every feature bean -- a jar that equips every agent -- lands on this door too.
+      features.orderedStream().forEach(config::feature);
+    });
     customizers.orderedStream().forEach(all::add);
     return DefaultDirectHarnessFactory.of(all);
   }

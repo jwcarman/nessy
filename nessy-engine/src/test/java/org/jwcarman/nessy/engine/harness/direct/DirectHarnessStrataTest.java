@@ -112,14 +112,13 @@ class DirectHarnessStrataTest {
       Customizer<DirectHarnessFactoryConfig> onFactory, Customizer<HarnessConfig<?>> onHarness) {
     JacksonCodecFactory codecs = new JacksonCodecFactory(JsonMapper.builder().build());
     factory =
-        DefaultDirectHarnessFactory.of(
-            f -> {
-              f.backend(new InMemoryDirectBackend(codecs))
-                  .provider(ProviderId.of("test"), scripted)
-                  .schemas(new VictoolsJsonSchemaGenerator())
-                  .mapper(JsonMapper.builder().build());
-              onFactory.customize(f);
-            });
+        DefaultDirectHarnessFactory.of(f -> {
+          f.backend(new InMemoryDirectBackend(codecs))
+              .provider(ProviderId.of("test"), scripted)
+              .schemas(new VictoolsJsonSchemaGenerator())
+              .mapper(JsonMapper.builder().build());
+          onFactory.customize(f);
+        });
     DirectHarness<String, String> harness =
         factory.<String>create(
             TYPE,

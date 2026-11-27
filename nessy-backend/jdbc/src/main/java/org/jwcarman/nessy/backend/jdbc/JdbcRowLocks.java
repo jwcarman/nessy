@@ -135,11 +135,10 @@ public final class JdbcRowLocks implements Locks {
     Objects.requireNonNull(type, "type must not be null");
     Objects.requireNonNull(agent, "agent must not be null");
     Objects.requireNonNull(work, "work must not be null");
-    return transactions.execute(
-        _ -> {
-          take(kind, type, agent);
-          return work.get();
-        });
+    return transactions.execute(_ -> {
+      take(kind, type, agent);
+      return work.get();
+    });
   }
 
   private void take(LockKind kind, AgentType type, AgentId agent) {

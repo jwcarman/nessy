@@ -77,17 +77,16 @@ class JdbcRowLocksTest {
   private Thread holderOf(
       LockKind kind, AgentId agent, CountDownLatch holding, CountDownLatch release) {
     Thread holder =
-        new Thread(
-            () ->
-                locks.withLock(
-                    kind,
-                    TYPE,
-                    agent,
-                    () -> {
-                      holding.countDown();
-                      await(release);
-                      return null;
-                    }));
+        new Thread(() ->
+            locks.withLock(
+                kind,
+                TYPE,
+                agent,
+                () -> {
+                  holding.countDown();
+                  await(release);
+                  return null;
+                }));
     holder.start();
     return holder;
   }
@@ -144,22 +143,21 @@ class JdbcRowLocksTest {
     CountDownLatch release = new CountDownLatch(1);
     CountDownLatch holderFinished = new CountDownLatch(1);
     Thread holder =
-        new Thread(
-            () -> {
-              locks.withLock(
-                  KIND,
-                  TYPE,
-                  agent,
-                  () -> {
-                    holding.countDown();
-                    await(release);
-                    // Inside the work, so it is set BEFORE the commit that releases the row. The
-                    // waiter wakes on that commit, so a signal raised after withLock returned
-                    // would race it -- the waiter can be running before the holder's next line.
-                    holderFinished.countDown();
-                    return null;
-                  });
-            });
+        new Thread(() -> {
+          locks.withLock(
+              KIND,
+              TYPE,
+              agent,
+              () -> {
+                holding.countDown();
+                await(release);
+                // Inside the work, so it is set BEFORE the commit that releases the row. The
+                // waiter wakes on that commit, so a signal raised after withLock returned
+                // would race it -- the waiter can be running before the holder's next line.
+                holderFinished.countDown();
+                return null;
+              });
+        });
     holder.start();
     holding.await();
 
@@ -220,18 +218,17 @@ class JdbcRowLocksTest {
     JdbcClient jdbc = JdbcClient.create(dataSource);
     RuntimeException boom = new RuntimeException("boom");
 
-    assertThatThrownBy(
-            () ->
-                locks.withLock(
-                    KIND,
-                    TYPE,
-                    agent,
-                    () -> {
-                      jdbc.sql("INSERT INTO nessy_agent (agent_type, agent_id) VALUES (?, ?)")
-                          .params(TYPE.value(), agent.value())
-                          .update();
-                      throw boom;
-                    }))
+    assertThatThrownBy(() ->
+            locks.withLock(
+                KIND,
+                TYPE,
+                agent,
+                () -> {
+                  jdbc.sql("INSERT INTO nessy_agent (agent_type, agent_id) VALUES (?, ?)")
+                      .params(TYPE.value(), agent.value())
+                      .update();
+                  throw boom;
+                }))
         .isSameAs(boom);
 
     Long rows =

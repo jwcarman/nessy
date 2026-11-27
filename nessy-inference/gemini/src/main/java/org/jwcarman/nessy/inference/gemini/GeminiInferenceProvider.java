@@ -222,15 +222,14 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
     String model = response.modelVersion().filter(name -> !name.isBlank()).orElse(requested);
     return response
         .usageMetadata()
-        .<Usage>map(
-            counted ->
-                new Usage(
-                    model,
-                    counted.promptTokenCount().orElse(null),
-                    outputOf(counted),
-                    counted.cachedContentTokenCount().orElse(null),
-                    null,
-                    counted.thoughtsTokenCount().orElse(null)))
+        .<Usage>map(counted ->
+            new Usage(
+                model,
+                counted.promptTokenCount().orElse(null),
+                outputOf(counted),
+                counted.cachedContentTokenCount().orElse(null),
+                null,
+                counted.thoughtsTokenCount().orElse(null)))
         .orElseGet(() -> Usage.unreported(model));
   }
 
@@ -289,14 +288,13 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
     private static void narrate(Part part, InferenceNarrator narrator) {
       part.text()
           .filter(text -> !text.isEmpty())
-          .ifPresent(
-              text -> {
-                if (part.thought().orElse(false)) {
-                  narrator.thinking(text);
-                } else {
-                  narrator.text(text);
-                }
-              });
+          .ifPresent(text -> {
+            if (part.thought().orElse(false)) {
+              narrator.thinking(text);
+            } else {
+              narrator.text(text);
+            }
+          });
     }
 
     private void fold(Part part) {
@@ -362,9 +360,8 @@ public final class GeminiInferenceProvider implements InferenceProvider, AutoClo
           .promptFeedback()
           .flatMap(feedback -> feedback.blockReason().map(Object::toString))
           .<InferenceResult>map(InferenceResult.Refusal::new)
-          .orElseGet(
-              () ->
-                  new InferenceResult.Fault(new Failure.Permanent("model returned no candidates")));
+          .orElseGet(() ->
+              new InferenceResult.Fault(new Failure.Permanent("model returned no candidates")));
     }
     Candidate candidate = candidates.getFirst();
     List<Part> parts = candidate.content().flatMap(Content::parts).orElse(List.of());

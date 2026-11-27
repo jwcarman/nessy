@@ -85,10 +85,9 @@ class BedrockEmbedderTest {
   private static Embedder embedder(Scripted client, String model, Optional<Dimension> dimension) {
     BedrockEmbeddingProvider provider =
         new BedrockEmbeddingProvider(client, "search_document", MAPPER);
-    return DefaultEmbedderFactory.of(
-            f ->
-                f.provider(BEDROCK, provider)
-                    .embedding(BEDROCK, new EmbeddingOptions(model, dimension)))
+    return DefaultEmbedderFactory.of(f ->
+            f.provider(BEDROCK, provider)
+                .embedding(BEDROCK, new EmbeddingOptions(model, dimension)))
         .create(c -> {});
   }
 
@@ -160,14 +159,13 @@ class BedrockEmbedderTest {
     @Test
     void more_than_ninety_six_texts_go_in_several_calls() {
       Scripted client =
-          new Scripted(
-              body -> {
-                StringBuilder reply = new StringBuilder("{\"embeddings\":[");
-                for (int i = 0; i < body.path("texts").size(); i++) {
-                  reply.append(i == 0 ? "" : ",").append("[1]");
-                }
-                return reply.append("]}").toString();
-              });
+          new Scripted(body -> {
+            StringBuilder reply = new StringBuilder("{\"embeddings\":[");
+            for (int i = 0; i < body.path("texts").size(); i++) {
+              reply.append(i == 0 ? "" : ",").append("[1]");
+            }
+            return reply.append("]}").toString();
+          });
       Embedder embedder = embedder(client, "cohere.embed-multilingual-v3", Optional.empty());
       List<String> texts = java.util.Collections.nCopies(100, "x");
 
@@ -223,15 +221,13 @@ class BedrockEmbedderTest {
     void a_region_and_credentials_build_an_embedder_and_a_handed_in_client_is_not_closed() {
       StaticCredentialsProvider credentials =
           StaticCredentialsProvider.create(AwsBasicCredentials.create("akid", "secret"));
-      assertThatCode(
-              () ->
-                  BedrockEmbeddingProvider.of(
-                          c ->
-                              c.region(Region.US_EAST_1)
-                                  .credentialsProvider(credentials)
-                                  .cohereInputType("search_query")
-                                  .mapper(MAPPER))
-                      .close())
+      assertThatCode(() ->
+              BedrockEmbeddingProvider.of(c ->
+                      c.region(Region.US_EAST_1)
+                          .credentialsProvider(credentials)
+                          .cohereInputType("search_query")
+                          .mapper(MAPPER))
+                  .close())
           .doesNotThrowAnyException();
 
       AtomicBoolean closed = new AtomicBoolean();
@@ -278,11 +274,9 @@ class BedrockEmbedderTest {
     void is_warned_once_when_the_embedder_is_built_and_is_not_in_any_request() {
       Scripted client = new Scripted(body -> "{\"embedding\":[1]}");
       DefaultEmbedderFactory factory =
-          DefaultEmbedderFactory.of(
-              f ->
-                  f.provider(
-                          BEDROCK, new BedrockEmbeddingProvider(client, "search_document", MAPPER))
-                      .embedding(BEDROCK, EmbeddingOptions.of("amazon.titan-embed-text-v2:0")));
+          DefaultEmbedderFactory.of(f ->
+              f.provider(BEDROCK, new BedrockEmbeddingProvider(client, "search_document", MAPPER))
+                  .embedding(BEDROCK, EmbeddingOptions.of("amazon.titan-embed-text-v2:0")));
       var embedder = new Embedder[1];
 
       List<ILoggingEvent> atBuild =

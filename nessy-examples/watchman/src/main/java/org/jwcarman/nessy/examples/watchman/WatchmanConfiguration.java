@@ -93,22 +93,21 @@ public class WatchmanConfiguration {
           // that, so the defaults apply: every twenty turns the engine closes a chapter and has
           // the agent's own model write its summary, and the tail shown whole is capped at the
           // last forty completed turns.
-          tools.forEach(
-              tool -> {
-                if (WatchmanTools.needsApproval(tool.name())) {
-                  config.tool(
-                      tool,
-                      binding ->
-                          binding
-                              .approver(
-                                  gatedOnRisk(tool.name(), deferring()),
-                                  approval -> approval.timeout(properties.getApprovalTerm()))
-                              .action(args -> WatchmanTools.actionOf(tool.name())));
-                } else {
-                  config.tool(
-                      tool, binding -> binding.action(args -> WatchmanTools.actionOf(tool.name())));
-                }
-              });
+          tools.forEach(tool -> {
+            if (WatchmanTools.needsApproval(tool.name())) {
+              config.tool(
+                  tool,
+                  binding ->
+                      binding
+                          .approver(
+                              gatedOnRisk(tool.name(), deferring()),
+                              approval -> approval.timeout(properties.getApprovalTerm()))
+                          .action(args -> WatchmanTools.actionOf(tool.name())));
+            } else {
+              config.tool(
+                  tool, binding -> binding.action(args -> WatchmanTools.actionOf(tool.name())));
+            }
+          });
         });
   }
 

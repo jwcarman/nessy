@@ -85,14 +85,13 @@ public final class EventUsageReports implements UsageReports {
     public Tally apply(Tally soFar, Narrated story) {
       soFar.any = true;
       spent(story.event())
-          .ifPresent(
-              usage -> {
-                if (usage.model() == null) {
-                  soFar.unreported++;
-                } else {
-                  soFar.byModel.merge(usage.model(), first(usage), (sum, one) -> plus(sum, usage));
-                }
-              });
+          .ifPresent(usage -> {
+            if (usage.model() == null) {
+              soFar.unreported++;
+            } else {
+              soFar.byModel.merge(usage.model(), first(usage), (sum, one) -> plus(sum, usage));
+            }
+          });
       return soFar;
     }
 

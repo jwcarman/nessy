@@ -116,12 +116,11 @@ class ApprovalFactsTest {
         request.context().turns().stream()
             .flatMap(turn -> turn.exchanges().stream())
             .flatMap(exchange -> exchange.outcomes().stream())
-            .forEach(
-                outcome -> {
-                  if (outcome instanceof ToolOutcome.Failed failed) {
-                    TOLD_OF_FAILURES.add(failed.message());
-                  }
-                });
+            .forEach(outcome -> {
+              if (outcome instanceof ToolOutcome.Failed failed) {
+                TOLD_OF_FAILURES.add(failed.message());
+              }
+            });
         return request.context().turns().stream().anyMatch(turn -> !turn.exchanges().isEmpty())
             ? new InferenceResult.Answer(List.of(new Block.Text("all done")))
             : new InferenceResult.Actions(
@@ -191,9 +190,8 @@ class ApprovalFactsTest {
   private static void settled(EngineFixture on, AgentType type, AgentId agentId) {
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () ->
-                assertThat(on.stateOf(type, agentId).getClass().getSimpleName()).isEqualTo("Idle"));
+        .untilAsserted(() ->
+            assertThat(on.stateOf(type, agentId).getClass().getSimpleName()).isEqualTo("Idle"));
   }
 
   private static StoryContent contentOf(EngineFixture on, AgentType type, AgentId agentId) {
@@ -247,12 +245,11 @@ class ApprovalFactsTest {
             case AgentEvent.InferenceAttempted attempted -> attempted.manifest();
             default -> Optional.empty();
           };
-      manifest.ifPresent(
-          m -> {
-            refs.add(m.tools().value());
-            refs.add(m.options().value());
-            m.answerShape().ifPresent(shape -> refs.add(shape.value()));
-          });
+      manifest.ifPresent(m -> {
+        refs.add(m.tools().value());
+        refs.add(m.options().value());
+        m.answerShape().ifPresent(shape -> refs.add(shape.value()));
+      });
     }
     return refs;
   }
@@ -352,11 +349,10 @@ class ApprovalFactsTest {
 
     await()
         .atMost(Duration.ofSeconds(15))
-        .untilAsserted(
-            () -> {
-              List<AgentEvent> story = engine.story(type, agentId);
-              assertThat(story).anyMatch(event -> event instanceof AgentEvent.ApprovalDeferred);
-            });
+        .untilAsserted(() -> {
+          List<AgentEvent> story = engine.story(type, agentId);
+          assertThat(story).anyMatch(event -> event instanceof AgentEvent.ApprovalDeferred);
+        });
     List<AgentEvent> story = engine.story(type, agentId);
     AgentEvent.ApprovalDeferred deferred =
         story.stream()

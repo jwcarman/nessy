@@ -236,11 +236,10 @@ class NarrationTest {
     deferringHarness(type).tell(agentId, "how deep is Loch Ness?");
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () ->
-                assertThat(heard)
-                    .extracting(Narrated::event)
-                    .anyMatch(Narration.ApprovalDeferred.class::isInstance));
+        .untilAsserted(() ->
+            assertThat(heard)
+                .extracting(Narrated::event)
+                .anyMatch(Narration.ApprovalDeferred.class::isInstance));
 
     List<AgentEvent> story = engine.story(type, agentId);
     AgentEvent.ApprovalDeferred stored =
@@ -253,15 +252,14 @@ class NarrationTest {
         heard.stream().filter(n -> n.event() instanceof Narration.ApprovalDeferred).toList();
     assertThat(deferrals)
         .singleElement()
-        .satisfies(
-            n -> {
-              assertThat(n.event())
-                  .isEqualTo(
-                      new Narration.ApprovalDeferred(
-                          new CallId("call_1"), stored.idempotencyKey(), stored.until()));
-              assertThat(n.position()).isPresent();
-              assertThat(n.position().get().seq()).isEqualTo(stored.seq());
-            });
+        .satisfies(n -> {
+          assertThat(n.event())
+              .isEqualTo(
+                  new Narration.ApprovalDeferred(
+                      new CallId("call_1"), stored.idempotencyKey(), stored.until()));
+          assertThat(n.position()).isPresent();
+          assertThat(n.position().get().seq()).isEqualTo(stored.seq());
+        });
     assertThat(agentStateOf(type, agentId))
         .as("and the state says only that a call is outstanding, as designed")
         .isEqualTo("AwaitingActions");
@@ -324,28 +322,26 @@ class NarrationTest {
    */
   @Test
   void aNarratorThatThrowsCannotBreakTheAgent() {
-    narratedBy(
-        _ -> {
-          throw new IllegalStateException("this sink is broken");
-        });
+    narratedBy(_ -> {
+      throw new IllegalStateException("this sink is broken");
+    });
     AgentType type = new AgentType("narrated-broken");
     AgentId agentId = new AgentId(UUID.randomUUID());
 
     harness(type).tell(agentId, "how deep is Loch Ness?");
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () -> {
-              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
-              assertThat(
-                      engine
-                          .jdbc()
-                          .sql("SELECT count(*) FROM nessy_agent_effect WHERE agent_id = ?")
-                          .params(agentId.value())
-                          .query(Integer.class)
-                          .single())
-                  .isZero();
-            });
+        .untilAsserted(() -> {
+          assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
+          assertThat(
+                  engine
+                      .jdbc()
+                      .sql("SELECT count(*) FROM nessy_agent_effect WHERE agent_id = ?")
+                      .params(agentId.value())
+                      .query(Integer.class)
+                      .single())
+              .isZero();
+        });
   }
 
   /** An ordinary harness -- the narration comes from the engine's narrator, not from here. */

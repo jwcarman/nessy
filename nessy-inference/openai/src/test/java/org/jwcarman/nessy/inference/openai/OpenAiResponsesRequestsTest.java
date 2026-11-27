@@ -170,12 +170,14 @@ class OpenAiResponsesRequestsTest {
       """
       {"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",
        "properties":{"q":{"type":"string"},"reason":{"type":["string","null"]}},
-       "required":["q"]}""";
+       "required":["q"]}\
+      """;
 
   private static final String MAP_SCHEMA =
       """
       {"type":"object","properties":{"labels":{"type":"object","additionalProperties":{"type":"string"}}},
-       "required":["labels"]}""";
+       "required":["labels"]}\
+      """;
 
   /** What the SDK would put on the wire for {@code value}, read back as plain maps and lists. */
   private static Map<String, Object> sent(Object value) {
@@ -838,13 +840,12 @@ class OpenAiResponsesRequestsTest {
       assertThat(tools.get(1).strict()).contains(true);
       assertThat(appender.list)
           .singleElement()
-          .satisfies(
-              event -> {
-                assertThat(event.getLevel()).isEqualTo(Level.WARN);
-                assertThat(event.getFormattedMessage())
-                    .contains("tagging")
-                    .contains("additionalProperties");
-              });
+          .satisfies(event -> {
+            assertThat(event.getLevel()).isEqualTo(Level.WARN);
+            assertThat(event.getFormattedMessage())
+                .contains("tagging")
+                .contains("additionalProperties");
+          });
     }
 
     @Test
@@ -937,10 +938,11 @@ class OpenAiResponsesRequestsTest {
             Optional.of(
                 new JsonSchema(
                     """
-                    {"$schema":"https://json-schema.org/draft/2020-12/schema",
-       "$defs":{"Item":{"type":"object","properties":{"name":{"type":"string"},"count":{"type":"integer"}},
-                        "required":["name","count"]}},
-       "type":"array","items":{"$ref":"#/$defs/Item"}}""")));
+                                 {"$schema":"https://json-schema.org/draft/2020-12/schema",
+                    "$defs":{"Item":{"type":"object","properties":{"name":{"type":"string"},"count":{"type":"integer"}},
+                                     "required":["name","count"]}},
+                    "type":"array","items":{"$ref":"#/$defs/Item"}}\
+                    """)));
 
     List<ILoggingEvent> events =
         LogCapture.during(OpenAiResponsesRequests.class, () -> params(request));

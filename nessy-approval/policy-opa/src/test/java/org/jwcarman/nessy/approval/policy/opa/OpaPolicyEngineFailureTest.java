@@ -80,12 +80,11 @@ class OpaPolicyEngineFailureTest {
   }
 
   private PolicyEngine engine() {
-    return OpaPolicyEngine.of(
-        opa ->
-            opa.url("http://127.0.0.1:" + server.getAddress().getPort())
-                .decisionPath("nessy/tools/decision")
-                .timeout(Duration.ofSeconds(2))
-                .connectTimeout(Duration.ofSeconds(1)));
+    return OpaPolicyEngine.of(opa ->
+        opa.url("http://127.0.0.1:" + server.getAddress().getPort())
+            .decisionPath("nessy/tools/decision")
+            .timeout(Duration.ofSeconds(2))
+            .connectTimeout(Duration.ofSeconds(1)));
   }
 
   private static ApprovalRequest asking() {
@@ -175,14 +174,13 @@ class OpaPolicyEngineFailureTest {
   void the_interpreter_can_be_replaced() {
     body.set("{\"result\":{\"decision\":false,\"context\":{\"reason_user\":\"out of hours\"}}}");
     PolicyEngine authzen =
-        OpaPolicyEngine.of(
-            opa ->
-                opa.url("http://127.0.0.1:" + server.getAddress().getPort())
-                    .decisionPath("nessy/tools/decision")
-                    .renderer(
-                        InputDocumentRenderer.authzen(
-                            tools.jackson.databind.json.JsonMapper.builder().build()))
-                    .interpreter(DecisionInterpreter.authzen()));
+        OpaPolicyEngine.of(opa ->
+            opa.url("http://127.0.0.1:" + server.getAddress().getPort())
+                .decisionPath("nessy/tools/decision")
+                .renderer(
+                    InputDocumentRenderer.authzen(
+                        tools.jackson.databind.json.JsonMapper.builder().build()))
+                .interpreter(DecisionInterpreter.authzen()));
 
     assertThat(authzen.decide(asking())).isEqualTo(Verdict.deny("out of hours"));
   }
@@ -190,10 +188,9 @@ class OpaPolicyEngineFailureTest {
   @Test
   void the_decision_uri_is_reported_for_a_log_line_or_a_health_page() {
     OpaPolicyEngine engine =
-        OpaPolicyEngine.of(
-            opa ->
-                opa.url("http://127.0.0.1:" + server.getAddress().getPort())
-                    .decisionPath("nessy/tools/decision"));
+        OpaPolicyEngine.of(opa ->
+            opa.url("http://127.0.0.1:" + server.getAddress().getPort())
+                .decisionPath("nessy/tools/decision"));
 
     assertThat(engine.decisionUri().toString())
         .endsWith("/v1/data/nessy/tools/decision")
@@ -204,10 +201,9 @@ class OpaPolicyEngineFailureTest {
   @DisplayName("more than one trailing or leading slash is trimmed, not just the first")
   void multiple_slashes_are_all_trimmed() {
     OpaPolicyEngine engine =
-        OpaPolicyEngine.of(
-            opa ->
-                opa.url("http://127.0.0.1:" + server.getAddress().getPort() + "///")
-                    .decisionPath("///nessy/tools/decision"));
+        OpaPolicyEngine.of(opa ->
+            opa.url("http://127.0.0.1:" + server.getAddress().getPort() + "///")
+                .decisionPath("///nessy/tools/decision"));
 
     assertThat(engine.decisionUri())
         .hasToString(

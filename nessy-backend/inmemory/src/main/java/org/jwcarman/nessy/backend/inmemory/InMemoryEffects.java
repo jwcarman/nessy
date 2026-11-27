@@ -158,14 +158,13 @@ public final class InMemoryEffects implements Effects {
         .filter(row -> !row.actionableAt.isAfter(now))
         .sorted(Comparator.comparing(row -> row.actionableAt))
         .limit(Math.max(batchSize, 0))
-        .forEach(
-            row -> {
-              row.status = Status.RUNNING;
-              row.attemptsMade++;
-              Instant believedUntil = now.plus(row.timeout);
-              row.actionableAt = believedUntil.isAfter(row.deadline) ? row.deadline : believedUntil;
-              claimed.add(row.asAttempt());
-            });
+        .forEach(row -> {
+          row.status = Status.RUNNING;
+          row.attemptsMade++;
+          Instant believedUntil = now.plus(row.timeout);
+          row.actionableAt = believedUntil.isAfter(row.deadline) ? row.deadline : believedUntil;
+          claimed.add(row.asAttempt());
+        });
     return List.copyOf(claimed);
   }
 

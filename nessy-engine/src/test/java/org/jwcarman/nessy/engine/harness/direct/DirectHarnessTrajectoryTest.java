@@ -132,20 +132,19 @@ class DirectHarnessTrajectoryTest {
       Consumer<HarnessConfig<?>> more,
       Consumer<DirectHarnessConfig<String>> direct) {
     JacksonCodecFactory codecs = new JacksonCodecFactory(JsonMapper.builder().build());
-    return DefaultDirectHarnessFactory.of(
-            f ->
-                f.backend(
-                        new FixedDirectBackend(
-                            new InMemoryLocks(),
-                            events,
-                            new InMemoryPayloads(codecs),
-                            new InMemoryChapters(codecs),
-                            new InMemoryLeases(),
-                            turns))
-                    .provider(ProviderId.of("test"), lookupThenAnswer())
-                    .schemas(new VictoolsJsonSchemaGenerator())
-                    .mapper(JsonMapper.builder().build())
-                    .observations(observations))
+    return DefaultDirectHarnessFactory.of(f ->
+            f.backend(
+                    new FixedDirectBackend(
+                        new InMemoryLocks(),
+                        events,
+                        new InMemoryPayloads(codecs),
+                        new InMemoryChapters(codecs),
+                        new InMemoryLeases(),
+                        turns))
+                .provider(ProviderId.of("test"), lookupThenAnswer())
+                .schemas(new VictoolsJsonSchemaGenerator())
+                .mapper(JsonMapper.builder().build())
+                .observations(observations))
         .<String>create(
             TYPE,
             c -> {
@@ -173,9 +172,8 @@ class DirectHarnessTrajectoryTest {
     assertThat(row.turn().value()).isEqualTo(story.getFirst().seq().value());
     assertThat(row.endingSeq()).isEqualTo(story.getLast().seq());
     assertThat(story)
-        .allSatisfy(
-            e ->
-                assertThat(e.seq().value()).isBetween(row.turn().value(), row.endingSeq().value()));
+        .allSatisfy(e ->
+            assertThat(e.seq().value()).isBetween(row.turn().value(), row.endingSeq().value()));
     assertThat(row.outcome()).isEqualTo(TurnOutcome.ANSWERED);
     assertThat(row.rounds()).isEqualTo(1);
     assertThat(row.toolCalls()).isEqualTo(1);
@@ -243,11 +241,10 @@ class DirectHarnessTrajectoryTest {
     List<Observation.Context> turnSpans =
         stopped.stream()
             .filter(c -> c.getName().equals("gen_ai.client.operation.duration"))
-            .filter(
-                c -> {
-                  KeyValue operation = c.getLowCardinalityKeyValue("gen_ai.operation.name");
-                  return operation != null && operation.getValue().equals("invoke_agent");
-                })
+            .filter(c -> {
+              KeyValue operation = c.getLowCardinalityKeyValue("gen_ai.operation.name");
+              return operation != null && operation.getValue().equals("invoke_agent");
+            })
             .toList();
     assertThat(turnSpans).hasSize(1);
     KeyValue hash = turnSpans.getFirst().getHighCardinalityKeyValue("nessy.trajectory.hash");

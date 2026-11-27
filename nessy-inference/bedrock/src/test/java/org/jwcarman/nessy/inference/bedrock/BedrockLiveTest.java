@@ -149,7 +149,8 @@ class BedrockLiveTest {
             {"type":"object",
              "properties":{"city":{"type":"string"},"country":{"type":"string"}},
              "required":["city","country"],
-             "additionalProperties":false}""");
+             "additionalProperties":false}\
+            """);
 
     try (BedrockInferenceProvider provider = provider()) {
       InferenceResult result = provider.infer(askingFor("What is the capital of France?", shape));
@@ -171,7 +172,8 @@ class BedrockLiveTest {
             {"type":"object",
              "properties":{"answer":{"type":"string"},"confident":{"type":"boolean"}},
              "required":["answer","confident"],
-             "additionalProperties":false}""");
+             "additionalProperties":false}\
+            """);
 
     try (BedrockInferenceProvider provider = provider()) {
       InferenceResult result = provider.infer(askingFor("Tell me a joke.", shape));
@@ -208,7 +210,8 @@ class BedrockLiveTest {
           "saves a note",
           new JsonSchema(
               """
-              {"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}"""));
+              {"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}\
+              """));
 
   private static InferenceRequest limited(String question, Toolset toolset) {
     return new InferenceRequest(
@@ -246,11 +249,10 @@ class BedrockLiveTest {
       assertThat(truncated.blocks())
           .filteredOn(Block.Text.class::isInstance)
           .isNotEmpty()
-          .anySatisfy(
-              block -> {
-                String written = ((Block.Text) block).text();
-                assertThat(written).isNotBlank();
-              });
+          .anySatisfy(block -> {
+            String written = ((Block.Text) block).text();
+            assertThat(written).isNotBlank();
+          });
       assertThat(truncated.usage().model())
           .as("the vendor named the model that wrote it")
           .isNotBlank();

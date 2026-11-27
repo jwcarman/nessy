@@ -98,21 +98,19 @@ class ConcurrentDispatchTest {
     // Every call blocks until all three are in flight, so this only completes if the dispatcher
     // ran them concurrently. Serial execution deadlocks here until the latch times out, and
     // each answer then comes back null -- which the assertions below would catch.
-    agents.forEach(
-        agentId ->
-            await()
-                .atMost(Duration.ofSeconds(20))
-                .untilAsserted(
-                    () -> {
-                      List<AgentEvent> story = story(CHAT, agentId);
-                      assertThat(story).hasSize(2);
-                      assertThat(EngineFixture.withoutManifest(story.getLast()))
-                          .isEqualTo(engine.answered(agentId, 2, 1, "all here"));
-                      assertThat(story.getLast())
-                          .isInstanceOfSatisfying(
-                              AgentEvent.InferenceAnswered.class,
-                              answered -> assertThat(answered.manifest()).isPresent());
-                    }));
+    agents.forEach(agentId ->
+        await()
+            .atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> {
+              List<AgentEvent> story = story(CHAT, agentId);
+              assertThat(story).hasSize(2);
+              assertThat(EngineFixture.withoutManifest(story.getLast()))
+                  .isEqualTo(engine.answered(agentId, 2, 1, "all here"));
+              assertThat(story.getLast())
+                  .isInstanceOfSatisfying(
+                      AgentEvent.InferenceAnswered.class,
+                      answered -> assertThat(answered.manifest()).isPresent());
+            }));
 
     assertThat(model.everyoneArrived())
         .as("the rendezvous is the proof; without it the answers could not have been given")

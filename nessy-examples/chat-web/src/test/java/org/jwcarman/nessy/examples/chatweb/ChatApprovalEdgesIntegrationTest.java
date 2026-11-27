@@ -65,10 +65,9 @@ class ChatApprovalEdgesIntegrationTest {
       boolean wantsEmail =
           request.context().turns().stream()
               .filter(turn -> !turn.complete())
-              .anyMatch(
-                  turn ->
-                      turn.input().blocks().stream()
-                          .anyMatch(b -> b instanceof Block.Text(String t) && t.contains("Email")));
+              .anyMatch(turn ->
+                  turn.input().blocks().stream()
+                      .anyMatch(b -> b instanceof Block.Text(String t) && t.contains("Email")));
       boolean called =
           request.context().turns().stream()
               .anyMatch(turn -> !turn.complete() && !turn.exchanges().isEmpty());
@@ -121,11 +120,10 @@ class ChatApprovalEdgesIntegrationTest {
 
     await()
         .atMost(Duration.ofSeconds(30))
-        .untilAsserted(
-            () ->
-                assertThat(chat.state(agentId).texts())
-                    .containsSubsequence(
-                        "Email Jim about dinner", "Sent.", "alpha\n\nbeta\n\ngamma", "Noted."));
+        .untilAsserted(() ->
+            assertThat(chat.state(agentId).texts())
+                .containsSubsequence(
+                    "Email Jim about dinner", "Sent.", "alpha\n\nbeta\n\ngamma", "Noted."));
     long userLines =
         chat.state(agentId).transcript().stream()
             .filter(line -> "user".equals(line.get("role")))
@@ -175,11 +173,10 @@ class ChatApprovalEdgesIntegrationTest {
         List<Future<Integer>> answers = new ArrayList<>();
         for (String decision : List.of("approve", "deny")) {
           answers.add(
-              pool.submit(
-                  () -> {
-                    together.await();
-                    return chat.decide(agentId, card.id(), decision, "no");
-                  }));
+              pool.submit(() -> {
+                together.await();
+                return chat.decide(agentId, card.id(), decision, "no");
+              }));
         }
         List<Integer> statuses = new ArrayList<>();
         for (Future<Integer> answer : answers) {
@@ -224,10 +221,9 @@ class ChatApprovalEdgesIntegrationTest {
     harness.terminate(agent);
     await()
         .atMost(Duration.ofSeconds(30))
-        .untilAsserted(
-            () ->
-                assertThat(work.status(ChatConfiguration.TYPE, agent).activity())
-                    .isEqualTo(Activity.TERMINATED));
+        .untilAsserted(() ->
+            assertThat(work.status(ChatConfiguration.TYPE, agent).activity())
+                .isEqualTo(Activity.TERMINATED));
 
     TellOutcome outcome = harness.tell(agent, "too late");
 

@@ -222,13 +222,12 @@ class QueuedHarnessAcceptanceTest {
     placed.harness.tell(placed.agent, "what lake?");
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () ->
-                assertThat(
-                        placed.story().stream()
-                            .filter(AgentEvent.ApprovalDeferred.class::isInstance)
-                            .count())
-                    .isEqualTo(asked));
+        .untilAsserted(() ->
+            assertThat(
+                    placed.story().stream()
+                        .filter(AgentEvent.ApprovalDeferred.class::isInstance)
+                        .count())
+                .isEqualTo(asked));
     placed.countNudges();
     return placed;
   }

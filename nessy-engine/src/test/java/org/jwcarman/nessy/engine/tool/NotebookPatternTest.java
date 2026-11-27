@@ -149,24 +149,19 @@ class NotebookPatternTest {
                     config
                         .systemPrompt("You are a test assistant.")
                         .tool(remember(agentId))
-                        .inference(
-                            in ->
-                                in.model("a-model")
-                                    // The other half. Asked afresh on every call, off the agent's
-                                    // row lock, so it may read whatever it keeps -- and so it can
-                                    // say something different next time.
-                                    .context(
-                                        ctx ->
-                                            ctx.ambient(
-                                                AmbientSource.of(
-                                                    source ->
-                                                        source
-                                                            .kind("notebook")
-                                                            .text(
-                                                                who ->
-                                                                    Optional.ofNullable(
-                                                                        notebook.get(
-                                                                            who.value())))))))
+                        .inference(in ->
+                            in.model("a-model")
+                                // The other half. Asked afresh on every call, off the agent's
+                                // row lock, so it may read whatever it keeps -- and so it can
+                                // say something different next time.
+                                .context(ctx ->
+                                    ctx.ambient(
+                                        AmbientSource.of(source ->
+                                            source
+                                                .kind("notebook")
+                                                .text(who ->
+                                                    Optional.ofNullable(
+                                                        notebook.get(who.value())))))))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
     harness.tell(agentId, "remember that the deploy is frozen");
@@ -185,11 +180,10 @@ class NotebookPatternTest {
     harness.tell(agentId, "what did I tell you?");
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () -> {
-              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
-              assertThat(systemPrompts).hasSizeGreaterThan(2);
-            });
+        .untilAsserted(() -> {
+          assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
+          assertThat(systemPrompts).hasSizeGreaterThan(2);
+        });
 
     assertThat(systemPrompts.stream().skip(2))
         .as("and every call after the note was written carries it")
@@ -225,11 +219,10 @@ class NotebookPatternTest {
                 config ->
                     config
                         .systemPrompt("You are a test assistant.")
-                        .inference(
-                            in ->
-                                in.model("a-model")
-                                    .context(
-                                        ctx -> ctx.ambient(Ambient.text("clock", "it is Tuesday"))))
+                        .inference(in ->
+                            in.model("a-model")
+                                .context(
+                                    ctx -> ctx.ambient(Ambient.text("clock", "it is Tuesday"))))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
     harness.tell(agentId, "hello");
@@ -265,13 +258,12 @@ class NotebookPatternTest {
             .orElseThrow();
     assertThat(answered.manifest().orElseThrow().ambient())
         .singleElement()
-        .satisfies(
-            section -> {
-              assertThat(section.kind()).isEqualTo("clock");
-              assertThat(section.content().value())
-                  .as("the stored event's manifest names that very payload")
-                  .isEqualTo(HexFormat.of().formatHex(holding.getFirst()));
-            });
+        .satisfies(section -> {
+          assertThat(section.kind()).isEqualTo("clock");
+          assertThat(section.content().value())
+              .as("the stored event's manifest names that very payload")
+              .isEqualTo(HexFormat.of().formatHex(holding.getFirst()));
+        });
 
     String payloadContent =
         engine
@@ -291,21 +283,18 @@ class NotebookPatternTest {
   @Test
   void twoSourcesCannotOfferTheSameKind() {
     // Refused while the harness is being configured, so no turn ever runs and no model is asked.
-    running(
-        (_, _) -> {
-          throw new AssertionError("this harness never gets as far as a turn");
-        });
+    running((_, _) -> {
+      throw new AssertionError("this harness never gets as far as a turn");
+    });
     var harnesses = engine.harnesses();
     Customizer<QueuedHarnessConfig<String>> twoNotebooks =
         config ->
             config
                 .systemPrompt("You are a test assistant.")
-                .inference(
-                    in ->
-                        in.context(
-                            ctx ->
-                                ctx.ambient(Ambient.text("notebook", "one"))
-                                    .ambient(Ambient.text("notebook", "two"))));
+                .inference(in ->
+                    in.context(ctx ->
+                        ctx.ambient(Ambient.text("notebook", "one"))
+                            .ambient(Ambient.text("notebook", "two"))));
     AgentType clashType = new AgentType("notebook-clash");
     assertThatThrownBy(() -> harnesses.create(clashType, String.class, twoNotebooks))
         .isInstanceOf(IllegalArgumentException.class)
@@ -315,17 +304,16 @@ class NotebookPatternTest {
   /** What the adapter would have rendered, so the assertions read against one string. */
   private static String render(InferenceRequest request) {
     return request.context().ambient().stream()
-        .map(
-            ambient ->
-                "<"
-                    + ambient.kind()
-                    + ">"
-                    + ambient.content().stream()
-                        .map(block -> ((Block.Text) block).text())
-                        .reduce("", String::concat)
-                    + "</"
-                    + ambient.kind()
-                    + ">")
+        .map(ambient ->
+            "<"
+                + ambient.kind()
+                + ">"
+                + ambient.content().stream()
+                    .map(block -> ((Block.Text) block).text())
+                    .reduce("", String::concat)
+                + "</"
+                + ambient.kind()
+                + ">")
         .reduce("", String::concat);
   }
 }

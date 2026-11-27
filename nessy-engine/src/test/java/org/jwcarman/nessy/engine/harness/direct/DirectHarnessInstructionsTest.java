@@ -78,14 +78,13 @@ class DirectHarnessInstructionsTest {
         new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build()));
     InMemoryPayloads payloads =
         new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build()));
-    return DefaultDirectHarnessFactory.of(
-        c ->
-            c.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
-                .provider(ProviderId.of("test"), model)
-                .schemas(new VictoolsJsonSchemaGenerator())
-                .mapper(JsonMapper.builder().build())
-                .feature(feature)
-                .harness(blanket));
+    return DefaultDirectHarnessFactory.of(c ->
+        c.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
+            .provider(ProviderId.of("test"), model)
+            .schemas(new VictoolsJsonSchemaGenerator())
+            .mapper(JsonMapper.builder().build())
+            .feature(feature)
+            .harness(blanket));
   }
 
   private static DirectHarness<String, String> harness(

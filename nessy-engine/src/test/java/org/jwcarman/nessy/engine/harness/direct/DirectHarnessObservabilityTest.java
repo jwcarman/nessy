@@ -140,19 +140,18 @@ class DirectHarnessObservabilityTest {
         };
 
     DirectHarness<String, String> harness =
-        DefaultDirectHarnessFactory.of(
-                f ->
-                    f.backend(
-                            new FixedDirectBackend(
-                                new InMemoryLocks(),
-                                new InMemoryAgentEvents(
-                                    new JacksonCodecFactory(JsonMapper.builder().build())),
-                                new InMemoryPayloads(
-                                    new JacksonCodecFactory(JsonMapper.builder().build()))))
-                        .provider(ProviderId.of("test"), model)
-                        .schemas(new VictoolsJsonSchemaGenerator())
-                        .mapper(JsonMapper.builder().build())
-                        .observations(observations))
+        DefaultDirectHarnessFactory.of(f ->
+                f.backend(
+                        new FixedDirectBackend(
+                            new InMemoryLocks(),
+                            new InMemoryAgentEvents(
+                                new JacksonCodecFactory(JsonMapper.builder().build())),
+                            new InMemoryPayloads(
+                                new JacksonCodecFactory(JsonMapper.builder().build()))))
+                    .provider(ProviderId.of("test"), model)
+                    .schemas(new VictoolsJsonSchemaGenerator())
+                    .mapper(JsonMapper.builder().build())
+                    .observations(observations))
             .<String>create(
                 TYPE,
                 c -> {

@@ -68,29 +68,28 @@ class QueuedHarnessChaptersTest {
   private final List<InferenceRequest> summaries = new CopyOnWriteArrayList<>();
   private final AtomicBoolean callsTool = new AtomicBoolean();
   private final EngineFixture engine =
-      new EngineFixture(
-          (request, narrator) -> {
-            if (request.systemPrompt().value().equals(ProseSummarizer.PROMPT)) {
-              summaries.add(request);
-              if (request.context().turns().stream().anyMatch(t -> !t.exchanges().isEmpty())) {
-                return new InferenceResult.Fault(
-                    new Failure.Permanent("a tool call was sent to the summariser"),
-                    Usage.unreported("a-model"));
-              }
-              return new InferenceResult.Answer(
-                  List.of(new Block.Text("they talked")), Usage.unreported("a-model"));
-            }
-            if (callsTool.get() && request.context().activeTurn().exchanges().isEmpty()) {
-              return new InferenceResult.Actions(
-                  List.of(
-                      new Block.ToolCall(
-                          "lookup-" + request.context().turns().size(), "lookup", "{\"q\":\"x\"}")),
-                  Usage.unreported("a-model"));
-            }
-            chats.add(request);
-            return new InferenceResult.Answer(
-                List.of(new Block.Text("answer " + chats.size())), Usage.unreported("a-model"));
-          });
+      new EngineFixture((request, narrator) -> {
+        if (request.systemPrompt().value().equals(ProseSummarizer.PROMPT)) {
+          summaries.add(request);
+          if (request.context().turns().stream().anyMatch(t -> !t.exchanges().isEmpty())) {
+            return new InferenceResult.Fault(
+                new Failure.Permanent("a tool call was sent to the summariser"),
+                Usage.unreported("a-model"));
+          }
+          return new InferenceResult.Answer(
+              List.of(new Block.Text("they talked")), Usage.unreported("a-model"));
+        }
+        if (callsTool.get() && request.context().activeTurn().exchanges().isEmpty()) {
+          return new InferenceResult.Actions(
+              List.of(
+                  new Block.ToolCall(
+                      "lookup-" + request.context().turns().size(), "lookup", "{\"q\":\"x\"}")),
+              Usage.unreported("a-model"));
+        }
+        chats.add(request);
+        return new InferenceResult.Answer(
+            List.of(new Block.Text("answer " + chats.size())), Usage.unreported("a-model"));
+      });
 
   @AfterEach
   void stopEngine() {
@@ -101,10 +100,9 @@ class QueuedHarnessChaptersTest {
     harness.tell(agent, "turn " + turn);
     await()
         .atMost(PATIENCE)
-        .untilAsserted(
-            () ->
-                assertThat(engine.history().forAgent(TYPE, agent).completedAfter(Optional.empty()))
-                    .hasSize(turn));
+        .untilAsserted(() ->
+            assertThat(engine.history().forAgent(TYPE, agent).completedAfter(Optional.empty()))
+                .hasSize(turn));
   }
 
   @Test

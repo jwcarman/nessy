@@ -123,11 +123,12 @@ class ValueTypeCodecTest {
   void aStoredRequestForActionsReadsBackWithItsValueTypes() {
     String stored =
         """
-                {"type":"actions-requested","seq":2,"turn":1,\
-                "request":"c7f1e2a9","actions":[\
-                {"type":"tool-call","id":"729606640","name":"lake_depth",\
-                "action":"how deep is Lake Tahoe",\
-                "idempotencyKey":"01999999-0000-7000-8000-000000000001"}]}""";
+        {"type":"actions-requested","seq":2,"turn":1,\
+        "request":"c7f1e2a9","actions":[\
+        {"type":"tool-call","id":"729606640","name":"lake_depth",\
+        "action":"how deep is Lake Tahoe",\
+        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}]}\
+        """;
 
     AgentEvent.ActionsRequested entry =
         (AgentEvent.ActionsRequested) entries.decode(stored.getBytes(StandardCharsets.UTF_8));
@@ -138,13 +139,12 @@ class ValueTypeCodecTest {
     assertThat(entry.actions())
         .singleElement()
         .asInstanceOf(InstanceOfAssertFactories.type(ActionRequest.ToolCall.class))
-        .satisfies(
-            call -> {
-              assertThat(call.id()).isEqualTo(new CallId("729606640"));
-              assertThat(call.name()).isEqualTo(new ToolName("lake_depth"));
-              assertThat(call.action()).isEqualTo("how deep is Lake Tahoe");
-              assertThat(call.idempotencyKey()).isEqualTo(KEY);
-            });
+        .satisfies(call -> {
+          assertThat(call.id()).isEqualTo(new CallId("729606640"));
+          assertThat(call.name()).isEqualTo(new ToolName("lake_depth"));
+          assertThat(call.action()).isEqualTo("how deep is Lake Tahoe");
+          assertThat(call.idempotencyKey()).isEqualTo(KEY);
+        });
   }
 
   /** And writing one produces exactly those bytes back. */
@@ -433,9 +433,10 @@ class ValueTypeCodecTest {
   void anEntryReadsBackWithItsPositionAndTurnTheRightWayRound() {
     String stored =
         """
-                {"type":"tool-succeeded","seq":4,"turn":1,"callId":"call_1",\
-                "result":"a3d9f0b1","rendered":"reindexed 91",\
-                "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+        {"type":"tool-succeeded","seq":4,"turn":1,"callId":"call_1",\
+        "result":"a3d9f0b1","rendered":"reindexed 91",\
+        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}\
+        """;
 
     AgentEvent.ToolSucceeded entry =
         (AgentEvent.ToolSucceeded) entries.decode(stored.getBytes(StandardCharsets.UTF_8));
@@ -506,7 +507,8 @@ class ValueTypeCodecTest {
   void aTruncatedAnswerIsStoredAsTruncated() {
     String stored =
         """
-        {"type":"inference-answered","seq":2,"turn":1,"answer":"a3d9f0b1","truncated":true}""";
+        {"type":"inference-answered","seq":2,"turn":1,"answer":"a3d9f0b1","truncated":true}\
+        """;
     AgentEvent.InferenceAnswered written =
         new AgentEvent.InferenceAnswered(
             new Seq(2),
@@ -529,7 +531,8 @@ class ValueTypeCodecTest {
     String stored =
         """
         {"type":"tool-approved","seq":3,"turn":1,"callId":"c1","decidedBy":"jcarman",\
-        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}\
+        """;
     AgentEvent.ToolApproved written =
         new AgentEvent.ToolApproved(
             new Seq(3), new TurnId(1), new CallId("c1"), Optional.of("jcarman"), none(), KEY);
@@ -544,7 +547,8 @@ class ValueTypeCodecTest {
     String stored =
         """
         {"type":"tool-denied","seq":3,"turn":1,"callId":"c1","reason":"no","decidedBy":"u_dave",\
-        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}\
+        """;
     AgentEvent.ToolDenied written =
         new AgentEvent.ToolDenied(
             new Seq(3), new TurnId(1), new CallId("c1"), "no", Optional.of("u_dave"), none(), KEY);
@@ -560,7 +564,8 @@ class ValueTypeCodecTest {
     String stored =
         """
         {"type":"tool-approved","seq":3,"turn":1,"callId":"c1","decidedBy":"jcarman",\
-        "facts":{"risk":"low","depth":2},"idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+        "facts":{"risk":"low","depth":2},"idempotencyKey":"01999999-0000-7000-8000-000000000001"}\
+        """;
     AgentEvent.ToolApproved written =
         new AgentEvent.ToolApproved(
             new Seq(3), new TurnId(1), new CallId("c1"), Optional.of("jcarman"), facts(), KEY);
@@ -575,7 +580,8 @@ class ValueTypeCodecTest {
     String stored =
         """
         {"type":"tool-denied","seq":3,"turn":1,"callId":"c1","reason":"no","decidedBy":"u_dave",\
-        "facts":{"risk":"low","depth":2},"idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+        "facts":{"risk":"low","depth":2},"idempotencyKey":"01999999-0000-7000-8000-000000000001"}\
+        """;
     AgentEvent.ToolDenied written =
         new AgentEvent.ToolDenied(
             new Seq(3), new TurnId(1), new CallId("c1"), "no", Optional.of("u_dave"), facts(), KEY);
@@ -590,7 +596,8 @@ class ValueTypeCodecTest {
     String stored =
         """
         {"type":"tool-approved","seq":3,"turn":1,"callId":"c1",\
-        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}\
+        """;
 
     AgentEvent.ToolApproved read = (AgentEvent.ToolApproved) readStored(stored);
 
@@ -602,7 +609,8 @@ class ValueTypeCodecTest {
     String stored =
         """
         {"type":"tool-denied","seq":3,"turn":1,"callId":"c1","reason":"no",\
-        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}\
+        """;
 
     AgentEvent.ToolDenied read = (AgentEvent.ToolDenied) readStored(stored);
 
@@ -614,7 +622,8 @@ class ValueTypeCodecTest {
     String stored =
         """
         {"type":"tool-succeeded","seq":4,"turn":1,"callId":"c1","result":"a3d9f0b1",\
-        "rendered":"ok","idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+        "rendered":"ok","idempotencyKey":"01999999-0000-7000-8000-000000000001"}\
+        """;
     AgentEvent.ToolSucceeded written =
         new AgentEvent.ToolSucceeded(
             new Seq(4), new TurnId(1), new CallId("c1"), PayloadRef.of("a3d9f0b1"), "ok", KEY);
@@ -629,7 +638,8 @@ class ValueTypeCodecTest {
     String stored =
         """
         {"type":"tool-failed","seq":4,"turn":1,"callId":"c1","kind":"PAST_DEADLINE",\
-        "message":"boom","idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+        "message":"boom","idempotencyKey":"01999999-0000-7000-8000-000000000001"}\
+        """;
     AgentEvent.ToolFailed written =
         new AgentEvent.ToolFailed(
             new Seq(4),
@@ -652,7 +662,8 @@ class ValueTypeCodecTest {
         """
         {"type":"tool-failed","seq":4,"turn":1,"callId":"c1","kind":"NOT_AUTHORISED",\
         "message":"the call could not be authorised: down","facts":{"risk":"low","depth":2},\
-        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+        "idempotencyKey":"01999999-0000-7000-8000-000000000001"}\
+        """;
     AgentEvent.ToolFailed written =
         new AgentEvent.ToolFailed(
             new Seq(4),
@@ -673,7 +684,8 @@ class ValueTypeCodecTest {
     String stored =
         """
         {"type":"tool-failed","seq":4,"turn":1,"callId":"c1","kind":"FAILED",\
-        "message":"boom","idempotencyKey":"01999999-0000-7000-8000-000000000001"}""";
+        "message":"boom","idempotencyKey":"01999999-0000-7000-8000-000000000001"}\
+        """;
 
     AgentEvent.ToolFailed read = (AgentEvent.ToolFailed) readStored(stored);
 
@@ -709,7 +721,8 @@ class ValueTypeCodecTest {
         new JacksonCodecFactory(JsonMapper.builder().build()).create(EffectOutcome.class);
     byte[] stored =
         """
-        {"type":"tool-failed","callId":"c1","kind":"FAILED","message":"boom"}"""
+        {"type":"tool-failed","callId":"c1","kind":"FAILED","message":"boom"}\
+        """
             .getBytes(StandardCharsets.UTF_8);
 
     EffectOutcome.ToolFailed read = (EffectOutcome.ToolFailed) outcomes.decode(stored);
@@ -722,7 +735,8 @@ class ValueTypeCodecTest {
     String stored =
         """
         {"type":"turn-started","seq":1,"turn":1,"input":"a3d9f0b1","label":"Invoice",\
-        "arrivedAt":"2026-03-04T05:06:07Z","startedAt":"2026-03-04T05:06:09Z"}""";
+        "arrivedAt":"2026-03-04T05:06:07Z","startedAt":"2026-03-04T05:06:09Z"}\
+        """;
     AgentEvent.TurnStarted written =
         new AgentEvent.TurnStarted(
             new Seq(1),
@@ -755,7 +769,8 @@ class ValueTypeCodecTest {
        "tail":{"from":11,"through":13},
        "memory":[{"kind":"facts","content":"7777aaaa"}],
        "state":[{"kind":"notebook","content":"8888bbbb"}],
-       "ambient":[{"kind":"clock","content":"9999cccc"}]}""";
+       "ambient":[{"kind":"clock","content":"9999cccc"}]}\
+      """;
 
   private static final String MINIMAL_MANIFEST =
       """
@@ -768,7 +783,8 @@ class ValueTypeCodecTest {
        "tail":null,
        "memory":[],
        "state":[],
-       "ambient":[]}""";
+       "ambient":[]}\
+      """;
 
   private static InferenceRequestManifest wholeManifest() {
     return new InferenceRequestManifest(
@@ -822,7 +838,8 @@ class ValueTypeCodecTest {
   void aManifestWithTheOptionalKeysAbsentReadsThemAsEmpty() {
     String stored =
         """
-        {"engineVersion":"0.5.0-SNAPSHOT","instructions":"1111aaaa","tools":"2222bbbb","options":"4444dddd"}""";
+        {"engineVersion":"0.5.0-SNAPSHOT","instructions":"1111aaaa","tools":"2222bbbb","options":"4444dddd"}\
+        """;
 
     assertThat(readManifest(stored)).isEqualTo(minimalManifest());
   }
@@ -831,7 +848,8 @@ class ValueTypeCodecTest {
 
   private static final String NO_USAGE =
       """
-      {"model":null,"inputTokens":null,"outputTokens":null,"cacheReadTokens":null,"cacheWriteTokens":null,"reasoningTokens":null}""";
+      {"model":null,"inputTokens":null,"outputTokens":null,"cacheReadTokens":null,"cacheWriteTokens":null,"reasoningTokens":null}\
+      """;
 
   private static String event(String type, String fields, String manifestKey, String manifest) {
     return "{\"type\":\"%s\",\"seq\":3,\"turn\":1,%s\"usage\":%s,\"%s\":%s}"
@@ -924,7 +942,8 @@ class ValueTypeCodecTest {
   void aStoredFailureWithoutTheKeyReadsAsHavingNoRequest() {
     String stored =
         """
-        {"type":"inference-failed","seq":3,"turn":1,"failure":{"type":"unknown","reason":"no answer"}}""";
+        {"type":"inference-failed","seq":3,"turn":1,"failure":{"type":"unknown","reason":"no answer"}}\
+        """;
 
     assertThat(readStored(stored))
         .isEqualTo(
@@ -959,7 +978,8 @@ class ValueTypeCodecTest {
         new JacksonCodecFactory(JsonMapper.builder().build()).create(EffectOutcome.class);
     String stored =
         """
-        {"type":"inference-failed","failure":{"type":"unknown","reason":"no answer"}}""";
+        {"type":"inference-failed","failure":{"type":"unknown","reason":"no answer"}}\
+        """;
 
     EffectOutcome read = outcomes.decode(stored.getBytes(StandardCharsets.UTF_8));
 
@@ -979,7 +999,8 @@ class ValueTypeCodecTest {
   void aKeptAttemptCarriesWhatItsRequestWasMadeOf() {
     String stored =
         """
-        [{"failure":{"type":"transient","reason":"busy"},"usage":%s,"manifest":%s}]"""
+        [{"failure":{"type":"transient","reason":"busy"},"usage":%s,"manifest":%s}]\
+        """
             .formatted(NO_USAGE, WHOLE_MANIFEST);
     List<FailedAttempt> expected =
         List.of(
@@ -995,7 +1016,8 @@ class ValueTypeCodecTest {
   void aKeptAttemptWrittenWithoutTheKeyReadsAsHavingNoRequest() {
     String stored =
         """
-        [{"failure":{"type":"transient","reason":"busy"},"usage":%s}]"""
+        [{"failure":{"type":"transient","reason":"busy"},"usage":%s}]\
+        """
             .formatted(NO_USAGE);
 
     assertThat(attempts.decode(stored.getBytes(StandardCharsets.UTF_8)))

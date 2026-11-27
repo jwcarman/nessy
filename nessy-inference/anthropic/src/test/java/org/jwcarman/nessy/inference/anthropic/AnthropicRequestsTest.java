@@ -253,13 +253,12 @@ class AnthropicRequestsTest {
 
     private static List<String> textsOf(MessageParam message) {
       return message.content().asBlockParams().stream()
-          .map(
-              block -> {
-                if (block.isText()) {
-                  return block.asText().text();
-                }
-                return block.isToolResult() ? "<tool_result>" : "<other>";
-              })
+          .map(block -> {
+            if (block.isText()) {
+              return block.asText().text();
+            }
+            return block.isToolResult() ? "<tool_result>" : "<other>";
+          })
           .toList();
     }
 
@@ -417,13 +416,12 @@ class AnthropicRequestsTest {
       var marked =
           IntStream.range(0, built.messages().size())
               .boxed()
-              .flatMap(
-                  message -> {
-                    var blocks = built.messages().get(message).content().asBlockParams();
-                    return IntStream.range(0, blocks.size())
-                        .filter(block -> blocks.get(block).cacheControl().isPresent())
-                        .mapToObj(block -> message + ":" + block);
-                  })
+              .flatMap(message -> {
+                var blocks = built.messages().get(message).content().asBlockParams();
+                return IntStream.range(0, blocks.size())
+                    .filter(block -> blocks.get(block).cacheControl().isPresent())
+                    .mapToObj(block -> message + ":" + block);
+              })
               .toList();
       assertThat(marked).containsExactly("2:0", "4:0");
     }
@@ -842,16 +840,15 @@ class AnthropicRequestsTest {
     /** One call and its result, as many times over as asked. */
     private static List<Exchange> rounds(int count) {
       return IntStream.rangeClosed(1, count)
-          .mapToObj(
-              i ->
-                  exchangeOf(
-                      new Seq(100L + i),
-                      List.of(
-                          new Block.ToolCall(
-                              new CallId("call_" + i), new ToolName("lookup"), "{\"q\":\"x\"}")),
-                      List.of(
-                          new ToolOutcome.Succeeded(
-                              new CallId("call_" + i), List.of(new Block.Text("result " + i))))))
+          .mapToObj(i ->
+              exchangeOf(
+                  new Seq(100L + i),
+                  List.of(
+                      new Block.ToolCall(
+                          new CallId("call_" + i), new ToolName("lookup"), "{\"q\":\"x\"}")),
+                  List.of(
+                      new ToolOutcome.Succeeded(
+                          new CallId("call_" + i), List.of(new Block.Text("result " + i))))))
           .toList();
     }
 

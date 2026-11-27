@@ -273,14 +273,13 @@ public class EffectDispatcher {
    */
   private void start(Attempt attempt) {
     try {
-      workers.submit(
-          () -> {
-            try {
-              perform(attempt);
-            } finally {
-              inFlight.release();
-            }
-          });
+      workers.submit(() -> {
+        try {
+          perform(attempt);
+        } finally {
+          inFlight.release();
+        }
+      });
     } catch (RuntimeException e) {
       inFlight.release();
       log.error(

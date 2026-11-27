@@ -47,10 +47,9 @@ public final class StoryEvents {
               asked.actions().stream()
                   .filter(ActionRequest.ToolCall.class::isInstance)
                   .map(ActionRequest.ToolCall.class::cast)
-                  .map(
-                      call ->
-                          new Narration.ActionsRequested.Call(
-                              call.id(), call.idempotencyKey(), call.name(), call.action()))
+                  .map(call ->
+                      new Narration.ActionsRequested.Call(
+                          call.id(), call.idempotencyKey(), call.name(), call.action()))
                   .toList(),
               asked.usage());
       case AgentEvent.ToolApproved approved ->

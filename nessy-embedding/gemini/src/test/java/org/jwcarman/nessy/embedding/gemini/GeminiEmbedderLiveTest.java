@@ -45,11 +45,10 @@ class GeminiEmbedderLiveTest {
    */
   private static Embedder embedderOver(
       GeminiEmbeddingProvider provider, String model, int dimension) {
-    return DefaultEmbedderFactory.of(
-            f ->
-                f.provider(GEMINI, provider)
-                    .embedding(
-                        GEMINI, new EmbeddingOptions(model, Optional.of(new Dimension(dimension)))))
+    return DefaultEmbedderFactory.of(f ->
+            f.provider(GEMINI, provider)
+                .embedding(
+                    GEMINI, new EmbeddingOptions(model, Optional.of(new Dimension(dimension)))))
         .create(c -> {});
   }
 

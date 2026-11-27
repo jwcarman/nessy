@@ -53,12 +53,11 @@ class AfterCommitTest {
   private final AgentId other = AgentId.random();
   private final List<String> heard = new CopyOnWriteArrayList<>();
   private final AfterCommit narration =
-      new AfterCommit(
-          narrated ->
-              heard.add(
-                  label(narrated.agentId())
-                      + ":"
-                      + ((Narration.TurnEnding) narrated.event()).turn().value()));
+      new AfterCommit(narrated ->
+          heard.add(
+              label(narrated.agentId())
+                  + ":"
+                  + ((Narration.TurnEnding) narrated.event()).turn().value()));
 
   private String label(AgentId who) {
     return who.equals(agent) ? "agent" : "other";
@@ -130,16 +129,15 @@ class AfterCommitTest {
     void whose_work_throws_after_narrating_is_never_heard() {
       InMemoryLocks locks = new InMemoryLocks();
 
-      assertThatThrownBy(
-              () ->
-                  narration.locked(
-                      locks,
-                      TYPE,
-                      agent,
-                      step -> {
-                        step.narrate(ended(1), new Seq(1), AT);
-                        throw new IllegalStateException("the work failed");
-                      }))
+      assertThatThrownBy(() ->
+              narration.locked(
+                  locks,
+                  TYPE,
+                  agent,
+                  step -> {
+                    step.narrate(ended(1), new Seq(1), AT);
+                    throw new IllegalStateException("the work failed");
+                  }))
           .isInstanceOf(IllegalStateException.class);
       narration.narrate(Narrated.story(TYPE, agent, ended(2), new Seq(2), AT));
 
@@ -152,16 +150,15 @@ class AfterCommitTest {
     void whose_commit_fails_is_never_heard_though_the_work_finished() {
       CommitProbe locks = new CommitProbe(new InMemoryLocks()).failTheCommitOfCall(1);
 
-      assertThatThrownBy(
-              () ->
-                  narration.locked(
-                      locks,
-                      TYPE,
-                      agent,
-                      step -> {
-                        step.narrate(ended(1), new Seq(1), AT);
-                        return null;
-                      }))
+      assertThatThrownBy(() ->
+              narration.locked(
+                  locks,
+                  TYPE,
+                  agent,
+                  step -> {
+                    step.narrate(ended(1), new Seq(1), AT);
+                    return null;
+                  }))
           .isInstanceOf(IllegalStateException.class)
           .hasMessage("the commit of call 1 failed");
       narration.narrate(Narrated.story(TYPE, agent, ended(2), new Seq(2), AT));
@@ -173,20 +170,19 @@ class AfterCommitTest {
     void whose_work_caught_its_own_exception_is_still_not_heard_when_the_commit_fails() {
       CommitProbe locks = new CommitProbe(new InMemoryLocks()).failTheCommitOfCall(1);
 
-      assertThatThrownBy(
-              () ->
-                  narration.locked(
-                      locks,
-                      TYPE,
-                      agent,
-                      step -> {
-                        step.narrate(ended(1), new Seq(1), AT);
-                        try {
-                          throw new IllegalArgumentException("handled inside the work");
-                        } catch (IllegalArgumentException _) {
-                          return null;
-                        }
-                      }))
+      assertThatThrownBy(() ->
+              narration.locked(
+                  locks,
+                  TYPE,
+                  agent,
+                  step -> {
+                    step.narrate(ended(1), new Seq(1), AT);
+                    try {
+                      throw new IllegalArgumentException("handled inside the work");
+                    } catch (IllegalArgumentException _) {
+                      return null;
+                    }
+                  }))
           .isInstanceOf(IllegalStateException.class);
       narration.narrate(Narrated.story(TYPE, agent, ended(2), new Seq(2), AT));
 
@@ -215,16 +211,15 @@ class AfterCommitTest {
       CommitProbe locks = new CommitProbe(new InMemoryLocks());
       CommitProbe.Hold held = locks.holdTheReturnOfCall(1);
       CompletableFuture<Void> first =
-          CompletableFuture.runAsync(
-              () ->
-                  narration.locked(
-                      locks,
-                      TYPE,
-                      agent,
-                      step -> {
-                        step.narrate(ended(1), new Seq(1), AT);
-                        return null;
-                      }));
+          CompletableFuture.runAsync(() ->
+              narration.locked(
+                  locks,
+                  TYPE,
+                  agent,
+                  step -> {
+                    step.narrate(ended(1), new Seq(1), AT);
+                    return null;
+                  }));
       held.awaitReached();
 
       narration.locked(

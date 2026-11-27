@@ -87,9 +87,8 @@ class StoryReadBoundTest {
     }
     List<Attempt> claimed = memory.effects().markRunning(type, Instant.now(), 2);
     assertThat(claimed).hasSize(2);
-    claimed.forEach(
-        attempt ->
-            memory.effects().park(attempt.effectId(), attempt.attemptsMade(), Instant.now()));
+    claimed.forEach(attempt ->
+        memory.effects().park(attempt.effectId(), attempt.attemptsMade(), Instant.now()));
   }
 
   @Test

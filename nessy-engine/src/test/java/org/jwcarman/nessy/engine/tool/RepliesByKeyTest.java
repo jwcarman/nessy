@@ -188,9 +188,8 @@ class RepliesByKeyTest {
     current.tell(agent, "what lake?");
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () ->
-                assertThat(count(type, agent, AgentEvent.ApprovalDeferred.class)).isEqualTo(calls));
+        .untilAsserted(() ->
+            assertThat(count(type, agent, AgentEvent.ApprovalDeferred.class)).isEqualTo(calls));
     return agent;
   }
 
@@ -211,10 +210,8 @@ class RepliesByKeyTest {
   private void idle(AgentType type, AgentId agent) {
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () ->
-                assertThat(engine.stateOf(type, agent).getClass().getSimpleName())
-                    .isEqualTo("Idle"));
+        .untilAsserted(() ->
+            assertThat(engine.stateOf(type, agent).getClass().getSimpleName()).isEqualTo("Idle"));
   }
 
   private int rowsOf(AgentId agent) {
@@ -341,16 +338,14 @@ class RepliesByKeyTest {
       try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
         List<Future<ReplyOutcome>> answers =
             List.of(
-                pool.submit(
-                    () -> {
-                      go.await(30, TimeUnit.SECONDS);
-                      return approve(request, ApprovalResult.approvedBy("u_carol"));
-                    }),
-                pool.submit(
-                    () -> {
-                      go.await(30, TimeUnit.SECONDS);
-                      return approve(request, ApprovalResult.deniedBy("no", "u_dave"));
-                    }));
+                pool.submit(() -> {
+                  go.await(30, TimeUnit.SECONDS);
+                  return approve(request, ApprovalResult.approvedBy("u_carol"));
+                }),
+                pool.submit(() -> {
+                  go.await(30, TimeUnit.SECONDS);
+                  return approve(request, ApprovalResult.deniedBy("no", "u_dave"));
+                }));
         go.countDown();
         for (Future<ReplyOutcome> answer : answers) {
           outcomes.add(answer.get(60, TimeUnit.SECONDS));
@@ -611,11 +606,10 @@ class RepliesByKeyTest {
       List<ReplyOutcome> outcomes = new ArrayList<>();
 
       transaction()
-          .executeWithoutResult(
-              status -> {
-                outcomes.add(approve(request, ApprovalResult.approved()));
-                status.setRollbackOnly();
-              });
+          .executeWithoutResult(status -> {
+            outcomes.add(approve(request, ApprovalResult.approved()));
+            status.setRollbackOnly();
+          });
 
       assertThat(outcomes).as("inside, it was applied").containsExactly(new ReplyOutcome.Applied());
       assertThat(engine.story(type, agent)).as("the story is unchanged").isEqualTo(before);
@@ -633,16 +627,11 @@ class RepliesByKeyTest {
       UUID mine = UUID.randomUUID();
 
       transaction()
-          .executeWithoutResult(
-              status -> {
-                engine
-                    .jdbc()
-                    .sql("INSERT INTO " + probe + " (id) VALUES (?)")
-                    .params(mine)
-                    .update();
-                assertThat(approve(request, ApprovalResult.approved()))
-                    .isEqualTo(new ReplyOutcome.Applied());
-              });
+          .executeWithoutResult(status -> {
+            engine.jdbc().sql("INSERT INTO " + probe + " (id) VALUES (?)").params(mine).update();
+            assertThat(approve(request, ApprovalResult.approved()))
+                .isEqualTo(new ReplyOutcome.Applied());
+          });
 
       assertThat(probes(mine)).as("the caller's own write committed").isOne();
       idle(type, agent);

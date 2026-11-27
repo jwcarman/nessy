@@ -104,11 +104,10 @@ class StorageCodecTest {
     // The turn completes: state, story and effect rows all went through the codec both ways.
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () ->
-                assertThat(engine.story(CHAT, agentId))
-                    .filteredOn(AgentEvent.InferenceAnswered.class::isInstance)
-                    .hasSize(1));
+        .untilAsserted(() ->
+            assertThat(engine.story(CHAT, agentId))
+                .filteredOn(AgentEvent.InferenceAnswered.class::isInstance)
+                .hasSize(1));
 
     // And what is on disk is not JSON: a reader without the codec gets nothing.
     List<byte[]> story =

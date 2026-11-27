@@ -93,11 +93,10 @@ class AmbientTest {
   @Test
   void aSourceCanSayTheSameContentToEveryAgent() {
     AmbientSource clock =
-        AmbientSource.of(
-            source ->
-                source
-                    .kind("clock")
-                    .saying(java.util.List.of(new org.jwcarman.nessy.api.block.Block.Text("Tue"))));
+        AmbientSource.of(source ->
+            source
+                .kind("clock")
+                .saying(java.util.List.of(new org.jwcarman.nessy.api.block.Block.Text("Tue"))));
 
     assertThat(clock.kind()).isEqualTo("clock");
     assertThat(clock.forAgent(new AgentId(java.util.UUID.randomUUID())))

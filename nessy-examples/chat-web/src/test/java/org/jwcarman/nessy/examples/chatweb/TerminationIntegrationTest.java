@@ -81,11 +81,10 @@ class TerminationIntegrationTest {
     assertThat(chat.say(terminated, "something")).isEqualTo(202);
     await()
         .atMost(Duration.ofSeconds(30))
-        .untilAsserted(
-            () -> {
-              assertThat(chat.state(kept).transcript()).hasSize(2);
-              assertThat(chat.state(terminated).transcript()).hasSize(2);
-            });
+        .untilAsserted(() -> {
+          assertThat(chat.state(kept).transcript()).hasSize(2);
+          assertThat(chat.state(terminated).transcript()).hasSize(2);
+        });
 
     assertThat(chat.terminate(terminated)).isEqualTo(202);
 

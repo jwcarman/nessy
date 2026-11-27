@@ -68,9 +68,8 @@ class ToolEventKeyTest {
 
   @Test
   void a_failure_refuses_a_null_key() {
-    assertThatThrownBy(
-            () ->
-                new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", NONE, null))
+    assertThatThrownBy(() ->
+            new AgentEvent.ToolFailed(SEQ, TURN, CALL, CallFailure.FAILED, "boom", NONE, null))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("idempotencyKey must not be null");
   }

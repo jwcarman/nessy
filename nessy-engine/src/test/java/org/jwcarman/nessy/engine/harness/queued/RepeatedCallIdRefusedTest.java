@@ -141,10 +141,9 @@ class RepeatedCallIdRefusedTest {
     harness.tell(agent, "go");
     await()
         .atMost(PATIENT)
-        .until(
-            () ->
-                engine.story(type, agent).stream()
-                    .anyMatch(AgentEvent.InferenceFailed.class::isInstance));
+        .until(() ->
+            engine.story(type, agent).stream()
+                .anyMatch(AgentEvent.InferenceFailed.class::isInstance));
 
     List<AgentEvent> story = engine.story(type, agent);
     assertThat(story).hasSize(2);
@@ -162,20 +161,18 @@ class RepeatedCallIdRefusedTest {
     assertThat(RUN).hasValue(0);
     await()
         .atMost(PATIENT)
-        .untilAsserted(
-            () -> {
-              assertThat(effectsFor(agent)).as("no effect row is left").isZero();
-              assertThat(engine.work().status(type, agent).activity())
-                  .isEqualTo(AgentStatus.Activity.IDLE);
-            });
+        .untilAsserted(() -> {
+          assertThat(effectsFor(agent)).as("no effect row is left").isZero();
+          assertThat(engine.work().status(type, agent).activity())
+              .isEqualTo(AgentStatus.Activity.IDLE);
+        });
 
     harness.tell(agent, "again");
     await()
         .atMost(PATIENT)
-        .until(
-            () ->
-                engine.story(type, agent).stream()
-                    .anyMatch(AgentEvent.InferenceAnswered.class::isInstance));
+        .until(() ->
+            engine.story(type, agent).stream()
+                .anyMatch(AgentEvent.InferenceAnswered.class::isInstance));
   }
 
   private int effectsFor(AgentId agent) {

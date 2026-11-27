@@ -88,29 +88,28 @@ class NotebookPerTypeTest {
 
   @Test
   void a_note_filed_for_one_type_is_not_in_the_index_of_another() {
-    runner.run(
-        context -> {
-          AgentType typeA = new AgentType("type-a");
-          AgentType typeB = new AgentType("type-b");
-          AgentId agent = new AgentId(UUID.randomUUID());
-          Recording forA = new Recording(typeA);
-          Recording forB = new Recording(typeB);
-          NotebookFeatures.feature(context).customize(forA);
-          NotebookFeatures.feature(context).customize(forB);
+    runner.run(context -> {
+      AgentType typeA = new AgentType("type-a");
+      AgentType typeB = new AgentType("type-b");
+      AgentId agent = new AgentId(UUID.randomUUID());
+      Recording forA = new Recording(typeA);
+      Recording forB = new Recording(typeB);
+      NotebookFeatures.feature(context).customize(forA);
+      NotebookFeatures.feature(context).customize(forB);
 
-          NotebookFeatures.call(
-              forA.tools.stream()
-                  .filter(tool -> tool.name().value().equals("remember"))
-                  .findFirst()
-                  .orElseThrow(),
-              typeA,
-              agent,
-              new NotebookTools.RememberNote("Prefers terse answers", "Short answers."));
+      NotebookFeatures.call(
+          forA.tools.stream()
+              .filter(tool -> tool.name().value().equals("remember"))
+              .findFirst()
+              .orElseThrow(),
+          typeA,
+          agent,
+          new NotebookTools.RememberNote("Prefers terse answers", "Short answers."));
 
-          assertThat(indexText(forA.ambients.getFirst(), agent)).contains("Prefers terse answers");
-          assertThat(indexText(forB.ambients.getFirst(), agent))
-              .isEqualTo("There are no notes in this notebook.");
-        });
+      assertThat(indexText(forA.ambients.getFirst(), agent)).contains("Prefers terse answers");
+      assertThat(indexText(forB.ambients.getFirst(), agent))
+          .isEqualTo("There are no notes in this notebook.");
+    });
   }
 
   private static String indexText(AmbientSource source, AgentId agent) {

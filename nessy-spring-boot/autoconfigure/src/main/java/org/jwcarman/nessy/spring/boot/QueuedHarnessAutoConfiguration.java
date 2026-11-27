@@ -76,29 +76,28 @@ public class QueuedHarnessAutoConfiguration {
       ObjectProvider<Customizer<HarnessConfig<?>>> features) {
 
     List<Customizer<QueuedHarnessFactoryConfig>> all = new ArrayList<>();
-    all.add(
-        engine -> {
-          engine.backend(backend).observations(observations);
-          beans
-              .getBeansOfType(InferenceProvider.class)
-              .forEach((name, provider) -> engine.provider(providerId(name), provider));
-          String provider = properties.provider();
-          String model = properties.model();
-          requireBothOrNeither(provider, model);
-          if (provider != null && !provider.isBlank()) {
-            engine.inference(
-                ProviderId.of(provider), new InferenceOptions(model, properties.maxTokens()));
-          }
-          // Every feature bean -- a jar that equips every agent -- lands on this door too.
-          features.orderedStream().forEach(engine::feature);
-          // With a tracer and its propagator the context is written straight into the effect
-          // row; without them the engine opens a momentary span to have it written.
-          Tracer tracer = tracers.getIfAvailable();
-          Propagator propagator = propagators.getIfAvailable();
-          if (tracer != null && propagator != null) {
-            engine.traceCarrier(new PropagatingTraceCarrier(tracer, propagator));
-          }
-        });
+    all.add(engine -> {
+      engine.backend(backend).observations(observations);
+      beans
+          .getBeansOfType(InferenceProvider.class)
+          .forEach((name, provider) -> engine.provider(providerId(name), provider));
+      String provider = properties.provider();
+      String model = properties.model();
+      requireBothOrNeither(provider, model);
+      if (provider != null && !provider.isBlank()) {
+        engine.inference(
+            ProviderId.of(provider), new InferenceOptions(model, properties.maxTokens()));
+      }
+      // Every feature bean -- a jar that equips every agent -- lands on this door too.
+      features.orderedStream().forEach(engine::feature);
+      // With a tracer and its propagator the context is written straight into the effect
+      // row; without them the engine opens a momentary span to have it written.
+      Tracer tracer = tracers.getIfAvailable();
+      Propagator propagator = propagators.getIfAvailable();
+      if (tracer != null && propagator != null) {
+        engine.traceCarrier(new PropagatingTraceCarrier(tracer, propagator));
+      }
+    });
     // Then whatever the application has to say about the engine itself.
     customizers.orderedStream().forEach(all::add);
     return DefaultQueuedHarnessFactory.of(all);

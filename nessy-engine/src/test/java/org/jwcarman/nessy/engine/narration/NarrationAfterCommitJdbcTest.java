@@ -141,10 +141,9 @@ class NarrationAfterCommitJdbcTest {
       if (narrated.event() instanceof Narration.TurnEnding ended) {
         readableWhenHeard.add(
             events.readAll(narrated.agentType(), narrated.agentId()).stream()
-                .anyMatch(
-                    stored ->
-                        stored instanceof AgentEvent.InferenceAnswered answered
-                            && answered.turn().equals(ended.turn())));
+                .anyMatch(stored ->
+                    stored instanceof AgentEvent.InferenceAnswered answered
+                        && answered.turn().equals(ended.turn())));
         read.countDown();
       }
     };

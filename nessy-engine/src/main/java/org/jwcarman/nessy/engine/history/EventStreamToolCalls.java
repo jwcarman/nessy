@@ -53,9 +53,8 @@ public final class EventStreamToolCalls implements ToolCalls {
         .map(AgentEvent.ActionsRequested.class::cast)
         .filter(asked -> asked.seq().equals(requestSeq))
         .findFirst()
-        .flatMap(
-            asked ->
-                RequestedCalls.resolve(
-                    payloads.forAgent(agentId), asked, entry -> entry.id().equals(callId)));
+        .flatMap(asked ->
+            RequestedCalls.resolve(
+                payloads.forAgent(agentId), asked, entry -> entry.id().equals(callId)));
   }
 }

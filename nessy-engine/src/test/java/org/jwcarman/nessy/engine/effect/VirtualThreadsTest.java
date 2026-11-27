@@ -53,11 +53,10 @@ class VirtualThreadsTest {
     AgentId agentId = new AgentId(UUID.randomUUID());
 
     try (EngineFixture engine =
-        new EngineFixture(
-            (_, _) -> {
-              virtual.set(Thread.currentThread().isVirtual());
-              return new InferenceResult.Answer(List.of(new Block.Text("done")));
-            })) {
+        new EngineFixture((_, _) -> {
+          virtual.set(Thread.currentThread().isVirtual());
+          return new InferenceResult.Answer(List.of(new Block.Text("done")));
+        })) {
 
       QueuedHarness<String> harness =
           engine

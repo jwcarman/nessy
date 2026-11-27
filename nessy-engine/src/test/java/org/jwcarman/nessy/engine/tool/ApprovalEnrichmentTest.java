@@ -159,28 +159,24 @@ class ApprovalEnrichmentTest {
                             t ->
                                 t.action(wipe -> "delete everything under " + wipe.target())
                                     // Gathers. Says nothing about whether this should be allowed.
-                                    .enrich(
-                                        request ->
-                                            request.fact(
-                                                RISK,
-                                                JsonNodeFactory.instance.numberNode(
-                                                    request.arguments().contains("/prod")
-                                                        ? 90
-                                                        : 5)))
+                                    .enrich(request ->
+                                        request.fact(
+                                            RISK,
+                                            JsonNodeFactory.instance.numberNode(
+                                                request.arguments().contains("/prod") ? 90 : 5)))
                                     .enrich(request -> request.fact(PRINCIPAL, "svc-deployer"))
                                     // Judges, using what it was handed and nothing it gathered
                                     // itself.
-                                    .approver(
-                                        request -> {
-                                          seen.add(request);
-                                          int risk =
-                                              request.fact(RISK).map(JsonNode::asInt).orElse(100);
-                                          return Awaited.ready(
-                                              risk >= 50
-                                                  ? ApprovalResult.denied(
-                                                      "risk " + risk + " is too high")
-                                                  : ApprovalResult.approved());
-                                        }))
+                                    .approver(request -> {
+                                      seen.add(request);
+                                      int risk =
+                                          request.fact(RISK).map(JsonNode::asInt).orElse(100);
+                                      return Awaited.ready(
+                                          risk >= 50
+                                              ? ApprovalResult.denied(
+                                                  "risk " + risk + " is too high")
+                                              : ApprovalResult.approved());
+                                    }))
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
@@ -191,17 +187,16 @@ class ApprovalEnrichmentTest {
 
     assertThat(seen)
         .singleElement()
-        .satisfies(
-            request -> {
-              assertThat(request.fact(RISK)).get().extracting(JsonNode::asInt).isEqualTo(90);
-              assertThat(request.fact(PRINCIPAL))
-                  .get()
-                  .extracting(JsonNode::asString)
-                  .isEqualTo("svc-deployer");
-              assertThat(request.action())
-                  .as("the sentence is there to be read before anything is added to it")
-                  .isEqualTo("delete everything under /prod/data");
-            });
+        .satisfies(request -> {
+          assertThat(request.fact(RISK)).get().extracting(JsonNode::asInt).isEqualTo(90);
+          assertThat(request.fact(PRINCIPAL))
+              .get()
+              .extracting(JsonNode::asString)
+              .isEqualTo("svc-deployer");
+          assertThat(request.action())
+              .as("the sentence is there to be read before anything is added to it")
+              .isEqualTo("delete everything under /prod/data");
+        });
     assertThat(ran).as("denied on what the enrichers found").isEmpty();
     List<AgentEvent> story = engine.story(type, agentId);
     ObjectNode gathered =
@@ -238,21 +233,17 @@ class ApprovalEnrichmentTest {
                             dangerous(),
                             t ->
                                 t.action(wipe -> "delete everything under " + wipe.target())
-                                    .enrich(
-                                        request ->
-                                            request.fact(
-                                                RISK,
-                                                JsonNodeFactory.instance.numberNode(
-                                                    request.arguments().contains("/prod")
-                                                        ? 90
-                                                        : 5)))
-                                    .approver(
-                                        request ->
-                                            Awaited.ready(
-                                                request.fact(RISK).map(JsonNode::asInt).orElse(100)
-                                                        >= 50
-                                                    ? ApprovalResult.denied("too risky")
-                                                    : ApprovalResult.approved())))
+                                    .enrich(request ->
+                                        request.fact(
+                                            RISK,
+                                            JsonNodeFactory.instance.numberNode(
+                                                request.arguments().contains("/prod") ? 90 : 5)))
+                                    .approver(request ->
+                                        Awaited.ready(
+                                            request.fact(RISK).map(JsonNode::asInt).orElse(100)
+                                                    >= 50
+                                                ? ApprovalResult.denied("too risky")
+                                                : ApprovalResult.approved())))
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
@@ -284,19 +275,16 @@ class ApprovalEnrichmentTest {
                         .tool(
                             dangerous(),
                             t ->
-                                t.enrich(
-                                        request ->
-                                            request.fact(
-                                                "first", String.valueOf(next.getAndIncrement())))
-                                    .enrich(
-                                        request ->
-                                            request.fact(
-                                                "second", String.valueOf(next.getAndIncrement())))
-                                    .approver(
-                                        request -> {
-                                          seen.add(request);
-                                          return Awaited.ready(ApprovalResult.denied("enough"));
-                                        }))
+                                t.enrich(request ->
+                                        request.fact(
+                                            "first", String.valueOf(next.getAndIncrement())))
+                                    .enrich(request ->
+                                        request.fact(
+                                            "second", String.valueOf(next.getAndIncrement())))
+                                    .approver(request -> {
+                                      seen.add(request);
+                                      return Awaited.ready(ApprovalResult.denied("enough"));
+                                    }))
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
@@ -373,11 +361,10 @@ class ApprovalEnrichmentTest {
                         .tool(
                             dangerous(),
                             t ->
-                                t.approver(
-                                    request -> {
-                                      seen.add(request);
-                                      return Awaited.ready(ApprovalResult.approved());
-                                    }))
+                                t.approver(request -> {
+                                  seen.add(request);
+                                  return Awaited.ready(ApprovalResult.approved());
+                                }))
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 

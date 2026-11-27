@@ -55,16 +55,15 @@ class QueuedHarnessLineCapTest {
   private static final Duration PATIENCE = Duration.ofSeconds(30);
 
   private final EngineFixture engine =
-      new EngineFixture(
-          (request, narrator) -> {
-            if (request.context().activeTurn().exchanges().isEmpty()) {
-              return new InferenceResult.Actions(
-                  List.of(new Block.ToolCall("c1", "lookup", "{\"q\":\"x\"}")),
-                  Usage.unreported("a-model"));
-            }
-            return new InferenceResult.Answer(
-                List.of(new Block.Text("done")), Usage.unreported("a-model"));
-          });
+      new EngineFixture((request, narrator) -> {
+        if (request.context().activeTurn().exchanges().isEmpty()) {
+          return new InferenceResult.Actions(
+              List.of(new Block.ToolCall("c1", "lookup", "{\"q\":\"x\"}")),
+              Usage.unreported("a-model"));
+        }
+        return new InferenceResult.Answer(
+            List.of(new Block.Text("done")), Usage.unreported("a-model"));
+      });
 
   record Query(String q) {}
 
@@ -116,24 +115,22 @@ class QueuedHarnessLineCapTest {
     harness.tell(agent, "look it up");
     await()
         .atMost(PATIENCE)
-        .untilAsserted(
-            () ->
-                assertThat(engine.history().forAgent(TYPE, agent).completedAfter(Optional.empty()))
-                    .hasSize(1));
+        .untilAsserted(() ->
+            assertThat(engine.history().forAgent(TYPE, agent).completedAfter(Optional.empty()))
+                .hasSize(1));
 
     List<AgentEvent> story = engine.story(TYPE, agent);
     assertThat(story)
         .filteredOn(AgentEvent.ActionsRequested.class::isInstance)
         .map(AgentEvent.ActionsRequested.class::cast)
         .singleElement()
-        .satisfies(
-            requested ->
-                assertThat(requested.actions())
-                    .singleElement()
-                    .asInstanceOf(InstanceOfAssertFactories.type(ActionRequest.ToolCall.class))
-                    .extracting(ActionRequest.ToolCall::action)
-                    .asString()
-                    .hasSize(ToolConfig.LINE_CAP));
+        .satisfies(requested ->
+            assertThat(requested.actions())
+                .singleElement()
+                .asInstanceOf(InstanceOfAssertFactories.type(ActionRequest.ToolCall.class))
+                .extracting(ActionRequest.ToolCall::action)
+                .asString()
+                .hasSize(ToolConfig.LINE_CAP));
     assertThat(story)
         .filteredOn(AgentEvent.ToolSucceeded.class::isInstance)
         .map(AgentEvent.ToolSucceeded.class::cast)

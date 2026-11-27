@@ -53,7 +53,8 @@ class AnthropicSchemasTest {
         adapt(
             """
             {"type":"object","properties":{"path":{"type":"string"},\
-            "maxLines":{"type":"integer"}}}""");
+            "maxLines":{"type":"integer"}}}\
+            """);
 
     Map<String, JsonValue> properties = schema.properties().orElseThrow()._additionalProperties();
     assertThat(properties).containsKeys("path", "maxLines");
@@ -66,7 +67,8 @@ class AnthropicSchemasTest {
         adapt(
             """
             {"type":"object","properties":{"path":{"type":"string"},\
-            "maxLines":{"type":"integer"}},"required":["path","maxLines"]}""");
+            "maxLines":{"type":"integer"}},"required":["path","maxLines"]}\
+            """);
 
     assertThat(schema.required().orElseThrow()).containsExactly("path", "maxLines");
   }
@@ -96,7 +98,8 @@ class AnthropicSchemasTest {
             {"type":"object","properties":{},\
             "$defs":{"Restart":{"type":"object","properties":{"host":{"type":"string"}}},\
             "Shutdown":{"type":"object","properties":{"reason":{"type":"string"}}}},\
-            "oneOf":[{"$ref":"#/$defs/Restart"},{"$ref":"#/$defs/Shutdown"}]}""");
+            "oneOf":[{"$ref":"#/$defs/Restart"},{"$ref":"#/$defs/Shutdown"}]}\
+            """);
 
     Map<String, JsonValue> carried = schema._additionalProperties();
     assertThat(carried).containsKeys("$defs", "oneOf");
@@ -124,7 +127,8 @@ class AnthropicSchemasTest {
             """
             {"type":"object","properties":{},\
             "$defs":{"Deep":{"type":"object","properties":{\
-            "inner":{"type":"array","items":{"type":"string"}}}}}}""");
+            "inner":{"type":"array","items":{"type":"string"}}}}}}\
+            """);
 
     assertThat(schema._additionalProperties().get("$defs").convert(Object.class))
         .isEqualTo(
@@ -150,7 +154,8 @@ class AnthropicSchemasTest {
       "properties":{"where":{"type":"object","properties":{"city":{"type":"string"}}},\
       "offers":{"type":"array","items":{"$ref":"#/$defs/Offer"}},\
       "lines":{"type":"array","items":{"type":"object","properties":{"n":{"type":"integer"}}}},\
-      "tags":{"type":"array","items":{"type":"string"}}}}""";
+      "tags":{"type":"array","items":{"type":"string"}}}}\
+      """;
 
   private static JsonNode answerFor(String schema) {
     return MAPPER.valueToTree(AnthropicSchemas.forAnswer(new JsonSchema(schema), MAPPER));
@@ -182,7 +187,8 @@ class AnthropicSchemasTest {
         answerFor(
             """
             {"type":"object","properties":{"a":{"type":"string"}},\
-            "additionalProperties":{"type":"string"}}""");
+            "additionalProperties":{"type":"string"}}\
+            """);
 
     assertThat(answer.at("/additionalProperties/type").asString()).isEqualTo("string");
   }

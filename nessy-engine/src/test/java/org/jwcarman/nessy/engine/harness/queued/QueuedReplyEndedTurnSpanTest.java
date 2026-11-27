@@ -147,15 +147,14 @@ class QueuedReplyEndedTurnSpanTest {
     ToolCallRequest<?> call = handed.peek();
 
     Observation.createNotStarted("app.request", observations)
-        .observe(
-            () ->
-                engine
-                    .replies()
-                    .complete(
-                        call.agentType(),
-                        call.agentId(),
-                        call.idempotencyKey(),
-                        ToolResult.ok(new Block.Text("reindexed 91"))));
+        .observe(() ->
+            engine
+                .replies()
+                .complete(
+                    call.agentType(),
+                    call.agentId(),
+                    call.idempotencyKey(),
+                    ToolResult.ok(new Block.Text("reindexed 91"))));
 
     await()
         .atMost(PATIENCE)
@@ -166,17 +165,15 @@ class QueuedReplyEndedTurnSpanTest {
     assertThat(row.trajectory().hash()).hasSize(64);
     await()
         .atMost(Duration.ofSeconds(5))
-        .untilAsserted(
-            () ->
-                assertThat(stopped)
-                    .filteredOn(c -> c.getName().equals("app.request"))
-                    .singleElement()
-                    .satisfies(
-                        c -> {
-                          KeyValue hash = c.getHighCardinalityKeyValue("nessy.trajectory.hash");
-                          assertThat(hash).isNotNull();
-                          assertThat(hash.getValue()).isEqualTo(row.trajectory().hash());
-                        }));
+        .untilAsserted(() ->
+            assertThat(stopped)
+                .filteredOn(c -> c.getName().equals("app.request"))
+                .singleElement()
+                .satisfies(c -> {
+                  KeyValue hash = c.getHighCardinalityKeyValue("nessy.trajectory.hash");
+                  assertThat(hash).isNotNull();
+                  assertThat(hash.getValue()).isEqualTo(row.trajectory().hash());
+                }));
     List<Observation.Context> effects =
         stopped.stream().filter(c -> c.getName().equals("nessy.effect")).toList();
     assertThat(effects)

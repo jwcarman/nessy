@@ -122,12 +122,11 @@ class UnattributableAnswerTest {
   private DefaultQueuedHarness<String> harness() {
     backend = new InMemoryQueuedBackend(new JacksonCodecFactory(JsonMapper.builder().build()));
     factory =
-        DefaultQueuedHarnessFactory.of(
-            config ->
-                config
-                    .backend(backend)
-                    .provider(ProviderId.of("test"), model)
-                    .inference(ProviderId.of("test"), InferenceOptions.of("m")));
+        DefaultQueuedHarnessFactory.of(config ->
+            config
+                .backend(backend)
+                .provider(ProviderId.of("test"), model)
+                .inference(ProviderId.of("test"), InferenceOptions.of("m")));
     return (DefaultQueuedHarness<String>)
         factory.create(
             TYPE,
@@ -181,15 +180,14 @@ class UnattributableAnswerTest {
         .until(() -> inferences.get() == 2 && answered(agent));
     assertThat(story(agent))
         .as("the call is settled as a failure carrying the message")
-        .anySatisfy(
-            event ->
-                assertThat(event)
-                    .isInstanceOfSatisfying(
-                        AgentEvent.ToolFailed.class,
-                        failed -> {
-                          assertThat(failed.callId()).isEqualTo(CALL);
-                          assertThat(failed.message()).isEqualTo("the row could not be read");
-                        }));
+        .anySatisfy(event ->
+            assertThat(event)
+                .isInstanceOfSatisfying(
+                    AgentEvent.ToolFailed.class,
+                    failed -> {
+                      assertThat(failed.callId()).isEqualTo(CALL);
+                      assertThat(failed.message()).isEqualTo("the row could not be read");
+                    }));
   }
 
   @Test

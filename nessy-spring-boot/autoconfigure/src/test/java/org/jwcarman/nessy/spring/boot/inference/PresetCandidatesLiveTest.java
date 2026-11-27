@@ -469,13 +469,12 @@ class PresetCandidatesLiveTest {
       String... properties) {
     ObjectMapper mapper = JsonMapper.builder().build();
     DefaultDirectHarnessFactory factory =
-        DefaultDirectHarnessFactory.of(
-            f ->
-                f.backend(new InMemoryDirectBackend(new JacksonCodecFactory(mapper)))
-                    .provider(ProviderId.of(candidate.id()), provider(candidate, key, properties))
-                    .schemas(new VictoolsJsonSchemaGenerator())
-                    .mapper(mapper)
-                    .inference(ProviderId.of(candidate.id()), InferenceOptions.of(model)));
+        DefaultDirectHarnessFactory.of(f ->
+            f.backend(new InMemoryDirectBackend(new JacksonCodecFactory(mapper)))
+                .provider(ProviderId.of(candidate.id()), provider(candidate, key, properties))
+                .schemas(new VictoolsJsonSchemaGenerator())
+                .mapper(mapper)
+                .inference(ProviderId.of(candidate.id()), InferenceOptions.of(model)));
     return factory.create(
         TYPE,
         c -> {

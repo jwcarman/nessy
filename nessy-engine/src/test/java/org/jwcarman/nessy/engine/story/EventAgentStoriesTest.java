@@ -327,10 +327,9 @@ class EventAgentStoriesTest {
       assertThat(heard)
           .filteredOn(narrated -> narrated.event() instanceof Narration.ActionsRequested)
           .singleElement()
-          .satisfies(
-              narrated ->
-                  assertThat(((Narration.ActionsRequested) narrated.event()).usage())
-                      .isEqualTo(Usage.of("a-model", 25, 6)));
+          .satisfies(narrated ->
+              assertThat(((Narration.ActionsRequested) narrated.event()).usage())
+                  .isEqualTo(Usage.of("a-model", 25, 6)));
       assertThat(stories.of(TYPE, agent).replay(Seq.NONE, 100)).isEqualTo(heard);
       assertCallEventsCarryTheRequestedKey(heard);
       assertCallEventsCarryTheRequestedKey(stories.of(TYPE, agent).replay(Seq.NONE, 100));
@@ -511,12 +510,11 @@ class EventAgentStoriesTest {
         .map(Narrated::event)
         .filteredOn(Narration.CallDenied.class::isInstance)
         .singleElement()
-        .satisfies(
-            event -> {
-              Narration.CallDenied denied = (Narration.CallDenied) event;
-              assertThat(denied.idempotencyKey()).isEqualTo(requested);
-              assertThat(denied.decidedBy()).isEqualTo(Optional.of(StoryTurn.DENIER));
-            });
+        .satisfies(event -> {
+          Narration.CallDenied denied = (Narration.CallDenied) event;
+          assertThat(denied.idempotencyKey()).isEqualTo(requested);
+          assertThat(denied.decidedBy()).isEqualTo(Optional.of(StoryTurn.DENIER));
+        });
   }
 
   /** The one failed call told, live or replayed, carries the key its request gave it. */

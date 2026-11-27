@@ -71,12 +71,11 @@ final class EmbeddingReport implements SmartInitializingSingleton {
     }
     Map<String, ResolvedEmbedder> byBean = resolvedByBeanName();
     Map<String, String> lines = new TreeMap<>();
-    providers.forEach(
-        (beanName, provider) -> {
-          ResolvedEmbedder resolved = byBean.get(beanName);
-          String id = resolved != null ? resolved.id() : beanName;
-          lines.put(id, describe(id, resolved, provider));
-        });
+    providers.forEach((beanName, provider) -> {
+      ResolvedEmbedder resolved = byBean.get(beanName);
+      String id = resolved != null ? resolved.id() : beanName;
+      lines.put(id, describe(id, resolved, provider));
+    });
     log.info("NESSY EMBEDDING: embedders: {}", String.join("; ", lines.values()));
     if (!startersOwnFactory()) {
       return;

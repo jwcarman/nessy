@@ -73,11 +73,10 @@ public record EmbeddingOptions(
   private static Map<String, String> copyOf(Map<String, String> properties) {
     Objects.requireNonNull(properties, "properties must not be null");
     Map<String, String> copy = new LinkedHashMap<>();
-    properties.forEach(
-        (name, value) ->
-            copy.put(
-                Objects.requireNonNull(name, "a property name must not be null"),
-                Objects.requireNonNull(value, () -> "property '" + name + "' has no value")));
+    properties.forEach((name, value) ->
+        copy.put(
+            Objects.requireNonNull(name, "a property name must not be null"),
+            Objects.requireNonNull(value, () -> "property '" + name + "' has no value")));
     return Collections.unmodifiableMap(copy);
   }
 }

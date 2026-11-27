@@ -75,28 +75,24 @@ public class EmbeddingProvidersAutoConfiguration {
     Set<String> resolvedBeans =
         resolved.stream().map(ResolvedEmbedder::beanName).collect(Collectors.toSet());
     DefaultEmbedderFactory factory =
-        DefaultEmbedderFactory.of(
-            config -> {
-              // Presets and custom embedders under their ids; everything else under its bean name.
-              resolved.forEach(
-                  embedder ->
-                      config.provider(
-                          ProviderId.of(embedder.id()), providers.get(embedder.beanName())));
-              providers.forEach(
-                  (name, provider) -> {
-                    if (!resolvedBeans.contains(name)) {
-                      config.provider(providerId(name), provider);
-                    }
-                  });
-              config.observations(observations.getIfAvailable(() -> ObservationRegistry.NOOP));
-              if (properties.embedder() != null) {
-                Optional<Dimension> width =
-                    Optional.ofNullable(properties.embeddingDimension()).map(Dimension::new);
-                config.embedding(
-                    ProviderId.of(properties.embedder()),
-                    new EmbeddingOptions(properties.embeddingModel(), width));
-              }
-            });
+        DefaultEmbedderFactory.of(config -> {
+          // Presets and custom embedders under their ids; everything else under its bean name.
+          resolved.forEach(embedder ->
+              config.provider(ProviderId.of(embedder.id()), providers.get(embedder.beanName())));
+          providers.forEach((name, provider) -> {
+            if (!resolvedBeans.contains(name)) {
+              config.provider(providerId(name), provider);
+            }
+          });
+          config.observations(observations.getIfAvailable(() -> ObservationRegistry.NOOP));
+          if (properties.embedder() != null) {
+            Optional<Dimension> width =
+                Optional.ofNullable(properties.embeddingDimension()).map(Dimension::new);
+            config.embedding(
+                ProviderId.of(properties.embedder()),
+                new EmbeddingOptions(properties.embeddingModel(), width));
+          }
+        });
     if (properties.embedder() != null) {
       // Once, here: a mistyped default fails at startup listing what is registered, rather than at
       // the first store that asks. The embedder is thrown away; nothing is called.

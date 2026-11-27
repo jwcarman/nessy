@@ -125,15 +125,14 @@ class JdbcAgentTurnsTest {
     turns.append(TYPE, agent, recorded);
     assertThat(turns.of(TYPE, agent))
         .singleElement()
-        .satisfies(
-            read -> {
-              assertThat(read)
-                  .usingRecursiveComparison()
-                  .ignoringFields("trajectoryJson")
-                  .isEqualTo(recorded);
-              assertThat(MAPPER.readTree(read.trajectoryJson()))
-                  .isEqualTo(MAPPER.readTree(recorded.trajectoryJson()));
-            });
+        .satisfies(read -> {
+          assertThat(read)
+              .usingRecursiveComparison()
+              .ignoringFields("trajectoryJson")
+              .isEqualTo(recorded);
+          assertThat(MAPPER.readTree(read.trajectoryJson()))
+              .isEqualTo(MAPPER.readTree(recorded.trajectoryJson()));
+        });
   }
 
   @Test
@@ -391,12 +390,11 @@ class JdbcAgentTurnsTest {
     AgentType type = freshType();
     TransactionTemplate template = transaction();
     Boolean inside =
-        template.execute(
-            status -> {
-              boolean novel = turns.firstSighting(type, "Q", path(), Instant.now());
-              status.setRollbackOnly();
-              return novel;
-            });
+        template.execute(status -> {
+          boolean novel = turns.firstSighting(type, "Q", path(), Instant.now());
+          status.setRollbackOnly();
+          return novel;
+        });
     assertThat(inside).isTrue();
     assertThat(knownRows(type)).isZero();
     assertThat(turns.firstSighting(type, "Q", path(), Instant.now())).isTrue();
@@ -427,34 +425,30 @@ class JdbcAgentTurnsTest {
     ExecutorService pool = Executors.newFixedThreadPool(2);
     try {
       Future<Boolean> a =
-          pool.submit(
-              () ->
-                  transaction()
-                      .execute(
-                          status -> {
-                            boolean novel = turns.firstSighting(type, "Q", path(), Instant.now());
-                            sighted.countDown();
-                            awaitLatch(release);
-                            if (firstRollsBack) {
-                              status.setRollbackOnly();
-                            }
-                            return novel;
-                          }));
+          pool.submit(() ->
+              transaction()
+                  .execute(status -> {
+                    boolean novel = turns.firstSighting(type, "Q", path(), Instant.now());
+                    sighted.countDown();
+                    awaitLatch(release);
+                    if (firstRollsBack) {
+                      status.setRollbackOnly();
+                    }
+                    return novel;
+                  }));
       assertThat(sighted.await(30, TimeUnit.SECONDS)).isTrue();
       CompletableFuture<Integer> backendOfB = new CompletableFuture<>();
       Future<Boolean> b =
-          pool.submit(
-              () ->
-                  transaction()
-                      .execute(
-                          status -> {
-                            backendOfB.complete(
-                                JdbcClient.create(database)
-                                    .sql("SELECT pg_backend_pid()")
-                                    .query(Integer.class)
-                                    .single());
-                            return turns.firstSighting(type, "Q", path(), Instant.now());
-                          }));
+          pool.submit(() ->
+              transaction()
+                  .execute(status -> {
+                    backendOfB.complete(
+                        JdbcClient.create(database)
+                            .sql("SELECT pg_backend_pid()")
+                            .query(Integer.class)
+                            .single());
+                    return turns.firstSighting(type, "Q", path(), Instant.now());
+                  }));
       int pid = backendOfB.get(30, TimeUnit.SECONDS);
       await().atMost(Duration.ofSeconds(30)).until(() -> "Lock".equals(waitEventTypeOf(pid)));
       assertThat(b.isDone()).as("B is waiting on A's index entry").isFalse();

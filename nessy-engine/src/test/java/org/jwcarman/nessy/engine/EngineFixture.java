@@ -194,17 +194,16 @@ public final class EngineFixture implements AutoCloseable {
     this.chapters = jdbcBackend.chapters();
     this.backend = jdbcBackend;
     this.harnesses =
-        DefaultQueuedHarnessFactory.of(
-            engine -> {
-              engine
-                  .backend(wrapped.apply(jdbcBackend))
-                  .provider(ProviderId.of("test"), provider)
-                  .inference(ProviderId.of("test"), InferenceOptions.of("a-model"))
-                  .listener(listener)
-                  .observations(observations);
-              carrier.ifPresent(engine::traceCarrier);
-              extra.customize(engine);
-            });
+        DefaultQueuedHarnessFactory.of(engine -> {
+          engine
+              .backend(wrapped.apply(jdbcBackend))
+              .provider(ProviderId.of("test"), provider)
+              .inference(ProviderId.of("test"), InferenceOptions.of("a-model"))
+              .listener(listener)
+              .observations(observations);
+          carrier.ifPresent(engine::traceCarrier);
+          extra.customize(engine);
+        });
   }
 
   /**

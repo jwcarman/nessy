@@ -46,12 +46,11 @@ public final class ObservedApprover {
               .highCardinalityKeyValue("gen_ai.tool.call.id", request.callId().value())
               .lowCardinalityKeyValue("nessy.approval.answer", "none");
       new Identity(request.agentType(), request.agentId()).on(observation, request.turn());
-      return observation.observe(
-          () -> {
-            Awaited<ApprovalResult> answer = delegate.approve(request);
-            observation.lowCardinalityKeyValue("nessy.approval.answer", approvalOf(answer));
-            return answer;
-          });
+      return observation.observe(() -> {
+        Awaited<ApprovalResult> answer = delegate.approve(request);
+        observation.lowCardinalityKeyValue("nessy.approval.answer", approvalOf(answer));
+        return answer;
+      });
     };
   }
 

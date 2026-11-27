@@ -97,9 +97,8 @@ class PolicyApproverTest {
     void delegate_defers_to_whoever_was_named() {
       Approver desk = request -> Awaited.deferred();
       var gate =
-          PolicyApprover.of(
-              policy ->
-                  policy.engine(request -> Verdict.delegate("humans")).delegate("humans", desk));
+          PolicyApprover.of(policy ->
+              policy.engine(request -> Verdict.delegate("humans")).delegate("humans", desk));
 
       assertThat(gate.approve(asking())).isEqualTo(Awaited.deferred());
     }
@@ -114,11 +113,10 @@ class PolicyApproverTest {
               Awaited.ready(
                   ApprovalResult.denied(request.fact("policy.term").orElseThrow().asString()));
       var gate =
-          PolicyApprover.of(
-              policy ->
-                  policy
-                      .engine(request -> new Verdict.Delegate("humans", extras))
-                      .delegate("humans", desk));
+          PolicyApprover.of(policy ->
+              policy
+                  .engine(request -> new Verdict.Delegate("humans", extras))
+                  .delegate("humans", desk));
 
       assertThat(denialOf(gate.approve(asking()))).isEqualTo("PT72H");
     }
@@ -131,12 +129,10 @@ class PolicyApproverTest {
     @Test
     void an_engine_that_throws_denies() {
       var gate =
-          PolicyApprover.of(
-              policy ->
-                  policy.engine(
-                      request -> {
-                        throw new IllegalStateException("connection refused");
-                      }));
+          PolicyApprover.of(policy ->
+              policy.engine(request -> {
+                throw new IllegalStateException("connection refused");
+              }));
 
       assertThat(denialOf(gate.approve(asking())))
           .contains("could not decide", "connection refused");
@@ -153,11 +149,8 @@ class PolicyApproverTest {
     @DisplayName("a name that is not on the allowlist denies rather than falling through")
     void delegating_to_somebody_unregistered_denies() {
       var gate =
-          PolicyApprover.of(
-              policy ->
-                  policy
-                      .engine(request -> Verdict.delegate("whoever"))
-                      .delegate("humans", r -> null));
+          PolicyApprover.of(policy ->
+              policy.engine(request -> Verdict.delegate("whoever")).delegate("humans", r -> null));
 
       assertThat(denialOf(gate.approve(asking()))).contains("whoever", "not registered");
     }
@@ -166,11 +159,8 @@ class PolicyApproverTest {
     @DisplayName("a delegate that answers null denies rather than propagating the null")
     void a_delegate_that_answers_null_denies() {
       var gate =
-          PolicyApprover.of(
-              policy ->
-                  policy
-                      .engine(request -> Verdict.delegate("humans"))
-                      .delegate("humans", r -> null));
+          PolicyApprover.of(policy ->
+              policy.engine(request -> Verdict.delegate("humans")).delegate("humans", r -> null));
 
       assertThat(denialOf(gate.approve(asking()))).contains("humans", "gave no answer");
     }
@@ -182,9 +172,8 @@ class PolicyApproverTest {
             throw new IllegalStateException("the desk is down");
           };
       var gate =
-          PolicyApprover.of(
-              policy ->
-                  policy.engine(request -> Verdict.delegate("humans")).delegate("humans", broken));
+          PolicyApprover.of(policy ->
+              policy.engine(request -> Verdict.delegate("humans")).delegate("humans", broken));
 
       assertThat(denialOf(gate.approve(asking()))).contains("the desk is down");
     }
@@ -195,18 +184,16 @@ class PolicyApproverTest {
       // The classic shape: this approver's delegate is another policy approver whose policy
       // delegates straight back. Without a bound this recurses until the stack gives out.
       var inner =
-          PolicyApprover.of(
-              policy ->
-                  policy
-                      .engine(request -> Verdict.delegate("outer"))
-                      .delegate("outer", r -> Awaited.ready(ApprovalResult.approved())));
+          PolicyApprover.of(policy ->
+              policy
+                  .engine(request -> Verdict.delegate("outer"))
+                  .delegate("outer", r -> Awaited.ready(ApprovalResult.approved())));
       var gate =
-          PolicyApprover.of(
-              policy ->
-                  policy
-                      .engine(request -> Verdict.delegate("inner"))
-                      .delegate("inner", inner)
-                      .maxDepth(2));
+          PolicyApprover.of(policy ->
+              policy
+                  .engine(request -> Verdict.delegate("inner"))
+                  .delegate("inner", inner)
+                  .maxDepth(2));
 
       // Depth is carried on the request, so the inner approver can see how far it has already come.
       var answer = gate.approve(asking());
@@ -222,12 +209,11 @@ class PolicyApproverTest {
       // empty -> 1 -> 2, then refused.
       PolicyApprover[] itself = new PolicyApprover[1];
       itself[0] =
-          PolicyApprover.of(
-              policy ->
-                  policy
-                      .engine(request -> Verdict.delegate("self"))
-                      .delegate("self", request -> itself[0].approve(request))
-                      .maxDepth(2));
+          PolicyApprover.of(policy ->
+              policy
+                  .engine(request -> Verdict.delegate("self"))
+                  .delegate("self", request -> itself[0].approve(request))
+                  .maxDepth(2));
 
       assertThat(denialOf(itself[0].approve(asking()))).contains("loop");
     }
@@ -250,14 +236,12 @@ class PolicyApproverTest {
       Approver strict = request -> Awaited.ready(ApprovalResult.denied("no"));
       Approver lenient = request -> Awaited.ready(ApprovalResult.approved());
 
-      assertThatThrownBy(
-              () ->
-                  PolicyApprover.of(
-                      policy ->
-                          policy
-                              .engine(request -> Verdict.approve())
-                              .delegate("review", strict)
-                              .delegate("review", lenient)))
+      assertThatThrownBy(() ->
+              PolicyApprover.of(policy ->
+                  policy
+                      .engine(request -> Verdict.approve())
+                      .delegate("review", strict)
+                      .delegate("review", lenient)))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("already registered");
     }

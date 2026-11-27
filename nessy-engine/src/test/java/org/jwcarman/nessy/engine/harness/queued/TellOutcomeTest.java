@@ -176,10 +176,8 @@ class TellOutcomeTest {
   private static void awaitStatus(String story, AgentId agent, Activity activity) {
     await()
         .atMost(PATIENT)
-        .untilAsserted(
-            () ->
-                assertThat(engine.work().status(typeOf(story), agent).activity())
-                    .isEqualTo(activity));
+        .untilAsserted(() ->
+            assertThat(engine.work().status(typeOf(story), agent).activity()).isEqualTo(activity));
   }
 
   private static int queued(String story, AgentId agent) {
@@ -290,11 +288,10 @@ class TellOutcomeTest {
       List<TellOutcome> outcomes = new ArrayList<>();
 
       transaction()
-          .executeWithoutResult(
-              status -> {
-                outcomes.add(harness.tell(agent, "go"));
-                status.setRollbackOnly();
-              });
+          .executeWithoutResult(status -> {
+            outcomes.add(harness.tell(agent, "go"));
+            status.setRollbackOnly();
+          });
 
       assertThat(outcomes).containsExactly(new TellOutcome.Accepted());
       assertThat(engine.story(typeOf(story), agent)).isEmpty();

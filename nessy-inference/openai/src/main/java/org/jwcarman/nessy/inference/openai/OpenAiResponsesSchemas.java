@@ -174,16 +174,15 @@ final class OpenAiResponsesSchemas {
 
   private static Map<String, Object> strict(Map<?, ?> schema) {
     Map<String, Object> out = new LinkedHashMap<>();
-    schema.forEach(
-        (key, value) -> {
-          String keyword = String.valueOf(key);
-          switch (keyword) {
-            case DEFS -> out.put(keyword, eachStrict(value));
-            case ITEMS -> out.put(keyword, strictOrSelf(value));
-            case ANY_OF, ONE_OF -> out.put(ANY_OF, strictBranches(value));
-            default -> out.put(keyword, value);
-          }
-        });
+    schema.forEach((key, value) -> {
+      String keyword = String.valueOf(key);
+      switch (keyword) {
+        case DEFS -> out.put(keyword, eachStrict(value));
+        case ITEMS -> out.put(keyword, strictOrSelf(value));
+        case ANY_OF, ONE_OF -> out.put(ANY_OF, strictBranches(value));
+        default -> out.put(keyword, value);
+      }
+    });
     if (!out.containsKey(TYPE)) {
       typeOf(out).ifPresent(type -> out.put(TYPE, type));
     }
@@ -202,13 +201,12 @@ final class OpenAiResponsesSchemas {
   private static void putStrictProperties(
       Map<String, Object> out, Map<?, ?> properties, Set<String> required) {
     Map<String, Object> rewritten = new LinkedHashMap<>();
-    properties.forEach(
-        (name, property) -> {
-          Object strict = strictOrSelf(property);
-          rewritten.put(
-              String.valueOf(name),
-              required.contains(String.valueOf(name)) ? strict : admittingNull(strict));
-        });
+    properties.forEach((name, property) -> {
+      Object strict = strictOrSelf(property);
+      rewritten.put(
+          String.valueOf(name),
+          required.contains(String.valueOf(name)) ? strict : admittingNull(strict));
+    });
     out.put(PROPERTIES, rewritten);
     out.put(REQUIRED, new ArrayList<>(rewritten.keySet()));
     out.put(ADDITIONAL_PROPERTIES, false);

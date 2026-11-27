@@ -89,23 +89,22 @@ class PlanWithoutTheJdbcBackendTest {
 
   @Test
   void an_agent_on_the_in_memory_backend_still_answers() {
-    runner.run(
-        context -> {
-          assertThat(context).hasNotFailed();
-          assertThat(context).doesNotHaveBean("nessyPlanFeature");
-          DirectHarness<String, String> harness =
-              context
-                  .getBean(DirectHarnessFactory.class)
-                  .<String>create(
-                      new AgentType("chat"),
-                      config ->
-                          config
-                              .systemPrompt("Be brief.")
-                              .inputRenderer(said -> List.of(new Block.Text(said))));
+    runner.run(context -> {
+      assertThat(context).hasNotFailed();
+      assertThat(context).doesNotHaveBean("nessyPlanFeature");
+      DirectHarness<String, String> harness =
+          context
+              .getBean(DirectHarnessFactory.class)
+              .<String>create(
+                  new AgentType("chat"),
+                  config ->
+                      config
+                          .systemPrompt("Be brief.")
+                          .inputRenderer(said -> List.of(new Block.Text(said))));
 
-          AskOutcome<String> outcome = harness.ask(AgentId.random(), "hello");
+      AskOutcome<String> outcome = harness.ask(AgentId.random(), "hello");
 
-          assertThat(outcome).isInstanceOf(AskOutcome.Answered.class);
-        });
+      assertThat(outcome).isInstanceOf(AskOutcome.Answered.class);
+    });
   }
 }

@@ -108,13 +108,12 @@ public class ApprovalsController {
   private static Row row(ApprovalRequest request, Instant now) {
     List<Fact> facts =
         request.facts().properties().stream()
-            .map(
-                entry ->
-                    new Fact(
-                        entry.getKey(),
-                        entry.getValue().isString()
-                            ? entry.getValue().asString()
-                            : entry.getValue().toString()))
+            .map(entry ->
+                new Fact(
+                    entry.getKey(),
+                    entry.getValue().isString()
+                        ? entry.getValue().asString()
+                        : entry.getValue().toString()))
             .toList();
     return new Row(
         request.idempotencyKey().toString(),
@@ -148,17 +147,15 @@ public class ApprovalsController {
         exchange.calls().forEach(call -> notes.add(new Note("calls", call.name().value())));
         exchange
             .outcomes()
-            .forEach(
-                outcome ->
-                    notes.add(
-                        new Note(
-                            "result",
-                            switch (outcome) {
-                              case ToolOutcome.Succeeded(var _, var blocks) -> text(blocks);
-                              case ToolOutcome.Failed(var _, String message) ->
-                                  "failed: " + message;
-                              case ToolOutcome.Denied(var _, String reason) -> "denied: " + reason;
-                            })));
+            .forEach(outcome ->
+                notes.add(
+                    new Note(
+                        "result",
+                        switch (outcome) {
+                          case ToolOutcome.Succeeded(var _, var blocks) -> text(blocks);
+                          case ToolOutcome.Failed(var _, String message) -> "failed: " + message;
+                          case ToolOutcome.Denied(var _, String reason) -> "denied: " + reason;
+                        })));
       }
       switch (turn.result()) {
         case TurnResult.Answered(var blocks) -> notes.add(new Note("assistant", text(blocks)));
@@ -175,13 +172,12 @@ public class ApprovalsController {
 
   private static String text(List<? extends Block> blocks) {
     return blocks.stream()
-        .map(
-            block ->
-                switch (block) {
-                  case Block.Text(String text) -> text;
-                  case Block.Commentary(String text) -> text;
-                  case Block.Provider _, Block.ToolCall _ -> "";
-                })
+        .map(block ->
+            switch (block) {
+              case Block.Text(String text) -> text;
+              case Block.Commentary(String text) -> text;
+              case Block.Provider _, Block.ToolCall _ -> "";
+            })
         .filter(text -> !text.isEmpty())
         .collect(Collectors.joining("\n"));
   }

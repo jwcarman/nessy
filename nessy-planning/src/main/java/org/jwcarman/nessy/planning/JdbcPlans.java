@@ -86,11 +86,10 @@ public final class JdbcPlans implements Plans {
     List<Plan.Task> tasks =
         jdbc.sql(SELECT)
             .params(agentType, key(agentId))
-            .query(
-                (row, number) ->
-                    new Plan.Task(
-                        codec.decode(row.getBytes("title")),
-                        Plan.Status.valueOf(row.getString("status"))))
+            .query((row, number) ->
+                new Plan.Task(
+                    codec.decode(row.getBytes("title")),
+                    Plan.Status.valueOf(row.getString("status"))))
             .list();
     // An empty plan reads as NO plan: "cleared" and "never written" are one state, and nothing
     // downstream can tell them apart anyway.
@@ -101,21 +100,16 @@ public final class JdbcPlans implements Plans {
   public void save(AgentId agentId, Plan plan) {
     Objects.requireNonNull(agentId, "agentId must not be null");
     Objects.requireNonNull(plan, "plan must not be null");
-    transactions.executeWithoutResult(
-        status -> {
-          jdbc.sql(DELETE).params(agentType, key(agentId)).update();
-          List<Plan.Task> tasks = plan.tasks();
-          for (int ordinal = 0; ordinal < tasks.size(); ordinal++) {
-            Plan.Task task = tasks.get(ordinal);
-            jdbc.sql(INSERT)
-                .params(
-                    agentType,
-                    key(agentId),
-                    ordinal,
-                    codec.encode(task.title()),
-                    task.status().name())
-                .update();
-          }
-        });
+    transactions.executeWithoutResult(status -> {
+      jdbc.sql(DELETE).params(agentType, key(agentId)).update();
+      List<Plan.Task> tasks = plan.tasks();
+      for (int ordinal = 0; ordinal < tasks.size(); ordinal++) {
+        Plan.Task task = tasks.get(ordinal);
+        jdbc.sql(INSERT)
+            .params(
+                agentType, key(agentId), ordinal, codec.encode(task.title()), task.status().name())
+            .update();
+      }
+    });
   }
 }

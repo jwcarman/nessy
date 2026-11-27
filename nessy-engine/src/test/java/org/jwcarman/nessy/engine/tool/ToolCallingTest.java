@@ -182,20 +182,16 @@ class ToolCallingTest {
 
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () -> {
-              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
-              assertThat(outstandingEffects(agentId)).isZero();
-            });
+        .untilAsserted(() -> {
+          assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
+          assertThat(outstandingEffects(agentId)).isZero();
+        });
 
     assertThat(seen).as("the tool ran, on arguments the model wrote").containsExactly("loch ness");
     assertThat(model.offered)
         .as("offered on every call of the turn, so the second sees what the first did")
-        .allSatisfy(
-            offers ->
-                assertThat(offers)
-                    .extracting(ToolOffer::name)
-                    .containsExactly(new ToolName("lookup")));
+        .allSatisfy(offers ->
+            assertThat(offers).extracting(ToolOffer::name).containsExactly(new ToolName("lookup")));
 
     List<AgentEvent> story = engine.story(type, agentId);
     List<AgentEvent> shown = story.stream().map(EngineFixture::withoutManifest).toList();
@@ -292,14 +288,13 @@ class ToolCallingTest {
 
     assertThat(model.offered.peek())
         .singleElement()
-        .satisfies(
-            offer -> {
-              assertThat(offer.name()).isEqualTo(new ToolName("lookup"));
-              assertThat(offer.description()).isEqualTo("looks a thing up");
-              assertThat(offer.schema().json())
-                  .as("generated from Query, so it names the property the model must write")
-                  .contains("\"q\"");
-            });
+        .satisfies(offer -> {
+          assertThat(offer.name()).isEqualTo(new ToolName("lookup"));
+          assertThat(offer.description()).isEqualTo("looks a thing up");
+          assertThat(offer.schema().json())
+              .as("generated from Query, so it names the property the model must write")
+              .contains("\"q\"");
+        });
   }
 
   /**
@@ -333,12 +328,10 @@ class ToolCallingTest {
                             lookup(seen),
                             t ->
                                 t.action(query -> "look up " + query.q() + " in the register")
-                                    .approver(
-                                        request -> {
-                                          asked.add(request.action());
-                                          return Awaited.ready(
-                                              ApprovalResult.denied("out of hours"));
-                                        }))
+                                    .approver(request -> {
+                                      asked.add(request.action());
+                                      return Awaited.ready(ApprovalResult.denied("out of hours"));
+                                    }))
                         .inference(in -> in.model("a-model"))
                         .effects(e -> e.pollInterval(Duration.ofMillis(50))));
 
@@ -346,11 +339,10 @@ class ToolCallingTest {
 
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () -> {
-              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
-              assertThat(outstandingEffects(agentId)).isZero();
-            });
+        .untilAsserted(() -> {
+          assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
+          assertThat(outstandingEffects(agentId)).isZero();
+        });
 
     assertThat(seen).as("denied means never attempted").isEmpty();
     assertThat(asked)
@@ -482,23 +474,21 @@ class ToolCallingTest {
 
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () -> {
-              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
-              assertThat(outstandingEffects(agentId)).isZero();
-            });
+        .untilAsserted(() -> {
+          assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
+          assertThat(outstandingEffects(agentId)).isZero();
+        });
 
     List<AgentEvent> story = engine.story(type, agentId);
     for (AgentEvent entry : story) {
       if (entry instanceof AgentEvent.ToolSucceeded ran) {
         assertThat(
                 story.stream()
-                    .anyMatch(
-                        before ->
-                            before instanceof AgentEvent.ToolApproved grant
-                                && grant.callId().equals(ran.callId())
-                                && grant.turn().equals(ran.turn())
-                                && grant.seq().compareTo(ran.seq()) < 0))
+                    .anyMatch(before ->
+                        before instanceof AgentEvent.ToolApproved grant
+                            && grant.callId().equals(ran.callId())
+                            && grant.turn().equals(ran.turn())
+                            && grant.seq().compareTo(ran.seq()) < 0))
             .as("call %s ran with nothing in the story allowing it", ran.callId())
             .isTrue();
       }
@@ -562,11 +552,10 @@ class ToolCallingTest {
     // Parked: the approval request was made once, the row is still there, and the agent is waiting.
     await()
         .atMost(Duration.ofSeconds(10))
-        .untilAsserted(
-            () ->
-                assertThat(handed)
-                    .as("the approver was asked, and given somewhere to reply")
-                    .hasSize(1));
+        .untilAsserted(() ->
+            assertThat(handed)
+                .as("the approver was asked, and given somewhere to reply")
+                .hasSize(1));
     assertThat(agentStateOf(type, agentId))
         .as("still mid-turn, owing a call nobody has answered")
         .isEqualTo("AwaitingActions");
@@ -578,11 +567,10 @@ class ToolCallingTest {
     // And at the deadline it expires into the failure stored beside it.
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () -> {
-              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
-              assertThat(outstandingEffects(agentId)).isZero();
-            });
+        .untilAsserted(() -> {
+          assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
+          assertThat(outstandingEffects(agentId)).isZero();
+        });
 
     assertThat(handed).as("asked once, never again -- a deferral is not a retry").hasSize(1);
     assertThat(seen).as("never authorised, so never run").isEmpty();
@@ -594,11 +582,10 @@ class ToolCallingTest {
     assertThat(story.get(3))
         .asInstanceOf(
             org.assertj.core.api.InstanceOfAssertFactories.type(AgentEvent.ToolFailed.class))
-        .satisfies(
-            failed -> {
-              assertThat(failed.callId()).isEqualTo(new CallId("call_1"));
-              assertThat(failed.message()).contains("could not be authorised");
-            });
+        .satisfies(failed -> {
+          assertThat(failed.callId()).isEqualTo(new CallId("call_1"));
+          assertThat(failed.message()).contains("could not be authorised");
+        });
   }
 
   /**
@@ -667,13 +654,12 @@ class ToolCallingTest {
 
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () -> {
-              assertThat(agentStateOf(type, working))
-                  .as("a second agent ran to completion while the first sat parked")
-                  .isEqualTo("Idle");
-              assertThat(outstandingEffects(working)).isZero();
-            });
+        .untilAsserted(() -> {
+          assertThat(agentStateOf(type, working))
+              .as("a second agent ran to completion while the first sat parked")
+              .isEqualTo("Idle");
+          assertThat(outstandingEffects(working)).isZero();
+        });
 
     assertThat(agentStateOf(type, waiting))
         .as("and the parked one is exactly where it was")

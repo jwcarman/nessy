@@ -189,20 +189,19 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
       boolean[] finished = {false};
       CompletionUsage[] earlyUsage = {null};
       stream.stream()
-          .forEach(
-              chunk -> {
-                any[0] = true;
-                if (finished[0]) {
-                  // After the finish, only the usage is wanted: OpenRouter repeats the finish on
-                  // its usage chunk, and the accumulator refuses anything after a finish.
-                  chunk.usage().ifPresent(usage -> earlyUsage[0] = usage);
-                  return;
-                }
-                chose[0] |= !chunk.choices().isEmpty();
-                accumulator.accumulate(strippedOfEarlyUsage(chunk, earlyUsage));
-                finished[0] = finishes(chunk);
-                narrate(chunk, narrator);
-              });
+          .forEach(chunk -> {
+            any[0] = true;
+            if (finished[0]) {
+              // After the finish, only the usage is wanted: OpenRouter repeats the finish on
+              // its usage chunk, and the accumulator refuses anything after a finish.
+              chunk.usage().ifPresent(usage -> earlyUsage[0] = usage);
+              return;
+            }
+            chose[0] |= !chunk.choices().isEmpty();
+            accumulator.accumulate(strippedOfEarlyUsage(chunk, earlyUsage));
+            finished[0] = finishes(chunk);
+            narrate(chunk, narrator);
+          });
       if (!any[0] || !chose[0]) {
         // A stream that ended before it began, or a 200 that carries no choice: nothing to fold.
         // Asking again returns the same. A choice that started and never finished is read below.
@@ -324,27 +323,26 @@ public final class OpenAiChatInferenceProvider implements InferenceProvider, Aut
   private static Usage usageOf(ChatCompletion completion) {
     return completion
         .usage()
-        .<Usage>map(
-            counted ->
-                new Usage(
-                    completion.model(),
-                    (int) counted.promptTokens(),
-                    (int) counted.completionTokens(),
-                    counted
-                        .promptTokensDetails()
-                        .flatMap(d -> d.cachedTokens())
-                        .map(Long::intValue)
-                        .orElse(null),
-                    counted
-                        .promptTokensDetails()
-                        .flatMap(d -> d.cacheWriteTokens())
-                        .map(Long::intValue)
-                        .orElse(null),
-                    counted
-                        .completionTokensDetails()
-                        .flatMap(d -> d.reasoningTokens())
-                        .map(Long::intValue)
-                        .orElse(null)))
+        .<Usage>map(counted ->
+            new Usage(
+                completion.model(),
+                (int) counted.promptTokens(),
+                (int) counted.completionTokens(),
+                counted
+                    .promptTokensDetails()
+                    .flatMap(d -> d.cachedTokens())
+                    .map(Long::intValue)
+                    .orElse(null),
+                counted
+                    .promptTokensDetails()
+                    .flatMap(d -> d.cacheWriteTokens())
+                    .map(Long::intValue)
+                    .orElse(null),
+                counted
+                    .completionTokensDetails()
+                    .flatMap(d -> d.reasoningTokens())
+                    .map(Long::intValue)
+                    .orElse(null)))
         .orElseGet(() -> Usage.unreported(completion.model()));
   }
 

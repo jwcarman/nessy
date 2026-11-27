@@ -164,16 +164,15 @@ class JdbcLeasesTest {
   void released_after_the_work() {
     AtomicInteger counted = new AtomicInteger();
 
-    assertThatThrownBy(
-            () ->
-                leases.tryWithLease(
-                    SUMMARY,
-                    TYPE,
-                    agent,
-                    TTL,
-                    () -> {
-                      throw new IllegalStateException("the work failed");
-                    }))
+    assertThatThrownBy(() ->
+            leases.tryWithLease(
+                SUMMARY,
+                TYPE,
+                agent,
+                TTL,
+                () -> {
+                  throw new IllegalStateException("the work failed");
+                }))
         .isInstanceOf(IllegalStateException.class);
 
     assertThat(ran(leases.tryWithLease(SUMMARY, TYPE, agent, TTL, counted::incrementAndGet)))
@@ -198,37 +197,35 @@ class JdbcLeasesTest {
     CountDownLatch holding = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
     Duration brief = Duration.ofMillis(500);
-    callers.submit(
-        () ->
-            leases.tryWithLease(
-                SUMMARY,
-                TYPE,
-                agent,
-                brief,
-                () -> {
-                  holding.countDown();
-                  await().atMost(Duration.ofSeconds(10)).until(() -> release.getCount() == 0);
-                }));
+    callers.submit(() ->
+        leases.tryWithLease(
+            SUMMARY,
+            TYPE,
+            agent,
+            brief,
+            () -> {
+              holding.countDown();
+              await().atMost(Duration.ofSeconds(10)).until(() -> release.getCount() == 0);
+            }));
     holding.await();
     AtomicInteger counted = new AtomicInteger();
     AtomicInteger takeovers = new AtomicInteger(-1);
 
     await()
         .atMost(Duration.ofSeconds(5))
-        .untilAsserted(
-            () ->
-                assertThat(
-                        ran(
-                            leases.tryWithLease(
-                                SUMMARY,
-                                TYPE,
-                                agent,
-                                TTL,
-                                () -> {
-                                  counted.incrementAndGet();
-                                  takeovers.set(takeoversInDb(SUMMARY, agent));
-                                })))
-                    .isTrue());
+        .untilAsserted(() ->
+            assertThat(
+                    ran(
+                        leases.tryWithLease(
+                            SUMMARY,
+                            TYPE,
+                            agent,
+                            TTL,
+                            () -> {
+                              counted.incrementAndGet();
+                              takeovers.set(takeoversInDb(SUMMARY, agent));
+                            })))
+                .isTrue());
 
     assertThat(counted).hasValue(1);
     assertThat(takeovers).as("takeovers, read while the new holder held it").hasValue(1);
@@ -244,19 +241,18 @@ class JdbcLeasesTest {
     CountDownLatch originalHolding = new CountDownLatch(1);
     CountDownLatch letOriginalFinish = new CountDownLatch(1);
     Future<Attempt<Void>> original =
-        callers.submit(
-            () ->
-                leases.tryWithLease(
-                    SUMMARY,
-                    TYPE,
-                    agent,
-                    brief,
-                    () -> {
-                      originalHolding.countDown();
-                      await()
-                          .atMost(Duration.ofSeconds(10))
-                          .until(() -> letOriginalFinish.getCount() == 0);
-                    }));
+        callers.submit(() ->
+            leases.tryWithLease(
+                SUMMARY,
+                TYPE,
+                agent,
+                brief,
+                () -> {
+                  originalHolding.countDown();
+                  await()
+                      .atMost(Duration.ofSeconds(10))
+                      .until(() -> letOriginalFinish.getCount() == 0);
+                }));
     originalHolding.await();
     // Past the original holder's 500ms ttl, so the row below is eligible to be taken over.
     await().pollDelay(Duration.ofMillis(600)).until(() -> true);
@@ -266,19 +262,16 @@ class JdbcLeasesTest {
     CountDownLatch newHolding = new CountDownLatch(1);
     CountDownLatch letNewFinish = new CountDownLatch(1);
     Future<Attempt<Void>> takeover =
-        callers.submit(
-            () ->
-                leases.tryWithLease(
-                    SUMMARY,
-                    TYPE,
-                    agent,
-                    TTL,
-                    () -> {
-                      newHolding.countDown();
-                      await()
-                          .atMost(Duration.ofSeconds(10))
-                          .until(() -> letNewFinish.getCount() == 0);
-                    }));
+        callers.submit(() ->
+            leases.tryWithLease(
+                SUMMARY,
+                TYPE,
+                agent,
+                TTL,
+                () -> {
+                  newHolding.countDown();
+                  await().atMost(Duration.ofSeconds(10)).until(() -> letNewFinish.getCount() == 0);
+                }));
     newHolding.await();
     assertThat(takeoversInDb(SUMMARY, agent)).as("this row has been taken over once").isEqualTo(1);
 
@@ -289,13 +282,12 @@ class JdbcLeasesTest {
     assertThat(ran(outcome)).as("the original holder's own work still ran and returned").isTrue();
     assertThat(logs.list)
         .as("a release that affected nothing is a WARN naming the kind and the agent")
-        .anySatisfy(
-            event -> {
-              assertThat(event.getLevel()).isEqualTo(Level.WARN);
-              assertThat(event.getFormattedMessage())
-                  .contains(SUMMARY.value())
-                  .contains(agent.value().toString());
-            });
+        .anySatisfy(event -> {
+          assertThat(event.getLevel()).isEqualTo(Level.WARN);
+          assertThat(event.getFormattedMessage())
+              .contains(SUMMARY.value())
+              .contains(agent.value().toString());
+        });
     // The new holder is still holding: the lost holder's release did not touch its row.
     assertThat(ran(leases.tryWithLease(SUMMARY, TYPE, agent, TTL, () -> "refused, still held")))
         .as("the current holder's lease survived the other holder's release")
@@ -330,22 +322,20 @@ class JdbcLeasesTest {
     AtomicInteger counted = new AtomicInteger();
     List<Future<Attempt<Void>>> outcomes =
         IntStream.range(0, callerCount)
-            .mapToObj(
-                _ ->
-                    callers.submit(
-                        () -> {
-                          go.await();
-                          return leases.tryWithLease(
-                              SUMMARY,
-                              TYPE,
-                              agent,
-                              TTL,
-                              () -> {
-                                counted.incrementAndGet();
-                                // Hold it long enough for the others to be refused.
-                                await().pollDelay(Duration.ofMillis(300)).until(() -> true);
-                              });
-                        }))
+            .mapToObj(_ ->
+                callers.submit(() -> {
+                  go.await();
+                  return leases.tryWithLease(
+                      SUMMARY,
+                      TYPE,
+                      agent,
+                      TTL,
+                      () -> {
+                        counted.incrementAndGet();
+                        // Hold it long enough for the others to be refused.
+                        await().pollDelay(Duration.ofMillis(300)).until(() -> true);
+                      });
+                }))
             .toList();
 
     go.countDown();

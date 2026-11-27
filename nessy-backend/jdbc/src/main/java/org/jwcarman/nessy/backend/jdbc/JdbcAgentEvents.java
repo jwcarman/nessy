@@ -192,11 +192,10 @@ public final class JdbcAgentEvents implements AgentEvents {
     }
     return jdbc.sql(READ_WRITTEN_FROM)
         .params(type.value(), agent.value(), after.value(), limit)
-        .query(
-            (rs, _) ->
-                new Written(
-                    codec.decode(rs.getBytes(PAYLOAD)),
-                    rs.getObject("written_at", OffsetDateTime.class).toInstant()))
+        .query((rs, _) ->
+            new Written(
+                codec.decode(rs.getBytes(PAYLOAD)),
+                rs.getObject("written_at", OffsetDateTime.class).toInstant()))
         .list();
   }
 
@@ -219,8 +218,7 @@ public final class JdbcAgentEvents implements AgentEvents {
         .params(type.value(), agent.value(), seq.value())
         .query((rs, _) -> rs.getObject("written_at", OffsetDateTime.class).toInstant())
         .optional()
-        .orElseThrow(
-            () ->
-                new IllegalArgumentException("no event at " + seq + " for agent " + agent.value()));
+        .orElseThrow(() ->
+            new IllegalArgumentException("no event at " + seq + " for agent " + agent.value()));
   }
 }

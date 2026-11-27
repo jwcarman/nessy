@@ -75,12 +75,10 @@ class ModelCallManifestsTest {
   /** Says "call 1", "call 2", "call 3" on the way into each model call. */
   private static AmbientSource ambientThatDiffersEveryCall() {
     AtomicInteger asked = new AtomicInteger();
-    return AmbientSource.of(
-        source ->
-            source
-                .kind("clock")
-                .offering(
-                    _ -> Optional.of(Ambient.text("clock", "call " + asked.incrementAndGet()))));
+    return AmbientSource.of(source ->
+        source
+            .kind("clock")
+            .offering(_ -> Optional.of(Ambient.text("clock", "call " + asked.incrementAndGet()))));
   }
 
   private static InferenceRequestManifest manifestOf(AgentEvent event) {
@@ -112,28 +110,25 @@ class ModelCallManifestsTest {
                           t ->
                               t.action(query -> "looked up " + query.q())
                                   .approver(StoryTurn.decidesAsCarol()))
-                      .inference(
-                          in ->
-                              in.model("a-model")
-                                  .retryPolicy(
-                                      new RetryPolicy.FixedDelay(
-                                          2, Duration.ofMillis(100), Duration.ZERO)))
+                      .inference(in ->
+                          in.model("a-model")
+                              .retryPolicy(
+                                  new RetryPolicy.FixedDelay(
+                                      2, Duration.ofMillis(100), Duration.ZERO)))
                       .effects(e -> e.pollInterval(Duration.ofMillis(50))))
           .tell(agent, "how deep is Loch Ness?");
       await()
           .atMost(Duration.ofSeconds(30))
-          .until(
-              () ->
-                  engine.story(type, agent).stream()
-                      .anyMatch(AgentEvent.InferenceAnswered.class::isInstance));
+          .until(() ->
+              engine.story(type, agent).stream()
+                  .anyMatch(AgentEvent.InferenceAnswered.class::isInstance));
 
       List<AgentEvent> modelCalls =
           engine.story(type, agent).stream()
-              .filter(
-                  event ->
-                      event instanceof AgentEvent.InferenceAttempted
-                          || event instanceof AgentEvent.ActionsRequested
-                          || event instanceof AgentEvent.InferenceAnswered)
+              .filter(event ->
+                  event instanceof AgentEvent.InferenceAttempted
+                      || event instanceof AgentEvent.ActionsRequested
+                      || event instanceof AgentEvent.InferenceAnswered)
               .toList();
       assertThat(modelCalls)
           .extracting(event -> event.getClass().getSimpleName())

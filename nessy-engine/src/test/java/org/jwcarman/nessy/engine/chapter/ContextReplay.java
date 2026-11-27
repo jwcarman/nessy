@@ -214,12 +214,11 @@ final class ContextReplay {
         new InMemoryDirectBackend(new JacksonCodecFactory(JsonMapper.builder().build()));
     AgentId agent = AgentId.random();
     try (DefaultDirectHarnessFactory factory =
-        DefaultDirectHarnessFactory.of(
-            f ->
-                f.backend(backend)
-                    .provider(ProviderId.of("test"), model)
-                    .schemas(new VictoolsJsonSchemaGenerator())
-                    .mapper(JsonMapper.builder().build()))) {
+        DefaultDirectHarnessFactory.of(f ->
+            f.backend(backend)
+                .provider(ProviderId.of("test"), model)
+                .schemas(new VictoolsJsonSchemaGenerator())
+                .mapper(JsonMapper.builder().build()))) {
       DirectHarness<String, String> harness =
           factory.<String>create(
               TYPE,
@@ -228,10 +227,9 @@ final class ContextReplay {
                 c.inputRenderer(said -> List.of(new Block.Text(said)));
                 c.inference(in -> in.provider("test").model(MODEL));
                 c.tool(lookup(), t -> t.approver(Approver.allow()));
-                c.summarizer(
-                    chapter ->
-                        "summary of turns %d..%d"
-                            .formatted(chapter.from().value(), chapter.through().value()));
+                c.summarizer(chapter ->
+                    "summary of turns %d..%d"
+                        .formatted(chapter.from().value(), chapter.through().value()));
                 watched.ifPresent(c::chapterPolicy);
                 settings.customize(c);
               });
@@ -259,21 +257,20 @@ final class ContextReplay {
         .pollDelay(Duration.ZERO)
         .pollInterval(Duration.ofMillis(5))
         .atMost(PATIENCE_PER_TURN)
-        .until(
-            () -> {
-              if (watched.asked.get() <= before) {
-                return false;
-              }
-              TurnId end = watched.furthestEnd.get();
-              boolean closed =
-                  end == null
-                      || backend
-                          .chapters()
-                          .closedThrough(TYPE, agent)
-                          .filter(through -> through.compareTo(end) >= 0)
-                          .isPresent();
-              return closed && backend.chapters().unsummarized(TYPE, agent).isEmpty();
-            });
+        .until(() -> {
+          if (watched.asked.get() <= before) {
+            return false;
+          }
+          TurnId end = watched.furthestEnd.get();
+          boolean closed =
+              end == null
+                  || backend
+                      .chapters()
+                      .closedThrough(TYPE, agent)
+                      .filter(through -> through.compareTo(end) >= 0)
+                      .isPresent();
+          return closed && backend.chapters().unsummarized(TYPE, agent).isEmpty();
+        });
   }
 
   private static Tool<Lookup> lookup() {

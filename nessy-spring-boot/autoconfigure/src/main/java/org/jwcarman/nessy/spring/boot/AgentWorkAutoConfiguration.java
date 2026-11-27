@@ -64,16 +64,14 @@ public class AgentWorkAutoConfiguration {
       ObjectProvider<QueuedBackend> queued, ObjectProvider<DirectBackend> direct) {
     Clock clock = Clock.systemUTC();
     List<FirstStoreHoldingWork.Door> doors = new ArrayList<>();
-    queued.ifAvailable(
-        backend ->
-            doors.add(
-                new FirstStoreHoldingWork.Door(
-                    backend.events(), StoredAgentWork.queued(backend, clock))));
-    direct.ifAvailable(
-        backend ->
-            doors.add(
-                new FirstStoreHoldingWork.Door(
-                    backend.events(), StoredAgentWork.direct(backend.events(), clock))));
+    queued.ifAvailable(backend ->
+        doors.add(
+            new FirstStoreHoldingWork.Door(
+                backend.events(), StoredAgentWork.queued(backend, clock))));
+    direct.ifAvailable(backend ->
+        doors.add(
+            new FirstStoreHoldingWork.Door(
+                backend.events(), StoredAgentWork.direct(backend.events(), clock))));
     return new FirstStoreHoldingWork(doors);
   }
 }

@@ -70,29 +70,27 @@ class NarrationListenerConfigTest {
   void every_kind_has_a_method_of_its_own_and_each_hears_only_its_kind() {
     List<String> heard = new ArrayList<>();
     NarrationListener listener =
-        NarrationListener.of(
-            on ->
-                on.onTurnStarted((_, e) -> heard.add("started " + e.turn()))
-                    .onThinking((_, e) -> heard.add("thinking"))
-                    .onAnswered((_, e) -> heard.add("answered"))
-                    .onTurnStopped((_, e) -> heard.add("stopped " + e.reason()))
-                    .onTurnFailed((_, e) -> heard.add("failed"))
-                    .onTurnRefused((_, e) -> heard.add("refused"))
-                    .onInferenceRetried((_, e) -> heard.add("retried " + e.reason()))
-                    .onCommentary((_, e) -> heard.add("commentary " + e.text()))
-                    .onActionsRequested(
-                        (_, e) -> heard.add("actions " + e.calls().getFirst().toolName()))
-                    .onCallApproved((_, e) -> heard.add("approved " + e.callId()))
-                    .onCallDenied((_, e) -> heard.add("denied " + e.reason()))
-                    .onCallFinished((_, e) -> heard.add("finished " + e.callId()))
-                    .onCallFailed((_, e) -> heard.add("call failed " + e.message()))
-                    .onTerminated((_, e) -> heard.add("terminated"))
-                    .onApprovalSought((_, e) -> heard.add("sought " + e.action()))
-                    .onApprovalDeferred((_, e) -> heard.add("deferred " + e.until()))
-                    .onCallDeferred(
-                        (_, e) -> heard.add("call deferred " + e.idempotencyKey().value()))
-                    .onThinkingDelta((_, e) -> heard.add("thinking delta " + e.text()))
-                    .onContentDelta((_, e) -> heard.add("content delta " + e.text())));
+        NarrationListener.of(on ->
+            on.onTurnStarted((_, e) -> heard.add("started " + e.turn()))
+                .onThinking((_, e) -> heard.add("thinking"))
+                .onAnswered((_, e) -> heard.add("answered"))
+                .onTurnStopped((_, e) -> heard.add("stopped " + e.reason()))
+                .onTurnFailed((_, e) -> heard.add("failed"))
+                .onTurnRefused((_, e) -> heard.add("refused"))
+                .onInferenceRetried((_, e) -> heard.add("retried " + e.reason()))
+                .onCommentary((_, e) -> heard.add("commentary " + e.text()))
+                .onActionsRequested(
+                    (_, e) -> heard.add("actions " + e.calls().getFirst().toolName()))
+                .onCallApproved((_, e) -> heard.add("approved " + e.callId()))
+                .onCallDenied((_, e) -> heard.add("denied " + e.reason()))
+                .onCallFinished((_, e) -> heard.add("finished " + e.callId()))
+                .onCallFailed((_, e) -> heard.add("call failed " + e.message()))
+                .onTerminated((_, e) -> heard.add("terminated"))
+                .onApprovalSought((_, e) -> heard.add("sought " + e.action()))
+                .onApprovalDeferred((_, e) -> heard.add("deferred " + e.until()))
+                .onCallDeferred((_, e) -> heard.add("call deferred " + e.idempotencyKey().value()))
+                .onThinkingDelta((_, e) -> heard.add("thinking delta " + e.text()))
+                .onContentDelta((_, e) -> heard.add("content delta " + e.text())));
 
     EVERY_KIND.forEach(event -> listener.on(heard(CHAT, event)));
 

@@ -212,11 +212,10 @@ class DefaultEmbedderFactoryTest {
     Asked openai = new Asked("openai", 0);
     Asked voyage = new Asked("voyage", 0);
     DefaultEmbedderFactory factory =
-        DefaultEmbedderFactory.of(
-            f ->
-                f.provider(OPENAI, openai)
-                    .provider(VOYAGE, voyage)
-                    .embedding(OPENAI, EmbeddingOptions.of("text-embedding-3-small")));
+        DefaultEmbedderFactory.of(f ->
+            f.provider(OPENAI, openai)
+                .provider(VOYAGE, voyage)
+                .embedding(OPENAI, EmbeddingOptions.of("text-embedding-3-small")));
 
     Embedder embedder = factory.create(c -> c.provider("voyage").model("voyage-3.5"));
     embedder.embedDocument("anything");
@@ -231,11 +230,10 @@ class DefaultEmbedderFactoryTest {
     Asked openai = new Asked("openai", 0);
     Asked voyage = new Asked("voyage", 0);
     DefaultEmbedderFactory factory =
-        DefaultEmbedderFactory.of(
-            f ->
-                f.provider(OPENAI, openai)
-                    .provider(VOYAGE, voyage)
-                    .embedding(VOYAGE, EmbeddingOptions.of("voyage-3.5")));
+        DefaultEmbedderFactory.of(f ->
+            f.provider(OPENAI, openai)
+                .provider(VOYAGE, voyage)
+                .embedding(VOYAGE, EmbeddingOptions.of("voyage-3.5")));
 
     Embedder embedder = factory.create(c -> {});
     embedder.embedDocument("anything");
@@ -251,11 +249,10 @@ class DefaultEmbedderFactoryTest {
     Asked openai = new Asked("openai", 0);
     Asked voyage = new Asked("voyage", 0);
     DefaultEmbedderFactory factory =
-        DefaultEmbedderFactory.of(
-            f ->
-                f.provider(OPENAI, openai)
-                    .provider(VOYAGE, voyage)
-                    .embedding(OPENAI, EmbeddingOptions.of("a-model")));
+        DefaultEmbedderFactory.of(f ->
+            f.provider(OPENAI, openai)
+                .provider(VOYAGE, voyage)
+                .embedding(OPENAI, EmbeddingOptions.of("a-model")));
 
     factory.create(c -> c.provider(VOYAGE)).embedDocument("anything");
 
@@ -374,11 +371,10 @@ class DefaultEmbedderFactoryTest {
   @Test
   void with_a_registry_every_embedder_is_observed() {
     DefaultEmbedderFactory factory =
-        DefaultEmbedderFactory.of(
-            f ->
-                f.provider(OPENAI, new Asked())
-                    .embedding(OPENAI, EmbeddingOptions.of("a-model"))
-                    .observations(ObservationRegistry.create()));
+        DefaultEmbedderFactory.of(f ->
+            f.provider(OPENAI, new Asked())
+                .embedding(OPENAI, EmbeddingOptions.of("a-model"))
+                .observations(ObservationRegistry.create()));
 
     assertThat(factory.create(c -> {})).isInstanceOf(ObservedEmbedder.class);
   }
@@ -422,10 +418,9 @@ class DefaultEmbedderFactoryTest {
   @Test
   void a_batch_with_one_vector_of_the_wrong_width_fails() {
     Embedder embedder =
-        DefaultEmbedderFactory.of(
-                f ->
-                    f.provider(OPENAI, new Mixed())
-                        .embedding(OPENAI, new EmbeddingOptions("m", Optional.of(Dimension.of(2)))))
+        DefaultEmbedderFactory.of(f ->
+                f.provider(OPENAI, new Mixed())
+                    .embedding(OPENAI, new EmbeddingOptions("m", Optional.of(Dimension.of(2)))))
             .create(c -> {});
     List<String> two = List.of("a", "b");
 

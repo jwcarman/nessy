@@ -101,19 +101,18 @@ final class WireProviders {
     private OpenAiChat() {}
 
     static InferenceProvider build(ResolvedProvider resolved, @Nullable JsonMapper mapper) {
-      return OpenAiChatInferenceProvider.of(
-          c -> {
-            c.apiKey(resolved.apiKey());
-            if (resolved.baseUrl() != null) {
-              c.baseUrl(resolved.baseUrl());
-            }
-            c.vendor(resolved.vendor());
-            c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
-            c.properties(resolved.properties());
-            if (mapper != null) {
-              c.mapper(mapper);
-            }
-          });
+      return OpenAiChatInferenceProvider.of(c -> {
+        c.apiKey(resolved.apiKey());
+        if (resolved.baseUrl() != null) {
+          c.baseUrl(resolved.baseUrl());
+        }
+        c.vendor(resolved.vendor());
+        c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
+        c.properties(resolved.properties());
+        if (mapper != null) {
+          c.mapper(mapper);
+        }
+      });
     }
   }
 
@@ -122,19 +121,18 @@ final class WireProviders {
     private OpenAiResponses() {}
 
     static InferenceProvider build(ResolvedProvider resolved, @Nullable JsonMapper mapper) {
-      return OpenAiResponsesInferenceProvider.of(
-          c -> {
-            c.apiKey(resolved.apiKey());
-            if (resolved.baseUrl() != null) {
-              c.baseUrl(resolved.baseUrl());
-            }
-            c.vendor(resolved.vendor());
-            c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
-            c.properties(resolved.properties());
-            if (mapper != null) {
-              c.mapper(mapper);
-            }
-          });
+      return OpenAiResponsesInferenceProvider.of(c -> {
+        c.apiKey(resolved.apiKey());
+        if (resolved.baseUrl() != null) {
+          c.baseUrl(resolved.baseUrl());
+        }
+        c.vendor(resolved.vendor());
+        c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
+        c.properties(resolved.properties());
+        if (mapper != null) {
+          c.mapper(mapper);
+        }
+      });
     }
   }
 
@@ -143,18 +141,17 @@ final class WireProviders {
     private Anthropic() {}
 
     static InferenceProvider build(ResolvedProvider resolved, @Nullable JsonMapper mapper) {
-      return AnthropicInferenceProvider.of(
-          c -> {
-            c.apiKey(resolved.apiKey());
-            if (resolved.baseUrl() != null) {
-              c.baseUrl(resolved.baseUrl());
-            }
-            c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
-            c.properties(resolved.properties());
-            if (mapper != null) {
-              c.mapper(mapper);
-            }
-          });
+      return AnthropicInferenceProvider.of(c -> {
+        c.apiKey(resolved.apiKey());
+        if (resolved.baseUrl() != null) {
+          c.baseUrl(resolved.baseUrl());
+        }
+        c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
+        c.properties(resolved.properties());
+        if (mapper != null) {
+          c.mapper(mapper);
+        }
+      });
     }
   }
 
@@ -163,18 +160,17 @@ final class WireProviders {
     private Gemini() {}
 
     static InferenceProvider build(ResolvedProvider resolved, @Nullable JsonMapper mapper) {
-      return GeminiInferenceProvider.of(
-          c -> {
-            c.apiKey(resolved.apiKey());
-            if (resolved.baseUrl() != null) {
-              c.baseUrl(resolved.baseUrl());
-            }
-            c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
-            c.properties(resolved.properties());
-            if (mapper != null) {
-              c.mapper(mapper);
-            }
-          });
+      return GeminiInferenceProvider.of(c -> {
+        c.apiKey(resolved.apiKey());
+        if (resolved.baseUrl() != null) {
+          c.baseUrl(resolved.baseUrl());
+        }
+        c.timeout(TransportTimeouts.PROVIDER_TRANSPORT);
+        c.properties(resolved.properties());
+        if (mapper != null) {
+          c.mapper(mapper);
+        }
+      });
     }
   }
 }

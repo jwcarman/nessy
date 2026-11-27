@@ -148,20 +148,16 @@ class JdbcStorageTransformWiringTest {
   @Test
   @DisplayName("the direct door keeps the same content once, transformed")
   void the_direct_door_keeps_the_same_content_once_transformed() {
-    runner.run(
-        context ->
-            assertOneReferenceOneRowStillTransformed(
-                context.getBean(DirectBackend.class).payloads(),
-                context.getBean(DataSource.class)));
+    runner.run(context ->
+        assertOneReferenceOneRowStillTransformed(
+            context.getBean(DirectBackend.class).payloads(), context.getBean(DataSource.class)));
   }
 
   @Test
   @DisplayName("the queued door keeps the same content once, transformed")
   void the_queued_door_keeps_the_same_content_once_transformed() {
-    runner.run(
-        context ->
-            assertOneReferenceOneRowStillTransformed(
-                context.getBean(QueuedBackend.class).payloads(),
-                context.getBean(DataSource.class)));
+    runner.run(context ->
+        assertOneReferenceOneRowStillTransformed(
+            context.getBean(QueuedBackend.class).payloads(), context.getBean(DataSource.class)));
   }
 }

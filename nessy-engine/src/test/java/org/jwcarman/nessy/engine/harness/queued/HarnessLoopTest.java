@@ -116,11 +116,10 @@ class HarnessLoopTest {
     TransactionTemplate transaction =
         new TransactionTemplate(new JdbcTransactionManager(engine.dataSource()));
 
-    transaction.executeWithoutResult(
-        status -> {
-          harness.tell(agentId, "what is nessy?");
-          status.setRollbackOnly();
-        });
+    transaction.executeWithoutResult(status -> {
+      harness.tell(agentId, "what is nessy?");
+      status.setRollbackOnly();
+    });
 
     assertThat(story(CHAT, agentId)).as("the tell went with the caller's rollback").isEmpty();
   }
@@ -139,32 +138,28 @@ class HarnessLoopTest {
 
     await()
         .atMost(Duration.ofSeconds(10))
-        .untilAsserted(
-            () ->
-                assertThat(withoutManifests(story(CHAT, agentId)))
-                    .usingRecursiveFieldByFieldElementComparator(
-                        EngineFixture.ignoringWhenItStarted())
-                    .containsExactly(
-                        observed(agentId, 1, "what is nessy?"),
-                        engine.answered(agentId, 2, 1, "a lake monster")));
+        .untilAsserted(() ->
+            assertThat(withoutManifests(story(CHAT, agentId)))
+                .usingRecursiveFieldByFieldElementComparator(EngineFixture.ignoringWhenItStarted())
+                .containsExactly(
+                    observed(agentId, 1, "what is nessy?"),
+                    engine.answered(agentId, 2, 1, "a lake monster")));
     assertEveryAnswerCarriesItsRequest(story(CHAT, agentId));
 
     assertThat(model.asked())
         .as("the call is built from the story: one turn, still open, carrying the question")
         .singleElement()
-        .satisfies(
-            turns ->
-                assertThat(turns)
-                    .singleElement()
-                    .satisfies(
-                        turn -> {
-                          assertThat(turn.id()).isEqualTo(new TurnId(1));
-                          assertThat(turn.complete())
-                              .as("the turn being asked about has no result yet")
-                              .isFalse();
-                          assertThat(turn.input().blocks())
-                              .containsExactly(new Block.Text("what is nessy?"));
-                        }));
+        .satisfies(turns ->
+            assertThat(turns)
+                .singleElement()
+                .satisfies(turn -> {
+                  assertThat(turn.id()).isEqualTo(new TurnId(1));
+                  assertThat(turn.complete())
+                      .as("the turn being asked about has no result yet")
+                      .isFalse();
+                  assertThat(turn.input().blocks())
+                      .containsExactly(new Block.Text("what is nessy?"));
+                }));
   }
 
   /**
@@ -181,16 +176,14 @@ class HarnessLoopTest {
 
     await()
         .atMost(Duration.ofSeconds(10))
-        .untilAsserted(
-            () ->
-                assertThat(withoutManifests(story(CHAT, agentId)))
-                    .usingRecursiveFieldByFieldElementComparator(
-                        EngineFixture.ignoringWhenItStarted())
-                    .containsExactly(
-                        observed(agentId, 1, "first"),
-                        engine.answered(agentId, 2, 1, "a lake monster"),
-                        observed(agentId, 3, "second"),
-                        engine.answered(agentId, 4, 3, "a lake monster")));
+        .untilAsserted(() ->
+            assertThat(withoutManifests(story(CHAT, agentId)))
+                .usingRecursiveFieldByFieldElementComparator(EngineFixture.ignoringWhenItStarted())
+                .containsExactly(
+                    observed(agentId, 1, "first"),
+                    engine.answered(agentId, 2, 1, "a lake monster"),
+                    observed(agentId, 3, "second"),
+                    engine.answered(agentId, 4, 3, "a lake monster")));
     assertEveryAnswerCarriesItsRequest(story(CHAT, agentId));
   }
 
@@ -242,12 +235,11 @@ class HarnessLoopTest {
 
     private DefaultQueuedHarnessFactory factoryOf(
         Customizer<QueuedHarnessFactoryConfig> customizer) {
-      return DefaultQueuedHarnessFactory.of(
-          config -> {
-            config.backend(
-                new InMemoryQueuedBackend(new JacksonCodecFactory(JsonMapper.builder().build())));
-            customizer.customize(config);
-          });
+      return DefaultQueuedHarnessFactory.of(config -> {
+        config.backend(
+            new InMemoryQueuedBackend(new JacksonCodecFactory(JsonMapper.builder().build())));
+        customizer.customize(config);
+      });
     }
 
     /** The finished turn's own words, or empty while it is still in flight. */
@@ -256,11 +248,10 @@ class HarnessLoopTest {
       return factory.histories().forAgent(type, agent).lastTurns(1).stream()
           .filter(Turn::complete)
           .map(Turn::result)
-          .flatMap(
-              result ->
-                  result instanceof TurnResult.Answered answered
-                      ? answered.blocks().stream()
-                      : Stream.empty())
+          .flatMap(result ->
+              result instanceof TurnResult.Answered answered
+                  ? answered.blocks().stream()
+                  : Stream.empty())
           .filter(Block.Text.class::isInstance)
           .map(Block.Text.class::cast)
           .map(Block.Text::text)
@@ -271,11 +262,10 @@ class HarnessLoopTest {
     void an_agent_type_naming_a_registered_id_is_answered_by_that_provider() {
       AgentType type = type("named");
       try (DefaultQueuedHarnessFactory factory =
-          factoryOf(
-              config ->
-                  config
-                      .provider(ProviderId.of("first"), answering("first"))
-                      .provider(ProviderId.of("second"), answering("second")))) {
+          factoryOf(config ->
+              config
+                  .provider(ProviderId.of("first"), answering("first"))
+                  .provider(ProviderId.of("second"), answering("second")))) {
         QueuedHarness<String> built =
             factory.create(
                 type,
@@ -299,12 +289,11 @@ class HarnessLoopTest {
     void an_agent_type_naming_nothing_is_answered_by_the_default() {
       AgentType type = type("default");
       try (DefaultQueuedHarnessFactory factory =
-          factoryOf(
-              config ->
-                  config
-                      .provider(ProviderId.of("first"), answering("first"))
-                      .provider(ProviderId.of("second"), answering("second"))
-                      .inference(ProviderId.of("first"), InferenceOptions.of("m")))) {
+          factoryOf(config ->
+              config
+                  .provider(ProviderId.of("first"), answering("first"))
+                  .provider(ProviderId.of("second"), answering("second"))
+                  .inference(ProviderId.of("first"), InferenceOptions.of("m")))) {
         QueuedHarness<String> built =
             factory.create(
                 type,
@@ -329,15 +318,14 @@ class HarnessLoopTest {
       DefaultQueuedHarnessFactory factory =
           factoryOf(config -> config.provider(ProviderId.of("first"), answering("first")));
 
-      assertThatThrownBy(
-              () ->
-                  factory.create(
-                      type,
-                      String.class,
-                      config ->
-                          config
-                              .systemPrompt("terse")
-                              .inference(in -> in.provider("claude").model("m"))))
+      assertThatThrownBy(() ->
+              factory.create(
+                  type,
+                  String.class,
+                  config ->
+                      config
+                          .systemPrompt("terse")
+                          .inference(in -> in.provider("claude").model("m"))))
           .isInstanceOf(IllegalStateException.class)
           .hasMessage(
               "agent type 'chat-unknown' names provider 'claude', which is not registered;"
@@ -350,12 +338,11 @@ class HarnessLoopTest {
       DefaultQueuedHarnessFactory factory =
           factoryOf(config -> config.provider(ProviderId.of("first"), answering("first")));
 
-      assertThatThrownBy(
-              () ->
-                  factory.create(
-                      type,
-                      String.class,
-                      config -> config.systemPrompt("terse").inference(in -> in.provider("first"))))
+      assertThatThrownBy(() ->
+              factory.create(
+                  type,
+                  String.class,
+                  config -> config.systemPrompt("terse").inference(in -> in.provider("first"))))
           .isInstanceOf(IllegalStateException.class)
           .hasMessage("agent type 'chat-no-model' names no model and the factory has no default");
     }
@@ -370,11 +357,10 @@ class HarnessLoopTest {
             return new InferenceResult.Answer(List.of(new Block.Text("first")));
           };
       try (DefaultQueuedHarnessFactory factory =
-          factoryOf(
-              config ->
-                  config
-                      .provider(ProviderId.of("first"), recordingMaxTokens)
-                      .inference(ProviderId.of("first"), InferenceOptions.of("m")))) {
+          factoryOf(config ->
+              config
+                  .provider(ProviderId.of("first"), recordingMaxTokens)
+                  .inference(ProviderId.of("first"), InferenceOptions.of("m")))) {
         QueuedHarness<String> built =
             factory.create(
                 type,

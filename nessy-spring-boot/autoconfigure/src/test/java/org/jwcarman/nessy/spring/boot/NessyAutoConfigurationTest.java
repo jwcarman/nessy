@@ -90,12 +90,11 @@ class NessyAutoConfigurationTest {
 
   @Test
   void it_wires_a_harness_from_a_provider_and_a_database() {
-    runner.run(
-        context -> {
-          assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class);
-          assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class);
-          assertThat(context).hasSingleBean(Replies.class);
-        });
+    runner.run(context -> {
+      assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class);
+      assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class);
+      assertThat(context).hasSingleBean(Replies.class);
+    });
   }
 
   /**
@@ -126,16 +125,15 @@ class NessyAutoConfigurationTest {
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class)
         .withPropertyValues(MODEL, PROVIDER, PROMPT)
-        .run(
-            context -> {
-              assertThat(context).hasNotFailed();
-              assertThat(context).hasSingleBean(DirectBackend.class);
-              assertThat(context.getBean(DirectBackend.class))
-                  .isInstanceOf(InMemoryDirectBackend.class);
-              assertThat(context).hasSingleBean(QueuedBackend.class);
-              assertThat(context.getBean(QueuedBackend.class))
-                  .isInstanceOf(InMemoryQueuedBackend.class);
-            });
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(context).hasSingleBean(DirectBackend.class);
+          assertThat(context.getBean(DirectBackend.class))
+              .isInstanceOf(InMemoryDirectBackend.class);
+          assertThat(context).hasSingleBean(QueuedBackend.class);
+          assertThat(context.getBean(QueuedBackend.class))
+              .isInstanceOf(InMemoryQueuedBackend.class);
+        });
   }
 
   /** Usage reports read both doors' stories, with or without a database. */
@@ -154,11 +152,10 @@ class NessyAutoConfigurationTest {
                 UsageReportsAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class)
         .withPropertyValues(MODEL, PROVIDER, PROMPT)
-        .run(
-            context -> {
-              assertThat(context).hasSingleBean(UsageReports.class);
-              assertThat(context.getBean(UsageReports.class)).isInstanceOf(EventUsageReports.class);
-            });
+        .run(context -> {
+          assertThat(context).hasSingleBean(UsageReports.class);
+          assertThat(context.getBean(UsageReports.class)).isInstanceOf(EventUsageReports.class);
+        });
   }
 
   /** Agent stories are offered whenever there is a backend to read, and not otherwise. */
@@ -211,11 +208,10 @@ class NessyAutoConfigurationTest {
                 DirectHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, AMeterRegistry.class)
         .withPropertyValues(MODEL, PROVIDER, PROMPT)
-        .run(
-            context -> {
-              assertThat(context).hasSingleBean(TokenUsageHandler.class);
-              assertThat(context).hasSingleBean(DirectBackend.class);
-            });
+        .run(context -> {
+          assertThat(context).hasSingleBean(TokenUsageHandler.class);
+          assertThat(context).hasSingleBean(DirectBackend.class);
+        });
   }
 
   /** No meter registry, nothing to record into, so nothing is declared. */
@@ -242,12 +238,11 @@ class NessyAutoConfigurationTest {
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
         .withPropertyValues(PROVIDER, PROMPT)
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasMessageContaining("nessy.provider and nessy.model are a pair");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasMessageContaining("nessy.provider and nessy.model are a pair");
+        });
   }
 
   /** A factory default an agent type never names for itself still gets a harness built. */
@@ -266,18 +261,15 @@ class NessyAutoConfigurationTest {
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(ADatabase.class)
         .withPropertyValues("xai.api-key=xai-test", "nessy.provider=xai", MODEL, PROMPT)
-        .run(
-            context -> {
-              assertThat(context).hasNotFailed();
-              DefaultQueuedHarnessFactory factory =
-                  context.getBean(DefaultQueuedHarnessFactory.class);
-              assertThatCode(
-                      () ->
-                          factory.create(
-                              new AgentType("chat"),
-                              config -> config.systemPrompt("you are a test assistant")))
-                  .doesNotThrowAnyException();
-            });
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          DefaultQueuedHarnessFactory factory = context.getBean(DefaultQueuedHarnessFactory.class);
+          assertThatCode(() ->
+                  factory.create(
+                      new AgentType("chat"),
+                      config -> config.systemPrompt("you are a test assistant")))
+              .doesNotThrowAnyException();
+        });
   }
 
   /** A default naming a provider nobody registered fails at harness build, listing what is. */
@@ -296,19 +288,15 @@ class NessyAutoConfigurationTest {
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(ADatabase.class)
         .withPropertyValues("openai.api-key=sk-test", "nessy.provider=claude", MODEL, PROMPT)
-        .run(
-            context -> {
-              assertThat(context).hasNotFailed();
-              DefaultQueuedHarnessFactory factory =
-                  context.getBean(DefaultQueuedHarnessFactory.class);
-              AgentType chat = new AgentType("chat");
-              assertThatThrownBy(
-                      () ->
-                          factory.create(
-                              chat, config -> config.systemPrompt("you are a test assistant")))
-                  .isInstanceOf(IllegalStateException.class)
-                  .hasMessageContaining("registered: [openai]");
-            });
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          DefaultQueuedHarnessFactory factory = context.getBean(DefaultQueuedHarnessFactory.class);
+          AgentType chat = new AgentType("chat");
+          assertThatThrownBy(() ->
+                  factory.create(chat, config -> config.systemPrompt("you are a test assistant")))
+              .isInstanceOf(IllegalStateException.class)
+              .hasMessageContaining("registered: [openai]");
+        });
   }
 
   /** An application's own {@code InferenceProvider} bean is registered beside the presets. */
@@ -327,30 +315,26 @@ class NessyAutoConfigurationTest {
                 QueuedHarnessAutoConfiguration.class))
         .withUserConfiguration(AnInferenceProvider.class, ADatabase.class)
         .withPropertyValues("openai.api-key=sk-test", PROMPT)
-        .run(
-            context -> {
-              assertThat(context).hasNotFailed();
-              DefaultQueuedHarnessFactory factory =
-                  context.getBean(DefaultQueuedHarnessFactory.class);
-              assertThatCode(
-                      () ->
-                          factory.create(
-                              new AgentType("chat-app"),
-                              config ->
-                                  config
-                                      .systemPrompt("you are a test assistant")
-                                      .inference(in -> in.provider("inference").model("m"))))
-                  .doesNotThrowAnyException();
-              assertThatCode(
-                      () ->
-                          factory.create(
-                              new AgentType("chat-preset"),
-                              config ->
-                                  config
-                                      .systemPrompt("you are a test assistant")
-                                      .inference(in -> in.provider("openai").model("m"))))
-                  .doesNotThrowAnyException();
-            });
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          DefaultQueuedHarnessFactory factory = context.getBean(DefaultQueuedHarnessFactory.class);
+          assertThatCode(() ->
+                  factory.create(
+                      new AgentType("chat-app"),
+                      config ->
+                          config
+                              .systemPrompt("you are a test assistant")
+                              .inference(in -> in.provider("inference").model("m"))))
+              .doesNotThrowAnyException();
+          assertThatCode(() ->
+                  factory.create(
+                      new AgentType("chat-preset"),
+                      config ->
+                          config
+                              .systemPrompt("you are a test assistant")
+                              .inference(in -> in.provider("openai").model("m"))))
+              .doesNotThrowAnyException();
+        });
   }
 
   /**
@@ -377,11 +361,10 @@ class NessyAutoConfigurationTest {
             () -> (request, narrator) -> new InferenceResult.Refusal("never called"))
         .withUserConfiguration(ADatabase.class)
         .withPropertyValues(PROMPT)
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure()).hasMessageContaining(tooLong);
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure()).hasMessageContaining(tooLong);
+        });
   }
 
   @Test
@@ -408,12 +391,11 @@ class NessyAutoConfigurationTest {
   /** Answering needs no key: a call is addressed by its agent type, its agent and its key. */
   @Test
   void a_queued_harness_factory_starts_with_no_key_configured_for_answers() {
-    runner.run(
-        context -> {
-          assertThat(context).hasNotFailed();
-          assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class);
-          assertThat(context).hasSingleBean(Replies.class);
-        });
+    runner.run(context -> {
+      assertThat(context).hasNotFailed();
+      assertThat(context).hasSingleBean(DefaultQueuedHarnessFactory.class);
+      assertThat(context).hasSingleBean(Replies.class);
+    });
   }
 
   @Test

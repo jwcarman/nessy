@@ -63,13 +63,12 @@ class ChatApprovalTermIntegrationTest {
     // Nobody answers within the term: the card goes and the call is recorded as failed.
     await()
         .atMost(Duration.ofSeconds(60))
-        .untilAsserted(
-            () -> {
-              assertThat(chat.state(agentId).approvals()).isEmpty();
-              assertThat(chat.state(agentId).texts())
-                  .anyMatch(text -> text.startsWith("failed"))
-                  .contains("Could not send.");
-            });
+        .untilAsserted(() -> {
+          assertThat(chat.state(agentId).approvals()).isEmpty();
+          assertThat(chat.state(agentId).texts())
+              .anyMatch(text -> text.startsWith("failed"))
+              .contains("Could not send.");
+        });
 
     assertThat(chat.decide(agentId, card.id(), "approve", "")).isEqualTo(409);
     assertThat(email.sent()).isEmpty();

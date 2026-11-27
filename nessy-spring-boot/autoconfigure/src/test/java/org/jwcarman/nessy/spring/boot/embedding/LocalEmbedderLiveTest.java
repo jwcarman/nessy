@@ -78,21 +78,20 @@ class LocalEmbedderLiveTest {
 
   @Test
   void the_default_embedder_learns_the_model_s_width_and_records_the_model_it_asked_for() {
-    runner.run(
-        context -> {
-          Embedder embedder = context.getBean(EmbedderFactory.class).create(c -> {});
-          assertThat(embedder.dimension()).isEmpty();
+    runner.run(context -> {
+      Embedder embedder = context.getBean(EmbedderFactory.class).create(c -> {});
+      assertThat(embedder.dimension()).isEmpty();
 
-          Embedding document =
-              embedder.embedDocument("The Loch Ness monster is said to live in a Scottish lake.");
-          Embedding query = embedder.embedQuery("Where does Nessie live?");
+      Embedding document =
+          embedder.embedDocument("The Loch Ness monster is said to live in a Scottish lake.");
+      Embedding query = embedder.embedQuery("Where does Nessie live?");
 
-          assertThat(document.dimension()).isEqualTo(768);
-          assertThat(query.dimension()).isEqualTo(768);
-          assertThat(embedder.dimension()).hasValue(Dimension.of(768));
-          assertThat(document.model()).isEqualTo(MODEL);
-          assertThat(embedder.vendor()).isEqualTo("lmstudio");
-        });
+      assertThat(document.dimension()).isEqualTo(768);
+      assertThat(query.dimension()).isEqualTo(768);
+      assertThat(embedder.dimension()).hasValue(Dimension.of(768));
+      assertThat(document.model()).isEqualTo(MODEL);
+      assertThat(embedder.vendor()).isEqualTo("lmstudio");
+    });
   }
 
   /**
@@ -100,13 +99,12 @@ class LocalEmbedderLiveTest {
    */
   @Test
   void a_width_the_server_ignores_fails_naming_both() {
-    runner.run(
-        context -> {
-          Embedder narrow = context.getBean(EmbedderFactory.class).create(c -> c.dimension(256));
+    runner.run(context -> {
+      Embedder narrow = context.getBean(EmbedderFactory.class).create(c -> c.dimension(256));
 
-          assertThatThrownBy(() -> narrow.embedDocument("a lake monster"))
-              .isInstanceOf(IllegalStateException.class)
-              .hasMessage("asked for 256 coordinates, the model returned 768");
-        });
+      assertThatThrownBy(() -> narrow.embedDocument("a lake monster"))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage("asked for 256 coordinates, the model returned 768");
+    });
   }
 }

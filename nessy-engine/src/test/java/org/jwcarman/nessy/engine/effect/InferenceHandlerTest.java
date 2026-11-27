@@ -371,17 +371,16 @@ class InferenceHandlerTest {
       EffectOutcome value = ((Handled.Settled) outcome).outcome();
       assertThat(value)
           .asInstanceOf(InstanceOfAssertFactories.type(EffectOutcome.InferenceFailed.class))
-          .satisfies(
-              failed -> {
-                assertThat(failed.usage()).isEqualTo(reading(3));
-                assertThat(failed.manifest()).isEqualTo(Optional.of(served));
-                assertThat(failed.failure())
-                    .isInstanceOf(Failure.Permanent.class)
-                    .extracting(Failure::reason)
-                    .asString()
-                    .contains(REPEATED)
-                    .contains("repeated a call id");
-              });
+          .satisfies(failed -> {
+            assertThat(failed.usage()).isEqualTo(reading(3));
+            assertThat(failed.manifest()).isEqualTo(Optional.of(served));
+            assertThat(failed.failure())
+                .isInstanceOf(Failure.Permanent.class)
+                .extracting(Failure::reason)
+                .asString()
+                .contains(REPEATED)
+                .contains("repeated a call id");
+          });
       assertThat(stored).isEmpty();
       assertThat(narrated).isEmpty();
     }

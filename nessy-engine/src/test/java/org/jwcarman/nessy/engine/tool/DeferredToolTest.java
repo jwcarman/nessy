@@ -103,13 +103,12 @@ class DeferredToolTest {
 
   /** Starts something and says it will report back -- a queue, a build, a long HTTP call. */
   private Tool<Job> slowJob() {
-    return slowJob(
-        request -> {
-          // Whatever actually does the work is handed the address. Keeping it is the tool's
-          // obligation exactly as it is an approver's: nothing else can settle this call.
-          handed.add(request);
-          return Awaited.deferred();
-        });
+    return slowJob(request -> {
+      // Whatever actually does the work is handed the address. Keeping it is the tool's
+      // obligation exactly as it is an approver's: nothing else can settle this call.
+      handed.add(request);
+      return Awaited.deferred();
+    });
   }
 
   private Tool<Job> slowJob(Function<ToolCallRequest<Job>, Awaited<ToolResult>> behaviour) {
@@ -195,13 +194,12 @@ class DeferredToolTest {
             "SELECT parked_at, actionable_at, deadline, status FROM nessy_agent_effect"
                 + " WHERE agent_type = ?")
         .params(type.value())
-        .query(
-            (rs, n) ->
-                new Row(
-                    rs.getObject("parked_at", OffsetDateTime.class),
-                    rs.getObject("actionable_at", OffsetDateTime.class),
-                    rs.getObject("deadline", OffsetDateTime.class),
-                    rs.getString("status")))
+        .query((rs, n) ->
+            new Row(
+                rs.getObject("parked_at", OffsetDateTime.class),
+                rs.getObject("actionable_at", OffsetDateTime.class),
+                rs.getObject("deadline", OffsetDateTime.class),
+                rs.getString("status")))
         .single();
   }
 
@@ -247,11 +245,10 @@ class DeferredToolTest {
 
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () -> {
-              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
-              assertThat(outstandingEffects(agentId)).isZero();
-            });
+        .untilAsserted(() -> {
+          assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
+          assertThat(outstandingEffects(agentId)).isZero();
+        });
 
     List<AgentEvent> story = engine.story(type, agentId);
     assertThat(story.get(3))
@@ -326,11 +323,10 @@ class DeferredToolTest {
     assertThat(engine.story(type, agentId).get(3)).isInstanceOf(AgentEvent.ToolDeferred.class);
     assertThat(engine.story(type, agentId).get(4))
         .asInstanceOf(type(AgentEvent.ToolFailed.class))
-        .satisfies(
-            failed -> {
-              assertThat(failed.callId()).isEqualTo(new CallId("call_1"));
-              assertThat(failed.message()).isEqualTo("the index is locked by another job");
-            });
+        .satisfies(failed -> {
+          assertThat(failed.callId()).isEqualTo(new CallId("call_1"));
+          assertThat(failed.message()).isEqualTo("the index is locked by another job");
+        });
   }
 
   /** Twice is refused the second time, the same as for an approval. */
@@ -407,25 +403,23 @@ class DeferredToolTest {
 
     await()
         .atMost(Duration.ofSeconds(25))
-        .untilAsserted(
-            () -> {
-              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
-              assertThat(outstandingEffects(agentId)).isZero();
-            });
+        .untilAsserted(() -> {
+          assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
+          assertThat(outstandingEffects(agentId)).isZero();
+        });
 
     assertThat(engine.story(type, agentId).get(3)).isInstanceOf(AgentEvent.ToolDeferred.class);
     assertThat(engine.story(type, agentId).get(4))
         .asInstanceOf(type(AgentEvent.ToolFailed.class))
-        .satisfies(
-            failed -> {
-              assertThat(failed.callId()).isEqualTo(new CallId("call_1"));
-              assertThat(failed.message())
-                  .as(
-                      "a deferred call may well have run, so nothing may claim it did"
-                          + " not -- that is the direction that invites a repeat")
-                  .doesNotContain("was not run")
-                  .contains("whether it ran is not known");
-            });
+        .satisfies(failed -> {
+          assertThat(failed.callId()).isEqualTo(new CallId("call_1"));
+          assertThat(failed.message())
+              .as(
+                  "a deferred call may well have run, so nothing may claim it did"
+                      + " not -- that is the direction that invites a repeat")
+              .doesNotContain("was not run")
+              .contains("whether it ran is not known");
+        });
   }
 
   /** And an answer arriving after the agent gave up is refused rather than lost. */
@@ -523,10 +517,9 @@ class DeferredToolTest {
       assertThat(row.status()).isEqualTo("RUNNING");
       assertThat(refusing.stateOf(type, agentId))
           .asInstanceOf(type(AgentState.AwaitingActions.class))
-          .satisfies(
-              awaiting ->
-                  assertThat(awaiting.outstanding().get(new CallId("call_1")).phase())
-                      .isEqualTo(OutstandingAction.Phase.RUNNING));
+          .satisfies(awaiting ->
+              assertThat(awaiting.outstanding().get(new CallId("call_1")).phase())
+                  .isEqualTo(OutstandingAction.Phase.RUNNING));
       assertThat(heard).as("the turn was heard").isNotEmpty();
       assertThat(heard)
           .extracting(Narrated::event)
@@ -546,9 +539,8 @@ class DeferredToolTest {
           .isInstanceOf(ReplyOutcome.Applied.class);
       await()
           .atMost(Duration.ofSeconds(20))
-          .untilAsserted(
-              () ->
-                  assertThat(refusing.stateOf(type, agentId)).isInstanceOf(AgentState.Idle.class));
+          .untilAsserted(() ->
+              assertThat(refusing.stateOf(type, agentId)).isInstanceOf(AgentState.Idle.class));
       assertThat(handed).as("and was never started again").hasSize(1);
       assertThat(deferralsIn(refusing.story(type, agentId)))
           .as("the finished story holds no deferral")
@@ -567,18 +559,17 @@ class DeferredToolTest {
     AgentId agentId = new AgentId(UUID.randomUUID());
     ConcurrentLinkedQueue<ReplyOutcome> outcomes = new ConcurrentLinkedQueue<>();
     Tool<Job> reportingFirst =
-        slowJob(
-            request -> {
-              outcomes.add(
-                  engine
-                      .replies()
-                      .complete(
-                          request.agentType(),
-                          request.agentId(),
-                          request.idempotencyKey(),
-                          ToolResult.ok(new Block.Text("done"))));
-              return Awaited.deferred();
-            });
+        slowJob(request -> {
+          outcomes.add(
+              engine
+                  .replies()
+                  .complete(
+                      request.agentType(),
+                      request.agentId(),
+                      request.idempotencyKey(),
+                      ToolResult.ok(new Block.Text("done"))));
+          return Awaited.deferred();
+        });
 
     harness(engine, type, Duration.ofMinutes(30), Customizer.withDefaults(), reportingFirst)
         .tell(agentId, "kick off the reindex");

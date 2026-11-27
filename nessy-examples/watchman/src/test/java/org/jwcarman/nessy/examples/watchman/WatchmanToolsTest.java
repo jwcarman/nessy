@@ -208,20 +208,19 @@ class WatchmanToolsTest {
       assertThat(tools)
           .extracting(tool -> tool.name().value())
           .containsExactlyInAnyOrder("disk_usage", "containers", "prune_images", "long_job");
-      tools.forEach(
-          tool -> {
-            assertThat(tool.description()).isNotBlank();
-            // Every watchman tool takes no arguments, and says so rather than saying nothing --
-            // without asking a generator, which has nothing to say about a JsonNode.
-            JsonNode schema =
-                JSON.readTree(
-                    tool.inputSchema(
-                            type -> {
-                              throw new AssertionError("the schema is the tool's own");
-                            })
-                        .json());
-            assertThat(schema.path("type").asString()).isEqualTo("object");
-          });
+      tools.forEach(tool -> {
+        assertThat(tool.description()).isNotBlank();
+        // Every watchman tool takes no arguments, and says so rather than saying nothing --
+        // without asking a generator, which has nothing to say about a JsonNode.
+        JsonNode schema =
+            JSON.readTree(
+                tool.inputSchema(
+                        type -> {
+                          throw new AssertionError("the schema is the tool's own");
+                        })
+                    .json());
+        assertThat(schema.path("type").asString()).isEqualTo("object");
+      });
     }
   }
 

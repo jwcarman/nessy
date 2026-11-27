@@ -165,7 +165,8 @@ class OpenAiChatLiveTest {
               new JsonSchema(
                   """
                   {"type":"object","properties":{"name":{"type":"string",\
-                  "description":"the lake to look up"}},"required":["name"]}"""));
+                  "description":"the lake to look up"}},"required":["name"]}\
+                  """));
 
       InferenceResult result = provider.infer(asking("How deep is Loch Ness?", List.of(lookup)));
 
@@ -197,13 +198,15 @@ class OpenAiChatLiveTest {
             "returns the maximum depth of a named lake, in metres",
             new JsonSchema(
                 """
-                {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}""")),
+                {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}\
+                """)),
         new ToolOffer(
             new ToolName("weather"),
             "returns today's weather for a named place",
             new JsonSchema(
                 """
-                {"type":"object","properties":{"place":{"type":"string"}},"required":["place"]}""")));
+                {"type":"object","properties":{"place":{"type":"string"}},"required":["place"]}\
+                """)));
   }
 
   private static ToolName calledIn(InferenceResult result) {
@@ -320,7 +323,8 @@ class OpenAiChatLiveTest {
             {"type":"object",
              "properties":{"city":{"type":"string"},"country":{"type":"string"}},
              "required":["city","country"],
-             "additionalProperties":false}""");
+             "additionalProperties":false}\
+            """);
 
     try (OpenAiChatInferenceProvider provider = provider()) {
       InferenceResult result = provider.infer(askingFor("What is the capital of France?", shape));
@@ -343,7 +347,8 @@ class OpenAiChatLiveTest {
             {"type":"object",
              "properties":{"answer":{"type":"string"},"confident":{"type":"boolean"}},
              "required":["answer","confident"],
-             "additionalProperties":false}""");
+             "additionalProperties":false}\
+            """);
 
     try (OpenAiChatInferenceProvider provider = provider()) {
       InferenceResult result = provider.infer(askingFor("Tell me a joke.", shape));
@@ -407,7 +412,8 @@ class OpenAiChatLiveTest {
                 """
                 {"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",
                  "properties":{"name":{"type":"string"},"unit":{"type":["string","null"]}},
-                 "required":["name"]}"""));
+                 "required":["name"]}\
+                """));
 
     try (OpenAiChatInferenceProvider provider = provider()) {
       InferenceResult result =
@@ -450,7 +456,8 @@ class OpenAiChatLiveTest {
                    {"type":"object","properties":{"reason":{"type":["string","null"]},
                                                   "type":{"const":"Shutdown"}},
                     "required":["type"]}]}},
-                 "required":["command"]}"""));
+                 "required":["command"]}\
+                """));
     Logger logger = (Logger) LoggerFactory.getLogger(OpenAiChatRequests.class);
     ListAppender<ILoggingEvent> appender = new ListAppender<>();
     appender.start();
@@ -525,7 +532,8 @@ class OpenAiChatLiveTest {
           "saves a note",
           new JsonSchema(
               """
-              {"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}"""));
+              {"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}\
+              """));
 
   private static InferenceRequest limited(String question, Toolset toolset) {
     return new InferenceRequest(
@@ -561,12 +569,11 @@ class OpenAiChatLiveTest {
       assertThat(truncated.blocks())
           .filteredOn(Block.Text.class::isInstance)
           .isNotEmpty()
-          .anySatisfy(
-              block -> {
-                String written = ((Block.Text) block).text();
-                assertThat(written).isNotBlank();
-                assertThat(written.strip()).startsWith("1: 1");
-              });
+          .anySatisfy(block -> {
+            String written = ((Block.Text) block).text();
+            assertThat(written).isNotBlank();
+            assertThat(written.strip()).startsWith("1: 1");
+          });
       assertThat(truncated.usage().outputTokens().orZero())
           .as("the reply was written, and the vendor counted it")
           .isPositive();

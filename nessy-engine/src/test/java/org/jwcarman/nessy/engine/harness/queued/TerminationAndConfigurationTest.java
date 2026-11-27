@@ -176,13 +176,12 @@ class TerminationAndConfigurationTest {
                         .systemPrompt("You are a test assistant.")
                         .backlogPolicy(BacklogPolicy.keepAll())
                         .listener(NarrationListener.none())
-                        .inference(
-                            in ->
-                                in.model("other")
-                                    .maxTokens(64)
-                                    .timeout(Duration.ofSeconds(30))
-                                    .retryPolicy(new RetryPolicy.Never())
-                                    .context(ctx -> ctx.withoutChapters().maxTail(5)))
+                        .inference(in ->
+                            in.model("other")
+                                .maxTokens(64)
+                                .timeout(Duration.ofSeconds(30))
+                                .retryPolicy(new RetryPolicy.Never())
+                                .context(ctx -> ctx.withoutChapters().maxTail(5)))
                         .effects(e -> e.pollInterval(Duration.ofMillis(100)).maxInFlight(2))
                         .tool(
                             new PingTool(),

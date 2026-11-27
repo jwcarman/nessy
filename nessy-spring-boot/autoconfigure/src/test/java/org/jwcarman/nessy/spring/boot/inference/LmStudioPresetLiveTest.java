@@ -126,13 +126,12 @@ class LmStudioPresetLiveTest {
       CountingDaysUntilTool tool, Customizer<DirectHarnessConfig<String>> extra) {
     ObjectMapper mapper = JsonMapper.builder().build();
     DefaultDirectHarnessFactory factory =
-        DefaultDirectHarnessFactory.of(
-            f ->
-                f.backend(new InMemoryDirectBackend(new JacksonCodecFactory(mapper)))
-                    .provider(ProviderId.of("lmstudio"), lmStudioProvider())
-                    .schemas(new VictoolsJsonSchemaGenerator())
-                    .mapper(mapper)
-                    .inference(ProviderId.of("lmstudio"), InferenceOptions.of(MODEL)));
+        DefaultDirectHarnessFactory.of(f ->
+            f.backend(new InMemoryDirectBackend(new JacksonCodecFactory(mapper)))
+                .provider(ProviderId.of("lmstudio"), lmStudioProvider())
+                .schemas(new VictoolsJsonSchemaGenerator())
+                .mapper(mapper)
+                .inference(ProviderId.of("lmstudio"), InferenceOptions.of(MODEL)));
     return factory.create(
         TYPE,
         c -> {

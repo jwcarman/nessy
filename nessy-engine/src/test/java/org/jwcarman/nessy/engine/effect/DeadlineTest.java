@@ -100,15 +100,14 @@ class DeadlineTest {
 
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () -> {
-              assertThat(agentStateOf(type, agentId))
-                  .as("the turn ended, so the agent is not left waiting on a call")
-                  .isEqualTo("Idle");
-              assertThat(outstandingEffects(agentId))
-                  .as("nothing left holding an obligation nobody will discharge")
-                  .isZero();
-            });
+        .untilAsserted(() -> {
+          assertThat(agentStateOf(type, agentId))
+              .as("the turn ended, so the agent is not left waiting on a call")
+              .isEqualTo("Idle");
+          assertThat(outstandingEffects(agentId))
+              .as("nothing left holding an obligation nobody will discharge")
+              .isZero();
+        });
 
     assertThat(model.calls())
         .as("expired means not worth doing -- the provider is never asked")
@@ -157,15 +156,14 @@ class DeadlineTest {
     // after the state settles is asserting into a window that is legitimately open.
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () -> {
-              assertThat(agentStateOf(type, agentId))
-                  .as("the turn ended rather than waiting out a ten-minute backoff")
-                  .isEqualTo("Idle");
-              assertThat(outstandingEffects(agentId))
-                  .as("nothing left holding an obligation nobody will discharge")
-                  .isZero();
-            });
+        .untilAsserted(() -> {
+          assertThat(agentStateOf(type, agentId))
+              .as("the turn ended rather than waiting out a ten-minute backoff")
+              .isEqualTo("Idle");
+          assertThat(outstandingEffects(agentId))
+              .as("nothing left holding an obligation nobody will discharge")
+              .isZero();
+        });
 
     assertThat(model.calls())
         .as("one attempt: the policy allowed three, the deadline allowed one")

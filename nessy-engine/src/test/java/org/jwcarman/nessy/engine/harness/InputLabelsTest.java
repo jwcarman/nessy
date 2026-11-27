@@ -92,10 +92,9 @@ class InputLabelsTest {
       InputLabels<String> labels =
           new InputLabels<>(
               TYPE,
-              Optional.of(
-                  said -> {
-                    throw new IllegalStateException("no");
-                  }));
+              Optional.of(said -> {
+                throw new IllegalStateException("no");
+              }));
 
       assertThat(labels.of("hello")).isEqualTo("String");
     }

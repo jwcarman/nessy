@@ -40,9 +40,8 @@ class EngineUnderTestSmokeTest {
   @Test
   void anEngineWiredByHandRunsATurn() {
     try (EngineFixture engine =
-        new EngineFixture(
-            (request, narrator) ->
-                new InferenceResult.Answer(List.of(new Block.Text("It is 1412 metres deep."))))) {
+        new EngineFixture((request, narrator) ->
+            new InferenceResult.Answer(List.of(new Block.Text("It is 1412 metres deep."))))) {
 
       AgentId agentId = new AgentId(UUID.randomUUID());
       AgentType type = new AgentType("smoke");
@@ -61,11 +60,10 @@ class EngineUnderTestSmokeTest {
 
       await()
           .atMost(Duration.ofSeconds(20))
-          .untilAsserted(
-              () ->
-                  assertThat(engine.story(type, agentId))
-                      .as("the input and the answer, both written down")
-                      .hasSize(2));
+          .untilAsserted(() ->
+              assertThat(engine.story(type, agentId))
+                  .as("the input and the answer, both written down")
+                  .hasSize(2));
     }
   }
 }

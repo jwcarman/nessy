@@ -216,11 +216,10 @@ class ProseSummarizerTest {
       List<Turn> sent = new ArrayList<>(request.context().tail());
       sent.add(request.context().activeTurn());
       assertThat(sent).isNotEmpty();
-      sent.forEach(
-          turn -> {
-            assertThat(turn.exchanges()).isEmpty();
-            assertThat(turn.input().blocks()).isNotEmpty().allMatch(Block.Text.class::isInstance);
-          });
+      sent.forEach(turn -> {
+        assertThat(turn.exchanges()).isEmpty();
+        assertThat(turn.input().blocks()).isNotEmpty().allMatch(Block.Text.class::isInstance);
+      });
     }
 
     @Test
@@ -339,10 +338,9 @@ class ProseSummarizerTest {
     void when_the_model_returns_a_fault() {
       Story story = new Story(List.of(turn(1)));
       Scripted provider =
-          new Scripted(
-              _ ->
-                  new InferenceResult.Fault(
-                      new Failure.Permanent("no such model"), Usage.unreported()));
+          new Scripted(_ ->
+              new InferenceResult.Fault(
+                  new Failure.Permanent("no such model"), Usage.unreported()));
       ProseSummarizer summarizer = new ProseSummarizer(story, provider, OPTIONS);
       Chapter chapter = chapter(1, 1);
 
@@ -355,10 +353,9 @@ class ProseSummarizerTest {
     void when_the_summary_was_cut_off_at_the_output_limit() {
       Story story = new Story(List.of(turn(1), turn(2)));
       Scripted provider =
-          new Scripted(
-              _ ->
-                  new InferenceResult.Truncated(
-                      List.of(new Block.Text("The record begins")), Usage.unreported()));
+          new Scripted(_ ->
+              new InferenceResult.Truncated(
+                  List.of(new Block.Text("The record begins")), Usage.unreported()));
       ProseSummarizer summarizer = new ProseSummarizer(story, provider, OPTIONS);
       Chapter chapter = chapter(1, 2);
 

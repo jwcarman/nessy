@@ -66,10 +66,9 @@ class ChatWorkingWaitingIntegrationTest {
         .isEqualTo(202);
     await()
         .atMost(Duration.ofSeconds(30))
-        .untilAsserted(
-            () -> {
-              assertThat(chat.state(agentId).texts()).contains("Sent.");
-              assertThat(chat.state(agentId).working()).isFalse();
-            });
+        .untilAsserted(() -> {
+          assertThat(chat.state(agentId).texts()).contains("Sent.");
+          assertThat(chat.state(agentId).working()).isFalse();
+        });
   }
 }

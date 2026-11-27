@@ -103,9 +103,8 @@ public final class JdbcNotebook implements Notebook {
     Objects.requireNonNull(agentId, AGENT_ID_NOT_NULL);
     return jdbc.sql(SELECT_HEADINGS)
         .params(agentType, key(agentId))
-        .query(
-            (row, number) ->
-                new Heading(row.getString("note_id"), codec.decode(row.getBytes("hook"))))
+        .query((row, number) ->
+            new Heading(row.getString("note_id"), codec.decode(row.getBytes("hook"))))
         .list();
   }
 
@@ -115,12 +114,11 @@ public final class JdbcNotebook implements Notebook {
     Objects.requireNonNull(id, ID_NOT_NULL);
     return jdbc.sql(SELECT_ONE)
         .params(agentType, key(agentId), id)
-        .query(
-            (row, number) ->
-                new Entry(
-                    row.getString("note_id"),
-                    codec.decode(row.getBytes("hook")),
-                    codec.decode(row.getBytes("body"))))
+        .query((row, number) ->
+            new Entry(
+                row.getString("note_id"),
+                codec.decode(row.getBytes("hook")),
+                codec.decode(row.getBytes("body"))))
         .optional();
   }
 

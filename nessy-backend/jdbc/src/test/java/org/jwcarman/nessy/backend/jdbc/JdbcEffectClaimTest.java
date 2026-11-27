@@ -133,24 +133,23 @@ class JdbcEffectClaimTest {
       for (int c = 0; c < CLAIMERS; c++) {
         QueuedBackend own = backend();
         claimers.add(
-            pool.submit(
-                () -> {
-                  start.await();
-                  List<Integer> mine = new ArrayList<>();
-                  List<Attempt> batch;
-                  do {
-                    batch = own.effects().markRunning(TYPE, now, BATCH);
-                    mine.add(batch.size());
-                    for (Attempt attempt : batch) {
-                      if (!claimed.add(attempt.effectId())) {
-                        synchronized (duplicates) {
-                          duplicates.add(attempt.effectId());
-                        }
-                      }
+            pool.submit(() -> {
+              start.await();
+              List<Integer> mine = new ArrayList<>();
+              List<Attempt> batch;
+              do {
+                batch = own.effects().markRunning(TYPE, now, BATCH);
+                mine.add(batch.size());
+                for (Attempt attempt : batch) {
+                  if (!claimed.add(attempt.effectId())) {
+                    synchronized (duplicates) {
+                      duplicates.add(attempt.effectId());
                     }
-                  } while (!batch.isEmpty());
-                  return mine;
-                }));
+                  }
+                }
+              } while (!batch.isEmpty());
+              return mine;
+            }));
       }
       start.countDown();
       for (Future<List<Integer>> claimer : claimers) {
@@ -193,26 +192,25 @@ class JdbcEffectClaimTest {
         QueuedBackend own = backend();
         int seed = c;
         claimers.add(
-            pool.submit(
-                () -> {
-                  start.await();
-                  List<Integer> mine = new ArrayList<>();
-                  for (int round = 0; round < ROUNDS; round++) {
-                    List<Attempt> batch = own.effects().markRunning(TYPE_CHURNED, now, BATCH);
-                    mine.add(batch.size());
-                    for (Attempt attempt : batch) {
-                      // Due again at once, at a fresh place in the order: the churn a live
-                      // dispatcher sees from retries and timed-out claims.
-                      own.effects()
-                          .reschedule(
-                              attempt.effectId(),
-                              attempt.attemptsMade(),
-                              now.minusMillis((round * 7L + seed * 13L) % 5000),
-                              List.of());
-                    }
-                  }
-                  return mine;
-                }));
+            pool.submit(() -> {
+              start.await();
+              List<Integer> mine = new ArrayList<>();
+              for (int round = 0; round < ROUNDS; round++) {
+                List<Attempt> batch = own.effects().markRunning(TYPE_CHURNED, now, BATCH);
+                mine.add(batch.size());
+                for (Attempt attempt : batch) {
+                  // Due again at once, at a fresh place in the order: the churn a live
+                  // dispatcher sees from retries and timed-out claims.
+                  own.effects()
+                      .reschedule(
+                          attempt.effectId(),
+                          attempt.attemptsMade(),
+                          now.minusMillis((round * 7L + seed * 13L) % 5000),
+                          List.of());
+                }
+              }
+              return mine;
+            }));
       }
       start.countDown();
       for (Future<List<Integer>> claimer : claimers) {

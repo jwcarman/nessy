@@ -103,7 +103,8 @@ class OpenAiResponsesLiveTest {
           new JsonSchema(
               """
               {"type":"object","properties":{"name":{"type":"string",\
-              "description":"the lake to look up"}},"required":["name"]}"""));
+              "description":"the lake to look up"}},"required":["name"]}\
+              """));
 
   private static final ToolOffer WEATHER =
       new ToolOffer(
@@ -111,7 +112,8 @@ class OpenAiResponsesLiveTest {
           "returns today's weather for a named place",
           new JsonSchema(
               """
-              {"type":"object","properties":{"place":{"type":"string"}},"required":["place"]}"""));
+              {"type":"object","properties":{"place":{"type":"string"}},"required":["place"]}\
+              """));
 
   private static final ToolOffer TO_FEET =
       new ToolOffer(
@@ -119,7 +121,8 @@ class OpenAiResponsesLiveTest {
           "converts a length in metres to feet",
           new JsonSchema(
               """
-              {"type":"object","properties":{"metres":{"type":"number"}},"required":["metres"]}"""));
+              {"type":"object","properties":{"metres":{"type":"number"}},"required":["metres"]}\
+              """));
 
   private static OpenAiResponsesInferenceProvider provider() {
     assumeTrue(System.getenv("OPENAI_API_KEY") != null, "OPENAI_API_KEY is not set");
@@ -198,18 +201,17 @@ class OpenAiResponsesLiveTest {
     return actions.blocks().stream()
         .filter(Block.ToolCall.class::isInstance)
         .map(Block.ToolCall.class::cast)
-        .map(
-            call ->
-                (ToolOutcome)
-                    new ToolOutcome.Succeeded(
-                        call.id(),
-                        List.of(
-                            new Block.Text(
-                                switch (call.name().value()) {
-                                  case "lake_depth" -> "230 metres";
-                                  case "to_feet" -> "754.6 feet";
-                                  default -> "no such tool";
-                                }))))
+        .map(call ->
+            (ToolOutcome)
+                new ToolOutcome.Succeeded(
+                    call.id(),
+                    List.of(
+                        new Block.Text(
+                            switch (call.name().value()) {
+                              case "lake_depth" -> "230 metres";
+                              case "to_feet" -> "754.6 feet";
+                              default -> "no such tool";
+                            }))))
         .toList();
   }
 
@@ -320,7 +322,8 @@ class OpenAiResponsesLiveTest {
             """
             {"type":"object",
              "properties":{"city":{"type":"string"},"country":{"type":"string"}},
-             "required":["city","country"]}""");
+             "required":["city","country"]}\
+            """);
 
     try (OpenAiResponsesInferenceProvider provider = provider()) {
       JsonNode parsed =
@@ -339,7 +342,8 @@ class OpenAiResponsesLiveTest {
             """
             {"type":"object",
              "properties":{"answer":{"type":"string"},"confident":{"type":"boolean"}},
-             "required":["answer","confident"]}""");
+             "required":["answer","confident"]}\
+            """);
 
     try (OpenAiResponsesInferenceProvider provider = provider()) {
       JsonNode parsed =
@@ -439,7 +443,8 @@ class OpenAiResponsesLiveTest {
                 """
                 {"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",
                  "properties":{"name":{"type":"string"},"unit":{"type":["string","null"]}},
-                 "required":["name"]}"""));
+                 "required":["name"]}\
+                """));
 
     try (OpenAiResponsesInferenceProvider provider = provider()) {
       InferenceResult result = provider.infer(asking("How deep is Loch Ness?", List.of(lookup)));
@@ -502,7 +507,8 @@ class OpenAiResponsesLiveTest {
                    "note":{"oneOf":[{"type":"null"},
                                     {"type":"object","properties":{"text":{"type":"string"}},
                                      "required":["text"]}]}},
-                 "required":["action"]}"""));
+                 "required":["action"]}\
+                """));
     Logger logger = (Logger) LoggerFactory.getLogger(OpenAiResponsesRequests.class);
     ListAppender<ILoggingEvent> appender = new ListAppender<>();
     appender.start();
@@ -579,7 +585,8 @@ class OpenAiResponsesLiveTest {
           "saves a note",
           new JsonSchema(
               """
-              {"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}"""));
+              {"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}\
+              """));
 
   private static InferenceRequest limited(String question, Toolset toolset) {
     return new InferenceRequest(
@@ -612,12 +619,11 @@ class OpenAiResponsesLiveTest {
       assertThat(truncated.blocks())
           .filteredOn(Block.Text.class::isInstance)
           .isNotEmpty()
-          .anySatisfy(
-              block -> {
-                String written = ((Block.Text) block).text();
-                assertThat(written).isNotBlank();
-                assertThat(written.strip()).startsWith("1: 1");
-              });
+          .anySatisfy(block -> {
+            String written = ((Block.Text) block).text();
+            assertThat(written).isNotBlank();
+            assertThat(written.strip()).startsWith("1: 1");
+          });
       assertThat(truncated.usage().outputTokens().orZero())
           .as("the reply was written, and the vendor counted it")
           .isPositive();

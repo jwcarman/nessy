@@ -118,11 +118,10 @@ public final class VictoolsJsonSchemaGenerator implements JsonSchemaGenerator {
         return null;
       }
       return jsonValueOf(erased)
-          .map(
-              method ->
-                  new CustomDefinition(
-                      context.createDefinition(
-                          context.getTypeContext().resolve(method.getGenericReturnType()))))
+          .map(method ->
+              new CustomDefinition(
+                  context.createDefinition(
+                      context.getTypeContext().resolve(method.getGenericReturnType()))))
           .orElse(null);
     }
 

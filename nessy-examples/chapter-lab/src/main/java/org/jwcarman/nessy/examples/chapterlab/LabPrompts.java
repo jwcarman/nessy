@@ -36,7 +36,8 @@ final class LabPrompts {
 
       Write the index entry in at most 100 words: the dates covered, then who and what the chapter \
       is about as short phrases (topics, people, places, events, decisions, plans). Name things; \
-      do not explain them. No preamble.""";
+      do not explain them. No preamble.\
+      """;
 
   /** What the model is told while it marks the natural breaks in a run of open turns. */
   static final String HINDSIGHT_SYSTEM =
@@ -87,15 +88,16 @@ final class LabPrompts {
    */
   static String grade(String question, String correct, String given) {
     return """
-        Question: %s
-        Correct answer: %s
-        Given answer: %s
+    Question: %s
+    Correct answer: %s
+    Given answer: %s
 
-        Is the given answer correct? The same fact is yes whatever the wording, order or extra \
-        detail, unless the extra detail contradicts it. A date expressed differently but meaning \
-        the same day or period is yes. When the correct answer is a list, the given answer must \
-        contain every item. More specific and consistent with the correct answer is yes; vaguer is \
-        no. "unknown" or a refusal is no. Reply with only yes or no."""
+    Is the given answer correct? The same fact is yes whatever the wording, order or extra \
+    detail, unless the extra detail contradicts it. A date expressed differently but meaning \
+    the same day or period is yes. When the correct answer is a list, the given answer must \
+    contain every item. More specific and consistent with the correct answer is yes; vaguer is \
+    no. "unknown" or a refusal is no. Reply with only yes or no.\
+    """
         .formatted(question, correct, given);
   }
 }

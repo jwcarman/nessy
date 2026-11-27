@@ -96,21 +96,20 @@ class ChatTurnsIntegrationTest {
                 HttpResponse.BodyHandlers.ofInputStream());
     Thread reader =
         Thread.ofVirtual()
-            .start(
-                () -> {
-                  try (BufferedReader lines =
-                      new BufferedReader(
-                          new InputStreamReader(stream.body(), StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = lines.readLine()) != null) {
-                      if (line.startsWith("event:")) {
-                        seen.add(line.substring("event:".length()).trim());
-                      }
-                    }
-                  } catch (IOException _) {
-                    // The test is over and the stream was closed under the reader.
+            .start(() -> {
+              try (BufferedReader lines =
+                  new BufferedReader(
+                      new InputStreamReader(stream.body(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = lines.readLine()) != null) {
+                  if (line.startsWith("event:")) {
+                    seen.add(line.substring("event:".length()).trim());
                   }
-                });
+                }
+              } catch (IOException _) {
+                // The test is over and the stream was closed under the reader.
+              }
+            });
 
     assertThat(chat.say(agentId, "hello")).isEqualTo(202);
 
@@ -130,10 +129,8 @@ class ChatTurnsIntegrationTest {
     assertThat(chat.say(agentId, "hold this")).isEqualTo(202);
     await()
         .atMost(Duration.ofSeconds(30))
-        .untilAsserted(
-            () ->
-                assertThat(work.status(ChatConfiguration.TYPE, agentIdOf(agentId)).turn())
-                    .isPresent());
+        .untilAsserted(() ->
+            assertThat(work.status(ChatConfiguration.TYPE, agentIdOf(agentId)).turn()).isPresent());
 
     assertThat(chat.say(agentId, "first extra")).isEqualTo(202);
     assertThat(chat.say(agentId, "second extra")).isEqualTo(202);
@@ -141,11 +138,9 @@ class ChatTurnsIntegrationTest {
 
     await()
         .atMost(Duration.ofSeconds(30))
-        .untilAsserted(
-            () ->
-                assertThat(chat.state(agentId).texts())
-                    .containsExactly(
-                        "hold this", "Noted.", "first extra\n\nsecond extra", "Noted."));
+        .untilAsserted(() ->
+            assertThat(chat.state(agentId).texts())
+                .containsExactly("hold this", "Noted.", "first extra\n\nsecond extra", "Noted."));
     assertThat(userLines(chat.state(agentId))).isEqualTo(2);
     assertThat(chat.state(agentId).transcript().stream().map(line -> line.get("turn")).distinct())
         .hasSize(2);
@@ -164,10 +159,9 @@ class ChatTurnsIntegrationTest {
 
     await()
         .atMost(Duration.ofSeconds(30))
-        .untilAsserted(
-            () ->
-                assertThat(chat.state(agentId).texts())
-                    .containsExactly("one", "Noted.", "two", "Noted."));
+        .untilAsserted(() ->
+            assertThat(chat.state(agentId).texts())
+                .containsExactly("one", "Noted.", "two", "Noted."));
     assertThat(userLines(chat.state(agentId))).isEqualTo(2);
   }
 

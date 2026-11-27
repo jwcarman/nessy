@@ -66,13 +66,12 @@ class DirectHarnessTurnLabelTest {
         (request, narrator) ->
             new InferenceResult.Answer(List.of(new Block.Text("ok")), Usage.unreported());
     try (DefaultDirectHarnessFactory factory =
-        DefaultDirectHarnessFactory.of(
-            c ->
-                c.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
-                    .provider(ProviderId.of("test"), model)
-                    .schemas(new VictoolsJsonSchemaGenerator())
-                    .mapper(JsonMapper.builder().build())
-                    .clock(Clock.fixed(NOW, ZoneOffset.UTC)))) {
+        DefaultDirectHarnessFactory.of(c ->
+            c.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
+                .provider(ProviderId.of("test"), model)
+                .schemas(new VictoolsJsonSchemaGenerator())
+                .mapper(JsonMapper.builder().build())
+                .clock(Clock.fixed(NOW, ZoneOffset.UTC)))) {
       DirectHarness<Invoice, String> harness =
           factory.<Invoice>create(
               TYPE,
@@ -113,12 +112,10 @@ class DirectHarnessTurnLabelTest {
     @Test
     void falls_back_to_the_class_name_and_the_turn_still_runs_when_the_label_throws() {
       AskOutcome<String> outcome =
-          askWith(
-              c ->
-                  c.inputLabel(
-                      _ -> {
-                        throw new IllegalStateException("no label today");
-                      }));
+          askWith(c ->
+              c.inputLabel(_ -> {
+                throw new IllegalStateException("no label today");
+              }));
 
       assertThat(outcome).isInstanceOf(AskOutcome.Answered.class);
       assertThat(theTurnStart().label()).isEqualTo("Invoice");

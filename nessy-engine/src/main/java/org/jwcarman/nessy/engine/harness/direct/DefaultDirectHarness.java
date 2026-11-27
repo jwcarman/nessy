@@ -486,14 +486,13 @@ public final class DefaultDirectHarness<I, O> implements DirectHarness<I, O> {
   private void submit(
       CompletionService<AgentCommand> completions, AgentId agent, TimedEffect timed) {
     acquire(inFlight);
-    completions.submit(
-        () -> {
-          try {
-            return perform(agent, timed.effect(), timed.since());
-          } finally {
-            inFlight.release();
-          }
-        });
+    completions.submit(() -> {
+      try {
+        return perform(agent, timed.effect(), timed.since());
+      } finally {
+        inFlight.release();
+      }
+    });
   }
 
   private static void acquire(Semaphore inFlight) {

@@ -90,29 +90,28 @@ class PlanPerTypeTest {
 
   @Test
   void a_plan_written_for_one_type_is_not_in_the_ambient_of_another() {
-    runner.run(
-        context -> {
-          AgentType typeA = new AgentType("type-a");
-          AgentType typeB = new AgentType("type-b");
-          AgentId agent = new AgentId(UUID.randomUUID());
-          Recording forA = new Recording(typeA);
-          Recording forB = new Recording(typeB);
-          PlanFeatures.feature(context).customize(forA);
-          PlanFeatures.feature(context).customize(forB);
+    runner.run(context -> {
+      AgentType typeA = new AgentType("type-a");
+      AgentType typeB = new AgentType("type-b");
+      AgentId agent = new AgentId(UUID.randomUUID());
+      Recording forA = new Recording(typeA);
+      Recording forB = new Recording(typeB);
+      PlanFeatures.feature(context).customize(forA);
+      PlanFeatures.feature(context).customize(forB);
 
-          PlanFeatures.call(
-              forA.tools.stream()
-                  .filter(tool -> tool.name().value().equals("update_plan"))
-                  .findFirst()
-                  .orElseThrow(),
-              typeA,
-              agent,
-              new PlanTools.UpdatePlan(
-                  List.of(new PlanTools.PlannedTask("write the plan", Plan.Status.PENDING))));
+      PlanFeatures.call(
+          forA.tools.stream()
+              .filter(tool -> tool.name().value().equals("update_plan"))
+              .findFirst()
+              .orElseThrow(),
+          typeA,
+          agent,
+          new PlanTools.UpdatePlan(
+              List.of(new PlanTools.PlannedTask("write the plan", Plan.Status.PENDING))));
 
-          assertThat(ambientText(forA.ambients.getFirst(), agent)).contains("write the plan");
-          assertThat(forB.ambients.getFirst().forAgent(agent)).isEmpty();
-        });
+      assertThat(ambientText(forA.ambients.getFirst(), agent)).contains("write the plan");
+      assertThat(forB.ambients.getFirst().forAgent(agent)).isEmpty();
+    });
   }
 
   private static String ambientText(AmbientSource source, AgentId agent) {

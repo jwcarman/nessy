@@ -91,15 +91,14 @@ class UndispatchableTest {
 
     await()
         .atMost(Duration.ofSeconds(30))
-        .untilAsserted(
-            () -> {
-              assertThat(stateOf(agentId))
-                  .as("the stored response ended the turn, so the agent is not stuck")
-                  .isEqualTo("Idle");
-              assertThat(effectsFor(agentId))
-                  .as("an effect nothing can ever perform is retired, not retried forever")
-                  .isZero();
-            });
+        .untilAsserted(() -> {
+          assertThat(stateOf(agentId))
+              .as("the stored response ended the turn, so the agent is not stuck")
+              .isEqualTo("Idle");
+          assertThat(effectsFor(agentId))
+              .as("an effect nothing can ever perform is retired, not retried forever")
+              .isZero();
+        });
   }
 
   private static String triggerOf(AgentId agentId) {

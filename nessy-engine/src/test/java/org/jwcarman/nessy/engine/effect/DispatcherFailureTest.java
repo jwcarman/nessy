@@ -482,11 +482,10 @@ class DispatcherFailureTest {
     effects.due = List.of();
     await()
         .atMost(Duration.ofSeconds(5))
-        .untilAsserted(
-            () -> {
-              dispatcher.dispatch();
-              assertThat(effects.batchSizes.getLast()).isEqualTo(PERMITS);
-            });
+        .untilAsserted(() -> {
+          dispatcher.dispatch();
+          assertThat(effects.batchSizes.getLast()).isEqualTo(PERMITS);
+        });
     assertThat(delivered.outcomes).hasSize(PERMITS);
   }
 
@@ -538,11 +537,10 @@ class DispatcherFailureTest {
     effects.due = List.of();
     await()
         .atMost(Duration.ofSeconds(5))
-        .untilAsserted(
-            () -> {
-              dispatcher.dispatch();
-              assertThat(effects.batchSizes.getLast()).isEqualTo(PERMITS);
-            });
+        .untilAsserted(() -> {
+          dispatcher.dispatch();
+          assertThat(effects.batchSizes.getLast()).isEqualTo(PERMITS);
+        });
     assertThat(delivered.parkAttempts.get()).as("the park was tried").isEqualTo(1);
     assertThat(delivered.outcomes).as("no call failed").isEmpty();
     assertThat(effects.retired).as("nothing was given up on").isEmpty();

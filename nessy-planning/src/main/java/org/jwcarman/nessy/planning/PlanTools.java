@@ -92,16 +92,11 @@ public final class PlanTools {
    */
   public static AmbientSource plan(Plans store) {
     Objects.requireNonNull(store, STORE_REQUIRED);
-    return AmbientSource.of(
-        source ->
-            source
-                .kind(KIND)
-                .text(
-                    agentId ->
-                        store
-                            .find(agentId)
-                            .filter(plan -> !plan.isEmpty())
-                            .map(PlanTools::render)));
+    return AmbientSource.of(source ->
+        source
+            .kind(KIND)
+            .text(agentId ->
+                store.find(agentId).filter(plan -> !plan.isEmpty()).map(PlanTools::render)));
   }
 
   /**

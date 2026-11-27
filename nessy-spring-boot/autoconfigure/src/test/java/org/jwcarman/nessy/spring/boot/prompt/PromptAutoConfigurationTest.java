@@ -49,14 +49,13 @@ class PromptAutoConfigurationTest {
     runner
         .withPropertyValues(
             "nessy.system-prompt=You are ${app.persona}.", "app.persona=a lighthouse keeper")
-        .run(
-            context -> {
-              assertThat(context)
-                  .getBean(PromptTemplateFactory.class)
-                  .isInstanceOf(SpringPromptTemplateFactory.class);
-              assertThat(context.getBean(SystemPrompt.class).value())
-                  .isEqualTo("You are a lighthouse keeper.");
-            });
+        .run(context -> {
+          assertThat(context)
+              .getBean(PromptTemplateFactory.class)
+              .isInstanceOf(SpringPromptTemplateFactory.class);
+          assertThat(context.getBean(SystemPrompt.class).value())
+              .isEqualTo("You are a lighthouse keeper.");
+        });
   }
 
   @Configuration(proxyBeanMethods = false)
@@ -77,10 +76,8 @@ class PromptAutoConfigurationTest {
     runner
         .withUserConfiguration(ASource.class)
         .withPropertyValues("nessy.system-prompt-file=file:" + prompt, "app.persona=nobody")
-        .run(
-            context ->
-                assertThat(context.getBean(SystemPrompt.class).value())
-                    .isEqualTo("You are a butler."));
+        .run(context ->
+            assertThat(context.getBean(SystemPrompt.class).value()).isEqualTo("You are a butler."));
   }
 
   @Test
@@ -91,14 +88,13 @@ class PromptAutoConfigurationTest {
             "nessy.prompt.engine=mustache",
             "nessy.system-prompt=You are {{app.persona}}.",
             "app.persona=a lighthouse keeper")
-        .run(
-            context -> {
-              assertThat(context)
-                  .getBean(PromptTemplateFactory.class)
-                  .isInstanceOf(MustachePromptTemplateFactory.class);
-              assertThat(context.getBean(SystemPrompt.class).value())
-                  .isEqualTo("You are a lighthouse keeper.");
-            });
+        .run(context -> {
+          assertThat(context)
+              .getBean(PromptTemplateFactory.class)
+              .isInstanceOf(MustachePromptTemplateFactory.class);
+          assertThat(context.getBean(SystemPrompt.class).value())
+              .isEqualTo("You are a lighthouse keeper.");
+        });
   }
 
   @Test
@@ -106,14 +102,13 @@ class PromptAutoConfigurationTest {
   void an_unfilled_hole_fails_at_startup() {
     runner
         .withPropertyValues("nessy.system-prompt=You are ${nobody.set.this}.")
-        .run(
-            context ->
-                assertThat(context)
-                    .hasFailed()
-                    .getFailure()
-                    .rootCause()
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("nobody.set.this"));
+        .run(context ->
+            assertThat(context)
+                .hasFailed()
+                .getFailure()
+                .rootCause()
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("nobody.set.this"));
   }
 
   @Test

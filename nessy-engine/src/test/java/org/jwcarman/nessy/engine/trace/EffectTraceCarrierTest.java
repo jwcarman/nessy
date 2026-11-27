@@ -295,17 +295,16 @@ class EffectTraceCarrierTest {
     CountDownLatch release = new CountDownLatch(1);
 
     try (EngineFixture engine =
-        new EngineFixture(
-            (_, _) -> {
-              performing.countDown();
-              try {
-                release.await();
-              } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException(e);
-              }
-              return new InferenceResult.Answer(List.of(new Block.Text("done")));
-            })) {
+        new EngineFixture((_, _) -> {
+          performing.countDown();
+          try {
+            release.await();
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+          }
+          return new InferenceResult.Answer(List.of(new Block.Text("done")));
+        })) {
 
       engine
           .harnesses()

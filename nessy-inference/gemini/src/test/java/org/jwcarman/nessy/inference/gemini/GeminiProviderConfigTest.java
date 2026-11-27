@@ -39,11 +39,10 @@ class GeminiProviderConfigTest {
   @Test
   void a_key_a_base_url_and_a_mapper_build_a_provider_that_closes_its_own_client() {
     GeminiInferenceProvider provider =
-        GeminiInferenceProvider.of(
-            c ->
-                c.apiKey("test-key")
-                    .baseUrl("http://127.0.0.1:1")
-                    .mapper(JsonMapper.builder().build()));
+        GeminiInferenceProvider.of(c ->
+            c.apiKey("test-key")
+                .baseUrl("http://127.0.0.1:1")
+                .mapper(JsonMapper.builder().build()));
 
     assertThat(provider.name()).isEqualTo("Gemini");
     assertThatCode(provider::close).doesNotThrowAnyException();
@@ -113,10 +112,8 @@ class GeminiProviderConfigTest {
 
     @Test
     void a_negative_timeout_is_rejected() {
-      assertThatThrownBy(
-              () ->
-                  GeminiInferenceProvider.of(
-                      c -> c.apiKey("test-key").timeout(Duration.ofSeconds(-1))))
+      assertThatThrownBy(() ->
+              GeminiInferenceProvider.of(c -> c.apiKey("test-key").timeout(Duration.ofSeconds(-1))))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -131,14 +128,12 @@ class GeminiProviderConfigTest {
     /** Exercises the branch that must not lose the base URL when both are configured together. */
     @Test
     void a_base_url_and_a_timeout_together_build_without_losing_either() {
-      assertThatCode(
-              () ->
-                  GeminiInferenceProvider.of(
-                          c ->
-                              c.apiKey("test-key")
-                                  .baseUrl("http://127.0.0.1:1")
-                                  .timeout(Duration.ofMinutes(6)))
-                      .close())
+      assertThatCode(() ->
+              GeminiInferenceProvider.of(c ->
+                      c.apiKey("test-key")
+                          .baseUrl("http://127.0.0.1:1")
+                          .timeout(Duration.ofMinutes(6)))
+                  .close())
           .doesNotThrowAnyException();
     }
 
@@ -213,13 +208,10 @@ class GeminiProviderConfigTest {
 
   @Test
   void properties_given_as_a_map_are_accepted() {
-    assertThatCode(
-            () ->
-                GeminiInferenceProvider.of(
-                        c ->
-                            c.apiKey("test-key")
-                                .properties(Map.of("gemini.labels.team", "billing")))
-                    .close())
+    assertThatCode(() ->
+            GeminiInferenceProvider.of(
+                    c -> c.apiKey("test-key").properties(Map.of("gemini.labels.team", "billing")))
+                .close())
         .doesNotThrowAnyException();
   }
 }

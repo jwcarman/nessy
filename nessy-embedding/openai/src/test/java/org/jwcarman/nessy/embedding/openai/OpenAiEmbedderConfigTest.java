@@ -34,11 +34,10 @@ class OpenAiEmbedderConfigTest {
 
   @Test
   void a_property_under_its_own_prefix_builds() {
-    assertThatCode(
-            () ->
-                OpenAiEmbeddingProvider.of(
-                        c -> c.apiKey("test-key").property("openai.user", "tenant-42"))
-                    .close())
+    assertThatCode(() ->
+            OpenAiEmbeddingProvider.of(
+                    c -> c.apiKey("test-key").property("openai.user", "tenant-42"))
+                .close())
         .doesNotThrowAnyException();
   }
 

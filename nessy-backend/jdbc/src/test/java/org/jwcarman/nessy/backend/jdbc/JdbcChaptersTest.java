@@ -411,11 +411,10 @@ class JdbcChaptersTest {
         for (int i = 0; i < CALLERS; i++) {
           Chapter mine = chapter(4 + i, 4 + i);
           outcomes.add(
-              callers.submit(
-                  () -> {
-                    go.await();
-                    return appendAfter(Optional.of(turn(3)), mine);
-                  }));
+              callers.submit(() -> {
+                go.await();
+                return appendAfter(Optional.of(turn(3)), mine);
+              }));
         }
         go.countDown();
 
@@ -439,11 +438,10 @@ class JdbcChaptersTest {
         for (int i = 0; i < CALLERS; i++) {
           Chapter mine = chapter(1 + i, 1 + i);
           outcomes.add(
-              callers.submit(
-                  () -> {
-                    go.await();
-                    return appendAfter(Optional.empty(), mine);
-                  }));
+              callers.submit(() -> {
+                go.await();
+                return appendAfter(Optional.empty(), mine);
+              }));
         }
         go.countDown();
 
@@ -479,11 +477,10 @@ class JdbcChaptersTest {
         CountDownLatch go = new CountDownLatch(1);
         for (List<Chapter> cut : cuts) {
           outcomes.add(
-              callers.submit(
-                  () -> {
-                    go.await();
-                    return chapters.append(TYPE, agent, Optional.empty(), cut);
-                  }));
+              callers.submit(() -> {
+                go.await();
+                return chapters.append(TYPE, agent, Optional.empty(), cut);
+              }));
         }
         go.countDown();
       }

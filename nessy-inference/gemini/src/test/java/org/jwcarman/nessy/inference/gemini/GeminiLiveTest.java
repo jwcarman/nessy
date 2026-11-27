@@ -159,7 +159,8 @@ class GeminiLiveTest {
             {"type":"object",
              "properties":{"city":{"type":"string"},"country":{"type":"string"}},
              "required":["city","country"],
-             "additionalProperties":false}""");
+             "additionalProperties":false}\
+            """);
 
     try (GeminiInferenceProvider provider = provider()) {
       InferenceResult result = provider.infer(askingFor("What is the capital of France?", shape));
@@ -181,7 +182,8 @@ class GeminiLiveTest {
             {"type":"object",
              "properties":{"answer":{"type":"string"},"confident":{"type":"boolean"}},
              "required":["answer","confident"],
-             "additionalProperties":false}""");
+             "additionalProperties":false}\
+            """);
 
     try (GeminiInferenceProvider provider = provider()) {
       InferenceResult result = provider.infer(askingFor("Tell me a joke.", shape));
@@ -288,7 +290,8 @@ class GeminiLiveTest {
           "saves a note",
           new JsonSchema(
               """
-              {"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}"""));
+              {"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}\
+              """));
 
   private static InferenceRequest limited(String question, Toolset toolset) {
     return limited(question, toolset, 1500, Map.of());
@@ -329,12 +332,11 @@ class GeminiLiveTest {
       assertThat(truncated.blocks())
           .filteredOn(Block.Text.class::isInstance)
           .isNotEmpty()
-          .anySatisfy(
-              block -> {
-                String written = ((Block.Text) block).text();
-                assertThat(written).isNotBlank();
-                assertThat(written.strip()).startsWith("1: 1");
-              });
+          .anySatisfy(block -> {
+            String written = ((Block.Text) block).text();
+            assertThat(written).isNotBlank();
+            assertThat(written.strip()).startsWith("1: 1");
+          });
       assertThat(truncated.usage().outputTokens().orZero())
           .as("the reply was written, and the vendor counted it")
           .isPositive();

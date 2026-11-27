@@ -189,14 +189,11 @@ class ChapterPolicyComparisonTest {
     void the_stable_prefix_is_the_same_as_without_it() {
       AtomicInteger ticks = new AtomicInteger();
       AmbientSource clock =
-          AmbientSource.of(
-              source ->
-                  source
-                      .kind("clock")
-                      .offering(
-                          _ ->
-                              Optional.of(
-                                  Ambient.text("clock", "tick " + ticks.incrementAndGet()))));
+          AmbientSource.of(source ->
+              source
+                  .kind("clock")
+                  .offering(
+                      _ -> Optional.of(Ambient.text("clock", "tick " + ticks.incrementAndGet()))));
       Report with =
           conversation()
               .run(

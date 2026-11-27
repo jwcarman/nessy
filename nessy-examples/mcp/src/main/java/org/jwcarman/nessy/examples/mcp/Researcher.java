@@ -81,25 +81,24 @@ public final class Researcher {
 
     // Closed at the end of the conversation: the toolbox owns the connection to the server.
     try (McpToolbox toolbox = McpToolbox.connect(transport, mapper)) {
-      Repl.run(
-          config ->
-              config
-                  .banner("nessy mcp — researching with DeepWiki's tools. /exit to leave.")
-                  .prompt("> ")
-                  .farewell("bye.")
-                  .systemPrompt(SYSTEM_PROMPT)
-                  .agent(new org.jwcarman.nessy.api.AgentType("researcher"))
-                  // Reading is free, so it is ungated. Nothing here is Nessy's judgement about
-                  // DeepWiki; it is this application's judgement about its own bill.
-                  .tool(toolbox.tool("read_wiki_structure"))
-                  .tool(toolbox.tool("read_wiki_contents"))
-                  // The one that spends someone else's model budget, so the one a person answers.
-                  .tool(
-                      toolbox.tool("ask_question"),
-                      binding ->
-                          binding
-                              .approver(ConsoleApprover.atTheTerminal())
-                              .action(Researcher::asking)));
+      Repl.run(config ->
+          config
+              .banner("nessy mcp — researching with DeepWiki's tools. /exit to leave.")
+              .prompt("> ")
+              .farewell("bye.")
+              .systemPrompt(SYSTEM_PROMPT)
+              .agent(new org.jwcarman.nessy.api.AgentType("researcher"))
+              // Reading is free, so it is ungated. Nothing here is Nessy's judgement about
+              // DeepWiki; it is this application's judgement about its own bill.
+              .tool(toolbox.tool("read_wiki_structure"))
+              .tool(toolbox.tool("read_wiki_contents"))
+              // The one that spends someone else's model budget, so the one a person answers.
+              .tool(
+                  toolbox.tool("ask_question"),
+                  binding ->
+                      binding
+                          .approver(ConsoleApprover.atTheTerminal())
+                          .action(Researcher::asking)));
     }
   }
 

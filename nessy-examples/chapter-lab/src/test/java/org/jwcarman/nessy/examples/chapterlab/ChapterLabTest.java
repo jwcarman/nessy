@@ -836,11 +836,10 @@ class ChapterLabTest {
       List<String> lines = Files.readAllLines(directory.resolve(settings.resultsFile()));
       assertThat(lines)
           .hasSize(4)
-          .allSatisfy(
-              line ->
-                  assertThat(line)
-                      .contains("\"verdict\":\"not_understood\"")
-                      .contains("\"grader_reply\":\"Partly.\\nIt names the month.\""));
+          .allSatisfy(line ->
+              assertThat(line)
+                  .contains("\"verdict\":\"not_understood\"")
+                  .contains("\"grader_reply\":\"Partly.\\nIt names the month.\""));
     }
 
     @Test
@@ -864,11 +863,10 @@ class ChapterLabTest {
       List<String> lines = Files.readAllLines(directory.resolve(settings.resultsFile()));
       assertThat(lines)
           .hasSize(4)
-          .allSatisfy(
-              line ->
-                  assertThat(line)
-                      .contains("\"grader_reply\":\"(the grading call failed: gave up after 4")
-                      .contains("Refusal"));
+          .allSatisfy(line ->
+              assertThat(line)
+                  .contains("\"grader_reply\":\"(the grading call failed: gave up after 4")
+                  .contains("Refusal"));
     }
 
     @Test
@@ -955,11 +953,10 @@ class ChapterLabTest {
       List<String> lines = Files.readAllLines(directory.resolve(settings.resultsFile()));
       assertThat(lines)
           .hasSize(4)
-          .allSatisfy(
-              line ->
-                  assertThat(line)
-                      .contains("\"grader_reply\":\"(the grading call failed: ")
-                      .contains("cut off at the output limit"));
+          .allSatisfy(line ->
+              assertThat(line)
+                  .contains("\"grader_reply\":\"(the grading call failed: ")
+                  .contains("cut off at the output limit"));
     }
   }
 
@@ -992,11 +989,10 @@ class ChapterLabTest {
           .containsExactly(10L, 15L, 15L);
       assertThat(model.questions)
           .isNotEmpty()
-          .allSatisfy(
-              request -> {
-                assertThat(request.context().summaries()).hasSize(3);
-                assertThat(request.context().tail()).hasSize(5);
-              });
+          .allSatisfy(request -> {
+            assertThat(request.context().summaries()).hasSize(3);
+            assertThat(request.context().tail()).hasSize(5);
+          });
     }
   }
 
@@ -1029,11 +1025,10 @@ class ChapterLabTest {
       assertThat(model.summaries).hasSize(3);
       assertThat(model.questions)
           .hasSize(4)
-          .allSatisfy(
-              request -> {
-                assertThat(request.context().summaries()).hasSize(3);
-                assertThat(request.context().tail()).isEmpty();
-              });
+          .allSatisfy(request -> {
+            assertThat(request.context().summaries()).hasSize(3);
+            assertThat(request.context().tail()).isEmpty();
+          });
     }
 
     @Test
@@ -1117,19 +1112,17 @@ class ChapterLabTest {
 
       assertThat(run.recorded)
           .hasSize(4)
-          .anySatisfy(
-              line ->
-                  assertThat(line)
-                      .contains("\"question\":\"What did Ann plant?\"")
-                      .contains("\"answer\":\"tomatoes\"")
-                      .contains("\"correct_answer\":\"tomatoes\"")
-                      .contains("\"correct\":true"))
-          .anySatisfy(
-              line ->
-                  assertThat(line)
-                      .contains("\"question\":\"When did Ben travel to Lisbon?\"")
-                      .contains("\"answer\":\"unknown\"")
-                      .contains("\"correct\":false"));
+          .anySatisfy(line ->
+              assertThat(line)
+                  .contains("\"question\":\"What did Ann plant?\"")
+                  .contains("\"answer\":\"tomatoes\"")
+                  .contains("\"correct_answer\":\"tomatoes\"")
+                  .contains("\"correct\":true"))
+          .anySatisfy(line ->
+              assertThat(line)
+                  .contains("\"question\":\"When did Ben travel to Lisbon?\"")
+                  .contains("\"answer\":\"unknown\"")
+                  .contains("\"correct\":false"));
     }
 
     @Test
@@ -1143,11 +1136,10 @@ class ChapterLabTest {
       assertThat(run.result.contextWords()).isEqualTo(14 + 15);
       assertThat(model.questions)
           .isNotEmpty()
-          .allSatisfy(
-              request -> {
-                assertThat(request.context().summaries()).hasSize(2);
-                assertThat(request.context().tail()).hasSize(1);
-              });
+          .allSatisfy(request -> {
+            assertThat(request.context().summaries()).hasSize(2);
+            assertThat(request.context().tail()).hasSize(1);
+          });
     }
 
     @Test
@@ -1158,9 +1150,8 @@ class ChapterLabTest {
 
       assertThat(model.summaries)
           .hasSize(2)
-          .allSatisfy(
-              request ->
-                  assertThat(request.systemPrompt().value()).isEqualTo(LabPrompts.INDEX_SUMMARY));
+          .allSatisfy(request ->
+              assertThat(request.systemPrompt().value()).isEqualTo(LabPrompts.INDEX_SUMMARY));
     }
 
     @Test
@@ -1190,11 +1181,10 @@ class ChapterLabTest {
       assertThat(model.summaries).isEmpty();
       assertThat(model.questions)
           .isNotEmpty()
-          .allSatisfy(
-              request -> {
-                assertThat(request.context().summaries()).isEmpty();
-                assertThat(request.context().tail()).hasSize(5);
-              });
+          .allSatisfy(request -> {
+            assertThat(request.context().summaries()).isEmpty();
+            assertThat(request.context().tail()).hasSize(5);
+          });
       assertThat(run.result.correct()).isEqualTo(3);
     }
 
@@ -1210,9 +1200,8 @@ class ChapterLabTest {
       PrintStream quiet =
           new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
 
-      assertThatThrownBy(
-              () ->
-                  ChapterLab.run(settings, conversation, failing, quiet, directory, Duration.ZERO))
+      assertThatThrownBy(() ->
+              ChapterLab.run(settings, conversation, failing, quiet, directory, Duration.ZERO))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("the summary of turns");
     }

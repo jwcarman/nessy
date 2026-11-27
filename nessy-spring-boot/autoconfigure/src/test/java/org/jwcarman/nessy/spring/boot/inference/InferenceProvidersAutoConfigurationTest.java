@@ -104,14 +104,13 @@ class InferenceProvidersAutoConfigurationTest {
   void an_openai_key_registers_one_provider() {
     runner
         .withPropertyValues("openai.api-key=sk-test")
-        .run(
-            context -> {
-              Map<String, InferenceProvider> providers =
-                  context.getBeansOfType(InferenceProvider.class);
-              assertThat(providers).containsOnlyKeys("openai");
-              assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
-              assertThat(providers.get("openai").vendor()).isEqualTo("openai");
-            });
+        .run(context -> {
+          Map<String, InferenceProvider> providers =
+              context.getBeansOfType(InferenceProvider.class);
+          assertThat(providers).containsOnlyKeys("openai");
+          assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
+          assertThat(providers.get("openai").vendor()).isEqualTo("openai");
+        });
   }
 
   /**
@@ -124,10 +123,9 @@ class InferenceProvidersAutoConfigurationTest {
     new ApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(InferenceProvidersAutoConfiguration.class))
         .withPropertyValues("openai.api-key=sk-test")
-        .run(
-            context ->
-                assertThat(context.getBean(InferenceProvider.class))
-                    .isInstanceOf(ObservedInferenceProvider.class));
+        .run(context ->
+            assertThat(context.getBean(InferenceProvider.class))
+                .isInstanceOf(ObservedInferenceProvider.class));
   }
 
   @Test
@@ -135,120 +133,108 @@ class InferenceProvidersAutoConfigurationTest {
     runner
         .withPropertyValues(
             "openai.api-key=sk-test", "anthropic.api-key=sk-test", "gemini.api-key=sk-test")
-        .run(
-            context ->
-                assertThat(context.getBeansOfType(InferenceProvider.class))
-                    .containsOnlyKeys("openai", "anthropic", "gemini"));
+        .run(context ->
+            assertThat(context.getBeansOfType(InferenceProvider.class))
+                .containsOnlyKeys("openai", "anthropic", "gemini"));
   }
 
   @Test
   void openai_and_gemini_keys_register_two_providers() {
     runner
         .withPropertyValues("openai.api-key=sk-test", "gemini.api-key=sk-test")
-        .run(
-            context ->
-                assertThat(context.getBeansOfType(InferenceProvider.class))
-                    .containsOnlyKeys("openai", "gemini"));
+        .run(context ->
+            assertThat(context.getBeansOfType(InferenceProvider.class))
+                .containsOnlyKeys("openai", "gemini"));
   }
 
   @Test
   void openai_and_xai_keys_register_two_openai_wire_providers_with_their_own_vendors() {
     runner
         .withPropertyValues("openai.api-key=sk-test", "xai.api-key=xai-test")
-        .run(
-            context -> {
-              Map<String, InferenceProvider> providers =
-                  context.getBeansOfType(InferenceProvider.class);
-              assertThat(providers).containsOnlyKeys("openai", "xai");
-              assertThat(providers.get("openai").vendor()).isEqualTo("openai");
-              assertThat(providers.get("xai").vendor()).isEqualTo("x_ai");
-            });
+        .run(context -> {
+          Map<String, InferenceProvider> providers =
+              context.getBeansOfType(InferenceProvider.class);
+          assertThat(providers).containsOnlyKeys("openai", "xai");
+          assertThat(providers.get("openai").vendor()).isEqualTo("openai");
+          assertThat(providers.get("xai").vendor()).isEqualTo("x_ai");
+        });
   }
 
   @Test
   void an_openrouter_key_registers_one_provider() {
     runner
         .withPropertyValues("openrouter.api-key=sk-test")
-        .run(
-            context -> {
-              Map<String, InferenceProvider> providers =
-                  context.getBeansOfType(InferenceProvider.class);
-              assertThat(providers).containsOnlyKeys("openrouter");
-              assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
-              assertThat(providers.get("openrouter").vendor()).isEqualTo("openrouter");
-            });
+        .run(context -> {
+          Map<String, InferenceProvider> providers =
+              context.getBeansOfType(InferenceProvider.class);
+          assertThat(providers).containsOnlyKeys("openrouter");
+          assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
+          assertThat(providers.get("openrouter").vendor()).isEqualTo("openrouter");
+        });
   }
 
   @Test
   void an_nvidia_key_registers_one_provider() {
     runner
         .withPropertyValues("nvidia.api-key=sk-test")
-        .run(
-            context -> {
-              Map<String, InferenceProvider> providers =
-                  context.getBeansOfType(InferenceProvider.class);
-              assertThat(providers).containsOnlyKeys("nvidia");
-              assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
-              assertThat(providers.get("nvidia").vendor()).isEqualTo("nvidia");
-            });
+        .run(context -> {
+          Map<String, InferenceProvider> providers =
+              context.getBeansOfType(InferenceProvider.class);
+          assertThat(providers).containsOnlyKeys("nvidia");
+          assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
+          assertThat(providers.get("nvidia").vendor()).isEqualTo("nvidia");
+        });
   }
 
   @Test
   void a_groq_key_registers_one_provider() {
     runner
         .withPropertyValues("groq.api-key=sk-test")
-        .run(
-            context -> {
-              Map<String, InferenceProvider> providers =
-                  context.getBeansOfType(InferenceProvider.class);
-              assertThat(providers).containsOnlyKeys("groq");
-              assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
-              assertThat(providers.get("groq").vendor()).isEqualTo("groq");
-            });
+        .run(context -> {
+          Map<String, InferenceProvider> providers =
+              context.getBeansOfType(InferenceProvider.class);
+          assertThat(providers).containsOnlyKeys("groq");
+          assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
+          assertThat(providers.get("groq").vendor()).isEqualTo("groq");
+        });
   }
 
   @Test
   void a_mistral_key_registers_one_provider() {
     runner
         .withPropertyValues("mistral.api-key=sk-test")
-        .run(
-            context -> {
-              Map<String, InferenceProvider> providers =
-                  context.getBeansOfType(InferenceProvider.class);
-              assertThat(providers).containsOnlyKeys("mistral");
-              assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
-              assertThat(providers.get("mistral").vendor()).isEqualTo("mistral_ai");
-            });
+        .run(context -> {
+          Map<String, InferenceProvider> providers =
+              context.getBeansOfType(InferenceProvider.class);
+          assertThat(providers).containsOnlyKeys("mistral");
+          assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
+          assertThat(providers.get("mistral").vendor()).isEqualTo("mistral_ai");
+        });
   }
 
   @Test
   void gemini_and_xai_keys_register_two_providers() {
     runner
         .withPropertyValues("gemini.api-key=sk-test", "xai.api-key=xai-test")
-        .run(
-            context ->
-                assertThat(context.getBeansOfType(InferenceProvider.class))
-                    .containsOnlyKeys("gemini", "xai"));
+        .run(context ->
+            assertThat(context.getBeansOfType(InferenceProvider.class))
+                .containsOnlyKeys("gemini", "xai"));
   }
 
   @Test
   void either_gemini_key_registers_one_gemini_provider() {
     runner
         .withPropertyValues("gemini.api-key=a", "google.api-key=b")
-        .run(
-            context ->
-                assertThat(context.getBeansOfType(InferenceProvider.class))
-                    .containsOnlyKeys("gemini"));
+        .run(context ->
+            assertThat(context.getBeansOfType(InferenceProvider.class)).containsOnlyKeys("gemini"));
   }
 
   @Test
   void the_prefixed_form_of_a_key_registers_the_preset() {
     runner
         .withPropertyValues("nessy.providers.xai.api-key=xai-test")
-        .run(
-            context ->
-                assertThat(context.getBeansOfType(InferenceProvider.class))
-                    .containsOnlyKeys("xai"));
+        .run(context ->
+            assertThat(context.getBeansOfType(InferenceProvider.class)).containsOnlyKeys("xai"));
   }
 
   @Test
@@ -265,13 +251,12 @@ class InferenceProvidersAutoConfigurationTest {
             "nessy.providers.mine.wire=openai-chat",
             "nessy.providers.mine.base-url=https://g/v1",
             "nessy.providers.mine.api-key=k")
-        .run(
-            context -> {
-              Map<String, InferenceProvider> providers =
-                  context.getBeansOfType(InferenceProvider.class);
-              assertThat(providers).containsOnlyKeys("mine");
-              assertThat(providers.get("mine").vendor()).isEqualTo("openai");
-            });
+        .run(context -> {
+          Map<String, InferenceProvider> providers =
+              context.getBeansOfType(InferenceProvider.class);
+          assertThat(providers).containsOnlyKeys("mine");
+          assertThat(providers.get("mine").vendor()).isEqualTo("openai");
+        });
   }
 
   /**
@@ -285,12 +270,11 @@ class InferenceProvidersAutoConfigurationTest {
             "nessy.providers.mine.wire=openai",
             "nessy.providers.mine.base-url=https://g/v1",
             "nessy.providers.mine.api-key=k")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining("nessy.providers.mine.wire");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining("nessy.providers.mine.wire");
+        });
   }
 
   @Test
@@ -300,14 +284,13 @@ class InferenceProvidersAutoConfigurationTest {
             "nessy.providers.mine.wire=openai-responses",
             "nessy.providers.mine.base-url=https://g/v1",
             "nessy.providers.mine.api-key=k")
-        .run(
-            context -> {
-              Map<String, InferenceProvider> providers =
-                  context.getBeansOfType(InferenceProvider.class);
-              assertThat(providers).containsOnlyKeys("mine");
-              assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
-              assertThat(providers.get("mine").vendor()).isEqualTo("openai");
-            });
+        .run(context -> {
+          Map<String, InferenceProvider> providers =
+              context.getBeansOfType(InferenceProvider.class);
+          assertThat(providers).containsOnlyKeys("mine");
+          assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
+          assertThat(providers.get("mine").vendor()).isEqualTo("openai");
+        });
   }
 
   /** The override §7c documents for a preset pointed at a Chat Completions server. */
@@ -318,10 +301,8 @@ class InferenceProvidersAutoConfigurationTest {
             "openai.api-key=sk-test",
             "openai.base-url=http://localhost:1234/v1",
             "nessy.providers.openai.wire=openai-chat")
-        .run(
-            context ->
-                assertThat(context.getBeansOfType(InferenceProvider.class))
-                    .containsOnlyKeys("openai"));
+        .run(context ->
+            assertThat(context.getBeansOfType(InferenceProvider.class)).containsOnlyKeys("openai"));
   }
 
   @Test
@@ -342,24 +323,22 @@ class InferenceProvidersAutoConfigurationTest {
   void the_lmstudio_preset_registers_only_when_turned_on() {
     runner
         .withPropertyValues("nessy.providers.lmstudio.enabled=true")
-        .run(
-            context ->
-                assertThat(context.getBeansOfType(InferenceProvider.class))
-                    .containsOnlyKeys("lmstudio"));
+        .run(context ->
+            assertThat(context.getBeansOfType(InferenceProvider.class))
+                .containsOnlyKeys("lmstudio"));
   }
 
   @Test
   void the_ollama_preset_registers_only_when_turned_on() {
     runner
         .withPropertyValues("nessy.providers.ollama.enabled=true")
-        .run(
-            context -> {
-              Map<String, InferenceProvider> providers =
-                  context.getBeansOfType(InferenceProvider.class);
-              assertThat(providers).containsOnlyKeys("ollama");
-              assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
-              assertThat(providers.get("ollama").vendor()).isEqualTo("ollama");
-            });
+        .run(context -> {
+          Map<String, InferenceProvider> providers =
+              context.getBeansOfType(InferenceProvider.class);
+          assertThat(providers).containsOnlyKeys("ollama");
+          assertThat(providers.values()).isNotEmpty().allSatisfy(this::isObserved);
+          assertThat(providers.get("ollama").vendor()).isEqualTo("ollama");
+        });
   }
 
   @Test
@@ -367,13 +346,12 @@ class InferenceProvidersAutoConfigurationTest {
     runner
         .withUserConfiguration(AScriptedProvider.class)
         .withPropertyValues("openai.api-key=sk-test")
-        .run(
-            context -> {
-              Map<String, InferenceProvider> providers =
-                  context.getBeansOfType(InferenceProvider.class);
-              assertThat(providers).containsOnlyKeys("scripted", "openai");
-              assertThat(providers.get("scripted")).isSameAs(AScriptedProvider.INSTANCE);
-            });
+        .run(context -> {
+          Map<String, InferenceProvider> providers =
+              context.getBeansOfType(InferenceProvider.class);
+          assertThat(providers).containsOnlyKeys("scripted", "openai");
+          assertThat(providers.get("scripted")).isSameAs(AScriptedProvider.INSTANCE);
+        });
   }
 
   // ---- Review Focus -------------------------------------------------------------------------
@@ -390,30 +368,26 @@ class InferenceProvidersAutoConfigurationTest {
     runner
         .withClassLoader(new FilteredClassLoader(AnthropicInferenceProvider.class))
         .withPropertyValues("anthropic.api-key=sk-test")
-        .run(
-            context -> {
-              assertThat(context).hasNotFailed();
-              assertThat(context.getBeansOfType(InferenceProvider.class))
-                  .doesNotContainKey("anthropic");
-            });
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(context.getBeansOfType(InferenceProvider.class))
+              .doesNotContainKey("anthropic");
+        });
   }
 
   @Test
   void the_environment_variable_form_of_a_prefixed_key_lights_the_preset() {
     runner
-        .withInitializer(
-            context ->
-                context
-                    .getEnvironment()
-                    .getPropertySources()
-                    .addFirst(
-                        new SystemEnvironmentPropertySource(
-                            StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
-                            Map.of("NESSY_PROVIDERS_XAI_APIKEY", "xai-test"))))
-        .run(
-            context ->
-                assertThat(context.getBeansOfType(InferenceProvider.class))
-                    .containsOnlyKeys("xai"));
+        .withInitializer(context ->
+            context
+                .getEnvironment()
+                .getPropertySources()
+                .addFirst(
+                    new SystemEnvironmentPropertySource(
+                        StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
+                        Map.of("NESSY_PROVIDERS_XAI_APIKEY", "xai-test"))))
+        .run(context ->
+            assertThat(context.getBeansOfType(InferenceProvider.class)).containsOnlyKeys("xai"));
   }
 
   @Test
@@ -421,11 +395,10 @@ class InferenceProvidersAutoConfigurationTest {
     runner
         .withUserConfiguration(AnOpenAiNamedProvider.class)
         .withPropertyValues("openai.api-key=sk-test")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure()).hasMessageContaining("'openai'");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure()).hasMessageContaining("'openai'");
+        });
   }
 
   private void isObserved(InferenceProvider provider) {
@@ -470,10 +443,9 @@ class InferenceProvidersAutoConfigurationTest {
     void the_openai_preset_carries_strict_tools_by_default() {
       runner
           .withPropertyValues("openai.api-key=sk-test")
-          .run(
-              context ->
-                  assertThat(propertiesOf(context, "openai"))
-                      .containsExactly(Map.entry("openai.tools.strict", "true")));
+          .run(context ->
+              assertThat(propertiesOf(context, "openai"))
+                  .containsExactly(Map.entry("openai.tools.strict", "true")));
     }
 
     @Test
@@ -482,10 +454,9 @@ class InferenceProvidersAutoConfigurationTest {
           .withPropertyValues(
               "openai.api-key=sk-test",
               "nessy.providers.openai.properties.openai.tools.strict=false")
-          .run(
-              context ->
-                  assertThat(propertiesOf(context, "openai"))
-                      .containsExactly(Map.entry("openai.tools.strict", "false")));
+          .run(context ->
+              assertThat(propertiesOf(context, "openai"))
+                  .containsExactly(Map.entry("openai.tools.strict", "false")));
     }
 
     /** Section 6b's measurement pinned: a Map<String, String> keeps a dotted key whole. */
@@ -495,12 +466,11 @@ class InferenceProvidersAutoConfigurationTest {
           .withPropertyValues(
               "openai.api-key=sk-test",
               "nessy.providers.openai.properties.openai.reasoning.effort=high")
-          .run(
-              context ->
-                  assertThat(propertiesOf(context, "openai"))
-                      .containsOnly(
-                          Map.entry("openai.tools.strict", "true"),
-                          Map.entry("openai.reasoning.effort", "high")));
+          .run(context ->
+              assertThat(propertiesOf(context, "openai"))
+                  .containsOnly(
+                      Map.entry("openai.tools.strict", "true"),
+                      Map.entry("openai.reasoning.effort", "high")));
     }
 
     /**
@@ -512,10 +482,9 @@ class InferenceProvidersAutoConfigurationTest {
           .withPropertyValues(
               "openai.api-key=sk-test",
               "nessy.providers.openai.properties.openai.reasoning.effort=high")
-          .run(
-              context ->
-                  assertThat(OpenAiProperties.REASONING_EFFORT.in(propertiesOf(context, "openai")))
-                      .contains(OpenAiReasoningEffort.HIGH));
+          .run(context ->
+              assertThat(OpenAiProperties.REASONING_EFFORT.in(propertiesOf(context, "openai")))
+                  .contains(OpenAiReasoningEffort.HIGH));
     }
 
     /** Review Focus 4: the vendor's own spelling survives the binder. */
@@ -525,10 +494,9 @@ class InferenceProvidersAutoConfigurationTest {
           .withPropertyValues(
               "anthropic.api-key=sk-test",
               "nessy.providers.anthropic.properties.anthropic.thinking.budget_tokens=2048")
-          .run(
-              context ->
-                  assertThat(propertiesOf(context, "anthropic"))
-                      .containsExactly(Map.entry("anthropic.thinking.budget_tokens", "2048")));
+          .run(context ->
+              assertThat(propertiesOf(context, "anthropic"))
+                  .containsExactly(Map.entry("anthropic.thinking.budget_tokens", "2048")));
     }
 
     /** Review Focus 4. */
@@ -538,40 +506,36 @@ class InferenceProvidersAutoConfigurationTest {
           .withPropertyValues(
               "gemini.api-key=sk-test",
               "nessy.providers.gemini.properties.gemini.generationConfig.thinkingConfig.thinkingBudget=1024")
-          .run(
-              context ->
-                  assertThat(propertiesOf(context, "gemini"))
-                      .containsExactly(
-                          Map.entry(
-                              "gemini.generationConfig.thinkingConfig.thinkingBudget", "1024")));
+          .run(context ->
+              assertThat(propertiesOf(context, "gemini"))
+                  .containsExactly(
+                      Map.entry("gemini.generationConfig.thinkingConfig.thinkingBudget", "1024")));
     }
 
     @Test
     void the_same_keys_given_as_yaml_bind_to_the_same_maps() {
       runner
-          .withInitializer(
-              context -> {
-                try {
-                  new YamlPropertySourceLoader()
-                      .load("vendor-properties", new ClassPathResource("vendor-properties.yaml"))
-                      .forEach(
-                          source -> context.getEnvironment().getPropertySources().addFirst(source));
-                } catch (IOException e) {
-                  throw new UncheckedIOException(e);
-                }
-              })
-          .run(
-              context -> {
-                assertThat(propertiesOf(context, "openai"))
-                    .containsOnly(
-                        Map.entry("openai.tools.strict", "false"),
-                        Map.entry("openai.reasoning.effort", "high"));
-                assertThat(propertiesOf(context, "anthropic"))
-                    .containsExactly(Map.entry("anthropic.thinking.budget_tokens", "2048"));
-                assertThat(propertiesOf(context, "gemini"))
-                    .containsExactly(
-                        Map.entry("gemini.generationConfig.thinkingConfig.thinkingBudget", "1024"));
-              });
+          .withInitializer(context -> {
+            try {
+              new YamlPropertySourceLoader()
+                  .load("vendor-properties", new ClassPathResource("vendor-properties.yaml"))
+                  .forEach(
+                      source -> context.getEnvironment().getPropertySources().addFirst(source));
+            } catch (IOException e) {
+              throw new UncheckedIOException(e);
+            }
+          })
+          .run(context -> {
+            assertThat(propertiesOf(context, "openai"))
+                .containsOnly(
+                    Map.entry("openai.tools.strict", "false"),
+                    Map.entry("openai.reasoning.effort", "high"));
+            assertThat(propertiesOf(context, "anthropic"))
+                .containsExactly(Map.entry("anthropic.thinking.budget_tokens", "2048"));
+            assertThat(propertiesOf(context, "gemini"))
+                .containsExactly(
+                    Map.entry("gemini.generationConfig.thinkingConfig.thinkingBudget", "1024"));
+          });
     }
 
     @Test
@@ -602,14 +566,13 @@ class InferenceProvidersAutoConfigurationTest {
           .withPropertyValues(
               "anthropic.api-key=sk-test",
               "nessy.providers.anthropic.properties.openai.reasoning.effort=high")
-          .run(
-              context -> {
-                assertThat(context).hasFailed();
-                assertThat(context.getStartupFailure())
-                    .rootCause()
-                    .hasMessageContaining("'openai.reasoning.effort'")
-                    .hasMessageContaining("'anthropic.'");
-              });
+          .run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure())
+                .rootCause()
+                .hasMessageContaining("'openai.reasoning.effort'")
+                .hasMessageContaining("'anthropic.'");
+          });
     }
 
     @Test
@@ -627,10 +590,9 @@ class InferenceProvidersAutoConfigurationTest {
               "nessy.providers.mine.base-url=https://g/v1",
               "nessy.providers.mine.api-key=k",
               "nessy.providers.mine.properties.openai.temperature=0.2")
-          .run(
-              context ->
-                  assertThat(propertiesOf(context, "mine"))
-                      .containsExactly(Map.entry("openai.temperature", "0.2")));
+          .run(context ->
+              assertThat(propertiesOf(context, "mine"))
+                  .containsExactly(Map.entry("openai.temperature", "0.2")));
     }
   }
 }

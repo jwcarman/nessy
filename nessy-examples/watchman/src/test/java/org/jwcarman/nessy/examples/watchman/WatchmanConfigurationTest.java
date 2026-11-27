@@ -37,10 +37,8 @@ class WatchmanConfigurationTest {
 
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
-          .withInitializer(
-              context ->
-                  context.addBeanFactoryPostProcessor(
-                      new LazyInitializationBeanFactoryPostProcessor()))
+          .withInitializer(context ->
+              context.addBeanFactoryPostProcessor(new LazyInitializationBeanFactoryPostProcessor()))
           .withUserConfiguration(WatchmanConfiguration.class);
 
   @Test

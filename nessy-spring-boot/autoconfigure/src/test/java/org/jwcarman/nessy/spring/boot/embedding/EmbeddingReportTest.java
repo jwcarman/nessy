@@ -79,19 +79,18 @@ class EmbeddingReportTest {
             "openai.api-key=sk-super-secret",
             "voyage.api-key=pa-super-secret",
             "nessy.embedders.voyage.properties.voyage.truncation=false")
-        .run(
-            context -> {
-              report(context);
+        .run(context -> {
+          report(context);
 
-              assertThat(output)
-                  .contains(
-                      "NESSY EMBEDDING: embedders: openai (openai, the vendor's own endpoint,"
-                          + " vendor openai); voyage (voyage, https://api.voyageai.com/v1, vendor"
-                          + " voyage, properties [voyage.truncation])")
-                  .doesNotContain("sk-super-secret")
-                  .doesNotContain("pa-super-secret")
-                  .doesNotContain("truncation=false");
-            });
+          assertThat(output)
+              .contains(
+                  "NESSY EMBEDDING: embedders: openai (openai, the vendor's own endpoint,"
+                      + " vendor openai); voyage (voyage, https://api.voyageai.com/v1, vendor"
+                      + " voyage, properties [voyage.truncation])")
+              .doesNotContain("sk-super-secret")
+              .doesNotContain("pa-super-secret")
+              .doesNotContain("truncation=false");
+        });
   }
 
   @Test
@@ -102,13 +101,11 @@ class EmbeddingReportTest {
             "nessy.embedder=voyage",
             "nessy.embedding-model=voyage-3.5",
             "nessy.embedding-dimension=1024")
-        .run(
-            context -> {
-              report(context);
+        .run(context -> {
+          report(context);
 
-              assertThat(output)
-                  .contains("NESSY EMBEDDING: default: voyage / voyage-3.5, 1024 wide");
-            });
+          assertThat(output).contains("NESSY EMBEDDING: default: voyage / voyage-3.5, 1024 wide");
+        });
   }
 
   @Test
@@ -116,50 +113,46 @@ class EmbeddingReportTest {
     runner
         .withPropertyValues(
             "voyage.api-key=v-test", "nessy.embedder=voyage", "nessy.embedding-model=voyage-3.5")
-        .run(
-            context -> {
-              report(context);
+        .run(context -> {
+          report(context);
 
-              assertThat(output)
-                  .contains("NESSY EMBEDDING: default: voyage / voyage-3.5")
-                  .doesNotContain(" wide");
-            });
+          assertThat(output)
+              .contains("NESSY EMBEDDING: default: voyage / voyage-3.5")
+              .doesNotContain(" wide");
+        });
   }
 
   @Test
   void with_nothing_registered_it_says_stores_rank_by_recency(CapturedOutput output) {
-    runner.run(
-        context -> {
-          report(context);
+    runner.run(context -> {
+      report(context);
 
-          assertThat(output)
-              .contains("NESSY EMBEDDING: no embedder is configured; stores rank by recency");
-        });
+      assertThat(output)
+          .contains("NESSY EMBEDDING: no embedder is configured; stores rank by recency");
+    });
   }
 
   @Test
   void with_embedders_and_no_default_it_says_every_store_names_its_own(CapturedOutput output) {
     runner
         .withPropertyValues("openai.api-key=sk-test")
-        .run(
-            context -> {
-              report(context);
+        .run(context -> {
+          report(context);
 
-              assertThat(output)
-                  .contains("NESSY EMBEDDING: no default embedder; every store names its own");
-            });
+          assertThat(output)
+              .contains("NESSY EMBEDDING: no default embedder; every store names its own");
+        });
   }
 
   @Test
   void an_application_bean_prints_the_vendor_it_reports(CapturedOutput output) {
     runner
         .withUserConfiguration(EmbeddingProvidersAutoConfigurationTest.AScriptedEmbedder.class)
-        .run(
-            context -> {
-              report(context);
+        .run(context -> {
+          report(context);
 
-              assertThat(output).contains("NESSY EMBEDDING: embedders: scripted (vendor scripted)");
-            });
+          assertThat(output).contains("NESSY EMBEDDING: embedders: scripted (vendor scripted)");
+        });
   }
 
   @Test
@@ -170,13 +163,11 @@ class EmbeddingReportTest {
             "nessy.embedders.local.base-url=http://localhost:1234/v1",
             "nessy.embedders.local.api-key=lm-studio",
             "nessy.embedders.local.vendor=lmstudio")
-        .run(
-            context -> {
-              report(context);
+        .run(context -> {
+          report(context);
 
-              assertThat(output)
-                  .contains("local (openai, http://localhost:1234/v1, vendor lmstudio)");
-            });
+          assertThat(output).contains("local (openai, http://localhost:1234/v1, vendor lmstudio)");
+        });
   }
 
   /** The default is the starter's own factory's; an application's factory has its own. */
@@ -190,14 +181,13 @@ class EmbeddingReportTest {
         .withBean(EmbedderFactory.class, () -> ours)
         .withPropertyValues(
             "voyage.api-key=v-test", "nessy.embedder=voyage", "nessy.embedding-model=voyage-3.5")
-        .run(
-            context -> {
-              report(context);
+        .run(context -> {
+          report(context);
 
-              assertThat(output)
-                  .contains("NESSY EMBEDDING: embedders: voyage")
-                  .doesNotContain("NESSY EMBEDDING: default")
-                  .doesNotContain("no default embedder");
-            });
+          assertThat(output)
+              .contains("NESSY EMBEDDING: embedders: voyage")
+              .doesNotContain("NESSY EMBEDDING: default")
+              .doesNotContain("no default embedder");
+        });
   }
 }

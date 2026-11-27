@@ -218,12 +218,11 @@ class RepeatedCallIdLateOutcomeTest {
     ignored.start();
     backend = new InMemoryQueuedBackend(new JacksonCodecFactory(JsonMapper.builder().build()));
     factory =
-        DefaultQueuedHarnessFactory.of(
-            config ->
-                config
-                    .backend(backend)
-                    .provider(ProviderId.of("test"), model)
-                    .inference(ProviderId.of("test"), InferenceOptions.of("m")));
+        DefaultQueuedHarnessFactory.of(config ->
+            config
+                .backend(backend)
+                .provider(ProviderId.of("test"), model)
+                .inference(ProviderId.of("test"), InferenceOptions.of("m")));
     QueuedHarness<String> harness =
         factory.create(
             TYPE,

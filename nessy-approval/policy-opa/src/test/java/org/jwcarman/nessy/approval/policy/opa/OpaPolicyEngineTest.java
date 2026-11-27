@@ -208,11 +208,10 @@ class OpaPolicyEngineTest {
     void a_custom_renderer_is_what_the_policy_sees() {
       // This document has no toolName at all, so no rule can fire and the default answers.
       PolicyEngine mine =
-          OpaPolicyEngine.of(
-              opa ->
-                  opa.url(baseUrl())
-                      .decisionPath("nessy/tools/decision")
-                      .renderer(request -> MAPPER.createObjectNode().put("whatever", "you like")));
+          OpaPolicyEngine.of(opa ->
+              opa.url(baseUrl())
+                  .decisionPath("nessy/tools/decision")
+                  .renderer(request -> MAPPER.createObjectNode().put("whatever", "you like")));
 
       assertThat(mine.decide(asking("watchman", "disk_usage", "staging-1")))
           .isEqualTo(Verdict.deny("no rule allowed this"));

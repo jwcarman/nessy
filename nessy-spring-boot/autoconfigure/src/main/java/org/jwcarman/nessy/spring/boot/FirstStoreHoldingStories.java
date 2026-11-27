@@ -67,11 +67,10 @@ final class FirstStoreHoldingStories implements AgentStories {
       public List<Narrated> replay(Seq after, int limit) {
         return holding(type, id)
             .map(story -> story.replay(after, limit))
-            .orElseGet(
-                () -> {
-                  requireReadable(after, limit);
-                  return List.of();
-                });
+            .orElseGet(() -> {
+              requireReadable(after, limit);
+              return List.of();
+            });
       }
 
       @Override

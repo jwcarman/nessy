@@ -59,17 +59,16 @@ class InMemoryLeasesTest {
 
   private Future<Attempt<Void>> held(
       AgentId agent, Duration ttl, CountDownLatch holding, CountDownLatch release) {
-    return callers.submit(
-        () ->
-            leases.tryWithLease(
-                SUMMARY,
-                TYPE,
-                agent,
-                ttl,
-                () -> {
-                  holding.countDown();
-                  await().atMost(Duration.ofSeconds(10)).until(() -> release.getCount() == 0);
-                }));
+    return callers.submit(() ->
+        leases.tryWithLease(
+            SUMMARY,
+            TYPE,
+            agent,
+            ttl,
+            () -> {
+              holding.countDown();
+              await().atMost(Duration.ofSeconds(10)).until(() -> release.getCount() == 0);
+            }));
   }
 
   @AfterEach
@@ -127,16 +126,15 @@ class InMemoryLeasesTest {
     AgentId agent = agent();
     AtomicInteger counted = new AtomicInteger();
 
-    assertThatThrownBy(
-            () ->
-                leases.tryWithLease(
-                    SUMMARY,
-                    TYPE,
-                    agent,
-                    TTL,
-                    () -> {
-                      throw new IllegalStateException("the work failed");
-                    }))
+    assertThatThrownBy(() ->
+            leases.tryWithLease(
+                SUMMARY,
+                TYPE,
+                agent,
+                TTL,
+                () -> {
+                  throw new IllegalStateException("the work failed");
+                }))
         .isInstanceOf(IllegalStateException.class);
 
     assertThat(ran(leases.tryWithLease(SUMMARY, TYPE, agent, TTL, counted::incrementAndGet)))
@@ -157,13 +155,10 @@ class InMemoryLeasesTest {
 
     await()
         .atMost(Duration.ofSeconds(5))
-        .untilAsserted(
-            () ->
-                assertThat(
-                        ran(
-                            leases.tryWithLease(
-                                SUMMARY, TYPE, agent, TTL, counted::incrementAndGet)))
-                    .isTrue());
+        .untilAsserted(() ->
+            assertThat(
+                    ran(leases.tryWithLease(SUMMARY, TYPE, agent, TTL, counted::incrementAndGet)))
+                .isTrue());
 
     assertThat(counted).hasValue(1);
     release.countDown();
@@ -230,22 +225,20 @@ class InMemoryLeasesTest {
     AtomicInteger counted = new AtomicInteger();
     List<Future<Attempt<Void>>> outcomes =
         IntStream.range(0, callerCount)
-            .mapToObj(
-                _ ->
-                    callers.submit(
-                        () -> {
-                          go.await();
-                          return leases.tryWithLease(
-                              SUMMARY,
-                              TYPE,
-                              agent,
-                              TTL,
-                              () -> {
-                                counted.incrementAndGet();
-                                // Hold it long enough for the others to be refused.
-                                await().pollDelay(Duration.ofMillis(300)).until(() -> true);
-                              });
-                        }))
+            .mapToObj(_ ->
+                callers.submit(() -> {
+                  go.await();
+                  return leases.tryWithLease(
+                      SUMMARY,
+                      TYPE,
+                      agent,
+                      TTL,
+                      () -> {
+                        counted.incrementAndGet();
+                        // Hold it long enough for the others to be refused.
+                        await().pollDelay(Duration.ofMillis(300)).until(() -> true);
+                      });
+                }))
             .toList();
 
     go.countDown();

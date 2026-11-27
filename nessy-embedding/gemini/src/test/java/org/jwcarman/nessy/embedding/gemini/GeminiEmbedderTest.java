@@ -55,14 +55,13 @@ class GeminiEmbedderTest {
   private static EmbedContentResponse reply(float[]... vectors) {
     List<ContentEmbedding> embeddings =
         java.util.Arrays.stream(vectors)
-            .map(
-                vector -> {
-                  List<Float> values = new java.util.ArrayList<>();
-                  for (float v : vector) {
-                    values.add(v);
-                  }
-                  return ContentEmbedding.builder().values(values).build();
-                })
+            .map(vector -> {
+              List<Float> values = new java.util.ArrayList<>();
+              for (float v : vector) {
+                values.add(v);
+              }
+              return ContentEmbedding.builder().values(values).build();
+            })
             .toList();
     return EmbedContentResponse.builder().embeddings(embeddings).build();
   }
@@ -160,14 +159,10 @@ class GeminiEmbedderTest {
 
     @Test
     void a_key_a_base_url_and_a_task_type_build_a_provider() {
-      assertThatCode(
-              () ->
-                  GeminiEmbeddingProvider.of(
-                          c ->
-                              c.apiKey("k")
-                                  .baseUrl("http://127.0.0.1:1")
-                                  .taskType("RETRIEVAL_DOCUMENT"))
-                      .close())
+      assertThatCode(() ->
+              GeminiEmbeddingProvider.of(c ->
+                      c.apiKey("k").baseUrl("http://127.0.0.1:1").taskType("RETRIEVAL_DOCUMENT"))
+                  .close())
           .doesNotThrowAnyException();
     }
 

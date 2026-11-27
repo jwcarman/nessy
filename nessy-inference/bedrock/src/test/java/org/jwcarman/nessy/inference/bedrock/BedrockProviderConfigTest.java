@@ -48,11 +48,10 @@ class BedrockProviderConfigTest {
   @Test
   void a_region_and_credentials_build_a_provider_that_closes_its_own_client() {
     BedrockInferenceProvider provider =
-        BedrockInferenceProvider.of(
-            c ->
-                c.region(Region.US_EAST_1)
-                    .credentialsProvider(CREDENTIALS)
-                    .mapper(JsonMapper.builder().build()));
+        BedrockInferenceProvider.of(c ->
+            c.region(Region.US_EAST_1)
+                .credentialsProvider(CREDENTIALS)
+                .mapper(JsonMapper.builder().build()));
 
     assertThat(provider.name()).isEqualTo("Bedrock");
     assertThatCode(provider::close).doesNotThrowAnyException();
@@ -80,11 +79,10 @@ class BedrockProviderConfigTest {
 
   @Test
   void an_explicit_region_wins_over_the_environment() {
-    assertThatCode(
-            () ->
-                BedrockInferenceProvider.of(
-                        c -> c.fromEnv().region(Region.EU_WEST_1).credentialsProvider(CREDENTIALS))
-                    .close())
+    assertThatCode(() ->
+            BedrockInferenceProvider.of(
+                    c -> c.fromEnv().region(Region.EU_WEST_1).credentialsProvider(CREDENTIALS))
+                .close())
         .doesNotThrowAnyException();
   }
 
@@ -173,14 +171,13 @@ class BedrockProviderConfigTest {
   @Test
   void valid_properties_on_the_config_build_and_validate_cleanly() {
     BedrockInferenceProvider provider =
-        BedrockInferenceProvider.of(
-            c ->
-                c.region(Region.US_EAST_1)
-                    .credentialsProvider(CREDENTIALS)
-                    .properties(
-                        Map.of(
-                            "bedrock.inferenceConfig.temperature", "0.2",
-                            "bedrock.inferenceConfig.topP", "0.5")));
+        BedrockInferenceProvider.of(c ->
+            c.region(Region.US_EAST_1)
+                .credentialsProvider(CREDENTIALS)
+                .properties(
+                    Map.of(
+                        "bedrock.inferenceConfig.temperature", "0.2",
+                        "bedrock.inferenceConfig.topP", "0.5")));
     InferenceOptions options = new InferenceOptions("m", 512, Map.of("other.x", "1"));
     try {
       assertThatCode(() -> provider.validate(options)).doesNotThrowAnyException();
@@ -205,48 +202,39 @@ class BedrockProviderConfigTest {
 
     @Test
     void a_null_timeout_is_rejected() {
-      assertThatThrownBy(
-              () ->
-                  BedrockInferenceProvider.of(
-                      c ->
-                          c.region(Region.US_EAST_1)
-                              .credentialsProvider(CREDENTIALS)
-                              .timeout(null)))
+      assertThatThrownBy(() ->
+              BedrockInferenceProvider.of(
+                  c -> c.region(Region.US_EAST_1).credentialsProvider(CREDENTIALS).timeout(null)))
           .isInstanceOf(NullPointerException.class);
     }
 
     @Test
     void a_zero_timeout_is_rejected() {
-      assertThatThrownBy(
-              () ->
-                  BedrockInferenceProvider.of(
-                      c ->
-                          c.region(Region.US_EAST_1)
-                              .credentialsProvider(CREDENTIALS)
-                              .timeout(Duration.ZERO)))
+      assertThatThrownBy(() ->
+              BedrockInferenceProvider.of(c ->
+                  c.region(Region.US_EAST_1)
+                      .credentialsProvider(CREDENTIALS)
+                      .timeout(Duration.ZERO)))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void a_negative_timeout_is_rejected() {
-      assertThatThrownBy(
-              () ->
-                  BedrockInferenceProvider.of(
-                      c ->
-                          c.region(Region.US_EAST_1)
-                              .credentialsProvider(CREDENTIALS)
-                              .timeout(Duration.ofSeconds(-1))))
+      assertThatThrownBy(() ->
+              BedrockInferenceProvider.of(c ->
+                  c.region(Region.US_EAST_1)
+                      .credentialsProvider(CREDENTIALS)
+                      .timeout(Duration.ofSeconds(-1))))
           .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void a_positive_timeout_builds_a_provider_that_closes_its_own_client() {
       BedrockInferenceProvider provider =
-          BedrockInferenceProvider.of(
-              c ->
-                  c.region(Region.US_EAST_1)
-                      .credentialsProvider(CREDENTIALS)
-                      .timeout(Duration.ofMinutes(6)));
+          BedrockInferenceProvider.of(c ->
+              c.region(Region.US_EAST_1)
+                  .credentialsProvider(CREDENTIALS)
+                  .timeout(Duration.ofMinutes(6)));
 
       assertThat(provider.name()).isEqualTo("Bedrock");
       assertThatCode(provider::close).doesNotThrowAnyException();

@@ -114,13 +114,11 @@ class OpenAiResponsesProviderConfigTest {
         new OpenAiResponsesProviderConfig()
             .property("openai.reasoning.effort", "medium")
             .client(
-                ResponseStreams.client(
-                    params -> {
-                      captured[0] = params;
-                      return ResponseStreams.eventsOf(
-                          ResponseStreams.completed(
-                              List.of(ResponseStreams.message("msg_1", "ok"))));
-                    }))
+                ResponseStreams.client(params -> {
+                  captured[0] = params;
+                  return ResponseStreams.eventsOf(
+                      ResponseStreams.completed(List.of(ResponseStreams.message("msg_1", "ok"))));
+                }))
             .build();
 
     provider.infer(OpenAiResponsesInferenceProviderTest.REQUEST);
@@ -137,12 +135,11 @@ class OpenAiResponsesProviderConfigTest {
         .property(OpenAiProperties.REASONING_SUMMARY, OpenAiReasoningSummary.DETAILED)
         .property(OpenAiProperties.SERVICE_TIER, OpenAiServiceTier.ULTRAFAST)
         .client(
-            ResponseStreams.client(
-                params -> {
-                  captured[0] = params;
-                  return ResponseStreams.eventsOf(
-                      ResponseStreams.completed(List.of(ResponseStreams.message("msg_1", "ok"))));
-                }))
+            ResponseStreams.client(params -> {
+              captured[0] = params;
+              return ResponseStreams.eventsOf(
+                  ResponseStreams.completed(List.of(ResponseStreams.message("msg_1", "ok"))));
+            }))
         .build()
         .infer(OpenAiResponsesInferenceProviderTest.REQUEST);
 
@@ -160,12 +157,11 @@ class OpenAiResponsesProviderConfigTest {
         .property(OpenAiProperties.REASONING_SUMMARY, OpenAiReasoningSummary.CONCISE)
         .property(OpenAiProperties.SERVICE_TIER, OpenAiServiceTier.FLEX)
         .client(
-            ResponseStreams.client(
-                params -> {
-                  captured[0] = params;
-                  return ResponseStreams.eventsOf(
-                      ResponseStreams.completed(List.of(ResponseStreams.message("msg_1", "ok"))));
-                }))
+            ResponseStreams.client(params -> {
+              captured[0] = params;
+              return ResponseStreams.eventsOf(
+                  ResponseStreams.completed(List.of(ResponseStreams.message("msg_1", "ok"))));
+            }))
         .build()
         .infer(OpenAiResponsesInferenceProviderTest.REQUEST);
 
@@ -183,12 +179,11 @@ class OpenAiResponsesProviderConfigTest {
     new OpenAiResponsesProviderConfig()
         .property("openai.service_tier", "ultrafast")
         .client(
-            ResponseStreams.client(
-                params -> {
-                  captured[0] = params;
-                  return ResponseStreams.eventsOf(
-                      ResponseStreams.completed(List.of(ResponseStreams.message("msg_1", "ok"))));
-                }))
+            ResponseStreams.client(params -> {
+              captured[0] = params;
+              return ResponseStreams.eventsOf(
+                  ResponseStreams.completed(List.of(ResponseStreams.message("msg_1", "ok"))));
+            }))
         .build()
         .infer(OpenAiResponsesInferenceProviderTest.REQUEST);
 
@@ -246,11 +241,10 @@ class OpenAiResponsesProviderConfigTest {
     OpenAiResponsesInferenceProvider provider =
         new OpenAiResponsesProviderConfig()
             .client(
-                ResponseStreams.client(
-                    params ->
-                        ResponseStreams.eventsOf(
-                            ResponseStreams.completed(
-                                List.of(ResponseStreams.message("msg_1", "ok"))))))
+                ResponseStreams.client(params ->
+                    ResponseStreams.eventsOf(
+                        ResponseStreams.completed(
+                            List.of(ResponseStreams.message("msg_1", "ok"))))))
             .build();
     InferenceOptions options =
         new InferenceOptions("gpt-6-sol", 1024, Map.of("openai.background", "true"));

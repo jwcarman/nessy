@@ -67,16 +67,15 @@ class InferenceRequestManifestRowsTest {
   private static final Duration PATIENCE = Duration.ofSeconds(30);
 
   private final EngineFixture engine =
-      new EngineFixture(
-          (request, narrator) -> {
-            if (request.context().activeTurn().exchanges().isEmpty()) {
-              return new InferenceResult.Actions(
-                  List.of(new Block.ToolCall("c1", "lookup", "{\"q\":\"x\"}")),
-                  Usage.unreported("a-model"));
-            }
-            return new InferenceResult.Answer(
-                List.of(new Block.Text("done")), Usage.unreported("a-model"));
-          });
+      new EngineFixture((request, narrator) -> {
+        if (request.context().activeTurn().exchanges().isEmpty()) {
+          return new InferenceResult.Actions(
+              List.of(new Block.ToolCall("c1", "lookup", "{\"q\":\"x\"}")),
+              Usage.unreported("a-model"));
+        }
+        return new InferenceResult.Answer(
+            List.of(new Block.Text("done")), Usage.unreported("a-model"));
+      });
 
   record Query(String q) {}
 
@@ -138,10 +137,9 @@ class InferenceRequestManifestRowsTest {
     harness.tell(agent, "look it up");
     await()
         .atMost(PATIENCE)
-        .untilAsserted(
-            () ->
-                assertThat(engine.history().forAgent(TYPE, agent).completedAfter(Optional.empty()))
-                    .hasSize(1));
+        .untilAsserted(() ->
+            assertThat(engine.history().forAgent(TYPE, agent).completedAfter(Optional.empty()))
+                .hasSize(1));
     return agent;
   }
 
@@ -163,13 +161,11 @@ class InferenceRequestManifestRowsTest {
   void a_changed_ambient_section_stores_one_new_payload() {
     AtomicInteger asked = new AtomicInteger();
     AmbientSource ticking =
-        AmbientSource.of(
-            source ->
-                source
-                    .kind("clock")
-                    .offering(
-                        _ ->
-                            Optional.of(Ambient.text("clock", "tick " + asked.incrementAndGet()))));
+        AmbientSource.of(source ->
+            source
+                .kind("clock")
+                .offering(
+                    _ -> Optional.of(Ambient.text("clock", "tick " + asked.incrementAndGet()))));
 
     AgentId agent = oneTurnTwoCalls(ticking);
 

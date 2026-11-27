@@ -190,19 +190,18 @@ class JdbcDirectBackendTest {
     CountDownLatch release = new CountDownLatch(1);
 
     CompletableFuture<Void> holder =
-        CompletableFuture.runAsync(
-            () ->
-                first
-                    .locks()
-                    .withLock(
-                        KIND,
-                        TYPE,
-                        agent,
-                        () -> {
-                          holding.countDown();
-                          await(release);
-                          return null;
-                        }));
+        CompletableFuture.runAsync(() ->
+            first
+                .locks()
+                .withLock(
+                    KIND,
+                    TYPE,
+                    agent,
+                    () -> {
+                      holding.countDown();
+                      await(release);
+                      return null;
+                    }));
 
     assertThat(holding.await(5, TimeUnit.SECONDS)).as("first instance took the lock").isTrue();
     CompletableFuture<String> waiter =

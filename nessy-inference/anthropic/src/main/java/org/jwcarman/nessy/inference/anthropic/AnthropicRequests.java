@@ -674,9 +674,8 @@ public final class AnthropicRequests {
   private static ToolUseBlockParam.Input toInput(String arguments, JsonMapper mapper) {
     ToolUseBlockParam.Input.Builder input = ToolUseBlockParam.Input.builder();
     Map<String, Object> properties = mapper.readValue(arguments, new TypeReference<>() {});
-    properties.forEach(
-        (name, value) ->
-            input.putAdditionalProperty(name, com.anthropic.core.JsonValue.from(value)));
+    properties.forEach((name, value) ->
+        input.putAdditionalProperty(name, com.anthropic.core.JsonValue.from(value)));
     return input.build();
   }
 

@@ -177,12 +177,9 @@ class OpenAiChatInferenceProviderTest {
     }
     message
         .refusal()
-        .ifPresent(
-            refusal ->
-                chunks.add(
-                    chunk(
-                        ChatCompletionChunk.Choice.Delta.builder().refusal(refusal).build(),
-                        null)));
+        .ifPresent(refusal ->
+            chunks.add(
+                chunk(ChatCompletionChunk.Choice.Delta.builder().refusal(refusal).build(), null)));
     List<ChatCompletionMessageToolCall> calls = message.toolCalls().orElseGet(List::of);
     for (int i = 0; i < calls.size(); i++) {
       var function = calls.get(i).asFunction();
@@ -225,16 +222,15 @@ class OpenAiChatInferenceProviderTest {
     // Usage comes last, on a chunk with no choices, when the request asked for it.
     completion
         .usage()
-        .ifPresent(
-            usage ->
-                chunks.add(
-                    ChatCompletionChunk.builder()
-                        .id("chatcmpl-test")
-                        .created(0L)
-                        .model("gpt-4o")
-                        .choices(List.of())
-                        .usage(usage)
-                        .build()));
+        .ifPresent(usage ->
+            chunks.add(
+                ChatCompletionChunk.builder()
+                    .id("chatcmpl-test")
+                    .created(0L)
+                    .model("gpt-4o")
+                    .choices(List.of())
+                    .usage(usage)
+                    .build()));
     return chunks;
   }
 
@@ -315,10 +311,9 @@ class OpenAiChatInferenceProviderTest {
     InferenceResult result =
         new OpenAiChatProviderConfig()
             .client(
-                fakeClient(
-                    params -> {
-                      throw failure;
-                    }))
+                fakeClient(params -> {
+                  throw failure;
+                }))
             .build()
             .infer(REQUEST);
     assertThat(result).isInstanceOf(InferenceResult.Fault.class);
@@ -463,10 +458,8 @@ class OpenAiChatInferenceProviderTest {
       InferenceResult result =
           new OpenAiChatProviderConfig()
               .client(
-                  fakeClient(
-                      params ->
-                          completionOf(
-                              saying("1412 metres"), ChatCompletion.Choice.FinishReason.STOP)))
+                  fakeClient(params ->
+                      completionOf(saying("1412 metres"), ChatCompletion.Choice.FinishReason.STOP)))
               .build()
               .infer(REQUEST);
 
@@ -764,14 +757,13 @@ class OpenAiChatInferenceProviderTest {
       InferenceResult result =
           new OpenAiChatProviderConfig()
               .client(
-                  fakeClient(
-                      params ->
-                          ChatCompletion.builder()
-                              .id("chatcmpl-empty")
-                              .created(0L)
-                              .model("gpt-4o")
-                              .choices(List.of())
-                              .build()))
+                  fakeClient(params ->
+                      ChatCompletion.builder()
+                          .id("chatcmpl-empty")
+                          .created(0L)
+                          .model("gpt-4o")
+                          .choices(List.of())
+                          .build()))
               .build()
               .infer(REQUEST);
 
@@ -819,15 +811,14 @@ class OpenAiChatInferenceProviderTest {
       var captured = new ChatCompletionCreateParams[1];
       new OpenAiChatProviderConfig()
           .client(
-              fakeClient(
-                  params -> {
-                    captured[0] = params;
-                    return completionOf(
-                        ChatCompletionMessage.builder()
-                            .content("ok")
-                            .refusal(Optional.<String>empty())
-                            .build());
-                  }))
+              fakeClient(params -> {
+                captured[0] = params;
+                return completionOf(
+                    ChatCompletionMessage.builder()
+                        .content("ok")
+                        .refusal(Optional.<String>empty())
+                        .build());
+              }))
           .build()
           .infer(REQUEST);
 
@@ -1452,15 +1443,14 @@ class OpenAiChatInferenceProviderTest {
       new OpenAiChatProviderConfig()
           .property("openai.service_tier", "flex")
           .client(
-              fakeClient(
-                  params -> {
-                    captured[0] = params;
-                    return completionOf(
-                        ChatCompletionMessage.builder()
-                            .content("ok")
-                            .refusal(Optional.<String>empty())
-                            .build());
-                  }))
+              fakeClient(params -> {
+                captured[0] = params;
+                return completionOf(
+                    ChatCompletionMessage.builder()
+                        .content("ok")
+                        .refusal(Optional.<String>empty())
+                        .build());
+              }))
           .build()
           .infer(REQUEST);
 
@@ -1475,15 +1465,14 @@ class OpenAiChatInferenceProviderTest {
           .property(OpenAiProperties.REASONING_EFFORT, OpenAiReasoningEffort.XHIGH)
           .property(OpenAiProperties.SERVICE_TIER, OpenAiServiceTier.PRIORITY)
           .client(
-              fakeClient(
-                  params -> {
-                    captured[0] = params;
-                    return completionOf(
-                        ChatCompletionMessage.builder()
-                            .content("ok")
-                            .refusal(Optional.<String>empty())
-                            .build());
-                  }))
+              fakeClient(params -> {
+                captured[0] = params;
+                return completionOf(
+                    ChatCompletionMessage.builder()
+                        .content("ok")
+                        .refusal(Optional.<String>empty())
+                        .build());
+              }))
           .build()
           .infer(REQUEST);
 
@@ -1499,15 +1488,14 @@ class OpenAiChatInferenceProviderTest {
           .property(OpenAiProperties.REASONING_EFFORT, OpenAiReasoningEffort.HIGH)
           .property(OpenAiProperties.SERVICE_TIER, OpenAiServiceTier.FLEX)
           .client(
-              fakeClient(
-                  params -> {
-                    captured[0] = params;
-                    return completionOf(
-                        ChatCompletionMessage.builder()
-                            .content("ok")
-                            .refusal(Optional.<String>empty())
-                            .build());
-                  }))
+              fakeClient(params -> {
+                captured[0] = params;
+                return completionOf(
+                    ChatCompletionMessage.builder()
+                        .content("ok")
+                        .refusal(Optional.<String>empty())
+                        .build());
+              }))
           .build()
           .infer(REQUEST);
 
@@ -1554,13 +1542,12 @@ class OpenAiChatInferenceProviderTest {
       OpenAiChatInferenceProvider provider =
           new OpenAiChatProviderConfig()
               .client(
-                  fakeClient(
-                      params ->
-                          completionOf(
-                              ChatCompletionMessage.builder()
-                                  .content("ok")
-                                  .refusal(Optional.<String>empty())
-                                  .build())))
+                  fakeClient(params ->
+                      completionOf(
+                          ChatCompletionMessage.builder()
+                              .content("ok")
+                              .refusal(Optional.<String>empty())
+                              .build())))
               .build();
       InferenceOptions options =
           new InferenceOptions("gpt-4o", 1024, Map.of("openai.max_completion_tokens", "5"));
@@ -1588,13 +1575,12 @@ class OpenAiChatInferenceProviderTest {
       OpenAiChatInferenceProvider provider =
           new OpenAiChatProviderConfig()
               .client(
-                  fakeClient(
-                      params ->
-                          completionOf(
-                              ChatCompletionMessage.builder()
-                                  .content("ok")
-                                  .refusal(Optional.<String>empty())
-                                  .build())))
+                  fakeClient(params ->
+                      completionOf(
+                          ChatCompletionMessage.builder()
+                              .content("ok")
+                              .refusal(Optional.<String>empty())
+                              .build())))
               .property("openai.seed", "7")
               .build();
       InferenceOptions options =
@@ -1616,15 +1602,14 @@ class OpenAiChatInferenceProviderTest {
       OpenAiChatInferenceProvider provider =
           new OpenAiChatProviderConfig()
               .client(
-                  fakeClient(
-                      params -> {
-                        captured[0] = params;
-                        return completionOf(
-                            ChatCompletionMessage.builder()
-                                .content("ok")
-                                .refusal(Optional.<String>empty())
-                                .build());
-                      }))
+                  fakeClient(params -> {
+                    captured[0] = params;
+                    return completionOf(
+                        ChatCompletionMessage.builder()
+                            .content("ok")
+                            .refusal(Optional.<String>empty())
+                            .build());
+                  }))
               .build();
 
       provider.infer(requestWith(new InferenceOptions("gpt-4o", 1024, Map.of("openai.seed", "3"))));

@@ -277,14 +277,13 @@ final class StoryTurn {
     List<Narrated> heard = new CopyOnWriteArrayList<>();
     NarrationListener recording = heard::add;
     try (DefaultDirectHarnessFactory factory =
-        DefaultDirectHarnessFactory.of(
-            f ->
-                f.backend(backend)
-                    .provider(ProviderId.of("test"), provider)
-                    .schemas(new VictoolsJsonSchemaGenerator())
-                    .mapper(JsonMapper.builder().build())
-                    .clock(clock)
-                    .listener(recording))) {
+        DefaultDirectHarnessFactory.of(f ->
+            f.backend(backend)
+                .provider(ProviderId.of("test"), provider)
+                .schemas(new VictoolsJsonSchemaGenerator())
+                .mapper(JsonMapper.builder().build())
+                .clock(clock)
+                .listener(recording))) {
       DirectHarness<String, String> harness =
           factory.<String>create(
               type,
@@ -298,13 +297,11 @@ final class StoryTurn {
     }
     await()
         .atMost(Duration.ofSeconds(10))
-        .until(
-            () ->
-                heard.stream()
-                    .anyMatch(
-                        narrated ->
-                            narrated.event() instanceof Narration.Answered
-                                && narrated.agentId().equals(agent)));
+        .until(() ->
+            heard.stream()
+                .anyMatch(narrated ->
+                    narrated.event() instanceof Narration.Answered
+                        && narrated.agentId().equals(agent)));
     return heard.stream().filter(narrated -> narrated.event() instanceof Narration.Story).toList();
   }
 }

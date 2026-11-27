@@ -91,13 +91,12 @@ class AgentStatusDirectTest {
             new InMemoryChapters(codecs),
             new InMemoryLeases(),
             new InMemoryAgentTurns());
-    return DefaultDirectHarnessFactory.of(
-        c ->
-            c.backend(backend)
-                .provider(ProviderId.of("test"), model)
-                .schemas(new VictoolsJsonSchemaGenerator())
-                .mapper(JsonMapper.builder().build())
-                .clock(Clock.fixed(NOW, ZoneOffset.UTC)));
+    return DefaultDirectHarnessFactory.of(c ->
+        c.backend(backend)
+            .provider(ProviderId.of("test"), model)
+            .schemas(new VictoolsJsonSchemaGenerator())
+            .mapper(JsonMapper.builder().build())
+            .clock(Clock.fixed(NOW, ZoneOffset.UTC)));
   }
 
   private DirectHarness<String, String> harness(DefaultDirectHarnessFactory factory) {

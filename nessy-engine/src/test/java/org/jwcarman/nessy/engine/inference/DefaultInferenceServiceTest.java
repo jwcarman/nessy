@@ -158,13 +158,12 @@ class DefaultInferenceServiceTest {
   private String toolsDocumentOf(InferenceRequest request) {
     List<String> offers =
         request.toolset().offers().stream()
-            .map(
-                offer ->
-                    "{\"name\":\"%s\",\"description\":\"%s\",\"schema\":%s}"
-                        .formatted(
-                            offer.name().value(),
-                            offer.description(),
-                            MAPPER.readTree(offer.schema().json()).toString()))
+            .map(offer ->
+                "{\"name\":\"%s\",\"description\":\"%s\",\"schema\":%s}"
+                    .formatted(
+                        offer.name().value(),
+                        offer.description(),
+                        MAPPER.readTree(offer.schema().json()).toString()))
             .toList();
     return "{\"offers\":[%s],\"choice\":%s}"
         .formatted(String.join(",", offers), MAPPER.valueToTree(request.toolset().choice()));

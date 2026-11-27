@@ -48,13 +48,12 @@ final class Doors {
 
   static DefaultDirectHarnessFactory directFactory(
       DirectBackend backend, NarrationListener listener) {
-    return DefaultDirectHarnessFactory.of(
-        f ->
-            f.backend(backend)
-                .provider(ProviderId.of("test"), ok())
-                .schemas(new VictoolsJsonSchemaGenerator())
-                .mapper(JsonMapper.builder().build())
-                .listener(listener));
+    return DefaultDirectHarnessFactory.of(f ->
+        f.backend(backend)
+            .provider(ProviderId.of("test"), ok())
+            .schemas(new VictoolsJsonSchemaGenerator())
+            .mapper(JsonMapper.builder().build())
+            .listener(listener));
   }
 
   static DirectHarness<String, String> direct(DefaultDirectHarnessFactory factory) {
@@ -68,13 +67,12 @@ final class Doors {
 
   static DefaultQueuedHarnessFactory queuedFactory(
       QueuedBackend backend, NarrationListener listener) {
-    return DefaultQueuedHarnessFactory.of(
-        engine ->
-            engine
-                .backend(backend)
-                .provider(ProviderId.of("test"), ok())
-                .inference(ProviderId.of("test"), InferenceOptions.of("a-model"))
-                .listener(listener));
+    return DefaultQueuedHarnessFactory.of(engine ->
+        engine
+            .backend(backend)
+            .provider(ProviderId.of("test"), ok())
+            .inference(ProviderId.of("test"), InferenceOptions.of("a-model"))
+            .listener(listener));
   }
 
   static QueuedHarness<String> queued(DefaultQueuedHarnessFactory factory) {

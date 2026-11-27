@@ -148,20 +148,19 @@ class StorageTransformWiringTest {
   void a_codec_factory_the_application_declares_is_still_the_one_the_backends_use() {
     runner
         .withUserConfiguration(AnApplicationsOwnCodecFactory.class)
-        .run(
-            context -> {
-              Payloads direct = context.getBean(DirectBackend.class).payloads();
-              Payloads queued = context.getBean(QueuedBackend.class).payloads();
+        .run(context -> {
+          Payloads direct = context.getBean(DirectBackend.class).payloads();
+          Payloads queued = context.getBean(QueuedBackend.class).payloads();
 
-              assertThat(context.getBean(CodecFactory.class))
-                  .isSameAs(context.getBean("codecs", CodecFactory.class));
-              assertThat(direct.put(BLOCKS))
-                  .as("that factory already includes the transform, so it is hashed after it")
-                  .isNotEqualTo(direct.put(BLOCKS));
-              assertThat(queued.put(BLOCKS)).isNotEqualTo(queued.put(BLOCKS));
-              PayloadRef ref = direct.put(BLOCKS);
-              assertThat(direct.get(ref)).isEqualTo(new Payloads.Resolved.Found(BLOCKS));
-            });
+          assertThat(context.getBean(CodecFactory.class))
+              .isSameAs(context.getBean("codecs", CodecFactory.class));
+          assertThat(direct.put(BLOCKS))
+              .as("that factory already includes the transform, so it is hashed after it")
+              .isNotEqualTo(direct.put(BLOCKS));
+          assertThat(queued.put(BLOCKS)).isNotEqualTo(queued.put(BLOCKS));
+          PayloadRef ref = direct.put(BLOCKS);
+          assertThat(direct.get(ref)).isEqualTo(new Payloads.Resolved.Found(BLOCKS));
+        });
   }
 
   @Configuration(proxyBeanMethods = false)

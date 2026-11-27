@@ -105,10 +105,9 @@ public final class EffectTermsSource {
   public EffectTerms termsFor(AgentEffect.Approve effect) {
     return tools
         .find(effect.toolName())
-        .<EffectTerms>map(
-            binding ->
-                new AskingTerms(
-                    effect.callId(), binding.approvalTimeout(), binding.approvalRetryPolicy()))
+        .<EffectTerms>map(binding ->
+            new AskingTerms(
+                effect.callId(), binding.approvalTimeout(), binding.approvalRetryPolicy()))
         .orElseGet(() -> new AskingTerms(effect.callId(), approvalTimeout, approvalRetryPolicy));
   }
 

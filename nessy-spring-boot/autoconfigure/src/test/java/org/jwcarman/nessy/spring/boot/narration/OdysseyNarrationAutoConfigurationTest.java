@@ -87,30 +87,27 @@ class OdysseyNarrationAutoConfigurationTest {
   @Test
   @DisplayName("an Odyssey on the classpath and a mapper in the context is the whole setup")
   void with_odyssey_present_the_narrator_is_odysseys() {
-    runner.run(
-        context -> {
-          assertThat(context).hasSingleBean(Odyssey.class);
-          assertThat(context).hasSingleBean(AgentStreams.class);
-          assertThat(context).hasSingleBean(OdysseyNarrator.class);
-        });
+    runner.run(context -> {
+      assertThat(context).hasSingleBean(Odyssey.class);
+      assertThat(context).hasSingleBean(AgentStreams.class);
+      assertThat(context).hasSingleBean(OdysseyNarrator.class);
+    });
   }
 
   @Test
   @DisplayName("and what it narrates is journaled, in memory here")
   void narrating_writes_to_the_journal() {
-    runner.run(
-        context -> {
-          NarrationListener narrator = context.getBean(OdysseyNarrator.class);
-          AgentId agentId = new AgentId(UUID.randomUUID());
-          // No exception is the assertion: the in-memory journal accepted the entry. What it
-          // holds is read back over SSE, which the web example exercises end to end.
-          narrator.on(
-              Narrated.live(new AgentType("chat"), agentId, new Narration.ContentDelta("hi")));
-          assertThat(
-                  context.getBean(AgentStreams.class).stream(new AgentType("chat"), agentId)
-                      .publish("terminated", new Narration.Terminated()))
-              .isNotBlank();
-        });
+    runner.run(context -> {
+      NarrationListener narrator = context.getBean(OdysseyNarrator.class);
+      AgentId agentId = new AgentId(UUID.randomUUID());
+      // No exception is the assertion: the in-memory journal accepted the entry. What it
+      // holds is read back over SSE, which the web example exercises end to end.
+      narrator.on(Narrated.live(new AgentType("chat"), agentId, new Narration.ContentDelta("hi")));
+      assertThat(
+              context.getBean(AgentStreams.class).stream(new AgentType("chat"), agentId)
+                  .publish("terminated", new Narration.Terminated()))
+          .isNotBlank();
+    });
   }
 
   @Test
@@ -118,11 +115,10 @@ class OdysseyNarrationAutoConfigurationTest {
   void an_applications_own_listener_is_kept_too() {
     runner
         .withUserConfiguration(AnApplicationWithItsOwnNarrator.class)
-        .run(
-            context -> {
-              assertThat(context.getBeansOfType(NarrationListener.class)).hasSize(2);
-              assertThat(context).hasSingleBean(OdysseyNarrator.class);
-            });
+        .run(context -> {
+          assertThat(context.getBeansOfType(NarrationListener.class)).hasSize(2);
+          assertThat(context).hasSingleBean(OdysseyNarrator.class);
+        });
   }
 
   @Test
@@ -131,11 +127,10 @@ class OdysseyNarrationAutoConfigurationTest {
     new ApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(OdysseyNarrationAutoConfiguration.class))
         .withUserConfiguration(AnApplication.class)
-        .run(
-            context -> {
-              assertThat(context).doesNotHaveBean(AgentStreams.class);
-              assertThat(context).doesNotHaveBean(OdysseyNarrator.class);
-            });
+        .run(context -> {
+          assertThat(context).doesNotHaveBean(AgentStreams.class);
+          assertThat(context).doesNotHaveBean(OdysseyNarrator.class);
+        });
   }
 
   @Configuration(proxyBeanMethods = false)
@@ -167,24 +162,22 @@ class OdysseyNarrationAutoConfigurationTest {
   void a_storage_transform_reaches_the_journal() {
     runner
         .withUserConfiguration(AnApplicationThatEncrypts.class)
-        .run(
-            context -> {
-              PayloadTransformer transformer = context.getBean(PayloadTransformer.class);
-              byte[] plain = "hello".getBytes(StandardCharsets.UTF_8);
-              assertThat(transformer.encode(plain)).isNotEqualTo(plain);
-              assertThat(transformer.decode(transformer.encode(plain))).isEqualTo(plain);
-            });
+        .run(context -> {
+          PayloadTransformer transformer = context.getBean(PayloadTransformer.class);
+          byte[] plain = "hello".getBytes(StandardCharsets.UTF_8);
+          assertThat(transformer.encode(plain)).isNotEqualTo(plain);
+          assertThat(transformer.decode(transformer.encode(plain))).isEqualTo(plain);
+        });
   }
 
   @Test
   @DisplayName("without one declared, the journal is left alone")
   void without_a_storage_transform_the_journal_is_left_alone() {
-    runner.run(
-        context -> {
-          PayloadTransformer transformer = context.getBean(PayloadTransformer.class);
-          byte[] plain = "hello".getBytes(StandardCharsets.UTF_8);
-          assertThat(transformer.encode(plain)).isEqualTo(plain);
-        });
+    runner.run(context -> {
+      PayloadTransformer transformer = context.getBean(PayloadTransformer.class);
+      byte[] plain = "hello".getBytes(StandardCharsets.UTF_8);
+      assertThat(transformer.encode(plain)).isEqualTo(plain);
+    });
   }
 
   @Test
@@ -192,13 +185,11 @@ class OdysseyNarrationAutoConfigurationTest {
     runner
         .withPropertyValues(
             "nessy.narration.odyssey.inactivity-ttl=2h", "nessy.narration.odyssey.entry-ttl=30m")
-        .run(
-            context -> {
-              OdysseyNarrationProperties properties =
-                  context.getBean(OdysseyNarrationProperties.class);
-              assertThat(properties.ttl().inactivityTtl()).hasHours(2);
-              assertThat(properties.ttl().entryTtl()).hasMinutes(30);
-              assertThat(properties.ttl().retentionTtl()).hasHours(1);
-            });
+        .run(context -> {
+          OdysseyNarrationProperties properties = context.getBean(OdysseyNarrationProperties.class);
+          assertThat(properties.ttl().inactivityTtl()).hasHours(2);
+          assertThat(properties.ttl().entryTtl()).hasMinutes(30);
+          assertThat(properties.ttl().retentionTtl()).hasHours(1);
+        });
   }
 }

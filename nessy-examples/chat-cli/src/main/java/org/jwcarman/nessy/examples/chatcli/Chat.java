@@ -69,7 +69,8 @@ public class Chat {
         the recall tool when it is relevant, and change one with revise using the id from that \
         index. Never invent an id.
         For work that takes several steps, write a plan with the update_plan tool and keep it \
-      current as you go. The plan you are holding appears in every message.""";
+      current as you go. The plan you are holding appears in every message.\
+      """;
 
   private static final int SHOWN_BODY_CHARACTERS = 240;
 
@@ -132,13 +133,10 @@ public class Chat {
                               // whitespace collapsed. Recipient, subject AND the body --
                               // consenting to a message you have not read is not consent. The
                               // body is trimmed rather than omitted.
-                              .action(
-                                  input ->
-                                      "Send an email to %s, subject \"%s\", body: %s"
-                                          .formatted(
-                                              input.to(),
-                                              input.subject(),
-                                              trimmed(input.body())))));
+                              .action(input ->
+                                  "Send an email to %s, subject \"%s\", body: %s"
+                                      .formatted(
+                                          input.to(), input.subject(), trimmed(input.body())))));
     };
   }
 
@@ -177,9 +175,8 @@ public class Chat {
    * every request each day and discard what the provider had cached.
    */
   static AmbientSource today(Clock clock) {
-    return AmbientSource.of(
-        source ->
-            source.kind("clock").text(_ -> Optional.of("Today is " + LocalDate.now(clock) + ".")));
+    return AmbientSource.of(source ->
+        source.kind("clock").text(_ -> Optional.of("Today is " + LocalDate.now(clock) + ".")));
   }
 
   @Bean

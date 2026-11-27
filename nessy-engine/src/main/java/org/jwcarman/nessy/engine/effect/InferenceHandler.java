@@ -207,10 +207,9 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
     blocks.stream()
         .filter(Block.Commentary.class::isInstance)
         .map(Block.Commentary.class::cast)
-        .forEach(
-            said ->
-                narrator.narrate(
-                    Narrated.live(agentType, agentId, new Narration.Commentary(said.text()))));
+        .forEach(said ->
+            narrator.narrate(
+                Narrated.live(agentType, agentId, new Narration.Commentary(said.text()))));
   }
 
   /**
@@ -226,14 +225,13 @@ public class InferenceHandler implements EffectHandler<AgentEffect.Infer> {
     return blocks.stream()
         .filter(Block.ToolCall.class::isInstance)
         .map(Block.ToolCall.class::cast)
-        .map(
-            call ->
-                (ActionRequest)
-                    new ActionRequest.ToolCall(
-                        call.id(),
-                        call.name(),
-                        action(call),
-                        IdempotencyKey.of(Generators.timeBasedEpochGenerator().generate())))
+        .map(call ->
+            (ActionRequest)
+                new ActionRequest.ToolCall(
+                    call.id(),
+                    call.name(),
+                    action(call),
+                    IdempotencyKey.of(Generators.timeBasedEpochGenerator().generate())))
         .toList();
   }
 

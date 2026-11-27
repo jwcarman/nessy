@@ -121,16 +121,12 @@ final class OpenAiChatRequests {
     chooseTool(builder, request.toolset().offers(), request.toolset().choice());
     request.outputSchema().ifPresent(schema -> constrainAnswer(builder, schema, mapper));
     read.effort()
-        .ifPresent(
-            effort ->
-                builder.reasoningEffort(
-                    ReasoningEffort.of(effort.name().toLowerCase(Locale.ROOT))));
+        .ifPresent(effort ->
+            builder.reasoningEffort(ReasoningEffort.of(effort.name().toLowerCase(Locale.ROOT))));
     read.serviceTier()
-        .ifPresent(
-            tier ->
-                builder.serviceTier(
-                    ChatCompletionCreateParams.ServiceTier.of(
-                        tier.name().toLowerCase(Locale.ROOT))));
+        .ifPresent(tier ->
+            builder.serviceTier(
+                ChatCompletionCreateParams.ServiceTier.of(tier.name().toLowerCase(Locale.ROOT))));
     return builder.build();
   }
 
@@ -151,12 +147,11 @@ final class OpenAiChatRequests {
         OpenAiResponsesSchemas.project(schema.json(), mapper);
     projected
         .refusedKeyword()
-        .ifPresent(
-            keyword ->
-                log.warn(
-                    "The answer's shape is asked for without strict mode: its schema uses {},"
-                        + " which strict mode cannot express",
-                    keyword));
+        .ifPresent(keyword ->
+            log.warn(
+                "The answer's shape is asked for without strict mode: its schema uses {},"
+                    + " which strict mode cannot express",
+                keyword));
     ResponseFormatJsonSchema.JsonSchema.Schema.Builder shape =
         ResponseFormatJsonSchema.JsonSchema.Schema.builder();
     projected
@@ -240,11 +235,10 @@ final class OpenAiChatRequests {
     // message carrying calls that is not immediately followed by a result for each of them.
     Stream<ChatCompletionMessageParam> middle =
         turn.exchanges().stream()
-            .flatMap(
-                exchange ->
-                    Stream.concat(
-                        Stream.of(asking(exchange)),
-                        exchange.outcomes().stream().map(OpenAiChatRequests::answering)));
+            .flatMap(exchange ->
+                Stream.concat(
+                    Stream.of(asking(exchange)),
+                    exchange.outcomes().stream().map(OpenAiChatRequests::answering)));
 
     Stream<ChatCompletionMessageParam> ending =
         switch (turn.result()) {
@@ -367,13 +361,12 @@ final class OpenAiChatRequests {
           OpenAiResponsesSchemas.project(offer.schema().json(), mapper);
       projected
           .refusedKeyword()
-          .ifPresent(
-              keyword ->
-                  log.warn(
-                      "Tool {} is offered without strict mode: its schema uses {}, which strict"
-                          + " mode cannot express",
-                      offer.name().value(),
-                      keyword));
+          .ifPresent(keyword ->
+              log.warn(
+                  "Tool {} is offered without strict mode: its schema uses {}, which strict"
+                      + " mode cannot express",
+                  offer.name().value(),
+                  keyword));
       FunctionParameters.Builder parameters = FunctionParameters.builder();
       projected
           .schema()

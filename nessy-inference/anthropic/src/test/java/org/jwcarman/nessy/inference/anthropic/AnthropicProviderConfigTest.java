@@ -57,10 +57,9 @@ class AnthropicProviderConfigTest {
 
   @Test
   void a_negative_timeout_is_rejected() {
-    assertThatThrownBy(
-            () ->
-                AnthropicInferenceProvider.of(
-                    c -> c.apiKey("test-key").timeout(Duration.ofSeconds(-1))))
+    assertThatThrownBy(() ->
+            AnthropicInferenceProvider.of(
+                c -> c.apiKey("test-key").timeout(Duration.ofSeconds(-1))))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -75,11 +74,10 @@ class AnthropicProviderConfigTest {
 
   @Test
   void a_timeout_applies_on_the_from_env_build_path_too() {
-    assertThatCode(
-            () ->
-                AnthropicInferenceProvider.of(
-                        c -> c.fromEnv().apiKey("explicit").timeout(Duration.ofMinutes(6)))
-                    .close())
+    assertThatCode(() ->
+            AnthropicInferenceProvider.of(
+                    c -> c.fromEnv().apiKey("explicit").timeout(Duration.ofMinutes(6)))
+                .close())
         .doesNotThrowAnyException();
   }
 

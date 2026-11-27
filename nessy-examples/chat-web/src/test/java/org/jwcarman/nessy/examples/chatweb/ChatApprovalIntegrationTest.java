@@ -130,11 +130,10 @@ class ChatApprovalIntegrationTest {
 
     await()
         .atMost(Duration.ofSeconds(30))
-        .untilAsserted(
-            () -> {
-              assertThat(email.sent()).hasSize(sentBefore + 1);
-              assertThat(chat.state(agentId).texts()).contains("🔧 send_email", "Sent.");
-            });
+        .untilAsserted(() -> {
+          assertThat(email.sent()).hasSize(sentBefore + 1);
+          assertThat(chat.state(agentId).texts()).contains("🔧 send_email", "Sent.");
+        });
     assertThat(chat.state(agentId).approvals()).isEmpty();
   }
 

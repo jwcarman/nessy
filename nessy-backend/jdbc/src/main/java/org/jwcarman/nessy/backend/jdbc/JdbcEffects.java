@@ -111,23 +111,23 @@ public class JdbcEffects implements Effects {
    */
   private static final String MARK_RUNNING =
       """
-            WITH claimed AS MATERIALIZED (
-                SELECT effect_id FROM nessy_agent_effect
-                WHERE agent_type = ? AND status IN (?, ?) AND actionable_at <= ?
-                ORDER BY actionable_at
-                FOR UPDATE SKIP LOCKED
-                LIMIT ?)
-            UPDATE nessy_agent_effect e
-            SET status = ?,
-                attempts_made = e.attempts_made + 1,
-                actionable_at = LEAST(
-                    ? + (e.timeout_millis * INTERVAL '1 millisecond'), e.deadline),
-                updated_at = ?
-            FROM claimed
-            WHERE e.effect_id = claimed.effect_id
-            RETURNING e.effect_id, e.agent_id, e.payload, e.failure_payload, e.attempts_made,
-                      e.deadline, e.trace_context, e.failed_attempts
-            """;
+      WITH claimed AS MATERIALIZED (
+          SELECT effect_id FROM nessy_agent_effect
+          WHERE agent_type = ? AND status IN (?, ?) AND actionable_at <= ?
+          ORDER BY actionable_at
+          FOR UPDATE SKIP LOCKED
+          LIMIT ?)
+      UPDATE nessy_agent_effect e
+      SET status = ?,
+          attempts_made = e.attempts_made + 1,
+          actionable_at = LEAST(
+              ? + (e.timeout_millis * INTERVAL '1 millisecond'), e.deadline),
+          updated_at = ?
+      FROM claimed
+      WHERE e.effect_id = claimed.effect_id
+      RETURNING e.effect_id, e.agent_id, e.payload, e.failure_payload, e.attempts_made,
+                e.deadline, e.trace_context, e.failed_attempts
+      """;
 
   /**
    * The rows of one agent that have been claimed and not finished.
@@ -269,17 +269,16 @@ public class JdbcEffects implements Effects {
     return jdbc.sql(MARK_RUNNING)
         .params(
             agentType.value(), PENDING, RUNNING, utc(now), batchSize, RUNNING, utc(now), utc(now))
-        .query(
-            (rs, n) ->
-                new Attempt(
-                    rs.getObject(COL_EFFECT_ID, UUID.class),
-                    new AgentId(rs.getObject(COL_AGENT_ID, UUID.class)),
-                    rs.getBytes(COL_PAYLOAD),
-                    rs.getBytes("failure_payload"),
-                    rs.getInt(COL_ATTEMPTS_MADE),
-                    rs.getObject(COL_DEADLINE, OffsetDateTime.class).toInstant(),
-                    rs.getString("trace_context"),
-                    rs.getBytes("failed_attempts")))
+        .query((rs, n) ->
+            new Attempt(
+                rs.getObject(COL_EFFECT_ID, UUID.class),
+                new AgentId(rs.getObject(COL_AGENT_ID, UUID.class)),
+                rs.getBytes(COL_PAYLOAD),
+                rs.getBytes("failure_payload"),
+                rs.getInt(COL_ATTEMPTS_MADE),
+                rs.getObject(COL_DEADLINE, OffsetDateTime.class).toInstant(),
+                rs.getString("trace_context"),
+                rs.getBytes("failed_attempts")))
         .list();
   }
 
@@ -299,17 +298,16 @@ public class JdbcEffects implements Effects {
   public List<Attempt> runningFor(AgentType agentType, AgentId agentId) {
     return jdbc.sql(RUNNING_FOR)
         .params(agentType.value(), agentId.value(), RUNNING)
-        .query(
-            (rs, n) ->
-                new Attempt(
-                    rs.getObject(COL_EFFECT_ID, UUID.class),
-                    new AgentId(rs.getObject(COL_AGENT_ID, UUID.class)),
-                    rs.getBytes(COL_PAYLOAD),
-                    rs.getBytes("failure_payload"),
-                    rs.getInt(COL_ATTEMPTS_MADE),
-                    rs.getObject(COL_DEADLINE, OffsetDateTime.class).toInstant(),
-                    rs.getString("trace_context"),
-                    rs.getBytes("failed_attempts")))
+        .query((rs, n) ->
+            new Attempt(
+                rs.getObject(COL_EFFECT_ID, UUID.class),
+                new AgentId(rs.getObject(COL_AGENT_ID, UUID.class)),
+                rs.getBytes(COL_PAYLOAD),
+                rs.getBytes("failure_payload"),
+                rs.getInt(COL_ATTEMPTS_MADE),
+                rs.getObject(COL_DEADLINE, OffsetDateTime.class).toInstant(),
+                rs.getString("trace_context"),
+                rs.getBytes("failed_attempts")))
         .list();
   }
 
@@ -410,17 +408,15 @@ public class JdbcEffects implements Effects {
       Optional<AgentType> agentType, Instant now, Optional<Cursor> after, int limit) {
     StringBuilder sql = new StringBuilder(PARKED_NOW);
     List<Object> params = new ArrayList<>(List.of(RUNNING, utc(now)));
-    agentType.ifPresent(
-        type -> {
-          sql.append(OF_TYPE);
-          params.add(type.value());
-        });
-    after.ifPresent(
-        last -> {
-          sql.append(AFTER);
-          params.add(utc(last.createdAt()));
-          params.add(last.effectId());
-        });
+    agentType.ifPresent(type -> {
+      sql.append(OF_TYPE);
+      params.add(type.value());
+    });
+    after.ifPresent(last -> {
+      sql.append(AFTER);
+      params.add(utc(last.createdAt()));
+      params.add(last.effectId());
+    });
     sql.append(PARKED_NOW_PAGE);
     params.add(limit);
     return jdbc.sql(sql.toString()).params(params).query((rs, n) -> read(rs)).list();

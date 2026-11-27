@@ -232,13 +232,12 @@ class DirectHarnessFanOutTest {
   }
 
   private DefaultDirectHarnessFactory factoryFor(InferenceProvider model, Locks locks) {
-    return DefaultDirectHarnessFactory.of(
-        c ->
-            c.backend(new FixedDirectBackend(locks, events, payloads))
-                .provider(ProviderId.of("test"), model)
-                .schemas(new VictoolsJsonSchemaGenerator())
-                .mapper(MAPPER)
-                .clock(clock));
+    return DefaultDirectHarnessFactory.of(c ->
+        c.backend(new FixedDirectBackend(locks, events, payloads))
+            .provider(ProviderId.of("test"), model)
+            .schemas(new VictoolsJsonSchemaGenerator())
+            .mapper(MAPPER)
+            .clock(clock));
   }
 
   /**
@@ -513,15 +512,13 @@ class DirectHarnessFanOutTest {
     Scripted model = new Scripted().then(asking(2)).then(answering("done"));
 
     DirectHarness<String, String> harness =
-        DefaultDirectHarnessFactory.of(
-                c ->
-                    c.backend(
-                            new FixedDirectBackend(
-                                new InMemoryLocks(), steppedEvents, steppedPayloads))
-                        .provider(ProviderId.of("test"), model)
-                        .schemas(new VictoolsJsonSchemaGenerator())
-                        .mapper(MAPPER)
-                        .clock(stepped))
+        DefaultDirectHarnessFactory.of(c ->
+                c.backend(
+                        new FixedDirectBackend(new InMemoryLocks(), steppedEvents, steppedPayloads))
+                    .provider(ProviderId.of("test"), model)
+                    .schemas(new VictoolsJsonSchemaGenerator())
+                    .mapper(MAPPER)
+                    .clock(stepped))
             .<String>create(
                 TYPE,
                 c -> {

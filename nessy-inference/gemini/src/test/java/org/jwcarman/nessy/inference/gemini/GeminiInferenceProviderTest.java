@@ -335,10 +335,8 @@ class GeminiInferenceProviderTest {
 
       assertThat(sent)
           .singleElement()
-          .satisfies(
-              config ->
-                  assertThat(config.thinkingConfig().orElseThrow().thinkingBudget())
-                      .contains(1024));
+          .satisfies(config ->
+              assertThat(config.thinkingConfig().orElseThrow().thinkingBudget()).contains(1024));
     }
 
     @Test
@@ -353,10 +351,9 @@ class GeminiInferenceProviderTest {
 
       assertThat(sent)
           .singleElement()
-          .satisfies(
-              config ->
-                  assertThat(config.thinkingConfig().orElseThrow().thinkingLevel().orElseThrow())
-                      .hasToString("high"));
+          .satisfies(config ->
+              assertThat(config.thinkingConfig().orElseThrow().thinkingLevel().orElseThrow())
+                  .hasToString("high"));
     }
 
     @Test
@@ -373,18 +370,12 @@ class GeminiInferenceProviderTest {
 
       assertThat(sent)
           .singleElement()
-          .satisfies(
-              config -> {
-                assertThat(
-                        config
-                            .thinkingConfig()
-                            .orElseThrow()
-                            .thinkingLevel()
-                            .orElseThrow()
-                            .knownEnum())
-                    .isEqualTo(ThinkingLevel.Known.HIGH);
-                assertThat(config.thinkingConfig().orElseThrow().includeThoughts()).contains(true);
-              });
+          .satisfies(config -> {
+            assertThat(
+                    config.thinkingConfig().orElseThrow().thinkingLevel().orElseThrow().knownEnum())
+                .isEqualTo(ThinkingLevel.Known.HIGH);
+            assertThat(config.thinkingConfig().orElseThrow().includeThoughts()).contains(true);
+          });
     }
 
     @Test
@@ -410,11 +401,10 @@ class GeminiInferenceProviderTest {
       assertThat(atInference).isEmpty();
       assertThat(sent)
           .hasSize(2)
-          .allSatisfy(
-              config -> {
-                assertThat(config.httpOptions()).isEmpty();
-                assertThat(config.maxOutputTokens()).contains(256);
-              });
+          .allSatisfy(config -> {
+            assertThat(config.httpOptions()).isEmpty();
+            assertThat(config.maxOutputTokens()).contains(256);
+          });
     }
   }
 

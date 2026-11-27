@@ -788,13 +788,12 @@ class OpenAiChatRequestsTest {
 
       assertThat(events)
           .singleElement()
-          .satisfies(
-              event -> {
-                assertThat(event.getLevel()).isEqualTo(Level.DEBUG);
-                assertThat(event.getFormattedMessage())
-                    .contains("anthropic.top_k")
-                    .doesNotContain("openai.seed");
-              });
+          .satisfies(event -> {
+            assertThat(event.getLevel()).isEqualTo(Level.DEBUG);
+            assertThat(event.getFormattedMessage())
+                .contains("anthropic.top_k")
+                .doesNotContain("openai.seed");
+          });
     }
 
     @Test
@@ -837,19 +836,22 @@ class OpenAiChatRequestsTest {
     private static final String LOOKUP_SCHEMA =
         """
         {"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",
-         "properties":{"q":{"type":"string"},"n":{"type":"integer"}},"required":["q"]}""";
+         "properties":{"q":{"type":"string"},"n":{"type":"integer"}},"required":["q"]}\
+        """;
 
     private static final String NESTED_SCHEMA =
         """
         {"type":"object","properties":{"where":{"$ref":"#/$defs/Place"}},"required":["where"],
          "$defs":{"Place":{"type":"object",
                            "properties":{"city":{"type":"string"},"zip":{"type":"string"}},
-                           "required":["city"]}}}""";
+                           "required":["city"]}}}\
+        """;
 
     private static final String MAP_SCHEMA =
         """
         {"type":"object","properties":{"labels":{"type":"object","additionalProperties":{"type":"string"}}},
-         "required":["labels"]}""";
+         "required":["labels"]}\
+        """;
 
     private static ToolOffer offer(String name, String schema) {
       return new ToolOffer(new ToolName(name), "does " + name, new JsonSchema(schema));
@@ -946,13 +948,12 @@ class OpenAiChatRequestsTest {
       assertThat(functions.get(1).strict()).contains(true);
       assertThat(appender.list)
           .singleElement()
-          .satisfies(
-              event -> {
-                assertThat(event.getLevel()).isEqualTo(Level.WARN);
-                assertThat(event.getFormattedMessage())
-                    .contains("tagging")
-                    .contains("additionalProperties");
-              });
+          .satisfies(event -> {
+            assertThat(event.getLevel()).isEqualTo(Level.WARN);
+            assertThat(event.getFormattedMessage())
+                .contains("tagging")
+                .contains("additionalProperties");
+          });
     }
 
     @Test
@@ -973,15 +974,17 @@ class OpenAiChatRequestsTest {
         """
         {"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",
          "properties":{"label":{"type":"string"},"note":{"type":["string","null"]}},
-         "required":["label"]}""";
+         "required":["label"]}\
+        """;
 
     /** {@code List<Item>}, as the generator writes it: an array root over a {@code $ref}. */
     private static final String LIST_ANSWER =
         """
-        {"$schema":"https://json-schema.org/draft/2020-12/schema",
-       "$defs":{"Item":{"type":"object","properties":{"name":{"type":"string"},"count":{"type":"integer"}},
-                        "required":["name","count"]}},
-       "type":"array","items":{"$ref":"#/$defs/Item"}}""";
+         {"$schema":"https://json-schema.org/draft/2020-12/schema",
+        "$defs":{"Item":{"type":"object","properties":{"name":{"type":"string"},"count":{"type":"integer"}},
+                         "required":["name","count"]}},
+        "type":"array","items":{"$ref":"#/$defs/Item"}}\
+        """;
 
     private static InferenceRequest answering(String schema) {
       return new InferenceRequest(

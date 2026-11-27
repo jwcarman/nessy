@@ -96,22 +96,20 @@ public class ChatConfiguration {
                 .inputRenderer(said -> List.of(new Block.Text(said)))
                 .backlogPolicy(together())
                 .systemPrompt(properties.resolveSystemPrompt())
-                .inference(
-                    in ->
-                        in.model(properties.model())
-                            .maxTokens(properties.maxTokens())
-                            .context(
-                                ctx ->
-                                    // A local thinking model can take minutes to write a chapter's
-                                    // summary, so the lease outlasts the two-minute default.
-                                    summaries(
-                                        ctx.chapterLeaseTtl(Duration.ofMinutes(10))
-                                            .chapterPolicy(ChapterPolicy.every(chapterTurns)),
-                                        histories,
-                                        properties,
-                                        providers,
-                                        observations,
-                                        summaryModel)))
+                .inference(in ->
+                    in.model(properties.model())
+                        .maxTokens(properties.maxTokens())
+                        .context(ctx ->
+                            // A local thinking model can take minutes to write a chapter's
+                            // summary, so the lease outlasts the two-minute default.
+                            summaries(
+                                ctx.chapterLeaseTtl(Duration.ofMinutes(10))
+                                    .chapterPolicy(ChapterPolicy.every(chapterTurns)),
+                                histories,
+                                properties,
+                                providers,
+                                observations,
+                                summaryModel)))
                 .tool(new DaysUntilTool())
                 .tool(
                     email,
@@ -123,10 +121,9 @@ public class ChatConfiguration {
                             // The body too: a page has room, and approving a message you have not
                             // read is not approval. The console example trims for want of screen;
                             // here there is none of that excuse.
-                            .action(
-                                input ->
-                                    "Send an email to %s, subject \"%s\": %s"
-                                        .formatted(input.to(), input.subject(), input.body()))));
+                            .action(input ->
+                                "Send an email to %s, subject \"%s\": %s"
+                                    .formatted(input.to(), input.subject(), input.body()))));
   }
 
   /**

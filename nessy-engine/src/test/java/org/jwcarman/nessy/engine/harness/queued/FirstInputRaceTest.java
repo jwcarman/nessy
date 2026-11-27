@@ -54,9 +54,8 @@ class FirstInputRaceTest {
   @BeforeEach
   void startEngine() {
     engine =
-        new EngineFixture(
-            (request, narrator) ->
-                new InferenceResult.Answer(List.of(new Block.Text("a lake monster"))));
+        new EngineFixture((request, narrator) ->
+            new InferenceResult.Answer(List.of(new Block.Text("a lake monster"))));
     harness =
         engine
             .harnesses()
@@ -82,14 +81,12 @@ class FirstInputRaceTest {
 
     List<Future<Object>> told =
         IntStream.range(0, CALLERS)
-            .mapToObj(
-                i ->
-                    callers.submit(
-                        () -> {
-                          go.await();
-                          harness.tell(agentId, "hello " + i);
-                          return null;
-                        }))
+            .mapToObj(i ->
+                callers.submit(() -> {
+                  go.await();
+                  harness.tell(agentId, "hello " + i);
+                  return null;
+                }))
             .toList();
     go.countDown();
     for (Future<Object> call : told) {
@@ -103,15 +100,12 @@ class FirstInputRaceTest {
     // test's dispatcher and performed by ITS model.
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () -> {
-              List<AgentEvent> story = engine.story(CHAT, agentId);
-              assertThat(story)
-                  .filteredOn(AgentEvent.TurnStarted.class::isInstance)
-                  .hasSize(CALLERS);
-              assertThat(story)
-                  .filteredOn(AgentEvent.InferenceAnswered.class::isInstance)
-                  .hasSize(CALLERS);
-            });
+        .untilAsserted(() -> {
+          List<AgentEvent> story = engine.story(CHAT, agentId);
+          assertThat(story).filteredOn(AgentEvent.TurnStarted.class::isInstance).hasSize(CALLERS);
+          assertThat(story)
+              .filteredOn(AgentEvent.InferenceAnswered.class::isInstance)
+              .hasSize(CALLERS);
+        });
   }
 }

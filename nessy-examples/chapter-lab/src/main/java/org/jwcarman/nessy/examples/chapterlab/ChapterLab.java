@@ -118,7 +118,8 @@ public final class ChapterLab {
                         [--summarizer prose|index] [--summary-model NAME]
                         [--max-chapter-length N] [--max-tail N]
                         [--base-url URL (lmstudio)] [--reasoning-effort VALUE]
-                        [--thinking adaptive|disabled|between_tools (anthropic)]""";
+                        [--thinking adaptive|disabled|between_tools (anthropic)]\
+      """;
 
   private ChapterLab() {}
 
@@ -444,10 +445,9 @@ public final class ChapterLab {
     return offered.stream()
         .filter(type -> type.name().equalsIgnoreCase(name))
         .findFirst()
-        .orElseThrow(
-            () ->
-                new IllegalArgumentException(
-                    "unknown thinking '%s'; choose one of %s".formatted(name, offered)));
+        .orElseThrow(() ->
+            new IllegalArgumentException(
+                "unknown thinking '%s'; choose one of %s".formatted(name, offered)));
   }
 
   private static OpenAiReasoningEffort effort(String name) {
@@ -466,40 +466,36 @@ public final class ChapterLab {
       case "anthropic" ->
           // Every question is asked with the same context ahead of it, so the vendor's cache is on:
           // the first question writes that context and the rest read it back.
-          AnthropicInferenceProvider.of(
-              c -> {
-                c.fromEnv()
-                    .timeout(TRANSPORT)
-                    .property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.FIVE_MINUTES);
-                if (thinking != null) {
-                  c.property(AnthropicProperties.THINKING_TYPE, thinking(thinking));
-                }
-              });
+          AnthropicInferenceProvider.of(c -> {
+            c.fromEnv()
+                .timeout(TRANSPORT)
+                .property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.FIVE_MINUTES);
+            if (thinking != null) {
+              c.property(AnthropicProperties.THINKING_TYPE, thinking(thinking));
+            }
+          });
       case "openai" ->
-          OpenAiChatInferenceProvider.of(
-              c -> {
-                c.fromEnv().timeout(TRANSPORT);
-                withEffort(c, reasoningEffort);
-              });
+          OpenAiChatInferenceProvider.of(c -> {
+            c.fromEnv().timeout(TRANSPORT);
+            withEffort(c, reasoningEffort);
+          });
       case "lmstudio" ->
-          OpenAiChatInferenceProvider.of(
-              c -> {
-                // A local server ignores the key, but the client insists on one.
-                c.apiKey("lm-studio")
-                    .baseUrl(baseUrl == null ? LMSTUDIO_URL : baseUrl)
-                    .vendor("lmstudio")
-                    .timeout(TRANSPORT);
-                withEffort(c, reasoningEffort);
-              });
+          OpenAiChatInferenceProvider.of(c -> {
+            // A local server ignores the key, but the client insists on one.
+            c.apiKey("lm-studio")
+                .baseUrl(baseUrl == null ? LMSTUDIO_URL : baseUrl)
+                .vendor("lmstudio")
+                .timeout(TRANSPORT);
+            withEffort(c, reasoningEffort);
+          });
       case "xai" ->
-          OpenAiChatInferenceProvider.of(
-              c -> {
-                c.apiKey(environment("XAI_API_KEY"))
-                    .baseUrl("https://api.x.ai/v1")
-                    .vendor("x_ai")
-                    .timeout(TRANSPORT);
-                withEffort(c, reasoningEffort);
-              });
+          OpenAiChatInferenceProvider.of(c -> {
+            c.apiKey(environment("XAI_API_KEY"))
+                .baseUrl("https://api.x.ai/v1")
+                .vendor("x_ai")
+                .timeout(TRANSPORT);
+            withEffort(c, reasoningEffort);
+          });
       case "gemini" -> GeminiInferenceProvider.of(c -> c.fromEnv().timeout(TRANSPORT));
       default ->
           throw new IllegalArgumentException(
@@ -551,12 +547,11 @@ public final class ChapterLab {
     JsonMapper mapper = JsonMapper.builder().build();
     InMemoryDirectBackend backend = new InMemoryDirectBackend(new JacksonCodecFactory(mapper));
     try (DefaultDirectHarnessFactory factory =
-        DefaultDirectHarnessFactory.of(
-            f ->
-                f.backend(backend)
-                    .provider(ProviderId.of(RECORDED), replay)
-                    .schemas(new VictoolsJsonSchemaGenerator())
-                    .mapper(mapper))) {
+        DefaultDirectHarnessFactory.of(f ->
+            f.backend(backend)
+                .provider(ProviderId.of(RECORDED), replay)
+                .schemas(new VictoolsJsonSchemaGenerator())
+                .mapper(mapper))) {
       Watch watch = new Watch(out, retryPause);
       InferenceOptions summaryOptions =
           new InferenceOptions(settings.summaryModel(), SUMMARY_TOKENS);
@@ -573,19 +568,17 @@ public final class ChapterLab {
               c -> {
                 c.systemPrompt("You are one half of a long conversation between two people.")
                     .inputRenderer(said -> List.of(new Block.Text(said)))
-                    .inference(
-                        in ->
-                            in.provider(ProviderId.of(RECORDED))
-                                .model(RECORDED)
-                                .context(
-                                    ctx -> {
-                                      if (settings.chapters()) {
-                                        ctx.maxChapterLength(settings.maxChapterLength())
-                                            .maxTail(settings.maxTail());
-                                      } else {
-                                        ctx.withoutChapters().maxTail(settings.maxTail());
-                                      }
-                                    }));
+                    .inference(in ->
+                        in.provider(ProviderId.of(RECORDED))
+                            .model(RECORDED)
+                            .context(ctx -> {
+                              if (settings.chapters()) {
+                                ctx.maxChapterLength(settings.maxChapterLength())
+                                    .maxTail(settings.maxTail());
+                              } else {
+                                ctx.withoutChapters().maxTail(settings.maxTail());
+                              }
+                            }));
                 if (settings.chapters()) {
                   c.chapterPolicy(
                           watch.watching(
@@ -800,11 +793,10 @@ public final class ChapterLab {
     out.println("verdicts not understood: " + result.notUnderstood());
     result
         .askedByCategory()
-        .forEach(
-            (category, asked) ->
-                out.println(
-                    "  category %d: %d of %d"
-                        .formatted(category, result.correctByCategory().get(category), asked)));
+        .forEach((category, asked) ->
+            out.println(
+                "  category %d: %d of %d"
+                    .formatted(category, result.correctByCategory().get(category), asked)));
     printTokens("summaries and cuts", result.summaryTokens(), out);
     printTokens("answers and grading", result.answerTokens(), out);
     out.println("questions and verdicts appended to " + results);

@@ -133,13 +133,12 @@ class ApprovalsOverNessyTest {
     AtomicReference<String> cookieRef = new AtomicReference<>();
     await()
         .atMost(Duration.ofSeconds(30))
-        .untilAsserted(
-            () -> {
-              HttpResponse<String> late = post("/approve/" + key, type + agent, null);
-              assertThat(late.statusCode()).isEqualTo(302);
-              cookieRef.set(late.headers().firstValue("Set-Cookie").orElse(""));
-              assertThat(cookieRef.get()).isNotEmpty();
-            });
+        .untilAsserted(() -> {
+          HttpResponse<String> late = post("/approve/" + key, type + agent, null);
+          assertThat(late.statusCode()).isEqualTo(302);
+          cookieRef.set(late.headers().firstValue("Set-Cookie").orElse(""));
+          assertThat(cookieRef.get()).isNotEmpty();
+        });
     String cookie = cookieRef.get().split(";")[0];
     assertThat(get(cookie).body()).contains("That approval was no longer waiting.");
     assertThat(get(cookie).body()).doesNotContain("no longer waiting");

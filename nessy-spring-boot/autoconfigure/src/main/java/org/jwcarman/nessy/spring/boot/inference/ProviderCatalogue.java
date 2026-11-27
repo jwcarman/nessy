@@ -60,15 +60,14 @@ final class ProviderCatalogue {
               preset.keyless() ? keylessApiKey(own, preset) : apiKey,
               properties(own, preset)));
     }
-    settings.forEach(
-        (id, own) -> {
-          if (Boolean.FALSE.equals(own.enabled())) {
-            return;
-          }
-          if (Preset.CATALOGUE.stream().noneMatch(p -> p.id().equals(id))) {
-            lit.add(custom(id, own));
-          }
-        });
+    settings.forEach((id, own) -> {
+      if (Boolean.FALSE.equals(own.enabled())) {
+        return;
+      }
+      if (Preset.CATALOGUE.stream().noneMatch(p -> p.id().equals(id))) {
+        lit.add(custom(id, own));
+      }
+    });
     return List.copyOf(lit);
   }
 

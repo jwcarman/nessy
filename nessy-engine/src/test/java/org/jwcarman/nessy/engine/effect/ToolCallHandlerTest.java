@@ -212,10 +212,9 @@ class ToolCallHandlerTest {
           bound(
               echo(),
               Approver.allow(),
-              Optional.of(
-                  success -> {
-                    throw new IllegalStateException("no words for this");
-                  }));
+              Optional.of(success -> {
+                throw new IllegalStateException("no words for this");
+              }));
 
       EffectOutcome outcome =
           handle(tools, story(new Block.ToolCall("c1", "lookup", "{\"q\":\"loch ness\"}")));

@@ -103,22 +103,20 @@ class TaintRecoveryTest {
                 config ->
                     config
                         .systemPrompt("You are a test assistant.")
-                        .inference(
-                            in ->
-                                in.model("a-model")
-                                    .retryPolicy(new RetryPolicy.Never())
-                                    .timeout(Duration.ofMinutes(5)))
+                        .inference(in ->
+                            in.model("a-model")
+                                .retryPolicy(new RetryPolicy.Never())
+                                .timeout(Duration.ofMinutes(5)))
                         .effects(e -> e.maxInFlight(2).pollInterval(Duration.ofMillis(100))));
 
     harness.tell(agentId, "I want your help " + POISON + "?");
 
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () ->
-                assertThat(story(TAINTED, agentId))
-                    .as("the turn closes even though there is no answer")
-                    .hasSize(2));
+        .untilAsserted(() ->
+            assertThat(story(TAINTED, agentId))
+                .as("the turn closes even though there is no answer")
+                .hasSize(2));
 
     // The conversation is now in the state that breaks it on a real provider. Ask something
     // entirely ordinary: unrecovered, this is refused about a third of the time.
@@ -126,13 +124,11 @@ class TaintRecoveryTest {
 
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () ->
-                assertThat(story(TAINTED, agentId))
-                    .as("RECOVERY: the second question is answered, not refused")
-                    .anySatisfy(
-                        message ->
-                            assertThat(message).isInstanceOf(AgentEvent.InferenceAnswered.class)));
+        .untilAsserted(() ->
+            assertThat(story(TAINTED, agentId))
+                .as("RECOVERY: the second question is answered, not refused")
+                .anySatisfy(message ->
+                    assertThat(message).isInstanceOf(AgentEvent.InferenceAnswered.class)));
 
     assertThat(model.lastRequest())
         .as("the poison was not sent, which is the only reason an answer was possible")
@@ -162,11 +158,10 @@ class TaintRecoveryTest {
                 config ->
                     config
                         .systemPrompt("You are a test assistant.")
-                        .inference(
-                            in ->
-                                in.model("a-model")
-                                    .retryPolicy(new RetryPolicy.Never())
-                                    .timeout(Duration.ofMinutes(5)))
+                        .inference(in ->
+                            in.model("a-model")
+                                .retryPolicy(new RetryPolicy.Never())
+                                .timeout(Duration.ofMinutes(5)))
                         .effects(e -> e.maxInFlight(2).pollInterval(Duration.ofMillis(100))));
 
     // Two poisoned inputs back to back: the second failure happens while the

@@ -52,7 +52,8 @@ class OpenAiResponsesSchemasTest {
       {"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",
        "properties":{"limit":{"type":"integer"},"q":{"type":"string"},
                      "reason":{"type":["string","null"]}},
-       "required":["limit","q"]}""";
+       "required":["limit","q"]}\
+      """;
 
   @Nested
   class ARewrittenSchema {
@@ -70,7 +71,8 @@ class OpenAiResponsesSchemasTest {
                    "properties":{"limit":{"type":"integer"},"q":{"type":"string"},
                                  "reason":{"type":["string","null"]}},
                    "required":["limit","q","reason"],
-                   "additionalProperties":false}"""));
+                   "additionalProperties":false}\
+                  """));
     }
 
     /** The generator already widened it; widening again would write {@code "null"} twice. */
@@ -87,7 +89,8 @@ class OpenAiResponsesSchemasTest {
           project(
               """
               {"type":"object","properties":{"q":{"type":"string"},"note":{"type":"string"}},
-               "required":["q"]}""");
+               "required":["q"]}\
+              """);
 
       assertThat(projected.schema())
           .isEqualTo(
@@ -95,7 +98,8 @@ class OpenAiResponsesSchemasTest {
                   """
                   {"type":"object",
                    "properties":{"q":{"type":"string"},"note":{"type":["string","null"]}},
-                   "required":["q","note"],"additionalProperties":false}"""));
+                   "required":["q","note"],"additionalProperties":false}\
+                  """));
     }
 
     @Test
@@ -108,7 +112,8 @@ class OpenAiResponsesSchemasTest {
                "type":"object",
                "properties":{"first":{"$ref":"#/$defs/Nested"},
                              "second":{"$ref":"#/$defs/Nested"}},
-               "required":["first"]}""");
+               "required":["first"]}\
+              """);
 
       assertThat(projected.schema())
           .isEqualTo(
@@ -119,7 +124,8 @@ class OpenAiResponsesSchemasTest {
                    "type":"object",
                    "properties":{"first":{"$ref":"#/$defs/Nested"},
                                  "second":{"anyOf":[{"$ref":"#/$defs/Nested"},{"type":"null"}]}},
-                   "required":["first","second"],"additionalProperties":false}"""));
+                   "required":["first","second"],"additionalProperties":false}\
+                  """));
     }
 
     /** Review Focus 1: strict mode checks {@code enum} as well as {@code type}. */
@@ -130,7 +136,8 @@ class OpenAiResponsesSchemasTest {
               """
               {"type":"object",
                "properties":{"colour":{"type":["string","null"],"enum":["RED","GREEN"]}},
-               "required":[]}""");
+               "required":[]}\
+              """);
 
       assertThat(projected.schema())
           .isEqualTo(
@@ -139,7 +146,8 @@ class OpenAiResponsesSchemasTest {
                   {"type":"object",
                    "properties":{"colour":{"type":["string","null"],
                                            "enum":["RED","GREEN",null]}},
-                   "required":["colour"],"additionalProperties":false}"""));
+                   "required":["colour"],"additionalProperties":false}\
+                  """));
     }
 
     @Test
@@ -152,7 +160,8 @@ class OpenAiResponsesSchemasTest {
                   "properties":{"name":{"type":"string"}},"required":["name"]}},
                              "either":{"anyOf":[{"type":"object","properties":{},"required":[]},
                                                 {"type":"string"}]}},
-               "required":["hosts","either"]}""");
+               "required":["hosts","either"]}\
+              """);
 
       assertThat(projected.schema())
           .isEqualTo(
@@ -165,7 +174,8 @@ class OpenAiResponsesSchemasTest {
                                  "either":{"anyOf":[{"type":"object","properties":{},
                                                      "required":[],"additionalProperties":false},
                                                     {"type":"string"}]}},
-                   "required":["hosts","either"],"additionalProperties":false}"""));
+                   "required":["hosts","either"],"additionalProperties":false}\
+                  """));
     }
 
     /** {@code record Empty()}, as generated. */
@@ -175,7 +185,8 @@ class OpenAiResponsesSchemasTest {
           project(
               """
               {"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",
-               "properties":{}}""");
+               "properties":{}}\
+              """);
 
       assertThat(projected.strict()).isTrue();
       assertThat(projected.schema())
@@ -183,7 +194,8 @@ class OpenAiResponsesSchemasTest {
               parse(
                   """
                   {"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",
-                   "properties":{},"required":[],"additionalProperties":false}"""));
+                   "properties":{},"required":[],"additionalProperties":false}\
+                  """));
     }
   }
 
@@ -207,7 +219,8 @@ class OpenAiResponsesSchemasTest {
                "properties":{"first":{"$ref":"#/$defs/Nested"},
                              "second":{"oneOf":[{"type":"null"},{"$ref":"#/$defs/Nested"}]},
                              "tags":{"type":"array","items":{"type":"string"}}},
-               "required":["first","tags"]}""");
+               "required":["first","tags"]}\
+              """);
 
       assertThat(projected.strict()).isTrue();
       assertThat(projected.schema())
@@ -221,7 +234,8 @@ class OpenAiResponsesSchemasTest {
                    "properties":{"first":{"$ref":"#/$defs/Nested"},
                                  "second":{"anyOf":[{"type":"null"},{"$ref":"#/$defs/Nested"}]},
                                  "tags":{"type":"array","items":{"type":"string"}}},
-                   "required":["first","second","tags"],"additionalProperties":false}"""));
+                   "required":["first","second","tags"],"additionalProperties":false}\
+                  """));
     }
 
     private static final String SEALED_BRANCHES =
@@ -230,7 +244,8 @@ class OpenAiResponsesSchemasTest {
           "required":["host","type"]},
          {"type":"object","properties":{"reason":{"type":["string","null"]},
                                         "type":{"const":"Shutdown"}},
-          "required":["type"]}]""";
+          "required":["type"]}]\
+        """;
 
     /**
      * A sealed {@code Command} with {@code Restart(String host)} and {@code
@@ -255,7 +270,8 @@ class OpenAiResponsesSchemasTest {
                         "required":["host","type"],"additionalProperties":false},
                        {"type":"object","properties":{"reason":{"type":["string","null"]},
                                                       "type":{"const":"Shutdown","type":"string"}},
-                        "required":["reason","type"],"additionalProperties":false}]"""
+                        "required":["reason","type"],"additionalProperties":false}]\
+                      """
                       + "}},\"required\":[\"command\"],\"additionalProperties\":false}"));
     }
   }
@@ -340,7 +356,8 @@ class OpenAiResponsesSchemasTest {
           """
           {"type":"object",
            "properties":{"labels":{"type":"object","additionalProperties":{"type":"string"}}},
-           "required":["labels"]}""";
+           "required":["labels"]}\
+          """;
 
       OpenAiResponsesSchemas.Projected projected = project(json);
 
@@ -356,7 +373,8 @@ class OpenAiResponsesSchemasTest {
               """
               {"type":"object",
                "properties":{"name":{"type":"string","minLength":1}},
-               "required":["name"]}""");
+               "required":["name"]}\
+              """);
 
       assertThat(projected.refusedKeyword()).contains("minLength");
     }
@@ -367,7 +385,8 @@ class OpenAiResponsesSchemasTest {
           """
           {"type":"object","properties":{"either":{"oneOf":[{"type":"object",
              "properties":{"n":{"type":"string","minLength":1}},"required":["n"]},
-             {"type":"null"}]}},"required":["either"]}""";
+             {"type":"null"}]}},"required":["either"]}\
+          """;
 
       OpenAiResponsesSchemas.Projected projected = project(json);
 
@@ -387,7 +406,8 @@ class OpenAiResponsesSchemasTest {
            "properties":{"value":{"type":"array","items":{"$ref":"#/$defs/Item"}}},
            "required":["value"],"additionalProperties":false,
            "$defs":{"Item":{"type":"object","properties":{"name":{"type":"string"}},
-                            "required":["name"]}}}""";
+                            "required":["name"]}}}\
+          """;
 
       OpenAiResponsesSchemas.Projected projected = project(wrapped);
 
@@ -401,7 +421,8 @@ class OpenAiResponsesSchemasTest {
                    "properties":{"value":{"type":"array","items":{"$ref":"#/$defs/Item"}}},
                    "required":["value"],"additionalProperties":false,
                    "$defs":{"Item":{"type":"object","properties":{"name":{"type":"string"}},
-                                    "required":["name"],"additionalProperties":false}}}"""));
+                                    "required":["name"],"additionalProperties":false}}}\
+                  """));
     }
   }
 
@@ -412,10 +433,11 @@ class OpenAiResponsesSchemasTest {
     void an_array_root_is_refused_naming_the_root_and_goes_as_generated() {
       String json =
           """
-          {"$schema":"https://json-schema.org/draft/2020-12/schema",
-       "$defs":{"Item":{"type":"object","properties":{"name":{"type":"string"},"count":{"type":"integer"}},
-                        "required":["name","count"]}},
-       "type":"array","items":{"$ref":"#/$defs/Item"}}""";
+             {"$schema":"https://json-schema.org/draft/2020-12/schema",
+          "$defs":{"Item":{"type":"object","properties":{"name":{"type":"string"},"count":{"type":"integer"}},
+                           "required":["name","count"]}},
+          "type":"array","items":{"$ref":"#/$defs/Item"}}\
+          """;
 
       OpenAiResponsesSchemas.Projected projected = project(json);
 
@@ -435,7 +457,8 @@ class OpenAiResponsesSchemasTest {
           project(
               """
               {"oneOf":[{"type":"object","properties":{"k":{"const":"a"}},"required":["k"]},
-                        {"type":"object","properties":{"k":{"const":"b"}},"required":["k"]}]}""");
+                        {"type":"object","properties":{"k":{"const":"b"}},"required":["k"]}]}\
+              """);
 
       assertThat(projected.strict()).isFalse();
       assertThat(projected.refusedKeyword()).contains("oneOf at the root");

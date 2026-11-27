@@ -178,16 +178,14 @@ public final class Repl {
       CodecFactory codecs = context.getBean(CodecFactory.class);
       ProviderId providerId = ProviderId.of(chosen);
       run(
-          DefaultDirectHarnessFactory.of(
-              factory -> {
-                factory
-                    .backend(new InMemoryDirectBackend(codecs))
-                    .schemas(new VictoolsJsonSchemaGenerator())
-                    .mapper(mapper);
-                providers.forEach(
-                    (name, provider) -> factory.provider(ProviderId.of(name), provider));
-                factory.inference(providerId, new InferenceOptions(model, config.maxTokens()));
-              }),
+          DefaultDirectHarnessFactory.of(factory -> {
+            factory
+                .backend(new InMemoryDirectBackend(codecs))
+                .schemas(new VictoolsJsonSchemaGenerator())
+                .mapper(mapper);
+            providers.forEach((name, provider) -> factory.provider(ProviderId.of(name), provider));
+            factory.inference(providerId, new InferenceOptions(model, config.maxTokens()));
+          }),
           Optional.of(chosen),
           model,
           config,

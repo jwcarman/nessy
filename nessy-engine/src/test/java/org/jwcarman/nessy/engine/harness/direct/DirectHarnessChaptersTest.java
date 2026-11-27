@@ -171,20 +171,18 @@ class DirectHarnessChaptersTest {
   }
 
   private DefaultDirectHarnessFactory factory() {
-    return DefaultDirectHarnessFactory.of(
-        f ->
-            f.backend(
-                    new FixedDirectBackend(
-                        new InMemoryLocks(),
-                        new InMemoryAgentEvents(
-                            new JacksonCodecFactory(JsonMapper.builder().build())),
-                        new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build())),
-                        chapters,
-                        new InMemoryLeases(),
-                        new InMemoryAgentTurns()))
-                .provider(ProviderId.of("test"), model)
-                .schemas(new VictoolsJsonSchemaGenerator())
-                .mapper(JsonMapper.builder().build()));
+    return DefaultDirectHarnessFactory.of(f ->
+        f.backend(
+                new FixedDirectBackend(
+                    new InMemoryLocks(),
+                    new InMemoryAgentEvents(new JacksonCodecFactory(JsonMapper.builder().build())),
+                    new InMemoryPayloads(new JacksonCodecFactory(JsonMapper.builder().build())),
+                    chapters,
+                    new InMemoryLeases(),
+                    new InMemoryAgentTurns()))
+            .provider(ProviderId.of("test"), model)
+            .schemas(new VictoolsJsonSchemaGenerator())
+            .mapper(JsonMapper.builder().build()));
   }
 
   private DirectHarness<String, String> harness(Customizer<DirectHarnessConfig<String>> chosen) {
@@ -263,10 +261,9 @@ class DirectHarnessChaptersTest {
       AgentId agent = AgentId.random();
       model.callLookupInEveryTurn();
       DirectHarness<String, String> harness =
-          harness(
-              c ->
-                  c.tool(lookup(), t -> t.action(query -> "look up " + query.q()))
-                      .chapterPolicy(ChapterPolicy.every(3)));
+          harness(c ->
+              c.tool(lookup(), t -> t.action(query -> "look up " + query.q()))
+                  .chapterPolicy(ChapterPolicy.every(3)));
 
       talk(harness, agent, 3);
       List<Summary> written = waitForSummaries(agent, 1);
@@ -284,23 +281,20 @@ class DirectHarnessChaptersTest {
       AgentId agent = AgentId.random();
       AtomicInteger asked = new AtomicInteger();
       DirectHarness<String, String> harness =
-          harness(
-              c ->
-                  c.chapterPolicy(ChapterPolicy.every(3))
-                      .summarizer(
-                          chapter -> {
-                            asked.incrementAndGet();
-                            throw new IllegalStateException("the model is not answering");
-                          }));
+          harness(c ->
+              c.chapterPolicy(ChapterPolicy.every(3))
+                  .summarizer(chapter -> {
+                    asked.incrementAndGet();
+                    throw new IllegalStateException("the model is not answering");
+                  }));
 
       talk(harness, agent, 3);
       await()
           .atMost(PATIENCE)
-          .untilAsserted(
-              () -> {
-                assertThat(asked).hasValueGreaterThanOrEqualTo(1);
-                assertThat(chapters.closedThrough(TYPE, agent)).isPresent();
-              });
+          .untilAsserted(() -> {
+            assertThat(asked).hasValueGreaterThanOrEqualTo(1);
+            assertThat(chapters.closedThrough(TYPE, agent)).isPresent();
+          });
       harness.ask(agent, "turn 4");
 
       InferenceRequest fourth = model.chats.getLast();

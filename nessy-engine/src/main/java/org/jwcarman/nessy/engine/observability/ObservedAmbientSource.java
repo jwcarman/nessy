@@ -36,18 +36,16 @@ public final class ObservedAmbientSource {
   public static AmbientSource wrap(AmbientSource delegate, ObservationRegistry observations) {
     Objects.requireNonNull(delegate, "delegate must not be null");
     Objects.requireNonNull(observations, "observations must not be null");
-    return AmbientSource.of(
-        source ->
-            source
-                .kind(delegate.kind())
-                .offering(
-                    agentId ->
-                        observe(
-                            observations,
-                            "nessy.context.ambient",
-                            "nessy.context ambient " + delegate.kind(),
-                            whose(observations),
-                            observation -> delegate.forAgent(agentId))));
+    return AmbientSource.of(source ->
+        source
+            .kind(delegate.kind())
+            .offering(agentId ->
+                observe(
+                    observations,
+                    "nessy.context.ambient",
+                    "nessy.context ambient " + delegate.kind(),
+                    whose(observations),
+                    observation -> delegate.forAgent(agentId))));
   }
 
   /**

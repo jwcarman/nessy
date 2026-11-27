@@ -59,10 +59,9 @@ class OpenAiChatProviderConfigTest {
 
   @Test
   void a_negative_timeout_is_rejected() {
-    assertThatThrownBy(
-            () ->
-                OpenAiChatInferenceProvider.of(
-                    c -> c.apiKey("test-key").timeout(Duration.ofSeconds(-1))))
+    assertThatThrownBy(() ->
+            OpenAiChatInferenceProvider.of(
+                c -> c.apiKey("test-key").timeout(Duration.ofSeconds(-1))))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -77,11 +76,10 @@ class OpenAiChatProviderConfigTest {
 
   @Test
   void a_timeout_applies_on_the_from_env_build_path_too() {
-    assertThatCode(
-            () ->
-                OpenAiChatInferenceProvider.of(
-                        c -> c.fromEnv().apiKey("explicit").timeout(Duration.ofMinutes(6)))
-                    .close())
+    assertThatCode(() ->
+            OpenAiChatInferenceProvider.of(
+                    c -> c.fromEnv().apiKey("explicit").timeout(Duration.ofMinutes(6)))
+                .close())
         .doesNotThrowAnyException();
   }
 

@@ -97,16 +97,15 @@ class WatchmanRoundIntegrationTest {
     await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> assertThat(ours()).isEmpty());
     await()
         .atMost(Duration.ofSeconds(60))
-        .untilAsserted(
-            () -> {
-              List<ApprovalsController.Note> notes =
-                  ApprovalsController.notes(
-                      histories.forAgent(Watchman.TYPE, Watchman.AGENT).turnsFrom(0));
-              assertThat(notes)
-                  .extracting(ApprovalsController.Note::text)
-                  .anySatisfy(text -> assertThat(text).contains("Total reclaimed space: 4.2GB"))
-                  .contains("Rounds complete. Nothing needs your attention.");
-            });
+        .untilAsserted(() -> {
+          List<ApprovalsController.Note> notes =
+              ApprovalsController.notes(
+                  histories.forAgent(Watchman.TYPE, Watchman.AGENT).turnsFrom(0));
+          assertThat(notes)
+              .extracting(ApprovalsController.Note::text)
+              .anySatisfy(text -> assertThat(text).contains("Total reclaimed space: 4.2GB"))
+              .contains("Rounds complete. Nothing needs your attention.");
+        });
   }
 
   /**

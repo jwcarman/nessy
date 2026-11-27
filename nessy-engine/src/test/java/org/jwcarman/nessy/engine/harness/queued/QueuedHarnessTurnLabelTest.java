@@ -92,10 +92,9 @@ class QueuedHarnessTurnLabelTest {
       await().atMost(Duration.ofSeconds(10)).until(() -> !turnStarts().isEmpty());
       await()
           .atMost(Duration.ofSeconds(10))
-          .until(
-              () ->
-                  backend.events().readAll(TYPE, agent).stream()
-                      .anyMatch(AgentEvent.InferenceAnswered.class::isInstance));
+          .until(() ->
+              backend.events().readAll(TYPE, agent).stream()
+                  .anyMatch(AgentEvent.InferenceAnswered.class::isInstance));
       return turnStarts().getFirst().label();
     }
   }
@@ -117,12 +116,10 @@ class QueuedHarnessTurnLabelTest {
     @Test
     void falls_back_to_the_class_name_and_the_turn_still_runs_when_the_label_throws() {
       assertThat(
-              labelOfTheOnlyTurnWhen(
-                  c ->
-                      c.inputLabel(
-                          _ -> {
-                            throw new IllegalStateException("no label today");
-                          })))
+              labelOfTheOnlyTurnWhen(c ->
+                  c.inputLabel(_ -> {
+                    throw new IllegalStateException("no label today");
+                  })))
           .isEqualTo("Invoice");
     }
 

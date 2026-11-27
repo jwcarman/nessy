@@ -102,11 +102,10 @@ final class StoredContent implements StoryContent {
             });
     List<RequestContent> written =
         requests.stream()
-            .map(
-                requested ->
-                    new RequestContent(
-                        requested.seq(),
-                        narrow(blocks(requested.request()), Block.ActionRequestContent.class)))
+            .map(requested ->
+                new RequestContent(
+                    requested.seq(),
+                    narrow(blocks(requested.request()), Block.ActionRequestContent.class)))
             .toList();
     Optional<List<Block.AnswerContent>> answer =
         answers.isEmpty()
@@ -201,14 +200,13 @@ final class StoredContent implements StoryContent {
     Map<PayloadRef, Payloads.Resolved> resolved =
         payloads.get(pending.stream().map(Pending::result).distinct().toList());
     return pending.stream()
-        .map(
-            one ->
-                new CallResult(
-                    one.seq(),
-                    one.key(),
-                    narrow(
-                        found(one.result(), resolved.get(one.result())),
-                        Block.ToolResultContent.class)))
+        .map(one ->
+            new CallResult(
+                one.seq(),
+                one.key(),
+                narrow(
+                    found(one.result(), resolved.get(one.result())),
+                    Block.ToolResultContent.class)))
         .toList();
   }
 

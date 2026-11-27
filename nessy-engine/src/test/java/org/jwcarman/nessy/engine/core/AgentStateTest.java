@@ -384,20 +384,15 @@ class AgentStateTest {
       assertThat(after)
           .asInstanceOf(InstanceOfAssertFactories.type(AgentState.AwaitingActions.class))
           .extracting(AgentState.AwaitingActions::stats)
-          .satisfies(
-              stats -> {
-                assertThat(stats.startedAt())
-                    .as("from the event, not from a clock")
-                    .isEqualTo(opened);
-                assertThat(stats.modelCalls()).as("the attempt was a call too").isEqualTo(2);
-                assertThat(stats.failedAttempts()).isEqualTo(1);
-                assertThat(stats.toolCalls()).isEqualTo(1);
-                assertThat(stats.spent())
-                    .as("everything, failures included")
-                    .isEqualTo(Tokens.of(160));
-                assertThat(stats.wasted()).isEqualTo(Tokens.of(40));
-                assertThat(stats.productiveTokens()).isEqualTo(Tokens.of(120));
-              });
+          .satisfies(stats -> {
+            assertThat(stats.startedAt()).as("from the event, not from a clock").isEqualTo(opened);
+            assertThat(stats.modelCalls()).as("the attempt was a call too").isEqualTo(2);
+            assertThat(stats.failedAttempts()).isEqualTo(1);
+            assertThat(stats.toolCalls()).isEqualTo(1);
+            assertThat(stats.spent()).as("everything, failures included").isEqualTo(Tokens.of(160));
+            assertThat(stats.wasted()).isEqualTo(Tokens.of(40));
+            assertThat(stats.productiveTokens()).isEqualTo(Tokens.of(120));
+          });
     }
 
     @Test
@@ -1781,11 +1776,10 @@ class AgentStateTest {
       assertThat(decision.events())
           .singleElement()
           .asInstanceOf(InstanceOfAssertFactories.type(AgentEvent.ToolFailed.class))
-          .satisfies(
-              failed -> {
-                assertThat(failed.kind()).isEqualTo(CallFailure.NOT_AUTHORISED);
-                assertThat(failed.idempotencyKey()).isEqualTo(ASKED_KEY);
-              });
+          .satisfies(failed -> {
+            assertThat(failed.kind()).isEqualTo(CallFailure.NOT_AUTHORISED);
+            assertThat(failed.idempotencyKey()).isEqualTo(ASKED_KEY);
+          });
     }
   }
 }

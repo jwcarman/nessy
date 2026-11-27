@@ -157,16 +157,15 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
       boolean[] ended = {false};
       ResponseErrorEvent[] error = {null};
       stream.stream()
-          .forEach(
-              event -> {
-                any[0] = true;
-                accumulator.accumulate(event);
-                if (!ended[0]) {
-                  narrate(event, narrator);
-                }
-                event.error().ifPresent(e -> error[0] = e);
-                ended[0] |= event.isCompleted() || event.isFailed() || event.isIncomplete();
-              });
+          .forEach(event -> {
+            any[0] = true;
+            accumulator.accumulate(event);
+            if (!ended[0]) {
+              narrate(event, narrator);
+            }
+            event.error().ifPresent(e -> error[0] = e);
+            ended[0] |= event.isCompleted() || event.isFailed() || event.isIncomplete();
+          });
       if (!any[0]) {
         // A stream that ended before it began: nothing to fold. Asking again returns the same.
         return new InferenceResult.Fault(new Failure.Permanent("model returned no reply"));
@@ -320,24 +319,22 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
    */
   private Optional<Block.Provider> kept(ResponseReasoningItem item) {
     return item.encryptedContent()
-        .map(
-            encrypted -> {
-              Map<String, Object> payload = new LinkedHashMap<>();
-              payload.put("id", item.id());
-              payload.put("encrypted_content", encrypted);
-              payload.put(
-                  "summary",
-                  item.summary().stream()
-                      .map(
-                          part -> {
-                            Map<String, Object> summary = new LinkedHashMap<>();
-                            summary.put("type", "summary_text");
-                            summary.put("text", part.text());
-                            return summary;
-                          })
-                      .toList());
-              return new Block.Provider(vendor, mapper.writeValueAsString(payload));
-            });
+        .map(encrypted -> {
+          Map<String, Object> payload = new LinkedHashMap<>();
+          payload.put("id", item.id());
+          payload.put("encrypted_content", encrypted);
+          payload.put(
+              "summary",
+              item.summary().stream()
+                  .map(part -> {
+                    Map<String, Object> summary = new LinkedHashMap<>();
+                    summary.put("type", "summary_text");
+                    summary.put("text", part.text());
+                    return summary;
+                  })
+                  .toList());
+          return new Block.Provider(vendor, mapper.writeValueAsString(payload));
+        });
   }
 
   /**
@@ -372,27 +369,26 @@ public final class OpenAiResponsesInferenceProvider implements InferenceProvider
   private static Usage usageOf(Response response, String model) {
     return response
         .usage()
-        .map(
-            counted ->
-                new Usage(
-                    model,
-                    count(counted._inputTokens()),
-                    count(counted._outputTokens()),
-                    counted
-                        ._inputTokensDetails()
-                        .asKnown()
-                        .map(details -> count(details._cachedTokens()))
-                        .orElse(null),
-                    counted
-                        ._inputTokensDetails()
-                        .asKnown()
-                        .map(details -> count(details._cacheWriteTokens()))
-                        .orElse(null),
-                    counted
-                        ._outputTokensDetails()
-                        .asKnown()
-                        .map(details -> count(details._reasoningTokens()))
-                        .orElse(null)))
+        .map(counted ->
+            new Usage(
+                model,
+                count(counted._inputTokens()),
+                count(counted._outputTokens()),
+                counted
+                    ._inputTokensDetails()
+                    .asKnown()
+                    .map(details -> count(details._cachedTokens()))
+                    .orElse(null),
+                counted
+                    ._inputTokensDetails()
+                    .asKnown()
+                    .map(details -> count(details._cacheWriteTokens()))
+                    .orElse(null),
+                counted
+                    ._outputTokensDetails()
+                    .asKnown()
+                    .map(details -> count(details._reasoningTokens()))
+                    .orElse(null)))
         .orElseGet(() -> Usage.unreported(model));
   }
 

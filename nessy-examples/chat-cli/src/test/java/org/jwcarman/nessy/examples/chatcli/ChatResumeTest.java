@@ -57,11 +57,10 @@ class ChatResumeTest {
     @Test
     void one_line_says_what_was_wrong_and_the_expected_form() {
       assertThat(Chat.problemWith("not-an-id"))
-          .hasValueSatisfying(
-              line ->
-                  assertThat(line)
-                      .contains("nessy.console.agent", "not-an-id", "UUID")
-                      .doesNotContain(System.lineSeparator()));
+          .hasValueSatisfying(line ->
+              assertThat(line)
+                  .contains("nessy.console.agent", "not-an-id", "UUID")
+                  .doesNotContain(System.lineSeparator()));
     }
 
     @Test

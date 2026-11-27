@@ -86,10 +86,9 @@ class ObservedTest {
 
   @Test
   void what_a_call_cost_is_a_histogram_of_tokens_in_and_tokens_out() {
-    observe(
-        (_, _) ->
-            new InferenceResult.Answer(List.of(new Block.Text("done")))
-                .withUsage(Usage.of("a-model", 3, 5)));
+    observe((_, _) ->
+        new InferenceResult.Answer(List.of(new Block.Text("done")))
+            .withUsage(Usage.of("a-model", 3, 5)));
 
     assertThat(
             meters
@@ -214,10 +213,9 @@ class ObservedTest {
 
   @Test
   void a_request_for_actions_is_recorded_as_tool_calls() {
-    observe(
-        (_, _) ->
-            new InferenceResult.Actions(
-                List.of(new Block.ToolCall(new CallId("c1"), new ToolName("lookup"), "{}"))));
+    observe((_, _) ->
+        new InferenceResult.Actions(
+            List.of(new Block.ToolCall(new CallId("c1"), new ToolName("lookup"), "{}"))));
 
     assertThat(tagOf(DURATION, "gen_ai.response.finish_reasons")).isEqualTo("tool_calls");
   }
@@ -248,10 +246,9 @@ class ObservedTest {
   @Test
   void a_provider_that_throws_still_closes_its_span_and_says_what_broke() {
     try {
-      observe(
-          (_, _) -> {
-            throw new IllegalStateException("a bug in the adapter");
-          });
+      observe((_, _) -> {
+        throw new IllegalStateException("a bug in the adapter");
+      });
     } catch (IllegalStateException _) {
       // The point is that it propagates: only the adapter's own bugs reach here.
     }

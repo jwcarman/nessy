@@ -137,13 +137,12 @@ public final class Transcripts {
   /** The words in a run of blocks: text and commentary joined by newlines, the rest skipped. */
   public static String text(List<? extends Block> blocks) {
     return blocks.stream()
-        .map(
-            block ->
-                switch (block) {
-                  case Block.Text(String text) -> text;
-                  case Block.Commentary(String text) -> text;
-                  case Block.Provider _, Block.ToolCall _ -> "";
-                })
+        .map(block ->
+            switch (block) {
+              case Block.Text(String text) -> text;
+              case Block.Commentary(String text) -> text;
+              case Block.Provider _, Block.ToolCall _ -> "";
+            })
         .filter(text -> !text.isEmpty())
         .collect(Collectors.joining("\n"));
   }

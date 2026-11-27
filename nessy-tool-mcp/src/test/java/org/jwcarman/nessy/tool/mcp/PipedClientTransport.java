@@ -68,44 +68,41 @@ final class PipedClientTransport implements McpClientTransport {
 
   private void startInbound(
       Function<Mono<McpSchema.JSONRPCMessage>, Mono<McpSchema.JSONRPCMessage>> handler) {
-    inboundScheduler.schedule(
-        () -> {
-          try (BufferedReader reader =
-              new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-            String line;
-            while (!closing && (line = reader.readLine()) != null) {
-              McpSchema.JSONRPCMessage message =
-                  McpSchema.deserializeJsonRpcMessage(jsonMapper, line);
-              Mono.just(message).transform(handler).subscribe();
-            }
-          } catch (IOException e) {
-            if (!closing) {
-              throw new IllegalStateException("in-memory MCP transport read failed", e);
-            }
-          }
-        });
+    inboundScheduler.schedule(() -> {
+      try (BufferedReader reader =
+          new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+        String line;
+        while (!closing && (line = reader.readLine()) != null) {
+          McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(jsonMapper, line);
+          Mono.just(message).transform(handler).subscribe();
+        }
+      } catch (IOException e) {
+        if (!closing) {
+          throw new IllegalStateException("in-memory MCP transport read failed", e);
+        }
+      }
+    });
   }
 
   private void startOutbound() {
     outboundSink
         .asFlux()
         .publishOn(outboundScheduler)
-        .subscribe(
-            message -> {
-              try {
-                String json = jsonMapper.writeValueAsString(message);
-                json = json.replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n");
-                synchronized (out) {
-                  out.write(json.getBytes(StandardCharsets.UTF_8));
-                  out.write('\n');
-                  out.flush();
-                }
-              } catch (IOException e) {
-                if (!closing) {
-                  throw new IllegalStateException("in-memory MCP transport write failed", e);
-                }
-              }
-            });
+        .subscribe(message -> {
+          try {
+            String json = jsonMapper.writeValueAsString(message);
+            json = json.replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n");
+            synchronized (out) {
+              out.write(json.getBytes(StandardCharsets.UTF_8));
+              out.write('\n');
+              out.flush();
+            }
+          } catch (IOException e) {
+            if (!closing) {
+              throw new IllegalStateException("in-memory MCP transport write failed", e);
+            }
+          }
+        });
   }
 
   @Override
@@ -121,15 +118,14 @@ final class PipedClientTransport implements McpClientTransport {
 
   @Override
   public Mono<Void> closeGracefully() {
-    return Mono.fromRunnable(
-        () -> {
-          closing = true;
-          outboundSink.tryEmitComplete();
-          closeQuietly(in);
-          closeQuietly(out);
-          inboundScheduler.dispose();
-          outboundScheduler.dispose();
-        });
+    return Mono.fromRunnable(() -> {
+      closing = true;
+      outboundSink.tryEmitComplete();
+      closeQuietly(in);
+      closeQuietly(out);
+      inboundScheduler.dispose();
+      outboundScheduler.dispose();
+    });
   }
 
   private static void closeQuietly(Closeable closeable) {

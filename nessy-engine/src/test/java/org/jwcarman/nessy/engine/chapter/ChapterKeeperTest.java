@@ -832,10 +832,9 @@ class ChapterKeeperTest {
       Leases leases = new InMemoryLeases();
       TurnHistories histories = histories();
 
-      assertThatThrownBy(
-              () ->
-                  new ChapterKeeper(
-                      TYPE, policy, SAYS_SOMETHING, chapters, leases, histories, 3, Duration.ZERO))
+      assertThatThrownBy(() ->
+              new ChapterKeeper(
+                  TYPE, policy, SAYS_SOMETHING, chapters, leases, histories, 3, Duration.ZERO))
           .isInstanceOf(IllegalArgumentException.class);
     }
   }

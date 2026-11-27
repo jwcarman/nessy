@@ -203,23 +203,21 @@ public final class JdbcPayloads implements Payloads {
     List<byte[]> hashes = wanted.stream().map(ref -> HexFormat.of().parseHex(ref.value())).toList();
     jdbc.sql(GET)
         .params(scoped().value(), hashes.toArray(byte[][]::new))
-        .query(
-            (rs, _) -> {
-              PayloadRef ref = new PayloadRef(HexFormat.of().formatHex(rs.getBytes("hash")));
-              String kind = rs.getString("kind");
-              switch (kind) {
-                case BLOCKS ->
-                    found.put(
-                        ref,
-                        new Resolved.Found(
-                            blocksCodec.decode(transform.decode(rs.getBytes("content"))).blocks()));
-                case DOCUMENT ->
-                    throw new IllegalStateException(
-                        "payload " + ref + " holds a document, not blocks");
-                default -> throw unknownKind(ref, kind);
-              }
-              return ref;
-            })
+        .query((rs, _) -> {
+          PayloadRef ref = new PayloadRef(HexFormat.of().formatHex(rs.getBytes("hash")));
+          String kind = rs.getString("kind");
+          switch (kind) {
+            case BLOCKS ->
+                found.put(
+                    ref,
+                    new Resolved.Found(
+                        blocksCodec.decode(transform.decode(rs.getBytes("content"))).blocks()));
+            case DOCUMENT ->
+                throw new IllegalStateException("payload " + ref + " holds a document, not blocks");
+            default -> throw unknownKind(ref, kind);
+          }
+          return ref;
+        })
         .list();
     return found;
   }

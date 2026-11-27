@@ -59,12 +59,10 @@ public class AgentStoriesAutoConfiguration {
   public AgentStories nessyAgentStories(
       ObjectProvider<QueuedBackend> queued, ObjectProvider<DirectBackend> direct) {
     List<FirstStoreHoldingStories.Store> stores = new ArrayList<>();
-    queued.ifAvailable(
-        backend ->
-            stores.add(new FirstStoreHoldingStories.Store(backend.events(), backend.payloads())));
-    direct.ifAvailable(
-        backend ->
-            stores.add(new FirstStoreHoldingStories.Store(backend.events(), backend.payloads())));
+    queued.ifAvailable(backend ->
+        stores.add(new FirstStoreHoldingStories.Store(backend.events(), backend.payloads())));
+    direct.ifAvailable(backend ->
+        stores.add(new FirstStoreHoldingStories.Store(backend.events(), backend.payloads())));
     return new FirstStoreHoldingStories(stores);
   }
 }

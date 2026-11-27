@@ -61,10 +61,9 @@ class ChatWorkingIntegrationTest {
     RELEASE.countDown();
     await()
         .atMost(Duration.ofSeconds(30))
-        .untilAsserted(
-            () -> {
-              assertThat(chat.state(agentId).texts()).contains("Noted.");
-              assertThat(chat.state(agentId).working()).isFalse();
-            });
+        .untilAsserted(() -> {
+          assertThat(chat.state(agentId).texts()).contains("Noted.");
+          assertThat(chat.state(agentId).working()).isFalse();
+        });
   }
 }

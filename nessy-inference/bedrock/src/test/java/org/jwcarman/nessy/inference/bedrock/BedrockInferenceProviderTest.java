@@ -125,11 +125,10 @@ class BedrockInferenceProviderTest {
         ReasoningContentBlock reasoning = block.reasoningContent();
         if (reasoning.reasoningText() != null) {
           pieces(reasoning.reasoningText().text())
-              .forEach(
-                  piece ->
-                      deltas.add(
-                          ContentBlockDelta.fromReasoningContent(
-                              ReasoningContentBlockDelta.fromText(piece))));
+              .forEach(piece ->
+                  deltas.add(
+                      ContentBlockDelta.fromReasoningContent(
+                          ReasoningContentBlockDelta.fromText(piece))));
           if (reasoning.reasoningText().signature() != null) {
             deltas.add(
                 ContentBlockDelta.fromReasoningContent(
@@ -269,11 +268,10 @@ class BedrockInferenceProviderTest {
       assertThat(atInference).isEmpty();
       assertThat(sent)
           .hasSize(2)
-          .allSatisfy(
-              sentRequest -> {
-                assertThat(sentRequest.additionalModelRequestFields()).isNull();
-                assertThat(sentRequest.inferenceConfig().maxTokens()).isEqualTo(256);
-              });
+          .allSatisfy(sentRequest -> {
+            assertThat(sentRequest.additionalModelRequestFields()).isNull();
+            assertThat(sentRequest.inferenceConfig().maxTokens()).isEqualTo(256);
+          });
     }
   }
 

@@ -105,10 +105,9 @@ class EmbedderRegistrar
         () -> {
           JsonMapper mapper = beanFactory.getBeanProvider(JsonMapper.class).getIfAvailable();
           return WireEmbedders.build(embedder, mapper, beanFactory.getBeanClassLoader())
-              .orElseThrow(
-                  () ->
-                      new IllegalStateException(
-                          "the " + embedder.id() + " embedder's adapter vanished"));
+              .orElseThrow(() ->
+                  new IllegalStateException(
+                      "the " + embedder.id() + " embedder's adapter vanished"));
         });
   }
 

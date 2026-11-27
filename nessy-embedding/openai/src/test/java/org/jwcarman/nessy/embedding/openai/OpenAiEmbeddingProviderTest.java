@@ -53,10 +53,9 @@ class OpenAiEmbeddingProviderTest {
    */
   private static Embedder embedderOver(Customizer<OpenAiEmbedderConfig> connection) {
     OpenAiEmbeddingProvider provider = OpenAiEmbeddingProvider.of(connection);
-    return DefaultEmbedderFactory.of(
-            f ->
-                f.provider(OPENAI, provider)
-                    .embedding(OPENAI, EmbeddingOptions.of(OpenAiEmbedderConfig.DEFAULT_MODEL)))
+    return DefaultEmbedderFactory.of(f ->
+            f.provider(OPENAI, provider)
+                .embedding(OPENAI, EmbeddingOptions.of(OpenAiEmbedderConfig.DEFAULT_MODEL)))
         .create(c -> {});
   }
 
@@ -124,15 +123,14 @@ class OpenAiEmbeddingProviderTest {
     void one_text_is_one_request_and_the_dimension_is_learned_from_the_reply() {
       AtomicReference<EmbeddingCreateParams> sent = new AtomicReference<>();
       Embedder embedder =
-          embedderOver(
-              c ->
-                  c.client(
-                      fakeClient(
-                          params -> {
-                            sent.set(params);
-                            return reply(item(0, 0.1f, 0.2f, 0.3f));
-                          },
-                          new AtomicBoolean())));
+          embedderOver(c ->
+              c.client(
+                  fakeClient(
+                      params -> {
+                        sent.set(params);
+                        return reply(item(0, 0.1f, 0.2f, 0.3f));
+                      },
+                      new AtomicBoolean())));
 
       assertThat(embedder.dimension()).isEmpty();
       Embedding embedding = embedder.embedDocument("a lake monster");
@@ -148,10 +146,8 @@ class OpenAiEmbeddingProviderTest {
     @Test
     void a_batch_is_one_request_and_comes_back_in_the_order_asked_whatever_order_it_arrived() {
       Embedder embedder =
-          embedderOver(
-              c ->
-                  c.client(
-                      fakeClient(params -> reply(item(1, 2f), item(0, 1f)), new AtomicBoolean())));
+          embedderOver(c ->
+              c.client(fakeClient(params -> reply(item(1, 2f), item(0, 1f)), new AtomicBoolean())));
 
       List<Embedding> embeddings = embedder.embedDocuments(List.of("first", "second"));
 
@@ -163,15 +159,14 @@ class OpenAiEmbeddingProviderTest {
     void a_model_and_a_dimension_asked_for_are_sent_and_reported() {
       AtomicReference<EmbeddingCreateParams> sent = new AtomicReference<>();
       OpenAiEmbeddingProvider provider =
-          OpenAiEmbeddingProvider.of(
-              c ->
-                  c.client(
-                      fakeClient(
-                          params -> {
-                            sent.set(params);
-                            return reply(item(0, 1f, 2f));
-                          },
-                          new AtomicBoolean())));
+          OpenAiEmbeddingProvider.of(c ->
+              c.client(
+                  fakeClient(
+                      params -> {
+                        sent.set(params);
+                        return reply(item(0, 1f, 2f));
+                      },
+                      new AtomicBoolean())));
       Embedder embedder =
           DefaultEmbedderFactory.of(f -> f.provider(OPENAI, provider))
               .create(c -> c.provider(OPENAI).model("text-embedding-3-large").dimension(2));
@@ -203,11 +198,10 @@ class OpenAiEmbeddingProviderTest {
       OpenAiEmbeddingProvider.of(c -> c.client(fakeClient(p -> reply(), closed))).close();
       assertThat(closed).isFalse();
 
-      assertThatCode(
-              () ->
-                  OpenAiEmbeddingProvider.of(
-                          c -> c.apiKey("k").baseUrl("http://127.0.0.1:1/v1").organization("org"))
-                      .close())
+      assertThatCode(() ->
+              OpenAiEmbeddingProvider.of(
+                      c -> c.apiKey("k").baseUrl("http://127.0.0.1:1/v1").organization("org"))
+                  .close())
           .doesNotThrowAnyException();
     }
 
@@ -237,25 +231,23 @@ class OpenAiEmbeddingProviderTest {
     private final List<EmbeddingCreateParams> sent = new ArrayList<>();
 
     private OpenAiEmbeddingProvider provider() {
-      return OpenAiEmbeddingProvider.of(
-          c ->
-              c.client(
-                  fakeClient(
-                      params -> {
-                        sent.add(params);
-                        return reply(item(0, 0.1f, 0.2f));
-                      },
-                      new AtomicBoolean())));
+      return OpenAiEmbeddingProvider.of(c ->
+          c.client(
+              fakeClient(
+                  params -> {
+                    sent.add(params);
+                    return reply(item(0, 0.1f, 0.2f));
+                  },
+                  new AtomicBoolean())));
     }
 
     @Test
     void is_warned_once_when_the_embedder_is_built_and_is_not_in_any_request() {
       OpenAiEmbeddingProvider provider = provider();
       DefaultEmbedderFactory factory =
-          DefaultEmbedderFactory.of(
-              f ->
-                  f.provider(OPENAI, provider)
-                      .embedding(OPENAI, EmbeddingOptions.of(OpenAiEmbedderConfig.DEFAULT_MODEL)));
+          DefaultEmbedderFactory.of(f ->
+              f.provider(OPENAI, provider)
+                  .embedding(OPENAI, EmbeddingOptions.of(OpenAiEmbedderConfig.DEFAULT_MODEL)));
       var embedder = new Embedder[1];
 
       List<ILoggingEvent> atBuild =

@@ -67,20 +67,19 @@ class DirectHarnessRecoveryTrajectoryTest {
         (request, narrator) ->
             new InferenceResult.Answer(
                 List.of(new Block.Text("an answer")), Usage.unreported("a-model"));
-    return DefaultDirectHarnessFactory.of(
-            f ->
-                f.backend(
-                        new FixedDirectBackend(
-                            new InMemoryLocks(),
-                            events,
-                            new InMemoryPayloads(codecs),
-                            new InMemoryChapters(codecs),
-                            new InMemoryLeases(),
-                            turns))
-                    .provider(ProviderId.of("test"), answers)
-                    .schemas(new VictoolsJsonSchemaGenerator())
-                    .mapper(JsonMapper.builder().build())
-                    .observations(ObservationRegistry.NOOP))
+    return DefaultDirectHarnessFactory.of(f ->
+            f.backend(
+                    new FixedDirectBackend(
+                        new InMemoryLocks(),
+                        events,
+                        new InMemoryPayloads(codecs),
+                        new InMemoryChapters(codecs),
+                        new InMemoryLeases(),
+                        turns))
+                .provider(ProviderId.of("test"), answers)
+                .schemas(new VictoolsJsonSchemaGenerator())
+                .mapper(JsonMapper.builder().build())
+                .observations(ObservationRegistry.NOOP))
         .<String>create(
             TYPE,
             c ->

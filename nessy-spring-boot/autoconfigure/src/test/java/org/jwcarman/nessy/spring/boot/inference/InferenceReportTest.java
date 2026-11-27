@@ -73,20 +73,19 @@ class InferenceReportTest {
   void the_providers_line_names_every_registered_provider_and_never_the_key(CapturedOutput output) {
     runner
         .withPropertyValues("openai.api-key=sk-super-secret", "xai.api-key=xai-super-secret")
-        .run(
-            context -> {
-              InferenceReport report = report(context);
-              report.afterSingletonsInstantiated();
+        .run(context -> {
+          InferenceReport report = report(context);
+          report.afterSingletonsInstantiated();
 
-              assertThat(output)
-                  .contains(
-                      "NESSY INFERENCE: providers: openai (openai-chat, the vendor's own"
-                          + " endpoint, vendor openai, properties [openai.tools.strict]); xai"
-                          + " (openai-chat, https://api.x.ai/v1, vendor x_ai, properties"
-                          + " [openai.tools.strict])")
-                  .doesNotContain("sk-super-secret")
-                  .doesNotContain("xai-super-secret");
-            });
+          assertThat(output)
+              .contains(
+                  "NESSY INFERENCE: providers: openai (openai-chat, the vendor's own"
+                      + " endpoint, vendor openai, properties [openai.tools.strict]); xai"
+                      + " (openai-chat, https://api.x.ai/v1, vendor x_ai, properties"
+                      + " [openai.tools.strict])")
+              .doesNotContain("sk-super-secret")
+              .doesNotContain("xai-super-secret");
+        });
   }
 
   @Test
@@ -98,27 +97,25 @@ class InferenceReportTest {
             "nessy.providers.myanthropic.base-url=https://proxy/v1",
             "nessy.providers.myanthropic.api-key=sk-super-secret",
             "nessy.providers.myanthropic.vendor=not-anthropic")
-        .run(
-            context -> {
-              InferenceReport report = report(context);
-              report.afterSingletonsInstantiated();
+        .run(context -> {
+          InferenceReport report = report(context);
+          report.afterSingletonsInstantiated();
 
-              assertThat(output)
-                  .contains("vendor anthropic")
-                  .doesNotContain("vendor not-anthropic")
-                  .doesNotContain("sk-super-secret");
-            });
+          assertThat(output)
+              .contains("vendor anthropic")
+              .doesNotContain("vendor not-anthropic")
+              .doesNotContain("sk-super-secret");
+        });
   }
 
   @Test
   void nothing_configured_warns(CapturedOutput output) {
-    runner.run(
-        context -> {
-          InferenceReport report = report(context);
-          report.afterSingletonsInstantiated();
+    runner.run(context -> {
+      InferenceReport report = report(context);
+      report.afterSingletonsInstantiated();
 
-          assertThat(output).contains("NESSY INFERENCE: no provider is configured");
-        });
+      assertThat(output).contains("NESSY INFERENCE: no provider is configured");
+    });
   }
 
   @Test
@@ -127,60 +124,56 @@ class InferenceReportTest {
         .withPropertyValues(
             "openai.api-key=sk-super-secret",
             "nessy.providers.openai.properties.openai.user=tenant-42")
-        .run(
-            context -> {
-              InferenceReport report = report(context);
-              report.afterSingletonsInstantiated();
+        .run(context -> {
+          InferenceReport report = report(context);
+          report.afterSingletonsInstantiated();
 
-              assertThat(output)
-                  .contains("properties [openai.tools.strict, openai.user]")
-                  .doesNotContain("tenant-42")
-                  .doesNotContain("sk-super-secret");
-            });
+          assertThat(output)
+              .contains("properties [openai.tools.strict, openai.user]")
+              .doesNotContain("tenant-42")
+              .doesNotContain("sk-super-secret");
+        });
   }
 
   @Test
   void a_default_preset_without_its_key_warns_naming_the_key(CapturedOutput output) {
     runner
         .withPropertyValues("nessy.provider=anthropic", "openai.api-key=sk-super-secret")
-        .run(
-            context -> {
-              report(context).afterSingletonsInstantiated();
+        .run(context -> {
+          report(context).afterSingletonsInstantiated();
 
-              assertThat(output)
-                  .contains(
-                      "NESSY INFERENCE: nessy.provider is anthropic, but no provider named"
-                          + " anthropic is registered; turns that use the default will fail until"
-                          + " anthropic.api-key (ANTHROPIC_API_KEY) is set")
-                  .doesNotContain("sk-super-secret");
-            });
+          assertThat(output)
+              .contains(
+                  "NESSY INFERENCE: nessy.provider is anthropic, but no provider named"
+                      + " anthropic is registered; turns that use the default will fail until"
+                      + " anthropic.api-key (ANTHROPIC_API_KEY) is set")
+              .doesNotContain("sk-super-secret");
+        });
   }
 
   @Test
   void a_default_custom_provider_that_is_not_registered_warns(CapturedOutput output) {
     runner
         .withPropertyValues("nessy.provider=corporate")
-        .run(
-            context -> {
-              report(context).afterSingletonsInstantiated();
+        .run(context -> {
+          report(context).afterSingletonsInstantiated();
 
-              assertThat(output)
-                  .contains(
-                      "nessy.provider is corporate, but no provider named corporate is registered;"
-                          + " turns that use the default will fail until nessy.providers.corporate"
-                          + " or an InferenceProvider bean named corporate exists");
-            });
+          assertThat(output)
+              .contains(
+                  "nessy.provider is corporate, but no provider named corporate is registered;"
+                      + " turns that use the default will fail until nessy.providers.corporate"
+                      + " or an InferenceProvider bean named corporate exists");
+        });
   }
 
   @Test
   void a_registered_default_provider_does_not_warn(CapturedOutput output) {
     runner
         .withPropertyValues("nessy.provider=openai", "openai.api-key=sk-super-secret")
-        .run(
-            context -> {
-              report(context).afterSingletonsInstantiated();
+        .run(context -> {
+          report(context).afterSingletonsInstantiated();
 
-              assertThat(output).doesNotContain("nessy.provider is");
-            });
+          assertThat(output).doesNotContain("nessy.provider is");
+        });
   }
 }

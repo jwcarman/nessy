@@ -80,15 +80,14 @@ public final class McpToolbox implements AutoCloseable {
     return tools.stream()
         .filter(candidate -> candidate.name().equals(wanted))
         .findFirst()
-        .orElseThrow(
-            () ->
-                new NoSuchElementException(
-                    "no such MCP tool: "
-                        + name
-                        + "; available: "
-                        + tools.stream()
-                            .map(tool -> tool.name().value())
-                            .collect(Collectors.joining(", "))));
+        .orElseThrow(() ->
+            new NoSuchElementException(
+                "no such MCP tool: "
+                    + name
+                    + "; available: "
+                    + tools.stream()
+                        .map(tool -> tool.name().value())
+                        .collect(Collectors.joining(", "))));
   }
 
   @Override

@@ -34,11 +34,10 @@ class VoyageEmbedderConfigTest {
 
   @Test
   void a_property_under_its_own_prefix_builds() {
-    assertThatCode(
-            () ->
-                VoyageEmbeddingProvider.of(
-                        c -> c.apiKey("test-key").property("voyage.truncation", "false"))
-                    .close())
+    assertThatCode(() ->
+            VoyageEmbeddingProvider.of(
+                    c -> c.apiKey("test-key").property("voyage.truncation", "false"))
+                .close())
         .doesNotThrowAnyException();
   }
 

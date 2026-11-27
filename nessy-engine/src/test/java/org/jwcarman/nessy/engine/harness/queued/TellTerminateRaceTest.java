@@ -108,10 +108,9 @@ class TellTerminateRaceTest {
   private static void awaitStatus(String story, AgentId agent, Activity activity) {
     await()
         .atMost(PATIENT)
-        .untilAsserted(
-            () ->
-                assertThat(engine.work().status(new AgentType(story), agent).activity())
-                    .isEqualTo(activity));
+        .untilAsserted(() ->
+            assertThat(engine.work().status(new AgentType(story), agent).activity())
+                .isEqualTo(activity));
   }
 
   private static long turnsStarted(String story, AgentId agent) {

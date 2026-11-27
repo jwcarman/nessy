@@ -74,15 +74,14 @@ class ListenersTraceTest {
 
     try (Listeners listeners = new Listeners(List.of(sync), List.of(async))) {
       Observation.createNotStarted("nessy.turn", registry)
-          .observe(
-              () ->
-                  listeners.narrate(
-                      Narrated.story(
-                          TYPE,
-                          new AgentId(UUID.randomUUID()),
-                          new Narration.TurnStopped(new TurnId(1), "limit"),
-                          new Seq(1),
-                          Instant.EPOCH)));
+          .observe(() ->
+              listeners.narrate(
+                  Narrated.story(
+                      TYPE,
+                      new AgentId(UUID.randomUUID()),
+                      new Narration.TurnStopped(new TurnId(1), "limit"),
+                      new Seq(1),
+                      Instant.EPOCH)));
       await().atMost(Duration.ofSeconds(5)).until(() -> seen.size() == 2);
     }
 

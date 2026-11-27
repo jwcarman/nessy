@@ -198,13 +198,12 @@ class DeferredApprovalTest {
             "SELECT parked_at, actionable_at, deadline, status FROM nessy_agent_effect"
                 + " WHERE agent_type = ?")
         .params(type.value())
-        .query(
-            (rs, n) ->
-                new Row(
-                    rs.getObject("parked_at", OffsetDateTime.class),
-                    rs.getObject("actionable_at", OffsetDateTime.class),
-                    rs.getObject("deadline", OffsetDateTime.class),
-                    rs.getString("status")))
+        .query((rs, n) ->
+            new Row(
+                rs.getObject("parked_at", OffsetDateTime.class),
+                rs.getObject("actionable_at", OffsetDateTime.class),
+                rs.getObject("deadline", OffsetDateTime.class),
+                rs.getString("status")))
         .single();
   }
 
@@ -242,11 +241,10 @@ class DeferredApprovalTest {
 
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () -> {
-              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
-              assertThat(outstandingEffects(agentId)).isZero();
-            });
+        .untilAsserted(() -> {
+          assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
+          assertThat(outstandingEffects(agentId)).isZero();
+        });
 
     assertThat(ran).containsExactly("loch ness");
     List<AgentEvent> story = engine.story(type, agentId);
@@ -392,10 +390,9 @@ class DeferredApprovalTest {
       assertThat(row.status()).isEqualTo("RUNNING");
       assertThat(refusing.stateOf(type, agentId))
           .asInstanceOf(type(AgentState.AwaitingActions.class))
-          .satisfies(
-              awaiting ->
-                  assertThat(awaiting.outstanding().get(new CallId("call_1")).phase())
-                      .isEqualTo(OutstandingAction.Phase.AWAITING_APPROVAL));
+          .satisfies(awaiting ->
+              assertThat(awaiting.outstanding().get(new CallId("call_1")).phase())
+                  .isEqualTo(OutstandingAction.Phase.AWAITING_APPROVAL));
       assertThat(heard).as("the turn was heard").isNotEmpty();
       assertThat(heard)
           .extracting(Narrated::event)
@@ -415,9 +412,8 @@ class DeferredApprovalTest {
           .isInstanceOf(ReplyOutcome.Applied.class);
       await()
           .atMost(Duration.ofSeconds(20))
-          .untilAsserted(
-              () ->
-                  assertThat(refusing.stateOf(type, agentId)).isInstanceOf(AgentState.Idle.class));
+          .untilAsserted(() ->
+              assertThat(refusing.stateOf(type, agentId)).isInstanceOf(AgentState.Idle.class));
       assertThat(ran).containsExactly("loch ness");
       assertThat(handed).as("and was never asked again").hasSize(1);
       assertThat(deferralsIn(refusing.story(type, agentId)))
@@ -511,13 +507,12 @@ class DeferredApprovalTest {
     await()
         .during(Duration.ofSeconds(1))
         .atMost(Duration.ofSeconds(5))
-        .untilAsserted(
-            () -> {
-              assertThat(asked.get()).as("the ask count").isEqualTo(1);
-              assertThat(deferralsIn(engine.story(type, agentId)))
-                  .as("one deferral on the record")
-                  .hasSize(1);
-            });
+        .untilAsserted(() -> {
+          assertThat(asked.get()).as("the ask count").isEqualTo(1);
+          assertThat(deferralsIn(engine.story(type, agentId)))
+              .as("one deferral on the record")
+              .hasSize(1);
+        });
 
     await()
         .atMost(Duration.ofSeconds(25))
@@ -575,11 +570,10 @@ class DeferredApprovalTest {
 
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () -> {
-              assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
-              assertThat(outstandingEffects(agentId)).isZero();
-            });
+        .untilAsserted(() -> {
+          assertThat(agentStateOf(type, agentId)).isEqualTo("Idle");
+          assertThat(outstandingEffects(agentId)).isZero();
+        });
 
     assertThat(
             engine

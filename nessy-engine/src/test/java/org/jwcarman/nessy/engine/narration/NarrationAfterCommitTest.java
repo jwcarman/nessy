@@ -67,10 +67,9 @@ class NarrationAfterCommitTest {
       if (narrated.event() instanceof Narration.TurnEnding ended) {
         readableWhenHeard.add(
             events.readAll(narrated.agentType(), narrated.agentId()).stream()
-                .anyMatch(
-                    stored ->
-                        stored instanceof AgentEvent.InferenceAnswered answered
-                            && answered.turn().equals(ended.turn())));
+                .anyMatch(stored ->
+                    stored instanceof AgentEvent.InferenceAnswered answered
+                        && answered.turn().equals(ended.turn())));
       }
     };
   }
@@ -230,10 +229,9 @@ class NarrationAfterCommitTest {
         held.awaitReached();
         await()
             .atMost(PATIENCE)
-            .until(
-                () ->
-                    memory.events().readAll(Doors.TYPE, agent).stream()
-                        .anyMatch(AgentEvent.InferenceAnswered.class::isInstance));
+            .until(() ->
+                memory.events().readAll(Doors.TYPE, agent).stream()
+                    .anyMatch(AgentEvent.InferenceAnswered.class::isInstance));
 
         assertThat(heard.kindsFor(agent))
             .as("the answer is committed, but the step before it has not been released")

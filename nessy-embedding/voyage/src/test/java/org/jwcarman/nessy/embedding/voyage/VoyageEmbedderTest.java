@@ -89,12 +89,10 @@ class VoyageEmbedderTest {
   }
 
   private VoyageEmbeddingProvider provider(Customizer<VoyageEmbedderConfig> more) {
-    return VoyageEmbeddingProvider.of(
-        c -> {
-          c.apiKey("test-key")
-              .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1/");
-          more.customize(c);
-        });
+    return VoyageEmbeddingProvider.of(c -> {
+      c.apiKey("test-key").baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1/");
+      more.customize(c);
+    });
   }
 
   private static String reply(float[]... vectors) {
@@ -200,11 +198,8 @@ class VoyageEmbedderTest {
     void an_unreachable_endpoint_is_reported() {
       Embedder unreachable =
           embedderOver(
-              VoyageEmbeddingProvider.of(
-                  c ->
-                      c.apiKey("k")
-                          .baseUrl("http://127.0.0.1:1/v1")
-                          .timeout(Duration.ofSeconds(2))),
+              VoyageEmbeddingProvider.of(c ->
+                  c.apiKey("k").baseUrl("http://127.0.0.1:1/v1").timeout(Duration.ofSeconds(2))),
               VoyageEmbedderConfig.DEFAULT_MODEL);
 
       assertThatThrownBy(() -> unreachable.embedDocument("a"))
@@ -232,11 +227,8 @@ class VoyageEmbedderTest {
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("VOYAGE_API_KEY");
       assertThat(
-              VoyageEmbeddingProvider.of(
-                      c ->
-                          c.fromEnv()
-                              .apiKey("k")
-                              .httpClient(java.net.http.HttpClient.newHttpClient()))
+              VoyageEmbeddingProvider.of(c ->
+                      c.fromEnv().apiKey("k").httpClient(java.net.http.HttpClient.newHttpClient()))
                   .vendor())
           .isEqualTo("voyage");
     }
@@ -250,11 +242,9 @@ class VoyageEmbedderTest {
       answer = body -> reply(new float[] {1, 0});
       try (VoyageEmbeddingProvider connection = provider(c -> {})) {
         DefaultEmbedderFactory factory =
-            DefaultEmbedderFactory.of(
-                f ->
-                    f.provider(VOYAGE, connection)
-                        .embedding(
-                            VOYAGE, EmbeddingOptions.of(VoyageEmbedderConfig.DEFAULT_MODEL)));
+            DefaultEmbedderFactory.of(f ->
+                f.provider(VOYAGE, connection)
+                    .embedding(VOYAGE, EmbeddingOptions.of(VoyageEmbedderConfig.DEFAULT_MODEL)));
         var embedder = new Embedder[1];
 
         List<ILoggingEvent> atBuild =

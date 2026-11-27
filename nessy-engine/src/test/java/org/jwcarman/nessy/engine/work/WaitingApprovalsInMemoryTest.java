@@ -135,12 +135,11 @@ class WaitingApprovalsInMemoryTest {
   }
 
   private DefaultQueuedHarnessFactory factory(InferenceProvider model) {
-    return DefaultQueuedHarnessFactory.of(
-        engine ->
-            engine
-                .backend(memory)
-                .provider(ProviderId.of("test"), model)
-                .inference(ProviderId.of("test"), InferenceOptions.of("a-model")));
+    return DefaultQueuedHarnessFactory.of(engine ->
+        engine
+            .backend(memory)
+            .provider(ProviderId.of("test"), model)
+            .inference(ProviderId.of("test"), InferenceOptions.of("a-model")));
   }
 
   private QueuedHarness<String> harness(DefaultQueuedHarnessFactory factory, AgentType type) {
@@ -173,12 +172,11 @@ class WaitingApprovalsInMemoryTest {
     await().atMost(PATIENT).untilAsserted(() -> assertThat(shown).hasSize(before + 1));
     await()
         .atMost(PATIENT)
-        .untilAsserted(
-            () -> {
-              List<LiveEffect> live = memory.effects().liveFor(type, agent);
-              assertThat(live).isNotEmpty();
-              assertThat(live).allMatch(row -> row.parkedAt().isPresent());
-            });
+        .untilAsserted(() -> {
+          List<LiveEffect> live = memory.effects().liveFor(type, agent);
+          assertThat(live).isNotEmpty();
+          assertThat(live).allMatch(row -> row.parkedAt().isPresent());
+        });
     return agent;
   }
 
@@ -370,9 +368,8 @@ class WaitingApprovalsInMemoryTest {
     }
     List<Attempt> claimed = memory.effects().markRunning(type, Instant.now(), count);
     assertThat(claimed).hasSize(count);
-    claimed.forEach(
-        attempt ->
-            memory.effects().park(attempt.effectId(), attempt.attemptsMade(), Instant.now()));
+    claimed.forEach(attempt ->
+        memory.effects().park(attempt.effectId(), attempt.attemptsMade(), Instant.now()));
   }
 
   @Test

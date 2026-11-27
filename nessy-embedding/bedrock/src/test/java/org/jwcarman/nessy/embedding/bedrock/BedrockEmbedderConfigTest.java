@@ -40,14 +40,12 @@ class BedrockEmbedderConfigTest {
 
   @Test
   void a_property_under_its_own_prefix_builds() {
-    assertThatCode(
-            () ->
-                BedrockEmbeddingProvider.of(
-                        c ->
-                            c.region(Region.US_EAST_1)
-                                .credentialsProvider(CREDENTIALS)
-                                .property("bedrock.truncate", "END"))
-                    .close())
+    assertThatCode(() ->
+            BedrockEmbeddingProvider.of(c ->
+                    c.region(Region.US_EAST_1)
+                        .credentialsProvider(CREDENTIALS)
+                        .property("bedrock.truncate", "END"))
+                .close())
         .doesNotThrowAnyException();
   }
 
@@ -101,11 +99,10 @@ class BedrockEmbedderConfigTest {
             BedrockEmbedderConfig.class,
             () ->
                 built[0] =
-                    BedrockEmbeddingProvider.of(
-                        c ->
-                            c.region(Region.US_EAST_1)
-                                .credentialsProvider(CREDENTIALS)
-                                .property("bedrock.truncate", "x")));
+                    BedrockEmbeddingProvider.of(c ->
+                        c.region(Region.US_EAST_1)
+                            .credentialsProvider(CREDENTIALS)
+                            .property("bedrock.truncate", "x")));
 
     assertThat(LogCapture.warnings(events))
         .containsExactly(

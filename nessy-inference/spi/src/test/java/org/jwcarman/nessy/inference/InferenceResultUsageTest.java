@@ -62,7 +62,8 @@ class InferenceResultUsageTest {
     JsonMapper mapper = JsonMapper.builder().build();
     String stored =
         """
-        {"type":"answer","blocks":[{"type":"text","text":"hi"}],"usage":{"model":null}}""";
+        {"type":"answer","blocks":[{"type":"text","text":"hi"}],"usage":{"model":null}}\
+        """;
     InferenceResult.Answer expected = new InferenceResult.Answer(List.of(new Block.Text("hi")));
 
     InferenceResult read = mapper.readValue(stored, InferenceResult.class);
@@ -76,7 +77,8 @@ class InferenceResultUsageTest {
     JsonMapper mapper = JsonMapper.builder().build();
     String stored =
         """
-        {"type":"refusal","category":"bio","usage":{"model":"a-model","inputTokens":10,"outputTokens":20,"cacheReadTokens":null,"cacheWriteTokens":null,"reasoningTokens":null}}""";
+        {"type":"refusal","category":"bio","usage":{"model":"a-model","inputTokens":10,"outputTokens":20,"cacheReadTokens":null,"cacheWriteTokens":null,"reasoningTokens":null}}\
+        """;
 
     InferenceResult read = mapper.readValue(stored, InferenceResult.class);
 
@@ -88,7 +90,8 @@ class InferenceResultUsageTest {
     JsonMapper mapper = JsonMapper.builder().build();
     String stored =
         """
-        {"type":"fault","failure":{"type":"permanent","reason":"no"},"usage":{"model":"a-model","inputTokens":10,"outputTokens":20,"cacheReadTokens":null,"cacheWriteTokens":null,"reasoningTokens":null}}""";
+        {"type":"fault","failure":{"type":"permanent","reason":"no"},"usage":{"model":"a-model","inputTokens":10,"outputTokens":20,"cacheReadTokens":null,"cacheWriteTokens":null,"reasoningTokens":null}}\
+        """;
 
     InferenceResult read = mapper.readValue(stored, InferenceResult.class);
 

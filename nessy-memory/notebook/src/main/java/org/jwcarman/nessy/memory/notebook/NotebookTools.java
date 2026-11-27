@@ -98,9 +98,8 @@ public final class NotebookTools {
    */
   public static AmbientSource index(Notebook notebook) {
     Objects.requireNonNull(notebook, NOTEBOOK_NOT_NULL);
-    return AmbientSource.of(
-        source ->
-            source.kind(KIND).text(agentId -> Optional.of(render(notebook.headings(agentId)))));
+    return AmbientSource.of(source ->
+        source.kind(KIND).text(agentId -> Optional.of(render(notebook.headings(agentId)))));
   }
 
   /**

@@ -230,13 +230,12 @@ class AgentStatusTest {
   private void awaitDeferrals(String story, AgentId agent, int count) {
     await()
         .atMost(PATIENT)
-        .untilAsserted(
-            () ->
-                assertThat(
-                        engine.story(typeOf(story), agent).stream()
-                            .filter(AgentEvent.ToolDeferred.class::isInstance)
-                            .count())
-                    .isEqualTo(count));
+        .untilAsserted(() ->
+            assertThat(
+                    engine.story(typeOf(story), agent).stream()
+                        .filter(AgentEvent.ToolDeferred.class::isInstance)
+                        .count())
+                .isEqualTo(count));
   }
 
   private void awaitStatus(String story, AgentId agent, Activity activity) {

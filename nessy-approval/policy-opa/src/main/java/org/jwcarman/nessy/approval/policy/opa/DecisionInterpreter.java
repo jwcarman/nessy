@@ -89,12 +89,11 @@ public interface DecisionInterpreter {
     ObjectNode facts = JsonNodeFactory.instance.objectNode();
     result
         .properties()
-        .forEach(
-            (Map.Entry<String, JsonNode> field) -> {
-              if (!field.getKey().equals("effect") && !field.getKey().equals("to")) {
-                facts.set("policy." + field.getKey(), field.getValue());
-              }
-            });
+        .forEach((Map.Entry<String, JsonNode> field) -> {
+          if (!field.getKey().equals("effect") && !field.getKey().equals("to")) {
+            facts.set("policy." + field.getKey(), field.getValue());
+          }
+        });
     return facts;
   }
 

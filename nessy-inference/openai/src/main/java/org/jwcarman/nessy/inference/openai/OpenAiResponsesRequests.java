@@ -99,9 +99,8 @@ final class OpenAiResponsesRequests {
     request
         .context()
         .summaries()
-        .forEach(
-            summary ->
-                input.add(message(EasyInputMessage.Role.USER, OpenAiRendering.summary(summary))));
+        .forEach(summary ->
+            input.add(message(EasyInputMessage.Role.USER, OpenAiRendering.summary(summary))));
     for (Turn turn : request.context().tail()) {
       input.addAll(items(turn, false, "", "", vendor, mapper));
     }
@@ -143,20 +142,17 @@ final class OpenAiResponsesRequests {
     if (read.effort().isPresent() || read.summary().isPresent()) {
       Reasoning.Builder reasoning = Reasoning.builder();
       read.effort()
-          .ifPresent(
-              effort ->
-                  reasoning.effort(ReasoningEffort.of(effort.name().toLowerCase(Locale.ROOT))));
+          .ifPresent(effort ->
+              reasoning.effort(ReasoningEffort.of(effort.name().toLowerCase(Locale.ROOT))));
       read.summary()
-          .ifPresent(
-              summary ->
-                  reasoning.summary(Reasoning.Summary.of(summary.name().toLowerCase(Locale.ROOT))));
+          .ifPresent(summary ->
+              reasoning.summary(Reasoning.Summary.of(summary.name().toLowerCase(Locale.ROOT))));
       builder.reasoning(reasoning.build());
     }
     read.serviceTier()
-        .ifPresent(
-            tier ->
-                builder.serviceTier(
-                    ResponseCreateParams.ServiceTier.of(tier.name().toLowerCase(Locale.ROOT))));
+        .ifPresent(tier ->
+            builder.serviceTier(
+                ResponseCreateParams.ServiceTier.of(tier.name().toLowerCase(Locale.ROOT))));
     return builder.build();
   }
 
@@ -205,14 +201,13 @@ final class OpenAiResponsesRequests {
       }
       exchange
           .outcomes()
-          .forEach(
-              outcome ->
-                  items.add(
-                      ResponseInputItem.ofFunctionCallOutput(
-                          ResponseInputItem.FunctionCallOutput.builder()
-                              .callId(outcome.callId().value())
-                              .output(OpenAiRendering.outcome(outcome))
-                              .build())));
+          .forEach(outcome ->
+              items.add(
+                  ResponseInputItem.ofFunctionCallOutput(
+                      ResponseInputItem.FunctionCallOutput.builder()
+                          .callId(outcome.callId().value())
+                          .output(OpenAiRendering.outcome(outcome))
+                          .build())));
     }
     switch (turn.result()) {
       case null -> {
@@ -295,13 +290,12 @@ final class OpenAiResponsesRequests {
         OpenAiResponsesSchemas.project(offer.schema().json(), mapper);
     projected
         .refusedKeyword()
-        .ifPresent(
-            keyword ->
-                log.warn(
-                    "Tool {} is offered without strict mode: its schema uses {}, which strict mode"
-                        + " cannot express",
-                    offer.name().value(),
-                    keyword));
+        .ifPresent(keyword ->
+            log.warn(
+                "Tool {} is offered without strict mode: its schema uses {}, which strict mode"
+                    + " cannot express",
+                offer.name().value(),
+                keyword));
     FunctionTool.Parameters.Builder parameters = FunctionTool.Parameters.builder();
     projected
         .schema()
@@ -325,12 +319,11 @@ final class OpenAiResponsesRequests {
         OpenAiResponsesSchemas.project(schema.json(), mapper);
     projected
         .refusedKeyword()
-        .ifPresent(
-            keyword ->
-                log.warn(
-                    "The answer's shape is asked for without strict mode: its schema uses {},"
-                        + " which strict mode cannot express",
-                    keyword));
+        .ifPresent(keyword ->
+            log.warn(
+                "The answer's shape is asked for without strict mode: its schema uses {},"
+                    + " which strict mode cannot express",
+                keyword));
     ResponseFormatTextJsonSchemaConfig.Schema.Builder shape =
         ResponseFormatTextJsonSchemaConfig.Schema.builder();
     projected

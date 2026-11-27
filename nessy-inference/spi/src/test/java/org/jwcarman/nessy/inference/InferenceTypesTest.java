@@ -318,9 +318,8 @@ class InferenceTypesTest {
 
     @Test
     void an_active_turn_is_required() {
-      assertThatThrownBy(
-              () ->
-                  new InferenceContext(List.of(), List.of(), List.of(), List.of(), null, List.of()))
+      assertThatThrownBy(() ->
+              new InferenceContext(List.of(), List.of(), List.of(), List.of(), null, List.of()))
           .isInstanceOf(NullPointerException.class)
           .hasMessageContaining("activeTurn");
     }

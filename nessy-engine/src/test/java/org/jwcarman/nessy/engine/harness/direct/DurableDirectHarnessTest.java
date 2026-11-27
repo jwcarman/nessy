@@ -110,12 +110,11 @@ class DurableDirectHarnessTest {
 
   /** A harness that shares nothing with another but the database -- which is what a restart is. */
   private DirectHarness<String, String> harness(InferenceProvider model) {
-    return DefaultDirectHarnessFactory.of(
-            f ->
-                f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
-                    .provider(ProviderId.of("test"), model)
-                    .schemas(new VictoolsJsonSchemaGenerator())
-                    .mapper(JsonMapper.builder().build()))
+    return DefaultDirectHarnessFactory.of(f ->
+            f.backend(new FixedDirectBackend(new InMemoryLocks(), events, payloads))
+                .provider(ProviderId.of("test"), model)
+                .schemas(new VictoolsJsonSchemaGenerator())
+                .mapper(JsonMapper.builder().build()))
         .<String>create(
             TYPE,
             c ->
@@ -211,12 +210,11 @@ class DurableDirectHarnessTest {
   void a_turn_asked_inside_a_callers_transaction_is_refused_and_writes_nothing() {
     DataSourceTransactionManager transactions = new DataSourceTransactionManager(database);
     DirectHarness<String, String> harness =
-        DefaultDirectHarnessFactory.of(
-                f ->
-                    f.backend(new JdbcDirectBackend(database, transactions, codecs))
-                        .provider(ProviderId.of("test"), saying("the capital is Paris"))
-                        .schemas(new VictoolsJsonSchemaGenerator())
-                        .mapper(JsonMapper.builder().build()))
+        DefaultDirectHarnessFactory.of(f ->
+                f.backend(new JdbcDirectBackend(database, transactions, codecs))
+                    .provider(ProviderId.of("test"), saying("the capital is Paris"))
+                    .schemas(new VictoolsJsonSchemaGenerator())
+                    .mapper(JsonMapper.builder().build()))
             .<String>create(
                 TYPE,
                 c ->
@@ -241,12 +239,11 @@ class DurableDirectHarnessTest {
   }
 
   private DirectHarness<String, String> overJdbc(AgentType type, DirectBackend backend) {
-    return DefaultDirectHarnessFactory.of(
-            f ->
-                f.backend(backend)
-                    .provider(ProviderId.of("test"), saying("Paris"))
-                    .schemas(new VictoolsJsonSchemaGenerator())
-                    .mapper(JsonMapper.builder().build()))
+    return DefaultDirectHarnessFactory.of(f ->
+            f.backend(backend)
+                .provider(ProviderId.of("test"), saying("Paris"))
+                .schemas(new VictoolsJsonSchemaGenerator())
+                .mapper(JsonMapper.builder().build()))
         .<String>create(
             type,
             c ->

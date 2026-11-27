@@ -91,28 +91,26 @@ class EmbeddingProvidersAutoConfigurationTest {
 
   @Test
   void nothing_configured_registers_nothing_and_the_factory_says_so() {
-    runner.run(
-        context -> {
-          assertThat(providers(context)).isEmpty();
-          EmbedderFactory embedders = factory(context);
-          Customizer<EmbedderConfig> defaults = c -> {};
-          assertThatThrownBy(() -> embedders.create(defaults))
-              .isInstanceOf(IllegalStateException.class)
-              .hasMessage(
-                  "an embedder names no provider and the factory has no default; registered: []");
-        });
+    runner.run(context -> {
+      assertThat(providers(context)).isEmpty();
+      EmbedderFactory embedders = factory(context);
+      Customizer<EmbedderConfig> defaults = c -> {};
+      assertThatThrownBy(() -> embedders.create(defaults))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessage(
+              "an embedder names no provider and the factory has no default; registered: []");
+    });
   }
 
   @Test
   void an_openai_key_registers_one_embedder_whose_bean_carries_the_suffix() {
     runner
         .withPropertyValues("openai.api-key=sk-test")
-        .run(
-            context -> {
-              assertThat(providers(context)).containsOnlyKeys("openaiEmbeddings");
-              assertThat(providers(context).get("openaiEmbeddings").vendor()).isEqualTo("openai");
-              assertThat(resolved(context, "openai").wire()).isEqualTo(EmbeddingWire.OPENAI);
-            });
+        .run(context -> {
+          assertThat(providers(context)).containsOnlyKeys("openaiEmbeddings");
+          assertThat(providers(context).get("openaiEmbeddings").vendor()).isEqualTo("openai");
+          assertThat(resolved(context, "openai").wire()).isEqualTo(EmbeddingWire.OPENAI);
+        });
   }
 
   /** §6b: every application with OPENAI_API_KEY and no embedding jar reads one line, once. */
@@ -125,11 +123,10 @@ class EmbeddingProvidersAutoConfigurationTest {
       runner
           .withClassLoader(new FilteredClassLoader(OpenAiEmbeddingProvider.class))
           .withPropertyValues("openai.api-key=sk-test")
-          .run(
-              context -> {
-                assertThat(context).hasNotFailed();
-                assertThat(providers(context)).isEmpty();
-              });
+          .run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(providers(context)).isEmpty();
+          });
       assertThat(output)
           .contains(
               "NESSY EMBEDDING: openai is configured but nessy-embedding-openai is not on the"
@@ -142,18 +139,17 @@ class EmbeddingProvidersAutoConfigurationTest {
     runner
         .withPropertyValues(
             "openai.api-key=sk-test", "gemini.api-key=g-test", "voyage.api-key=v-test")
-        .run(
-            context -> {
-              assertThat(providers(context))
-                  .containsOnlyKeys("openaiEmbeddings", "geminiEmbeddings", "voyageEmbeddings");
-              EmbedderFactory embedders = factory(context);
-              Customizer<EmbedderConfig> defaults = c -> {};
-              assertThatThrownBy(() -> embedders.create(defaults))
-                  .isInstanceOf(IllegalStateException.class)
-                  .hasMessage(
-                      "an embedder names no provider and the factory has no default; registered:"
-                          + " [openai, gemini, voyage]");
-            });
+        .run(context -> {
+          assertThat(providers(context))
+              .containsOnlyKeys("openaiEmbeddings", "geminiEmbeddings", "voyageEmbeddings");
+          EmbedderFactory embedders = factory(context);
+          Customizer<EmbedderConfig> defaults = c -> {};
+          assertThatThrownBy(() -> embedders.create(defaults))
+              .isInstanceOf(IllegalStateException.class)
+              .hasMessage(
+                  "an embedder names no provider and the factory has no default; registered:"
+                      + " [openai, gemini, voyage]");
+        });
   }
 
   /** The row that used to make Voyage win: both register, and neither is chosen. */
@@ -161,10 +157,9 @@ class EmbeddingProvidersAutoConfigurationTest {
   void openai_and_voyage_keys_register_two() {
     runner
         .withPropertyValues("openai.api-key=sk-test", "voyage.api-key=v-test")
-        .run(
-            context ->
-                assertThat(providers(context))
-                    .containsOnlyKeys("openaiEmbeddings", "voyageEmbeddings"));
+        .run(context ->
+            assertThat(providers(context))
+                .containsOnlyKeys("openaiEmbeddings", "voyageEmbeddings"));
   }
 
   @Test
@@ -184,12 +179,11 @@ class EmbeddingProvidersAutoConfigurationTest {
   @Test
   void the_environment_variable_form_of_a_prefixed_key_registers_the_preset() {
     runner
-        .withInitializer(
-            context ->
-                context
-                    .getEnvironment()
-                    .getPropertySources()
-                    .addFirst(environment(Map.of("NESSY_EMBEDDERS_VOYAGE_APIKEY", "v-test"))))
+        .withInitializer(context ->
+            context
+                .getEnvironment()
+                .getPropertySources()
+                .addFirst(environment(Map.of("NESSY_EMBEDDERS_VOYAGE_APIKEY", "v-test"))))
         .run(context -> assertThat(providers(context)).containsOnlyKeys("voyageEmbeddings"));
   }
 
@@ -197,12 +191,11 @@ class EmbeddingProvidersAutoConfigurationTest {
   @Test
   void voyage_s_conventional_environment_variable_registers_voyage() {
     runner
-        .withInitializer(
-            context ->
-                context
-                    .getEnvironment()
-                    .getPropertySources()
-                    .addFirst(environment(Map.of("VOYAGE_API_KEY", "v-test"))))
+        .withInitializer(context ->
+            context
+                .getEnvironment()
+                .getPropertySources()
+                .addFirst(environment(Map.of("VOYAGE_API_KEY", "v-test"))))
         .run(context -> assertThat(providers(context)).containsOnlyKeys("voyageEmbeddings"));
   }
 
@@ -211,12 +204,10 @@ class EmbeddingProvidersAutoConfigurationTest {
   void the_openai_base_url_moves_the_endpoint_and_no_model_is_required() {
     runner
         .withPropertyValues("openai.api-key=lm-studio", "openai.base-url=http://localhost:1234/v1")
-        .run(
-            context -> {
-              assertThat(context).hasNotFailed();
-              assertThat(resolved(context, "openai").baseUrl())
-                  .isEqualTo("http://localhost:1234/v1");
-            });
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(resolved(context, "openai").baseUrl()).isEqualTo("http://localhost:1234/v1");
+        });
   }
 
   /** §6c made checkable: lmstudio is not an embedding preset. */
@@ -224,13 +215,12 @@ class EmbeddingProvidersAutoConfigurationTest {
   void lmstudio_is_not_a_preset_and_turning_it_on_fails_naming_the_wire() {
     runner
         .withPropertyValues("nessy.embedders.lmstudio.enabled=true")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining(
-                      "nessy.embedders.lmstudio.wire is required: lmstudio is not a preset");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining(
+                  "nessy.embedders.lmstudio.wire is required: lmstudio is not a preset");
+        });
   }
 
   @Test
@@ -241,15 +231,13 @@ class EmbeddingProvidersAutoConfigurationTest {
             "nessy.embedders.local.base-url=http://localhost:1234/v1",
             "nessy.embedders.local.api-key=lm-studio",
             "nessy.embedders.local.vendor=lmstudio")
-        .run(
-            context -> {
-              assertThat(providers(context)).containsOnlyKeys("localEmbeddings");
-              Embedder embedder =
-                  factory(context)
-                      .create(
-                          c -> c.provider("local").model("text-embedding-nomic-embed-text-v1.5"));
-              assertThat(embedder.vendor()).isEqualTo("lmstudio");
-            });
+        .run(context -> {
+          assertThat(providers(context)).containsOnlyKeys("localEmbeddings");
+          Embedder embedder =
+              factory(context)
+                  .create(c -> c.provider("local").model("text-embedding-nomic-embed-text-v1.5"));
+          assertThat(embedder.vendor()).isEqualTo("lmstudio");
+        });
   }
 
   @Test
@@ -259,11 +247,10 @@ class EmbeddingProvidersAutoConfigurationTest {
             "nessy.embedders.mine.wire=openai",
             "nessy.embedders.mine.base-url=https://g/v1",
             "nessy.embedders.mine.api-key=k")
-        .run(
-            context -> {
-              assertThat(providers(context)).containsOnlyKeys("mineEmbeddings");
-              assertThat(providers(context).get("mineEmbeddings").vendor()).isEqualTo("openai");
-            });
+        .run(context -> {
+          assertThat(providers(context)).containsOnlyKeys("mineEmbeddings");
+          assertThat(providers(context).get("mineEmbeddings").vendor()).isEqualTo("openai");
+        });
   }
 
   /** §6h left this binder fact open; this pins it. */
@@ -271,11 +258,10 @@ class EmbeddingProvidersAutoConfigurationTest {
   void a_blank_enabled_binds_as_unset() {
     runner
         .withPropertyValues("gemini.api-key=g-test", "nessy.embedders.gemini.enabled=")
-        .run(
-            context -> {
-              assertThat(context).hasNotFailed();
-              assertThat(providers(context)).containsOnlyKeys("geminiEmbeddings");
-            });
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(providers(context)).containsOnlyKeys("geminiEmbeddings");
+        });
   }
 
   @Test
@@ -287,12 +273,10 @@ class EmbeddingProvidersAutoConfigurationTest {
                 EmbeddingProvidersAutoConfiguration.class))
         .withBean(ObservationRegistry.class, ObservationRegistry::create)
         .withPropertyValues("gemini.api-key=g-test", "nessy.embedders.gemini.enabled=false")
-        .run(
-            context -> {
-              assertThat(context.getBeansOfType(InferenceProvider.class))
-                  .containsOnlyKeys("gemini");
-              assertThat(providers(context)).isEmpty();
-            });
+        .run(context -> {
+          assertThat(context.getBeansOfType(InferenceProvider.class)).containsOnlyKeys("gemini");
+          assertThat(providers(context)).isEmpty();
+        });
   }
 
   /** §6f: one key, two registries, one bean namespace, and no collision. */
@@ -305,24 +289,21 @@ class EmbeddingProvidersAutoConfigurationTest {
                 EmbeddingProvidersAutoConfiguration.class))
         .withBean(ObservationRegistry.class, ObservationRegistry::create)
         .withPropertyValues("openai.api-key=sk-test")
-        .run(
-            context -> {
-              assertThat(context.getBeansOfType(InferenceProvider.class))
-                  .containsOnlyKeys("openai");
-              assertThat(providers(context)).containsOnlyKeys("openaiEmbeddings");
-            });
+        .run(context -> {
+          assertThat(context.getBeansOfType(InferenceProvider.class)).containsOnlyKeys("openai");
+          assertThat(providers(context)).containsOnlyKeys("openaiEmbeddings");
+        });
   }
 
   @Test
   void a_custom_embedder_with_no_wire_fails_naming_it() {
     runner
         .withPropertyValues("nessy.embedders.mine.base-url=https://g/v1")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining("nessy.embedders.mine.wire is required");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining("nessy.embedders.mine.wire is required");
+        });
   }
 
   /** Plan ruling 15: Boot's failure analyzer prints the allowed values at a real startup. */
@@ -333,12 +314,11 @@ class EmbeddingProvidersAutoConfigurationTest {
             "nessy.embedders.mine.wire=bogus",
             "nessy.embedders.mine.base-url=https://g/v1",
             "nessy.embedders.mine.api-key=k")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining("nessy.embedders.mine.wire");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining("nessy.embedders.mine.wire");
+        });
   }
 
   /** §4c made checkable: the OpenAI embeddings wire is openai, not openai-embeddings. */
@@ -349,12 +329,11 @@ class EmbeddingProvidersAutoConfigurationTest {
             "nessy.embedders.mine.wire=openai-embeddings",
             "nessy.embedders.mine.base-url=https://g/v1",
             "nessy.embedders.mine.api-key=k")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining("nessy.embedders.mine.wire");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining("nessy.embedders.mine.wire");
+        });
   }
 
   // ---- application beans ---------------------------------------------------------------------
@@ -364,12 +343,11 @@ class EmbeddingProvidersAutoConfigurationTest {
     runner
         .withUserConfiguration(AScriptedEmbedder.class)
         .withPropertyValues("openai.api-key=sk-test")
-        .run(
-            context -> {
-              assertThat(providers(context)).containsOnlyKeys("scripted", "openaiEmbeddings");
-              factory(context).create(c -> c.provider("scripted").model("m")).embedDocument("x");
-              assertThat(AScriptedEmbedder.INSTANCE.asked.get().modelName()).isEqualTo("m");
-            });
+        .run(context -> {
+          assertThat(providers(context)).containsOnlyKeys("scripted", "openaiEmbeddings");
+          factory(context).create(c -> c.provider("scripted").model("m")).embedDocument("x");
+          assertThat(AScriptedEmbedder.INSTANCE.asked.get().modelName()).isEqualTo("m");
+        });
   }
 
   @Test
@@ -377,14 +355,13 @@ class EmbeddingProvidersAutoConfigurationTest {
     runner
         .withUserConfiguration(AnOpenAiEmbeddingsBean.class)
         .withPropertyValues("openai.api-key=sk-test")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining(
-                      "a bean named 'openaiEmbeddings' and the openai embedder would both be"
-                          + " registered as 'openaiEmbeddings'");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining(
+                  "a bean named 'openaiEmbeddings' and the openai embedder would both be"
+                      + " registered as 'openaiEmbeddings'");
+        });
   }
 
   /** Review Focus 2: two registrations under one registry id is a failure, never a choice. */
@@ -393,12 +370,11 @@ class EmbeddingProvidersAutoConfigurationTest {
     runner
         .withUserConfiguration(AVoyageBean.class)
         .withPropertyValues("voyage.api-key=v-test")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining("embedding provider 'voyage' is already registered");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining("embedding provider 'voyage' is already registered");
+        });
   }
 
   @Test
@@ -410,12 +386,11 @@ class EmbeddingProvidersAutoConfigurationTest {
     runner
         .withBean(EmbedderFactory.class, () -> ours)
         .withPropertyValues("openai.api-key=sk-test")
-        .run(
-            context -> {
-              assertThat(context).hasSingleBean(EmbedderFactory.class);
-              assertThat(context.getBean(EmbedderFactory.class)).isSameAs(ours);
-              assertThat(providers(context)).containsOnlyKeys("openaiEmbeddings");
-            });
+        .run(context -> {
+          assertThat(context).hasSingleBean(EmbedderFactory.class);
+          assertThat(context.getBean(EmbedderFactory.class)).isSameAs(ours);
+          assertThat(providers(context)).containsOnlyKeys("openaiEmbeddings");
+        });
   }
 
   @Test
@@ -423,12 +398,11 @@ class EmbeddingProvidersAutoConfigurationTest {
     String longName = "x".repeat(65);
     runner
         .withBean(longName, EmbeddingProvider.class, Scripted::new)
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining("the EmbeddingProvider bean '" + longName + "'");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining("the EmbeddingProvider bean '" + longName + "'");
+        });
   }
 
   /** One bean namespace, two registries: an inference provider may not squat an embedder's bean. */
@@ -447,11 +421,10 @@ class EmbeddingProvidersAutoConfigurationTest {
             "nessy.embedders.foo.wire=openai",
             "nessy.embedders.foo.base-url=https://g/v1",
             "nessy.embedders.foo.api-key=k")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure()).hasStackTraceContaining("'fooEmbeddings'");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure()).hasStackTraceContaining("'fooEmbeddings'");
+        });
   }
 
   // ---- the default ---------------------------------------------------------------------------
@@ -461,36 +434,33 @@ class EmbeddingProvidersAutoConfigurationTest {
     runner
         .withPropertyValues(
             "voyage.api-key=v-test", "nessy.embedder=voyage", "nessy.embedding-model=voyage-3.5")
-        .run(
-            context -> {
-              Embedder embedder = factory(context).create(c -> {});
-              assertThat(embedder.model()).isEqualTo("voyage-3.5");
-              assertThat(embedder.vendor()).isEqualTo("voyage");
-            });
+        .run(context -> {
+          Embedder embedder = factory(context).create(c -> {});
+          assertThat(embedder.model()).isEqualTo("voyage-3.5");
+          assertThat(embedder.vendor()).isEqualTo("voyage");
+        });
   }
 
   @Test
   void an_embedder_alone_fails_naming_the_pair() {
     runner
         .withPropertyValues("voyage.api-key=v-test", "nessy.embedder=voyage")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining("nessy.embedder and nessy.embedding-model are a pair");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining("nessy.embedder and nessy.embedding-model are a pair");
+        });
   }
 
   @Test
   void an_embedding_model_alone_fails_naming_the_pair() {
     runner
         .withPropertyValues("voyage.api-key=v-test", "nessy.embedding-model=voyage-3.5")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining("nessy.embedder and nessy.embedding-model are a pair");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining("nessy.embedder and nessy.embedding-model are a pair");
+        });
   }
 
   /** Review Focus 3: chat-web's own shape, with neither variable set. */
@@ -498,11 +468,10 @@ class EmbeddingProvidersAutoConfigurationTest {
   void a_blank_pair_is_no_default() {
     runner
         .withPropertyValues("openai.api-key=sk-test", "nessy.embedder=", "nessy.embedding-model=")
-        .run(
-            context -> {
-              assertThat(context).hasNotFailed();
-              assertThat(context.getBean(NessyProperties.class).embedder()).isNull();
-            });
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(context.getBean(NessyProperties.class).embedder()).isNull();
+        });
   }
 
   /** Review Focus 3. */
@@ -510,12 +479,11 @@ class EmbeddingProvidersAutoConfigurationTest {
   void a_blank_embedder_beside_a_model_fails_naming_the_pair() {
     runner
         .withPropertyValues("nessy.embedder=", "nessy.embedding-model=voyage-3.5")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining("nessy.embedder and nessy.embedding-model are a pair");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining("nessy.embedder and nessy.embedding-model are a pair");
+        });
   }
 
   /** Plan ruling 5: at startup, not at the first store that asks. */
@@ -524,14 +492,13 @@ class EmbeddingProvidersAutoConfigurationTest {
     runner
         .withPropertyValues(
             "openai.api-key=sk-test", "nessy.embedder=cohere", "nessy.embedding-model=embed-v4")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining(
-                      "an embedder names provider 'cohere', which is not registered; registered:"
-                          + " [openai]");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining(
+                  "an embedder names provider 'cohere', which is not registered; registered:"
+                      + " [openai]");
+        });
   }
 
   @Test
@@ -542,22 +509,19 @@ class EmbeddingProvidersAutoConfigurationTest {
             "nessy.embedder=voyage",
             "nessy.embedding-model=voyage-3.5",
             "nessy.embedding-dimension=256")
-        .run(
-            context ->
-                assertThat(factory(context).create(c -> {}).dimension())
-                    .hasValue(Dimension.of(256)));
+        .run(context ->
+            assertThat(factory(context).create(c -> {}).dimension()).hasValue(Dimension.of(256)));
   }
 
   @Test
   void a_width_without_the_pair_fails() {
     runner
         .withPropertyValues("voyage.api-key=v-test", "nessy.embedding-dimension=256")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining("nessy.embedding-dimension");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining("nessy.embedding-dimension");
+        });
   }
 
   @Test
@@ -568,13 +532,12 @@ class EmbeddingProvidersAutoConfigurationTest {
             "nessy.embedder=voyage",
             "nessy.embedding-model=voyage-3.5",
             "nessy.embedding-dimension=0")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining(
-                      "nessy.embedding-dimension: an embedding dimension must be at least 1, was 0");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining(
+                  "nessy.embedding-dimension: an embedding dimension must be at least 1, was 0");
+        });
   }
 
   // ---- vendor properties ---------------------------------------------------------------------
@@ -585,12 +548,11 @@ class EmbeddingProvidersAutoConfigurationTest {
     runner
         .withPropertyValues(
             "voyage.api-key=v-test", "nessy.embedders.voyage.properties.voyage.truncation=false")
-        .run(
-            context -> {
-              assertThat(context).hasNotFailed();
-              assertThat(resolved(context, "voyage").properties())
-                  .containsExactly(Map.entry("voyage.truncation", "false"));
-            });
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(resolved(context, "voyage").properties())
+              .containsExactly(Map.entry("voyage.truncation", "false"));
+        });
   }
 
   @Test
@@ -598,13 +560,12 @@ class EmbeddingProvidersAutoConfigurationTest {
     runner
         .withPropertyValues(
             "voyage.api-key=v-test", "nessy.embedders.voyage.properties.openai.user=x")
-        .run(
-            context -> {
-              assertThat(context).hasFailed();
-              assertThat(context.getStartupFailure())
-                  .hasStackTraceContaining("'openai.user'")
-                  .hasStackTraceContaining("'voyage.'");
-            });
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure())
+              .hasStackTraceContaining("'openai.user'")
+              .hasStackTraceContaining("'voyage.'");
+        });
   }
 
   // ---- observed ------------------------------------------------------------------------------
@@ -613,12 +574,11 @@ class EmbeddingProvidersAutoConfigurationTest {
   void with_a_registry_every_embedder_is_observed() {
     runner
         .withPropertyValues("openai.api-key=sk-test")
-        .run(
-            context ->
-                assertThat(
-                        factory(context)
-                            .create(c -> c.provider("openai").model("text-embedding-3-small")))
-                    .isInstanceOf(ObservedEmbedder.class));
+        .run(context ->
+            assertThat(
+                    factory(context)
+                        .create(c -> c.provider("openai").model("text-embedding-3-small")))
+                .isInstanceOf(ObservedEmbedder.class));
   }
 
   @Test
@@ -626,12 +586,11 @@ class EmbeddingProvidersAutoConfigurationTest {
     new ApplicationContextRunner()
         .withConfiguration(AutoConfigurations.of(EmbeddingProvidersAutoConfiguration.class))
         .withPropertyValues("openai.api-key=sk-test")
-        .run(
-            context ->
-                assertThat(
-                        factory(context)
-                            .create(c -> c.provider("openai").model("text-embedding-3-small")))
-                    .isInstanceOf(ObservedEmbedder.class));
+        .run(context ->
+            assertThat(
+                    factory(context)
+                        .create(c -> c.provider("openai").model("text-embedding-3-small")))
+                .isInstanceOf(ObservedEmbedder.class));
   }
 
   // ---- fixtures ------------------------------------------------------------------------------

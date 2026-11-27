@@ -83,15 +83,14 @@ class GiveUpUndeliverableTest {
                 config ->
                     config
                         .systemPrompt("You are a test assistant.")
-                        .inference(
-                            in ->
-                                in.model("a-model")
-                                    .retryPolicy(new RetryPolicy.Never())
-                                    // Short, so the watchdog brings the row back inside the test
-                                    // rather than
-                                    // in five minutes -- the recovery asserted is the timeout, not
-                                    // the poller.
-                                    .timeout(Duration.ofSeconds(1)))
+                        .inference(in ->
+                            in.model("a-model")
+                                .retryPolicy(new RetryPolicy.Never())
+                                // Short, so the watchdog brings the row back inside the test
+                                // rather than
+                                // in five minutes -- the recovery asserted is the timeout, not
+                                // the poller.
+                                .timeout(Duration.ofSeconds(1)))
                         .effects(e -> e.maxInFlight(2)));
 
     harness.tell(agentId, "the fold will break before this is answered");
@@ -106,11 +105,10 @@ class GiveUpUndeliverableTest {
 
     await()
         .atMost(Duration.ofSeconds(30))
-        .untilAsserted(
-            () ->
-                assertThat(attemptsOn(agentId))
-                    .as("the row is kept and tried again, not retired with the turn unended")
-                    .isGreaterThan(1));
+        .untilAsserted(() ->
+            assertThat(attemptsOn(agentId))
+                .as("the row is kept and tried again, not retired with the turn unended")
+                .isGreaterThan(1));
 
     assertThat(effectsFor(agentId))
         .as("retiring it would end the attempts and leave the agent waiting forever")

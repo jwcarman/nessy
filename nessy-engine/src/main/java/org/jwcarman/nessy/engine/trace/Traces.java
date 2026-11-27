@@ -172,13 +172,12 @@ public final class Traces {
 
   private static String encode(Map<String, String> headers) {
     StringBuilder text = new StringBuilder();
-    headers.forEach(
-        (name, value) -> {
-          if (!text.isEmpty()) {
-            text.append(LINE);
-          }
-          text.append(name).append(SEPARATOR).append(value);
-        });
+    headers.forEach((name, value) -> {
+      if (!text.isEmpty()) {
+        text.append(LINE);
+      }
+      text.append(name).append(SEPARATOR).append(value);
+    });
     return text.toString();
   }
 

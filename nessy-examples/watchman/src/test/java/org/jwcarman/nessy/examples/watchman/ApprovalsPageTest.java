@@ -102,11 +102,10 @@ class ApprovalsPageTest {
     public ReplyOutcome approve(
         AgentType type, AgentId id, IdempotencyKey key, ApprovalResult result) {
       boolean removed =
-          waiting.removeIf(
-              request ->
-                  request.agentType().equals(type)
-                      && request.agentId().equals(id)
-                      && request.idempotencyKey().equals(key));
+          waiting.removeIf(request ->
+              request.agentType().equals(type)
+                  && request.agentId().equals(id)
+                  && request.idempotencyKey().equals(key));
       if (!removed) {
         return new ReplyOutcome.Ignored();
       }

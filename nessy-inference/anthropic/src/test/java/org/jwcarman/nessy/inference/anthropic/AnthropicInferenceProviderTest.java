@@ -196,11 +196,10 @@ class AnthropicInferenceProviderTest {
       } else if (block.isThinking()) {
         start.contentBlock(ThinkingBlock.builder().thinking("").signature("").build());
         pieces(block.asThinking().thinking())
-            .forEach(
-                piece ->
-                    deltas.add(
-                        RawContentBlockDelta.ofThinking(
-                            ThinkingDelta.builder().thinking(piece).build())));
+            .forEach(piece ->
+                deltas.add(
+                    RawContentBlockDelta.ofThinking(
+                        ThinkingDelta.builder().thinking(piece).build())));
         deltas.add(
             RawContentBlockDelta.ofSignature(
                 SignatureDelta.builder().signature(block.asThinking().signature()).build()));
@@ -216,11 +215,10 @@ class AnthropicInferenceProviderTest {
                 .caller(DirectCaller.builder().build())
                 .build());
         pieces(JSON.writeValueAsString(call._input().convert(Map.class)))
-            .forEach(
-                piece ->
-                    deltas.add(
-                        RawContentBlockDelta.ofInputJson(
-                            InputJsonDelta.builder().partialJson(piece).build())));
+            .forEach(piece ->
+                deltas.add(
+                    RawContentBlockDelta.ofInputJson(
+                        InputJsonDelta.builder().partialJson(piece).build())));
       } else {
         throw new IllegalArgumentException("no stream shape for " + block);
       }
@@ -336,10 +334,9 @@ class AnthropicInferenceProviderTest {
     InferenceResult result =
         new AnthropicProviderConfig()
             .client(
-                fakeClient(
-                    params -> {
-                      throw failure;
-                    }))
+                fakeClient(params -> {
+                  throw failure;
+                }))
             .build()
             .infer(REQUEST);
     assertThat(result).isInstanceOf(InferenceResult.Fault.class);
@@ -546,11 +543,10 @@ class AnthropicInferenceProviderTest {
       var captured = new MessageCreateParams[1];
       new AnthropicProviderConfig()
           .client(
-              fakeClient(
-                  params -> {
-                    captured[0] = params;
-                    return reply().addContent(text("ok")).build();
-                  }))
+              fakeClient(params -> {
+                captured[0] = params;
+                return reply().addContent(text("ok")).build();
+              }))
           .build()
           .infer(REQUEST);
 
@@ -601,12 +597,11 @@ class AnthropicInferenceProviderTest {
       InferenceResult result =
           new AnthropicProviderConfig()
               .client(
-                  fakeClient(
-                      params ->
-                          reply()
-                              .stopReason(StopReason.MAX_TOKENS)
-                              .addContent(text("The loch is"))
-                              .build()))
+                  fakeClient(params ->
+                      reply()
+                          .stopReason(StopReason.MAX_TOKENS)
+                          .addContent(text("The loch is"))
+                          .build()))
               .build()
               .infer(REQUEST, new Narration());
 
@@ -1113,21 +1108,20 @@ class AnthropicInferenceProviderTest {
     @Test
     void redacted_thinking_travels_as_provider_state_and_a_server_tool_block_is_dropped() {
       AnthropicClient client =
-          fakeClient(
-              params ->
-                  reply()
-                      .content(
-                          List.of(
-                              com.anthropic.models.messages.ContentBlock.ofRedactedThinking(
-                                  com.anthropic.models.messages.RedactedThinkingBlock.builder()
-                                      .data("opaque")
-                                      .build()),
-                              com.anthropic.models.messages.ContentBlock.ofText(
-                                  com.anthropic.models.messages.TextBlock.builder()
-                                      .text("hello")
-                                      .citations(List.of())
-                                      .build())))
-                      .build());
+          fakeClient(params ->
+              reply()
+                  .content(
+                      List.of(
+                          com.anthropic.models.messages.ContentBlock.ofRedactedThinking(
+                              com.anthropic.models.messages.RedactedThinkingBlock.builder()
+                                  .data("opaque")
+                                  .build()),
+                          com.anthropic.models.messages.ContentBlock.ofText(
+                              com.anthropic.models.messages.TextBlock.builder()
+                                  .text("hello")
+                                  .citations(List.of())
+                                  .build())))
+                  .build());
       InferenceResult result = new AnthropicProviderConfig().client(client).build().infer(REQUEST);
 
       assertThat(result).isInstanceOf(InferenceResult.Answer.class);
@@ -1169,11 +1163,10 @@ class AnthropicInferenceProviderTest {
       var captured = new MessageCreateParams[1];
       config
           .client(
-              fakeClient(
-                  params -> {
-                    captured[0] = params;
-                    return reply().addContent(text("ok")).build();
-                  }))
+              fakeClient(params -> {
+                captured[0] = params;
+                return reply().addContent(text("ok")).build();
+              }))
           .build()
           .infer(request);
       return captured[0];

@@ -101,11 +101,10 @@ class AnthropicLiveTest {
   /** A provider configured as a deployment would configure it: thinking, caching, or neither. */
   private static AnthropicInferenceProvider provider(Consumer<AnthropicProviderConfig> customizer) {
     assumeTrue(System.getenv("ANTHROPIC_API_KEY") != null, "ANTHROPIC_API_KEY is not set");
-    return AnthropicInferenceProvider.of(
-        config -> {
-          config.fromEnv();
-          customizer.accept(config);
-        });
+    return AnthropicInferenceProvider.of(config -> {
+      config.fromEnv();
+      customizer.accept(config);
+    });
   }
 
   private static Turn open(long id, String question) {
@@ -193,7 +192,8 @@ class AnthropicLiveTest {
               new JsonSchema(
                   """
                   {"type":"object","properties":{"name":{"type":"string",\
-                  "description":"the lake to look up"}},"required":["name"]}"""));
+                  "description":"the lake to look up"}},"required":["name"]}\
+                  """));
 
       InferenceResult result =
           provider.infer(asking(List.of(open(1, "How deep is Loch Ness?")), List.of(lookup)));
@@ -220,10 +220,8 @@ class AnthropicLiveTest {
   @Test
   void reasoning_is_replayed_intact_on_the_next_turn() {
     try (AnthropicInferenceProvider provider =
-        provider(
-            config ->
-                config.property(
-                    AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED))) {
+        provider(config ->
+            config.property(AnthropicProperties.THINKING_TYPE, AnthropicThinkingType.ENABLED))) {
       InferenceResult first =
           provider.infer(
               asking(
@@ -318,12 +316,11 @@ class AnthropicLiveTest {
           .isInstanceOf(InferenceResult.Answer.class);
       assertThat(logged)
           .as("the drop is reported on message_start, the only place the wire shape is read")
-          .anyMatch(
-              event ->
-                  event.getLevel() == Level.DEBUG
-                      && event
-                          .getFormattedMessage()
-                          .contains("thinking block(s) whose prefix had changed"));
+          .anyMatch(event ->
+              event.getLevel() == Level.DEBUG
+                  && event
+                      .getFormattedMessage()
+                      .contains("thinking block(s) whose prefix had changed"));
     }
   }
 
@@ -331,9 +328,8 @@ class AnthropicLiveTest {
   @Test
   void a_cached_request_is_accepted() {
     try (AnthropicInferenceProvider provider =
-        provider(
-            config ->
-                config.property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.FIVE_MINUTES))) {
+        provider(config ->
+            config.property(AnthropicProperties.CACHE_TTL, AnthropicCacheTtl.FIVE_MINUTES))) {
       InferenceResult result =
           provider.infer(asking(List.of(open(1, "What is the capital of France?")), List.of()));
 
@@ -351,13 +347,15 @@ class AnthropicLiveTest {
             "returns the maximum depth of a named lake, in metres",
             new JsonSchema(
                 """
-                {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}""")),
+                {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}\
+                """)),
         new ToolOffer(
             new ToolName("weather"),
             "returns today's weather for a named place",
             new JsonSchema(
                 """
-                {"type":"object","properties":{"place":{"type":"string"}},"required":["place"]}""")));
+                {"type":"object","properties":{"place":{"type":"string"}},"required":["place"]}\
+                """)));
   }
 
   private static ToolName calledIn(InferenceResult result) {
@@ -452,7 +450,8 @@ class AnthropicLiveTest {
             {"type":"object",
              "properties":{"city":{"type":"string"},"country":{"type":"string"}},
              "required":["city","country"],
-             "additionalProperties":false}""");
+             "additionalProperties":false}\
+            """);
 
     try (AnthropicInferenceProvider provider = provider()) {
       InferenceResult result =
@@ -475,7 +474,8 @@ class AnthropicLiveTest {
             {"type":"object",
              "properties":{"answer":{"type":"string"},"confident":{"type":"boolean"}},
              "required":["answer","confident"],
-             "additionalProperties":false}""");
+             "additionalProperties":false}\
+            """);
 
     try (AnthropicInferenceProvider provider = provider()) {
       InferenceResult result =
@@ -503,7 +503,8 @@ class AnthropicLiveTest {
              "type":"object",
              "properties":{"city":{"type":"string"},
                            "where":{"type":"object",
-                                    "properties":{"country":{"type":"string"}}}}}""");
+                                    "properties":{"country":{"type":"string"}}}}}\
+            """);
 
     try (AnthropicInferenceProvider provider = provider()) {
       InferenceResult result =
@@ -570,7 +571,8 @@ class AnthropicLiveTest {
             "returns the maximum depth of a named lake, in metres",
             new JsonSchema(
                 """
-                {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}"""));
+                {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}\
+                """));
     Input question =
         new Input(new Seq(1), List.of(new Block.Text("How deep are Loch Ness and Loch Morar?")));
     Exchange ness = looked(2, "call_ness", "Loch Ness", "230 metres. ");
@@ -605,7 +607,8 @@ class AnthropicLiveTest {
             "returns the maximum depth of a named lake, in metres",
             new JsonSchema(
                 """
-                {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}"""));
+                {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}\
+                """));
     Input question =
         new Input(
             new Seq(1),
@@ -780,7 +783,8 @@ class AnthropicLiveTest {
           "saves a note",
           new JsonSchema(
               """
-              {"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}"""));
+              {"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}\
+              """));
 
   private static InferenceRequest limited(String question, Toolset toolset) {
     return new InferenceRequest(
@@ -810,12 +814,11 @@ class AnthropicLiveTest {
       assertThat(truncated.blocks())
           .filteredOn(Block.Text.class::isInstance)
           .isNotEmpty()
-          .anySatisfy(
-              block -> {
-                String written = ((Block.Text) block).text();
-                assertThat(written).isNotBlank();
-                assertThat(written.strip()).startsWith("1: 1");
-              });
+          .anySatisfy(block -> {
+            String written = ((Block.Text) block).text();
+            assertThat(written).isNotBlank();
+            assertThat(written.strip()).startsWith("1: 1");
+          });
       assertThat(truncated.usage().outputTokens())
           .as("the reply was written, and the vendor counted it")
           .isInstanceOfSatisfying(
@@ -893,7 +896,8 @@ class AnthropicLiveTest {
       assistant did: DaysUntilRequest[date=2026-12-21] -- succeeded: 80 days
       assistant: Your birthday is in 80 days.
 
-      Write the record of everything above now.""";
+      Write the record of everything above now.\
+      """;
 
   /**
    * A chapter written out as text, with its tool calls as recorded lines, is summarised.

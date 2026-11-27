@@ -72,9 +72,8 @@ public final class AnthropicSchemas {
 
     Tool.InputSchema.Properties.Builder properties = Tool.InputSchema.Properties.builder();
     if (document.get(PROPERTIES) instanceof Map<?, ?> declared) {
-      declared.forEach(
-          (name, value) ->
-              properties.putAdditionalProperty(String.valueOf(name), JsonValue.from(value)));
+      declared.forEach((name, value) ->
+          properties.putAdditionalProperty(String.valueOf(name), JsonValue.from(value)));
     }
 
     List<String> required = new ArrayList<>();

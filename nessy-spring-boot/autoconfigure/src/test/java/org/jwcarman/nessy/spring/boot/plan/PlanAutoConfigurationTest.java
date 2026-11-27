@@ -112,26 +112,24 @@ class PlanAutoConfigurationTest {
                 JacksonAutoConfiguration.class,
                 NessyAutoConfiguration.class,
                 PlanAutoConfiguration.class))
-        .run(
-            context -> {
-              assertThat(context).hasNotFailed();
-              assertThat(context).doesNotHaveBean("nessyPlanFeature");
-            });
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(context).doesNotHaveBean("nessyPlanFeature");
+        });
   }
 
   @Test
   void the_feature_installs_the_ambient_and_the_tool() {
-    runner.run(
-        context -> {
-          Recording config = new Recording(new AgentType("chat"));
+    runner.run(context -> {
+      Recording config = new Recording(new AgentType("chat"));
 
-          PlanFeatures.feature(context).customize(config);
+      PlanFeatures.feature(context).customize(config);
 
-          assertThat(config.ambients).hasSize(1);
-          assertThat(config.tools)
-              .extracting(tool -> tool.name().value())
-              .containsExactly("update_plan");
-        });
+      assertThat(config.ambients).hasSize(1);
+      assertThat(config.tools)
+          .extracting(tool -> tool.name().value())
+          .containsExactly("update_plan");
+    });
   }
 
   /**
@@ -171,10 +169,9 @@ class PlanAutoConfigurationTest {
                 NessyAutoConfiguration.class,
                 PlanAutoConfiguration.class))
         .withUserConfiguration(ADatabase.class)
-        .run(
-            context -> {
-              assertThat(context).hasNotFailed();
-              assertThat(context).doesNotHaveBean("nessyPlanFeature");
-            });
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(context).doesNotHaveBean("nessyPlanFeature");
+        });
   }
 }

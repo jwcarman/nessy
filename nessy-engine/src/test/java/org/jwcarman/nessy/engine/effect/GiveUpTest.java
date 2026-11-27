@@ -79,9 +79,8 @@ class GiveUpTest {
             config ->
                 config
                     .systemPrompt("You are a test assistant.")
-                    .inference(
-                        in ->
-                            in.model("a-model").retryPolicy(policy).timeout(Duration.ofMinutes(5)))
+                    .inference(in ->
+                        in.model("a-model").retryPolicy(policy).timeout(Duration.ofMinutes(5)))
                     .effects(e -> e.maxInFlight(2).pollInterval(Duration.ofMillis(100))));
   }
 
@@ -106,15 +105,14 @@ class GiveUpTest {
 
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () -> {
-              assertThat(agentStateOf(type, agentId))
-                  .as("the turn ended, so the agent is not left waiting on a call")
-                  .isEqualTo("Idle");
-              assertThat(outstandingEffects(agentId))
-                  .as("no row left holding an obligation nobody will discharge")
-                  .isZero();
-            });
+        .untilAsserted(() -> {
+          assertThat(agentStateOf(type, agentId))
+              .as("the turn ended, so the agent is not left waiting on a call")
+              .isEqualTo("Idle");
+          assertThat(outstandingEffects(agentId))
+              .as("no row left holding an obligation nobody will discharge")
+              .isZero();
+        });
 
     List<AgentEvent> story = story(type, agentId);
     assertThat(story)
@@ -147,15 +145,14 @@ class GiveUpTest {
     // loses, and CI is a slower machine.
     await()
         .atMost(Duration.ofSeconds(20))
-        .untilAsserted(
-            () -> {
-              assertThat(agentStateOf(type, agentId))
-                  .as("the turn ended, so the agent is not left waiting on a call")
-                  .isEqualTo("Idle");
-              assertThat(outstandingEffects(agentId))
-                  .as("no row left holding an obligation nobody will discharge")
-                  .isZero();
-            });
+        .untilAsserted(() -> {
+          assertThat(agentStateOf(type, agentId))
+              .as("the turn ended, so the agent is not left waiting on a call")
+              .isEqualTo("Idle");
+          assertThat(outstandingEffects(agentId))
+              .as("no row left holding an obligation nobody will discharge")
+              .isZero();
+        });
 
     assertThat(model.calls())
         .as("three attempts, then the turn ends -- not one, and not forever")

@@ -113,10 +113,8 @@ class EventAgentStoriesQueuedTest {
           .tell(agent, "how deep is Loch Ness?");
       await()
           .atMost(Duration.ofSeconds(30))
-          .until(
-              () ->
-                  heard.stream()
-                      .anyMatch(narrated -> narrated.event() instanceof Narration.Answered));
+          .until(() ->
+              heard.stream().anyMatch(narrated -> narrated.event() instanceof Narration.Answered));
 
       List<Narrated> story =
           heard.stream().filter(narrated -> narrated.event() instanceof Narration.Story).toList();
@@ -150,10 +148,8 @@ class EventAgentStoriesQueuedTest {
           .tell(agent, "how deep is Loch Ness?");
       await()
           .atMost(Duration.ofSeconds(30))
-          .until(
-              () ->
-                  heard.stream()
-                      .anyMatch(narrated -> narrated.event() instanceof Narration.Answered));
+          .until(() ->
+              heard.stream().anyMatch(narrated -> narrated.event() instanceof Narration.Answered));
 
       List<Narrated> story =
           heard.stream().filter(narrated -> narrated.event() instanceof Narration.Story).toList();
@@ -188,10 +184,8 @@ class EventAgentStoriesQueuedTest {
           .tell(agent, "how deep is Loch Ness?");
       await()
           .atMost(Duration.ofSeconds(30))
-          .until(
-              () ->
-                  heard.stream()
-                      .anyMatch(narrated -> narrated.event() instanceof Narration.Answered));
+          .until(() ->
+              heard.stream().anyMatch(narrated -> narrated.event() instanceof Narration.Answered));
 
       List<Narrated> story =
           heard.stream().filter(narrated -> narrated.event() instanceof Narration.Story).toList();
@@ -231,20 +225,17 @@ class EventAgentStoriesQueuedTest {
                           t ->
                               t.action(query -> "looked up " + query.q())
                                   .approver(StoryTurn.decidesAsCarol()))
-                      .inference(
-                          in ->
-                              in.model("a-model")
-                                  .retryPolicy(
-                                      new RetryPolicy.FixedDelay(
-                                          2, Duration.ofMillis(100), Duration.ZERO)))
+                      .inference(in ->
+                          in.model("a-model")
+                              .retryPolicy(
+                                  new RetryPolicy.FixedDelay(
+                                      2, Duration.ofMillis(100), Duration.ZERO)))
                       .effects(e -> e.pollInterval(Duration.ofMillis(50))))
           .tell(agent, "how deep is Loch Ness?");
       await()
           .atMost(Duration.ofSeconds(30))
-          .until(
-              () ->
-                  heard.stream()
-                      .anyMatch(narrated -> narrated.event() instanceof Narration.Answered));
+          .until(() ->
+              heard.stream().anyMatch(narrated -> narrated.event() instanceof Narration.Answered));
 
       List<Narrated> story =
           heard.stream().filter(narrated -> narrated.event() instanceof Narration.Story).toList();
@@ -306,10 +297,8 @@ class EventAgentStoriesQueuedTest {
           .tell(agent, "how deep is Loch Ness?");
       await()
           .atMost(Duration.ofSeconds(30))
-          .until(
-              () ->
-                  heard.stream()
-                      .anyMatch(narrated -> narrated.event() instanceof Narration.Answered));
+          .until(() ->
+              heard.stream().anyMatch(narrated -> narrated.event() instanceof Narration.Answered));
 
       List<Narrated> story =
           heard.stream().filter(narrated -> narrated.event() instanceof Narration.Story).toList();
@@ -354,10 +343,8 @@ class EventAgentStoriesQueuedTest {
           .tell(agent, "how deep is Loch Ness?");
       await()
           .atMost(Duration.ofSeconds(30))
-          .until(
-              () ->
-                  heard.stream()
-                      .anyMatch(narrated -> narrated.event() instanceof Narration.Answered));
+          .until(() ->
+              heard.stream().anyMatch(narrated -> narrated.event() instanceof Narration.Answered));
 
       List<Narrated> story =
           heard.stream().filter(narrated -> narrated.event() instanceof Narration.Story).toList();
@@ -471,12 +458,11 @@ class EventAgentStoriesQueuedTest {
           .map(Narrated::event)
           .filteredOn(Narration.ApprovalDeferred.class::isInstance)
           .singleElement()
-          .satisfies(
-              event -> {
-                Narration.ApprovalDeferred deferred = (Narration.ApprovalDeferred) event;
-                assertThat(deferred.idempotencyKey()).isEqualTo(StoryTurn.requestedKey(story));
-                assertThat(deferred.until()).isEqualTo(rowDeadline);
-              });
+          .satisfies(event -> {
+            Narration.ApprovalDeferred deferred = (Narration.ApprovalDeferred) event;
+            assertThat(deferred.idempotencyKey()).isEqualTo(StoryTurn.requestedKey(story));
+            assertThat(deferred.until()).isEqualTo(rowDeadline);
+          });
     }
   }
 
@@ -517,12 +503,11 @@ class EventAgentStoriesQueuedTest {
           .map(Narrated::event)
           .filteredOn(Narration.CallFailed.class::isInstance)
           .singleElement()
-          .satisfies(
-              event -> {
-                Narration.CallFailed failed = (Narration.CallFailed) event;
-                assertThat(failed.kind()).isEqualTo(CallFailure.NOT_AUTHORISED);
-                assertThat(failed.idempotencyKey()).isEqualTo(StoryTurn.requestedKey(story));
-              });
+          .satisfies(event -> {
+            Narration.CallFailed failed = (Narration.CallFailed) event;
+            assertThat(failed.kind()).isEqualTo(CallFailure.NOT_AUTHORISED);
+            assertThat(failed.idempotencyKey()).isEqualTo(StoryTurn.requestedKey(story));
+          });
     }
   }
 
@@ -573,12 +558,11 @@ class EventAgentStoriesQueuedTest {
           .map(Narrated::event)
           .filteredOn(Narration.CallDeferred.class::isInstance)
           .singleElement()
-          .satisfies(
-              event -> {
-                Narration.CallDeferred deferred = (Narration.CallDeferred) event;
-                assertThat(deferred.idempotencyKey()).isEqualTo(StoryTurn.requestedKey(story));
-                assertThat(deferred.until()).isEqualTo(rowDeadline);
-              });
+          .satisfies(event -> {
+            Narration.CallDeferred deferred = (Narration.CallDeferred) event;
+            assertThat(deferred.idempotencyKey()).isEqualTo(StoryTurn.requestedKey(story));
+            assertThat(deferred.until()).isEqualTo(rowDeadline);
+          });
     }
   }
 
@@ -606,12 +590,11 @@ class EventAgentStoriesQueuedTest {
                                   .approver(
                                       defersAndKeepsTheAddress(handed),
                                       a -> a.timeout(Duration.ofMinutes(30))))
-                      .inference(
-                          in ->
-                              in.model("a-model")
-                                  .retryPolicy(
-                                      new RetryPolicy.FixedDelay(
-                                          2, Duration.ofMillis(100), Duration.ZERO)))
+                      .inference(in ->
+                          in.model("a-model")
+                              .retryPolicy(
+                                  new RetryPolicy.FixedDelay(
+                                      2, Duration.ofMillis(100), Duration.ZERO)))
                       .effects(e -> e.pollInterval(Duration.ofMillis(50))))
           .tell(agent, "how deep is Loch Ness?");
       awaitHeard(Narration.ApprovalDeferred.class);
@@ -653,12 +636,11 @@ class EventAgentStoriesQueuedTest {
         .map(Narrated::event)
         .filteredOn(Narration.CallDeferred.class::isInstance)
         .singleElement()
-        .satisfies(
-            event -> {
-              Narration.CallDeferred deferred = (Narration.CallDeferred) event;
-              assertThat(deferred.idempotencyKey()).isEqualTo(StoryTurn.requestedKey(story));
-              assertThat(deferred.until()).isEqualTo(stored.getFirst().until());
-            });
+        .satisfies(event -> {
+          Narration.CallDeferred deferred = (Narration.CallDeferred) event;
+          assertThat(deferred.idempotencyKey()).isEqualTo(StoryTurn.requestedKey(story));
+          assertThat(deferred.until()).isEqualTo(stored.getFirst().until());
+        });
   }
 
   /** Every call event told, live or replayed, carries the key its request gave the call. */
@@ -691,12 +673,11 @@ class EventAgentStoriesQueuedTest {
         .map(Narrated::event)
         .filteredOn(Narration.CallDenied.class::isInstance)
         .singleElement()
-        .satisfies(
-            event -> {
-              Narration.CallDenied denied = (Narration.CallDenied) event;
-              assertThat(denied.idempotencyKey()).isEqualTo(requested);
-              assertThat(denied.decidedBy()).isEqualTo(Optional.of(StoryTurn.DENIER));
-            });
+        .satisfies(event -> {
+          Narration.CallDenied denied = (Narration.CallDenied) event;
+          assertThat(denied.idempotencyKey()).isEqualTo(requested);
+          assertThat(denied.decidedBy()).isEqualTo(Optional.of(StoryTurn.DENIER));
+        });
   }
 
   /** The one failed call told, live or replayed, carries the key its request gave it. */

@@ -34,11 +34,10 @@ class GeminiEmbedderConfigTest {
 
   @Test
   void a_property_under_its_own_prefix_builds() {
-    assertThatCode(
-            () ->
-                GeminiEmbeddingProvider.of(
-                        c -> c.apiKey("test-key").property("gemini.labels.team", "billing"))
-                    .close())
+    assertThatCode(() ->
+            GeminiEmbeddingProvider.of(
+                    c -> c.apiKey("test-key").property("gemini.labels.team", "billing"))
+                .close())
         .doesNotThrowAnyException();
   }
 

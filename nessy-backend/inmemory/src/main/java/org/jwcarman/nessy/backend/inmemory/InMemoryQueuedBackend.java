@@ -174,16 +174,14 @@ public final class InMemoryQueuedBackend implements QueuedBackend {
   public <I> Backlogs<I> backlogs(TypeRef<I> inputType) {
     Objects.requireNonNull(inputType, "inputType must not be null");
     Map<Key, InMemoryBacklog<I>> mine = new ConcurrentHashMap<>();
-    clearers.add(
-        (type, agent) -> {
-          InMemoryBacklog<I> backlog = mine.get(new Key(type, agent));
-          return backlog == null ? 0 : backlog.clear();
-        });
-    sizers.add(
-        (type, agent) -> {
-          InMemoryBacklog<I> backlog = mine.get(new Key(type, agent));
-          return backlog == null ? 0 : backlog.size();
-        });
+    clearers.add((type, agent) -> {
+      InMemoryBacklog<I> backlog = mine.get(new Key(type, agent));
+      return backlog == null ? 0 : backlog.clear();
+    });
+    sizers.add((type, agent) -> {
+      InMemoryBacklog<I> backlog = mine.get(new Key(type, agent));
+      return backlog == null ? 0 : backlog.size();
+    });
     return (type, agent) ->
         mine.computeIfAbsent(
             new Key(type, agent),

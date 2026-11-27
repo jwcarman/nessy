@@ -91,22 +91,20 @@ class HarnessFeaturesWiringTest {
     AFeature.equipped.clear();
     runner
         .withUserConfiguration(AFeature.class)
-        .run(
-            context -> {
-              context
-                  .getBean(DefaultDirectHarnessFactory.class)
-                  .<String>create(
-                      new AgentType("direct-one"),
-                      config -> config.inputRenderer(text -> List.of(new Block.Text(text))));
-              context
-                  .getBean(DefaultQueuedHarnessFactory.class)
-                  .create(
-                      new AgentType("queued-one"),
-                      String.class,
-                      config -> config.systemPrompt("You are a test assistant."));
-              assertThat(AFeature.equipped)
-                  .containsExactlyInAnyOrder(
-                      new AgentType("direct-one"), new AgentType("queued-one"));
-            });
+        .run(context -> {
+          context
+              .getBean(DefaultDirectHarnessFactory.class)
+              .<String>create(
+                  new AgentType("direct-one"),
+                  config -> config.inputRenderer(text -> List.of(new Block.Text(text))));
+          context
+              .getBean(DefaultQueuedHarnessFactory.class)
+              .create(
+                  new AgentType("queued-one"),
+                  String.class,
+                  config -> config.systemPrompt("You are a test assistant."));
+          assertThat(AFeature.equipped)
+              .containsExactlyInAnyOrder(new AgentType("direct-one"), new AgentType("queued-one"));
+        });
   }
 }

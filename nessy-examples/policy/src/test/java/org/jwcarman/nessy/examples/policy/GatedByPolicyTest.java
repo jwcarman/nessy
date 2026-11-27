@@ -81,11 +81,10 @@ class GatedByPolicyTest {
 
   private Approver gate() {
     var opa =
-        OpaPolicyEngine.of(
-            policy ->
-                policy
-                    .url("http://" + OPA.getHost() + ":" + OPA.getMappedPort(8181))
-                    .decisionPath("nessy/tools/decision"));
+        OpaPolicyEngine.of(policy ->
+            policy
+                .url("http://" + OPA.getHost() + ":" + OPA.getMappedPort(8181))
+                .decisionPath("nessy/tools/decision"));
     Approver humans =
         request -> {
           desk.add(request);

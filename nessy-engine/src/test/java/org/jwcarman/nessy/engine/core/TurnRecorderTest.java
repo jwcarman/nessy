@@ -174,12 +174,10 @@ class TurnRecorderTest {
             });
     TurnRecorder recorder = new TurnRecorder(TYPE, store, registry);
     Observation.createNotStarted("invoke_agent", registry)
-        .observe(
-            () ->
-                recorder
-                    .recordEnding(
-                        AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false), ENDED)
-                    .orElseThrow());
+        .observe(() ->
+            recorder
+                .recordEnding(AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false), ENDED)
+                .orElseThrow());
     assertThat(stopped).hasSize(1);
     return stopped.getFirst().getHighCardinalityKeyValue("nessy.trajectory.novel").getValue();
   }
@@ -462,12 +460,11 @@ class TurnRecorderTest {
     TurnRecorder recorder = new TurnRecorder(TYPE, turns, registry);
     AgentTurn row =
         Observation.createNotStarted("invoke_agent", registry)
-            .observe(
-                () ->
-                    recorder
-                        .recordEnding(
-                            AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false), ENDED)
-                        .orElseThrow());
+            .observe(() ->
+                recorder
+                    .recordEnding(
+                        AGENT, AgentState.idle(Seq.NONE), oneRoundThenAnswer(false), ENDED)
+                    .orElseThrow());
     assertThat(stopped).hasSize(1);
     Observation.Context context = stopped.getFirst();
     assertThat(context.getHighCardinalityKeyValue("nessy.trajectory.hash").getValue())

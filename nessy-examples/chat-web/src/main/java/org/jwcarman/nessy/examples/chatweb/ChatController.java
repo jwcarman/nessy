@@ -232,18 +232,16 @@ public class ChatController {
             .forEach(call -> lines.add(new Line(t, "tool", "🔧 " + call.name().value())));
         exchange
             .outcomes()
-            .forEach(
-                outcome ->
-                    lines.add(
-                        new Line(
-                            t,
-                            "tool",
-                            switch (outcome) {
-                              case ToolOutcome.Succeeded(var _, var blocks) -> text(blocks);
-                              case ToolOutcome.Failed(var _, String message) ->
-                                  "failed: " + message;
-                              case ToolOutcome.Denied(var _, String reason) -> "denied: " + reason;
-                            })));
+            .forEach(outcome ->
+                lines.add(
+                    new Line(
+                        t,
+                        "tool",
+                        switch (outcome) {
+                          case ToolOutcome.Succeeded(var _, var blocks) -> text(blocks);
+                          case ToolOutcome.Failed(var _, String message) -> "failed: " + message;
+                          case ToolOutcome.Denied(var _, String reason) -> "denied: " + reason;
+                        })));
       }
       switch (turn.result()) {
         case TurnResult.Answered(var blocks) -> lines.add(new Line(t, "assistant", text(blocks)));
@@ -265,13 +263,12 @@ public class ChatController {
    */
   private static String text(List<? extends Block> blocks) {
     return blocks.stream()
-        .map(
-            block ->
-                switch (block) {
-                  case Block.Text(String text) -> text;
-                  case Block.Commentary(String text) -> text;
-                  case Block.Provider _, Block.ToolCall _ -> "";
-                })
+        .map(block ->
+            switch (block) {
+              case Block.Text(String text) -> text;
+              case Block.Commentary(String text) -> text;
+              case Block.Provider _, Block.ToolCall _ -> "";
+            })
         .collect(Collectors.joining());
   }
 }

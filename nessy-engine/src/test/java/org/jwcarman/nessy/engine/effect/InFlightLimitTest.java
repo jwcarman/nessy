@@ -68,22 +68,20 @@ class InFlightLimitTest {
                   config ->
                       config
                           .systemPrompt("You are a test assistant.")
-                          .inference(
-                              in ->
-                                  in.model("a-model")
-                                      .retryPolicy(new RetryPolicy.Never())
-                                      .timeout(Duration.ofMinutes(5)))
+                          .inference(in ->
+                              in.model("a-model")
+                                  .retryPolicy(new RetryPolicy.Never())
+                                  .timeout(Duration.ofMinutes(5)))
                           .effects(e -> e.maxInFlight(LIMIT).pollInterval(Duration.ofMillis(100))));
 
       List<AgentId> agents =
           Stream.generate(() -> new AgentId(UUID.randomUUID())).limit(AGENTS).toList();
       agents.forEach(agentId -> harness.tell(agentId, "hello"));
 
-      agents.forEach(
-          agentId ->
-              await()
-                  .atMost(Duration.ofSeconds(30))
-                  .untilAsserted(() -> assertThat(story(engine, LIMITED, agentId)).hasSize(2)));
+      agents.forEach(agentId ->
+          await()
+              .atMost(Duration.ofSeconds(30))
+              .untilAsserted(() -> assertThat(story(engine, LIMITED, agentId)).hasSize(2)));
 
       assertThat(census.peak())
           .as("six agents, two permits: the other four wait rather than pile on")

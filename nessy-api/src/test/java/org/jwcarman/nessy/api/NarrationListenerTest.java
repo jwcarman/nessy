@@ -39,11 +39,10 @@ class NarrationListenerTest {
   void the_builder_dispatches_by_kind() {
     List<String> heard = new CopyOnWriteArrayList<>();
     NarrationListener listener =
-        NarrationListener.of(
-            c ->
-                c.onTurnStopped((_, ended) -> heard.add("ended " + ended.turn().value()))
-                    .onTurnStopped((_, ended) -> heard.add("and again"))
-                    .onAnswered((_, _) -> heard.add("said")));
+        NarrationListener.of(c ->
+            c.onTurnStopped((_, ended) -> heard.add("ended " + ended.turn().value()))
+                .onTurnStopped((_, ended) -> heard.add("and again"))
+                .onAnswered((_, _) -> heard.add("said")));
 
     listener.on(stopped(CHAT, 3));
     listener.on(Narrated.live(CHAT, ONE, new Narration.Thinking()));

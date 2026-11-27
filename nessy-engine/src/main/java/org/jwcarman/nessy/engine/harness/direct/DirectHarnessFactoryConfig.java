@@ -216,9 +216,8 @@ public final class DirectHarnessFactoryConfig {
   // A value no customizer set. The message names the customizer call that would have set it.
   private static <T> T require(T value, String what) {
     return Optional.ofNullable(value)
-        .orElseThrow(
-            () ->
-                new IllegalStateException(
-                    what + " is required: factory(f -> f." + what.split(" ")[0] + "(...))"));
+        .orElseThrow(() ->
+            new IllegalStateException(
+                what + " is required: factory(f -> f." + what.split(" ")[0] + "(...))"));
   }
 }
