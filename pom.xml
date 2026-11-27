@@ -175,14 +175,14 @@
     <!-- Bumped from 1.16.2 (agentic-o11y): micrometer-tracing-bridge-otel 1.7.1 (below) compiles
          against micrometer-observation 1.17.1, and the observed example's dependencyManagement-
          pinned micrometer-observation must be the same line the bridge was built against. -->
-    <micrometer.version>1.17.2</micrometer.version>
+    <micrometer.version>1.18.0</micrometer.version>
     <!-- Micrometer Tracing (agentic-o11y spec §4): the bridge from a Micrometer Observation to a
          real OpenTelemetry span, application-side only — nessy-agent never depends on this. -->
-    <micrometer-tracing.version>1.7.2</micrometer-tracing.version>
+    <micrometer-tracing.version>1.8.0</micrometer-tracing.version>
     <!-- OpenTelemetry SDK + OTLP exporters (agentic-o11y spec §4), application-side only: the
          examples export traces over OTLP and nothing else. Logs left with the logback appender in
          7981f66b2; bringing them back means an appender built against exactly this version. -->
-    <opentelemetry.version>1.67.0</opentelemetry.version>
+    <opentelemetry.version>1.68.0</opentelemetry.version>
     <!-- Browser libraries as WebJars, application-side only (chat-web example). The example
          carries webjars-locator-lite, so its page loads them by versionless paths
          (/webjars/markdown-it/dist/...): these properties are the only place the versions live. -->
