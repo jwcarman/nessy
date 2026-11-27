@@ -291,9 +291,9 @@ public final class InMemoryEffects implements Effects {
 
   private static int byUnsignedBytes(UUID a, UUID b) {
     int high = Long.compareUnsigned(a.getMostSignificantBits(), b.getMostSignificantBits());
-    return high != 0
-        ? high
-        : Long.compareUnsigned(a.getLeastSignificantBits(), b.getLeastSignificantBits());
+    return high == 0
+        ? Long.compareUnsigned(a.getLeastSignificantBits(), b.getLeastSignificantBits())
+        : high;
   }
 
   /** Empty for a row whose payload cannot be decoded, which is logged and passed over. */

@@ -48,6 +48,8 @@ public final class PlanTools {
   /** What this background is, so an adapter can label it the way its vendor likes. */
   private static final String KIND = "plan";
 
+  private static final String STORE_REQUIRED = "store must not be null";
+
   private static final Logger log = LoggerFactory.getLogger(PlanTools.class);
 
   private PlanTools() {}
@@ -73,7 +75,7 @@ public final class PlanTools {
    * finishes.
    */
   public static Tool<UpdatePlan> updatePlan(Plans store) {
-    Objects.requireNonNull(store, "store must not be null");
+    Objects.requireNonNull(store, STORE_REQUIRED);
     return new PlanTool(store);
   }
 
@@ -89,7 +91,7 @@ public final class PlanTools {
    * which is a claim, and saying nothing is not.
    */
   public static AmbientSource plan(Plans store) {
-    Objects.requireNonNull(store, "store must not be null");
+    Objects.requireNonNull(store, STORE_REQUIRED);
     return AmbientSource.of(
         source ->
             source
@@ -111,7 +113,7 @@ public final class PlanTools {
    * installing it for several types builds one per type and calls this for each.
    */
   public static Customizer<HarnessConfig<?>> feature(Plans store) {
-    Objects.requireNonNull(store, "store must not be null");
+    Objects.requireNonNull(store, STORE_REQUIRED);
     return config -> {
       config.ambient(plan(store)).tool(updatePlan(store));
       // Says so, because a tool nobody wired by hand is otherwise a mystery in the logs.

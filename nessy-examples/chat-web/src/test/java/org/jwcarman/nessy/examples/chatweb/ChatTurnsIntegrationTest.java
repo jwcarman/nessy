@@ -185,8 +185,8 @@ class ChatTurnsIntegrationTest {
     List<String> offered =
         REQUESTS.getFirst().toolset().offers().stream().map(offer -> offer.name().value()).toList();
 
-    assertThat(offered).isNotEmpty();
     assertThat(offered)
+        .isNotEmpty()
         .containsOnlyOnce("remember", "revise", "recall", "forget", "update_plan", "days_until");
   }
 

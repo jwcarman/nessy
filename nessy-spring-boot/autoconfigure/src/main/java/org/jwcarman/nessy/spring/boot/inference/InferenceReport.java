@@ -89,12 +89,14 @@ final class InferenceReport implements SmartInitializingSingleton {
         || providers.containsKey(defaultProvider)) {
       return;
     }
-    log.warn(
-        "NESSY INFERENCE: nessy.provider is {}, but no provider named {} is registered; turns that"
-            + " use the default will fail until {}",
-        defaultProvider,
-        defaultProvider,
-        remedy(defaultProvider));
+    if (log.isWarnEnabled()) {
+      log.warn(
+          "NESSY INFERENCE: nessy.provider is {}, but no provider named {} is registered; turns"
+              + " that use the default will fail until {}",
+          defaultProvider,
+          defaultProvider,
+          remedy(defaultProvider));
+    }
   }
 
   /** What would register the provider: a preset's key or switch, or a bean of that name. */

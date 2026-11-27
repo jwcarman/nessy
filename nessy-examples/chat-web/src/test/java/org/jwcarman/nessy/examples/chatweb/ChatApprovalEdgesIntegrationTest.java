@@ -20,7 +20,7 @@ import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
@@ -185,7 +185,7 @@ class ChatApprovalEdgesIntegrationTest {
         for (Future<Integer> answer : answers) {
           statuses.add(answer.get());
         }
-        Collections.sort(statuses);
+        statuses.sort(Comparator.naturalOrder());
         assertThat(statuses).containsExactly(202, 409);
         await()
             .atMost(Duration.ofSeconds(30))

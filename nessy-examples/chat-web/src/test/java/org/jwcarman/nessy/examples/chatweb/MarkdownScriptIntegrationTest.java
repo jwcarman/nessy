@@ -53,7 +53,7 @@ class MarkdownScriptIntegrationTest {
   private static final Pattern SCRIPT =
       Pattern.compile("<script src=\"(/webjars/markdown-it/dist/markdown-it\\.min\\.js)\"");
 
-  private static final Pattern VERSION_SEGMENT = Pattern.compile("/\\d+\\.\\d+[^/]*/");
+  private static final Pattern VERSION_SEGMENT = Pattern.compile("/\\d+\\.\\d[^/]*/");
 
   @TestConfiguration(proxyBeanMethods = false)
   static class ScriptedModelConfiguration {
